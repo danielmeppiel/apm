@@ -104,6 +104,10 @@ jobs:
             platform: linux
             arch: x86_64
             binary_name: apm-linux-x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            binary_name: apm-linux-arm64
           - os: macos-13
             platform: darwin
             arch: x86_64
@@ -179,6 +183,10 @@ jobs:
             arch: x86_64
             platform: linux
             binary_name: apm-linux-x86_64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+            binary_name: apm-linux-arm64
           - os: macos-13
             arch: x86_64
             platform: darwin
@@ -250,6 +258,10 @@ jobs:
             arch: x86_64
             platform: linux
             binary_name: apm-linux-x86_64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+            binary_name: apm-linux-arm64
           - os: macos-13
             arch: x86_64
             platform: darwin
@@ -309,7 +321,7 @@ jobs:
       
       - name: Run release validation tests
         env:
-          APM_E2E_TESTS: "1"                           # Avoids interactive prompts for MCP env values with apm install
+          APM_E2E_TESTS: "1"                           # Avoids interactive prompts for MCP env values with apm install
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
           GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}    # Primary: APM module access
         run: |
@@ -345,7 +357,7 @@ jobs:
           
           # Create tar.gz archives from directory structure for release and Homebrew
           cd dist
-          for binary in apm-linux-x86_64 apm-darwin-x86_64 apm-darwin-arm64; do
+          for binary in apm-linux-x86_64 apm-linux-arm64 apm-darwin-x86_64 apm-darwin-arm64; do
             # With artifacts containing both scripts and dist/, the binary is in artifact/dist/binary/
             artifact_dir="${binary}"
             binary_dir="${artifact_dir}/dist/${binary}"
@@ -402,6 +414,8 @@ jobs:
           files: |
             ./dist/apm-linux-x86_64.tar.gz
             ./dist/apm-linux-x86_64.tar.gz.sha256
+            ./dist/apm-linux-arm64.tar.gz
+            ./dist/apm-linux-arm64.tar.gz.sha256
             ./dist/apm-darwin-x86_64.tar.gz
             ./dist/apm-darwin-x86_64.tar.gz.sha256
             ./dist/apm-darwin-arm64.tar.gz
@@ -467,19 +481,24 @@ jobs:
             "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/apm-darwin-x86_64.tar.gz.sha256"
           curl -L -o apm-linux-x86_64.tar.gz.sha256 \
             "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/apm-linux-x86_64.tar.gz.sha256"
+          curl -L -o apm-linux-arm64.tar.gz.sha256 \
+            "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/apm-linux-arm64.tar.gz.sha256"
           
           # Extract SHA256 checksums
           DARWIN_ARM64_SHA=$(cat apm-darwin-arm64.tar.gz.sha256 | cut -d' ' -f1)
           DARWIN_X86_64_SHA=$(cat apm-darwin-x86_64.tar.gz.sha256 | cut -d' ' -f1)
           LINUX_X86_64_SHA=$(cat apm-linux-x86_64.tar.gz.sha256 | cut -d' ' -f1)
+          LINUX_ARM64_SHA=$(cat apm-linux-arm64.tar.gz.sha256 | cut -d' ' -f1)
           
           echo "darwin-arm64-sha=$DARWIN_ARM64_SHA" >> $GITHUB_OUTPUT
           echo "darwin-x86_64-sha=$DARWIN_X86_64_SHA" >> $GITHUB_OUTPUT
           echo "linux-x86_64-sha=$LINUX_X86_64_SHA" >> $GITHUB_OUTPUT
+          echo "linux-arm64-sha=$LINUX_ARM64_SHA" >> $GITHUB_OUTPUT
           
           echo "Darwin ARM64 SHA: $DARWIN_ARM64_SHA"
           echo "Darwin x86_64 SHA: $DARWIN_X86_64_SHA"
           echo "Linux x86_64 SHA: $LINUX_X86_64_SHA"
+          echo "Linux ARM64 SHA: $LINUX_ARM64_SHA"
       
       - name: Trigger Homebrew tap repository update
         uses: peter-evans/repository-dispatch@v3
@@ -497,6 +516,7 @@ jobs:
               "checksums": {
                 "darwin_arm64": "${{ steps.checksums.outputs.darwin-arm64-sha }}",
                 "darwin_x86_64": "${{ steps.checksums.outputs.darwin-x86_64-sha }}",
-                "linux_x86_64": "${{ steps.checksums.outputs.linux-x86_64-sha }}"
+                "linux_x86_64": "${{ steps.checksums.outputs.linux-x86_64-sha }}",
+                "linux_arm64": "${{ steps.checksums.outputs.linux-arm64-sha }}"
               }
             }
