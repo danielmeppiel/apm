@@ -77,6 +77,18 @@ class TestDependencyReference:
         for url_format in formats:
             dep = DependencyReference.parse(url_format)
             assert dep.repo_url == "user/repo"
+
+    def test_parse_ghe_urls(self):
+        """Test parsing GitHub Enterprise (GHE) hostname formats like orgname.ghe.com."""
+        formats = [
+            "orgname.ghe.com/user/repo",
+            "https://orgname.ghe.com/user/repo",
+            "https://orgname.ghe.com/user/repo.git",
+        ]
+
+        for url_format in formats:
+            dep = DependencyReference.parse(url_format)
+            assert dep.repo_url == "user/repo"
     
     def test_parse_invalid_formats(self):
         """Test parsing invalid dependency formats."""
