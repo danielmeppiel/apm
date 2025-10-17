@@ -336,6 +336,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     
     current_deps = data['dependencies']['apm'] or []
     validated_packages = []
+    conflicts = []
     
     # First, validate all packages
     _rich_info(f"Validating {len(packages)} package(s)...")
@@ -346,9 +347,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
             _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
             continue
             
-        # Check if package is already in dependencies
+        # Check if package is already in dependencies -> treat as conflict
         if package in current_deps:
-            _rich_warning(f"Package {package} already exists in apm.yml")
+            conflicts.append(package)
+            _rich_error(f"Package conflict: {package} already exists in apm.yml")
             continue
             
         # Validate package exists and is accessible
@@ -359,6 +361,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
             _rich_error(f"✗ {package} - not accessible or doesn't exist")
     
     if not validated_packages:
+        if conflicts and not dry_run:
+            _rich_error(f"Aborting due to {len(conflicts)} package conflict(s)")
+            sys.exit(1)
+
         if dry_run:
             _rich_warning("No new valid packages to add")
         return []
@@ -445,10 +451,25 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run):
         apm install --dry-run                   # Show what would be installed
     """
     try:
-        # Check if apm.yml exists
-        if not Path('apm.yml').exists():
-            _rich_error("No apm.yml found. Run 'apm init' first.")
-            sys.exit(1)
+        # Check if apm.yml exists. If packages were provided, create a minimal
+        # project (apm.yml + .apm/ structure) so the install command can add
+        # package entries automatically. Otherwise, require the user to run
+        # 'apm init' first.
+        apm_yml_path = Path('apm.yml')
+        if not apm_yml_path.exists():
+            if packages:
+                _rich_info("No apm.yml found - creating minimal project so packages can be added")
+                # Create a minimal default config and project files
+                try:
+                    default_config = _get_default_config(Path.cwd().name)
+                    _create_project_files(default_config)
+                    _rich_success("Created minimal apm.yml and .apm/ structure")
+                except Exception as e:
+                    _rich_error(f"Failed to create minimal project files: {e}")
+                    sys.exit(1)
+            else:
+                _rich_error("No apm.yml found. Run 'apm init' first.")
+                sys.exit(1)
         
         # If packages are specified, validate and add them to apm.yml first
         if packages:
