@@ -4,6 +4,7 @@ import unittest
 import os
 from unittest import mock
 from apm_cli.registry.client import SimpleRegistryClient
+from apm_cli.utils import github_host
 
 
 class TestSimpleRegistryClient(unittest.TestCase):
@@ -103,7 +104,7 @@ class TestSimpleRegistryClient(unittest.TestCase):
             "name": "test-server",
             "description": "Test server description",
             "repository": {
-                "url": "https://github.com/test/test-server",
+                "url": f"https://{github_host.default_host()}/test/test-server",
                 "source": "github",
                 "id": "12345"
             },

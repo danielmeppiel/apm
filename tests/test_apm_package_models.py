@@ -17,6 +17,7 @@ from src.apm_cli.models.apm_package import (
     validate_apm_package,
     parse_git_reference,
 )
+from apm_cli.utils import github_host
 
 
 class TestDependencyReference:
@@ -66,12 +67,13 @@ class TestDependencyReference:
     
     def test_parse_github_urls(self):
         """Test parsing various GitHub URL formats."""
+        host = github_host.default_host()
         formats = [
-            "github.com/user/repo",
-            "https://github.com/user/repo",
-            "https://github.com/user/repo.git",
-            "git@github.com:user/repo",
-            "git@github.com:user/repo.git",
+            f"{host}/user/repo",
+            f"https://{host}/user/repo",
+            f"https://{host}/user/repo.git",
+            f"git@{host}:user/repo",
+            f"git@{host}:user/repo.git",
         ]
         
         for url_format in formats:
@@ -109,7 +111,8 @@ class TestDependencyReference:
     def test_to_github_url(self):
         """Test converting to GitHub URL."""
         dep = DependencyReference.parse("user/repo")
-        assert dep.to_github_url() == "https://github.com/user/repo"
+        expected = f"https://{github_host.default_host()}/user/repo"
+        assert dep.to_github_url() == expected
     
     def test_get_display_name(self):
         """Test getting display name."""

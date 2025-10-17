@@ -2,6 +2,7 @@
 
 import re
 import urllib.parse
+from ..utils.github_host import is_github_hostname, default_host
 import yaml
 from dataclasses import dataclass
 from enum import Enum
@@ -47,6 +48,7 @@ class ResolvedReference:
 class DependencyReference:
     """Represents a reference to an APM dependency."""
     repo_url: str  # e.g., "user/repo" or "github.com/user/repo"
+    host: Optional[str] = None  # Optional host (github.com or enterprise host)
     reference: Optional[str] = None  # e.g., "main", "v1.0.0", "abc123"
     alias: Optional[str] = None  # Optional alias for the dependency
     
@@ -81,26 +83,30 @@ class DependencyReference:
         
         # Handle SSH URLs first (before @ processing) to avoid conflict with alias separator
         original_str = dependency_str
-        if dependency_str.startswith("git@github.com:"):
-            # For SSH URLs, extract repo part before @ processing
-            ssh_repo_part = dependency_str[len("git@github.com:"):]
-            if ssh_repo_part.endswith(".git"):
+        ssh_repo_part = None
+        host = None
+        # Match patterns like git@host:owner/repo.git
+        m = re.match(r'^git@([^:]+):(.+)$', dependency_str)
+        if m:
+            host = m.group(1)
+            ssh_repo_part = m.group(2)
+            if ssh_repo_part.endswith('.git'):
                 ssh_repo_part = ssh_repo_part[:-4]
-            
+
             # Handle reference and alias in SSH URL
             reference = None
             alias = None
-            
+
             if "@" in ssh_repo_part:
                 ssh_repo_part, alias = ssh_repo_part.rsplit("@", 1)
                 alias = alias.strip()
-            
+
             if "#" in ssh_repo_part:
                 repo_part, reference = ssh_repo_part.rsplit("#", 1)
                 reference = reference.strip()
             else:
                 repo_part = ssh_repo_part
-                
+
             repo_url = repo_part.strip()
         else:
             # Handle alias (@alias) for non-SSH URLs
@@ -131,8 +137,8 @@ class DependencyReference:
                 # and GitHub Enterprise hostnames like orgname.ghe.com (org-specific GHE instances).
                 parts = repo_url.split("/")
                 # host/user/repo  OR user/repo (no host)
-                if len(parts) >= 3 and (parts[0] == "github.com" or parts[0].endswith('.ghe.com')):
-                    # Format: github.com/user/repo OR orgname.ghe.com/user/repo
+                if len(parts) >= 3 and (is_github_hostname(parts[0]) or parts[0] == default_host()):
+                    # Format: github.com/user/repo OR orgname.ghe.com/user/repo OR custom host
                     host = parts[0]
                     user_repo = "/".join(parts[1:3])
                 elif len(parts) >= 2 and "." not in parts[0]:
@@ -165,7 +171,7 @@ class DependencyReference:
             # SECURITY: Validate that this is actually a supported GitHub URL.
             # Accept github.com and GitHub Enterprise hostnames like '<org>.ghe.com'. Use parsed_url.hostname
             hostname = parsed_url.hostname or ""
-            if not (hostname == "github.com" or hostname.endswith('.ghe.com')):
+            if not is_github_hostname(hostname):
                 raise ValueError(f"Only GitHub repositories are supported, got hostname: {parsed_url.netloc}")
             
             # Extract and validate the path
@@ -198,6 +204,10 @@ class DependencyReference:
             if repo_url.endswith(".git"):
                 repo_url = repo_url[:-4]
 
+            # If host not set via SSH or parsed parts, default to default_host()
+            if not host:
+                host = default_host()
+
         
         # Validate repo format (should be user/repo)
         if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', repo_url):
@@ -206,19 +216,21 @@ class DependencyReference:
         # Validate alias characters if present
         if alias and not re.match(r'^[a-zA-Z0-9._-]+$', alias):
             raise ValueError(f"Invalid alias: {alias}. Aliases can only contain letters, numbers, dots, underscores, and hyphens")
-        
-        return cls(repo_url=repo_url, reference=reference, alias=alias)
-    
+
+        return cls(repo_url=repo_url, host=host, reference=reference, alias=alias)
+
     def to_github_url(self) -> str:
         """Convert to full GitHub URL."""
-        return f"https://github.com/{self.repo_url}"
-    
+        # Use stored host if present, otherwise default host (supports enterprise via GITHUB_HOST env var)
+        host = self.host or default_host()
+        return f"https://{host}/{self.repo_url}"
+
     def get_display_name(self) -> str:
         """Get display name for this dependency (alias or repo name)."""
         if self.alias:
             return self.alias
         return self.repo_url  # Full repo URL for disambiguation
-    
+
     def __str__(self) -> str:
         """String representation of the dependency reference."""
         result = self.repo_url
