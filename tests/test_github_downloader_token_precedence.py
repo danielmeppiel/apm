@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from src.apm_cli.deps.github_downloader import GitHubPackageDownloader
+from apm_cli.utils import github_host
 
 
 class TestGitHubDownloaderTokenPrecedence:
@@ -66,7 +67,8 @@ class TestGitHubDownloaderTokenPrecedence:
             
             # Build URL should work for public repos
             public_url = downloader._build_repo_url('octocat/Hello-World', use_ssh=False)
-            assert public_url == 'https://github.com/octocat/Hello-World'
+            expected_public = f"https://{github_host.default_host()}/octocat/Hello-World"
+            assert public_url == expected_public
     
     def test_private_repo_url_building_with_token(self):
         """Test URL building for private repos with authentication."""
@@ -77,7 +79,7 @@ class TestGitHubDownloaderTokenPrecedence:
             
             # Should build authenticated URL for private repos
             auth_url = downloader._build_repo_url('private-org/private-repo', use_ssh=False)
-            expected_url = 'https://x-access-token:private-repo-token@github.com/private-org/private-repo.git'
+            expected_url = github_host.build_https_clone_url(github_host.default_host(), 'private-org/private-repo', token='private-repo-token')
             assert auth_url == expected_url
     
     def test_ssh_url_building(self):
@@ -89,7 +91,8 @@ class TestGitHubDownloaderTokenPrecedence:
             
             # Should build SSH URL when requested
             ssh_url = downloader._build_repo_url('user/repo', use_ssh=True)
-            assert ssh_url == 'git@github.com:user/repo.git'
+            expected_ssh = github_host.build_ssh_url(github_host.default_host(), 'user/repo')
+            assert ssh_url == expected_ssh
     
     def test_error_message_sanitization_with_new_token(self):
         """Test that error messages properly sanitize the new token names."""
@@ -102,10 +105,11 @@ class TestGitHubDownloaderTokenPrecedence:
         assert 'GITHUB_APM_PAT=***' in sanitized
         
         # Test sanitization of URLs with tokens
-        error_with_url = "fatal: Authentication failed for 'https://ghp_secrettoken123@github.com/user/repo.git'"
+        host = github_host.default_host()
+        error_with_url = f"fatal: Authentication failed for 'https://ghp_secrettoken123@{host}/user/repo.git'"
         sanitized = downloader._sanitize_git_error(error_with_url)
         assert 'ghp_secrettoken123' not in sanitized
-        assert 'https://***@github.com' in sanitized
+        assert f'https://***@{host}' in sanitized
 
 
 class TestGitHubDownloaderErrorMessages:

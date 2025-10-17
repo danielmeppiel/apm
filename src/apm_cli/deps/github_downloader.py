@@ -20,6 +20,7 @@ from ..models.apm_package import (
     validate_apm_package,
     APMPackage
 )
+from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, is_github_hostname, default_host
 
 
 class GitHubPackageDownloader:
@@ -62,8 +63,9 @@ class GitHubPackageDownloader:
         """
         import re
         
-        # Remove any tokens that might appear in URLs (format: https://token@github.com)
-        sanitized = re.sub(r'https://[^@\s]+@github\.com', 'https://***@github.com', error_message)
+        # Remove any tokens that might appear in URLs for github hosts (format: https://token@host)
+        # Sanitize for default host and common enterprise hosts via helper
+        sanitized = sanitize_token_url_in_message(error_message, host=default_host())
         
         # Remove any tokens that might appear as standalone values
         sanitized = re.sub(r'(ghp_|gho_|ghu_|ghs_|ghr_)[a-zA-Z0-9_]+', '***', sanitized)
@@ -88,16 +90,17 @@ class GitHubPackageDownloader:
         Returns:
             str: Repository URL suitable for git clone operations
         """
+        # Determine host to use. If repo_ref is namespaced with a host (like host/owner/repo),
+        # the DependencyReference.parse will have normalized repo_ref to owner/repo and stored host separately.
+        # For this method, callers should pass repo_ref as owner/repo and optionally set self.github_host.
+        host = getattr(self, 'github_host', None) or default_host()
+
         if use_ssh:
-            # Use SSH URL for private repository access with SSH keys
-            return f"git@github.com:{repo_ref}.git"
+            return build_ssh_url(host, repo_ref)
         elif self.github_token:
-            # Use GitHub Enterprise x-access-token format for authenticated access
-            # This is the standard format for GitHub Actions and Enterprise environments
-            return f"https://x-access-token:{self.github_token}@github.com/{repo_ref}.git"
+            return build_https_clone_url(host, repo_ref, token=self.github_token)
         else:
-            # Use standard HTTPS URL for public repositories
-            return f"https://github.com/{repo_ref}"
+            return build_https_clone_url(host, repo_ref, token=None)
     
     def _clone_with_fallback(self, repo_url_base: str, target_path: Path, **clone_kwargs) -> Repo:
         """Attempt to clone a repository with fallback authentication methods.
@@ -192,6 +195,9 @@ class GitHubPackageDownloader:
             if is_likely_commit:
                 # For commit SHAs, clone full repository first, then checkout the commit
                 try:
+                    # Ensure host is set for enterprise repos
+                    if getattr(dep_ref, 'host', None):
+                        self.github_host = dep_ref.host
                     repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
@@ -204,6 +210,8 @@ class GitHubPackageDownloader:
                 # For branches and tags, try shallow clone first
                 try:
                     # Try to clone with specific branch/tag first
+                    if getattr(dep_ref, 'host', None):
+                        self.github_host = dep_ref.host
                     repo = self._clone_with_fallback(
                         dep_ref.repo_url,
                         temp_dir,
@@ -213,12 +221,14 @@ class GitHubPackageDownloader:
                     ref_type = GitReferenceType.BRANCH  # Could be branch or tag
                     resolved_commit = repo.head.commit.hexsha
                     ref_name = ref
-                    
+
                 except GitCommandError:
                     # If branch/tag clone fails, try full clone and resolve reference
                     try:
+                        if getattr(dep_ref, 'host', None):
+                            self.github_host = dep_ref.host
                         repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir)
-                        
+
                         # Try to resolve the reference
                         try:
                             # Try as branch first
@@ -236,11 +246,11 @@ class GitHubPackageDownloader:
                                     ref_name = ref
                                 except IndexError:
                                     raise ValueError(f"Reference '{ref}' not found in repository {dep_ref.repo_url}")
-                        
+
                         except Exception as e:
                             sanitized_error = self._sanitize_git_error(str(e))
                             raise ValueError(f"Could not resolve reference '{ref}' in repository {dep_ref.repo_url}: {sanitized_error}")
-                    
+
                     except GitCommandError as e:
                         # Check if this might be a private repository access issue
                         if "Authentication failed" in str(e) or "remote: Repository not found" in str(e):

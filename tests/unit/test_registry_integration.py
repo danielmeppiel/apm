@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 import requests
 from apm_cli.registry.integration import RegistryIntegration
+from apm_cli.utils import github_host
 
 
 class TestRegistryIntegration(unittest.TestCase):
@@ -23,13 +24,13 @@ class TestRegistryIntegration(unittest.TestCase):
                     "id": "123",
                     "name": "server1",
                     "description": "Description 1",
-                    "repository": {"url": "https://github.com/test/server1"}
+                    "repository": {"url": f"https://{github_host.default_host()}/test/server1"}
                 },
                 {
                     "id": "456",
                     "name": "server2",
                     "description": "Description 2",
-                    "repository": {"url": "https://github.com/test/server2"}
+                    "repository": {"url": f"https://{github_host.default_host()}/test/server2"}
                 }
             ],
             None
@@ -42,7 +43,7 @@ class TestRegistryIntegration(unittest.TestCase):
         self.assertEqual(len(packages), 2)
         self.assertEqual(packages[0]["name"], "server1")
         self.assertEqual(packages[0]["id"], "123")
-        self.assertEqual(packages[0]["repository"]["url"], "https://github.com/test/server1")
+        self.assertEqual(packages[0]["repository"]["url"], f"https://{github_host.default_host()}/test/server1")
         self.assertEqual(packages[1]["name"], "server2")
         
     @mock.patch('apm_cli.registry.client.SimpleRegistryClient.search_servers')
@@ -74,7 +75,7 @@ class TestRegistryIntegration(unittest.TestCase):
             "name": "test-server",
             "description": "Test server description",
             "repository": {
-                "url": "https://github.com/test/test-server",
+                "url": f"https://{github_host.default_host()}/test/test-server",
                 "source": "github"
             },
             "version_detail": {
@@ -97,7 +98,7 @@ class TestRegistryIntegration(unittest.TestCase):
         # Assertions
         self.assertEqual(package_info["name"], "test-server")
         self.assertEqual(package_info["description"], "Test server description")
-        self.assertEqual(package_info["repository"]["url"], "https://github.com/test/test-server")
+        self.assertEqual(package_info["repository"]["url"], f"https://{github_host.default_host()}/test/test-server")
         self.assertEqual(package_info["version_detail"]["version"], "1.0.0")
         self.assertEqual(package_info["packages"][0]["name"], "test-package")
         self.assertEqual(len(package_info["versions"]), 1)

@@ -12,6 +12,7 @@ from .base import MCPClientAdapter
 from ...registry.client import SimpleRegistryClient
 from ...registry.integration import RegistryIntegration
 from ...core.docker_args import DockerArgsProcessor
+from ...utils.github_host import is_github_hostname
 
 
 class CopilotClientAdapter(MCPClientAdapter):
@@ -671,20 +672,9 @@ class CopilotClientAdapter(MCPClientAdapter):
                 hostname = parsed_url.hostname
                 
                 if hostname:
-                    # Allowlist of valid GitHub hostnames
-                    valid_github_hostnames = [
-                        "api.githubcopilot.com",
-                        "api.github.com",
-                        "github.com"
-                    ]
-                    
-                    # Exact hostname match
-                    if hostname.lower() in [host.lower() for host in valid_github_hostnames]:
-                        return True
-                    
-                    # Allow subdomains of github.com (with proper validation)
-                    if hostname.lower().endswith(".github.com"):
-                        return True
+                        # Use helper to determine whether hostname is a GitHub host (cloud or enterprise)
+                        if is_github_hostname(hostname):
+                            return True
                         
             except Exception:
                 # If URL parsing fails, assume it's not a GitHub server
