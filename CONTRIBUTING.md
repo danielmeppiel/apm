@@ -81,10 +81,30 @@ uv pip install -e ".[dev]"
 
 ## Testing
 
-We use pytest for testing:
+We use pytest for testing. The project uses `uv` to manage virtual environments and dependencies — the recommended way to run tests is:
 
 ```bash
 uv run pytest
+# install dev dependencies (creates .venv managed by uv)
+uv sync --extra dev
+
+# run the test suite
+uv run pytest -q
+```
+
+If you don't have `uv` available, you can use a standard Python venv and pip:
+
+```bash
+# create and activate a venv (POSIX / WSL)
+python -m venv .venv
+source .venv/bin/activate
+
+# install this package in editable mode and test deps
+pip install -U pip
+pip install -e .[dev]
+
+# run tests
+pytest -q
 ```
 
 ## Coding Style
