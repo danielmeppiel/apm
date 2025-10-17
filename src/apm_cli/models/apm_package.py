@@ -125,40 +125,47 @@ class DependencyReference:
             if repo_url.startswith(("https://", "http://")):
                 # Already a full URL - parse directly
                 parsed_url = urllib.parse.urlparse(repo_url)
+                host = parsed_url.hostname or ""
             else:
-                # Safely construct GitHub URL from various input formats
+                # Safely construct a URL from various input formats. Support both github.com
+                # and GitHub Enterprise hostnames like orgname.ghe.com (org-specific GHE instances).
                 parts = repo_url.split("/")
-                if len(parts) >= 3 and parts[0] == "github.com":
-                    # Format: github.com/user/repo (must be precisely so)
+                # host/user/repo  OR user/repo (no host)
+                if len(parts) >= 3 and (parts[0] == "github.com" or parts[0].endswith('.ghe.com')):
+                    # Format: github.com/user/repo OR orgname.ghe.com/user/repo
+                    host = parts[0]
                     user_repo = "/".join(parts[1:3])
                 elif len(parts) >= 2 and "." not in parts[0]:
-                    # Format: user/repo (no dot in user part, so not a domain)
+                    # Format: user/repo (no dot in first segment, so treat as user)
+                    host = "github.com"
                     user_repo = "/".join(parts[:2])
                 else:
-                    raise ValueError(f"Only GitHub repositories are supported. Use 'user/repo' or 'github.com/user/repo' format")
-                
+                    raise ValueError(f"Only GitHub repositories are supported. Use 'user/repo' or 'github.com/user/repo' or '<org>.ghe.com/user/repo' format")
+
                 # Validate format before URL construction (security critical)
                 if not user_repo or "/" not in user_repo:
-                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'github.com/user/repo'")
-                
-                parts = user_repo.split("/")
-                if len(parts) < 2 or not parts[0] or not parts[1]:
-                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'github.com/user/repo'")
-                
-                user, repo = parts[0], parts[1]
-                
+                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'github.com/user/repo' or '<org>.ghe.com/user/repo'")
+
+                uparts = user_repo.split("/")
+                if len(uparts) < 2 or not uparts[0] or not uparts[1]:
+                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'github.com/user/repo' or '<org>.ghe.com/user/repo'")
+
+                user, repo = uparts[0], uparts[1]
+
                 # Security: validate characters to prevent injection
                 if not re.match(r'^[a-zA-Z0-9._-]+$', user):
                     raise ValueError(f"Invalid user name: {user}")
                 if not re.match(r'^[a-zA-Z0-9._-]+$', repo.rstrip('.git')):
                     raise ValueError(f"Invalid repository name: {repo}")
-                
-                # Safely construct URL - this is now secure
-                github_url = urllib.parse.urljoin("https://github.com/", f"{user}/{repo}")
+
+                # Safely construct URL using detected host
+                github_url = urllib.parse.urljoin(f"https://{host}/", f"{user}/{repo}")
                 parsed_url = urllib.parse.urlparse(github_url)
-            
-            # SECURITY: Validate that this is actually a GitHub URL with exact hostname match
-            if parsed_url.netloc != "github.com":
+
+            # SECURITY: Validate that this is actually a supported GitHub URL.
+            # Accept github.com and GitHub Enterprise hostnames like '<org>.ghe.com'. Use parsed_url.hostname
+            hostname = parsed_url.hostname or ""
+            if not (hostname == "github.com" or hostname.endswith('.ghe.com')):
                 raise ValueError(f"Only GitHub repositories are supported, got hostname: {parsed_url.netloc}")
             
             # Extract and validate the path
