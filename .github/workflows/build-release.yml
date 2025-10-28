@@ -93,7 +93,8 @@ jobs:
 
     - name: Run smoke tests
       env:
-        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}    # Primary: APM module access (FG PAT)
+        GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}    # Models access
+        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}     # APM module access
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
   # Build binaries
