@@ -46,9 +46,6 @@ done
 setup_codex() {
     log_info "Setting up Codex runtime..."
     
-    # Setup GitHub tokens early for API calls (before downloading latest release)
-    setup_github_tokens
-    
     # Detect platform using detect_platform from common utilities
     detect_platform
     
@@ -94,18 +91,24 @@ setup_codex() {
         local latest_release_url="https://api.github.com/repos/$CODEX_REPO/releases/latest"
         local latest_tag
         
+        # DEBUG: Show token state right before API call
+        log_info "🔍 DEBUG: Token state before GitHub API call:"
+        log_info "  GITHUB_TOKEN: ${GITHUB_TOKEN:+SET(${#GITHUB_TOKEN} chars)}${GITHUB_TOKEN:-UNSET}"
+        log_info "  GITHUB_APM_PAT: ${GITHUB_APM_PAT:+SET(${#GITHUB_APM_PAT} chars)}${GITHUB_APM_PAT:-UNSET}"
+        
         # Try to get the latest release tag using curl
         if command -v curl >/dev/null 2>&1; then
             # Use authenticated request if GITHUB_TOKEN or GITHUB_APM_PAT is available
             if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-                log_info "Using authenticated GitHub API request (GITHUB_TOKEN)"
+                log_info "Using authenticated GitHub API request (GITHUB_TOKEN - ${#GITHUB_TOKEN} chars)"
                 local auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
                 latest_tag=$(curl -s -H "$auth_header" "$latest_release_url" | grep '"tag_name":' | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/')
             elif [[ -n "${GITHUB_APM_PAT:-}" ]]; then
-                log_info "Using authenticated GitHub API request (GITHUB_APM_PAT)"
+                log_info "Using authenticated GitHub API request (GITHUB_APM_PAT - ${#GITHUB_APM_PAT} chars)"
                 local auth_header="Authorization: Bearer ${GITHUB_APM_PAT}"
                 latest_tag=$(curl -s -H "$auth_header" "$latest_release_url" | grep '"tag_name":' | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/')
             else
+                log_info "🚨 DEBUG: No tokens available - GITHUB_TOKEN and GITHUB_APM_PAT both unset!"
                 log_info "Using unauthenticated GitHub API request (60 requests/hour limit)"
                 latest_tag=$(curl -s "$latest_release_url" | grep '"tag_name":' | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/')
             fi
