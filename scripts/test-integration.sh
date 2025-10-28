@@ -75,7 +75,7 @@ detect_platform() {
                     BINARY_NAME="apm-linux-x86_64"
                     ;;
                 aarch64|arm64)
-                    BINARY_NAME="apm-linux-aarch64"
+                    BINARY_NAME="apm-linux-arm64"
                     ;;
                 *)
                     log_error "Unsupported Linux architecture: $arch"
