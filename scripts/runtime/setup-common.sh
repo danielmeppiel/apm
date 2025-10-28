@@ -40,6 +40,9 @@ detect_platform() {
                 x86_64|amd64)
                     DETECTED_PLATFORM="linux-x86_64"
                     ;;
+                aarch64|arm64)
+                    DETECTED_PLATFORM="linux-aarch64"
+                    ;;
                 *)
                     log_error "Unsupported Linux architecture: $arch"
                     exit 1
