@@ -137,7 +137,7 @@ class DependencyReference:
                 # and GitHub Enterprise hostnames like orgname.ghe.com (org-specific GHE instances).
                 parts = repo_url.split("/")
                 # host/user/repo  OR user/repo (no host)
-                if len(parts) >= 3 and (is_github_hostname(parts[0]) or parts[0] == default_host()):
+                if len(parts) >= 3 and is_github_hostname(parts[0]):
                     # Format: github.com/user/repo OR orgname.ghe.com/user/repo OR custom host
                     host = parts[0]
                     user_repo = "/".join(parts[1:3])
