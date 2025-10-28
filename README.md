@@ -53,6 +53,8 @@ apm compile && apm run start --param name="<YourGitHubHandle>"
 
 **That's it!** Your project now has reliable AI workflows that work with any coding agent.
 
+**GitHub Enterprise Support:** Works with Enterprise Server and Data Residency Cloud. [Configuration →](docs/getting-started.md#github-enterprise-support)
+
 ### Example `apm.yml` - Like package.json for AI Native projects
 
 Here's what your `apm.yml` configuration file looks like (similar to `package.json` in npm):

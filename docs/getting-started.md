@@ -49,6 +49,69 @@ export GITHUB_TOKEN=ghp_models_token         # For GitHub Models free inference
 # APM will work with public modules without any authentication
 ```
 
+### GitHub Enterprise Support
+
+APM supports all GitHub Enterprise deployment models. Configuration depends on your organization's GitHub deployment.
+
+#### Default Behavior (github.com)
+
+By default, APM resolves package references to `github.com`:
+
+```bash
+apm install danielmeppiel/compliance-rules
+# Resolves to: github.com/danielmeppiel/compliance-rules
+```
+
+#### GitHub Enterprise Server (Self-Hosted)
+
+For organizations using self-hosted GitHub Enterprise with custom domains:
+
+```bash
+# Set your enterprise domain as default
+export GITHUB_HOST=github.company.com
+export GITHUB_APM_PAT=ghp_enterprise_token
+
+# Packages now resolve to your enterprise domain
+apm install team/internal-package
+# Resolves to: github.company.com/team/internal-package
+```
+
+#### GitHub Enterprise Cloud with Data Residency
+
+For organizations using GitHub Enterprise Cloud with regional data residency (`.ghe.com` domains):
+
+```bash
+# Set your GHE Cloud domain as default
+export GITHUB_HOST=myorg.ghe.com
+export GITHUB_APM_PAT=ghp_data_residency_token
+
+# Packages now resolve to your data residency domain
+apm install platform/standards
+# Resolves to: myorg.ghe.com/platform/standards
+```
+
+#### Multiple GitHub Instances
+
+If your organization uses multiple GitHub instances simultaneously:
+
+```bash
+# Configure primary host
+export GITHUB_HOST=github.company.com
+
+# Allow additional hosts
+export APM_GITHUB_HOSTS="partner.ghe.com,vendor.github.io"
+
+# Packages resolve to GITHUB_HOST by default
+apm install team/package
+# Resolves to: github.company.com/team/package
+
+# Or specify host explicitly
+apm install partner.ghe.com/external/integration
+apm install vendor.github.io/third-party/tool
+```
+
+**Key Insight:** APM validates `.ghe.com` and custom domains as legitimate GitHub hosts, but you must set `GITHUB_HOST` to make bare package names (e.g., `team/repo`) resolve to your enterprise domain instead of `github.com`.
+
 ### Token Creation Guide
 
 1. **Create Fine-grained PAT** for `GITHUB_APM_PAT`:
