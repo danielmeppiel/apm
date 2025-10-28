@@ -39,6 +39,7 @@ STATUS_SYMBOLS = {
     'warning': '⚠️',
     'error': '❌',
     'check': '✅',
+    'cross': '❌',
     'list': '📋',
     'preview': '👀',
     'robot': '🤖',
