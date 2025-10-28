@@ -11,7 +11,7 @@ on:
       - 'docs/**'
       - '.gitignore'
       - 'LICENSE'
-  pull_request_target:  # Use pull_request_target for secrets access from forks
+  pull_request: 
     branches: [ main ]
     paths-ignore:
       - 'docs/**'
