@@ -131,7 +131,7 @@ class RuntimeManager:
                 # - GITHUB_TOKEN: User authentication for GitHub Models (Codex CLI)
                 
                 # Setup GitHub tokens using centralized manager
-                env = setup_runtime_environment()  # General token setup for scripts
+                env = setup_runtime_environment(env)  # Pass env to preserve CI tokens
                 
                 result = subprocess.run(
                     cmd,
