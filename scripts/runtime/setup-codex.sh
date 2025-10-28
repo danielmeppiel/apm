@@ -46,6 +46,9 @@ done
 setup_codex() {
     log_info "Setting up Codex runtime..."
     
+    # Setup GitHub tokens early for API calls (before downloading latest release)
+    setup_github_tokens
+    
     # Detect platform using detect_platform from common utilities
     detect_platform
     
