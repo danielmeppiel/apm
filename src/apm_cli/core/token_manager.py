@@ -23,7 +23,7 @@ class GitHubTokenManager:
     # Define token precedence for different use cases
     TOKEN_PRECEDENCE = {
         'copilot': ['GITHUB_COPILOT_PAT', 'GITHUB_TOKEN', 'GITHUB_APM_PAT'],
-        'models': ['GITHUB_TOKEN'],  # GitHub Models requires user-scoped PAT
+        'models': ['GITHUB_TOKEN', 'GITHUB_APM_PAT'],  # GitHub Models prefers user-scoped PAT, falls back to APM PAT
         'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN'],  # APM module access
     }
     
@@ -144,14 +144,19 @@ class GitHubTokenManager:
             env[env_var] = copilot_token
     
     def _setup_codex_tokens(self, env: Dict[str, str], available_tokens: Dict[str, str]):
-        """Set up tokens for Codex CLI (preserve existing GITHUB_TOKEN)."""
-        # Codex uses GITHUB_TOKEN directly - only set if missing
-        if self.preserve_existing and 'GITHUB_TOKEN' in env:
-            return
-            
-        models_token = self.get_token_for_purpose('models', available_tokens)
-        if models_token and 'GITHUB_TOKEN' not in env:
-            env['GITHUB_TOKEN'] = models_token
+        """Set up tokens for Codex CLI (preserve existing tokens)."""
+        # Codex script checks for both GITHUB_TOKEN and GITHUB_APM_PAT
+        # Set up GITHUB_TOKEN if not present
+        if not (self.preserve_existing and 'GITHUB_TOKEN' in env):
+            models_token = self.get_token_for_purpose('models', available_tokens)
+            if models_token and 'GITHUB_TOKEN' not in env:
+                env['GITHUB_TOKEN'] = models_token
+        
+        # Ensure GITHUB_APM_PAT is available if we have it
+        if not (self.preserve_existing and 'GITHUB_APM_PAT' in env):
+            apm_token = available_tokens.get('GITHUB_APM_PAT')
+            if apm_token and 'GITHUB_APM_PAT' not in env:
+                env['GITHUB_APM_PAT'] = apm_token
     
     def _setup_llm_tokens(self, env: Dict[str, str], available_tokens: Dict[str, str]):
         """Set up tokens for LLM CLI."""
