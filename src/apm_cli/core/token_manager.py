@@ -145,18 +145,27 @@ class GitHubTokenManager:
     
     def _setup_codex_tokens(self, env: Dict[str, str], available_tokens: Dict[str, str]):
         """Set up tokens for Codex CLI (preserve existing tokens)."""
+        # DEBUG: Print what tokens we have available
+        print(f"DEBUG: Available tokens: {list(available_tokens.keys())}")
+        print(f"DEBUG: GITHUB_TOKEN in env: {'GITHUB_TOKEN' in env}")
+        print(f"DEBUG: GITHUB_APM_PAT in env: {'GITHUB_APM_PAT' in env}")
+        
         # Codex script checks for both GITHUB_TOKEN and GITHUB_APM_PAT
         # Set up GITHUB_TOKEN if not present
         if not (self.preserve_existing and 'GITHUB_TOKEN' in env):
             models_token = self.get_token_for_purpose('models', available_tokens)
+            print(f"DEBUG: Models token found: {models_token is not None}")
             if models_token and 'GITHUB_TOKEN' not in env:
                 env['GITHUB_TOKEN'] = models_token
+                print(f"DEBUG: Set GITHUB_TOKEN")
         
         # Ensure GITHUB_APM_PAT is available if we have it
         if not (self.preserve_existing and 'GITHUB_APM_PAT' in env):
             apm_token = available_tokens.get('GITHUB_APM_PAT')
+            print(f"DEBUG: APM token found: {apm_token is not None}")
             if apm_token and 'GITHUB_APM_PAT' not in env:
                 env['GITHUB_APM_PAT'] = apm_token
+                print(f"DEBUG: Set GITHUB_APM_PAT")
     
     def _setup_llm_tokens(self, env: Dict[str, str], available_tokens: Dict[str, str]):
         """Set up tokens for LLM CLI."""
