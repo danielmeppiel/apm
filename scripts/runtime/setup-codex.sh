@@ -61,6 +61,9 @@ setup_codex() {
         linux-x86_64)
             codex_platform="x86_64-unknown-linux-gnu"
             ;;
+        linux-aarch64)
+            codex_platform="aarch64-unknown-linux-gnu"
+            ;;
         *)
             log_error "Unsupported platform: $DETECTED_PLATFORM"
             exit 1
