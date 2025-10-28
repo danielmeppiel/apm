@@ -40,6 +40,9 @@ def run_command(cmd, check=True, capture_output=True, timeout=60, cwd=None):
         if cwd is None:
             cwd = Path(__file__).parent.parent.parent
         
+        # Ensure environment variables are properly passed to subprocess
+        env = os.environ.copy()
+        
         result = subprocess.run(
             cmd, 
             shell=True, 
@@ -47,7 +50,8 @@ def run_command(cmd, check=True, capture_output=True, timeout=60, cwd=None):
             capture_output=capture_output, 
             text=True,
             timeout=timeout,
-            cwd=str(cwd)
+            cwd=str(cwd),
+            env=env  # Explicitly pass environment
         )
         return result
     except subprocess.TimeoutExpired:
