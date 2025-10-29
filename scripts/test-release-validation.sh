@@ -151,13 +151,58 @@ test_init_project() {
         return 1
     fi
     
-    # Check that apm.yml was created
+    # Check that apm.yml was created (minimal mode - only apm.yml)
     if [[ ! -f "my-ai-native-project/apm.yml" ]]; then
         log_error "apm.yml not created in project"
         return 1
     fi
     
-    log_success "Project initialization completed"
+    log_success "Project initialization completed (minimal mode)"
+    
+    # NEW: Create minimal project structure for testing (simulating user workflow)
+    log_info "Creating minimal project structure for validation testing..."
+    
+    cd my-ai-native-project
+    
+    # Create .apm directory with minimal instruction
+    mkdir -p .apm/instructions
+    cat > .apm/instructions/test.instructions.md << 'EOF'
+---
+applyTo: "**"
+description: Test instructions for release validation
+---
+
+# Test Instructions
+
+Basic instructions for release validation testing.
+EOF
+    
+    # Create a simple prompt file for testing
+    cat > hello-world.prompt.md << 'EOF'
+---
+description: Hello World prompt for validation
+---
+
+# Hello World
+
+This is a test prompt for {{name}}.
+
+Say hello to {{name}}!
+EOF
+    
+    # Update apm.yml to add start script
+    # Note: Using simple append to avoid Python/YAML dependency issues in isolated test
+    cat >> apm.yml << 'EOF'
+
+# Scripts added for release validation testing
+scripts:
+  start: "codex hello-world.prompt.md"
+EOF
+    
+    cd ..
+    log_info "Project structure created for testing"
+    
+    log_success "Project initialization and setup completed"
 }
 
 # Test Step 4: cd my-ai-native-project && apm compile
