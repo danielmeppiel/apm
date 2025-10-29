@@ -308,6 +308,33 @@ class ScriptExecutionFormatter:
         
         return lines
     
+    def format_auto_discovery_message(self, script_name: str, prompt_file: Path, runtime: str) -> str:
+        """Format message for auto-discovered prompts.
+        
+        Args:
+            script_name: Name user typed
+            prompt_file: Path to discovered prompt
+            runtime: Detected runtime
+            
+        Returns:
+            Formatted message string
+        """
+        if self.use_color and RICH_AVAILABLE and self.console:
+            try:
+                text = Text()
+                text.append("ℹ Auto-discovered: ", style="cyan")
+                text.append(str(prompt_file), style="bold white")
+                text.append(f" (runtime: {runtime})", style="dim")
+                
+                with self.console.capture() as capture:
+                    self.console.print(text)
+                return capture.get().rstrip('\n')
+            except:
+                # Fallback to simple formatting
+                return f"ℹ Auto-discovered: {prompt_file} (runtime: {runtime})"
+        else:
+            return f"ℹ Auto-discovered: {prompt_file} (runtime: {runtime})"
+    
     def _styled(self, text: str, style: str) -> str:
         """Apply styling to text with rich fallback."""
         if self.use_color and RICH_AVAILABLE and self.console:

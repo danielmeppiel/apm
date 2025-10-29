@@ -43,7 +43,11 @@ STATUS_SYMBOLS = {
     'list': '📋',
     'preview': '👀',
     'robot': '🤖',
-    'metrics': '📊'
+    'metrics': '📊',
+    'default': '📍',  # Default script marker
+    'eyes': '👀',  # Watch mode
+    'folder': '📁',  # Directory/folder operations
+    'cogs': '⚙️'  # Compilation/processing
 }
 
 

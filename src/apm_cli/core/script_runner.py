@@ -28,6 +28,11 @@ class ScriptRunner:
     def run_script(self, script_name: str, params: Dict[str, str]) -> bool:
         """Run a script from apm.yml with parameter substitution.
         
+        Execution priority:
+        1. Explicit scripts in apm.yml (takes precedence)
+        2. Auto-discovered prompt files (fallback)
+        3. Error if not found
+        
         Args:
             script_name: Name of the script to run
             params: Parameters for compilation and script execution
@@ -45,13 +50,49 @@ class ScriptRunner:
         if not config:
             raise RuntimeError("No apm.yml found in current directory")
         
+        # 1. Check explicit scripts first (existing behavior - highest priority)
         scripts = config.get('scripts', {})
-        if script_name not in scripts:
-            available = ', '.join(scripts.keys()) if scripts else 'none'
-            raise RuntimeError(f"Script '{script_name}' not found. Available scripts: {available}")
+        if script_name in scripts:
+            command = scripts[script_name]
+            return self._execute_script_command(command, params)
         
-        # Get the script command
-        command = scripts[script_name]
+        # 2. Auto-discover prompt file (NEW fallback)
+        discovered_prompt = self._discover_prompt_file(script_name)
+        
+        if discovered_prompt:
+            # Generate runtime command with auto-detected runtime
+            runtime = self._detect_installed_runtime()
+            command = self._generate_runtime_command(runtime, discovered_prompt)
+            
+            # Show auto-discovery message
+            auto_discovery_msg = self.formatter.format_auto_discovery_message(
+                script_name, discovered_prompt, runtime
+            )
+            print(auto_discovery_msg)
+            
+            # Execute with existing logic
+            return self._execute_script_command(command, params)
+        
+        # 3. Not found anywhere
+        available = ', '.join(scripts.keys()) if scripts else 'none'
+        raise RuntimeError(
+            f"Script or prompt '{script_name}' not found.\n"
+            f"Available scripts: {available}\n"
+            f"Tip: Run 'apm list' to see all available scripts"
+        )
+    
+    def _execute_script_command(self, command: str, params: Dict[str, str]) -> bool:
+        """Execute a script command (from apm.yml or auto-generated).
+        
+        This is the existing run_script logic, extracted for reuse.
+        
+        Args:
+            command: Script command to execute
+            params: Parameters for compilation and script execution
+            
+        Returns:
+            bool: True if script executed successfully
+        """
         
         # Auto-compile any .prompt.md files in the command
         compiled_command, compiled_prompt_files, runtime_content = self._auto_compile_prompts(command, params)
@@ -376,6 +417,94 @@ class ScriptRunner:
         
         # Execute using argument list (no shell interpretation) with updated environment
         return subprocess.run(actual_command_args, check=True, env=env_vars)
+    
+    def _discover_prompt_file(self, name: str) -> Optional[Path]:
+        """Discover prompt files by name across local and dependencies.
+        
+        Search order (first match wins):
+        1. Local root: ./{name}.prompt.md
+        2. Local prompts: .apm/prompts/{name}.prompt.md
+        3. GitHub convention: .github/prompts/{name}.prompt.md
+        4. Dependencies: apm_modules/**/.apm/prompts/{name}.prompt.md
+        5. Dependencies root: apm_modules/**/{name}.prompt.md
+        
+        Args:
+            name: Script/prompt name to search for
+            
+        Returns:
+            Path to discovered prompt file, or None if not found
+        """
+        # Ensure name doesn't already have .prompt.md extension
+        if name.endswith('.prompt.md'):
+            search_name = name
+        else:
+            search_name = f"{name}.prompt.md"
+        
+        # 1. Check local paths first (highest priority)
+        local_search_paths = [
+            Path(search_name),  # Local root
+            Path(f".apm/prompts/{search_name}"),  # APM prompts dir
+            Path(f".github/prompts/{search_name}"),  # GitHub convention
+        ]
+        
+        for path in local_search_paths:
+            if path.exists():
+                return path
+        
+        # 2. Search in dependencies (lower priority)
+        apm_modules = Path("apm_modules")
+        if apm_modules.exists():
+            # Search with rglob for any matching prompt in dependencies
+            for prompt in apm_modules.rglob(search_name):
+                return prompt
+        
+        return None
+    
+    def _detect_installed_runtime(self) -> str:
+        """Detect installed runtime with priority order.
+        
+        Priority: copilot > codex > error
+        
+        Returns:
+            Name of detected runtime
+            
+        Raises:
+            RuntimeError: If no compatible runtime is found
+        """
+        import shutil
+        
+        # Priority order: copilot first (recommended), then codex
+        if shutil.which("copilot"):
+            return "copilot"
+        elif shutil.which("codex"):
+            return "codex"
+        else:
+            raise RuntimeError(
+                "No compatible runtime found.\n"
+                "Install GitHub Copilot CLI with:\n"
+                "  apm runtime setup copilot\n"
+                "Or install Codex CLI with:\n"
+                "  apm runtime setup codex"
+            )
+    
+    def _generate_runtime_command(self, runtime: str, prompt_file: Path) -> str:
+        """Generate appropriate runtime command with proper defaults.
+        
+        Args:
+            runtime: Name of runtime (copilot or codex)
+            prompt_file: Path to the prompt file
+            
+        Returns:
+            Full command string with runtime-specific defaults
+        """
+        if runtime == "copilot":
+            # GitHub Copilot CLI with all recommended flags
+            return f"copilot --log-level all --log-dir copilot-logs --allow-all-tools -p {prompt_file}"
+        elif runtime == "codex":
+            # Codex CLI default
+            return f"codex {prompt_file}"
+        else:
+            raise ValueError(f"Unsupported runtime: {runtime}")
 
 
 class PromptCompiler:
