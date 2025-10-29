@@ -227,10 +227,15 @@ class TestInitCommand:
             # Initialize git repo and set author
             import subprocess
 
-            subprocess.run(["git", "init"], capture_output=True)
-            subprocess.run(
+            git_init = subprocess.run(["git", "init"], capture_output=True)
+            assert git_init.returncode == 0, f"git init failed: {git_init.stderr}"
+
+            git_config = subprocess.run(
                 ["git", "config", "user.name", "Test User"], capture_output=True
             )
+            assert (
+                git_config.returncode == 0
+            ), f"git config failed: {git_config.stderr}"
 
             result = self.runner.invoke(cli, ["init", "--yes"])
 
