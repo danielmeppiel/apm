@@ -420,7 +420,7 @@ def _validate_package_exists(package):
             return False
 
 
-@cli.command(help="Install APM and MCP dependencies from apm.yml")
+@cli.command(help="📦 Install APM and MCP dependencies (auto-creates apm.yml when installing packages)")
 @click.argument("packages", nargs=-1)
 @click.option("--runtime", help="Target specific runtime only (copilot, codex, vscode)")
 @click.option("--exclude", help="Exclude specific runtime from installation")
@@ -455,8 +455,21 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run):
     """
     try:
         # Check if apm.yml exists
-        if not Path("apm.yml").exists():
-            _rich_error("No apm.yml found. Run 'apm init' first.")
+        apm_yml_exists = Path("apm.yml").exists()
+
+        # Auto-bootstrap: create minimal apm.yml when packages specified but no apm.yml
+        if not apm_yml_exists and packages:
+            # Get current directory name as project name
+            project_name = Path.cwd().name
+            config = _get_default_config(project_name)
+            _create_minimal_apm_yml(config)
+            _rich_success("Created apm.yml", symbol="sparkles")
+
+        # Error when NO apm.yml AND NO packages
+        if not apm_yml_exists and not packages:
+            _rich_error("No apm.yml found")
+            _rich_info("💡 Run 'apm init' to create one, or:")
+            _rich_info("   apm install <org/repo> to auto-create + install")
             sys.exit(1)
 
         # If packages are specified, validate and add them to apm.yml first
