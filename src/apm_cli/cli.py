@@ -286,23 +286,24 @@ def init(ctx, project_name, yes):
 
         _rich_blank_line()
 
-        # Next steps with better formatting
+        # Next steps - actionable commands matching README workflow
         next_steps = [
-            "Create primitives in .apm/ directory (instructions, chatmodes, contexts)",
-            "Add dependencies to apm.yml",
-            "Run: apm compile",
+            "Install a runtime:       apm runtime setup copilot",
+            "Add APM dependencies:    apm install <owner>/<repo>",
+            "Compile agent context:   apm compile",
+            "Run your first workflow: apm run start",
         ]
 
         try:
             _rich_panel(
-                "\n".join(f"{i+1}. {step}" for i, step in enumerate(next_steps)),
+                "\n".join(f"• {step}" for step in next_steps),
                 title="💡 Next Steps",
                 style="cyan",
             )
         except (ImportError, NameError):
             _rich_info("Next steps:")
-            for i, step in enumerate(next_steps):
-                click.echo(f"  {i+1}. {step}")
+            for step in next_steps:
+                click.echo(f"  • {step}")
 
     except Exception as e:
         _rich_error(f"Error initializing project: {e}")
