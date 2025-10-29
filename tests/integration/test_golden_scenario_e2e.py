@@ -203,33 +203,70 @@ class TestGoldenScenarioE2E:
             assert result.returncode == 0, f"Project init failed: {result.stderr}"
             assert project_dir.exists(), "Project directory not created"
             
-            # Verify project structure
+            # Verify minimal project structure (new behavior: only apm.yml created)
             assert (project_dir / "apm.yml").exists(), "apm.yml not created"
-            assert (project_dir / "hello-world.prompt.md").exists(), "Prompt file not created"
             
-            # Critical: Verify Agent Primitives (.apm directory) are created
+            # NEW: Create template files manually (simulating user workflow in minimal mode)
+            print("\n=== Creating project files (minimal mode workflow) ===")
+            
+            # Create hello-world.prompt.md
+            prompt_content = """---
+description: Hello World prompt for testing
+---
+
+# Hello World Prompt
+
+This is a test prompt for {{name}}.
+
+Say hello to {{name}}!
+"""
+            (project_dir / "hello-world.prompt.md").write_text(prompt_content)
+            
+            # Create .apm directory structure with minimal instructions
             apm_dir = project_dir / ".apm"
-            assert apm_dir.exists(), "Agent Primitives directory (.apm) not created - TEMPLATE BUNDLING FAILED"
+            apm_dir.mkdir(exist_ok=True)
+            (apm_dir / "instructions").mkdir(exist_ok=True)
             
-            print(f"✓ Verified Agent Primitives directory (.apm) exists")
+            # Create a minimal instruction file
+            instruction_content = """---
+applyTo: "**"
+description: Test instructions for E2E
+---
+
+# Test Instructions
+
+Basic instructions for E2E testing.
+"""
+            (apm_dir / "instructions" / "test.instructions.md").write_text(instruction_content)
+            
+            # Update apm.yml to add start script
+            import yaml
+            apm_yml_path = project_dir / "apm.yml"
+            with open(apm_yml_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            # Add start script for copilot
+            if 'scripts' not in config:
+                config['scripts'] = {}
+            config['scripts']['start'] = 'copilot --log-level all --log-dir copilot-logs --allow-all-tools -p hello-world.prompt.md'
+            
+            with open(apm_yml_path, 'w') as f:
+                yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
+            
+            print(f"✓ Created hello-world.prompt.md, .apm/ directory, and updated apm.yml")
             
             # Show project contents for debugging
             print("\n=== Project structure ===")
             apm_yml_content = (project_dir / "apm.yml").read_text()
-            prompt_content = (project_dir / "hello-world.prompt.md").read_text()
             print(f"apm.yml:\n{apm_yml_content}")
             print(f"hello-world.prompt.md:\n{prompt_content[:500]}...")
             
-            # List Agent Primitives for verification
-            if apm_dir.exists():
-                agent_primitives = list(apm_dir.rglob("*"))
-                agent_files = [f for f in agent_primitives if f.is_file()]
-                print(f"\n=== Agent Primitives Files ({len(agent_files)} found) ===")
-                for f in sorted(agent_files):
-                    rel_path = f.relative_to(project_dir)
-                    print(f"  {rel_path}")
-            else:
-                print(f"\n❌ Agent Primitives directory (.apm) missing - TEMPLATE BUNDLING FAILED")
+            # List created files
+            created_files = list(project_dir.rglob("*"))
+            print(f"\n=== Created Files ({len([f for f in created_files if f.is_file()])} files) ===")
+            for f in sorted([f for f in created_files if f.is_file()]):
+                rel_path = f.relative_to(project_dir)
+                print(f"  {rel_path}")
             
             # Step 4: Compile Agent Primitives for any coding agent (equivalent to: apm compile)
             print("\n=== Step 4: Compile Agent Primitives for any coding agent ===")
@@ -360,6 +397,52 @@ class TestGoldenScenarioE2E:
             result = run_command(f"{apm_binary} init my-ai-native-project-codex --yes", cwd=project_workspace)
             assert result.returncode == 0, f"Project init failed: {result.stderr}"
             
+            # NEW: Create template files manually (minimal mode workflow)
+            print("\n=== Creating project files for testing ===")
+            
+            # Create a simple prompt file for the debug script
+            prompt_content = """---
+description: Debug prompt for Codex testing
+---
+
+# Debug Prompt
+
+This is a test prompt for {{name}}.
+"""
+            (project_dir / "debug.prompt.md").write_text(prompt_content)
+            
+            # Create .apm directory with minimal instructions
+            apm_dir = project_dir / ".apm"
+            apm_dir.mkdir(exist_ok=True)
+            (apm_dir / "instructions").mkdir(exist_ok=True)
+            
+            instruction_content = """---
+applyTo: "**"
+description: Codex test instructions
+---
+
+# Test Instructions
+
+Instructions for Codex E2E testing.
+"""
+            (apm_dir / "instructions" / "test.instructions.md").write_text(instruction_content)
+            
+            # Update apm.yml to add debug script
+            import yaml
+            apm_yml_path = project_dir / "apm.yml"
+            with open(apm_yml_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            # Add debug script
+            if 'scripts' not in config:
+                config['scripts'] = {}
+            config['scripts']['debug'] = 'codex debug.prompt.md'
+            
+            with open(apm_yml_path, 'w') as f:
+                yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
+            
+            print(f"✓ Created debug.prompt.md, .apm/ directory, and updated apm.yml")
+            
             # Step 3: Compile Agent Primitives
             print("\n=== Compiling Agent Primitives ===")
             result = run_command(f"{apm_binary} compile", cwd=project_dir)
@@ -453,6 +536,52 @@ class TestGoldenScenarioE2E:
             print("\\n=== Initializing LLM test project ===")
             result = run_command(f"{apm_binary} init my-ai-native-project-llm --yes", cwd=project_workspace)
             assert result.returncode == 0, f"Project init failed: {result.stderr}"
+            
+            # NEW: Create template files manually (minimal mode workflow)
+            print("\\n=== Creating project files for testing ===")
+            
+            # Create a simple prompt file for the llm script
+            prompt_content = """---
+description: LLM prompt for testing
+---
+
+# LLM Prompt
+
+This is a test prompt for {{name}}.
+"""
+            (project_dir / "llm.prompt.md").write_text(prompt_content)
+            
+            # Create .apm directory with minimal instructions
+            apm_dir = project_dir / ".apm"
+            apm_dir.mkdir(exist_ok=True)
+            (apm_dir / "instructions").mkdir(exist_ok=True)
+            
+            instruction_content = """---
+applyTo: "**"
+description: LLM test instructions
+---
+
+# Test Instructions
+
+Instructions for LLM E2E testing.
+"""
+            (apm_dir / "instructions" / "test.instructions.md").write_text(instruction_content)
+            
+            # Update apm.yml to add llm script
+            import yaml
+            apm_yml_path = project_dir / "apm.yml"
+            with open(apm_yml_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            # Add llm script
+            if 'scripts' not in config:
+                config['scripts'] = {}
+            config['scripts']['llm'] = 'llm llm.prompt.md -m github/gpt-4o-mini'
+            
+            with open(apm_yml_path, 'w') as f:
+                yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
+            
+            print(f"✓ Created llm.prompt.md, .apm/ directory, and updated apm.yml")
             
             # Step 3: Compile Agent Primitives
             print("\\n=== Compiling Agent Primitives ===")
@@ -548,9 +677,9 @@ class TestGoldenScenarioE2E:
         
         print(f"APM version: {result.stdout}")
 
-    def test_init_command_template_bundling(self, temp_e2e_home, apm_binary):
-        """Dedicated test for apm init command and template bundling."""
-        print("\\n=== Testing APM init command and template bundling ===")
+    def test_init_command_minimal_mode(self, temp_e2e_home, apm_binary):
+        """Test apm init command in minimal mode (new behavior)."""
+        print("\\n=== Testing APM init command (minimal mode) ===")
         
         with tempfile.TemporaryDirectory() as workspace:
             project_dir = Path(workspace) / "template-test-project"
@@ -559,16 +688,15 @@ class TestGoldenScenarioE2E:
             result = run_command(f"{apm_binary} init template-test-project --yes", cwd=workspace, show_output=True)
             assert result.returncode == 0, f"APM init failed: {result.stderr}"
             
-            # Verify basic project files
+            # Verify minimal project structure (only apm.yml)
             assert project_dir.exists(), "Project directory not created"
             assert (project_dir / "apm.yml").exists(), "apm.yml not created"
-            assert (project_dir / "hello-world.prompt.md").exists(), "Prompt template not created"
             
-            # Critical: Verify Agent Primitives directory and files
-            apm_dir = project_dir / ".apm"
-            assert apm_dir.exists(), "Agent Primitives directory (.apm) not created - TEMPLATE BUNDLING FAILED"
+            # Verify template files are NOT created (minimal mode)
+            assert not (project_dir / "hello-world.prompt.md").exists(), "Prompt template should not be created in minimal mode"
+            assert not (project_dir / ".apm").exists(), "Agent Primitives directory should not be created in minimal mode"
             
-            print(f"✅ Template bundling test passed: Agent Primitives directory (.apm) verified")
+            print(f"✅ Minimal mode test passed: Only apm.yml created")
 
 
 class TestRuntimeInteroperability:
