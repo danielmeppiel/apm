@@ -420,7 +420,7 @@ def _validate_package_exists(package):
             return False
 
 
-@cli.command(help="📦 Install APM and MCP dependencies (auto-creates apm.yml if needed)")
+@cli.command(help="📦 Install APM and MCP dependencies (auto-creates apm.yml when installing packages)")
 @click.argument("packages", nargs=-1)
 @click.option("--runtime", help="Target specific runtime only (copilot, codex, vscode)")
 @click.option("--exclude", help="Exclude specific runtime from installation")
