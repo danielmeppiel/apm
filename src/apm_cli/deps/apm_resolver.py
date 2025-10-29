@@ -104,28 +104,28 @@ class APMDependencyResolver:
         # Queue for breadth-first traversal: (dependency_ref, depth, parent_node)
         processing_queue: deque[Tuple[DependencyReference, int, Optional[DependencyNode]]] = deque()
         
-        # Set to track queued repo URLs for O(1) lookup instead of O(n) list comprehension
-        queued_repo_urls: Set[str] = set()
+        # Set to track queued unique keys for O(1) lookup instead of O(n) list comprehension
+        queued_keys: Set[str] = set()
         
         # Add root dependencies to queue
         root_deps = root_package.get_apm_dependencies()
         for dep_ref in root_deps:
             processing_queue.append((dep_ref, 1, None))
-            queued_repo_urls.add(dep_ref.repo_url)
+            queued_keys.add(dep_ref.get_unique_key())
         
         # Process dependencies breadth-first
         while processing_queue:
             dep_ref, depth, parent_node = processing_queue.popleft()
             
             # Remove from queued set since we're now processing this dependency
-            queued_repo_urls.discard(dep_ref.repo_url)
+            queued_keys.discard(dep_ref.get_unique_key())
             
             # Check maximum depth to prevent infinite recursion
             if depth > self.max_depth:
                 continue
             
             # Check if we already processed this dependency at this level or higher
-            existing_node = tree.get_node(dep_ref.repo_url)
+            existing_node = tree.get_node(dep_ref.get_unique_key())
             if existing_node and existing_node.depth <= depth:
                 # We've already processed this dependency at a shallower or equal depth
                 # Create parent-child relationship if parent exists
@@ -172,9 +172,9 @@ class APMDependencyResolver:
                     for sub_dep in sub_dependencies:
                         # Avoid infinite recursion by checking if we're already processing this dep
                         # Use O(1) set lookup instead of O(n) list comprehension
-                        if sub_dep.repo_url not in queued_repo_urls:
+                        if sub_dep.get_unique_key() not in queued_keys:
                             processing_queue.append((sub_dep, depth + 1, node))
-                            queued_repo_urls.add(sub_dep.repo_url)
+                            queued_keys.add(sub_dep.get_unique_key())
             except (ValueError, FileNotFoundError) as e:
                 # Could not load dependency package - this is expected for remote dependencies
                 # The node already has a placeholder package, so continue with that
@@ -256,7 +256,7 @@ class APMDependencyResolver:
             FlatDependencyMap: Flattened dependencies ready for installation
         """
         flat_map = FlatDependencyMap()
-        seen_repos: Set[str] = set()
+        seen_keys: Set[str] = set()
         
         # Process dependencies level by level (breadth-first)
         # This ensures that dependencies declared earlier in the tree get priority
@@ -268,12 +268,12 @@ class APMDependencyResolver:
             nodes_at_depth.sort(key=lambda node: node.get_id())
             
             for node in nodes_at_depth:
-                repo_url = node.dependency_ref.repo_url
+                unique_key = node.dependency_ref.get_unique_key()
                 
-                if repo_url not in seen_repos:
+                if unique_key not in seen_keys:
                     # First occurrence - add without conflict
                     flat_map.add_dependency(node.dependency_ref, is_conflict=False)
-                    seen_repos.add(repo_url)
+                    seen_keys.add(unique_key)
                 else:
                     # Conflict - record it but keep the first one
                     flat_map.add_dependency(node.dependency_ref, is_conflict=True)

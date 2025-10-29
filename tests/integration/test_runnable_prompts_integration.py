@@ -10,13 +10,24 @@ import os
 @pytest.fixture(autouse=True)
 def preserve_cwd():
     """Fixture to preserve and restore CWD for all tests."""
-    original = os.getcwd()
+    try:
+        original = os.getcwd()
+    except (FileNotFoundError, OSError):
+        # If we can't get CWD, use a safe default
+        original = Path(__file__).parent.parent.parent
+        os.chdir(original)
+    
     yield
+    
     try:
         os.chdir(original)
     except (FileNotFoundError, OSError):
-        # If original dir was deleted, change to a safe directory
-        os.chdir(Path.home())
+        # If original dir was deleted, change to project root
+        try:
+            os.chdir(Path(__file__).parent.parent.parent)
+        except (FileNotFoundError, OSError):
+            # Last resort: home directory
+            os.chdir(Path.home())
 
 
 class TestRunnablePromptsIntegration:
