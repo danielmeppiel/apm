@@ -12,16 +12,24 @@ Currently supported versions with security updates:
 
 We take security bugs seriously. We appreciate your efforts to responsibly disclose your findings.
 
-Please follow these steps:
+**Please use GitHub's Private Vulnerability Reporting:**
 
-1. **DO NOT** file a public issue for security vulnerabilities
-2. Send a description of the vulnerability to [INSERT SECURITY EMAIL]
-   - Include steps to reproduce
-   - Include your recommended fix (if any)
-3. Give us reasonable time to respond before disclosure
-4. We will respond acknowledging receipt within 48 hours
-5. We will aim to send a more detailed response within 96 hours
-6. We will work with you to fix and disclose the vulnerability
+1. Navigate to the **Security** tab of this repository
+2. Click **"Report a vulnerability"**
+3. Fill out the advisory form with:
+   - Vulnerability description and impact
+   - Steps to reproduce
+   - Your recommended fix (if any)
+4. Click **"Submit report"**
+
+Your report will be privately shared with the maintainers. We will:
+- Acknowledge receipt
+- Send a detailed response
+- Work with you to fix and coordinate disclosure
+
+**DO NOT** file public issues for security vulnerabilities.
+
+For more information, see [GitHub's Private Vulnerability Reporting documentation](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability).
 
 ## Security Best Practices
 
