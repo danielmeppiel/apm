@@ -41,20 +41,6 @@ HIGHLIGHT = f"{Fore.MAGENTA}{Style.BRIGHT}"
 RESET = Style.RESET_ALL
 
 
-def _get_template_dir():
-    """Get the path to the templates directory."""
-    if getattr(sys, 'frozen', False):
-        # Running in PyInstaller bundle
-        base_path = sys._MEIPASS
-        return Path(base_path) / 'templates'
-    else:
-        # Running in development
-        cli_dir = Path(__file__).parent
-        # Go up to the src directory, then up to the repo root, then to templates
-        template_dir = cli_dir.parent.parent / 'templates'
-        return template_dir
-
-
 # Lazy loading for Rich components to improve startup performance
 _console = None
 
@@ -165,24 +151,6 @@ def _check_orphaned_packages():
         return []  # Return empty list if any error occurs
 
 
-def _load_template_file(template_name, filename, **variables):
-    """Load a template file and substitute variables."""
-    template_dir = _get_template_dir()
-    template_path = template_dir / template_name / filename
-    
-    if not template_path.exists():
-        raise FileNotFoundError(f"Template file not found: {template_path}")
-    
-    with open(template_path, 'r') as f:
-        content = f.read()
-    
-    # Simple template substitution using string replace
-    for var_name, var_value in variables.items():
-        content = content.replace(f'{{{{{var_name}}}}}', str(var_value))
-    
-    return content
-
-
 def print_version(ctx, param, value):
     """Print version and exit."""
     if not value or ctx.resilient_parsing:
@@ -219,13 +187,15 @@ def cli(ctx):
 cli.add_command(deps)
 
 
-@cli.command(help="Initialize a new APM project")
+@cli.command(help="🚀 Initialize a new APM project")
 @click.argument('project_name', required=False)
-@click.option('--force', '-f', is_flag=True, help="Overwrite existing files without confirmation")
-@click.option('--yes', '-y', is_flag=True, help="Skip interactive questionnaire and use defaults")
+@click.option('--yes', '-y', is_flag=True, help="Skip prompts and use auto-detected defaults")
 @click.pass_context
-def init(ctx, project_name, force, yes):
-    """Initialize a new APM project (like npm init)."""
+def init(ctx, project_name, yes):
+    """Initialize a new APM project (like npm init).
+    
+    Creates a minimal apm.yml with auto-detected metadata.
+    """
     try:
         # Handle explicit current directory
         if project_name == '.':
@@ -242,69 +212,70 @@ def init(ctx, project_name, force, yes):
             project_dir = Path.cwd()
             final_project_name = project_dir.name
             
-        # Check for existing APM project
+        # Check for existing apm.yml
         apm_yml_exists = Path('apm.yml').exists()
-        existing_files = []
-        if apm_yml_exists:
-            existing_files.append('apm.yml')
-        if Path('hello-world.prompt.md').exists():
-            existing_files.append('hello-world.prompt.md')
-        if Path('README.md').exists():
-            existing_files.append('README.md')
             
-        # Handle existing project
-        if existing_files and not force:
-            _rich_warning("Existing APM project detected:")
-            for file in existing_files:
-                _rich_echo(f"  - {file}", style="muted")
-            _rich_blank_line()
+        # Handle existing apm.yml in brownfield projects
+        if apm_yml_exists:
+            _rich_warning("apm.yml already exists")
             
             if not yes:
                 Confirm = _lazy_confirm()
                 if Confirm:
                     try:
-                        confirm = Confirm.ask("Continue and overwrite existing files?")
+                        confirm = Confirm.ask("Continue and overwrite?")
                     except Exception:
-                        confirm = click.confirm("Continue and overwrite existing files?")
+                        confirm = click.confirm("Continue and overwrite?")
                 else:
-                    confirm = click.confirm("Continue and overwrite existing files?")
+                    confirm = click.confirm("Continue and overwrite?")
                 
                 if not confirm:
                     _rich_info("Initialization cancelled.")
                     return
             else:
-                _rich_info("--yes specified, continuing with overwrite...")
+                _rich_info("--yes specified, overwriting apm.yml...")
         
         # Get project configuration (interactive mode or defaults)
-        if not yes and not apm_yml_exists:
+        if not yes:
             config = _interactive_project_setup(final_project_name)
         else:
-            # Use defaults or preserve existing config
-            if apm_yml_exists and not force:
-                config = _merge_existing_config(final_project_name)
-            else:
-                config = _get_default_config(final_project_name)
+            # Use auto-detected defaults
+            config = _get_default_config(final_project_name)
         
         _rich_success(f"Initializing APM project: {config['name']}", symbol="rocket")
         
-        # Create files from config
-        _create_project_files(config)
+        # Create minimal apm.yml
+        _create_minimal_apm_yml(config)
         
         _rich_success("APM project initialized successfully!", symbol="sparkles")
         
+        # Display created file info
+        try:
+            console = _get_console()
+            if console:
+                files_data = [("✨", "apm.yml", "Project configuration")]
+                table = _create_files_table(files_data, title="Created Files")
+                console.print(table)
+        except (ImportError, NameError):
+            _rich_info("Created:")
+            _rich_echo("  ✨ apm.yml - Project configuration", style="muted")
+        
+        _rich_blank_line()
+        
         # Next steps with better formatting
         next_steps = [
-            f"1. {STATUS_SYMBOLS['sparkles']} apm compile - Generate AGENTS.md from your primitives",
-            f"2. {STATUS_SYMBOLS['gear']} apm install - Install dependencies", 
-            f"3. {STATUS_SYMBOLS['running']} apm run start --param name=\"Your Handle\" - Run the start script"
+            "Create primitives in .apm/ directory (instructions, chatmodes, contexts)",
+            "Add dependencies to apm.yml",
+            "Run: apm compile"
         ]
         
         try:
-            _rich_panel("\n".join(next_steps), title="Next Steps", style="green")
+            _rich_panel("\n".join(f"{i+1}. {step}" for i, step in enumerate(next_steps)), 
+                       title="💡 Next Steps", style="cyan")
         except (ImportError, NameError):
             _rich_info("Next steps:")
-            for step in next_steps:
-                click.echo(f"  {step}")
+            for i, step in enumerate(next_steps):
+                click.echo(f"  {i+1}. {step}")
         
     except Exception as e:
         _rich_error(f"Error initializing project: {e}")
@@ -2436,7 +2407,11 @@ def list(ctx, limit):
 
 
 def _interactive_project_setup(default_name):
-    """Interactive setup for new APM projects."""
+    """Interactive setup for new APM projects with auto-detection."""
+    # Get auto-detected defaults
+    auto_author = _auto_detect_author()
+    auto_description = _auto_detect_description(default_name)
+    
     try:
         # Lazy import rich pieces
         from rich.console import Console  # type: ignore
@@ -2448,8 +2423,8 @@ def _interactive_project_setup(default_name):
 
         name = Prompt.ask("Project name", default=default_name).strip()
         version = Prompt.ask("Version", default="1.0.0").strip()
-        description = Prompt.ask("Description", default=f"A {name} APM application").strip()
-        author = Prompt.ask("Author", default="Your Name").strip()
+        description = Prompt.ask("Description", default=auto_description).strip()
+        author = Prompt.ask("Author", default=auto_author).strip()
 
         summary_content = f"""name: {name}
 version: {version}
@@ -2468,8 +2443,8 @@ author: {author}"""
         
         name = click.prompt("Project name", default=default_name).strip()
         version = click.prompt("Version", default="1.0.0").strip()
-        description = click.prompt("Description", default=f"A {name} APM application").strip()
-        author = click.prompt("Author", default="Your Name").strip()
+        description = click.prompt("Description", default=auto_description).strip()
+        author = click.prompt("Author", default=auto_author).strip()
         
         click.echo(f"\n{INFO}About to create:{RESET}")
         click.echo(f"  name: {name}")
@@ -2487,98 +2462,78 @@ author: {author}"""
         'description': description,
         'author': author
     }
-
-
-def _merge_existing_config(default_name):
-    """Merge existing apm.yml with defaults for missing fields."""
-    try:
-        with open('apm.yml', 'r') as f:
-            yaml = _lazy_yaml()
-            existing_config = yaml.safe_load(f) or {}
-    except Exception:
-        existing_config = {}
-    
-    # Preserve existing values, fill in missing ones
-    config = {
-        'name': existing_config.get('name', default_name),
-        'version': existing_config.get('version', '1.0.0'),
-        'description': existing_config.get('description', f"A {default_name} APM application"),
-        'author': existing_config.get('author', 'Your Name')
-    }
     
     _rich_info("Preserving existing configuration where possible")
     return config
 
 
+def _auto_detect_author():
+    """Auto-detect author from git config."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['git', 'config', 'user.name'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "Developer"
+
+
+def _auto_detect_description(project_name):
+    """Auto-detect description from git repository or use default."""
+    import subprocess
+    try:
+        # Try to get git repository description
+        result = subprocess.run(
+            ['git', 'config', '--get', 'remote.origin.url'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # We have a git repo, but description is typically not set
+            # Just use a sensible default
+            pass
+    except Exception:
+        pass
+    return f"APM project for {project_name}"
+
+
 def _get_default_config(project_name):
-    """Get default configuration for new projects."""
+    """Get default configuration for new projects with auto-detection."""
     return {
         'name': project_name,
         'version': '1.0.0',
-        'description': f"A {project_name} APM application",
-        'author': 'Your Name'
+        'description': _auto_detect_description(project_name),
+        'author': _auto_detect_author()
     }
 
 
-def _create_project_files(config):
-    """Create project files from configuration."""
-    # Create apm.yml
-    apm_yml_content = _load_template_file('hello-world', 'apm.yml', 
-                                          project_name=config['name'],
-                                          version=config.get('version', '1.0.0'),
-                                          description=config.get('description', f"A {config['name']} APM application"),
-                                          author=config.get('author', 'Your Name'))
+def _create_minimal_apm_yml(config):
+    """Create minimal apm.yml file with auto-detected metadata."""
+    yaml = _lazy_yaml()
+    
+    # Create minimal apm.yml structure
+    apm_yml_data = {
+        'name': config['name'],
+        'version': config['version'],
+        'description': config['description'],
+        'author': config['author'],
+        'dependencies': {
+            'apm': [],
+            'mcp': []
+        },
+        'scripts': {}
+    }
+    
+    # Write apm.yml
     with open('apm.yml', 'w') as f:
-        f.write(apm_yml_content)
-    
-    # Create hello-world.prompt.md from template
-    prompt_content = _load_template_file('hello-world', 'hello-world.prompt.md',
-                                         project_name=config['name'])
-    with open('hello-world.prompt.md', 'w') as f:
-        f.write(prompt_content)
-        
-    # Create feature-implementation.prompt.md from template
-    feature_content = _load_template_file('hello-world', 'feature-implementation.prompt.md',
-                                         project_name=config['name'])
-    with open('feature-implementation.prompt.md', 'w') as f:
-        f.write(feature_content)
-        
-    # Create README.md from template
-    readme_content = _load_template_file('hello-world', 'README.md',
-                                         project_name=config['name'])
-    with open('README.md', 'w') as f:
-        f.write(readme_content)
-    
-    # Create .apm directory structure and copy all primitive files
-    apm_dir = Path('.apm')
-    apm_dir.mkdir(exist_ok=True)
-    
-    # Create subdirectories
-    for subdir in ['chatmodes', 'instructions', 'context']:
-        (apm_dir / subdir).mkdir(exist_ok=True)
-    
-    # Copy primitive files
-    primitive_files = [
-        '.apm/chatmodes/default.chatmode.md',
-        '.apm/chatmodes/backend-engineer.chatmode.md',
-        '.apm/instructions/typescript.instructions.md',
-        '.apm/instructions/python.instructions.md',
-        '.apm/instructions/testing.instructions.md',
-        '.apm/context/project-info.context.md',
-        '.apm/context/architecture.context.md'
-    ]
-    
-    for primitive_file in primitive_files:
-        try:
-            primitive_content = _load_template_file('hello-world', primitive_file,
-                                                   project_name=config['name'])
-            output_path = Path(primitive_file)
-            with open(output_path, 'w') as f:
-                f.write(primitive_content)
-        except Exception as e:
-            # Don't fail if individual primitive files can't be loaded
-            _rich_warning(f"Could not create {primitive_file}: {e}")
-            continue
+        yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)
 
 
 def main():

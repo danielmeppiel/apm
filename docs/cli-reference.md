@@ -62,7 +62,7 @@ apm [OPTIONS] COMMAND [ARGS]...
 
 ### `apm init` - 🚀 Initialize new APM project
 
-Initialize a new APM project with sample prompt and configuration (like `npm init`).
+Initialize a new APM project with minimal `apm.yml` configuration (like `npm init`).
 
 ```bash
 apm init [PROJECT_NAME] [OPTIONS]
@@ -72,36 +72,37 @@ apm init [PROJECT_NAME] [OPTIONS]
 - `PROJECT_NAME` - Optional name for new project directory. Use `.` to explicitly initialize in current directory
 
 **Options:**
-- `-f, --force` - Overwrite existing files without confirmation
-- `-y, --yes` - Skip interactive questionnaire and use defaults
+- `-y, --yes` - Skip interactive prompts and use auto-detected defaults
 
 **Examples:**
 ```bash
 # Initialize in current directory (interactive)
 apm init
 
-# Initialize in current directory explicitly  
-apm init .
+# Initialize in current directory with defaults
+apm init --yes
 
 # Create new project directory
 apm init my-hello-world
 
-# Force overwrite existing project
-apm init --force
-
-# Use defaults without prompts
+# Create project with auto-detected defaults
 apm init my-project --yes
 ```
 
 **Behavior:**
+- **Minimal by default**: Creates only `apm.yml` with auto-detected metadata
 - **Interactive mode**: Prompts for project details unless `--yes` specified
-- **Existing projects**: Detects existing `apm.yml` and preserves configuration unless `--force` used
-- **Strictly additive**: Like npm, preserves existing fields and values where possible
+- **Auto-detection**: Automatically detects author from `git config user.name` and description from project context
+- **Brownfield friendly**: Works cleanly in existing projects without file pollution
 
 **Creates:**
-- `apm.yml` - Project configuration with MCP dependencies
-- `hello-world.prompt.md` - Sample prompt with GitHub integration
-- `README.md` - Project documentation
+- `apm.yml` - Minimal project configuration with empty dependencies and scripts sections
+
+**Auto-detected fields:**
+- `name` - From project directory name
+- `author` - From `git config user.name` (fallback: "Developer")
+- `description` - Generated from project name
+- `version` - Defaults to "1.0.0"
 
 ### `apm install` - 📦 Install APM and MCP dependencies
 
