@@ -106,14 +106,17 @@ apm init my-project --yes
 
 ### `apm install` - 📦 Install APM and MCP dependencies
 
-Install APM package and MCP server dependencies from `apm.yml` (like `npm install`).
+Install APM package and MCP server dependencies from `apm.yml` (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
 
 ```bash
-apm install [OPTIONS]
+apm install [PACKAGES...] [OPTIONS]
 ```
 
+**Arguments:**
+- `PACKAGES` - Optional APM packages to add and install (format: `owner/repo`)
+
 **Options:**
-- `--runtime TEXT` - Target specific runtime only (codex, vscode)
+- `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
 - `--exclude TEXT` - Exclude specific runtime from installation
 - `--only [apm|mcp]` - Install only specific dependency type
 - `--update` - Update dependencies to latest Git references  
@@ -123,6 +126,12 @@ apm install [OPTIONS]
 ```bash
 # Install all dependencies from apm.yml
 apm install
+
+# Auto-create apm.yml and install package (no init needed!)
+apm install danielmeppiel/design-guidelines
+
+# Add multiple packages and install
+apm install org/pkg1 org/pkg2
 
 # Install only APM dependencies (skip MCP servers)
 apm install --only=apm
@@ -140,11 +149,14 @@ apm install --update
 apm install --exclude codex
 ```
 
+**Auto-Bootstrap Behavior:**
+- **With packages + no apm.yml**: Automatically creates minimal `apm.yml`, adds packages, and installs
+- **Without packages + no apm.yml**: Shows helpful error suggesting `apm init` or `apm install <org/repo>`
+- **With apm.yml**: Works as before - installs existing dependencies or adds new packages
+
 **Dependency Types:**
 - **APM Dependencies**: GitHub repositories containing `.apm/` context collections
 - **MCP Dependencies**: Model Context Protocol servers for runtime integration
-
-**Requirements:** Must be run in a directory with `apm.yml` file.
 
 **Working Example with Dependencies:**
 ```yaml
