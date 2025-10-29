@@ -43,16 +43,6 @@ def run_command(cmd, check=True, capture_output=True, timeout=60, cwd=None):
         # Ensure environment variables are properly passed to subprocess
         env = os.environ.copy()
         
-        # DEBUG: Show GitHub-related environment variables being passed
-        print(f"🔍 DEBUG: Environment variables being passed to subprocess:")
-        for key in ['GITHUB_TOKEN', 'GITHUB_APM_PAT', 'GH_MODELS_PAT', 'GH_CLI_PAT', 'GH_PKG_PAT']:
-            value = env.get(key)
-            if value:
-                print(f"  {key}: SET ({len(value)} chars)")
-            else:
-                print(f"  {key}: UNSET")
-        print(f"  Command: {cmd}")
-        
         result = subprocess.run(
             cmd, 
             shell=True, 

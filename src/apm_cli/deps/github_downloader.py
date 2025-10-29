@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 import re
+import requests
 
 import git
 from git import Repo
@@ -277,11 +278,191 @@ class GitHubPackageDownloader:
             ref_name=ref_name
         )
     
+    def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+        """Download a single file from GitHub repository via raw.githubusercontent.com.
+        
+        Args:
+            dep_ref: Parsed dependency reference
+            file_path: Path to file within the repository (e.g., "prompts/code-review.prompt.md")
+            ref: Git reference (branch, tag, or commit SHA). Defaults to "main"
+            
+        Returns:
+            bytes: File content
+            
+        Raises:
+            RuntimeError: If download fails or file not found
+        """
+        host = dep_ref.host or default_host()
+        
+        # Build raw file URL
+        # Format: https://raw.githubusercontent.com/owner/repo/ref/path/to/file
+        if host == "github.com":
+            base_url = "https://raw.githubusercontent.com"
+        else:
+            # For GitHub Enterprise, use the API endpoint
+            base_url = f"https://{host}/raw"
+        
+        file_url = f"{base_url}/{dep_ref.repo_url}/{ref}/{file_path}"
+        
+        # Set up authentication headers
+        headers = {}
+        if self.github_token:
+            headers['Authorization'] = f'token {self.github_token}'
+        
+        # Try to download with the specified ref
+        try:
+            response = requests.get(file_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                # Try fallback branches if the specified ref fails
+                if ref not in ["main", "master"]:
+                    # If original ref failed, don't try fallbacks - it might be a specific version
+                    raise RuntimeError(f"File not found: {file_path} at ref '{ref}' in {dep_ref.repo_url}")
+                
+                # Try the other default branch
+                fallback_ref = "master" if ref == "main" else "main"
+                fallback_url = f"{base_url}/{dep_ref.repo_url}/{fallback_ref}/{file_path}"
+                
+                try:
+                    response = requests.get(fallback_url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    return response.content
+                except requests.exceptions.HTTPError:
+                    raise RuntimeError(
+                        f"File not found: {file_path} in {dep_ref.repo_url} "
+                        f"(tried refs: {ref}, {fallback_ref})"
+                    )
+            elif e.response.status_code == 401 or e.response.status_code == 403:
+                error_msg = f"Authentication failed for {dep_ref.repo_url}. "
+                if not self.github_token:
+                    error_msg += "This might be a private repository. Please set GITHUB_APM_PAT or GITHUB_TOKEN."
+                else:
+                    error_msg += "Please check your GitHub token permissions."
+                raise RuntimeError(error_msg)
+            else:
+                raise RuntimeError(f"Failed to download {file_path}: HTTP {e.response.status_code}")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error downloading {file_path}: {e}")
+    
+    def download_virtual_file_package(self, dep_ref: DependencyReference, target_path: Path) -> PackageInfo:
+        """Download a single file as a virtual APM package.
+        
+        Creates a minimal APM package structure with the file placed in the appropriate
+        .apm/ subdirectory based on its extension.
+        
+        Args:
+            dep_ref: Dependency reference with virtual_path set
+            target_path: Local path where virtual package should be created
+            
+        Returns:
+            PackageInfo: Information about the created virtual package
+            
+        Raises:
+            ValueError: If the dependency is not a valid virtual file package
+            RuntimeError: If download fails
+        """
+        if not dep_ref.is_virtual or not dep_ref.virtual_path:
+            raise ValueError("Dependency must be a virtual file package")
+        
+        if not dep_ref.is_virtual_file():
+            raise ValueError(f"Path '{dep_ref.virtual_path}' is not a valid individual file. "
+                           f"Must end with one of: {', '.join(DependencyReference.VIRTUAL_FILE_EXTENSIONS)}")
+        
+        # Determine the ref to use
+        ref = dep_ref.reference or "main"
+        
+        # Download the file content
+        try:
+            file_content = self.download_raw_file(dep_ref, dep_ref.virtual_path, ref)
+        except RuntimeError as e:
+            raise RuntimeError(f"Failed to download virtual package: {e}")
+        
+        # Create target directory structure
+        target_path.mkdir(parents=True, exist_ok=True)
+        
+        # Determine the subdirectory based on file extension
+        subdirs = {
+            '.prompt.md': 'prompts',
+            '.instructions.md': 'instructions',
+            '.chatmode.md': 'chatmodes',
+            '.agent.md': 'agents'
+        }
+        
+        subdir = None
+        filename = dep_ref.virtual_path.split('/')[-1]
+        for ext, dir_name in subdirs.items():
+            if dep_ref.virtual_path.endswith(ext):
+                subdir = dir_name
+                break
+        
+        if not subdir:
+            raise ValueError(f"Unknown file extension for {dep_ref.virtual_path}")
+        
+        # Create .apm structure
+        apm_dir = target_path / ".apm" / subdir
+        apm_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Write the file
+        file_path = apm_dir / filename
+        file_path.write_bytes(file_content)
+        
+        # Generate minimal apm.yml
+        package_name = dep_ref.get_virtual_package_name()
+        
+        # Try to extract description from file frontmatter
+        description = f"Virtual package containing {filename}"
+        try:
+            content_str = file_content.decode('utf-8')
+            # Simple frontmatter parsing (YAML between --- markers)
+            if content_str.startswith('---\n'):
+                end_idx = content_str.find('\n---\n', 4)
+                if end_idx > 0:
+                    frontmatter = content_str[4:end_idx]
+                    # Look for description field
+                    for line in frontmatter.split('\n'):
+                        if line.startswith('description:'):
+                            description = line.split(':', 1)[1].strip().strip('"\'')
+                            break
+        except Exception:
+            # If frontmatter parsing fails, use default description
+            pass
+        
+        apm_yml_content = f"""name: {package_name}
+version: 1.0.0
+description: {description}
+author: {dep_ref.repo_url.split('/')[0]}
+"""
+        
+        apm_yml_path = target_path / "apm.yml"
+        apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
+        
+        # Create APMPackage object
+        package = APMPackage(
+            name=package_name,
+            version="1.0.0",
+            description=description,
+            author=dep_ref.repo_url.split('/')[0],
+            source=dep_ref.to_github_url(),
+            package_path=target_path
+        )
+        
+        # Return PackageInfo
+        return PackageInfo(
+            package=package,
+            install_path=target_path,
+            installed_at=datetime.now().isoformat()
+        )
+    
     def download_package(self, repo_ref: str, target_path: Path) -> PackageInfo:
         """Download a GitHub repository and validate it as an APM package.
         
+        For virtual packages (individual files or collections), creates a minimal
+        package structure instead of cloning the full repository.
+        
         Args:
-            repo_ref: Repository reference string (e.g., "user/repo#branch")
+            repo_ref: Repository reference string (e.g., "user/repo#branch" or "user/repo/path/file.prompt.md")
             target_path: Local path where package should be downloaded
             
         Returns:
@@ -297,6 +478,18 @@ class GitHubPackageDownloader:
         except ValueError as e:
             raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
+        # Handle virtual packages differently
+        if dep_ref.is_virtual:
+            if dep_ref.is_virtual_file():
+                # Individual file virtual package
+                return self.download_virtual_file_package(dep_ref, target_path)
+            elif dep_ref.is_virtual_collection():
+                # Collection virtual package (Phase 2)
+                raise NotImplementedError("Collection virtual packages will be implemented in Phase 2")
+            else:
+                raise ValueError(f"Unknown virtual package type for {dep_ref.virtual_path}")
+        
+        # Regular package download (existing logic)
         # Resolve the Git reference to get specific commit
         resolved_ref = self.resolve_git_reference(repo_ref)
         

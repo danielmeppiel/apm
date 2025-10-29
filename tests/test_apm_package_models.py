@@ -99,6 +99,92 @@ class TestDependencyReference:
             "   ",
             "just-repo-name",
             "user/",
+        ]
+        
+        for invalid_format in invalid_formats:
+            with pytest.raises(ValueError):
+                DependencyReference.parse(invalid_format)
+    
+    def test_parse_virtual_file_package(self):
+        """Test parsing virtual file package (individual file)."""
+        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md")
+        assert dep.repo_url == "github/awesome-copilot"
+        assert dep.is_virtual is True
+        assert dep.virtual_path == "prompts/code-review.prompt.md"
+        assert dep.is_virtual_file() is True
+        assert dep.is_virtual_collection() is False
+        assert dep.get_virtual_package_name() == "awesome-copilot-code-review"
+    
+    def test_parse_virtual_file_with_reference(self):
+        """Test parsing virtual file package with git reference."""
+        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md#v1.0.0")
+        assert dep.repo_url == "github/awesome-copilot"
+        assert dep.is_virtual is True
+        assert dep.virtual_path == "prompts/code-review.prompt.md"
+        assert dep.reference == "v1.0.0"
+        assert dep.is_virtual_file() is True
+    
+    def test_parse_virtual_file_all_extensions(self):
+        """Test parsing virtual files with all supported extensions."""
+        extensions = ['.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md']
+        
+        for ext in extensions:
+            dep = DependencyReference.parse(f"user/repo/path/to/file{ext}")
+            assert dep.is_virtual is True
+            assert dep.is_virtual_file() is True
+            assert dep.virtual_path == f"path/to/file{ext}"
+    
+    def test_parse_virtual_collection(self):
+        """Test parsing virtual collection package."""
+        dep = DependencyReference.parse("github/awesome-copilot/collections/project-planning")
+        assert dep.repo_url == "github/awesome-copilot"
+        assert dep.is_virtual is True
+        assert dep.virtual_path == "collections/project-planning"
+        assert dep.is_virtual_file() is False
+        assert dep.is_virtual_collection() is True
+        assert dep.get_virtual_package_name() == "awesome-copilot-project-planning"
+    
+    def test_parse_virtual_collection_with_reference(self):
+        """Test parsing virtual collection with git reference."""
+        dep = DependencyReference.parse("github/awesome-copilot/collections/testing#main")
+        assert dep.repo_url == "github/awesome-copilot"
+        assert dep.is_virtual is True
+        assert dep.virtual_path == "collections/testing"
+        assert dep.reference == "main"
+        assert dep.is_virtual_collection() is True
+    
+    def test_parse_invalid_virtual_file_extension(self):
+        """Test that invalid file extensions are rejected for virtual files."""
+        invalid_paths = [
+            "user/repo/path/to/file.txt",
+            "user/repo/path/to/file.md",
+            "user/repo/path/to/README.md",
+            "user/repo/path/to/script.py",
+        ]
+        
+        for path in invalid_paths:
+            with pytest.raises(ValueError, match="Individual files must end with one of"):
+                DependencyReference.parse(path)
+    
+    def test_virtual_package_str_representation(self):
+        """Test string representation of virtual packages."""
+        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md#v1.0.0")
+        assert str(dep) == "github/awesome-copilot/prompts/code-review.prompt.md#v1.0.0"
+        
+        dep_with_alias = DependencyReference.parse("github/awesome-copilot/prompts/test.prompt.md@myalias")
+        assert str(dep_with_alias) == "github/awesome-copilot/prompts/test.prompt.md@myalias"
+    
+    def test_regular_package_not_virtual(self):
+        """Test that regular packages (2 segments) are not marked as virtual."""
+        dep = DependencyReference.parse("user/repo")
+        assert dep.is_virtual is False
+        assert dep.virtual_path is None
+        assert dep.is_virtual_file() is False
+        assert dep.is_virtual_collection() is False
+    
+    def test_parse_control_characters_rejected(self):
+        """Test that control characters are rejected."""
+        invalid_formats = [
             "/repo",
             "user//repo",
             "user repo",

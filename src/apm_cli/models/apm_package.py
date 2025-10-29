@@ -51,6 +51,55 @@ class DependencyReference:
     host: Optional[str] = None  # Optional host (github.com or enterprise host)
     reference: Optional[str] = None  # e.g., "main", "v1.0.0", "abc123"
     alias: Optional[str] = None  # Optional alias for the dependency
+    virtual_path: Optional[str] = None  # Path for virtual packages (e.g., "prompts/file.prompt.md")
+    is_virtual: bool = False  # True if this is a virtual package (individual file or collection)
+    
+    # Supported file extensions for virtual packages
+    VIRTUAL_FILE_EXTENSIONS = ('.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md')
+    
+    def is_virtual_file(self) -> bool:
+        """Check if this is a virtual file package (individual file)."""
+        if not self.is_virtual or not self.virtual_path:
+            return False
+        return any(self.virtual_path.endswith(ext) for ext in self.VIRTUAL_FILE_EXTENSIONS)
+    
+    def is_virtual_collection(self) -> bool:
+        """Check if this is a virtual collection package."""
+        if not self.is_virtual or not self.virtual_path:
+            return False
+        # Collections have /collections/ in their path or start with collections/
+        return '/collections/' in self.virtual_path or self.virtual_path.startswith('collections/')
+    
+    def get_virtual_package_name(self) -> str:
+        """Generate a package name for this virtual package.
+        
+        For virtual packages, we create a sanitized name from the path:
+        - github/awesome-copilot/prompts/code-review.prompt.md → awesome-copilot-code-review
+        - github/awesome-copilot/collections/project-planning → awesome-copilot-project-planning
+        """
+        if not self.is_virtual or not self.virtual_path:
+            return self.repo_url.split('/')[-1]  # Return repo name as fallback
+        
+        # Extract repo name and file/collection name
+        repo_parts = self.repo_url.split('/')
+        repo_name = repo_parts[-1] if repo_parts else "package"
+        
+        # Get the basename without extension
+        path_parts = self.virtual_path.split('/')
+        if self.is_virtual_collection():
+            # For collections: use the collection name
+            # collections/project-planning → project-planning
+            collection_name = path_parts[-1]
+            return f"{repo_name}-{collection_name}"
+        else:
+            # For individual files: use the filename without extension
+            # prompts/code-review.prompt.md → code-review
+            filename = path_parts[-1]
+            for ext in self.VIRTUAL_FILE_EXTENSIONS:
+                if filename.endswith(ext):
+                    filename = filename[:-len(ext)]
+                    break
+            return f"{repo_name}-{filename}"
     
     @classmethod
     def parse(cls, dependency_str: str) -> "DependencyReference":
@@ -64,6 +113,8 @@ class DependencyReference:
         - github.com/user/repo#ref
         - user/repo@alias
         - user/repo#ref@alias
+        - user/repo/path/to/file.prompt.md (virtual file package)
+        - user/repo/collections/name (virtual collection package)
         
         Args:
             dependency_str: The dependency string to parse
@@ -81,15 +132,72 @@ class DependencyReference:
         if any(ord(c) < 32 for c in dependency_str):
             raise ValueError("Dependency string contains invalid control characters")
         
+        # Early detection of virtual packages (3+ path segments)
+        # Extract the core path before processing reference (#) and alias (@)
+        work_str = dependency_str
+        
+        # Temporarily remove reference and alias for path segment counting
+        temp_str = work_str
+        if '@' in temp_str and not temp_str.startswith('git@'):
+            temp_str = temp_str.rsplit('@', 1)[0]
+        if '#' in temp_str:
+            temp_str = temp_str.rsplit('#', 1)[0]
+        
+        # Check if this looks like a virtual package (3+ path segments)
+        # Skip SSH URLs (git@host:owner/repo format)
+        is_virtual_package = False
+        virtual_path = None
+        
+        if not temp_str.startswith(('git@', 'https://', 'http://')):
+            # Remove host prefix if present for counting
+            check_str = temp_str
+            if check_str.startswith('github.com/') or check_str.startswith('gh/'):
+                # Remove host prefix
+                check_str = '/'.join(check_str.split('/')[1:])
+            elif '/' in check_str:
+                # Check if first segment looks like a host (contains '.')
+                first_segment = check_str.split('/')[0]
+                if '.' in first_segment and is_github_hostname(first_segment):
+                    check_str = '/'.join(check_str.split('/')[1:])
+            
+            # Count segments (owner/repo/path/to/file = 5 segments)
+            path_segments = check_str.split('/')
+            
+            # Filter out empty segments (from double slashes like "user//repo")
+            path_segments = [seg for seg in path_segments if seg]
+            
+            if len(path_segments) >= 3:
+                # This is a virtual package!
+                # Format: owner/repo/path/to/file.prompt.md
+                # or: owner/repo/collections/collection-name
+                is_virtual_package = True
+                
+                # Extract owner/repo and virtual path
+                owner_repo = '/'.join(path_segments[:2])
+                virtual_path = '/'.join(path_segments[2:])
+                
+                # Validate virtual package format
+                if '/collections/' in check_str:
+                    # Collection virtual package
+                    pass  # Collections are validated by fetching the .collection.yml
+                else:
+                    # Individual file virtual package - must end with valid extension
+                    valid_extension = any(virtual_path.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS)
+                    if not valid_extension:
+                        raise ValueError(
+                            f"Invalid virtual package path '{virtual_path}'. "
+                            f"Individual files must end with one of: {', '.join(cls.VIRTUAL_FILE_EXTENSIONS)}"
+                        )
+        
         # Handle SSH URLs first (before @ processing) to avoid conflict with alias separator
         original_str = dependency_str
         ssh_repo_part = None
         host = None
         # Match patterns like git@host:owner/repo.git
-        m = re.match(r'^git@([^:]+):(.+)$', dependency_str)
-        if m:
-            host = m.group(1)
-            ssh_repo_part = m.group(2)
+        ssh_match = re.match(r'^git@([^:]+):(.+)$', dependency_str)
+        if ssh_match:
+            host = ssh_match.group(1)
+            ssh_repo_part = ssh_match.group(2)
             if ssh_repo_part.endswith('.git'):
                 ssh_repo_part = ssh_repo_part[:-4]
 
@@ -127,6 +235,22 @@ class DependencyReference:
             
             repo_url = repo_part.strip()
             
+            # For virtual packages, extract just the owner/repo part
+            if is_virtual_package and not repo_url.startswith(("https://", "http://")):
+                # Virtual packages have format: owner/repo/path/to/file or host/owner/repo/path/to/file
+                parts = repo_url.split("/")
+                
+                # Check if starts with host
+                if len(parts) >= 3 and is_github_hostname(parts[0]):
+                    # Format: github.com/owner/repo/path/...
+                    host = parts[0]
+                    repo_url = "/".join(parts[1:3])  # Extract owner/repo only
+                elif len(parts) >= 2:
+                    # Format: owner/repo/path/...
+                    repo_url = "/".join(parts[:2])  # Extract owner/repo only
+                    if not host:
+                        host = default_host()
+            
             # Normalize to URL format for secure parsing - always use urllib.parse, never substring checks
             if repo_url.startswith(("https://", "http://")):
                 # Already a full URL - parse directly
@@ -143,7 +267,8 @@ class DependencyReference:
                     user_repo = "/".join(parts[1:3])
                 elif len(parts) >= 2 and "." not in parts[0]:
                     # Format: user/repo (no dot in first segment, so treat as user)
-                    host = "github.com"
+                    if not host:
+                        host = default_host()
                     user_repo = "/".join(parts[:2])
                 else:
                     raise ValueError(f"Only GitHub repositories are supported. Use 'user/repo' or 'github.com/user/repo' or '<org>.ghe.com/user/repo' format")
@@ -217,7 +342,14 @@ class DependencyReference:
         if alias and not re.match(r'^[a-zA-Z0-9._-]+$', alias):
             raise ValueError(f"Invalid alias: {alias}. Aliases can only contain letters, numbers, dots, underscores, and hyphens")
 
-        return cls(repo_url=repo_url, host=host, reference=reference, alias=alias)
+        return cls(
+            repo_url=repo_url,
+            host=host,
+            reference=reference,
+            alias=alias,
+            virtual_path=virtual_path,
+            is_virtual=is_virtual_package
+        )
 
     def to_github_url(self) -> str:
         """Convert to full GitHub URL."""
@@ -229,11 +361,15 @@ class DependencyReference:
         """Get display name for this dependency (alias or repo name)."""
         if self.alias:
             return self.alias
+        if self.is_virtual:
+            return self.get_virtual_package_name()
         return self.repo_url  # Full repo URL for disambiguation
 
     def __str__(self) -> str:
         """String representation of the dependency reference."""
         result = self.repo_url
+        if self.virtual_path:
+            result += f"/{self.virtual_path}"
         if self.reference:
             result += f"#{self.reference}"
         if self.alias:

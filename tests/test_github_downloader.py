@@ -106,8 +106,7 @@ class TestGitHubPackageDownloader:
         ]
         
         with patch('pathlib.Path.exists', return_value=True), \
-             patch('shutil.rmtree'), \
-             patch('re.match', return_value=True):  # Make it look like a commit SHA
+             patch('shutil.rmtree'):
             
             result = self.downloader.resolve_git_reference('user/repo#abcdef1')
             

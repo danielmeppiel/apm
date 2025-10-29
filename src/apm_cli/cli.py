@@ -396,28 +396,92 @@ def _validate_package_exists(package):
     import tempfile
     import os
 
-    # Try to do a shallow clone to test accessibility
-    with tempfile.TemporaryDirectory() as temp_dir:
-        try:
-            # Try cloning with minimal fetch
-            cmd = [
-                "git",
-                "ls-remote",
-                "--heads",
-                "--exit-code",
-                f"https://github.com/{package}.git",
-            ]
+    try:
+        # Parse the package to check if it's a virtual package
+        from apm_cli.models.apm_package import DependencyReference
+        dep_ref = DependencyReference.parse(package)
+        
+        # For virtual packages, validate the file exists via GitHub API or raw URL
+        if dep_ref.is_virtual:
+            import requests
+            host = dep_ref.host or "github.com"
+            
+            # Build raw file URL
+            if host == "github.com":
+                base_url = "https://raw.githubusercontent.com"
+            else:
+                base_url = f"https://{host}/raw"
+            
+            ref = dep_ref.reference or "main"
+            file_url = f"{base_url}/{dep_ref.repo_url}/{ref}/{dep_ref.virtual_path}"
+            
+            try:
+                # Try HEAD request first (faster)
+                response = requests.head(file_url, timeout=10, allow_redirects=True)
+                if response.status_code == 200:
+                    return True
+                
+                # If HEAD fails, try GET with main/master fallback
+                response = requests.get(file_url, timeout=10)
+                if response.status_code == 200:
+                    return True
+                
+                # Try master as fallback
+                if ref == "main":
+                    file_url = f"{base_url}/{dep_ref.repo_url}/master/{dep_ref.virtual_path}"
+                    response = requests.get(file_url, timeout=10)
+                    return response.status_code == 200
+                
+                return False
+            except requests.exceptions.RequestException:
+                return False
+        
+        # For regular packages, use git ls-remote
+        # Try to do a shallow clone to test accessibility
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                # Try cloning with minimal fetch
+                cmd = [
+                    "git",
+                    "ls-remote",
+                    "--heads",
+                    "--exit-code",
+                    f"https://github.com/{package}.git",
+                ]
 
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30  # 30 second timeout
-            )
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=30  # 30 second timeout
+                )
 
-            return result.returncode == 0
+                return result.returncode == 0
 
-        except subprocess.TimeoutExpired:
-            return False
-        except Exception:
-            return False
+            except subprocess.TimeoutExpired:
+                return False
+            except Exception:
+                return False
+                
+    except Exception:
+        # If parsing fails, assume it's a regular package
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                cmd = [
+                    "git",
+                    "ls-remote",
+                    "--heads",
+                    "--exit-code",
+                    f"https://github.com/{package}.git",
+                ]
+
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=30
+                )
+
+                return result.returncode == 0
+
+            except subprocess.TimeoutExpired:
+                return False
+            except Exception:
+                return False
 
 
 @cli.command(help="📦 Install APM and MCP dependencies (auto-creates apm.yml when installing packages)")
@@ -869,12 +933,23 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         for dep_ref in deps_to_install:
             # Determine installation directory using namespaced structure
             # e.g., danielmeppiel/design-guidelines -> apm_modules/danielmeppiel/design-guidelines/
+            # For virtual packages: github/awesome-copilot/prompts/file.prompt.md -> apm_modules/github/awesome-copilot-file/
             if dep_ref.alias:
                 # If alias is provided, use it directly (assume user handles namespacing)
                 install_name = dep_ref.alias
                 install_path = apm_modules_dir / install_name
+            elif dep_ref.is_virtual:
+                # Virtual packages get a sanitized name in the org subdirectory
+                repo_parts = dep_ref.repo_url.split("/")
+                if len(repo_parts) >= 2:
+                    org_name = repo_parts[0]
+                    virtual_name = dep_ref.get_virtual_package_name()
+                    install_path = apm_modules_dir / org_name / virtual_name
+                else:
+                    # Fallback for invalid repo URLs
+                    install_path = apm_modules_dir / dep_ref.get_virtual_package_name()
             else:
-                # Use org/repo structure to prevent collisions
+                # Regular packages: Use org/repo structure to prevent collisions
                 repo_parts = dep_ref.repo_url.split("/")
                 if len(repo_parts) >= 2:
                     org_name = repo_parts[0]
@@ -886,20 +961,24 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
 
             # Skip if already exists and not updating
             if install_path.exists() and not update_refs:
-                _rich_info(f"✓ {dep_ref.repo_url} (cached)")
+                display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                _rich_info(f"✓ {display_name} (cached)")
                 continue
 
             # Download the package
             try:
-                _rich_info(f"  {dep_ref.repo_url}#{dep_ref.reference or 'main'}")
+                display_name = str(dep_ref) if dep_ref.is_virtual else f"{dep_ref.repo_url}#{dep_ref.reference or 'main'}"
+                _rich_info(f"  {display_name}")
 
                 package_info = downloader.download_package(str(dep_ref), install_path)
                 installed_count += 1
 
-                _rich_success(f"✓ {dep_ref.repo_url}")
+                display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                _rich_success(f"✓ {display_name}")
 
             except Exception as e:
-                _rich_error(f"❌ Failed to install {dep_ref.repo_url}: {e}")
+                display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                _rich_error(f"❌ Failed to install {display_name}: {e}")
                 # Continue with other packages instead of failing completely
                 continue
 

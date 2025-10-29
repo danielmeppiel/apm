@@ -350,6 +350,115 @@ apm deps list
 apm deps tree
 ```
 
+#### Virtual Packages
+
+APM supports **virtual packages** - installing individual files directly from any repository without requiring a full APM package structure. This is perfect for reusing individual workflow files or configuration from existing projects.
+
+**What are Virtual Packages?**
+
+Instead of installing an entire package (`owner/repo`), you can install specific files:
+
+```bash
+# Install individual files directly
+apm install github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+apm install myorg/standards/instructions/code-review.instructions.md
+apm install company/templates/chatmodes/qa-assistant.chatmode.md
+```
+
+**How it Works:**
+
+1. **Path Detection**: APM detects paths with 3+ segments as virtual packages
+2. **File Download**: Downloads the file from GitHub's raw content API
+3. **Structure Generation**: Creates a minimal APM package automatically:
+   - Generates `apm.yml` with metadata extracted from file frontmatter
+   - Places file in correct `.apm/` subdirectory based on extension
+   - Creates sanitized package name from path
+
+**Supported File Types:**
+
+- `.prompt.md` - Agent workflows
+- `.instructions.md` - Context and rules
+- `.chatmode.md` - Chat mode configurations
+- `.agent.md` - Agent definitions
+
+**Installation Structure:**
+
+Files install to `apm_modules/{owner}/{sanitized-package-name}/`:
+
+```bash
+apm install github/awesome-copilot/prompts/code-review.prompt.md
+```
+
+Creates:
+```
+apm_modules/
+└── github/
+    └── awesome-copilot-code-review/
+        ├── apm.yml
+        └── .apm/
+            └── prompts/
+                └── code-review.prompt.md
+```
+
+**Adding to apm.yml:**
+
+Virtual packages work in `apm.yml` just like regular packages:
+
+```yaml
+dependencies:
+  apm:
+    # Regular packages
+    - danielmeppiel/compliance-rules
+    
+    # Virtual packages - individual files
+    - github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+    - myorg/engineering/instructions/testing-standards.instructions.md
+```
+
+**Branch/Tag Support:**
+
+Use `@ref` syntax for specific versions:
+
+```bash
+# Install from specific branch
+apm install github/awesome-copilot/prompts/code-review.prompt.md@develop
+
+# Install from tag
+apm install myorg/templates/chatmodes/assistant.chatmode.md@v2.1.0
+```
+
+**Use Cases:**
+
+- **Quick Prototyping**: Test individual workflows without package overhead
+- **Selective Adoption**: Pull single files from large repositories
+- **Cross-Team Sharing**: Share individual standards without full package structure
+- **Legacy Migration**: Gradually adopt APM by importing existing files
+
+**Example Workflow:**
+
+```bash
+# 1. Find useful prompt in another repo
+# Browse: github.com/awesome-org/best-practices
+
+# 2. Install specific file
+apm install awesome-org/best-practices/prompts/security-scan.prompt.md
+
+# 3. Use immediately
+apm compile
+apm run security-scan
+
+# 4. Add to apm.yml for team
+echo "  - awesome-org/best-practices/prompts/security-scan.prompt.md" >> apm.yml
+```
+
+**Benefits:**
+
+- ✅ **Zero overhead** - No package creation required
+- ✅ **Instant reuse** - Install any file from any repository
+- ✅ **Automatic structure** - APM creates package layout for you
+- ✅ **Full compatibility** - Works with `apm compile` and all commands
+- ✅ **Version control** - Support for branches and tags
+
 ### 5. Run Your First Workflow
 
 Execute the default "start" workflow:

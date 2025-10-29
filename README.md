@@ -69,6 +69,7 @@ dependencies:
   apm:
     - danielmeppiel/compliance-rules
     - danielmeppiel/design-guidelines
+    - github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
   mcp:
     - github/github-mcp-server
     - microsoft/azure-devops-mcp
@@ -76,6 +77,8 @@ dependencies:
 scripts:
   start: "copilot --full-auto -p hello-world.prompt.md"
 ```
+
+> **Virtual Packages**: Install individual files directly from any repo (e.g., `apm install github/awesome-copilot/prompts/code-review.prompt.md`). [Learn more →](docs/getting-started.md#virtual-packages)
 
 ## What You Just Built
 
