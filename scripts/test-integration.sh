@@ -185,9 +185,16 @@ setup_binary_for_testing() {
     log_success "APM binary ready for testing: $version"
 }
 
-# Set up runtimes (codex/llm) - Integration Testing Coverage!
+# Set up runtimes (codex/llm/copilot) - Integration Testing Coverage!
 setup_runtimes() {
     log_info "=== Setting up runtimes for integration tests ==="
+    
+    # Set up GitHub Copilot CLI runtime (recommended default)
+    log_info "Setting up GitHub Copilot CLI runtime..."
+    if ! ./apm runtime setup copilot; then
+        log_error "Failed to set up GitHub Copilot CLI runtime"
+        exit 1
+    fi
     
     # Set up codex runtime
     log_info "Setting up Codex runtime..."
@@ -211,6 +218,15 @@ setup_runtimes() {
     # Verify runtimes are available
     log_info "Verifying runtime installations..."
     
+    # Check GitHub Copilot CLI
+    if command -v copilot >/dev/null 2>&1; then
+        local copilot_version=$(copilot --version 2>&1 || echo "unknown")
+        log_success "GitHub Copilot CLI ready: $copilot_version"
+    else
+        log_error "GitHub Copilot CLI not found in PATH after setup"
+        exit 1
+    fi
+    
     # Check codex
     if command -v codex >/dev/null 2>&1; then
         local codex_version=$(codex --version 2>&1 || echo "unknown")
@@ -232,15 +248,7 @@ setup_runtimes() {
         exit 1
     fi
     
-    # Check Codex CLI (if available)
-    if command -v codex >/dev/null 2>&1; then
-        local codex_version=$(codex --version 2>&1 || echo "unknown")
-        log_success "Codex runtime ready: $codex_version"
-    else
-        log_info "Codex not found in PATH (optional)"
-    fi
-    
-    log_success "All runtimes configured successfully"
+    log_success "All runtimes configured successfully (Copilot, Codex, LLM)"
 }
 
 # Install test dependencies (like CI does)
@@ -266,9 +274,10 @@ run_e2e_tests() {
     log_info "=== Running integration tests (mirroring CI) ==="
     log_info "Testing comprehensive runtime scenarios:"
     log_info "  - Zero-config auto-install (NEW HERO SCENARIO)"
+    log_info "  - GitHub Copilot CLI integration"
     log_info "  - Codex runtime integration"  
     log_info "  - LLM runtime integration"
-    log_info "  - Dual runtime interoperability"
+    log_info "  - Multi-runtime interoperability"
     log_info "  - Template bundling verification"
     log_info "  - Authentication edge cases"
     log_info "  - MCP registry integration"
@@ -401,18 +410,19 @@ main() {
     echo "    - Compile to AGENTS.md with combined guardrails ✅"
     echo "    - Run prompts from installed packages ✅"
     echo ""
-    echo "  3. Codex runtime integration ✅"
-    echo "  4. LLM runtime integration ✅"
-    echo "  5. Dual runtime interoperability ✅" 
-    echo "  6. Template bundling verification ✅"
-    echo "  7. Authentication edge cases ✅"
-    echo "  8. MCP registry search & show ✅"
-    echo "  9. Registry-based installation ✅"
-    echo "  10. Environment variable handling ✅"
-    echo "  11. Docker args with -e flags ✅"
-    echo "  12. Empty string & defaults logic ✅"
-    echo "  13. Cross-adapter consistency ✅"
-    echo "  14. Duplication prevention ✅"
+    echo "  3. GitHub Copilot CLI integration ✅"
+    echo "  4. Codex runtime integration ✅"
+    echo "  5. LLM runtime integration ✅"
+    echo "  6. Multi-runtime interoperability ✅" 
+    echo "  7. Template bundling verification ✅"
+    echo "  8. Authentication edge cases ✅"
+    echo "  9. MCP registry search & show ✅"
+    echo "  10. Registry-based installation ✅"
+    echo "  11. Environment variable handling ✅"
+    echo "  12. Docker args with -e flags ✅"
+    echo "  13. Empty string & defaults logic ✅"
+    echo "  14. Cross-adapter consistency ✅"
+    echo "  15. Duplication prevention ✅"
     echo ""
     log_success "Ready for release validation!"
 }

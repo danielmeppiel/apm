@@ -833,8 +833,8 @@ class ScriptRunner:
             # GitHub Copilot CLI with all recommended flags
             return f"copilot --log-level all --log-dir copilot-logs --allow-all-tools -p {prompt_file}"
         elif runtime == "codex":
-            # Codex CLI default
-            return f"codex {prompt_file}"
+            # Codex CLI with default sandbox and git repo check skip
+            return f"codex -s workspace-write --skip-git-repo-check {prompt_file}"
         else:
             raise ValueError(f"Unsupported runtime: {runtime}")
 
