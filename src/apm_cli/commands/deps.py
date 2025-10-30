@@ -611,12 +611,20 @@ def _update_single_package(package_name: str, project_deps: List, apm_modules_pa
         _rich_error(f"Package '{package_name}' not found in apm.yml dependencies")
         return
     
-    # Find the installed package directory
+    # Find the installed package directory using namespaced structure
     package_dir = None
     if target_dep.alias:
         package_dir = apm_modules_path / target_dep.alias
     else:
-        package_dir = apm_modules_path / package_name
+        # Parse owner/repo from repo_url
+        repo_parts = target_dep.repo_url.split('/')
+        if len(repo_parts) >= 2:
+            owner = repo_parts[0]
+            repo = repo_parts[1]
+            package_dir = apm_modules_path / owner / repo
+        else:
+            # Fallback to simple name matching
+            package_dir = apm_modules_path / package_name
         
     if not package_dir.exists():
         _rich_error(f"Package '{package_name}' not installed in apm_modules/")
@@ -648,11 +656,20 @@ def _update_all_packages(project_deps: List, apm_modules_path: Path):
     updated_count = 0
     
     for dep in project_deps:
-        # Determine package directory
+        # Determine package directory using namespaced structure
+        # APM packages are installed as: apm_modules/owner/repo-name/
         if dep.alias:
             package_dir = apm_modules_path / dep.alias
         else:
-            package_dir = apm_modules_path / dep.repo_url.split('/')[-1]
+            # Parse owner/repo from repo_url
+            repo_parts = dep.repo_url.split('/')
+            if len(repo_parts) >= 2:
+                owner = repo_parts[0]
+                repo = repo_parts[1]
+                package_dir = apm_modules_path / owner / repo
+            else:
+                # Fallback to simple repo name (shouldn't happen)
+                package_dir = apm_modules_path / dep.repo_url
             
         if not package_dir.exists():
             _rich_warning(f"⚠️ {dep.repo_url} not installed - skipping")

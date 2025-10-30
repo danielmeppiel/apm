@@ -226,24 +226,89 @@ Verify the successful deployment of ${input:service_name} version ${input:deploy
 
 ## Running Prompts
 
-Prompts are executed through scripts defined in your `apm.yml`. When a script references a `.prompt.md` file, APM compiles it with parameter substitution before execution:
+APM provides two ways to run prompts: **explicit scripts** (configured in `apm.yml`) and **auto-discovery** (zero configuration).
+
+### Auto-Discovery (Zero Configuration)
+
+Starting with v0.5.0, APM can automatically discover and run prompts without manual script configuration:
 
 ```bash
-# Run scripts that reference .prompt.md files
+# Install a prompt from any repository
+apm install github/awesome-copilot/prompts/code-review.prompt.md
+
+# Run it immediately - no apm.yml configuration needed!
+apm run code-review
+```
+
+**How it works:**
+
+1. APM searches for prompts with matching names in this priority order:
+   - Local root: `./prompt-name.prompt.md`
+   - APM prompts directory: `.apm/prompts/prompt-name.prompt.md`
+   - GitHub convention: `.github/prompts/prompt-name.prompt.md`
+   - Dependencies: `apm_modules/**/.apm/prompts/prompt-name.prompt.md`
+
+2. When found, APM automatically:
+   - Detects installed runtime (GitHub Copilot CLI or Codex)
+   - Generates appropriate command with recommended flags
+   - Compiles prompt with parameters
+   - Executes through the runtime
+
+**Qualified paths for disambiguation:**
+
+If you have multiple prompts with the same name from different sources:
+
+```bash
+# Collision detected - APM shows all matches with guidance
+apm run code-review
+# Error: Multiple prompts found for 'code-review':
+#   - github/awesome-copilot (apm_modules/github/awesome-copilot-code-review/...)
+#   - acme/standards (apm_modules/acme/standards/...)
+# 
+# Use qualified path:
+#   apm run github/awesome-copilot/code-review
+#   apm run acme/standards/code-review
+
+# Run specific version using qualified path
+apm run github/awesome-copilot/code-review --param pr_url=...
+```
+
+**Local prompts always take precedence** over dependency prompts with the same name.
+
+### Explicit Scripts (Power Users)
+
+For advanced use cases, define scripts explicitly in `apm.yml`:
+
+```yaml
+scripts:
+  # Custom runtime flags
+  start: "copilot --full-auto -p analyze-logs.prompt.md"
+  
+  # Specific model selection
+  llm: "llm analyze-logs.prompt.md -m github/gpt-4o-mini"
+  
+  # Environment variables
+  debug: "RUST_LOG=debug codex analyze-logs.prompt.md"
+  
+  # Friendly aliases
+  review: "copilot -p code-review.prompt.md"
+```
+
+**Explicit scripts always take precedence** over auto-discovery. This gives power users full control while maintaining zero-config convenience for simple cases.
+
+### Running Scripts
+
+```bash
+# With auto-discovery (no apm.yml scripts needed)
+apm run code-review --param pull_request_url="https://github.com/org/repo/pull/123"
+
+# With explicit scripts
 apm run start --param service_name=api-gateway --param time_window="1h"
 apm run llm --param service_name=api-gateway --param time_window="1h"
 apm run debug --param service_name=api-gateway --param time_window="1h"
 
 # Preview compiled prompts before execution
 apm preview start --param service_name=api-gateway --param time_window="1h"
-```
-
-**Script Configuration (apm.yml):**
-```yaml
-scripts:
-  start: "codex analyze-logs.prompt.md"
-  llm: "llm analyze-logs.prompt.md -m github/gpt-4o-mini"
-  debug: "RUST_LOG=debug codex analyze-logs.prompt.md"
 ```
 
 ### Example Project Structure

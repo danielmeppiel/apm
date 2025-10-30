@@ -45,10 +45,19 @@ class ScriptRunner:
         for line in header_lines:
             print(line)
         
-        # Load apm.yml configuration
+        # Check if this is a virtual package (before loading config)
+        is_virtual_package = self._is_virtual_package_reference(script_name)
+        
+        # Load apm.yml configuration (or create minimal one for virtual packages)
         config = self._load_config()
         if not config:
-            raise RuntimeError("No apm.yml found in current directory")
+            if is_virtual_package:
+                # Create minimal config for zero-config virtual package execution
+                print(f"  ℹ️  Creating minimal apm.yml for zero-config execution...")
+                self._create_minimal_config()
+                config = self._load_config()
+            else:
+                raise RuntimeError("No apm.yml found in current directory")
         
         # 1. Check explicit scripts first (existing behavior - highest priority)
         scripts = config.get('scripts', {})
@@ -56,7 +65,7 @@ class ScriptRunner:
             command = scripts[script_name]
             return self._execute_script_command(command, params)
         
-        # 2. Auto-discover prompt file (NEW fallback)
+        # 2. Auto-discover prompt file (fallback)
         discovered_prompt = self._discover_prompt_file(script_name)
         
         if discovered_prompt:
@@ -72,6 +81,24 @@ class ScriptRunner:
             
             # Execute with existing logic
             return self._execute_script_command(command, params)
+        
+        # 2.5 Try auto-install if it looks like a virtual package reference
+        if self._is_virtual_package_reference(script_name):
+            print(f"\n📦 Auto-installing virtual package: {script_name}")
+            if self._auto_install_virtual_package(script_name):
+                # Retry discovery after install
+                discovered_prompt = self._discover_prompt_file(script_name)
+                if discovered_prompt:
+                    runtime = self._detect_installed_runtime()
+                    command = self._generate_runtime_command(runtime, discovered_prompt)
+                    print(f"\n✨ Package installed and ready to run\n")
+                    return self._execute_script_command(command, params)
+                else:
+                    raise RuntimeError(
+                        f"Package installed successfully but prompt not found.\n"
+                        f"The package may not contain the expected prompt file.\n"
+                        f"Check {Path('apm_modules')} for installed files."
+                    )
         
         # 3. Not found anywhere
         available = ', '.join(scripts.keys()) if scripts else 'none'
@@ -605,6 +632,143 @@ class ScriptRunner:
         error_msg += f"    my-{name}: \"copilot -p <path-to-preferred-prompt>\"\n"
         
         raise RuntimeError(error_msg)
+    
+    def _is_virtual_package_reference(self, name: str) -> bool:
+        """Check if a name looks like a virtual package reference.
+        
+        Virtual packages have format: owner/repo/path/to/file.prompt.md
+        or: owner/repo/collections/name
+        
+        Args:
+            name: Name to check
+            
+        Returns:
+            True if this looks like a virtual package reference
+        """
+        # Must have at least one slash
+        if '/' not in name:
+            return False
+        
+        # Try to parse as dependency reference
+        # If it doesn't have .prompt.md extension, try adding it
+        try:
+            from ..models.apm_package import DependencyReference
+            dep_ref = DependencyReference.parse(name)
+            return dep_ref.is_virtual
+        except (ValueError, Exception):
+            # Try again with .prompt.md extension if not present
+            if not name.endswith('.prompt.md'):
+                try:
+                    dep_ref = DependencyReference.parse(f"{name}.prompt.md")
+                    return dep_ref.is_virtual
+                except (ValueError, Exception):
+                    pass
+            return False
+    
+    def _auto_install_virtual_package(self, package_ref: str) -> bool:
+        """Auto-install a virtual package.
+        
+        Args:
+            package_ref: Virtual package reference (owner/repo/path/to/file.prompt.md)
+            
+        Returns:
+            True if installation succeeded, False otherwise
+        """
+        try:
+            from ..models.apm_package import DependencyReference
+            from ..deps.github_downloader import GitHubPackageDownloader
+            
+            # Normalize the reference - add .prompt.md if missing
+            normalized_ref = package_ref if package_ref.endswith('.prompt.md') else f"{package_ref}.prompt.md"
+            
+            # Parse the reference
+            dep_ref = DependencyReference.parse(normalized_ref)
+            
+            if not dep_ref.is_virtual:
+                return False
+            
+            # Ensure apm_modules exists
+            apm_modules = Path("apm_modules")
+            apm_modules.mkdir(parents=True, exist_ok=True)
+            
+            # Create target path for virtual package
+            # Format: apm_modules/owner/package-name/
+            owner = dep_ref.repo_url.split('/')[0]
+            package_name = dep_ref.get_virtual_package_name()
+            target_path = apm_modules / owner / package_name
+            
+            # Check if already installed
+            if target_path.exists():
+                print(f"  ℹ️  Package already installed at {target_path}")
+                return True
+            
+            # Download the virtual package
+            downloader = GitHubPackageDownloader()
+            
+            print(f"  📥 Downloading from {dep_ref.to_github_url()}")
+            
+            if dep_ref.is_virtual_collection():
+                # Download collection
+                package_info = downloader.download_virtual_collection_package(dep_ref, target_path)
+            else:
+                # Download individual file
+                package_info = downloader.download_virtual_file_package(dep_ref, target_path)
+            
+            # PackageInfo has a 'package' attribute which is an APMPackage
+            print(f"  ✅ Installed {package_info.package.name} v{package_info.package.version}")
+            
+            # Update apm.yml to include this dependency (use normalized reference)
+            self._add_dependency_to_config(normalized_ref)
+            
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Auto-install failed: {e}")
+            return False
+    
+    def _add_dependency_to_config(self, package_ref: str) -> None:
+        """Add a virtual package dependency to apm.yml.
+        
+        Args:
+            package_ref: Virtual package reference to add
+        """
+        config_path = Path('apm.yml')
+        
+        # Load current config
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f) or {}
+        
+        # Ensure dependencies.apm section exists
+        if 'dependencies' not in config:
+            config['dependencies'] = {}
+        if 'apm' not in config['dependencies']:
+            config['dependencies']['apm'] = []
+        
+        # Add the dependency if not already present
+        if package_ref not in config['dependencies']['apm']:
+            config['dependencies']['apm'].append(package_ref)
+            
+            # Write back to file
+            with open(config_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            
+            print(f"  ℹ️  Added {package_ref} to apm.yml dependencies")
+    
+    def _create_minimal_config(self) -> None:
+        """Create a minimal apm.yml for zero-config usage.
+        
+        This enables running virtual packages without apm init.
+        """
+        minimal_config = {
+            "name": Path.cwd().name,
+            "version": "1.0.0",
+            "description": "Auto-generated for zero-config virtual package execution"
+        }
+        
+        with open("apm.yml", "w") as f:
+            yaml.dump(minimal_config, f, default_flow_style=False, sort_keys=False)
+        
+        print(f"  ℹ️  Created minimal apm.yml for zero-config execution")
     
     def _detect_installed_runtime(self) -> str:
         """Detect installed runtime with priority order.

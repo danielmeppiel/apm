@@ -443,21 +443,61 @@ apm install myorg/templates/chatmodes/assistant.chatmode.md@v2.1.0
 # 2. Install specific file
 apm install awesome-org/best-practices/prompts/security-scan.prompt.md
 
-# 3. Use immediately
-apm compile
-apm run security-scan
+# 3. Use immediately - no apm.yml configuration needed!
+apm run security-scan --param target="./src"
 
-# 4. Add to apm.yml for team
-echo "  - awesome-org/best-practices/prompts/security-scan.prompt.md" >> apm.yml
+# 4. Or add explicit script to apm.yml for custom flags
+# scripts:
+#   security: "copilot --full-auto -p security-scan.prompt.md"
 ```
 
 **Benefits:**
 
 - ✅ **Zero overhead** - No package creation required
 - ✅ **Instant reuse** - Install any file from any repository
+- ✅ **Auto-discovery** - Run installed prompts without script configuration
 - ✅ **Automatic structure** - APM creates package layout for you
 - ✅ **Full compatibility** - Works with `apm compile` and all commands
 - ✅ **Version control** - Support for branches and tags
+
+### Runnable Prompts (Auto-Discovery)
+
+Starting with v0.5.0, installed prompts are **immediately runnable** without manual configuration:
+
+```bash
+# Install a prompt
+apm install github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+
+# Run immediately - APM auto-discovers it!
+apm run architecture-blueprint-generator --param project_name="my-app"
+
+# Auto-discovery works for:
+# - Installed virtual packages
+# - Local prompts (./my-prompt.prompt.md)
+# - Prompts in .apm/prompts/ or .github/prompts/
+# - All prompts from installed regular packages
+```
+
+**How auto-discovery works:**
+
+1. **No script found in apm.yml?** APM searches for matching prompt files
+2. **Runtime detection:** Automatically uses GitHub Copilot CLI (preferred) or Codex
+3. **Smart defaults:** Applies recommended flags for chosen runtime
+4. **Collision handling:** If multiple prompts found, use qualified path: `owner/repo/prompt-name`
+
+**Priority:**
+- Explicit scripts in `apm.yml` **always win** (power user control)
+- Auto-discovery provides zero-config convenience for simple cases
+
+**Disambiguation with qualified paths:**
+
+```bash
+# If you have prompts from multiple sources
+apm run github/awesome-copilot/code-review
+apm run acme/standards/code-review
+```
+
+See [Prompts Guide](prompts.md#running-prompts) for complete auto-discovery documentation.
 
 ### 5. Run Your First Workflow
 

@@ -11,8 +11,6 @@
 ✅ **2-minute setup** - zero config  
 ✅ **Team collaboration** - composable context, without wheel reinvention
 
-**Compound innovation** - reuse [packages built with APM by the community](#built-with-apm)
-
 ## What Goes in Packages
 
 📦 **Mix and match what your team needs**:
@@ -22,7 +20,7 @@
 
 ![APM Demo](docs/apm-demo.gif)
 
-## Quick Start (2 minutes)
+## Quick Start
 
 > [!NOTE] 
 > **📋 Prerequisites**: Get tokens at [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)  
@@ -31,29 +29,41 @@
 >
 > 📖 **Complete Setup Guide**: [Getting Started](docs/getting-started.md)
 
-```bash
-# 1. Set your GitHub token (minimal setup)
-export GITHUB_COPILOT_PAT=your_fine_grained_token_here
+### 30 Seconds: Zero-Config Prompt Execution
 
-# 2. Install APM CLI
+```bash
+# Set up APM (one-time)
+export GITHUB_COPILOT_PAT=your_token_here
 curl -sSL "https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh" | sh
 
-# 3. Set up runtime (GitHub Copilot CLI with native MCP support)
+# 3. Set up GitHub Copilot CLI
 apm runtime setup copilot
 
-# 3. Create your first AI package
+# Run any prompt from GitHub - zero config needed
+apm run github/awesome-copilot/prompts/architecture-blueprint-generator
+```
+
+### 2 Minutes: Guardrailing with packaged context
+
+```bash
+# Create project with layered context from multiple APM packages
 apm init my-project && cd my-project
 
-# 4. Install APM and MCP dependencies
-apm install
+# Install context + workflows from packages
+apm install danielmeppiel/design-guidelines
+apm install danielmeppiel/compliance-rules
 
-# 5. Run your first workflow
-apm compile && apm run start --param name="<YourGitHubHandle>"
+# Compile into single AGENTS.md guardrails
+# Now all agents respect design + compliance rules automatically
+apm compile
+
+# Run a prompt from the installed packages above
+apm run design-review
 ```
 
 **That's it!** Your project now has reliable AI workflows that work with any coding agent.
 
-**GitHub Enterprise Support:** Works with Enterprise Server and Data Residency Cloud. [Configuration →](docs/getting-started.md#github-enterprise-support)
+**GitHub Enterprise**: Works with GitHub Enterprise Server and Data Residency Cloud. [Configuration →](docs/getting-started.md#github-enterprise-support)
 
 ### Example `apm.yml` - Like package.json for AI Native projects
 

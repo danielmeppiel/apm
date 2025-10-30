@@ -480,3 +480,237 @@ class TestPromptCompilerDependencyDiscovery:
             mock_file.assert_called()
             opened_path = mock_file.call_args_list[0][0][0]
             assert str(opened_path) == "apm_modules/danielmeppiel/design-guidelines/test.prompt.md"
+
+
+class TestScriptRunnerAutoInstall:
+    """Test ScriptRunner auto-install functionality."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.script_runner = ScriptRunner()
+    
+    def test_is_virtual_package_reference_valid_file(self):
+        """Test detection of valid virtual file package references."""
+        # Valid virtual file package reference
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        assert self.script_runner._is_virtual_package_reference(ref) is True
+    
+    def test_is_virtual_package_reference_valid_collection(self):
+        """Test detection of valid virtual collection package references."""
+        # Valid virtual collection package reference
+        ref = "github/awesome-copilot/collections/project-planning"
+        assert self.script_runner._is_virtual_package_reference(ref) is True
+    
+    def test_is_virtual_package_reference_regular_package(self):
+        """Test detection rejects regular packages."""
+        # Regular package (not virtual)
+        ref = "danielmeppiel/design-guidelines"
+        assert self.script_runner._is_virtual_package_reference(ref) is False
+    
+    def test_is_virtual_package_reference_simple_name(self):
+        """Test detection rejects simple names without slashes."""
+        # Simple name (not a virtual package)
+        ref = "code-review"
+        assert self.script_runner._is_virtual_package_reference(ref) is False
+    
+    def test_is_virtual_package_reference_invalid_format(self):
+        """Test detection rejects invalid formats."""
+        # Invalid format
+        ref = "owner/repo/some/invalid/path.txt"
+        assert self.script_runner._is_virtual_package_reference(ref) is False
+    
+    @patch('apm_cli.deps.github_downloader.GitHubPackageDownloader')
+    @patch('apm_cli.core.script_runner.Path.mkdir')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    def test_auto_install_virtual_package_file_success(self, mock_exists, mock_mkdir, mock_downloader_class):
+        """Test successful auto-install of virtual file package."""
+        # Setup mocks
+        mock_exists.return_value = False  # Package not already installed
+        mock_downloader = MagicMock()
+        mock_downloader_class.return_value = mock_downloader
+        
+        # Mock package info
+        mock_package = MagicMock()
+        mock_package.name = "awesome-copilot-architecture-blueprint-generator"
+        mock_package.version = "1.0.0"
+        mock_package_info = MagicMock()
+        mock_package_info.package = mock_package
+        mock_downloader.download_virtual_file_package.return_value = mock_package_info
+        
+        # Test auto-install
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        result = self.script_runner._auto_install_virtual_package(ref)
+        
+        assert result is True
+        mock_downloader.download_virtual_file_package.assert_called_once()
+    
+    @patch('apm_cli.deps.github_downloader.GitHubPackageDownloader')
+    @patch('apm_cli.core.script_runner.Path.mkdir')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    def test_auto_install_virtual_package_collection_success(self, mock_exists, mock_mkdir, mock_downloader_class):
+        """Test successful auto-install of virtual collection package."""
+        # Setup mocks
+        mock_exists.return_value = False  # Package not already installed
+        mock_downloader = MagicMock()
+        mock_downloader_class.return_value = mock_downloader
+        
+        # Mock package info
+        mock_package = MagicMock()
+        mock_package.name = "awesome-copilot-project-planning"
+        mock_package.version = "1.0.0"
+        mock_package_info = MagicMock()
+        mock_package_info.package = mock_package
+        mock_downloader.download_virtual_collection_package.return_value = mock_package_info
+        
+        # Test auto-install
+        ref = "github/awesome-copilot/collections/project-planning"
+        result = self.script_runner._auto_install_virtual_package(ref)
+        
+        assert result is True
+        mock_downloader.download_virtual_collection_package.assert_called_once()
+    
+    @patch('apm_cli.core.script_runner.Path.exists')
+    def test_auto_install_virtual_package_already_installed(self, mock_exists):
+        """Test auto-install skips when package already installed."""
+        # Package already exists
+        mock_exists.return_value = True
+        
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        result = self.script_runner._auto_install_virtual_package(ref)
+        
+        assert result is True  # Should return True (success) without downloading
+    
+    @patch('apm_cli.deps.github_downloader.GitHubPackageDownloader')
+    @patch('apm_cli.core.script_runner.Path.mkdir')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    def test_auto_install_virtual_package_download_failure(self, mock_exists, mock_mkdir, mock_downloader_class):
+        """Test auto-install handles download failures gracefully."""
+        # Setup mocks
+        mock_exists.return_value = False
+        mock_downloader = MagicMock()
+        mock_downloader_class.return_value = mock_downloader
+        
+        # Simulate download failure
+        mock_downloader.download_virtual_file_package.side_effect = RuntimeError("Download failed")
+        
+        # Test auto-install
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        result = self.script_runner._auto_install_virtual_package(ref)
+        
+        assert result is False  # Should return False on failure
+    
+    def test_auto_install_virtual_package_invalid_reference(self):
+        """Test auto-install rejects invalid references."""
+        # Not a virtual package
+        ref = "danielmeppiel/design-guidelines"
+        result = self.script_runner._auto_install_virtual_package(ref)
+        
+        assert result is False
+    
+    @patch('apm_cli.core.script_runner.ScriptRunner._auto_install_virtual_package')
+    @patch('apm_cli.core.script_runner.ScriptRunner._discover_prompt_file')
+    @patch('apm_cli.core.script_runner.ScriptRunner._detect_installed_runtime')
+    @patch('apm_cli.core.script_runner.ScriptRunner._execute_script_command')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data="name: test\nscripts: {}")
+    def test_run_script_triggers_auto_install(self, mock_file, mock_exists, mock_execute, 
+                                             mock_runtime, mock_discover, mock_auto_install):
+        """Test that run_script triggers auto-install for virtual package references."""
+        mock_exists.return_value = True  # apm.yml exists
+        mock_discover.side_effect = [None, Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator/.apm/prompts/architecture-blueprint-generator.prompt.md")]
+        mock_auto_install.return_value = True
+        mock_runtime.return_value = "copilot"
+        mock_execute.return_value = True
+        
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        result = self.script_runner.run_script(ref, {})
+        
+        # Verify auto-install was called
+        mock_auto_install.assert_called_once_with(ref)
+        # Verify discovery was attempted twice (before and after install)
+        assert mock_discover.call_count == 2
+        # Verify script was executed
+        mock_execute.assert_called_once()
+        assert result is True
+    
+    @patch('apm_cli.core.script_runner.ScriptRunner._auto_install_virtual_package')
+    @patch('apm_cli.core.script_runner.ScriptRunner._discover_prompt_file')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data="name: test\nscripts: {}")
+    def test_run_script_auto_install_failure_shows_error(self, mock_file, mock_exists, 
+                                                        mock_discover, mock_auto_install):
+        """Test that run_script shows helpful error when auto-install fails."""
+        mock_exists.return_value = True  # apm.yml exists
+        mock_discover.return_value = None
+        mock_auto_install.return_value = False  # Auto-install failed
+        
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            self.script_runner.run_script(ref, {})
+        
+        error_msg = str(exc_info.value)
+        assert "Script or prompt" in error_msg
+        assert "not found" in error_msg
+    
+    @patch('apm_cli.core.script_runner.ScriptRunner._auto_install_virtual_package')
+    @patch('apm_cli.core.script_runner.ScriptRunner._discover_prompt_file')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data="name: test\nscripts: {}")
+    def test_run_script_skips_auto_install_for_simple_names(self, mock_file, mock_exists, 
+                                                           mock_discover, mock_auto_install):
+        """Test that run_script doesn't trigger auto-install for simple names."""
+        mock_exists.return_value = True  # apm.yml exists
+        mock_discover.return_value = None
+        
+        # Simple name (not a virtual package reference)
+        ref = "code-review"
+        
+        with pytest.raises(RuntimeError):
+            self.script_runner.run_script(ref, {})
+        
+        # Auto-install should NOT be called for simple names
+        mock_auto_install.assert_not_called()
+    
+    @patch('apm_cli.core.script_runner.ScriptRunner._discover_prompt_file')
+    @patch('apm_cli.core.script_runner.ScriptRunner._detect_installed_runtime')
+    @patch('apm_cli.core.script_runner.ScriptRunner._execute_script_command')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data="name: test\nscripts: {}")
+    def test_run_script_uses_cached_package(self, mock_file, mock_exists, mock_execute, 
+                                           mock_runtime, mock_discover):
+        """Test that run_script uses already-installed package without re-downloading."""
+        mock_exists.return_value = True  # apm.yml exists
+        # Package already discovered (no auto-install needed)
+        mock_discover.return_value = Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator/.apm/prompts/architecture-blueprint-generator.prompt.md")
+        mock_runtime.return_value = "copilot"
+        mock_execute.return_value = True
+        
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        result = self.script_runner.run_script(ref, {})
+        
+        # Verify discovery found it on first try
+        mock_discover.assert_called_once()
+        # Verify script was executed
+        mock_execute.assert_called_once()
+        assert result is True
+    
+    @patch('apm_cli.core.script_runner.ScriptRunner._auto_install_virtual_package')
+    @patch('apm_cli.core.script_runner.ScriptRunner._discover_prompt_file')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data="name: test\nscripts: {}")
+    def test_run_script_handles_install_success_but_no_prompt(self, mock_file, mock_exists,
+                                                              mock_discover, mock_auto_install):
+        """Test error when package installs successfully but prompt not found."""
+        mock_exists.return_value = True  # apm.yml exists
+        mock_discover.side_effect = [None, None]  # Not found before or after install
+        mock_auto_install.return_value = True  # Install succeeded
+        
+        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            self.script_runner.run_script(ref, {})
+        
+        error_msg = str(exc_info.value)
+        assert "Package installed successfully but prompt not found" in error_msg
+        assert "may not contain the expected prompt file" in error_msg

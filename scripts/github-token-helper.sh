@@ -25,16 +25,6 @@ setup_github_tokens() {
         echo -e "${BLUE}Setting up GitHub tokens...${NC}"
     fi
     
-    # DEBUG: Show all GitHub-related environment variables
-    echo -e "${YELLOW}🔍 DEBUG: GitHub token environment analysis:${NC}"
-    echo "  GITHUB_TOKEN: ${GITHUB_TOKEN:+SET(${#GITHUB_TOKEN} chars)}${GITHUB_TOKEN:-UNSET}"
-    echo "  GITHUB_APM_PAT: ${GITHUB_APM_PAT:+SET(${#GITHUB_APM_PAT} chars)}${GITHUB_APM_PAT:-UNSET}"
-    echo "  GH_MODELS_PAT: ${GH_MODELS_PAT:+SET(${#GH_MODELS_PAT} chars)}${GH_MODELS_PAT:-UNSET}"
-    echo "  GH_CLI_PAT: ${GH_CLI_PAT:+SET(${#GH_CLI_PAT} chars)}${GH_CLI_PAT:-UNSET}"
-    echo "  GH_PKG_PAT: ${GH_PKG_PAT:+SET(${#GH_PKG_PAT} chars)}${GH_PKG_PAT:-UNSET}"
-    echo "  CI environment: ${CI:-UNSET}"
-    echo "  GITHUB_ACTIONS: ${GITHUB_ACTIONS:-UNSET}"
-    
     # CRITICAL: Preserve existing GITHUB_TOKEN if set (for Models access)
     local preserve_github_token=""
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -72,13 +62,7 @@ setup_github_tokens() {
     if [[ -n "${GITHUB_TOKEN:-}" ]] && [[ -z "${GITHUB_MODELS_KEY:-}" ]]; then
         export GITHUB_MODELS_KEY="${GITHUB_TOKEN}"
     fi
-    
-    # DEBUG: Show final token state
-    echo -e "${YELLOW}🔍 DEBUG: Final token configuration:${NC}"
-    echo "  GITHUB_TOKEN: ${GITHUB_TOKEN:+SET(${#GITHUB_TOKEN} chars)}${GITHUB_TOKEN:-UNSET}"
-    echo "  GITHUB_APM_PAT: ${GITHUB_APM_PAT:+SET(${#GITHUB_APM_PAT} chars)}${GITHUB_APM_PAT:-UNSET}"
-    echo "  GITHUB_MODELS_KEY: ${GITHUB_MODELS_KEY:+SET(${#GITHUB_MODELS_KEY} chars)}${GITHUB_MODELS_KEY:-UNSET}"
-    
+
     if [[ "$quiet_mode" != "true" ]]; then
         echo -e "${GREEN}✅ GitHub token environment configured${NC}"
     fi

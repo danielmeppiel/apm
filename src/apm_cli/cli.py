@@ -411,43 +411,13 @@ def _validate_package_exists(package):
         from apm_cli.models.apm_package import DependencyReference
         dep_ref = DependencyReference.parse(package)
         
-        # For virtual packages, validate the file exists via GitHub API or raw URL
+        # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
-            import requests
-            host = dep_ref.host or "github.com"
-            
-            # Build raw file URL
-            if host == "github.com":
-                base_url = "https://raw.githubusercontent.com"
-            else:
-                base_url = f"https://{host}/raw"
-            
-            ref = dep_ref.reference or "main"
-            file_url = f"{base_url}/{dep_ref.repo_url}/{ref}/{dep_ref.virtual_path}"
-            
-            try:
-                # Try HEAD request first (faster)
-                response = requests.head(file_url, timeout=10, allow_redirects=True)
-                if response.status_code == 200:
-                    return True
-                
-                # If HEAD fails, try GET with main/master fallback
-                response = requests.get(file_url, timeout=10)
-                if response.status_code == 200:
-                    return True
-                
-                # Try master as fallback
-                if ref == "main":
-                    file_url = f"{base_url}/{dep_ref.repo_url}/master/{dep_ref.virtual_path}"
-                    response = requests.get(file_url, timeout=10)
-                    return response.status_code == 200
-                
-                return False
-            except requests.exceptions.RequestException:
-                return False
+            from apm_cli.deps.github_downloader import GitHubPackageDownloader
+            downloader = GitHubPackageDownloader()
+            return downloader.validate_virtual_package_exists(dep_ref)
         
         # For regular packages, use git ls-remote
-        # Try to do a shallow clone to test accessibility
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
                 # Try cloning with minimal fetch

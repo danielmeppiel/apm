@@ -279,7 +279,7 @@ class GitHubPackageDownloader:
         )
     
     def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
-        """Download a single file from GitHub repository via raw.githubusercontent.com.
+        """Download a single file from GitHub repository.
         
         Args:
             dep_ref: Parsed dependency reference
@@ -294,24 +294,30 @@ class GitHubPackageDownloader:
         """
         host = dep_ref.host or default_host()
         
-        # Build raw file URL
-        # Format: https://raw.githubusercontent.com/owner/repo/ref/path/to/file
-        if host == "github.com":
-            base_url = "https://raw.githubusercontent.com"
-        else:
-            # For GitHub Enterprise, use the API endpoint
-            base_url = f"https://{host}/raw"
+        # Parse owner/repo from repo_url
+        owner, repo = dep_ref.repo_url.split('/', 1)
         
-        file_url = f"{base_url}/{dep_ref.repo_url}/{ref}/{file_path}"
+        # Build GitHub API URL - format differs by host type
+        if host == "github.com":
+            # GitHub.com: https://api.github.com/repos/owner/repo/contents/path
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+        elif host.endswith(".ghe.com"):
+            # GitHub Enterprise Cloud Data Residency: https://api.{subdomain}.ghe.com/repos/owner/repo/contents/path
+            api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+        else:
+            # GitHub Enterprise Server: https://{host}/api/v3/repos/owner/repo/contents/path
+            api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         
         # Set up authentication headers
-        headers = {}
+        headers = {
+            'Accept': 'application/vnd.github.v3.raw'  # Returns raw content directly
+        }
         if self.github_token:
             headers['Authorization'] = f'token {self.github_token}'
         
         # Try to download with the specified ref
         try:
-            response = requests.get(file_url, headers=headers, timeout=30)
+            response = requests.get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.content
         except requests.exceptions.HTTPError as e:
@@ -323,10 +329,19 @@ class GitHubPackageDownloader:
                 
                 # Try the other default branch
                 fallback_ref = "master" if ref == "main" else "main"
-                fallback_url = f"{base_url}/{dep_ref.repo_url}/{fallback_ref}/{file_path}"
+                
+                # Build fallback API URL
+                if host == "github.com":
+                    fallback_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
+                elif host.endswith(".ghe.com"):
+                    fallback_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
+                else:
+                    fallback_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
                 
                 try:
                     response = requests.get(fallback_url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    return response.content
                     response.raise_for_status()
                     return response.content
                 except requests.exceptions.HTTPError:
@@ -345,6 +360,33 @@ class GitHubPackageDownloader:
                 raise RuntimeError(f"Failed to download {file_path}: HTTP {e.response.status_code}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
+    
+    def validate_virtual_package_exists(self, dep_ref: DependencyReference) -> bool:
+        """Validate that a virtual package (file or collection) exists on GitHub.
+        
+        Args:
+            dep_ref: Parsed dependency reference for virtual package
+            
+        Returns:
+            bool: True if the package exists and is accessible, False otherwise
+        """
+        if not dep_ref.is_virtual:
+            raise ValueError("Can only validate virtual packages with this method")
+        
+        ref = dep_ref.reference or "main"
+        file_path = dep_ref.virtual_path
+        
+        # For collections, check for .collection.yml file
+        if 'collections/' in dep_ref.virtual_path:
+            file_path = f"{dep_ref.virtual_path}.collection.yml"
+        
+        # Try to download the file (will use existing auth and host detection)
+        try:
+            self.download_raw_file(dep_ref, file_path, ref)
+            return True
+        except RuntimeError:
+            # File doesn't exist or isn't accessible
+            return False
     
     def download_virtual_file_package(self, dep_ref: DependencyReference, target_path: Path) -> PackageInfo:
         """Download a single file as a virtual APM package.
