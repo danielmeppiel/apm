@@ -138,13 +138,23 @@ def _check_orphaned_packages():
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-            declared_repos = set(dep.repo_url for dep in declared_deps)
-            declared_names = set()
+            
+            # Build set of expected installed package paths
+            # For virtual packages, use the sanitized package name from get_virtual_package_name()
+            # For regular packages, use repo_url as-is
+            expected_installed = set()
             for dep in declared_deps:
-                if "/" in dep.repo_url:
-                    declared_names.add(dep.repo_url.split("/")[-1])
-                else:
-                    declared_names.add(dep.repo_url)
+                repo_parts = dep.repo_url.split('/')
+                if len(repo_parts) >= 2:
+                    org_name = repo_parts[0]
+                    if dep.is_virtual:
+                        # Virtual package: org/repo-name-package-name
+                        package_name = dep.get_virtual_package_name()
+                        expected_installed.add(f"{org_name}/{package_name}")
+                    else:
+                        # Regular package: org/repo-name
+                        repo_name = repo_parts[1]
+                        expected_installed.add(f"{org_name}/{repo_name}")
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -157,7 +167,7 @@ def _check_orphaned_packages():
                         org_repo_name = f"{org_dir.name}/{repo_dir.name}"
 
                         # Check if orphaned
-                        if org_repo_name not in declared_repos:
+                        if org_repo_name not in expected_installed:
                             orphaned_packages.append(org_repo_name)
 
         return orphaned_packages
@@ -651,17 +661,23 @@ def prune(ctx, dry_run):
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-            # Keep full org/repo format (e.g., "danielmeppiel/design-guidelines")
-            declared_repos = set()
-            declared_names = set()  # For directory name matching
+            
+            # Build set of expected installed package paths
+            # For virtual packages, use the sanitized package name from get_virtual_package_name()
+            # For regular packages, use repo_url as-is
+            expected_installed = set()
             for dep in declared_deps:
-                declared_repos.add(dep.repo_url)
-                # Also track directory names for filesystem matching
-                if "/" in dep.repo_url:
-                    package_name = dep.repo_url.split("/")[-1]
-                    declared_names.add(package_name)
-                else:
-                    declared_names.add(dep.repo_url)
+                repo_parts = dep.repo_url.split('/')
+                if len(repo_parts) >= 2:
+                    org_name = repo_parts[0]
+                    if dep.is_virtual:
+                        # Virtual package: org/repo-name-package-name
+                        package_name = dep.get_virtual_package_name()
+                        expected_installed.add(f"{org_name}/{package_name}")
+                    else:
+                        # Regular package: org/repo-name
+                        repo_name = repo_parts[1]
+                        expected_installed.add(f"{org_name}/{repo_name}")
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
@@ -682,7 +698,7 @@ def prune(ctx, dry_run):
         # Find orphaned packages (installed but not declared)
         orphaned_packages = {}
         for org_repo_name, display_name in installed_packages.items():
-            if org_repo_name not in declared_repos:
+            if org_repo_name not in expected_installed:
                 orphaned_packages[org_repo_name] = display_name
 
         if not orphaned_packages:
