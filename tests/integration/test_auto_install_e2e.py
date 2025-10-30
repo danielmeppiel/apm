@@ -5,6 +5,9 @@ Tests the exact zero-config flow from the README:
     apm run github/awesome-copilot/prompts/architecture-blueprint-generator
 
 This validates that users can run virtual packages without manual installation.
+
+Note: Tests terminate execution early (after auto-install completes) to save time.
+The full execution is already tested in test_golden_scenario_e2e.py.
 """
 
 import os
@@ -54,29 +57,59 @@ author: test
         2. APM detects it's a virtual package reference
         3. Auto-installs to apm_modules/
         4. Discovers and attempts to run the prompt
+        5. Terminates before full execution to save time
         """
         # Verify package doesn't exist initially
         apm_modules = Path("apm_modules")
         assert not apm_modules.exists(), "apm_modules should not exist initially"
         
-        # Run the exact README command - let it complete naturally (no timeout)
-        # This is a full E2E test including model execution
-        result = subprocess.run(
+        # Run the exact README command with streaming output monitoring
+        process = subprocess.Popen(
             [
                 "apm",
                 "run",
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True
         )
         
+        output_lines = []
+        execution_started = False
+        
+        # Monitor output and terminate once execution starts
+        try:
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                output_lines.append(line)
+                print(line.rstrip())  # Show progress
+                
+                # Once we see "Package installed and ready to run", execution is about to start
+                # Terminate to avoid waiting for full prompt execution
+                if "✨ Package installed and ready to run" in line:
+                    execution_started = True
+                    print("\n⚡ Test validated - terminating to save time")
+                    process.terminate()
+                    break
+            
+            # Wait for graceful shutdown
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        
+        finally:
+            output = ''.join(output_lines)
+        
         # Check output for auto-install messages
-        output = result.stdout + result.stderr
         assert "Auto-installing virtual package" in output or "📦" in output, \
             "Should show auto-install message"
         assert "Downloading from" in output or "📥" in output, \
             "Should show download message"
+        assert execution_started, "Should have started execution (✨ Package installed and ready to run)"
         
         # Verify package was installed
         package_path = apm_modules / "github" / "awesome-copilot-architecture-blueprint-generator"
@@ -104,34 +137,64 @@ author: test
         2. Second run discovers already-installed package
         3. No download happens on second run
         """
-        # First run - install (no timeout, let model execute)
-        subprocess.run(
+        # First run - install with early termination
+        process = subprocess.Popen(
             [
                 "apm",
                 "run",
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True
         )
+        
+        try:
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                if "✨ Package installed and ready to run" in line:
+                    process.terminate()
+                    break
+            process.wait(timeout=5)
+        except:
+            process.kill()
+            process.wait()
         
         # Verify package exists
         package_path = Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator")
         assert package_path.exists(), "Package should exist after first run"
         
-        # Second run - should use cache (no timeout)
-        result = subprocess.run(
+        # Second run - should use cache with early termination
+        process = subprocess.Popen(
             [
                 "apm",
                 "run",
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True
         )
         
+        output_lines = []
+        try:
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                output_lines.append(line)
+                # Terminate once we see execution starting (no need for full run)
+                if "Executing" in line or "✨" in line:
+                    process.terminate()
+                    break
+            process.wait(timeout=5)
+        except:
+            process.kill()
+            process.wait()
+        finally:
+            output = ''.join(output_lines)
+        
         # Check output - should NOT show install/download messages
-        output = result.stdout + result.stderr
         assert "Auto-installing" not in output, "Should not auto-install on second run"
         assert "Auto-discovered" in output or "ℹ" in output, \
             "Should show auto-discovery message (using cached package)"
@@ -150,30 +213,60 @@ author: test
         2. Run with simple name (just the prompt name)
         3. Should discover and run from installed package
         """
-        # First install with full path (no timeout)
-        subprocess.run(
+        # First install with full path - early termination
+        process = subprocess.Popen(
             [
                 "apm",
                 "run",
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True
         )
         
-        # Run with simple name (no timeout)
-        result = subprocess.run(
+        try:
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                if "✨ Package installed and ready to run" in line:
+                    process.terminate()
+                    break
+            process.wait(timeout=5)
+        except:
+            process.kill()
+            process.wait()
+        
+        # Run with simple name - early termination
+        process = subprocess.Popen(
             [
                 "apm",
                 "run",
                 "architecture-blueprint-generator"
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True
         )
         
+        output_lines = []
+        try:
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                output_lines.append(line)
+                # Terminate once we see execution starting
+                if "Executing" in line or "Auto-discovered" in line:
+                    process.terminate()
+                    break
+            process.wait(timeout=5)
+        except:
+            process.kill()
+            process.wait()
+        finally:
+            output = ''.join(output_lines)
+        
         # Check output - should discover the installed prompt
-        output = result.stdout + result.stderr
         assert "Auto-discovered" in output or "ℹ" in output, \
             "Should auto-discover prompt from installed package"
         
@@ -190,16 +283,30 @@ author: test
         - Full: github/awesome-copilot/prompts/file.prompt.md
         - Qualified: github/awesome-copilot/architecture-blueprint-generator
         """
-        # Test with qualified path (without .prompt.md extension) - no timeout
-        result = subprocess.run(
+        # Test with qualified path (without .prompt.md extension) - early termination
+        process = subprocess.Popen(
             [
                 "apm",
                 "run",
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True
         )
+        
+        try:
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                # Terminate once installation completes
+                if "✨ Package installed and ready to run" in line:
+                    process.terminate()
+                    break
+            process.wait(timeout=5)
+        except:
+            process.kill()
+            process.wait()
         
         # Check that package was installed
         package_path = Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator")
