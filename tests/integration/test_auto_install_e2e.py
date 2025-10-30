@@ -59,8 +59,8 @@ author: test
         apm_modules = Path("apm_modules")
         assert not apm_modules.exists(), "apm_modules should not exist initially"
         
-        # Run the exact README command with timeout (will timeout during execution, which is OK)
-        # We're testing the auto-install part, not full execution
+        # Run the exact README command - let it complete naturally (no timeout)
+        # This is a full E2E test including model execution
         result = subprocess.run(
             [
                 "apm",
@@ -68,8 +68,7 @@ author: test
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
             capture_output=True,
-            text=True,
-            timeout=30
+            text=True
         )
         
         # Check output for auto-install messages
@@ -105,7 +104,7 @@ author: test
         2. Second run discovers already-installed package
         3. No download happens on second run
         """
-        # First run - install
+        # First run - install (no timeout, let model execute)
         subprocess.run(
             [
                 "apm",
@@ -113,15 +112,14 @@ author: test
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
             capture_output=True,
-            text=True,
-            timeout=30
+            text=True
         )
         
         # Verify package exists
         package_path = Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator")
         assert package_path.exists(), "Package should exist after first run"
         
-        # Second run - should use cache
+        # Second run - should use cache (no timeout)
         result = subprocess.run(
             [
                 "apm",
@@ -129,8 +127,7 @@ author: test
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
             capture_output=True,
-            text=True,
-            timeout=30
+            text=True
         )
         
         # Check output - should NOT show install/download messages
@@ -153,7 +150,7 @@ author: test
         2. Run with simple name (just the prompt name)
         3. Should discover and run from installed package
         """
-        # First install with full path
+        # First install with full path (no timeout)
         subprocess.run(
             [
                 "apm",
@@ -161,11 +158,10 @@ author: test
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
             capture_output=True,
-            text=True,
-            timeout=30
+            text=True
         )
         
-        # Run with simple name
+        # Run with simple name (no timeout)
         result = subprocess.run(
             [
                 "apm",
@@ -173,8 +169,7 @@ author: test
                 "architecture-blueprint-generator"
             ],
             capture_output=True,
-            text=True,
-            timeout=30
+            text=True
         )
         
         # Check output - should discover the installed prompt
@@ -195,7 +190,7 @@ author: test
         - Full: github/awesome-copilot/prompts/file.prompt.md
         - Qualified: github/awesome-copilot/architecture-blueprint-generator
         """
-        # Test with qualified path (without .prompt.md extension)
+        # Test with qualified path (without .prompt.md extension) - no timeout
         result = subprocess.run(
             [
                 "apm",
@@ -203,8 +198,7 @@ author: test
                 "github/awesome-copilot/prompts/architecture-blueprint-generator"
             ],
             capture_output=True,
-            text=True,
-            timeout=30
+            text=True
         )
         
         # Check that package was installed
