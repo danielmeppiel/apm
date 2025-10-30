@@ -101,6 +101,19 @@ class DependencyReference:
                     break
             return f"{repo_name}-{filename}"
     
+    def get_unique_key(self) -> str:
+        """Get a unique key for this dependency for deduplication.
+        
+        For regular packages: repo_url
+        For virtual packages: repo_url + virtual_path to ensure uniqueness
+        
+        Returns:
+            str: Unique key for this dependency
+        """
+        if self.is_virtual and self.virtual_path:
+            return f"{self.repo_url}/{self.virtual_path}"
+        return self.repo_url
+    
     @classmethod
     def parse(cls, dependency_str: str) -> "DependencyReference":
         """Parse a dependency string into a DependencyReference.

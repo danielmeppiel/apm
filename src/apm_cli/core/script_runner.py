@@ -28,6 +28,11 @@ class ScriptRunner:
     def run_script(self, script_name: str, params: Dict[str, str]) -> bool:
         """Run a script from apm.yml with parameter substitution.
         
+        Execution priority:
+        1. Explicit scripts in apm.yml (takes precedence)
+        2. Auto-discovered prompt files (fallback)
+        3. Error if not found
+        
         Args:
             script_name: Name of the script to run
             params: Parameters for compilation and script execution
@@ -45,13 +50,55 @@ class ScriptRunner:
         if not config:
             raise RuntimeError("No apm.yml found in current directory")
         
+        # 1. Check explicit scripts first (existing behavior - highest priority)
         scripts = config.get('scripts', {})
-        if script_name not in scripts:
-            available = ', '.join(scripts.keys()) if scripts else 'none'
-            raise RuntimeError(f"Script '{script_name}' not found. Available scripts: {available}")
+        if script_name in scripts:
+            command = scripts[script_name]
+            return self._execute_script_command(command, params)
         
-        # Get the script command
-        command = scripts[script_name]
+        # 2. Auto-discover prompt file (NEW fallback)
+        discovered_prompt = self._discover_prompt_file(script_name)
+        
+        if discovered_prompt:
+            # Generate runtime command with auto-detected runtime
+            runtime = self._detect_installed_runtime()
+            command = self._generate_runtime_command(runtime, discovered_prompt)
+            
+            # Show auto-discovery message
+            auto_discovery_msg = self.formatter.format_auto_discovery_message(
+                script_name, discovered_prompt, runtime
+            )
+            print(auto_discovery_msg)
+            
+            # Execute with existing logic
+            return self._execute_script_command(command, params)
+        
+        # 3. Not found anywhere
+        available = ', '.join(scripts.keys()) if scripts else 'none'
+        
+        # Build helpful error message
+        error_msg = f"Script or prompt '{script_name}' not found.\n"
+        error_msg += f"Available scripts in apm.yml: {available}\n"
+        error_msg += f"\nTo find available prompts, check:\n"
+        error_msg += f"  - Local: .apm/prompts/, .github/prompts/, or project root\n"
+        error_msg += f"  - Dependencies: apm_modules/*/.apm/prompts/\n"
+        error_msg += f"\nOr install a prompt package:\n"
+        error_msg += f"  apm install <owner>/<repo>/path/to/prompt.prompt.md\n"
+        
+        raise RuntimeError(error_msg)
+    
+    def _execute_script_command(self, command: str, params: Dict[str, str]) -> bool:
+        """Execute a script command (from apm.yml or auto-generated).
+        
+        This is the existing run_script logic, extracted for reuse.
+        
+        Args:
+            command: Script command to execute
+            params: Parameters for compilation and script execution
+            
+        Returns:
+            bool: True if script executed successfully
+        """
         
         # Auto-compile any .prompt.md files in the command
         compiled_command, compiled_prompt_files, runtime_content = self._auto_compile_prompts(command, params)
@@ -376,6 +423,234 @@ class ScriptRunner:
         
         # Execute using argument list (no shell interpretation) with updated environment
         return subprocess.run(actual_command_args, check=True, env=env_vars)
+    
+    def _discover_prompt_file(self, name: str) -> Optional[Path]:
+        """Discover prompt files by name across local and dependencies.
+        
+        Supports both simple names and qualified paths:
+        - Simple: "code-review" → searches everywhere
+        - Qualified: "github/awesome-copilot/code-review" → searches specific package
+        
+        Search order for simple names:
+        1. Local root: ./{name}.prompt.md
+        2. Local prompts: .apm/prompts/{name}.prompt.md
+        3. GitHub convention: .github/prompts/{name}.prompt.md
+        4. Dependencies: apm_modules/**/.apm/prompts/{name}.prompt.md
+        5. Dependencies root: apm_modules/**/{name}.prompt.md
+        
+        Args:
+            name: Script/prompt name or qualified path (owner/repo/name)
+            
+        Returns:
+            Path to discovered prompt file, or None if not found
+            
+        Raises:
+            RuntimeError: If multiple prompts found with same name (collision)
+        """
+        # Check if this is a qualified path (contains /)
+        if '/' in name:
+            return self._discover_qualified_prompt(name)
+        
+        # Ensure name doesn't already have .prompt.md extension
+        if name.endswith('.prompt.md'):
+            search_name = name
+        else:
+            search_name = f"{name}.prompt.md"
+        
+        # 1. Check local paths first (highest priority)
+        local_search_paths = [
+            Path(search_name),  # Local root
+            Path(f".apm/prompts/{search_name}"),  # APM prompts dir
+            Path(f".github/prompts/{search_name}"),  # GitHub convention
+        ]
+        
+        for path in local_search_paths:
+            if path.exists():
+                return path
+        
+        # 2. Search in dependencies and detect collisions
+        apm_modules = Path("apm_modules")
+        if apm_modules.exists():
+            # Collect ALL matches to detect collisions
+            matches = list(apm_modules.rglob(search_name))
+            
+            if len(matches) == 0:
+                return None
+            elif len(matches) == 1:
+                return matches[0]
+            else:
+                # Multiple matches - collision detected!
+                self._handle_prompt_collision(name, matches)
+        
+        return None
+    
+    def _discover_qualified_prompt(self, qualified_path: str) -> Optional[Path]:
+        """Discover prompt using qualified path (owner/repo/name format).
+        
+        Args:
+            qualified_path: Qualified path like "github/awesome-copilot/code-review"
+            
+        Returns:
+            Path to discovered prompt file, or None if not found
+        """
+        # Parse qualified path: owner/repo/name or owner/repo-name/name
+        parts = qualified_path.split('/')
+        
+        if len(parts) < 2:
+            return None
+        
+        # Extract prompt name (last part)
+        prompt_name = parts[-1]
+        if not prompt_name.endswith('.prompt.md'):
+            prompt_name = f"{prompt_name}.prompt.md"
+        
+        # Build possible package directory patterns
+        # Could be: owner/repo or owner/repo-promptname (virtual packages)
+        apm_modules = Path("apm_modules")
+        if not apm_modules.exists():
+            return None
+        
+        # Try to find matching package directory
+        owner = parts[0]
+        
+        # Check if owner directory exists
+        owner_dir = apm_modules / owner
+        if not owner_dir.exists():
+            return None
+        
+        # Search within this owner's packages
+        for pkg_dir in owner_dir.iterdir():
+            if not pkg_dir.is_dir():
+                continue
+            
+            # Check if package name matches any part of the qualified path
+            pkg_name = pkg_dir.name
+            
+            # Try to find the prompt in this package
+            for prompt_path in pkg_dir.rglob(prompt_name):
+                # Verify this matches the qualified path structure
+                if self._matches_qualified_path(prompt_path, qualified_path):
+                    return prompt_path
+        
+        return None
+    
+    def _matches_qualified_path(self, prompt_path: Path, qualified_path: str) -> bool:
+        """Check if a prompt path matches the qualified path specification.
+        
+        Args:
+            prompt_path: Actual path to prompt file
+            qualified_path: User-specified qualified path
+            
+        Returns:
+            True if paths match
+        """
+        # For now, just check if the qualified path components appear in the prompt path
+        # This is a simple heuristic that works for most cases
+        path_str = str(prompt_path)
+        qualified_parts = qualified_path.split('/')
+        
+        # Check if owner is in the path
+        if qualified_parts[0] not in path_str:
+            return False
+        
+        # Check if prompt name matches
+        prompt_name = qualified_parts[-1]
+        if not prompt_name.endswith('.prompt.md'):
+            prompt_name = f"{prompt_name}.prompt.md"
+        
+        return prompt_path.name == prompt_name
+    
+    def _handle_prompt_collision(self, name: str, matches: list[Path]) -> None:
+        """Handle collision when multiple prompts found with same name.
+        
+        Args:
+            name: Prompt name that has collisions
+            matches: List of matching prompt paths
+            
+        Raises:
+            RuntimeError: Always raises with helpful disambiguation message
+        """
+        # Build helpful error message
+        error_msg = f"Multiple prompts found for '{name}':\n"
+        
+        # List all matches with their package paths
+        for match in matches:
+            # Extract package identifier from path
+            path_parts = match.parts
+            if 'apm_modules' in path_parts:
+                idx = path_parts.index('apm_modules')
+                if idx + 2 < len(path_parts):
+                    owner = path_parts[idx + 1]
+                    pkg = path_parts[idx + 2]
+                    error_msg += f"  - {owner}/{pkg} ({match})\n"
+                else:
+                    error_msg += f"  - {match}\n"
+            else:
+                error_msg += f"  - {match}\n"
+        
+        error_msg += f"\nPlease specify using qualified path:\n"
+        
+        # Suggest qualified paths based on matches
+        for match in matches:
+            path_parts = match.parts
+            if 'apm_modules' in path_parts:
+                idx = path_parts.index('apm_modules')
+                if idx + 2 < len(path_parts):
+                    owner = path_parts[idx + 1]
+                    pkg = path_parts[idx + 2]
+                    error_msg += f"  apm run {owner}/{pkg}/{name}\n"
+        
+        error_msg += f"\nOr add an explicit script to apm.yml:\n"
+        error_msg += f"  scripts:\n"
+        error_msg += f"    my-{name}: \"copilot -p <path-to-preferred-prompt>\"\n"
+        
+        raise RuntimeError(error_msg)
+    
+    def _detect_installed_runtime(self) -> str:
+        """Detect installed runtime with priority order.
+        
+        Priority: copilot > codex > error
+        
+        Returns:
+            Name of detected runtime
+            
+        Raises:
+            RuntimeError: If no compatible runtime is found
+        """
+        import shutil
+        
+        # Priority order: copilot first (recommended), then codex
+        if shutil.which("copilot"):
+            return "copilot"
+        elif shutil.which("codex"):
+            return "codex"
+        else:
+            raise RuntimeError(
+                "No compatible runtime found.\n"
+                "Install GitHub Copilot CLI with:\n"
+                "  apm runtime setup copilot\n"
+                "Or install Codex CLI with:\n"
+                "  apm runtime setup codex"
+            )
+    
+    def _generate_runtime_command(self, runtime: str, prompt_file: Path) -> str:
+        """Generate appropriate runtime command with proper defaults.
+        
+        Args:
+            runtime: Name of runtime (copilot or codex)
+            prompt_file: Path to the prompt file
+            
+        Returns:
+            Full command string with runtime-specific defaults
+        """
+        if runtime == "copilot":
+            # GitHub Copilot CLI with all recommended flags
+            return f"copilot --log-level all --log-dir copilot-logs --allow-all-tools -p {prompt_file}"
+        elif runtime == "codex":
+            # Codex CLI default
+            return f"codex {prompt_file}"
+        else:
+            raise ValueError(f"Unsupported runtime: {runtime}")
 
 
 class PromptCompiler:

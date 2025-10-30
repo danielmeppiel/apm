@@ -17,10 +17,11 @@ class DependencyNode:
     
     def get_id(self) -> str:
         """Get unique identifier for this node."""
+        unique_key = self.dependency_ref.get_unique_key()
         # Include reference to distinguish between different versions/branches of same repo
         if self.dependency_ref.reference:
-            return f"{self.dependency_ref.repo_url}#{self.dependency_ref.reference}"
-        return self.dependency_ref.repo_url
+            return f"{unique_key}#{self.dependency_ref.reference}"
+        return unique_key
     
     def get_display_name(self) -> str:
         """Get display name for this dependency."""
@@ -61,9 +62,9 @@ class DependencyTree:
         self.nodes[node.get_id()] = node
         self.max_depth = max(self.max_depth, node.depth)
     
-    def get_node(self, repo_url: str) -> Optional[DependencyNode]:
-        """Get a node by its repository URL."""
-        return self.nodes.get(repo_url)
+    def get_node(self, unique_key: str) -> Optional[DependencyNode]:
+        """Get a node by its unique key."""
+        return self.nodes.get(unique_key)
     
     def get_nodes_at_depth(self, depth: int) -> List[DependencyNode]:
         """Get all nodes at a specific depth level."""
@@ -98,32 +99,32 @@ class FlatDependencyMap:
     
     def add_dependency(self, dep_ref: DependencyReference, is_conflict: bool = False) -> None:
         """Add a dependency to the flat map."""
-        repo_url = dep_ref.repo_url
+        unique_key = dep_ref.get_unique_key()
         
         # If this is the first occurrence, just add it
-        if repo_url not in self.dependencies:
-            self.dependencies[repo_url] = dep_ref
-            self.install_order.append(repo_url)
+        if unique_key not in self.dependencies:
+            self.dependencies[unique_key] = dep_ref
+            self.install_order.append(unique_key)
         elif is_conflict:
             # Record the conflict but keep the first one (first wins strategy)
-            existing_ref = self.dependencies[repo_url]
+            existing_ref = self.dependencies[unique_key]
             conflict = ConflictInfo(
-                repo_url=repo_url,
+                repo_url=dep_ref.repo_url,
                 winner=existing_ref,
                 conflicts=[dep_ref],
                 reason="first declared dependency wins"
             )
             
             # Check if we already have a conflict for this repo
-            existing_conflict = next((c for c in self.conflicts if c.repo_url == repo_url), None)
+            existing_conflict = next((c for c in self.conflicts if c.repo_url == dep_ref.repo_url), None)
             if existing_conflict:
                 existing_conflict.conflicts.append(dep_ref)
             else:
                 self.conflicts.append(conflict)
     
-    def get_dependency(self, repo_url: str) -> Optional[DependencyReference]:
-        """Get a dependency by repository URL."""
-        return self.dependencies.get(repo_url)
+    def get_dependency(self, unique_key: str) -> Optional[DependencyReference]:
+        """Get a dependency by unique key (repo_url or repo_url/virtual_path)."""
+        return self.dependencies.get(unique_key)
     
     def has_conflicts(self) -> bool:
         """Check if there are any conflicts in the flattened map."""
@@ -135,7 +136,7 @@ class FlatDependencyMap:
     
     def get_installation_list(self) -> List[DependencyReference]:
         """Get dependencies in installation order."""
-        return [self.dependencies[repo_url] for repo_url in self.install_order if repo_url in self.dependencies]
+        return [self.dependencies[unique_key] for unique_key in self.install_order if unique_key in self.dependencies]
 
 
 @dataclass
