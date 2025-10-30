@@ -138,6 +138,175 @@ class TestPromptDiscovery:
         
         assert result is not None
         assert result.name == "test.prompt.md"
+    
+    def test_discover_multiple_dependencies_same_filename(self, tmp_path):
+        """Test collision detection when multiple dependencies have same filename.
+        
+        This tests the name collision scenario where two different repos
+        have prompts with the same filename. The implementation now detects
+        this and raises an error with helpful disambiguation options.
+        """
+        # Setup: Create two different packages with same prompt filename
+        dep1_dir = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        dep1_dir.mkdir(parents=True)
+        dep1_prompt = dep1_dir / "code-review.prompt.md"
+        dep1_prompt.write_text("---\n---\nGitHub Copilot code review")
+        
+        dep2_dir = tmp_path / "apm_modules" / "acme" / "dev-tools-code-review" / ".apm" / "prompts"
+        dep2_dir.mkdir(parents=True)
+        dep2_prompt = dep2_dir / "code-review.prompt.md"
+        dep2_prompt.write_text("---\n---\nAcme dev tools code review")
+        
+        os.chdir(tmp_path)
+        runner = ScriptRunner()
+        
+        # Should raise error about collision
+        with pytest.raises(RuntimeError) as exc_info:
+            runner._discover_prompt_file("code-review")
+        
+        error_msg = str(exc_info.value)
+        assert "Multiple prompts found for 'code-review'" in error_msg
+        assert "github/awesome-copilot-code-review" in error_msg
+        assert "acme/dev-tools-code-review" in error_msg
+        assert "apm run" in error_msg
+        assert "qualified path" in error_msg
+    
+    def test_discover_collision_local_wins(self, tmp_path):
+        """Test that local prompt takes precedence even with name collisions in dependencies."""
+        # Setup: Create local prompt and two dependency prompts with same name
+        local_prompt = tmp_path / "code-review.prompt.md"
+        local_prompt.write_text("---\n---\nLocal code review")
+        
+        dep1_dir = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        dep1_dir.mkdir(parents=True)
+        dep1_prompt = dep1_dir / "code-review.prompt.md"
+        dep1_prompt.write_text("---\n---\nGitHub Copilot code review")
+        
+        dep2_dir = tmp_path / "apm_modules" / "acme" / "dev-tools-code-review" / ".apm" / "prompts"
+        dep2_dir.mkdir(parents=True)
+        dep2_prompt = dep2_dir / "code-review.prompt.md"
+        dep2_prompt.write_text("---\n---\nAcme dev tools code review")
+        
+        os.chdir(tmp_path)
+        runner = ScriptRunner()
+        result = runner._discover_prompt_file("code-review")
+        
+        # Local should always win
+        assert result is not None
+        assert result.name == "code-review.prompt.md"
+        assert "apm_modules" not in str(result)
+        assert str(result) == "code-review.prompt.md"
+    
+    def test_discover_virtual_package_naming_convention(self, tmp_path):
+        """Test discovery works with virtual package directory naming.
+        
+        Virtual packages use format: {repo-name}-{filename-without-extension}
+        Example: github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+        → Directory: github/awesome-copilot-architecture-blueprint-generator/
+        """
+        # Setup: Create virtual package structure as it would be installed
+        virt_pkg_dir = tmp_path / "apm_modules" / "github" / "awesome-copilot-architecture-blueprint-generator" / ".apm" / "prompts"
+        virt_pkg_dir.mkdir(parents=True)
+        prompt_file = virt_pkg_dir / "architecture-blueprint-generator.prompt.md"
+        prompt_file.write_text("---\n---\nArchitecture blueprint generator")
+        
+        os.chdir(tmp_path)
+        runner = ScriptRunner()
+        result = runner._discover_prompt_file("architecture-blueprint-generator")
+        
+        assert result is not None
+        assert result.name == "architecture-blueprint-generator.prompt.md"
+        assert "awesome-copilot-architecture-blueprint-generator" in str(result)
+    
+    def test_discover_multiple_virtual_packages_different_repos_same_filename(self, tmp_path):
+        """Test collision between virtual packages from different repos with same filename.
+        
+        This is the critical collision scenario:
+        - github/awesome-copilot/prompts/code-review.prompt.md
+        - acme/dev-tools/prompts/code-review.prompt.md
+        
+        Both install as virtual packages with different directory names but same prompt filename.
+        Now properly detects collision and provides disambiguation.
+        """
+        # Setup: Two virtual packages from different repos
+        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg.mkdir(parents=True)
+        github_prompt = github_pkg / "code-review.prompt.md"
+        github_prompt.write_text("---\n---\nGitHub version")
+        
+        acme_pkg = tmp_path / "apm_modules" / "acme" / "dev-tools-code-review" / ".apm" / "prompts"
+        acme_pkg.mkdir(parents=True)
+        acme_prompt = acme_pkg / "code-review.prompt.md"
+        acme_prompt.write_text("---\n---\nAcme version")
+        
+        os.chdir(tmp_path)
+        runner = ScriptRunner()
+        
+        # Should detect collision and raise error
+        with pytest.raises(RuntimeError) as exc_info:
+            runner._discover_prompt_file("code-review")
+        
+        error_msg = str(exc_info.value)
+        assert "Multiple prompts found" in error_msg
+        assert "github/awesome-copilot-code-review" in error_msg
+        assert "acme/dev-tools-code-review" in error_msg
+    
+    def test_discover_qualified_path_github(self, tmp_path):
+        """Test discovery using qualified path for GitHub package."""
+        # Setup: Two virtual packages with same prompt name
+        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg.mkdir(parents=True)
+        github_prompt = github_pkg / "code-review.prompt.md"
+        github_prompt.write_text("---\n---\nGitHub version")
+        
+        acme_pkg = tmp_path / "apm_modules" / "acme" / "dev-tools-code-review" / ".apm" / "prompts"
+        acme_pkg.mkdir(parents=True)
+        acme_prompt = acme_pkg / "code-review.prompt.md"
+        acme_prompt.write_text("---\n---\nAcme version")
+        
+        os.chdir(tmp_path)
+        runner = ScriptRunner()
+        
+        # Use qualified path to specify which one
+        result = runner._discover_prompt_file("github/awesome-copilot-code-review/code-review")
+        
+        assert result is not None
+        assert result.name == "code-review.prompt.md"
+        assert "github" in str(result)
+        assert "awesome-copilot-code-review" in str(result)
+    
+    def test_discover_qualified_path_acme(self, tmp_path):
+        """Test discovery using qualified path for Acme package."""
+        # Setup: Two virtual packages with same prompt name
+        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg.mkdir(parents=True)
+        github_prompt = github_pkg / "code-review.prompt.md"
+        github_prompt.write_text("---\n---\nGitHub version")
+        
+        acme_pkg = tmp_path / "apm_modules" / "acme" / "dev-tools-code-review" / ".apm" / "prompts"
+        acme_pkg.mkdir(parents=True)
+        acme_prompt = acme_pkg / "code-review.prompt.md"
+        acme_prompt.write_text("---\n---\nAcme version")
+        
+        os.chdir(tmp_path)
+        runner = ScriptRunner()
+        
+        # Use qualified path to specify the Acme version
+        result = runner._discover_prompt_file("acme/dev-tools-code-review/code-review")
+        
+        assert result is not None
+        assert result.name == "code-review.prompt.md"
+        assert "acme" in str(result)
+        assert "dev-tools-code-review" in str(result)
+    
+    def test_discover_qualified_path_not_found(self, tmp_path):
+        """Test qualified path returns None when package doesn't exist."""
+        os.chdir(tmp_path)
+        runner = ScriptRunner()
+        
+        result = runner._discover_prompt_file("nonexistent/package/prompt")
+        
+        assert result is None
 
 
 class TestRuntimeDetection:
