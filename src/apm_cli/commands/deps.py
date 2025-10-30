@@ -56,7 +56,18 @@ def list_packages():
             if apm_yml_path.exists():
                 project_package = APMPackage.from_apm_yml(apm_yml_path)
                 for dep in project_package.get_apm_dependencies():
-                    declared_deps.add(dep.repo_url)
+                    # Build the expected installed package name
+                    repo_parts = dep.repo_url.split('/')
+                    if len(repo_parts) >= 2:
+                        org_name = repo_parts[0]
+                        if dep.is_virtual:
+                            # Virtual package: org/repo-name-package-name
+                            package_name = dep.get_virtual_package_name()
+                            declared_deps.add(f"{org_name}/{package_name}")
+                        else:
+                            # Regular package: org/repo-name
+                            repo_name = repo_parts[1]
+                            declared_deps.add(f"{org_name}/{repo_name}")
         except Exception:
             pass  # Continue without orphan detection if apm.yml parsing fails
         
