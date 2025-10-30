@@ -649,31 +649,39 @@ class ScriptRunner:
         if '/' not in name:
             return False
         
+        # Import exception types upfront
+        from ..models.apm_package import DependencyReference, InvalidVirtualPackageExtensionError
+        
         # Try to parse as dependency reference
         try:
-            from ..models.apm_package import DependencyReference
             dep_ref = DependencyReference.parse(name)
             return dep_ref.is_virtual
-        except Exception as e:
-            # If it failed due to invalid extension, don't retry
-            from ..models.apm_package import InvalidVirtualPackageExtensionError
-            if isinstance(e, InvalidVirtualPackageExtensionError):
-                return False
-            
-            # For other errors, try with .prompt.md if:
-            # 1. It doesn't already have a file extension
-            # 2. It might be a collection reference
+        except InvalidVirtualPackageExtensionError:
+            # Invalid extension error - only reject if it already has a file extension
+            # If no extension, we should retry with .prompt.md
             has_extension = '.' in name.split('/')[-1]
-            is_collection_path = '/collections/' in name
-            
-            if not has_extension or is_collection_path:
-                # Try again with .prompt.md for collection-like paths
-                try:
-                    dep_ref = DependencyReference.parse(f"{name}.prompt.md")
-                    return dep_ref.is_virtual
-                except Exception:
-                    pass
-            return False
+            if has_extension:
+                # Path like owner/repo/path/file.txt - has wrong extension, don't retry
+                return False
+            # Path like owner/repo/path/file - no extension, fall through to retry
+        except Exception:
+            # Other parsing errors - check if we should retry
+            pass
+        
+        # Retry with .prompt.md if:
+        # 1. It doesn't already have a file extension
+        # 2. It might be a collection reference
+        has_extension = '.' in name.split('/')[-1]
+        is_collection_path = '/collections/' in name
+        
+        if not has_extension or is_collection_path:
+            # Try again with .prompt.md for paths without extensions or collections
+            try:
+                dep_ref = DependencyReference.parse(f"{name}.prompt.md")
+                return dep_ref.is_virtual
+            except Exception:
+                pass
+        return False
     
     def _auto_install_virtual_package(self, package_ref: str) -> bool:
         """Auto-install a virtual package.
