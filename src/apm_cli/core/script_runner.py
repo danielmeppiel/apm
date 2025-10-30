@@ -650,18 +650,28 @@ class ScriptRunner:
             return False
         
         # Try to parse as dependency reference
-        # If it doesn't have .prompt.md extension, try adding it
         try:
             from ..models.apm_package import DependencyReference
             dep_ref = DependencyReference.parse(name)
             return dep_ref.is_virtual
-        except (ValueError, Exception):
-            # Try again with .prompt.md extension if not present
-            if not name.endswith('.prompt.md'):
+        except Exception as e:
+            # If it failed due to invalid extension, don't retry
+            from ..models.apm_package import InvalidVirtualPackageExtensionError
+            if isinstance(e, InvalidVirtualPackageExtensionError):
+                return False
+            
+            # For other errors, try with .prompt.md if:
+            # 1. It doesn't already have a file extension
+            # 2. It might be a collection reference
+            has_extension = '.' in name.split('/')[-1]
+            is_collection_path = '/collections/' in name
+            
+            if not has_extension or is_collection_path:
+                # Try again with .prompt.md for collection-like paths
                 try:
                     dep_ref = DependencyReference.parse(f"{name}.prompt.md")
                     return dep_ref.is_virtual
-                except (ValueError, Exception):
+                except Exception:
                     pass
             return False
     
@@ -733,6 +743,10 @@ class ScriptRunner:
             package_ref: Virtual package reference to add
         """
         config_path = Path('apm.yml')
+        
+        # Skip if apm.yml doesn't exist (e.g., in test environments)
+        if not config_path.exists():
+            return
         
         # Load current config
         with open(config_path, 'r') as f:
