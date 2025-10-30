@@ -75,11 +75,17 @@ class ScriptRunner:
         
         # 3. Not found anywhere
         available = ', '.join(scripts.keys()) if scripts else 'none'
-        raise RuntimeError(
-            f"Script or prompt '{script_name}' not found.\n"
-            f"Available scripts: {available}\n"
-            f"Tip: Run 'apm list' to see all available scripts"
-        )
+        
+        # Build helpful error message
+        error_msg = f"Script or prompt '{script_name}' not found.\n"
+        error_msg += f"Available scripts in apm.yml: {available}\n"
+        error_msg += f"\nTo find available prompts, check:\n"
+        error_msg += f"  - Local: .apm/prompts/, .github/prompts/, or project root\n"
+        error_msg += f"  - Dependencies: apm_modules/*/.apm/prompts/\n"
+        error_msg += f"\nOr install a prompt package:\n"
+        error_msg += f"  apm install <owner>/<repo>/path/to/prompt.prompt.md\n"
+        
+        raise RuntimeError(error_msg)
     
     def _execute_script_command(self, command: str, params: Dict[str, str]) -> bool:
         """Execute a script command (from apm.yml or auto-generated).

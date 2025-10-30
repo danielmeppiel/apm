@@ -452,5 +452,10 @@ name: test-project
         with pytest.raises(RuntimeError) as exc_info:
             runner.run_script("nonexistent", {})
         
-        assert "Script or prompt 'nonexistent' not found" in str(exc_info.value)
-        assert "apm list" in str(exc_info.value)
+        error_msg = str(exc_info.value)
+        assert "Script or prompt 'nonexistent' not found" in error_msg
+        assert "Available scripts in apm.yml: none" in error_msg
+        assert "To find available prompts, check:" in error_msg
+        assert ".apm/prompts/" in error_msg
+        assert "apm_modules/" in error_msg
+        assert "apm install" in error_msg
