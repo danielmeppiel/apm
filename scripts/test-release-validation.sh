@@ -108,15 +108,30 @@ check_prerequisites() {
     fi
 }
 
-# Test Step 2: apm runtime setup codex
+# Test Step 2: apm runtime setup (both copilot and codex for full coverage)
 test_runtime_setup() {
-    log_test "README Step 2: apm runtime setup codex"
+    log_test "README Step 2: apm runtime setup"
     
-    # Test runtime setup (this may take a moment)
+    # Install GitHub Copilot CLI (recommended default, used by guardrailing hero scenario)
+    echo "Running: $BINARY_PATH runtime setup copilot"
+    echo "--- Command Output Start ---"
+    "$BINARY_PATH" runtime setup copilot 2>&1
+    local exit_code=$?
+    echo "--- Command Output End ---"
+    echo "Exit code: $exit_code"
+    
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "apm runtime setup copilot failed with exit code $exit_code"
+        return 1
+    fi
+    
+    log_success "Copilot CLI runtime setup completed"
+    
+    # Also install Codex CLI (for zero-config scenario and fallback)
     echo "Running: $BINARY_PATH runtime setup codex"
     echo "--- Command Output Start ---"
     "$BINARY_PATH" runtime setup codex 2>&1
-    local exit_code=$?
+    exit_code=$?
     echo "--- Command Output End ---"
     echo "Exit code: $exit_code"
     
@@ -125,7 +140,8 @@ test_runtime_setup() {
         return 1
     fi
     
-    log_success "Runtime setup completed"
+    log_success "Codex CLI runtime setup completed"
+    log_success "Both runtimes (Copilot, Codex) configured successfully"
 }
 
 # Helper function for cross-platform timeout
