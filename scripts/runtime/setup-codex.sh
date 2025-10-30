@@ -91,11 +91,6 @@ setup_codex() {
         local latest_release_url="https://api.github.com/repos/$CODEX_REPO/releases/latest"
         local latest_tag
         
-        # DEBUG: Show token state right before API call
-        log_info "🔍 DEBUG: Token state before GitHub API call:"
-        log_info "  GITHUB_TOKEN: ${GITHUB_TOKEN:+SET(${#GITHUB_TOKEN} chars)}${GITHUB_TOKEN:-UNSET}"
-        log_info "  GITHUB_APM_PAT: ${GITHUB_APM_PAT:+SET(${#GITHUB_APM_PAT} chars)}${GITHUB_APM_PAT:-UNSET}"
-        
         # Try to get the latest release tag using curl
         if command -v curl >/dev/null 2>&1; then
             # Use authenticated request if GITHUB_TOKEN or GITHUB_APM_PAT is available

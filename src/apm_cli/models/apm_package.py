@@ -29,6 +29,11 @@ class ValidationError(Enum):
     INVALID_PRIMITIVE_STRUCTURE = "invalid_primitive_structure"
 
 
+class InvalidVirtualPackageExtensionError(ValueError):
+    """Raised when a virtual package file has an invalid extension."""
+    pass
+
+
 @dataclass
 class ResolvedReference:
     """Represents a resolved Git reference."""
@@ -197,7 +202,7 @@ class DependencyReference:
                     # Individual file virtual package - must end with valid extension
                     valid_extension = any(virtual_path.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS)
                     if not valid_extension:
-                        raise ValueError(
+                        raise InvalidVirtualPackageExtensionError(
                             f"Invalid virtual package path '{virtual_path}'. "
                             f"Individual files must end with one of: {', '.join(cls.VIRTUAL_FILE_EXTENSIONS)}"
                         )

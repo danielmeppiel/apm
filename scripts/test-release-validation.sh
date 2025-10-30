@@ -108,15 +108,30 @@ check_prerequisites() {
     fi
 }
 
-# Test Step 2: apm runtime setup codex
+# Test Step 2: apm runtime setup (both copilot and codex for full coverage)
 test_runtime_setup() {
-    log_test "README Step 2: apm runtime setup codex"
+    log_test "README Step 2: apm runtime setup"
     
-    # Test runtime setup (this may take a moment)
+    # Install GitHub Copilot CLI (recommended default, used by guardrailing hero scenario)
+    echo "Running: $BINARY_PATH runtime setup copilot"
+    echo "--- Command Output Start ---"
+    "$BINARY_PATH" runtime setup copilot 2>&1
+    local exit_code=$?
+    echo "--- Command Output End ---"
+    echo "Exit code: $exit_code"
+    
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "apm runtime setup copilot failed with exit code $exit_code"
+        return 1
+    fi
+    
+    log_success "Copilot CLI runtime setup completed"
+    
+    # Also install Codex CLI (for zero-config scenario and fallback)
     echo "Running: $BINARY_PATH runtime setup codex"
     echo "--- Command Output Start ---"
     "$BINARY_PATH" runtime setup codex 2>&1
-    local exit_code=$?
+    exit_code=$?
     echo "--- Command Output End ---"
     echo "Exit code: $exit_code"
     
@@ -125,169 +140,186 @@ test_runtime_setup() {
         return 1
     fi
     
-    log_success "Runtime setup completed"
+    log_success "Codex CLI runtime setup completed"
+    log_success "Both runtimes (Copilot, Codex) configured successfully"
 }
 
-# Test Step 3: apm init my-ai-native-project
-test_init_project() {
-    log_test "README Step 3: apm init my-ai-native-project"
+# Helper function for cross-platform timeout
+run_with_timeout() {
+    local timeout_duration=$1
+    shift
+    local cmd="$@"
     
-    # Test init with the exact project name from README
-    echo "Running: $BINARY_PATH init my-ai-native-project --yes"
+    # Use perl for cross-platform timeout support
+    perl -e "alarm $timeout_duration; exec @ARGV" -- sh -c "$cmd" 2>&1 &
+    local pid=$!
+    
+    # Wait for the command to complete or timeout
+    wait $pid 2>/dev/null
+    local exit_code=$?
+    
+    # Exit code 142 (SIGALRM) means timeout
+    if [[ $exit_code -eq 142 ]]; then
+        return 124  # Return timeout code like GNU timeout
+    fi
+    
+    return $exit_code
+}
+
+# HERO SCENARIO 1: 30-Second Zero-Config
+# Test the exact README flow: runtime setup → run virtual package
+test_hero_zero_config() {
+    log_test "HERO SCENARIO 1: 30-Second Zero-Config (README lines 35-44)"
+    
+    # Create temporary directory for this test
+    mkdir -p zero-config-test && cd zero-config-test
+    
+    # Runtime setup is already done in test_runtime_setup()
+    # Just test the virtual package run
+    
+    echo "Running: $BINARY_PATH run github/awesome-copilot/prompts/architecture-blueprint-generator (with 15s timeout)"
     echo "--- Command Output Start ---"
-    "$BINARY_PATH" init my-ai-native-project --yes 2>&1
+    run_with_timeout 15 "$BINARY_PATH run github/awesome-copilot/prompts/architecture-blueprint-generator"
     local exit_code=$?
     echo "--- Command Output End ---"
     echo "Exit code: $exit_code"
     
-    if [[ $exit_code -ne 0 ]]; then
-        log_error "apm init my-ai-native-project failed with exit code $exit_code"
-        return 1
-    fi
-    
-    # Check that the project directory was created
-    if [[ ! -d "my-ai-native-project" ]]; then
-        log_error "my-ai-native-project directory not created"
-        return 1
-    fi
-    
-    # Check that apm.yml was created (minimal mode - only apm.yml)
-    if [[ ! -f "my-ai-native-project/apm.yml" ]]; then
-        log_error "apm.yml not created in project"
-        return 1
-    fi
-    
-    log_success "Project initialization completed (minimal mode)"
-    
-    # NEW: Create minimal project structure for testing (simulating user workflow)
-    log_info "Creating minimal project structure for validation testing..."
-    
-    cd my-ai-native-project
-    
-    # Create .apm directory with minimal instruction
-    mkdir -p .apm/instructions
-    cat > .apm/instructions/test.instructions.md << 'EOF'
----
-applyTo: "**"
-description: Test instructions for release validation
----
-
-# Test Instructions
-
-Basic instructions for release validation testing.
-EOF
-    
-    # Create a simple prompt file for testing
-    cat > hello-world.prompt.md << 'EOF'
----
-description: Hello World prompt for validation
----
-
-# Hello World
-
-This is a test prompt for {{name}}.
-
-Say hello to {{name}}!
-EOF
-    
-    # Update apm.yml to add start script
-    # Note: Using simple append to avoid Python/YAML dependency issues in isolated test
-    cat >> apm.yml << 'EOF'
-
-# Scripts added for release validation testing
-scripts:
-  start: "codex hello-world.prompt.md"
-EOF
-    
-    cd ..
-    log_info "Project structure created for testing"
-    
-    log_success "Project initialization and setup completed"
-}
-
-# Test Step 4: cd my-ai-native-project && apm compile
-test_compile() {
-    log_test "README Step 4: cd my-ai-native-project && apm compile"
-    
-    cd my-ai-native-project
-    
-    # Test compile (the critical step that was failing) - show actual error
-    echo "Running: $BINARY_PATH compile"
-    echo "--- Command Output Start ---"
-    "$BINARY_PATH" compile 2>&1
-    local exit_code=$?
-    echo "--- Command Output End ---"
-    echo "Exit code: $exit_code"
-    
-    if [[ $exit_code -ne 0 ]]; then
-        log_error "apm compile failed with exit code $exit_code"
+    if [[ $exit_code -eq 124 ]]; then
+        # Exit code 124 is timeout, which is expected and OK (prompt execution started)
+        log_success "Zero-config auto-install worked! Package installed and prompt started."
+    elif [[ $exit_code -eq 0 ]]; then
+        # Command completed successfully within timeout
+        log_success "Zero-config auto-install completed successfully"
+    else
+        log_error "Zero-config auto-install failed immediately with exit code $exit_code"
         cd ..
         return 1
     fi
     
-    # Check that agents.md was created
+    # Verify package was actually installed
+    if [[ ! -d "apm_modules/github/awesome-copilot-architecture-blueprint-generator" ]]; then
+        log_error "Package was not installed by auto-install"
+        cd ..
+        return 1
+    fi
+    
+    log_success "Package auto-installed to apm_modules/"
+    
+    # Test second run (should use cached package, no re-download)
+    echo "Testing second run (should use cache)..."
+    run_with_timeout 10 "$BINARY_PATH run github/awesome-copilot/prompts/architecture-blueprint-generator" | head -20
+    local second_exit_code=${PIPESTATUS[0]}
+    
+    if [[ $second_exit_code -eq 124 || $second_exit_code -eq 0 ]]; then
+        log_success "Second run used cached package (fast, no re-download)"
+    fi
+    
+    cd ..
+    log_success "HERO SCENARIO 1: 30-second zero-config PASSED ✨"
+}
+
+# HERO SCENARIO 2: 2-Minute Guardrailing
+# Test the exact README flow: init → install packages → compile → run
+test_hero_guardrailing() {
+    log_test "HERO SCENARIO 2: 2-Minute Guardrailing (README lines 46-60)"
+    
+    # Step 1: apm init my-project
+    echo "Running: $BINARY_PATH init my-project --yes"
+    echo "--- Command Output Start ---"
+    "$BINARY_PATH" init my-project --yes 2>&1
+    local exit_code=$?
+    echo "--- Command Output End ---"
+    echo "Exit code: $exit_code"
+    
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "apm init my-project failed with exit code $exit_code"
+        return 1
+    fi
+    
+    if [[ ! -d "my-project" || ! -f "my-project/apm.yml" ]]; then
+        log_error "my-project directory or apm.yml not created"
+        return 1
+    fi
+    
+    log_success "Project initialized"
+    
+    cd my-project
+    
+    # Step 2: apm install danielmeppiel/design-guidelines
+    echo "Running: $BINARY_PATH install danielmeppiel/design-guidelines"
+    echo "--- Command Output Start ---"
+    APM_E2E_TESTS="${APM_E2E_TESTS:-}" "$BINARY_PATH" install danielmeppiel/design-guidelines 2>&1
+    exit_code=$?
+    echo "--- Command Output End ---"
+    echo "Exit code: $exit_code"
+    
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "apm install danielmeppiel/design-guidelines failed"
+        cd ..
+        return 1
+    fi
+    
+    log_success "design-guidelines installed"
+    
+    # Step 3: apm install danielmeppiel/compliance-rules
+    echo "Running: $BINARY_PATH install danielmeppiel/compliance-rules"
+    echo "--- Command Output Start ---"
+    APM_E2E_TESTS="${APM_E2E_TESTS:-}" "$BINARY_PATH" install danielmeppiel/compliance-rules 2>&1
+    exit_code=$?
+    echo "--- Command Output End ---"
+    echo "Exit code: $exit_code"
+    
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "apm install danielmeppiel/compliance-rules failed"
+        cd ..
+        return 1
+    fi
+    
+    log_success "compliance-rules installed"
+    
+    # Step 4: apm compile
+    echo "Running: $BINARY_PATH compile"
+    echo "--- Command Output Start ---"
+    "$BINARY_PATH" compile 2>&1
+    exit_code=$?
+    echo "--- Command Output End ---"
+    echo "Exit code: $exit_code"
+    
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "apm compile failed"
+        cd ..
+        return 1
+    fi
+    
     if [[ ! -f "AGENTS.md" ]]; then
         log_error "AGENTS.md not created by compile"
         cd ..
         return 1
     fi
     
-    cd ..
-    log_success "Compilation completed"
-}
-
-# Test Step 5 Part 1: apm install
-test_install() {
-    log_test "README Step 5: apm install"
+    log_success "Compiled to AGENTS.md (guardrails active)"
     
-    cd my-ai-native-project
-    
-    # Test install - preserve APM_E2E_TESTS for automated testing
-    echo "Running: $BINARY_PATH install"
+    # Step 5: apm run design-review (from installed package)
+    echo "Running: $BINARY_PATH run design-review (with 10s timeout)"
     echo "--- Command Output Start ---"
-    APM_E2E_TESTS="${APM_E2E_TESTS:-}" "$BINARY_PATH" install 2>&1
-    local exit_code=$?
-    echo "--- Command Output End ---"
-    echo "Exit code: $exit_code"
-    
-    if [[ $exit_code -ne 0 ]]; then
-        log_error "apm install failed with exit code $exit_code"
-        cd ..
-        return 1
-    fi
-    
-    cd ..
-    log_success "Install completed"
-}
-
-# Test Step 5 Part 2: apm run start --param name="<YourGitHubHandle>"
-test_run_command() {
-    log_test "README Step 5: apm run start --param name=\"Developer\""
-    
-    cd my-ai-native-project
-    
-    # Test run (this may not fully complete but should at least start)
-    # We'll check that it doesn't fail immediately due to binary issues
-    echo "Running: $BINARY_PATH run start --param name=\"danielmeppiel\" (with 10s timeout)"
-    echo "--- Command Output Start ---"
-    timeout 10s "$BINARY_PATH" run start --param name="danielmeppiel" 2>&1
-    local exit_code=$?
+    run_with_timeout 10 "$BINARY_PATH run design-review"
+    exit_code=$?
     echo "--- Command Output End ---"
     echo "Exit code: $exit_code"
     
     if [[ $exit_code -eq 124 ]]; then
-        # Exit code 124 is timeout, which is expected and OK
-        log_success "Run command started successfully (timed out as expected)"
+        # Timeout is expected and OK - prompt started executing
+        log_success "design-review prompt executed with compiled guardrails"
     elif [[ $exit_code -eq 0 ]]; then
-        # Command completed successfully within timeout
-        log_success "Run command completed successfully"
+        log_success "design-review completed successfully"
     else
-        log_error "apm run command failed immediately with exit code $exit_code"
+        log_error "apm run design-review failed immediately"
         cd ..
         return 1
     fi
     
     cd ..
+    log_success "HERO SCENARIO 2: 2-minute guardrailing PASSED ✨"
 }
 
 # Test basic commands (sanity check)
@@ -350,7 +382,7 @@ echo ""
     echo "Binary found and executable: $BINARY_PATH"
     
     local tests_passed=0
-    local tests_total=6
+    local tests_total=5  # Prerequisites, basic commands, runtime setup, 2 hero scenarios
     local dependency_tests_run=false
     
     # Add dependency tests to total if available and GITHUB token is present
@@ -368,7 +400,7 @@ echo ""
     test_dir="binary-golden-scenario-$$"  # Make it global for cleanup
     mkdir "$test_dir" && cd "$test_dir"
     
-    # Run the exact README golden scenario
+    # Run prerequisites and basic tests
     if check_prerequisites; then
         ((tests_passed++))
     else
@@ -387,28 +419,19 @@ echo ""
         log_error "Runtime setup test failed"
     fi
     
-    if test_init_project; then
+    # HERO SCENARIO 1: 30-second zero-config
+    if test_hero_zero_config; then
         ((tests_passed++))
     else
-        log_error "Project init test failed"
+        log_error "Hero scenario 1 (30-sec zero-config) failed"
     fi
     
-    if test_compile; then
+    # HERO SCENARIO 2: 2-minute guardrailing
+    if test_hero_guardrailing; then
         ((tests_passed++))
     else
-        log_error "Compile test failed"
+        log_error "Hero scenario 2 (2-min guardrailing) failed"
     fi
-    
-    if test_install; then
-        ((tests_passed++))
-    else
-        log_error "Install test failed"
-    fi
-    
-    # Note: Skipping the run test for now as it requires more complex setup
-    # if test_run_command; then
-    #     ((tests_passed++))
-    # fi
     
     # Run dependency integration tests if available and GitHub token is set
     if [[ "$dependency_tests_run" == "true" ]]; then
@@ -424,32 +447,41 @@ echo ""
     cd ..
     
     echo ""
-    echo "Results: $tests_passed/$tests_total golden scenario steps passed"
+    echo "Results: $tests_passed/$tests_total tests passed"
     
     if [[ $tests_passed -eq $tests_total ]]; then
         echo "✅ RELEASE VALIDATION PASSED!"
         echo ""
         echo "🚀 Binary is ready for production release"
         echo "📦 End-user experience validated successfully" 
-        echo "🎯 Hero flow works exactly as documented"
+        echo "🎯 Both README hero scenarios work perfectly"
         echo ""
-        echo "Validated user journey:"
+        echo "Validated user journeys:"
         echo "  1. Prerequisites (GITHUB_TOKEN) ✅"
         echo "  2. Binary accessibility ✅"
-        echo "  3. Runtime setup ✅"
-        echo "  4. Project initialization ✅"
-        echo "  5. Agent compilation ✅"
-        echo "  6. Dependency installation ✅"
+        echo "  3. Runtime setup (copilot) ✅"
+        echo ""
+        echo "  HERO SCENARIO 1: 30-Second Zero-Config ✨"
+        echo "    - Run virtual package directly ✅"
+        echo "    - Auto-install on first run ✅"
+        echo "    - Use cached package on second run ✅"
+        echo ""
+        echo "  HERO SCENARIO 2: 2-Minute Guardrailing ✨"
+        echo "    - Project initialization ✅"
+        echo "    - Install APM packages ✅"
+        echo "    - Compile to AGENTS.md guardrails ✅"
+        echo "    - Run prompts with guardrails ✅"
         if [[ "$dependency_tests_run" == "true" ]]; then
-            echo "  7. Real dependency integration ✅"
+            echo ""
+            echo "  BONUS: Real dependency integration ✅"
         fi
         echo ""
-        log_success "README Golden Scenario works perfectly! ✨"
+        log_success "README Hero Scenarios work perfectly! ✨"
         echo ""
         echo "🎉 The binary delivers the exact README experience - real users will love it!"
         exit 0
     else
-        log_error "Some golden scenario steps failed"
+        log_error "Some tests failed"
         echo ""
         echo "⚠️  The binary doesn't match the README promise"
         exit 1

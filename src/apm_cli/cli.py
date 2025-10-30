@@ -138,13 +138,23 @@ def _check_orphaned_packages():
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-            declared_repos = set(dep.repo_url for dep in declared_deps)
-            declared_names = set()
+            
+            # Build set of expected installed package paths
+            # For virtual packages, use the sanitized package name from get_virtual_package_name()
+            # For regular packages, use repo_url as-is
+            expected_installed = set()
             for dep in declared_deps:
-                if "/" in dep.repo_url:
-                    declared_names.add(dep.repo_url.split("/")[-1])
-                else:
-                    declared_names.add(dep.repo_url)
+                repo_parts = dep.repo_url.split('/')
+                if len(repo_parts) >= 2:
+                    org_name = repo_parts[0]
+                    if dep.is_virtual:
+                        # Virtual package: org/repo-name-package-name
+                        package_name = dep.get_virtual_package_name()
+                        expected_installed.add(f"{org_name}/{package_name}")
+                    else:
+                        # Regular package: org/repo-name
+                        repo_name = repo_parts[1]
+                        expected_installed.add(f"{org_name}/{repo_name}")
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -157,7 +167,7 @@ def _check_orphaned_packages():
                         org_repo_name = f"{org_dir.name}/{repo_dir.name}"
 
                         # Check if orphaned
-                        if org_repo_name not in declared_repos:
+                        if org_repo_name not in expected_installed:
                             orphaned_packages.append(org_repo_name)
 
         return orphaned_packages
@@ -401,43 +411,13 @@ def _validate_package_exists(package):
         from apm_cli.models.apm_package import DependencyReference
         dep_ref = DependencyReference.parse(package)
         
-        # For virtual packages, validate the file exists via GitHub API or raw URL
+        # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
-            import requests
-            host = dep_ref.host or "github.com"
-            
-            # Build raw file URL
-            if host == "github.com":
-                base_url = "https://raw.githubusercontent.com"
-            else:
-                base_url = f"https://{host}/raw"
-            
-            ref = dep_ref.reference or "main"
-            file_url = f"{base_url}/{dep_ref.repo_url}/{ref}/{dep_ref.virtual_path}"
-            
-            try:
-                # Try HEAD request first (faster)
-                response = requests.head(file_url, timeout=10, allow_redirects=True)
-                if response.status_code == 200:
-                    return True
-                
-                # If HEAD fails, try GET with main/master fallback
-                response = requests.get(file_url, timeout=10)
-                if response.status_code == 200:
-                    return True
-                
-                # Try master as fallback
-                if ref == "main":
-                    file_url = f"{base_url}/{dep_ref.repo_url}/master/{dep_ref.virtual_path}"
-                    response = requests.get(file_url, timeout=10)
-                    return response.status_code == 200
-                
-                return False
-            except requests.exceptions.RequestException:
-                return False
+            from apm_cli.deps.github_downloader import GitHubPackageDownloader
+            downloader = GitHubPackageDownloader()
+            return downloader.validate_virtual_package_exists(dep_ref)
         
         # For regular packages, use git ls-remote
-        # Try to do a shallow clone to test accessibility
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
                 # Try cloning with minimal fetch
@@ -651,17 +631,23 @@ def prune(ctx, dry_run):
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-            # Keep full org/repo format (e.g., "danielmeppiel/design-guidelines")
-            declared_repos = set()
-            declared_names = set()  # For directory name matching
+            
+            # Build set of expected installed package paths
+            # For virtual packages, use the sanitized package name from get_virtual_package_name()
+            # For regular packages, use repo_url as-is
+            expected_installed = set()
             for dep in declared_deps:
-                declared_repos.add(dep.repo_url)
-                # Also track directory names for filesystem matching
-                if "/" in dep.repo_url:
-                    package_name = dep.repo_url.split("/")[-1]
-                    declared_names.add(package_name)
-                else:
-                    declared_names.add(dep.repo_url)
+                repo_parts = dep.repo_url.split('/')
+                if len(repo_parts) >= 2:
+                    org_name = repo_parts[0]
+                    if dep.is_virtual:
+                        # Virtual package: org/repo-name-package-name
+                        package_name = dep.get_virtual_package_name()
+                        expected_installed.add(f"{org_name}/{package_name}")
+                    else:
+                        # Regular package: org/repo-name
+                        repo_name = repo_parts[1]
+                        expected_installed.add(f"{org_name}/{repo_name}")
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
@@ -682,7 +668,7 @@ def prune(ctx, dry_run):
         # Find orphaned packages (installed but not declared)
         orphaned_packages = {}
         for org_repo_name, display_name in installed_packages.items():
-            if org_repo_name not in declared_repos:
+            if org_repo_name not in expected_installed:
                 orphaned_packages[org_repo_name] = display_name
 
         if not orphaned_packages:

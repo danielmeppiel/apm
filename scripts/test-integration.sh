@@ -185,9 +185,16 @@ setup_binary_for_testing() {
     log_success "APM binary ready for testing: $version"
 }
 
-# Set up runtimes (codex/llm) - Integration Testing Coverage!
+# Set up runtimes (codex/llm/copilot) - Integration Testing Coverage!
 setup_runtimes() {
     log_info "=== Setting up runtimes for integration tests ==="
+    
+    # Set up GitHub Copilot CLI runtime (recommended default)
+    log_info "Setting up GitHub Copilot CLI runtime..."
+    if ! ./apm runtime setup copilot; then
+        log_error "Failed to set up GitHub Copilot CLI runtime"
+        exit 1
+    fi
     
     # Set up codex runtime
     log_info "Setting up Codex runtime..."
@@ -211,6 +218,15 @@ setup_runtimes() {
     # Verify runtimes are available
     log_info "Verifying runtime installations..."
     
+    # Check GitHub Copilot CLI
+    if command -v copilot >/dev/null 2>&1; then
+        local copilot_version=$(copilot --version 2>&1 || echo "unknown")
+        log_success "GitHub Copilot CLI ready: $copilot_version"
+    else
+        log_error "GitHub Copilot CLI not found in PATH after setup"
+        exit 1
+    fi
+    
     # Check codex
     if command -v codex >/dev/null 2>&1; then
         local codex_version=$(codex --version 2>&1 || echo "unknown")
@@ -232,15 +248,7 @@ setup_runtimes() {
         exit 1
     fi
     
-    # Check Codex CLI (if available)
-    if command -v codex >/dev/null 2>&1; then
-        local codex_version=$(codex --version 2>&1 || echo "unknown")
-        log_success "Codex runtime ready: $codex_version"
-    else
-        log_info "Codex not found in PATH (optional)"
-    fi
-    
-    log_success "All runtimes configured successfully"
+    log_success "All runtimes configured successfully (Copilot, Codex, LLM)"
 }
 
 # Install test dependencies (like CI does)
@@ -265,14 +273,12 @@ install_test_dependencies() {
 run_e2e_tests() {
     log_info "=== Running integration tests (mirroring CI) ==="
     log_info "Testing comprehensive runtime scenarios:"
-    log_info "  - Codex runtime integration"  
-    log_info "  - LLM runtime integration"
-    log_info "  - Dual runtime interoperability"
-    log_info "  - Template bundling verification"
-    log_info "  - Authentication edge cases"
-    log_info "  - MCP registry integration (NEW)"
-    log_info "  - Environment variable handling (NEW)"
-    log_info "  - Docker args processing (NEW)"
+    log_info "  - Zero-config auto-install (NEW HERO SCENARIO 1)"
+    log_info "  - 2-minute guardrailing (NEW HERO SCENARIO 2)"
+    log_info "  - MCP registry integration"
+    log_info "  - APM Dependencies with real repositories"
+    log_info "  - Environment variable handling"
+    log_info "  - Docker args processing"
     
     # Set environment variables (like CI does)
     export APM_E2E_TESTS="1"
@@ -300,16 +306,30 @@ run_e2e_tests() {
         source .venv/bin/activate
     fi
     
-    # Run golden scenario tests (existing)
-    log_info "Running golden scenario E2E tests..."
-    echo "Command: pytest tests/integration/test_golden_scenario_e2e.py -v -s --tb=short"
+    # Run NEW hero scenario test (zero-config auto-install)
+    log_info "Running NEW HERO SCENARIO 1: Zero-config auto-install test..."
+    echo "Command: pytest tests/integration/test_auto_install_e2e.py -v -s --tb=short"
     
-    if pytest tests/integration/test_golden_scenario_e2e.py -v -s --tb=short; then
-        log_success "Golden scenario tests passed!"
+    if pytest tests/integration/test_auto_install_e2e.py -v -s --tb=short; then
+        log_success "Zero-config auto-install tests passed!"
     else
-        log_error "Golden scenario tests failed!"
+        log_error "Zero-config auto-install tests failed!"
         exit 1
     fi
+    
+    # Run NEW hero scenario test (2-minute guardrailing)
+    log_info "Running NEW HERO SCENARIO 2: 2-minute guardrailing test..."
+    echo "Command: pytest tests/integration/test_guardrailing_hero_e2e.py -v -s --tb=short"
+    
+    if pytest tests/integration/test_guardrailing_hero_e2e.py -v -s --tb=short; then
+        log_success "2-minute guardrailing tests passed!"
+    else
+        log_error "2-minute guardrailing tests failed!"
+        exit 1
+    fi
+    
+    # NOTE: Legacy golden scenario tests removed - replaced by faster auto-install tests above
+    # The auto-install tests cover the same hero scenario but with early termination for speed
     
     # Run MCP registry E2E tests (new - covers our implemented functionality)
     log_info "Running MCP registry E2E tests..."
@@ -364,20 +384,28 @@ main() {
         echo "✅ Local mode: Built binary and validated full integration process"
     fi
     echo ""
-    echo "Integration validation complete - COMPREHENSIVE RUNTIME TESTING:"
+    echo "Integration validation complete - COMPREHENSIVE TESTING:"
     echo "  1. Prerequisites (GITHUB_TOKEN) ✅"
-    echo "  2. Codex runtime integration ✅"
-    echo "  3. LLM runtime integration ✅"
-    echo "  4. Dual runtime interoperability ✅" 
-    echo "  5. Template bundling verification ✅"
-    echo "  6. Authentication edge cases ✅"
-    echo "  7. MCP registry search & show ✅"
-    echo "  8. Registry-based installation ✅"
-    echo "  9. Environment variable handling ✅"
-    echo "  10. Docker args with -e flags ✅"
-    echo "  11. Empty string & defaults logic ✅"
-    echo "  12. Cross-adapter consistency ✅"
-    echo "  13. Duplication prevention ✅"
+    echo ""
+    echo "  HERO SCENARIO 1: 30-Second Zero-Config ✨"
+    echo "    - Run virtual package directly ✅"
+    echo "    - Auto-install on first run ✅"
+    echo "    - Use cached package on second run ✅"
+    echo ""
+    echo "  HERO SCENARIO 2: 2-Minute Guardrailing ✨"
+    echo "    - Project initialization ✅"
+    echo "    - Install multiple APM packages ✅"
+    echo "    - Compile to AGENTS.md with combined guardrails ✅"
+    echo "    - Run prompts from installed packages ✅"
+    echo ""
+    echo "  3. MCP registry search & show ✅"
+    echo "  4. Registry-based installation ✅"
+    echo "  5. APM Dependencies integration ✅"
+    echo "  6. Environment variable handling ✅"
+    echo "  7. Docker args with -e flags ✅"
+    echo "  8. Empty string & defaults logic ✅"
+    echo "  9. Cross-adapter consistency ✅"
+    echo "  10. Duplication prevention ✅"
     echo ""
     log_success "Ready for release validation!"
 }

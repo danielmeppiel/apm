@@ -279,7 +279,7 @@ class GitHubPackageDownloader:
         )
     
     def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
-        """Download a single file from GitHub repository via raw.githubusercontent.com.
+        """Download a single file from GitHub repository.
         
         Args:
             dep_ref: Parsed dependency reference
@@ -294,24 +294,30 @@ class GitHubPackageDownloader:
         """
         host = dep_ref.host or default_host()
         
-        # Build raw file URL
-        # Format: https://raw.githubusercontent.com/owner/repo/ref/path/to/file
-        if host == "github.com":
-            base_url = "https://raw.githubusercontent.com"
-        else:
-            # For GitHub Enterprise, use the API endpoint
-            base_url = f"https://{host}/raw"
+        # Parse owner/repo from repo_url
+        owner, repo = dep_ref.repo_url.split('/', 1)
         
-        file_url = f"{base_url}/{dep_ref.repo_url}/{ref}/{file_path}"
+        # Build GitHub API URL - format differs by host type
+        if host == "github.com":
+            # GitHub.com: https://api.github.com/repos/owner/repo/contents/path
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+        elif host.endswith(".ghe.com"):
+            # GitHub Enterprise Cloud Data Residency: https://api.{subdomain}.ghe.com/repos/owner/repo/contents/path
+            api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+        else:
+            # GitHub Enterprise Server: https://{host}/api/v3/repos/owner/repo/contents/path
+            api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         
         # Set up authentication headers
-        headers = {}
+        headers = {
+            'Accept': 'application/vnd.github.v3.raw'  # Returns raw content directly
+        }
         if self.github_token:
             headers['Authorization'] = f'token {self.github_token}'
         
         # Try to download with the specified ref
         try:
-            response = requests.get(file_url, headers=headers, timeout=30)
+            response = requests.get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.content
         except requests.exceptions.HTTPError as e:
@@ -323,10 +329,19 @@ class GitHubPackageDownloader:
                 
                 # Try the other default branch
                 fallback_ref = "master" if ref == "main" else "main"
-                fallback_url = f"{base_url}/{dep_ref.repo_url}/{fallback_ref}/{file_path}"
+                
+                # Build fallback API URL
+                if host == "github.com":
+                    fallback_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
+                elif host.endswith(".ghe.com"):
+                    fallback_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
+                else:
+                    fallback_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
                 
                 try:
                     response = requests.get(fallback_url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    return response.content
                     response.raise_for_status()
                     return response.content
                 except requests.exceptions.HTTPError:
@@ -345,6 +360,33 @@ class GitHubPackageDownloader:
                 raise RuntimeError(f"Failed to download {file_path}: HTTP {e.response.status_code}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
+    
+    def validate_virtual_package_exists(self, dep_ref: DependencyReference) -> bool:
+        """Validate that a virtual package (file or collection) exists on GitHub.
+        
+        Args:
+            dep_ref: Parsed dependency reference for virtual package
+            
+        Returns:
+            bool: True if the package exists and is accessible, False otherwise
+        """
+        if not dep_ref.is_virtual:
+            raise ValueError("Can only validate virtual packages with this method")
+        
+        ref = dep_ref.reference or "main"
+        file_path = dep_ref.virtual_path
+        
+        # For collections, check for .collection.yml file
+        if 'collections/' in dep_ref.virtual_path:
+            file_path = f"{dep_ref.virtual_path}.collection.yml"
+        
+        # Try to download the file (will use existing auth and host detection)
+        try:
+            self.download_raw_file(dep_ref, file_path, ref)
+            return True
+        except RuntimeError:
+            # File doesn't exist or isn't accessible
+            return False
     
     def download_virtual_file_package(self, dep_ref: DependencyReference, target_path: Path) -> PackageInfo:
         """Download a single file as a virtual APM package.
@@ -455,6 +497,141 @@ author: {dep_ref.repo_url.split('/')[0]}
             installed_at=datetime.now().isoformat()
         )
     
+    def download_collection_package(self, dep_ref: DependencyReference, target_path: Path) -> PackageInfo:
+        """Download a collection as a virtual APM package.
+        
+        Downloads the collection manifest, then fetches all referenced files and
+        organizes them into the appropriate .apm/ subdirectories.
+        
+        Args:
+            dep_ref: Dependency reference with virtual_path pointing to collection
+            target_path: Local path where virtual package should be created
+            
+        Returns:
+            PackageInfo: Information about the created virtual package
+            
+        Raises:
+            ValueError: If the dependency is not a valid collection package
+            RuntimeError: If download fails
+        """
+        if not dep_ref.is_virtual or not dep_ref.virtual_path:
+            raise ValueError("Dependency must be a virtual collection package")
+        
+        if not dep_ref.is_virtual_collection():
+            raise ValueError(f"Path '{dep_ref.virtual_path}' is not a valid collection path")
+        
+        # Determine the ref to use
+        ref = dep_ref.reference or "main"
+        
+        # Extract collection name from path (e.g., "collections/project-planning" -> "project-planning")
+        collection_name = dep_ref.virtual_path.split('/')[-1]
+        
+        # Build collection manifest path - try .yml first, then .yaml as fallback
+        collection_manifest_path = f"{dep_ref.virtual_path}.collection.yml"
+        
+        # Download the collection manifest
+        try:
+            manifest_content = self.download_raw_file(dep_ref, collection_manifest_path, ref)
+        except RuntimeError as e:
+            # Try .yaml extension as fallback
+            if ".collection.yml" in str(e):
+                collection_manifest_path = f"{dep_ref.virtual_path}.collection.yaml"
+                try:
+                    manifest_content = self.download_raw_file(dep_ref, collection_manifest_path, ref)
+                except RuntimeError:
+                    raise RuntimeError(f"Collection manifest not found: {dep_ref.virtual_path}.collection.yml (also tried .yaml)")
+            else:
+                raise RuntimeError(f"Failed to download collection manifest: {e}")
+        
+        # Parse the collection manifest
+        from .collection_parser import parse_collection_yml
+        
+        try:
+            manifest = parse_collection_yml(manifest_content)
+        except (ValueError, Exception) as e:
+            raise RuntimeError(f"Invalid collection manifest '{collection_name}': {e}")
+        
+        # Create target directory structure
+        target_path.mkdir(parents=True, exist_ok=True)
+        
+        # Download all items from the collection
+        downloaded_count = 0
+        failed_items = []
+        
+        for item in manifest.items:
+            try:
+                # Download the file
+                item_content = self.download_raw_file(dep_ref, item.path, ref)
+                
+                # Determine subdirectory based on item kind
+                subdir = item.subdirectory
+                
+                # Create the subdirectory
+                apm_subdir = target_path / ".apm" / subdir
+                apm_subdir.mkdir(parents=True, exist_ok=True)
+                
+                # Write the file
+                filename = item.path.split('/')[-1]
+                file_path = apm_subdir / filename
+                file_path.write_bytes(item_content)
+                
+                downloaded_count += 1
+                
+            except RuntimeError as e:
+                # Log the failure but continue with other items
+                failed_items.append(f"{item.path} ({e})")
+                continue
+        
+        # Check if we downloaded at least some items
+        if downloaded_count == 0:
+            error_msg = f"Failed to download any items from collection '{collection_name}'"
+            if failed_items:
+                error_msg += f". Failures:\n  - " + "\n  - ".join(failed_items)
+            raise RuntimeError(error_msg)
+        
+        # Generate apm.yml with collection metadata
+        package_name = dep_ref.get_virtual_package_name()
+        
+        apm_yml_content = f"""name: {package_name}
+version: 1.0.0
+description: {manifest.description}
+author: {dep_ref.repo_url.split('/')[0]}
+"""
+        
+        # Add tags if present
+        if manifest.tags:
+            apm_yml_content += f"\ntags:\n"
+            for tag in manifest.tags:
+                apm_yml_content += f"  - {tag}\n"
+        
+        apm_yml_path = target_path / "apm.yml"
+        apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
+        
+        # Create APMPackage object
+        package = APMPackage(
+            name=package_name,
+            version="1.0.0",
+            description=manifest.description,
+            author=dep_ref.repo_url.split('/')[0],
+            source=dep_ref.to_github_url(),
+            package_path=target_path
+        )
+        
+        # Log warnings for failed items if any
+        if failed_items:
+            import warnings
+            warnings.warn(
+                f"Collection '{collection_name}' installed with {downloaded_count}/{manifest.item_count} items. "
+                f"Failed items: {len(failed_items)}"
+            )
+        
+        # Return PackageInfo
+        return PackageInfo(
+            package=package,
+            install_path=target_path,
+            installed_at=datetime.now().isoformat()
+        )
+    
     def download_package(self, repo_ref: str, target_path: Path) -> PackageInfo:
         """Download a GitHub repository and validate it as an APM package.
         
@@ -484,8 +661,8 @@ author: {dep_ref.repo_url.split('/')[0]}
                 # Individual file virtual package
                 return self.download_virtual_file_package(dep_ref, target_path)
             elif dep_ref.is_virtual_collection():
-                # Collection virtual package (Phase 2)
-                raise NotImplementedError("Collection virtual packages will be implemented in Phase 2")
+                # Collection virtual package
+                return self.download_collection_package(dep_ref, target_path)
             else:
                 raise ValueError(f"Unknown virtual package type for {dep_ref.virtual_path}")
         
