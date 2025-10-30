@@ -273,14 +273,10 @@ install_test_dependencies() {
 run_e2e_tests() {
     log_info "=== Running integration tests (mirroring CI) ==="
     log_info "Testing comprehensive runtime scenarios:"
-    log_info "  - Zero-config auto-install (NEW HERO SCENARIO)"
-    log_info "  - GitHub Copilot CLI integration"
-    log_info "  - Codex runtime integration"  
-    log_info "  - LLM runtime integration"
-    log_info "  - Multi-runtime interoperability"
-    log_info "  - Template bundling verification"
-    log_info "  - Authentication edge cases"
+    log_info "  - Zero-config auto-install (NEW HERO SCENARIO 1)"
+    log_info "  - 2-minute guardrailing (NEW HERO SCENARIO 2)"
     log_info "  - MCP registry integration"
+    log_info "  - APM Dependencies with real repositories"
     log_info "  - Environment variable handling"
     log_info "  - Docker args processing"
     
@@ -332,16 +328,8 @@ run_e2e_tests() {
         exit 1
     fi
     
-    # Run golden scenario tests (existing)
-    log_info "Running golden scenario E2E tests..."
-    echo "Command: pytest tests/integration/test_golden_scenario_e2e.py -v -s --tb=short"
-    
-    if pytest tests/integration/test_golden_scenario_e2e.py -v -s --tb=short; then
-        log_success "Golden scenario tests passed!"
-    else
-        log_error "Golden scenario tests failed!"
-        exit 1
-    fi
+    # NOTE: Legacy golden scenario tests removed - replaced by faster auto-install tests above
+    # The auto-install tests cover the same hero scenario but with early termination for speed
     
     # Run MCP registry E2E tests (new - covers our implemented functionality)
     log_info "Running MCP registry E2E tests..."
@@ -410,19 +398,14 @@ main() {
     echo "    - Compile to AGENTS.md with combined guardrails ✅"
     echo "    - Run prompts from installed packages ✅"
     echo ""
-    echo "  3. GitHub Copilot CLI integration ✅"
-    echo "  4. Codex runtime integration ✅"
-    echo "  5. LLM runtime integration ✅"
-    echo "  6. Multi-runtime interoperability ✅" 
-    echo "  7. Template bundling verification ✅"
-    echo "  8. Authentication edge cases ✅"
-    echo "  9. MCP registry search & show ✅"
-    echo "  10. Registry-based installation ✅"
-    echo "  11. Environment variable handling ✅"
-    echo "  12. Docker args with -e flags ✅"
-    echo "  13. Empty string & defaults logic ✅"
-    echo "  14. Cross-adapter consistency ✅"
-    echo "  15. Duplication prevention ✅"
+    echo "  3. MCP registry search & show ✅"
+    echo "  4. Registry-based installation ✅"
+    echo "  5. APM Dependencies integration ✅"
+    echo "  6. Environment variable handling ✅"
+    echo "  7. Docker args with -e flags ✅"
+    echo "  8. Empty string & defaults logic ✅"
+    echo "  9. Cross-adapter consistency ✅"
+    echo "  10. Duplication prevention ✅"
     echo ""
     log_success "Ready for release validation!"
 }

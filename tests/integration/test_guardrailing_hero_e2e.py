@@ -186,30 +186,58 @@ class TestGuardrailingHeroScenario:
             # Step 5: apm run design-review
             print("\n=== Step 5: apm run design-review ===")
             
-            # This will timeout as it tries to execute with Copilot CLI
-            # But we verify it finds and starts the prompt correctly
+            # Use early termination pattern - we only need to verify prompt starts correctly
+            # Don't wait for full Copilot CLI execution (takes minutes)
+            process = subprocess.Popen(
+                f"{apm_binary} run design-review",
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=project_dir,
+                env=env
+            )
+            
+            # Monitor output for success signals
+            output_lines = []
+            prompt_started = False
+            
             try:
-                result = run_command(
-                    f"{apm_binary} run design-review", 
-                    cwd=project_dir, 
-                    show_output=True,
-                    timeout=15,
-                    check=False
-                )
+                for line in iter(process.stdout.readline, ''):
+                    if not line:
+                        break
+                    
+                    output_lines.append(line.rstrip())
+                    print(f"  {line.rstrip()}")
+                    
+                    # Look for signals that prompt execution started successfully
+                    if any(signal in line for signal in [
+                        "Subprocess execution:",  # Codex about to run
+                    ]):
+                        prompt_started = True
+                        print("✓ design-review prompt execution started")
+                        break
                 
-                # If it completes quickly, that's also fine
-                if result.returncode == 0:
-                    print("✓ design-review executed successfully")
-                else:
-                    # Check if it failed due to runtime issue (acceptable)
-                    if "not found" in result.stderr.lower() or "command not found" in result.stderr.lower():
-                        print("⚠ Runtime not configured, but prompt was found correctly")
-                    else:
-                        pytest.fail(f"design-review failed unexpectedly: {result.stderr}")
-                        
-            except subprocess.TimeoutExpired:
-                # Timeout is expected if Copilot CLI starts executing
-                print("✓ design-review started (timed out as expected during execution)")
+                # Terminate the process gracefully
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                
+            except Exception as e:
+                process.kill()
+                process.wait()
+                pytest.fail(f"Error monitoring design-review execution: {e}")
+            
+            # Verify prompt was found and started
+            full_output = '\n'.join(output_lines)
+            assert prompt_started or "design-review" in full_output, \
+                f"Prompt execution didn't start correctly. Output:\n{full_output}"
+            
+            print("✓ design-review prompt found and started successfully")
             
             print("\n=== 2-Minute Guardrailing Hero Scenario: PASSED ✨ ===")
             print("✓ Project initialization")

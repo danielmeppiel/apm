@@ -18,6 +18,35 @@ import shutil
 from pathlib import Path
 
 
+# Skip all tests in this module if not in E2E mode
+E2E_MODE = os.environ.get('APM_E2E_TESTS', '').lower() in ('1', 'true', 'yes')
+
+pytestmark = pytest.mark.skipif(
+    not E2E_MODE,
+    reason="E2E tests only run when APM_E2E_TESTS=1 is set"
+)
+
+
+@pytest.fixture(scope="module")
+def temp_e2e_home():
+    """Create a temporary home directory for E2E testing."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_home = os.environ.get('HOME')
+        test_home = os.path.join(temp_dir, 'e2e_home')
+        os.makedirs(test_home)
+        
+        # Set up test environment
+        os.environ['HOME'] = test_home
+        
+        yield test_home
+        
+        # Restore original environment
+        if original_home:
+            os.environ['HOME'] = original_home
+        else:
+            del os.environ['HOME']
+
+
 class TestAutoInstallE2E:
     """E2E tests for auto-install functionality."""
     
@@ -42,11 +71,7 @@ author: test
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir)
     
-    @pytest.mark.skipif(
-        os.getenv("APM_E2E_TESTS") != "1",
-        reason="E2E tests only run when APM_E2E_TESTS=1"
-    )
-    def test_auto_install_virtual_prompt_first_run(self):
+    def test_auto_install_virtual_prompt_first_run(self, temp_e2e_home):
         """Test auto-install on first run with virtual package reference.
         
         This is the exact README hero scenario:
@@ -63,6 +88,10 @@ author: test
         apm_modules = Path("apm_modules")
         assert not apm_modules.exists(), "apm_modules should not exist initially"
         
+        # Set up environment (like golden scenario does)
+        env = os.environ.copy()
+        env['HOME'] = temp_e2e_home
+        
         # Run the exact README command with streaming output monitoring
         process = subprocess.Popen(
             [
@@ -72,7 +101,9 @@ author: test
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            cwd=self.test_dir,
+            env=env
         )
         
         output_lines = []
@@ -125,11 +156,7 @@ author: test
         
         print(f"✅ Auto-install successful: {package_path}")
     
-    @pytest.mark.skipif(
-        os.getenv("APM_E2E_TESTS") != "1",
-        reason="E2E tests only run when APM_E2E_TESTS=1"
-    )
-    def test_auto_install_uses_cache_on_second_run(self):
+    def test_auto_install_uses_cache_on_second_run(self, temp_e2e_home):
         """Test that second run uses cached package (no re-download).
         
         Expected behavior:
@@ -137,6 +164,10 @@ author: test
         2. Second run discovers already-installed package
         3. No download happens on second run
         """
+        # Set up environment
+        env = os.environ.copy()
+        env['HOME'] = temp_e2e_home
+        
         # First run - install with early termination
         process = subprocess.Popen(
             [
@@ -146,7 +177,9 @@ author: test
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            cwd=self.test_dir,
+            env=env
         )
         
         try:
@@ -174,7 +207,9 @@ author: test
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            cwd=self.test_dir,
+            env=env
         )
         
         output_lines = []
@@ -201,11 +236,7 @@ author: test
         
         print("✅ Second run used cached package (no re-download)")
     
-    @pytest.mark.skipif(
-        os.getenv("APM_E2E_TESTS") != "1",
-        reason="E2E tests only run when APM_E2E_TESTS=1"
-    )
-    def test_simple_name_works_after_install(self):
+    def test_simple_name_works_after_install(self, temp_e2e_home):
         """Test that simple name works after package is installed.
         
         Expected behavior:
@@ -213,6 +244,10 @@ author: test
         2. Run with simple name (just the prompt name)
         3. Should discover and run from installed package
         """
+        # Set up environment
+        env = os.environ.copy()
+        env['HOME'] = temp_e2e_home
+        
         # First install with full path - early termination
         process = subprocess.Popen(
             [
@@ -222,7 +257,9 @@ author: test
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            cwd=self.test_dir,
+            env=env
         )
         
         try:
@@ -246,7 +283,9 @@ author: test
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            cwd=self.test_dir,
+            env=env
         )
         
         output_lines = []
@@ -272,17 +311,17 @@ author: test
         
         print("✅ Simple name works after installation")
     
-    @pytest.mark.skipif(
-        os.getenv("APM_E2E_TESTS") != "1",
-        reason="E2E tests only run when APM_E2E_TESTS=1"
-    )
-    def test_auto_install_with_qualified_path(self):
+    def test_auto_install_with_qualified_path(self, temp_e2e_home):
         """Test auto-install works with qualified path format.
         
         Tests both formats:
         - Full: github/awesome-copilot/prompts/file.prompt.md
         - Qualified: github/awesome-copilot/architecture-blueprint-generator
         """
+        # Set up environment
+        env = os.environ.copy()
+        env['HOME'] = temp_e2e_home
+        
         # Test with qualified path (without .prompt.md extension) - early termination
         process = subprocess.Popen(
             [
@@ -292,7 +331,9 @@ author: test
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            cwd=self.test_dir,
+            env=env
         )
         
         try:
