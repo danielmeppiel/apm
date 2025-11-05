@@ -112,11 +112,11 @@ jobs:
             platform: linux
             arch: arm64
             binary_name: apm-linux-arm64
-          - os: macos-15-intel
+          - os: macos-13
             platform: darwin
             arch: x86_64
             binary_name: apm-darwin-x86_64
-          - os: macos-latest
+          - os: macos-14
             platform: darwin
             arch: arm64
             binary_name: apm-darwin-arm64
