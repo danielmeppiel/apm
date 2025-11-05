@@ -42,10 +42,10 @@ jobs:
           - os: ubuntu-24.04-arm
             arch: arm64
             platform: linux
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64  
             platform: darwin
-          - os: macos-14
+          - os: macos-latest
             arch: arm64
             platform: darwin
     
@@ -62,8 +62,8 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
     
-    - name: Setup build environment (macOS-13 Intel)
-      if: matrix.os == 'macos-13'
+    - name: Setup build environment (macOS-15 Intel)
+      if: matrix.os == 'macos-15-intel'
       run: |
         # Install Xcode Command Line Tools
         sudo xcode-select --install 2>/dev/null || true
@@ -191,11 +191,11 @@ jobs:
             arch: arm64
             platform: linux
             binary_name: apm-linux-arm64
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
             platform: darwin
             binary_name: apm-darwin-x86_64
-          - os: macos-14
+          - os: macos-latest
             arch: arm64
             platform: darwin
             binary_name: apm-darwin-arm64
@@ -225,8 +225,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Setup build environment (macOS-13 Intel)
-        if: matrix.os == 'macos-13'
+      - name: Setup build environment (macOS-15-intel)
+        if: matrix.os == 'macos-15-intel'
         run: |
           # Install Xcode Command Line Tools
           sudo xcode-select --install 2>/dev/null || true
@@ -266,11 +266,11 @@ jobs:
             arch: arm64
             platform: linux
             binary_name: apm-linux-arm64
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
             platform: darwin
             binary_name: apm-darwin-x86_64
-          - os: macos-14
+          - os: macos-latest
             arch: arm64
             platform: darwin
             binary_name: apm-darwin-arm64
@@ -291,8 +291,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
-      - name: Setup build environment (macOS-13 Intel)
-        if: matrix.os == 'macos-13'
+      - name: Setup build environment (macOS-15-intel)
+        if: matrix.os == 'macos-15-intel'
         run: |
           # Install Xcode Command Line Tools
           sudo xcode-select --install 2>/dev/null || true
