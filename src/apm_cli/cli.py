@@ -22,7 +22,7 @@ from apm_cli.utils.console import (
     _rich_success,
     _rich_warning,
 )
-from apm_cli.utils.github_host import is_valid_fqdn
+from apm_cli.utils.github_host import is_valid_fqdn, default_host
 
 # APM imports - use absolute imports everywhere for consistency
 from apm_cli.version import get_version
@@ -411,9 +411,9 @@ def _validate_package_exists(package):
 
     # GitHub constants
     package_url = (
-        package + ".git"
+        f"{package}.git"
         if is_valid_fqdn(package)
-        else "https://github.com/{package}.git"
+        else f"{default_host()}/{package}.git"
     )
 
     try:
