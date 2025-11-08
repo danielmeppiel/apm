@@ -150,6 +150,10 @@ class DependencyReference:
         if any(ord(c) < 32 for c in dependency_str):
             raise ValueError("Dependency string contains invalid control characters")
         
+        # SECURITY: Reject protocol-relative URLs (//example.com)
+        if dependency_str.startswith('//'):
+            raise ValueError("Only GitHub repositories are supported. Protocol-relative URLs are not allowed")
+        
         # Early detection of virtual packages (3+ path segments)
         # Extract the core path before processing reference (#) and alias (@)
         work_str = dependency_str
@@ -165,17 +169,48 @@ class DependencyReference:
         # Skip SSH URLs (git@host:owner/repo format)
         is_virtual_package = False
         virtual_path = None
+        validated_host = None  # Track if we validated a GitHub hostname
         
         if not temp_str.startswith(('git@', 'https://', 'http://')):
-            # Remove host prefix if present for counting
+            # SECURITY: Use proper URL parsing instead of substring checks to validate hostnames
+            # This prevents bypasses like "evil.com/github.com/repo" or "github.com.evil.com/repo"
             check_str = temp_str
-            if check_str.startswith('github.com/') or check_str.startswith('gh/'):
-                # Remove host prefix
-                check_str = '/'.join(check_str.split('/')[1:])
-            elif '/' in check_str:
-                # Check if first segment looks like a host (contains '.')
+            
+            # Try to parse as potential URL with host prefix
+            if '/' in check_str:
                 first_segment = check_str.split('/')[0]
-                if '.' in first_segment and is_github_hostname(first_segment):
+                
+                # If first segment contains a dot, it might be a hostname - VALIDATE IT
+                if '.' in first_segment:
+                    # Construct a full URL and parse it properly
+                    test_url = f"https://{check_str}"
+                    try:
+                        parsed = urllib.parse.urlparse(test_url)
+                        hostname = parsed.hostname
+                        
+                        # SECURITY CRITICAL: If there's a dot in first segment, it MUST be a valid GitHub hostname
+                        # Otherwise reject it - prevents evil-github.com, github.com.evil.com attacks
+                        if hostname and is_github_hostname(hostname):
+                            # Valid GitHub hostname - extract path after it
+                            validated_host = hostname
+                            path_parts = parsed.path.lstrip('/').split('/')
+                            if len(path_parts) >= 2:
+                                # Remove the hostname from check_str by taking everything after first segment
+                                check_str = '/'.join(check_str.split('/')[1:])
+                        else:
+                            # First segment has a dot but is NOT a valid GitHub hostname - REJECT
+                            raise ValueError(
+                                f"Only GitHub repositories are supported. Invalid hostname: {hostname or first_segment}"
+                            )
+                    except (ValueError, AttributeError) as e:
+                        # If we can't parse or validate, and first segment has dot, it's suspicious - REJECT
+                        if isinstance(e, ValueError) and "Only GitHub repositories" in str(e):
+                            raise  # Re-raise our security error
+                        raise ValueError(
+                            f"Only GitHub repositories are supported. Could not validate hostname: {first_segment}"
+                        )
+                elif check_str.startswith('gh/'):
+                    # Handle 'gh/' shorthand - only if it's exactly at the start
                     check_str = '/'.join(check_str.split('/')[1:])
             
             # Count segments (owner/repo/path/to/file = 5 segments)

@@ -95,22 +95,20 @@ apm install platform/standards
 If your organization uses multiple GitHub instances simultaneously:
 
 ```bash
-# Configure primary host
+# Configure primary host for bare package names
 export GITHUB_HOST=github.company.com
 
-# Allow additional hosts
-export APM_GITHUB_HOSTS="partner.ghe.com,vendor.github.io"
-
-# Packages resolve to GITHUB_HOST by default
+# Bare packages use GITHUB_HOST
 apm install team/package
 # Resolves to: github.company.com/team/package
 
-# Or specify host explicitly
+# FQDN packages work directly (no configuration needed)
 apm install partner.ghe.com/external/integration
 apm install vendor.github.io/third-party/tool
+apm install github.com/public/open-source-package
 ```
 
-**Key Insight:** APM validates `.ghe.com` and custom domains as legitimate GitHub hosts, but you must set `GITHUB_HOST` to make bare package names (e.g., `team/repo`) resolve to your enterprise domain instead of `github.com`.
+**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names (e.g., `team/repo`). Use FQDN syntax (e.g., `host.com/org/repo`) to explicitly specify any Git host. No allowlist configuration needed.
 
 ### Token Creation Guide
 
