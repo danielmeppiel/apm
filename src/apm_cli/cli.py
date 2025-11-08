@@ -409,11 +409,11 @@ def _validate_package_exists(package):
     import subprocess
     import tempfile
 
-    # GitHub constants
+    # GitHub constants - construct proper HTTPS URL for git ls-remote
     package_url = (
-        f"{package}.git"
+        f"https://{package}.git"
         if is_valid_fqdn(package)
-        else f"{default_host()}/{package}.git"
+        else f"https://{default_host()}/{package}.git"
     )
 
     try:
