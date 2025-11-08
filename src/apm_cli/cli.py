@@ -1,34 +1,37 @@
 """Command-line interface for Agent Package Manager (APM)."""
 
-import sys
 import os
-import click
+import sys
 from pathlib import Path
-from colorama import init, Fore, Style
 from typing import List
 
-# APM imports - use absolute imports everywhere for consistency
-from apm_cli.version import get_version
+import click
+from colorama import Fore, Style, init
+
+from apm_cli.commands.deps import deps
 from apm_cli.compilation import AgentsCompiler, CompilationConfig
 from apm_cli.primitives.discovery import discover_primitives
 from apm_cli.utils.console import (
-    _rich_success,
-    _rich_error,
-    _rich_info,
-    _rich_warning,
-    _rich_echo,
-    _rich_panel,
+    STATUS_SYMBOLS,
     _create_files_table,
     _get_console,
-    STATUS_SYMBOLS,
+    _rich_echo,
+    _rich_error,
+    _rich_info,
+    _rich_panel,
+    _rich_success,
+    _rich_warning,
 )
-from apm_cli.commands.deps import deps
+from apm_cli.utils.github_host import is_valid_fqdn, default_host
+
+# APM imports - use absolute imports everywhere for consistency
+from apm_cli.version import get_version
 
 # APM Dependencies - Import for Task 5 integration
 try:
-    from apm_cli.models.apm_package import APMPackage, DependencyReference
     from apm_cli.deps.apm_resolver import APMDependencyResolver
     from apm_cli.deps.github_downloader import GitHubPackageDownloader
+    from apm_cli.models.apm_package import APMPackage, DependencyReference
 
     APM_DEPS_AVAILABLE = True
 except ImportError as e:
@@ -47,7 +50,6 @@ INFO = f"{Fore.BLUE}"
 WARNING = f"{Fore.YELLOW}"
 HIGHLIGHT = f"{Fore.MAGENTA}{Style.BRIGHT}"
 RESET = Style.RESET_ALL
-
 
 # Lazy loading for Rich components to improve startup performance
 _console = None
@@ -138,13 +140,13 @@ def _check_orphaned_packages():
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-            
+
             # Build set of expected installed package paths
             # For virtual packages, use the sanitized package name from get_virtual_package_name()
             # For regular packages, use repo_url as-is
             expected_installed = set()
             for dep in declared_deps:
-                repo_parts = dep.repo_url.split('/')
+                repo_parts = dep.repo_url.split("/")
                 if len(repo_parts) >= 2:
                     org_name = repo_parts[0]
                     if dep.is_virtual:
@@ -182,8 +184,8 @@ def print_version(ctx, param, value):
 
     console = _get_console()
     if console:
-        from rich.text import Text  # type: ignore
         from rich.panel import Panel  # type: ignore
+        from rich.text import Text  # type: ignore
 
         version_text = Text()
         version_text.append("Agent Package Manager (APM) CLI", style="bold cyan")
@@ -322,10 +324,11 @@ def init(ctx, project_name, yes):
 
 def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section."""
-    import yaml
-    from pathlib import Path
     import subprocess
     import tempfile
+    from pathlib import Path
+
+    import yaml
 
     apm_yml_path = Path("apm.yml")
 
@@ -402,33 +405,42 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
 
 def _validate_package_exists(package):
     """Validate that a package exists and is accessible on GitHub."""
+    import os
     import subprocess
     import tempfile
-    import os
+
+    # GitHub constants
+    package_url = (
+        f"{package}.git"
+        if is_valid_fqdn(package)
+        else f"{default_host()}/{package}.git"
+    )
 
     try:
         # Parse the package to check if it's a virtual package
         from apm_cli.models.apm_package import DependencyReference
+
         dep_ref = DependencyReference.parse(package)
-        
+
         # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
             from apm_cli.deps.github_downloader import GitHubPackageDownloader
+
             downloader = GitHubPackageDownloader()
             return downloader.validate_virtual_package_exists(dep_ref)
-        
+
         # For regular packages, use git ls-remote
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
+
                 # Try cloning with minimal fetch
                 cmd = [
                     "git",
                     "ls-remote",
                     "--heads",
                     "--exit-code",
-                    f"https://github.com/{package}.git",
+                    package_url,
                 ]
-
                 result = subprocess.run(
                     cmd, capture_output=True, text=True, timeout=30  # 30 second timeout
                 )
@@ -439,7 +451,7 @@ def _validate_package_exists(package):
                 return False
             except Exception:
                 return False
-                
+
     except Exception:
         # If parsing fails, assume it's a regular package
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -449,12 +461,10 @@ def _validate_package_exists(package):
                     "ls-remote",
                     "--heads",
                     "--exit-code",
-                    f"https://github.com/{package}.git",
+                    package_url,
                 ]
 
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=30
-                )
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
                 return result.returncode == 0
 
@@ -464,7 +474,9 @@ def _validate_package_exists(package):
                 return False
 
 
-@cli.command(help="📦 Install APM and MCP dependencies (auto-creates apm.yml when installing packages)")
+@cli.command(
+    help="📦 Install APM and MCP dependencies (auto-creates apm.yml when installing packages)"
+)
 @click.argument("packages", nargs=-1)
 @click.option("--runtime", help="Target specific runtime only (copilot, codex, vscode)")
 @click.option("--exclude", help="Exclude specific runtime from installation")
@@ -631,13 +643,13 @@ def prune(ctx, dry_run):
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-            
+
             # Build set of expected installed package paths
             # For virtual packages, use the sanitized package name from get_virtual_package_name()
             # For regular packages, use repo_url as-is
             expected_installed = set()
             for dep in declared_deps:
-                repo_parts = dep.repo_url.split('/')
+                repo_parts = dep.repo_url.split("/")
                 if len(repo_parts) >= 2:
                     org_name = repo_parts[0]
                     if dep.is_virtual:
@@ -953,7 +965,11 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
 
             # Download the package
             try:
-                display_name = str(dep_ref) if dep_ref.is_virtual else f"{dep_ref.repo_url}#{dep_ref.reference or 'main'}"
+                display_name = (
+                    str(dep_ref)
+                    if dep_ref.is_virtual
+                    else f"{dep_ref.repo_url}#{dep_ref.reference or 'main'}"
+                )
                 _rich_info(f"  {display_name}")
 
                 package_info = downloader.download_package(str(dep_ref), install_path)
@@ -1025,8 +1041,8 @@ def _install_mcp_dependencies(
 
         # Step 1: Get all installed runtimes on the system
         try:
-            from apm_cli.runtime.manager import RuntimeManager
             from apm_cli.factory import ClientFactory
+            from apm_cli.runtime.manager import RuntimeManager
 
             manager = RuntimeManager()
             installed_runtimes = []
@@ -1272,8 +1288,8 @@ def _install_for_runtime(
 ):
     """Install MCP dependencies for a specific runtime."""
     try:
-        from apm_cli.factory import ClientFactory
         from apm_cli.core.operations import install_package
+        from apm_cli.factory import ClientFactory
 
         # Get the appropriate client for the runtime
         client = ClientFactory.create_client(runtime)
@@ -1673,9 +1689,10 @@ def _watch_mode(output, chatmode, no_links, dry_run):
     """Watch for changes in .apm/ directories and auto-recompile."""
     try:
         # Try to import watchdog for file system monitoring
-        from watchdog.observers import Observer
-        from watchdog.events import FileSystemEventHandler
         import time
+
+        from watchdog.events import FileSystemEventHandler
+        from watchdog.observers import Observer
 
         class APMFileHandler(FileSystemEventHandler):
             def __init__(self, output, chatmode, no_links, dry_run):
@@ -2049,8 +2066,9 @@ def compile(
                     )
 
                     # Compute deterministic Build ID (12-char SHA256) over content with placeholder removed
-                    from apm_cli.compilation.constants import BUILD_ID_PLACEHOLDER
                     import hashlib
+
+                    from apm_cli.compilation.constants import BUILD_ID_PLACEHOLDER
 
                     lines = final_content.splitlines()
                     # Identify placeholder line index
@@ -2103,8 +2121,9 @@ def compile(
                     try:
                         console = _get_console()
                         if console:
-                            from rich.table import Table
                             import os
+
+                            from rich.table import Table
 
                             table = Table(
                                 title="Compilation Summary",
@@ -2363,7 +2382,8 @@ def runtime():
 
 def _atomic_write(path: Path, data: str) -> None:
     """Atomically write text data to path (best-effort)."""
-    import os, tempfile
+    import os
+    import tempfile
 
     fd, tmp_name = tempfile.mkstemp(prefix="apm-write-", dir=str(path.parent))
     try:
@@ -2913,7 +2933,7 @@ def _interactive_project_setup(default_name):
         # Lazy import rich pieces
         from rich.console import Console  # type: ignore
         from rich.panel import Panel  # type: ignore
-        from rich.prompt import Prompt, Confirm  # type: ignore
+        from rich.prompt import Confirm, Prompt  # type: ignore
 
         console = _get_console() or Console()
         console.print("\n[info]Setting up your APM project...[/info]")

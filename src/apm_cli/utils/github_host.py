@@ -1,13 +1,14 @@
 """Utilities for handling GitHub and GitHub Enterprise hostnames and URLs."""
-from typing import Optional
+
 import os
 import re
 import urllib.parse
+from typing import Optional
 
 
 def default_host() -> str:
     """Return the default GitHub host (can be overridden via GITHUB_HOST env var)."""
-    return os.environ.get('GITHUB_HOST', 'github.com')
+    return os.environ.get("GITHUB_HOST", "github.com")
 
 
 def is_github_hostname(hostname: Optional[str]) -> bool:
@@ -18,14 +19,14 @@ def is_github_hostname(hostname: Optional[str]) -> bool:
     if not hostname:
         return False
     h = hostname.lower()
-    if h == 'github.com':
+    if h == "github.com":
         return True
-    if h.endswith('.ghe.com'):
+    if h.endswith(".ghe.com"):
         return True
     # Allow explicit override via comma-separated env var APM_GITHUB_HOSTS
-    extra = os.environ.get('APM_GITHUB_HOSTS', '')
+    extra = os.environ.get("APM_GITHUB_HOSTS", "")
     if extra:
-        for e in [x.strip().lower() for x in extra.split(',') if x.strip()]:
+        for e in [x.strip().lower() for x in extra.split(",") if x.strip()]:
             if h == e:
                 return True
     return False
@@ -47,6 +48,33 @@ def build_https_clone_url(host: str, repo_ref: str, token: Optional[str] = None)
     return f"https://{host}/{repo_ref}"
 
 
+def is_valid_fqdn(hostname: str) -> bool:
+    """Validate if a string is a valid Fully Qualified Domain Name (FQDN).
+
+    Args:
+        hostname: The hostname string to validate
+
+    Returns:
+        bool: True if the hostname is a valid FQDN, False otherwise
+
+    Valid FQDN must:
+    - Contain labels separated by dots
+    - Labels must contain only alphanumeric chars and hyphens
+    - Labels must not start or end with hyphens
+    - Have at least one dot
+    """
+    if not hostname:
+        return False
+
+    # Single regex to validate all FQDN rules:
+    # - Starts with alphanumeric
+    # - Labels only contain alphanumeric and hyphens
+    # - Labels don't start/end with hyphens
+    # - At least two labels (one dot)
+    pattern = r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)+$"
+    return bool(re.match(pattern, hostname))
+
+
 def sanitize_token_url_in_message(message: str, host: Optional[str] = None) -> str:
     """Sanitize occurrences of token-bearing https URLs for the given host in message.
 
@@ -57,5 +85,5 @@ def sanitize_token_url_in_message(message: str, host: Optional[str] = None) -> s
 
     # Escape host for regex
     host_re = re.escape(host)
-    pattern = rf'https://[^@\s]+@{host_re}'
-    return re.sub(pattern, f'https://***@{host}', message)
+    pattern = rf"https://[^@\s]+@{host_re}"
+    return re.sub(pattern, f"https://***@{host}", message)
