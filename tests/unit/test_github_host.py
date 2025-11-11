@@ -6,6 +6,7 @@ from apm_cli.utils.github_host import is_valid_fqdn
 def test_valid_fqdns():
     valid_hosts = [
         "github.com",
+        "github.com/user/repo",
         "example.com",
         "sub.example.co.uk",
         "a1b2.example",

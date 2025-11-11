@@ -65,7 +65,9 @@ def is_valid_fqdn(hostname: str) -> bool:
     """
     if not hostname:
         return False
-
+    
+    hostname = hostname.split('/')[0]  # Remove any path components
+    
     # Single regex to validate all FQDN rules:
     # - Starts with alphanumeric
     # - Labels only contain alphanumeric and hyphens
