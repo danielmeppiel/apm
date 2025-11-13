@@ -15,6 +15,9 @@ def is_github_hostname(hostname: Optional[str]) -> bool:
     """Return True if hostname should be treated as GitHub (cloud or enterprise).
 
     Accepts 'github.com' and hosts that end with '.ghe.com'.
+    
+    Note: This is primarily for internal hostname classification.
+    APM accepts any Git host via FQDN syntax without validation.
     """
     if not hostname:
         return False
@@ -23,12 +26,6 @@ def is_github_hostname(hostname: Optional[str]) -> bool:
         return True
     if h.endswith(".ghe.com"):
         return True
-    # Allow explicit override via comma-separated env var APM_GITHUB_HOSTS
-    extra = os.environ.get("APM_GITHUB_HOSTS", "")
-    if extra:
-        for e in [x.strip().lower() for x in extra.split(",") if x.strip()]:
-            if h == e:
-                return True
     return False
 
 

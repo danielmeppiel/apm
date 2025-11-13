@@ -105,6 +105,69 @@ class TestDependencyReference:
             with pytest.raises(ValueError):
                 DependencyReference.parse(invalid_format)
     
+    def test_parse_malicious_url_bypass_attempts(self):
+        """Test that malicious URL bypass attempts are properly rejected.
+        
+        This tests the security fix for CWE-20: Improper Input Validation.
+        Prevents attacks where an attacker embeds allowed hostnames in unexpected locations.
+        """
+        # Attack vectors that should be REJECTED
+        malicious_formats = [
+            # Subdomain attack: attacker owns prefix subdomain
+            "evil-github.com/user/repo",
+            "malicious-github.com/user/repo",
+            "github.com.evil.com/user/repo",
+            
+            # Path injection: embedding github.com in path
+            "evil.com/github.com/user/repo",
+            "attacker.net/github.com/malicious/repo",
+            
+            # Domain suffix attacks
+            "fakegithub.com/user/repo",
+            "notgithub.com/user/repo",
+            
+            # Protocol-relative URL attacks
+            "//evil.com/github.com/user/repo",
+            
+            # Mixed case attacks (domains are case-insensitive)
+            "GitHub.COM.evil.com/user/repo",
+            "GITHUB.com.attacker.net/user/repo",
+        ]
+        
+        for malicious_url in malicious_formats:
+            with pytest.raises(ValueError, match="Only GitHub repositories are supported"):
+                DependencyReference.parse(malicious_url)
+    
+    def test_parse_legitimate_github_enterprise_formats(self):
+        """Test that legitimate GitHub Enterprise hostnames are accepted.
+        
+        Ensures the security fix doesn't break valid GHE instances.
+        According to is_github_hostname(), only github.com and *.ghe.com are valid.
+        """
+        # These should be ACCEPTED (valid GitHub Enterprise hostnames)
+        valid_ghe_formats = [
+            "company.ghe.com/user/repo",
+            "myorg.ghe.com/user/repo",
+            "github.com/user/repo",  # Standard GitHub
+        ]
+        
+        for valid_url in valid_ghe_formats:
+            dep = DependencyReference.parse(valid_url)
+            assert dep.repo_url == "user/repo"
+            assert dep.host is not None
+    
+    def test_parse_virtual_package_with_malicious_host(self):
+        """Test that virtual packages with malicious hosts are rejected."""
+        malicious_virtual_formats = [
+            "evil.com/github.com/user/repo/prompts/file.prompt.md",
+            "github.com.evil.com/user/repo/prompts/file.prompt.md",
+            "attacker.net/user/repo/prompts/file.prompt.md",
+        ]
+        
+        for malicious_url in malicious_virtual_formats:
+            with pytest.raises(ValueError):
+                DependencyReference.parse(malicious_url)
+    
     def test_parse_virtual_file_package(self):
         """Test parsing virtual file package (individual file)."""
         dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md")

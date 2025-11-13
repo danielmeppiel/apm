@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2025-11-09
+
+### Added
+- Package FQDN support - install from any Git host using fully qualified domain names (thanks @richgo for PR #25)
+
+### Fixed
+- **Security**: CWE-20 URL validation vulnerability - proper hostname validation using `urllib.parse` prevents malicious URL bypass attacks
+- Package validation HTTPS URL construction for git ls-remote checks
+- Virtual package orphan detection in `apm deps list` command
+
+### Changed
+- GitHub Enterprise support via `GITHUB_HOST` environment variable (thanks @richgo for PR #25)
+- Build pipeline updates for macOS compatibility
+
 ## [0.5.0] - 2025-10-30
 
 ### Added - Virtual Packages

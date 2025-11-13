@@ -409,10 +409,12 @@ def _validate_package_exists(package):
     import subprocess
     import tempfile
 
-    # GitHub constants
-   
-    if is_valid_fqdn(package) : package_url = f"https://{package}.git"
-    else : package_url = f"{default_host()}/{package}.git"
+    # GitHub constants - construct proper HTTPS URL for git ls-remote
+    package_url = (
+        f"https://{package}.git"
+        if is_valid_fqdn(package)
+        else f"https://{default_host()}/{package}.git"
+    )
 
     try:
         # Parse the package to check if it's a virtual package
