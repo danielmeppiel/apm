@@ -23,16 +23,18 @@ def get_version() -> str:
         return __BUILD_VERSION__
     
     # Try to get version from installed package metadata (for pip installations)
-    try:
-        # Python 3.8+ has importlib.metadata
-        if sys.version_info >= (3, 8):
-            from importlib.metadata import version, PackageNotFoundError
-        else:
-            from importlib_metadata import version, PackageNotFoundError
-        
-        return version("apm-cli")
-    except (ImportError, PackageNotFoundError):
-        pass
+    # Skip this in frozen/PyInstaller environments to avoid import issues
+    if not getattr(sys, 'frozen', False):
+        try:
+            # Python 3.8+ has importlib.metadata
+            if sys.version_info >= (3, 8):
+                from importlib.metadata import version, PackageNotFoundError
+            else:
+                from importlib_metadata import version, PackageNotFoundError
+            
+            return version("apm-cli")
+        except (ImportError, PackageNotFoundError):
+            pass
     
     # Fallback to reading from pyproject.toml (for development/source installations)
     try:
