@@ -218,8 +218,8 @@ scripts:
         # Get the generated command
         command = runner._generate_runtime_command("codex", Path("test.prompt.md"))
         
-        # Verify simple codex command
-        assert command == "codex test.prompt.md"
+        # Verify codex command with default flags
+        assert command == "codex -s workspace-write --skip-git-repo-check test.prompt.md"
     
     def test_no_runtime_error_message(self, tmp_path):
         """Test helpful error when no runtime installed."""

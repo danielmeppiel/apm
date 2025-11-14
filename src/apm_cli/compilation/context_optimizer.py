@@ -5,6 +5,7 @@ irrelevant context loaded by agents working in specific directories,
 following the Minimal Context Principle.
 """
 
+import builtins
 import fnmatch
 import os
 import time
@@ -20,6 +21,13 @@ from ..output.models import (
     CompilationResults, ProjectAnalysis, OptimizationDecision, OptimizationStats,
     PlacementStrategy, PlacementSummary
 )
+
+# CRITICAL: Shadow Click commands to prevent namespace collision
+# When this module is imported during 'apm compile', Click's active context
+# can cause set/list/dict to resolve to Click commands instead of builtins
+set = builtins.set
+list = builtins.list
+dict = builtins.dict
 
 
 @dataclass

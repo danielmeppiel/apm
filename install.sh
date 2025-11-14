@@ -70,6 +70,129 @@ esac
 echo -e "${BLUE}Detected platform: $PLATFORM-$ARCH${NC}"
 echo -e "${BLUE}Target binary: $DOWNLOAD_BINARY${NC}"
 
+# Function to check Python availability and version
+check_python_requirements() {
+    # Check if Python is available
+    if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+        return 1  # Python not available
+    fi
+    
+    # Get Python command
+    PYTHON_CMD="python3"
+    if ! command -v python3 >/dev/null 2>&1; then
+        PYTHON_CMD="python"
+    fi
+    
+    # Check Python version (need 3.9+)
+    PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null)
+    if [ -z "$PYTHON_VERSION" ]; then
+        return 1
+    fi
+    
+    # Compare version (need >= 3.9)
+    REQUIRED_VERSION="3.9"
+    if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" = "$REQUIRED_VERSION" ]; then
+        return 0  # Python version is sufficient
+    else
+        return 1  # Python version too old
+    fi
+}
+
+# Function to attempt pip installation
+try_pip_installation() {
+    echo -e "${BLUE}Attempting installation via pip...${NC}"
+    
+    # Determine pip command
+    PIP_CMD=""
+    if command -v pip3 >/dev/null 2>&1; then
+        PIP_CMD="pip3"
+    elif command -v pip >/dev/null 2>&1; then
+        PIP_CMD="pip"
+    else
+        echo -e "${RED}Error: pip is not available${NC}"
+        return 1
+    fi
+    
+    # Try to install
+    if $PIP_CMD install --user apm-cli; then
+        echo -e "${GREEN}✓ APM CLI installed successfully via pip!${NC}"
+        
+        # Check if apm is now available
+        if command -v apm >/dev/null 2>&1; then
+            INSTALLED_VERSION=$(apm --version 2>/dev/null || echo "unknown")
+            echo -e "${BLUE}Version: $INSTALLED_VERSION${NC}"
+            echo -e "${BLUE}Location: $(which apm)${NC}"
+        else
+            echo -e "${YELLOW}⚠ APM installed but not found in PATH${NC}"
+            echo "You may need to add ~/.local/bin to your PATH:"
+            echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+        fi
+        
+        echo ""
+        echo -e "${GREEN}🎉 Installation complete!${NC}"
+        echo ""
+        echo -e "${BLUE}Quick start:${NC}"
+        echo "  apm init my-app          # Create a new APM project"
+        echo "  cd my-app && apm install # Install dependencies"
+        echo "  apm run                  # Run your first prompt"
+        echo ""
+        echo -e "${BLUE}Documentation:${NC} https://github.com/$REPO"
+        return 0
+    else
+        echo -e "${RED}Error: pip installation failed${NC}"
+        return 1
+    fi
+}
+
+# Early glibc compatibility check for Linux
+if [ "$PLATFORM" = "linux" ]; then
+    # Get glibc version
+    GLIBC_VERSION=$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    REQUIRED_GLIBC="2.35"
+    
+    if [ -n "$GLIBC_VERSION" ]; then
+        # Compare versions
+        if [ "$(printf '%s\n' "$REQUIRED_GLIBC" "$GLIBC_VERSION" | sort -V | head -n1)" != "$REQUIRED_GLIBC" ]; then
+            echo -e "${YELLOW}⚠ Compatibility Issue Detected${NC}"
+            echo -e "${YELLOW}Your glibc version: $GLIBC_VERSION${NC}"
+            echo -e "${YELLOW}Required version: $REQUIRED_GLIBC or newer${NC}"
+            echo ""
+            echo "The prebuilt binary will not work on your system."
+            echo ""
+            
+            # Check if Python/pip are available
+            if check_python_requirements; then
+                echo -e "${BLUE}Python 3.9+ detected. Installing via pip instead...${NC}"
+                echo ""
+                if try_pip_installation; then
+                    exit 0
+                fi
+            else
+                echo -e "${RED}Python 3.9+ is not available on this system.${NC}"
+                echo ""
+                echo "To install APM, you need either:"
+                echo "  1. Python 3.9+ and pip: pip install --user apm-cli"
+                echo "  2. A system with glibc 2.35+ to use the prebuilt binary"
+                echo "  3. Build from source: git clone https://github.com/$REPO.git && cd apm-cli && uv sync && uv run pip install -e ."
+                echo ""
+                echo "To install Python 3.9+:"
+                echo "  Ubuntu/Debian: sudo apt-get update && sudo apt-get install python3 python3-pip"
+                echo "  CentOS/RHEL: sudo yum install python3 python3-pip"
+                echo "  Alpine: apk add python3 py3-pip"
+                exit 1
+            fi
+        fi
+    fi
+fi
+
+# Detect if running in a container and check compatibility
+if [ -f "/.dockerenv" ] || [ -f "/run/.containerenv" ] || grep -q "/docker/" /proc/1/cgroup 2>/dev/null; then
+    echo -e "${YELLOW}⚠ Container/Dev Container environment detected${NC}"
+    echo -e "${YELLOW}Note: PyInstaller binaries may have compatibility issues in containers.${NC}"
+    echo -e "${YELLOW}If installation fails, consider using: pip install --user apm-cli${NC}"
+    echo ""
+fi
+
 # Check if we have permission to install to /usr/local/bin
 if [ ! -w "$INSTALL_DIR" ]; then
     echo -e "${YELLOW}Note: Will need sudo permissions to install to $INSTALL_DIR${NC}"
@@ -251,10 +374,73 @@ chmod +x "$TMP_DIR/$EXTRACTED_DIR/$BINARY_NAME"
 
 # Test the binary
 echo -e "${YELLOW}Testing binary...${NC}"
-if "$TMP_DIR/$EXTRACTED_DIR/$BINARY_NAME" --version >/dev/null 2>&1; then
+BINARY_TEST_OUTPUT=$("$TMP_DIR/$EXTRACTED_DIR/$BINARY_NAME" --version 2>&1)
+BINARY_TEST_EXIT_CODE=$?
+
+if [ $BINARY_TEST_EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}✓ Binary test successful${NC}"
 else
     echo -e "${RED}Error: Downloaded binary failed to run${NC}"
+    echo -e "${YELLOW}Exit code: $BINARY_TEST_EXIT_CODE${NC}"
+    echo -e "${YELLOW}Error output:${NC}"
+    echo "$BINARY_TEST_OUTPUT"
+    echo ""
+    
+    # Try to provide helpful context
+    if echo "$BINARY_TEST_OUTPUT" | grep -q "GLIBC"; then
+        echo -e "${YELLOW}⚠ glibc version incompatibility detected${NC}"
+        if [ -n "$GLIBC_VERSION" ]; then
+            echo "Your system has glibc $GLIBC_VERSION but the binary requires glibc 2.35+"
+        fi
+        echo ""
+    fi
+    
+    # Attempt automatic fallback to pip
+    echo -e "${BLUE}Attempting automatic fallback to pip installation...${NC}"
+    echo ""
+    
+    if check_python_requirements; then
+        if try_pip_installation; then
+            exit 0
+        fi
+    fi
+    
+    # If pip fallback failed, provide manual instructions
+    echo ""
+    echo -e "${BLUE}Manual installation options:${NC}"
+    echo ""
+    
+    if ! check_python_requirements; then
+        echo -e "${YELLOW}Note: Python 3.9+ is not available on your system${NC}"
+        echo ""
+        echo "Install Python first:"
+        echo "  Ubuntu/Debian: sudo apt-get update && sudo apt-get install python3 python3-pip"
+        echo "  CentOS/RHEL: sudo yum install python3 python3-pip"
+        echo "  Alpine: apk add python3 py3-pip"
+        echo "  macOS: brew install python3"
+        echo ""
+        echo "Then install APM:"
+        echo "  pip3 install --user apm-cli"
+        echo ""
+    else
+        echo "1. PyPI (recommended): pip3 install --user apm-cli"
+        echo ""
+    fi
+    
+    echo "2. Homebrew (macOS/Linux): brew install danielmeppiel/apm-cli"
+    echo ""
+    echo "3. From source:"
+    echo "   git clone https://github.com/$REPO.git"
+    echo "   cd apm-cli && uv sync && uv run pip install -e ."
+    echo ""
+    
+    if [ "$PLATFORM" = "linux" ]; then
+        echo -e "${BLUE}Debug information:${NC}"
+        echo "Check missing libraries: ldd $TMP_DIR/$EXTRACTED_DIR/$BINARY_NAME"
+        echo ""
+    fi
+    
+    echo "Need help? Create an issue at: https://github.com/$REPO/issues"
     exit 1
 fi
 

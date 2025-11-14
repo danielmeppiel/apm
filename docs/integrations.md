@@ -135,41 +135,50 @@ VSCode already implements core Context concepts:
 - **Instructions Files**: Modular instructions with `copilot-instructions.md` and `.instructions.md` files
 - **Prompt Files**: Reusable task templates with `.prompt.md` files in `.github/prompts/`
 
-### APM Enhancement
+### Automatic Prompt Integration with APM
 
-APM extends VSCode's native capabilities:
+APM automatically integrates prompts from installed packages into VSCode's native structure:
 
 ```bash
-# Generate VSCode-compatible primitives
-apm compile --format vscode
+# Install APM packages (with auto-integration enabled by default)
+apm install danielmeppiel/design-guidelines
 
-# This creates:
-# .github/copilot-instructions.md (main instructions)
-# .github/chatmodes/ (AI assistant personalities)  
-# .github/prompts/ (reusable workflows)
-# .github/instructions/ (file-pattern instructions)
+# Prompts are automatically integrated to:
+# .github/prompts/@*.prompt.md (with package metadata header)
 ```
 
-**VSCode-Specific Features**:
-- Automatic context loading based on open files
+**How Auto-Integration Works**:
+- **Automatic**: Enabled by default when `.github/` directory exists
+- **Controlled**: Configure with `apm config set auto-integrate true/false`
+- **Smart Updates**: Tracks package version/commit; updates only when package changes
+- **Metadata Headers**: Integrated prompts include source, version, and commit information
+- **GitIgnore Protection**: Automatically adds pattern to `.gitignore` for integrated prompts
+
+**Integration Flow**:
+1. Run `apm install` to fetch APM packages
+2. PromptIntegrator checks `auto-integrate` config setting
+3. If enabled and `.github/` exists, discovers `.prompt.md` files in each package
+4. Copies prompts to `.github/prompts/` with `@` prefix (e.g., `@accessibility-audit.prompt.md`)
+5. Updates `.gitignore` to exclude integrated prompts
+6. VSCode automatically loads all prompts for your coding agents
+
+**Example**: 
+```bash
+# Install package with auto-integration
+apm install danielmeppiel/design-guidelines
+
+# Result in VSCode:
+# .github/prompts/@accessibility-audit.prompt.md  ✓ Available in chat
+# .github/prompts/@design-review.prompt.md        ✓ Available in chat
+# .github/prompts/@style-guide-check.prompt.md    ✓ Available in chat
+```
+
+**VSCode Native Features**:
+- All integrated prompts appear in VSCode's prompt picker
 - Native chat integration with primitives
 - Seamless `/prompt` command support
 - File-pattern based instruction application
-
-### Migration from APM to VSCode
-
-If you want to use VSCode's native Context:
-
-```bash
-# Generate VSCode-native structure
-apm export vscode
-
-# This migrates:
-# .apm/chatmodes/ → .github/chatmodes/
-# .apm/prompts/ → .github/prompts/  
-# .apm/instructions/ → .github/instructions/
-# Compiles context into copilot-instructions.md
-```
+- Chatmode support for different personas
 
 ## Development Tool Integrations
 
@@ -258,24 +267,38 @@ docker run --rm -v $(pwd):/workspace apm-cli run code-review
 
 Beyond VSCode, APM works with other popular IDEs:
 
-#### Cursor Integration
-```bash
-# Generate Cursor-compatible configuration
-apm compile --format cursor
+#### Other IDEs with GitHub Copilot
 
-# Creates .cursor/ directory with:
-# - ai-rules.md (context and instructions)
-# - prompts/ (reusable workflows)
+Any IDE with GitHub Copilot support (JetBrains, Visual Studio, etc.) works with APM's prompt integration:
+
+```bash
+# Install APM packages
+apm install danielmeppiel/design-guidelines
+
+# GitHub Copilot automatically picks up:
+# .github/prompts/@*.prompt.md (integrated prompts)
+# .github/chatmodes/ (chat personalities)
+# .github/instructions/ (file-pattern rules)
 ```
 
-#### JetBrains Integration  
-```bash
-# Generate JetBrains AI Assistant configuration
-apm compile --format jetbrains
+**Supported IDEs**:
+- JetBrains (IntelliJ, PyCharm, WebStorm, etc.)
+- Visual Studio
+- VS Code
+- Any IDE with GitHub Copilot integration
 
-# Creates .idea/ai/ directory with:
-# - context.md (project knowledge)
-# - templates/ (code generation templates)
+#### Cursor
+
+Cursor does not follow the VSCode/GitHub Copilot `.github/` structure. Use APM's context compilation instead:
+
+```bash
+# Compile APM context into AGENTS.md
+apm compile
+
+# Then use AGENTS.md with Cursor:
+# 1. Open Cursor settings
+# 2. Reference or copy AGENTS.md content into your cursor rules
+# 3. AGENTS.md works with any agent supporting the AGENTS.md format
 ```
 
 ## MCP (Model Context Protocol) Integration

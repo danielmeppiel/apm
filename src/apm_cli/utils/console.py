@@ -3,6 +3,7 @@
 import click
 import sys
 from typing import Optional, Any
+from contextlib import contextmanager
 
 # Rich library imports with fallbacks
 try:
@@ -162,3 +163,27 @@ def _create_files_table(files_data: list, title: str = "Files") -> Optional[Any]
         return table
     except Exception:
         return None
+
+
+@contextmanager
+def show_download_spinner(repo_name: str):
+    """Show spinner during download operations.
+    
+    Usage:
+        with show_download_spinner("danielmeppiel/design-guidelines"):
+            # Long-running download here
+            pass
+    """
+    console = _get_console()
+    if console and RICH_AVAILABLE:
+        try:
+            with console.status(f"[cyan]⬇️  Downloading {repo_name}...", spinner="dots") as status:
+                yield status
+        except Exception:
+            # Fallback if Rich fails
+            click.echo(f"⬇️  Downloading {repo_name}...")
+            yield None
+    else:
+        # Fallback for non-Rich environments
+        click.echo(f"⬇️  Downloading {repo_name}...")
+        yield None

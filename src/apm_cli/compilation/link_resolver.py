@@ -1,8 +1,14 @@
 """Markdown link resolution for AGENTS.md compilation."""
 
+import builtins
 import re
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
+
+# CRITICAL: Shadow Click commands to prevent namespace collision
+set = builtins.set
+list = builtins.list
+dict = builtins.dict
 
 
 def resolve_markdown_links(content: str, base_path: Path) -> str:
