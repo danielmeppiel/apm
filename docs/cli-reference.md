@@ -121,6 +121,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--only [apm|mcp]` - Install only specific dependency type
 - `--update` - Update dependencies to latest Git references  
 - `--dry-run` - Show what would be installed without installing
+- `--verbose` - Show detailed installation information
 
 **Examples:**
 ```bash
