@@ -1061,7 +1061,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
             try:
                 updated = integrator.update_gitignore_for_integrated_prompts(project_root)
                 if updated:
-                    _rich_info("Updated .gitignore for integrated prompts")
+                    _rich_info("Updated .gitignore for integrated prompts (*-apm.prompt.md)")
             except Exception as e:
                 _rich_warning(f"Could not update .gitignore for prompts: {e}")
 

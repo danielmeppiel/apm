@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2025-11-14
+
+### Changed
+- **Prompt Naming Pattern**: Migrated from `@` prefix to `-apm` suffix for integrated prompts
+  - New pattern: `accessibility-audit-apm.prompt.md` (was: `@accessibility-audit.prompt.md`)
+  - Improves VSCode autocomplete discovery - type `/design` to find `design-review-apm.prompt.md`
+  - Avoids symbol collision with `@` agent syntax in Copilot
+  - Intent-first naming: search by WHAT (design, compliance) not WHO (apm)
+- **GitIgnore Pattern**: Updated from `.github/prompts/@*.prompt.md` to `.github/prompts/*-apm.prompt.md`
+
+### Migration Notes
+- **Existing Users**: Old `@`-prefixed files will not be automatically removed
+- **Action Required**: Manually delete old `@*.prompt.md` files from `.github/prompts/` after upgrading
+- **Next Install**: Running `apm install --update` will re-sync prompts with new naming pattern
+
 ## [0.5.2] - 2025-11-14
 
 ### Added

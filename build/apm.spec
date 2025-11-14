@@ -145,6 +145,9 @@ hiddenimports = [
     # Subprocess for runtime operations
     'subprocess',
     'shlex',
+    # Version detection for pip installations
+    'importlib.metadata',
+    'importlib_metadata',
 ]
 
 # Modules to exclude to reduce binary size
@@ -172,8 +175,7 @@ excludes = [
     'bdb',
     'test',
     'tests',
-    # Build tools - not needed at runtime  
-    'distutils',
+    # Build tools - not needed at runtime (but keep distutils as it's needed by importlib.metadata)
     'lib2to3',
     # Audio/image processing - not needed
     'wave',          # safe to exclude

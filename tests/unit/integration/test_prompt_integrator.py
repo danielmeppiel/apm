@@ -101,13 +101,13 @@ class TestPromptIntegrator:
         assert "test.prompt.md" in header
     
     def test_get_target_filename(self):
-        """Test target filename generation with @ prefix (simple naming)."""
+        """Test target filename generation with -apm suffix (intent-first naming)."""
         source = Path("/package/accessibility-audit.prompt.md")
         package_name = "danielmeppiel/design-guidelines"
         
         target = self.integrator.get_target_filename(source, package_name)
-        # Simple naming: just @ prefix + original filename
-        assert target == "@accessibility-audit.prompt.md"
+        # Intent-first naming: -apm suffix before extension
+        assert target == "accessibility-audit-apm.prompt.md"
     
     def test_copy_prompt_with_header(self):
         """Test copying prompt file with header prepended."""
@@ -177,7 +177,7 @@ Installed: 2024-01-01T00:00:00
 -->
 
 # Existing"""
-        (github_prompts / "@test.prompt.md").write_text(existing_content)
+        (github_prompts / "test-apm.prompt.md").write_text(existing_content)
         
         package = APMPackage(
             name="test-pkg",
@@ -214,12 +214,12 @@ Installed: 2024-01-01T00:00:00
         
         assert updated == True
         content = gitignore.read_text()
-        assert ".github/prompts/@*.prompt.md" in content
+        assert ".github/prompts/*-apm.prompt.md" in content
     
     def test_update_gitignore_skips_if_exists(self):
         """Test that gitignore update is skipped if pattern exists."""
         gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/prompts/@*.prompt.md\n")
+        gitignore.write_text(".github/prompts/*-apm.prompt.md\n")
         
         updated = self.integrator.update_gitignore_for_integrated_prompts(self.project_root)
         
@@ -416,7 +416,7 @@ Installed: 2024-11-13T10:30:00Z
         assert result.files_skipped == 0
         
         # Verify header was added
-        target_file = github_prompts / "@test.prompt.md"
+        target_file = github_prompts / "test-apm.prompt.md"
         content = target_file.read_text()
         assert content.startswith('<!--')
         assert 'Version: 1.0.0' in content
@@ -442,7 +442,7 @@ Installed: 2024-11-13T10:00:00
 -->
 
 # Old Content"""
-        (github_prompts / "@test.prompt.md").write_text(old_content)
+        (github_prompts / "test-apm.prompt.md").write_text(old_content)
         
         package = APMPackage(
             name="test-pkg",
@@ -470,7 +470,7 @@ Installed: 2024-11-13T10:00:00
         assert result.files_skipped == 0
         
         # Verify content was updated
-        target_file = github_prompts / "@test.prompt.md"
+        target_file = github_prompts / "test-apm.prompt.md"
         content = target_file.read_text()
         assert 'Version: 2.0.0' in content
         assert '# Updated Content' in content
@@ -495,7 +495,7 @@ Installed: 2024-11-13T10:00:00
 -->
 
 # Old Content"""
-        (github_prompts / "@test.prompt.md").write_text(old_content)
+        (github_prompts / "test-apm.prompt.md").write_text(old_content)
         
         package = APMPackage(
             name="test-pkg",
@@ -523,7 +523,7 @@ Installed: 2024-11-13T10:00:00
         assert result.files_skipped == 0
         
         # Verify commit was updated
-        target_file = github_prompts / "@test.prompt.md"
+        target_file = github_prompts / "test-apm.prompt.md"
         content = target_file.read_text()
         assert 'Commit: def456' in content
         assert '# Updated Content' in content
@@ -551,7 +551,7 @@ Installed: 2024-11-13T10:00:00
 -->
 
 # Old Content"""
-        (github_prompts / "@update.prompt.md").write_text(update_old)
+        (github_prompts / "update-apm.prompt.md").write_text(update_old)
         
         # Pre-create file to be skipped (same version)
         skip_same = """<!-- 
@@ -563,7 +563,7 @@ Installed: 2024-11-13T10:00:00
 -->
 
 # Unchanged File"""
-        (github_prompts / "@skip.prompt.md").write_text(skip_same)
+        (github_prompts / "skip-apm.prompt.md").write_text(skip_same)
         
         package = APMPackage(
             name="test-pkg",
@@ -591,12 +591,59 @@ Installed: 2024-11-13T10:00:00
         assert result.files_skipped == 1      # skip.prompt.md
         
         # Verify new file exists
-        assert (github_prompts / "@new.prompt.md").exists()
+        assert (github_prompts / "new-apm.prompt.md").exists()
         
         # Verify updated file has new version
-        update_content = (github_prompts / "@update.prompt.md").read_text()
+        update_content = (github_prompts / "update-apm.prompt.md").read_text()
         assert 'Version: 2.0.0' in update_content
         
         # Verify skipped file is unchanged
-        skip_content = (github_prompts / "@skip.prompt.md").read_text()
+        skip_content = (github_prompts / "skip-apm.prompt.md").read_text()
         assert skip_content == skip_same
+
+
+class TestPromptSuffixPattern:
+    """Test -apm suffix pattern edge cases."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.integrator = PromptIntegrator()
+    
+    def test_suffix_with_simple_filename(self):
+        """Test suffix pattern with simple filename."""
+        source = Path("test.prompt.md")
+        result = self.integrator.get_target_filename(source, "pkg")
+        assert result == "test-apm.prompt.md"
+    
+    def test_suffix_with_hyphenated_filename(self):
+        """Test suffix pattern with hyphenated filename."""
+        source = Path("design-review.prompt.md")
+        result = self.integrator.get_target_filename(source, "pkg")
+        assert result == "design-review-apm.prompt.md"
+    
+    def test_suffix_with_multi_part_filename(self):
+        """Test suffix pattern with multi-part filename."""
+        source = Path("accessibility-audit-wcag.prompt.md")
+        result = self.integrator.get_target_filename(source, "pkg")
+        assert result == "accessibility-audit-wcag-apm.prompt.md"
+    
+    def test_suffix_preserves_original_name(self):
+        """Test that original filename structure is preserved."""
+        source = Path("my_custom-workflow.prompt.md")
+        result = self.integrator.get_target_filename(source, "pkg")
+        assert result == "my_custom-workflow-apm.prompt.md"
+    
+    def test_gitignore_pattern_matches_suffix_files(self):
+        """Test that gitignore pattern matches -apm suffix files."""
+        import fnmatch
+        pattern = "*-apm.prompt.md"
+        
+        # Should match
+        assert fnmatch.fnmatch("design-review-apm.prompt.md", pattern)
+        assert fnmatch.fnmatch("test-apm.prompt.md", pattern)
+        assert fnmatch.fnmatch("a-b-c-apm.prompt.md", pattern)
+        
+        # Should NOT match
+        assert not fnmatch.fnmatch("design-review.prompt.md", pattern)
+        assert not fnmatch.fnmatch("apm.prompt.md", pattern)
+        assert not fnmatch.fnmatch("@design-review.prompt.md", pattern)
