@@ -77,13 +77,13 @@ class TestAutoIntegrationEndToEnd:
         # Verify results
         assert result.files_integrated == 2
         
-        # Check files exist (simple naming with @ prefix)
+        # Check files exist (intent-first naming with -apm suffix)
         prompts_dir = self.project_root / ".github" / "prompts"
-        assert (prompts_dir / "@workflow1.prompt.md").exists()
-        assert (prompts_dir / "@workflow2.prompt.md").exists()
+        assert (prompts_dir / "workflow1-apm.prompt.md").exists()
+        assert (prompts_dir / "workflow2-apm.prompt.md").exists()
         
         # Check header comments
-        content1 = (prompts_dir / "@workflow1.prompt.md").read_text()
+        content1 = (prompts_dir / "workflow1-apm.prompt.md").read_text()
         assert "test-package" in content1
         assert "abc123def456" in content1
         assert "# workflow1" in content1

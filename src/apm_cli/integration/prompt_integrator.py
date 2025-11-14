@@ -172,17 +172,19 @@ Installed: {installed_at}
         return header
     
     def get_target_filename(self, source_file: Path, package_name: str) -> str:
-        """Generate target filename with @ prefix (simple naming).
+        """Generate target filename with -apm suffix (intent-first naming).
         
         Args:
             source_file: Source file path
             package_name: Name of the package (not used in simple naming)
             
         Returns:
-            str: Target filename with @ prefix (e.g., @accessibility-audit.prompt.md)
+            str: Target filename with -apm suffix (e.g., accessibility-audit-apm.prompt.md)
         """
-        # SIMPLE naming: just prepend @ to the original filename
-        return f"@{source_file.name}"
+        # Intent-first naming: insert -apm suffix before .prompt.md extension
+        # Example: design-review.prompt.md -> design-review-apm.prompt.md
+        stem = source_file.stem.replace('.prompt', '')  # Remove .prompt from stem
+        return f"{stem}-apm.prompt.md"
     
     def copy_prompt_with_header(self, source: Path, target: Path, header: str) -> None:
         """Copy prompt file with header comment prepended.
@@ -283,7 +285,7 @@ Installed: {installed_at}
             bool: True if .gitignore was updated, False if pattern already exists
         """
         gitignore_path = project_root / ".gitignore"
-        pattern = ".github/prompts/@*.prompt.md"
+        pattern = ".github/prompts/*-apm.prompt.md"
         
         # Read current content
         current_content = []

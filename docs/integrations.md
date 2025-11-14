@@ -144,7 +144,7 @@ APM automatically integrates prompts from installed packages into VSCode's nativ
 apm install danielmeppiel/design-guidelines
 
 # Prompts are automatically integrated to:
-# .github/prompts/@*.prompt.md (with package metadata header)
+# .github/prompts/*-apm.prompt.md (with package metadata header)
 ```
 
 **How Auto-Integration Works**:
@@ -158,9 +158,15 @@ apm install danielmeppiel/design-guidelines
 1. Run `apm install` to fetch APM packages
 2. PromptIntegrator checks `auto-integrate` config setting
 3. If enabled and `.github/` exists, discovers `.prompt.md` files in each package
-4. Copies prompts to `.github/prompts/` with `@` prefix (e.g., `@accessibility-audit.prompt.md`)
+4. Copies prompts to `.github/prompts/` with `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
 5. Updates `.gitignore` to exclude integrated prompts
 6. VSCode automatically loads all prompts for your coding agents
+
+**Intent-First Discovery**:
+The `-apm` suffix pattern enables natural autocomplete in VSCode:
+- Type `/design` → VSCode shows `design-review-apm.prompt.md`
+- Type `/accessibility` → VSCode shows `accessibility-audit-apm.prompt.md`
+- Search by what you want to do, not where it comes from
 
 **Example**: 
 ```bash
@@ -168,9 +174,13 @@ apm install danielmeppiel/design-guidelines
 apm install danielmeppiel/design-guidelines
 
 # Result in VSCode:
-# .github/prompts/@accessibility-audit.prompt.md  ✓ Available in chat
-# .github/prompts/@design-review.prompt.md        ✓ Available in chat
-# .github/prompts/@style-guide-check.prompt.md    ✓ Available in chat
+# .github/prompts/accessibility-audit-apm.prompt.md  ✓ Available in chat
+# .github/prompts/design-review-apm.prompt.md        ✓ Available in chat
+# .github/prompts/style-guide-check-apm.prompt.md    ✓ Available in chat
+
+# Use with natural autocomplete:
+# Type: /design
+# VSCode suggests: design-review-apm.prompt.md ✨
 ```
 
 **VSCode Native Features**:
