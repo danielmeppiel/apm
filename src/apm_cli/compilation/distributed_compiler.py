@@ -5,6 +5,7 @@ AGENTS.md files across a project's directory structure, following the AGENTS.md 
 for nested agent context files.
 """
 
+import builtins
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,11 @@ from .constants import BUILD_ID_PLACEHOLDER
 from .context_optimizer import ContextOptimizer
 from ..output.formatters import CompilationFormatter
 from ..output.models import CompilationResults
+
+# CRITICAL: Shadow Click commands to prevent namespace collision
+set = builtins.set
+list = builtins.list
+dict = builtins.dict
 
 
 @dataclass

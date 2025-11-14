@@ -4,12 +4,12 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 import re
 import requests
 
 import git
-from git import Repo
+from git import Repo, RemoteProgress
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from ..core.token_manager import GitHubTokenManager
@@ -22,6 +22,68 @@ from ..models.apm_package import (
     APMPackage
 )
 from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, is_github_hostname, default_host
+
+
+class GitProgressReporter(RemoteProgress):
+    """Report git clone progress to Rich Progress."""
+    
+    def __init__(self, progress_task_id=None, progress_obj=None, package_name=None):
+        super().__init__()
+        self.task_id = progress_task_id
+        self.progress = progress_obj
+        self.package_name = package_name  # Keep consistent name throughout download
+        self.last_op = None
+        self.disabled = False  # Flag to stop updates after download completes
+    
+    def update(self, op_code, cur_count, max_count=None, message=''):
+        """Called by GitPython during clone operations."""
+        if not self.progress or self.task_id is None or self.disabled:
+            return
+        
+        # Keep the package name consistent - don't change description to git operations
+        # This keeps the UI clean and scannable
+        
+        # Update progress bar naturally - let it reach 100%
+        if max_count and max_count > 0:
+            # Determinate progress (we have total count)
+            self.progress.update(
+                self.task_id,
+                completed=cur_count,
+                total=max_count
+                # Note: We don't update description - keep the original package name
+            )
+        else:
+            # Indeterminate progress (just show activity)
+            self.progress.update(
+                self.task_id,
+                total=100,  # Set fake total for indeterminate tasks
+                completed=min(cur_count, 100) if cur_count else 0
+                # Note: We don't update description - keep the original package name
+            )
+        
+        self.last_op = cur_count
+    
+    def _get_op_name(self, op_code):
+        """Convert git operation code to human-readable name."""
+        from git import RemoteProgress
+        
+        # Extract operation type from op_code
+        if op_code & RemoteProgress.COUNTING:
+            return "Counting objects"
+        elif op_code & RemoteProgress.COMPRESSING:
+            return "Compressing objects"
+        elif op_code & RemoteProgress.WRITING:
+            return "Writing objects"
+        elif op_code & RemoteProgress.RECEIVING:
+            return "Receiving objects"
+        elif op_code & RemoteProgress.RESOLVING:
+            return "Resolving deltas"
+        elif op_code & RemoteProgress.FINDING_SOURCES:
+            return "Finding sources"
+        elif op_code & RemoteProgress.CHECKING_OUT:
+            return "Checking out files"
+        else:
+            return "Cloning"
 
 
 class GitHubPackageDownloader:
@@ -103,7 +165,7 @@ class GitHubPackageDownloader:
         else:
             return build_https_clone_url(host, repo_ref, token=None)
     
-    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, **clone_kwargs) -> Repo:
+    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, **clone_kwargs) -> Repo:
         """Attempt to clone a repository with fallback authentication methods.
         
         Uses GitHub Enterprise authentication patterns:
@@ -114,6 +176,7 @@ class GitHubPackageDownloader:
         Args:
             repo_url_base: Base repository reference (owner/repo)
             target_path: Target path for cloning
+            progress_reporter: GitProgressReporter instance for progress updates
             **clone_kwargs: Additional arguments for Repo.clone_from
             
         Returns:
@@ -128,7 +191,7 @@ class GitHubPackageDownloader:
         if self.github_token:
             try:
                 auth_url = self._build_repo_url(repo_url_base, use_ssh=False)
-                return Repo.clone_from(auth_url, target_path, env=self.git_env, **clone_kwargs)
+                return Repo.clone_from(auth_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
             except GitCommandError as e:
                 last_error = e
                 # Continue to next method
@@ -136,7 +199,7 @@ class GitHubPackageDownloader:
         # Method 2: Try SSH if it might work (for SSH key-based authentication)
         try:
             ssh_url = self._build_repo_url(repo_url_base, use_ssh=True)
-            return Repo.clone_from(ssh_url, target_path, env=self.git_env, **clone_kwargs)
+            return Repo.clone_from(ssh_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
         except GitCommandError as e:
             last_error = e
             # Continue to next method
@@ -144,7 +207,7 @@ class GitHubPackageDownloader:
         # Method 3: Try standard HTTPS as fallback for public repos
         try:
             public_url = f"https://github.com/{repo_url_base}"
-            return Repo.clone_from(public_url, target_path, env=self.git_env, **clone_kwargs)
+            return Repo.clone_from(public_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
         except GitCommandError as e:
             last_error = e
         
@@ -199,7 +262,7 @@ class GitHubPackageDownloader:
                     # Ensure host is set for enterprise repos
                     if getattr(dep_ref, 'host', None):
                         self.github_host = dep_ref.host
-                    repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir)
+                    repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_callback=None)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
                     resolved_commit = commit.hexsha
@@ -216,6 +279,7 @@ class GitHubPackageDownloader:
                     repo = self._clone_with_fallback(
                         dep_ref.repo_url,
                         temp_dir,
+                        progress_callback=None,
                         depth=1,
                         branch=ref
                     )
@@ -228,7 +292,7 @@ class GitHubPackageDownloader:
                     try:
                         if getattr(dep_ref, 'host', None):
                             self.github_host = dep_ref.host
-                        repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir)
+                        repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_callback=None)
 
                         # Try to resolve the reference
                         try:
@@ -388,7 +452,7 @@ class GitHubPackageDownloader:
             # File doesn't exist or isn't accessible
             return False
     
-    def download_virtual_file_package(self, dep_ref: DependencyReference, target_path: Path) -> PackageInfo:
+    def download_virtual_file_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a single file as a virtual APM package.
         
         Creates a minimal APM package structure with the file placed in the appropriate
@@ -397,6 +461,8 @@ class GitHubPackageDownloader:
         Args:
             dep_ref: Dependency reference with virtual_path set
             target_path: Local path where virtual package should be created
+            progress_task_id: Rich Progress task ID for progress updates
+            progress_obj: Rich Progress object for progress updates
             
         Returns:
             PackageInfo: Information about the created virtual package
@@ -415,11 +481,19 @@ class GitHubPackageDownloader:
         # Determine the ref to use
         ref = dep_ref.reference or "main"
         
+        # Update progress - downloading
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=50, total=100)
+        
         # Download the file content
         try:
             file_content = self.download_raw_file(dep_ref, dep_ref.virtual_path, ref)
         except RuntimeError as e:
             raise RuntimeError(f"Failed to download virtual package: {e}")
+        
+        # Update progress - processing
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=90, total=100)
         
         # Create target directory structure
         target_path.mkdir(parents=True, exist_ok=True)
@@ -497,7 +571,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             installed_at=datetime.now().isoformat()
         )
     
-    def download_collection_package(self, dep_ref: DependencyReference, target_path: Path) -> PackageInfo:
+    def download_collection_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a collection as a virtual APM package.
         
         Downloads the collection manifest, then fetches all referenced files and
@@ -506,6 +580,8 @@ author: {dep_ref.repo_url.split('/')[0]}
         Args:
             dep_ref: Dependency reference with virtual_path pointing to collection
             target_path: Local path where virtual package should be created
+            progress_task_id: Rich Progress task ID for progress updates
+            progress_obj: Rich Progress object for progress updates
             
         Returns:
             PackageInfo: Information about the created virtual package
@@ -522,6 +598,10 @@ author: {dep_ref.repo_url.split('/')[0]}
         
         # Determine the ref to use
         ref = dep_ref.reference or "main"
+        
+        # Update progress - starting
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=10, total=100)
         
         # Extract collection name from path (e.g., "collections/project-planning" -> "project-planning")
         collection_name = dep_ref.virtual_path.split('/')[-1]
@@ -557,8 +637,14 @@ author: {dep_ref.repo_url.split('/')[0]}
         # Download all items from the collection
         downloaded_count = 0
         failed_items = []
+        total_items = len(manifest.items)
         
-        for item in manifest.items:
+        for idx, item in enumerate(manifest.items):
+            # Update progress for each item
+            if progress_obj and progress_task_id is not None:
+                progress_percent = 20 + int((idx / total_items) * 70)  # 20% to 90%
+                progress_obj.update(progress_task_id, completed=progress_percent, total=100)
+            
             try:
                 # Download the file
                 item_content = self.download_raw_file(dep_ref, item.path, ref)
@@ -632,7 +718,13 @@ author: {dep_ref.repo_url.split('/')[0]}
             installed_at=datetime.now().isoformat()
         )
     
-    def download_package(self, repo_ref: str, target_path: Path) -> PackageInfo:
+    def download_package(
+        self, 
+        repo_ref: str, 
+        target_path: Path,
+        progress_task_id=None,
+        progress_obj=None
+    ) -> PackageInfo:
         """Download a GitHub repository and validate it as an APM package.
         
         For virtual packages (individual files or collections), creates a minimal
@@ -641,6 +733,8 @@ author: {dep_ref.repo_url.split('/')[0]}
         Args:
             repo_ref: Repository reference string (e.g., "user/repo#branch" or "user/repo/path/file.prompt.md")
             target_path: Local path where package should be downloaded
+            progress_task_id: Rich Progress task ID for progress updates
+            progress_obj: Rich Progress object for progress updates
             
         Returns:
             PackageInfo: Information about the downloaded package
@@ -659,10 +753,10 @@ author: {dep_ref.repo_url.split('/')[0]}
         if dep_ref.is_virtual:
             if dep_ref.is_virtual_file():
                 # Individual file virtual package
-                return self.download_virtual_file_package(dep_ref, target_path)
+                return self.download_virtual_file_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_collection():
                 # Collection virtual package
-                return self.download_collection_package(dep_ref, target_path)
+                return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             else:
                 raise ValueError(f"Unknown virtual package type for {dep_ref.virtual_path}")
         
@@ -678,21 +772,36 @@ author: {dep_ref.repo_url.split('/')[0]}
             shutil.rmtree(target_path)
             target_path.mkdir(parents=True, exist_ok=True)
         
+        # Store progress reporter so we can disable it after clone
+        progress_reporter = None
+        package_display_name = dep_ref.repo_url.split('/')[-1] if '/' in dep_ref.repo_url else dep_ref.repo_url
+        
         try:
             # Clone the repository using fallback authentication methods
             # Use shallow clone for performance if we have a specific commit
             if resolved_ref.ref_type == GitReferenceType.COMMIT:
                 # For commits, we need to clone and checkout the specific commit
-                repo = self._clone_with_fallback(dep_ref.repo_url, target_path)
+                progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
+                repo = self._clone_with_fallback(
+                    dep_ref.repo_url, 
+                    target_path, 
+                    progress_reporter=progress_reporter
+                )
                 repo.git.checkout(resolved_ref.resolved_commit)
             else:
                 # For branches and tags, we can use shallow clone
+                progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
                 repo = self._clone_with_fallback(
                     dep_ref.repo_url,
                     target_path,
+                    progress_reporter=progress_reporter,
                     depth=1,
                     branch=resolved_ref.ref_name
                 )
+            
+            # Disable progress reporter to prevent late git updates
+            if progress_reporter:
+                progress_reporter.disabled = True
             
             # Remove .git directory to save space and prevent treating as a Git repository
             git_dir = target_path / ".git"

@@ -1,5 +1,6 @@
 """Command-line interface for Agent Package Manager (APM)."""
 
+import builtins
 import os
 import sys
 from pathlib import Path
@@ -7,6 +8,13 @@ from typing import List
 
 import click
 from colorama import Fore, Style, init
+
+# CRITICAL: Shadow Click commands at module level to prevent namespace collision
+# When Click commands like 'config set' are defined, calling set() can invoke the command
+# instead of the Python built-in. This affects ALL functions in this module.
+set = builtins.set
+list = builtins.list
+dict = builtins.dict
 
 from apm_cli.commands.deps import deps
 from apm_cli.compilation import AgentsCompiler, CompilationConfig
@@ -21,6 +29,7 @@ from apm_cli.utils.console import (
     _rich_panel,
     _rich_success,
     _rich_warning,
+    show_download_spinner,
 )
 from apm_cli.utils.github_host import is_valid_fqdn, default_host
 
@@ -32,6 +41,7 @@ try:
     from apm_cli.deps.apm_resolver import APMDependencyResolver
     from apm_cli.deps.github_downloader import GitHubPackageDownloader
     from apm_cli.models.apm_package import APMPackage, DependencyReference
+    from apm_cli.integration import PromptIntegrator
 
     APM_DEPS_AVAILABLE = True
 except ImportError as e:
@@ -144,7 +154,7 @@ def _check_orphaned_packages():
             # Build set of expected installed package paths
             # For virtual packages, use the sanitized package name from get_virtual_package_name()
             # For regular packages, use repo_url as-is
-            expected_installed = set()
+            expected_installed = builtins.set()
             for dep in declared_deps:
                 repo_parts = dep.repo_url.split("/")
                 if len(repo_parts) >= 2:
@@ -491,8 +501,11 @@ def _validate_package_exists(package):
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be installed without installing"
 )
+@click.option(
+    "--verbose", is_flag=True, help="Show detailed installation information"
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -578,6 +591,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run):
             return
 
         # Install APM dependencies first (if requested)
+        apm_count = 0
+        prompt_count = 0
         if should_install_apm and apm_deps:
             if not APM_DEPS_AVAILABLE:
                 _rich_error("APM dependency system not available")
@@ -585,7 +600,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run):
                 sys.exit(1)
 
             try:
-                _install_apm_dependencies(apm_package, update)
+                apm_count, prompt_count = _install_apm_dependencies(apm_package, update)
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
@@ -593,17 +608,22 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run):
             _rich_info("No APM dependencies found in apm.yml")
 
         # Continue with MCP installation (existing logic)
+        mcp_count = 0
         if should_install_mcp and mcp_deps:
-            _install_mcp_dependencies(mcp_deps, runtime, exclude)
+            mcp_count = _install_mcp_dependencies(mcp_deps, runtime, exclude, verbose)
         elif should_install_mcp and not mcp_deps:
             _rich_warning("No MCP dependencies found in apm.yml")
 
-        # Final success message
+        # Show beautiful post-install summary
         _rich_blank_line()
-        if only:
-            _rich_success(f"{only.upper()} dependencies installation complete")
-        else:
-            _rich_success("Dependencies installation complete")
+        if not only:
+            # Load apm.yml config for summary
+            apm_config = _load_apm_config()
+            _show_install_summary(apm_count, prompt_count, mcp_count, apm_config)
+        elif only == "apm":
+            _rich_success(f"Installed {apm_count} APM dependencies")
+        elif only == "mcp":
+            _rich_success(f"Configured {mcp_count} MCP servers")
 
     except Exception as e:
         _rich_error(f"Error installing dependencies: {e}")
@@ -647,7 +667,7 @@ def prune(ctx, dry_run):
             # Build set of expected installed package paths
             # For virtual packages, use the sanitized package name from get_virtual_package_name()
             # For regular packages, use repo_url as-is
-            expected_installed = set()
+            expected_installed = builtins.set()
             for dep in declared_deps:
                 repo_parts = dep.repo_url.split("/")
                 if len(repo_parts) >= 2:
@@ -924,77 +944,137 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         apm_modules_dir = project_root / "apm_modules"
         apm_modules_dir.mkdir(exist_ok=True)
 
-        # Install each dependency
+        # Initialize prompt integrator
+        integrator = PromptIntegrator()
+        should_integrate = integrator.should_integrate(project_root)
+        total_integrated = 0
+
+        # Install each dependency with Rich progress display
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+        
         downloader = GitHubPackageDownloader()
         installed_count = 0
 
-        for dep_ref in deps_to_install:
-            # Determine installation directory using namespaced structure
-            # e.g., danielmeppiel/design-guidelines -> apm_modules/danielmeppiel/design-guidelines/
-            # For virtual packages: github/awesome-copilot/prompts/file.prompt.md -> apm_modules/github/awesome-copilot-file/
-            if dep_ref.alias:
-                # If alias is provided, use it directly (assume user handles namespacing)
-                install_name = dep_ref.alias
-                install_path = apm_modules_dir / install_name
-            elif dep_ref.is_virtual:
-                # Virtual packages get a sanitized name in the org subdirectory
-                repo_parts = dep_ref.repo_url.split("/")
-                if len(repo_parts) >= 2:
-                    org_name = repo_parts[0]
-                    virtual_name = dep_ref.get_virtual_package_name()
-                    install_path = apm_modules_dir / org_name / virtual_name
+        # Create progress display for downloads
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]{task.description}[/cyan]"),
+            BarColumn(),
+            TaskProgressColumn(),
+            transient=True,  # Progress bar disappears when done
+        ) as progress:
+            for dep_ref in deps_to_install:
+                # Determine installation directory using namespaced structure
+                # e.g., danielmeppiel/design-guidelines -> apm_modules/danielmeppiel/design-guidelines/
+                # For virtual packages: github/awesome-copilot/prompts/file.prompt.md -> apm_modules/github/awesome-copilot-file/
+                if dep_ref.alias:
+                    # If alias is provided, use it directly (assume user handles namespacing)
+                    install_name = dep_ref.alias
+                    install_path = apm_modules_dir / install_name
+                elif dep_ref.is_virtual:
+                    # Virtual packages get a sanitized name in the org subdirectory
+                    repo_parts = dep_ref.repo_url.split("/")
+                    if len(repo_parts) >= 2:
+                        org_name = repo_parts[0]
+                        virtual_name = dep_ref.get_virtual_package_name()
+                        install_path = apm_modules_dir / org_name / virtual_name
+                    else:
+                        # Fallback for invalid repo URLs
+                        install_path = apm_modules_dir / dep_ref.get_virtual_package_name()
                 else:
-                    # Fallback for invalid repo URLs
-                    install_path = apm_modules_dir / dep_ref.get_virtual_package_name()
-            else:
-                # Regular packages: Use org/repo structure to prevent collisions
-                repo_parts = dep_ref.repo_url.split("/")
-                if len(repo_parts) >= 2:
-                    org_name = repo_parts[0]
-                    repo_name = repo_parts[1]
-                    install_path = apm_modules_dir / org_name / repo_name
-                else:
-                    # Fallback for invalid repo URLs
-                    install_path = apm_modules_dir / dep_ref.repo_url
+                    # Regular packages: Use org/repo structure to prevent collisions
+                    repo_parts = dep_ref.repo_url.split("/")
+                    if len(repo_parts) >= 2:
+                        org_name = repo_parts[0]
+                        repo_name = repo_parts[1]
+                        install_path = apm_modules_dir / org_name / repo_name
+                    else:
+                        # Fallback for invalid repo URLs
+                        install_path = apm_modules_dir / dep_ref.repo_url
 
-            # Skip if already exists and not updating
-            if install_path.exists() and not update_refs:
-                display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
-                _rich_info(f"✓ {display_name} (cached)")
-                continue
+                # Skip if already exists and not updating
+                if install_path.exists() and not update_refs:
+                    display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    _rich_info(f"✓ {display_name} (cached)")
+                    continue
 
-            # Download the package
-            try:
-                display_name = (
-                    str(dep_ref)
-                    if dep_ref.is_virtual
-                    else f"{dep_ref.repo_url}#{dep_ref.reference or 'main'}"
-                )
-                _rich_info(f"  {display_name}")
+                # Download the package with progress feedback
+                try:
+                    display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    short_name = display_name.split('/')[-1] if '/' in display_name else display_name
+                    
+                    # Create a progress task for this download
+                    task_id = progress.add_task(
+                        description=f"Fetching {short_name}",
+                        total=None  # Indeterminate initially; git will update with actual counts
+                    )
+                    
+                    # Download with live progress bar
+                    package_info = downloader.download_package(
+                        str(dep_ref), 
+                        install_path,
+                        progress_task_id=task_id,
+                        progress_obj=progress
+                    )
+                    
+                    # CRITICAL: Hide progress BEFORE printing success message to avoid overlap
+                    progress.update(task_id, visible=False)
+                    progress.refresh()  # Force immediate refresh to hide the bar
+                    
+                    installed_count += 1
+                    _rich_success(f"✓ {display_name}")
 
-                package_info = downloader.download_package(str(dep_ref), install_path)
-                installed_count += 1
+                    # Auto-integrate prompts if enabled
+                    if should_integrate:
+                        try:
+                            integration_result = integrator.integrate_package_prompts(
+                                package_info, 
+                                project_root
+                            )
+                            if integration_result.files_integrated > 0:
+                                total_integrated += integration_result.files_integrated
+                                _rich_info(
+                                    f"  └─ {integration_result.files_integrated} prompts integrated → .github/prompts/"
+                                )
+                            if integration_result.files_updated > 0:
+                                _rich_info(
+                                    f"  └─ {integration_result.files_updated} prompts updated"
+                                )
+                        except Exception as e:
+                            # Don't fail installation if integration fails
+                            _rich_warning(f"  ⚠ Failed to integrate prompts: {e}")
 
-                display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
-                _rich_success(f"✓ {display_name}")
-
-            except Exception as e:
-                display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
-                _rich_error(f"❌ Failed to install {display_name}: {e}")
-                # Continue with other packages instead of failing completely
-                continue
+                except Exception as e:
+                    display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    # Remove the progress task on error
+                    if 'task_id' in locals():
+                        progress.remove_task(task_id)
+                    _rich_error(f"❌ Failed to install {display_name}: {e}")
+                    # Continue with other packages instead of failing completely
+                    continue
 
         # Update .gitignore
         _update_gitignore_for_apm_modules()
 
+        # Update .gitignore for integrated prompts if any were integrated
+        if should_integrate and total_integrated > 0:
+            try:
+                updated = integrator.update_gitignore_for_integrated_prompts(project_root)
+                if updated:
+                    _rich_info("Updated .gitignore for integrated prompts")
+            except Exception as e:
+                _rich_warning(f"Could not update .gitignore for prompts: {e}")
+
         _rich_success(f"Installed {installed_count} APM dependencies")
+        
+        return installed_count, total_integrated
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
 
 
 def _install_mcp_dependencies(
-    mcp_deps: List[str], runtime: str = None, exclude: str = None
+    mcp_deps: List[str], runtime: str = None, exclude: str = None, verbose: bool = False
 ):
     """Install MCP dependencies using existing logic.
 
@@ -1002,33 +1082,32 @@ def _install_mcp_dependencies(
         mcp_deps: List of MCP dependency names
         runtime: Target specific runtime only
         exclude: Exclude specific runtime from installation
+        verbose: Show detailed installation information
+    
+    Returns:
+        int: Number of MCP servers configured
     """
     if not mcp_deps:
         _rich_warning("No MCP dependencies found in apm.yml")
-        return
+        return 0
 
-    _rich_info(f"Installing MCP dependencies ({len(mcp_deps)})...")
-
-    # Show dependencies in a nice list
     console = _get_console()
+    
+    # Start MCP section with clean header
     if console:
         try:
-            from rich.table import Table
-
-            dep_table = Table(show_header=False, box=None, padding=(0, 1))
-            dep_table.add_column("Icon", style="cyan")
-            dep_table.add_column("Dependency", style="white")
-
-            for dep in mcp_deps:
-                dep_table.add_row("•", dep)
-
-            console.print(dep_table)
+            from rich.panel import Panel
+            from rich.text import Text
+            
+            header = Text()
+            header.append("┌─ MCP Servers (", style="cyan")
+            header.append(str(len(mcp_deps)), style="cyan bold")
+            header.append(")", style="cyan")
+            console.print(header)
         except Exception:
-            for dep in mcp_deps:
-                click.echo(f"  - {dep}")
+            _rich_info(f"Installing MCP dependencies ({len(mcp_deps)})...")
     else:
-        for dep in mcp_deps:
-            click.echo(f"  - {dep}")
+        _rich_info(f"Installing MCP dependencies ({len(mcp_deps)})...")
 
     # Runtime detection and multi-runtime installation (existing logic)
     if runtime:
@@ -1037,7 +1116,7 @@ def _install_mcp_dependencies(
         _rich_info(f"Targeting specific runtime: {runtime}")
     else:
         # NEW LOGIC: First get installed runtimes, then filter by scripts
-        config = _load_apm_config()
+        apm_config = _load_apm_config()
 
         # Step 1: Get all installed runtimes on the system
         try:
@@ -1081,18 +1160,30 @@ def _install_mcp_dependencies(
 
         # Step 2: Get runtimes referenced in apm.yml scripts
         script_runtimes = _detect_runtimes_from_scripts(
-            config.get("scripts", {}) if config else {}
+            apm_config.get("scripts", {}) if apm_config else {}
         )
 
         # Step 3: Target runtimes that are BOTH installed AND referenced in scripts
         if script_runtimes:
             # Only install for runtimes that are installed AND used in scripts
             target_runtimes = [rt for rt in installed_runtimes if rt in script_runtimes]
-            _rich_info(f"Installed runtimes: {', '.join(installed_runtimes)}")
-            _rich_info(f"Script runtimes: {', '.join(script_runtimes)}")
-            if target_runtimes:
-                _rich_info(f"Target runtimes: {', '.join(target_runtimes)}")
-            else:
+            
+            # Show runtime detection details only in verbose mode
+            if verbose:
+                if console:
+                    console.print("│  [cyan]ℹ️  Runtime Detection[/cyan]")
+                    console.print(f"│     └─ Installed: {', '.join(installed_runtimes)}")
+                    console.print(f"│     └─ Used in scripts: {', '.join(script_runtimes)}")
+                    if target_runtimes:
+                        console.print(f"│     └─ Target: {', '.join(target_runtimes)} (available + used in scripts)")
+                    console.print("│")
+                else:
+                    _rich_info(f"Installed runtimes: {', '.join(installed_runtimes)}")
+                    _rich_info(f"Script runtimes: {', '.join(script_runtimes)}")
+                    if target_runtimes:
+                        _rich_info(f"Target runtimes: {', '.join(target_runtimes)}")
+            
+            if not target_runtimes:
                 _rich_warning("Scripts reference runtimes that are not installed")
                 _rich_info(
                     f"Install missing runtimes with: apm runtime setup <runtime>"
@@ -1101,9 +1192,10 @@ def _install_mcp_dependencies(
             # No scripts reference any runtimes - install for all installed runtimes
             target_runtimes = installed_runtimes
             if target_runtimes:
-                _rich_info(
-                    f"No scripts detected, using all installed runtimes: {', '.join(target_runtimes)}"
-                )
+                if verbose:
+                    _rich_info(
+                        f"No scripts detected, using all installed runtimes: {', '.join(target_runtimes)}"
+                    )
             else:
                 _rich_warning("No MCP-compatible runtimes installed")
                 _rich_info("Install a runtime with: apm runtime setup copilot")
@@ -1118,13 +1210,15 @@ def _install_mcp_dependencies(
             _rich_info("No runtimes installed, using VS Code as fallback")
 
     # Use the new registry operations module for better server detection
+    configured_count = 0
     try:
         from apm_cli.registry.operations import MCPServerOperations
 
         operations = MCPServerOperations()
 
         # Early validation: check if all servers exist in registry (fail-fast like npm)
-        _rich_info(f"Validating {len(mcp_deps)} servers...")
+        if verbose:
+            _rich_info(f"Validating {len(mcp_deps)} servers...")
         valid_servers, invalid_servers = operations.validate_servers_exist(mcp_deps)
 
         if invalid_servers:
@@ -1137,8 +1231,11 @@ def _install_mcp_dependencies(
             )
 
         if not valid_servers:
-            _rich_success("No servers to install")
-            return
+            if console:
+                console.print("└─ [green]No servers to install[/green]")
+            else:
+                _rich_success("No servers to install")
+            return 0
 
         # Check which valid servers actually need installation
         servers_to_install = operations.check_servers_needing_installation(
@@ -1146,10 +1243,18 @@ def _install_mcp_dependencies(
         )
 
         if not servers_to_install:
-            _rich_success("All MCP servers already configured")
+            # All already configured
+            if console:
+                for dep in mcp_deps:
+                    console.print(f"│  [green]✓[/green] {dep} [dim](already configured)[/dim]")
+                console.print("└─ [green]All servers up to date[/green]")
+            else:
+                _rich_success("All MCP servers already configured")
+            return len(mcp_deps)
         else:
             # Batch fetch server info once to avoid duplicate registry calls
-            _rich_info(f"Installing {len(servers_to_install)} servers...")
+            if verbose:
+                _rich_info(f"Installing {len(servers_to_install)} servers...")
             server_info_cache = operations.batch_fetch_server_info(servers_to_install)
 
             # Collect both environment and runtime variables using cached server info
@@ -1161,20 +1266,86 @@ def _install_mcp_dependencies(
             )
 
             # Install for each target runtime using cached server info and shared variables
-            for rt in target_runtimes:
-                _rich_info(f"Configuring {rt}...")
-                _install_for_runtime(
-                    rt,
-                    servers_to_install,
-                    shared_env_vars,
-                    server_info_cache,
-                    shared_runtime_vars,
-                )
+            for dep in servers_to_install:
+                if console:
+                    console.print(f"│  [cyan]⬇️[/cyan]  {dep}")
+                    console.print(f"│     └─ Configuring for {', '.join([rt.title() for rt in target_runtimes])}...")
+                
+                for rt in target_runtimes:
+                    if verbose:
+                        _rich_info(f"Configuring {rt}...")
+                    _install_for_runtime(
+                        rt,
+                        [dep],  # Install one at a time for better output
+                        shared_env_vars,
+                        server_info_cache,
+                        shared_runtime_vars,
+                    )
+                
+                if console:
+                    console.print(f"│  [green]✓[/green]  {dep} → {', '.join([rt.title() for rt in target_runtimes])}")
+                configured_count += 1
+            
+            # Close the panel
+            if console:
+                console.print(f"└─ [green]Configured {configured_count} server{'s' if configured_count != 1 else ''}[/green]")
+
+        return configured_count
 
     except ImportError:
         _rich_warning("Registry operations not available")
         _rich_error("Cannot validate MCP servers without registry operations")
         raise RuntimeError("Registry operations module required for MCP installation")
+
+
+def _show_install_summary(apm_count: int, prompt_count: int, mcp_count: int, apm_config):
+    """Show beautiful post-install summary with next steps.
+    
+    Args:
+        apm_count: Number of APM packages installed
+        prompt_count: Number of prompts integrated
+        mcp_count: Number of MCP servers configured
+        apm_config: The apm.yml configuration dict
+    """
+    console = _get_console()
+    if not console:
+        # Fallback to basic output if Rich not available
+        _rich_success("Installation complete!")
+        return
+    
+    try:
+        from rich.panel import Panel
+        
+        # Build next steps - align with README Quick Start
+        lines = []
+        
+        # Next steps section
+        lines.append("Next steps:")
+        
+        # Show compile command if there are APM packages (context/agents to compile)
+        if apm_count > 0:
+            lines.append("  apm compile              # Generate AGENTS.md guardrails")
+        
+        # Show generic run command tip
+        if prompt_count > 0 or (apm_config and 'scripts' in apm_config and apm_config['scripts']):
+            lines.append("  apm run <prompt>         # Execute prompt/workflow")
+        
+        lines.append("  apm list                 # Show all prompts")
+        
+        content = "\n".join(lines)
+        
+        panel = Panel(
+            content,
+            title="✨ Installation complete",
+            border_style="green",
+            padding=(1, 2)
+        )
+        
+        console.print()
+        console.print(panel)
+    except Exception as e:
+        # Fallback to simple message if panel fails
+        _rich_success("Installation complete!")
 
 
 def _update_gitignore_for_apm_modules():
@@ -1221,9 +1392,11 @@ def _load_apm_config():
 def _detect_runtimes_from_scripts(scripts: dict) -> List[str]:
     """Extract runtime commands from apm.yml scripts."""
     import re
-    from builtins import list as builtin_list
-
-    detected = set()
+    import builtins
+    
+    # CRITICAL FIX: Use builtins.set explicitly to avoid Click command collision!
+    # The 'set' name collides with the 'config set' Click subcommand
+    detected = builtins.set()
 
     for script_name, command in scripts.items():
         # Simple regex matching for runtime commands
@@ -1234,7 +1407,7 @@ def _detect_runtimes_from_scripts(scripts: dict) -> List[str]:
         if re.search(r"\bllm\b", command):
             detected.add("llm")
 
-    return builtin_list(detected)
+    return builtins.list(detected)
 
 
 def _filter_available_runtimes(detected_runtimes: List[str]) -> List[str]:
@@ -1323,17 +1496,17 @@ def _install_for_runtime(
 
 def _get_default_script():
     """Get the default script (start) from apm.yml scripts."""
-    config = _load_apm_config()
-    if config and "scripts" in config and "start" in config["scripts"]:
+    apm_config = _load_apm_config()
+    if apm_config and "scripts" in apm_config and "start" in apm_config["scripts"]:
         return "start"
     return None
 
 
 def _list_available_scripts():
     """List all available scripts from apm.yml."""
-    config = _load_apm_config()
-    if config and "scripts" in config:
-        return config["scripts"]
+    apm_config = _load_apm_config()
+    if apm_config and "scripts" in apm_config:
+        return apm_config["scripts"]
     return {}
 
 
@@ -2276,102 +2449,155 @@ def compile(
         sys.exit(1)
 
 
-@cli.command(help="Configure APM CLI")
-@click.option("--show", is_flag=True, help="Show current configuration")
+@cli.group(help="Configure APM CLI")
 @click.pass_context
-def config(ctx, show):
+def config(ctx):
     """Configure APM CLI settings."""
-    try:
-        if show:
-            try:
-                # Lazy import rich table
-                from rich.table import Table  # type: ignore
+    # If no subcommand, show current configuration
+    if ctx.invoked_subcommand is None:
+        try:
+            # Lazy import rich table
+            from rich.table import Table  # type: ignore
 
-                console = _get_console()
-                # Create configuration display
-                config_table = Table(
-                    title="⚙️  Current APM Configuration",
-                    show_header=True,
-                    header_style="bold cyan",
+            console = _get_console()
+            # Create configuration display
+            config_table = Table(
+                title="⚙️  Current APM Configuration",
+                show_header=True,
+                header_style="bold cyan",
+            )
+            config_table.add_column("Category", style="bold yellow", min_width=12)
+            config_table.add_column("Setting", style="white", min_width=15)
+            config_table.add_column("Value", style="cyan")
+
+            # Show apm.yml if in project
+            if Path("apm.yml").exists():
+                apm_config = _load_apm_config()
+                config_table.add_row(
+                    "Project", "Name", apm_config.get("name", "Unknown")
                 )
-                config_table.add_column("Category", style="bold yellow", min_width=12)
-                config_table.add_column("Setting", style="white", min_width=15)
-                config_table.add_column("Value", style="cyan")
+                config_table.add_row(
+                    "", "Version", apm_config.get("version", "Unknown")
+                )
+                config_table.add_row(
+                    "", "Entrypoint", apm_config.get("entrypoint", "None")
+                )
+                config_table.add_row(
+                    "",
+                    "MCP Dependencies",
+                    str(len(apm_config.get("dependencies", {}).get("mcp", []))),
+                )
 
-                # Show apm.yml if in project
-                if Path("apm.yml").exists():
-                    config = _load_apm_config()
+                # Show compilation configuration
+                compilation_config = apm_config.get("compilation", {})
+                if compilation_config:
                     config_table.add_row(
-                        "Project", "Name", config.get("name", "Unknown")
-                    )
-                    config_table.add_row(
-                        "", "Version", config.get("version", "Unknown")
-                    )
-                    config_table.add_row(
-                        "", "Entrypoint", config.get("entrypoint", "None")
+                        "Compilation",
+                        "Output",
+                        compilation_config.get("output", "AGENTS.md"),
                     )
                     config_table.add_row(
                         "",
-                        "MCP Dependencies",
-                        str(len(config.get("dependencies", {}).get("mcp", []))),
+                        "Chatmode",
+                        compilation_config.get("chatmode", "auto-detect"),
                     )
-
-                    # Show compilation configuration
-                    compilation_config = config.get("compilation", {})
-                    if compilation_config:
-                        config_table.add_row(
-                            "Compilation",
-                            "Output",
-                            compilation_config.get("output", "AGENTS.md"),
-                        )
-                        config_table.add_row(
-                            "",
-                            "Chatmode",
-                            compilation_config.get("chatmode", "auto-detect"),
-                        )
-                        config_table.add_row(
-                            "",
-                            "Resolve Links",
-                            str(compilation_config.get("resolve_links", True)),
-                        )
-                    else:
-                        config_table.add_row(
-                            "Compilation", "Status", "Using defaults (no config)"
-                        )
+                    config_table.add_row(
+                        "",
+                        "Resolve Links",
+                        str(compilation_config.get("resolve_links", True)),
+                    )
                 else:
                     config_table.add_row(
-                        "Project", "Status", "Not in an APM project directory"
+                        "Compilation", "Status", "Using defaults (no config)"
                     )
+            else:
+                config_table.add_row(
+                    "Project", "Status", "Not in an APM project directory"
+                )
 
-                config_table.add_row("Global", "APM CLI Version", get_version())
+            config_table.add_row("Global", "APM CLI Version", get_version())
 
-                console.print(config_table)
+            console.print(config_table)
 
-            except (ImportError, NameError):
-                # Fallback display
-                _rich_info("Current APM Configuration:")
+        except (ImportError, NameError):
+            # Fallback display
+            _rich_info("Current APM Configuration:")
 
-                if Path("apm.yml").exists():
-                    config = _load_apm_config()
-                    click.echo(f"\n{HIGHLIGHT}Project (apm.yml):{RESET}")
-                    click.echo(f"  Name: {config.get('name', 'Unknown')}")
-                    click.echo(f"  Version: {config.get('version', 'Unknown')}")
-                    click.echo(f"  Entrypoint: {config.get('entrypoint', 'None')}")
-                    click.echo(
-                        f"  MCP Dependencies: {len(config.get('dependencies', {}).get('mcp', []))}"
-                    )
-                else:
-                    _rich_info("Not in an APM project directory")
+            if Path("apm.yml").exists():
+                apm_config = _load_apm_config()
+                click.echo(f"\n{HIGHLIGHT}Project (apm.yml):{RESET}")
+                click.echo(f"  Name: {apm_config.get('name', 'Unknown')}")
+                click.echo(f"  Version: {apm_config.get('version', 'Unknown')}")
+                click.echo(f"  Entrypoint: {apm_config.get('entrypoint', 'None')}")
+                click.echo(
+                    f"  MCP Dependencies: {len(apm_config.get('dependencies', {}).get('mcp', []))}"
+                )
+            else:
+                _rich_info("Not in an APM project directory")
 
-                click.echo(f"\n{HIGHLIGHT}Global:{RESET}")
-                click.echo(f"  APM CLI Version: {get_version()}")
+            click.echo(f"\n{HIGHLIGHT}Global:{RESET}")
+            click.echo(f"  APM CLI Version: {get_version()}")
 
+
+@config.command(help="Set configuration value")
+@click.argument("key")
+@click.argument("value")
+def set(key, value):
+    """Set a configuration value.
+    
+    Examples:
+        apm config set auto-integrate false
+        apm config set auto-integrate true
+    """
+    from apm_cli.config import set_auto_integrate
+    
+    if key == "auto-integrate":
+        if value.lower() in ["true", "1", "yes"]:
+            set_auto_integrate(True)
+            _rich_success("Auto-integration enabled")
+        elif value.lower() in ["false", "0", "no"]:
+            set_auto_integrate(False)
+            _rich_success("Auto-integration disabled")
         else:
-            _rich_info("Use --show to display configuration")
-
-    except Exception as e:
-        _rich_error(f"Error showing configuration: {e}")
+            _rich_error(f"Invalid value '{value}'. Use 'true' or 'false'.")
+            sys.exit(1)
+    else:
+        _rich_error(f"Unknown configuration key: '{key}'")
+        _rich_info("Valid keys: auto-integrate")
+        _rich_info("This error may indicate a bug in command routing. Please report this issue.")
         sys.exit(1)
+
+
+@config.command(help="Get configuration value")
+@click.argument("key", required=False)
+def get(key):
+    """Get a configuration value or show all configuration.
+    
+    Examples:
+        apm config get auto-integrate
+        apm config get
+    """
+    from apm_cli.config import get_config, get_auto_integrate
+    
+    if key:
+        if key == "auto-integrate":
+            value = get_auto_integrate()
+            click.echo(f"auto-integrate: {value}")
+        else:
+            _rich_error(f"Unknown configuration key: '{key}'")
+            _rich_info("Valid keys: auto-integrate")
+            _rich_info("This error may indicate a bug in command routing. Please report this issue.")
+            sys.exit(1)
+    else:
+        # Show all config
+        config_data = get_config()
+        _rich_info("APM Configuration:")
+        for k, v in config_data.items():
+            # Map internal keys to user-friendly names
+            if k == "auto_integrate":
+                click.echo(f"  auto-integrate: {v}")
+            else:
+                click.echo(f"  {k}: {v}")
 
 
 @cli.group(help="Manage Coding Agent CLI runtimes")
