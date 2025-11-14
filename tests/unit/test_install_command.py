@@ -66,7 +66,7 @@ class TestInstallCommandAutoBootstrap:
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
             # Mock the install function to avoid actual installation
-            mock_install_apm.return_value = None
+            mock_install_apm.return_value = (0, 0)  # Return tuple (installed_count, total_integrated)
 
             result = self.runner.invoke(cli, ["install", "test/package"])
 
@@ -106,7 +106,7 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = None
+            mock_install_apm.return_value = (0, 0)  # Return tuple (installed_count, total_integrated)
 
             result = self.runner.invoke(cli, ["install", "org1/pkg1", "org2/pkg2"])
 
@@ -184,7 +184,7 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = None
+            mock_install_apm.return_value = (0, 0)  # Return tuple (installed_count, total_integrated)
 
             result = self.runner.invoke(cli, ["install", "test/package"])
 

@@ -368,7 +368,7 @@ class TestCommandGeneration:
         runner = ScriptRunner()
         result = runner._generate_runtime_command("codex", Path("test.prompt.md"))
         
-        assert result == "codex test.prompt.md"
+        assert result == "codex -s workspace-write --skip-git-repo-check test.prompt.md"
     
     def test_generate_runtime_command_unsupported(self):
         """Test error for unsupported runtime."""
