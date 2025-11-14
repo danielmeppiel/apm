@@ -262,7 +262,7 @@ class GitHubPackageDownloader:
                     # Ensure host is set for enterprise repos
                     if getattr(dep_ref, 'host', None):
                         self.github_host = dep_ref.host
-                    repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_callback=None)
+                    repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
                     resolved_commit = commit.hexsha
@@ -292,7 +292,7 @@ class GitHubPackageDownloader:
                     try:
                         if getattr(dep_ref, 'host', None):
                             self.github_host = dep_ref.host
-                        repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_callback=None)
+                        repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None)
 
                         # Try to resolve the reference
                         try:

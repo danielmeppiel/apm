@@ -182,6 +182,25 @@ apm install --only=apm
 apm install --dry-run
 ```
 
+**Automatic Prompt Integration**:
+
+When you run `apm install`, APM automatically integrates prompts from installed packages into your project's `.github/prompts/` directory (if it exists and auto-integration is enabled):
+
+- **Auto-enabled**: By default, enabled when `.github/` directory exists
+- **Control**: Disable with `apm config set auto-integrate false`
+- **Smart updates**: Only updates prompts when package version/commit changes
+- **Metadata**: Integrated prompts include source, version, and commit information
+- **Naming**: Prompts are prefixed with `@` (e.g., `@accessibility-audit.prompt.md`)
+- **GitIgnore**: Pattern `.github/prompts/@*.prompt.md` automatically added to `.gitignore`
+
+**Example Integration Output**:
+```
+✓ danielmeppiel/design-guidelines
+  └─ 3 prompts integrated → .github/prompts/
+```
+
+This makes all package prompts available in VSCode and compatible editors for immediate use with your coding agents.
+
 ### `apm deps` - 🔗 Manage APM package dependencies
 
 Manage APM package dependencies with installation status, tree visualization, and package information.
@@ -548,19 +567,92 @@ APM integrates seamlessly with [Spec-kit](https://github.com/github/spec-kit) fo
 
 ### `apm config` - ⚙️ Configure APM CLI
 
-Display APM CLI configuration information.
+Manage APM CLI configuration settings. Running `apm config` without subcommands displays the current configuration.
 
 ```bash
-apm config [OPTIONS]
+apm config [COMMAND]
 ```
 
-**Options:**
-- `--show` - Show current configuration
+#### `apm config` - Show current configuration (default behavior)
+
+Display current APM CLI configuration and project settings.
+
+```bash
+apm config
+```
+
+**What's displayed:**
+- Project configuration from `apm.yml` (if in an APM project)
+  - Project name, version, entrypoint
+  - Number of MCP dependencies
+  - Compilation settings (output, chatmode, resolve_links)
+- Global configuration
+  - APM CLI version
+  - `auto-integrate` setting
 
 **Examples:**
 ```bash
 # Show current configuration
-apm config --show
+apm config
+```
+
+#### `apm config get` - Get a configuration value
+
+Get a specific configuration value or display all configuration values.
+
+```bash
+apm config get [KEY]
+```
+
+**Arguments:**
+- `KEY` (optional) - Configuration key to retrieve. Supported keys:
+  - `auto-integrate` - Whether to automatically integrate `.prompt.md` files into AGENTS.md
+
+If `KEY` is omitted, displays all configuration values.
+
+**Examples:**
+```bash
+# Get auto-integrate setting
+apm config get auto-integrate
+
+# Show all configuration
+apm config get
+```
+
+#### `apm config set` - Set a configuration value
+
+Set a configuration value globally for APM CLI.
+
+```bash
+apm config set KEY VALUE
+```
+
+**Arguments:**
+- `KEY` - Configuration key to set. Supported keys:
+  - `auto-integrate` - Enable/disable automatic integration of `.prompt.md` files
+- `VALUE` - Value to set. For boolean keys, use: `true`, `false`, `yes`, `no`, `1`, `0`
+
+**Configuration Keys:**
+
+**`auto-integrate`** - Control automatic prompt integration
+- **Type:** Boolean
+- **Default:** `true`
+- **Description:** When enabled, APM automatically discovers and integrates `.prompt.md` files from `.github/prompts/` and `.apm/prompts/` directories into the compiled AGENTS.md file. This ensures all prompts are available to coding agents without manual compilation.
+- **Use Cases:**
+  - Set to `false` if you want to manually manage which prompts are compiled
+  - Set to `true` to ensure all prompts are always included in the context
+
+**Examples:**
+```bash
+# Enable auto-integration (default)
+apm config set auto-integrate true
+
+# Disable auto-integration
+apm config set auto-integrate false
+
+# Using alternative boolean values
+apm config set auto-integrate yes
+apm config set auto-integrate 1
 ```
 
 ## Runtime Management
