@@ -25,26 +25,15 @@ class TestPromptIntegrator:
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    def test_should_integrate_when_github_exists_and_enabled(self):
-        """Test integration is enabled when .github exists and config is True."""
+    def test_should_integrate_always_returns_true(self):
+        """Test integration is always enabled (zero-config approach)."""
+        # No .github/ directory needed
+        assert self.integrator.should_integrate(self.project_root) == True
+        
+        # Even with .github/ present
         github_dir = self.project_root / ".github"
         github_dir.mkdir()
-        
-        with patch('apm_cli.integration.prompt_integrator.get_auto_integrate', return_value=True):
-            assert self.integrator.should_integrate(self.project_root) == True
-    
-    def test_should_not_integrate_when_github_missing(self):
-        """Test integration is disabled when .github doesn't exist."""
-        with patch('apm_cli.integration.prompt_integrator.get_auto_integrate', return_value=True):
-            assert self.integrator.should_integrate(self.project_root) == False
-    
-    def test_should_not_integrate_when_config_disabled(self):
-        """Test integration is disabled when config is False."""
-        github_dir = self.project_root / ".github"
-        github_dir.mkdir()
-        
-        with patch('apm_cli.integration.prompt_integrator.get_auto_integrate', return_value=False):
-            assert self.integrator.should_integrate(self.project_root) == False
+        assert self.integrator.should_integrate(self.project_root) == True
     
     def test_find_prompt_files_in_root(self):
         """Test finding .prompt.md files in package root."""
@@ -152,8 +141,7 @@ class TestPromptIntegrator:
             installed_at=datetime.now().isoformat()
         )
         
-        with patch('apm_cli.integration.prompt_integrator.get_auto_integrate', return_value=True):
-            result = self.integrator.integrate_package_prompts(package_info, self.project_root)
+        result = self.integrator.integrate_package_prompts(package_info, self.project_root)
         
         assert result.files_integrated == 1
         assert (self.project_root / ".github" / "prompts").exists()
@@ -198,8 +186,7 @@ Installed: 2024-01-01T00:00:00
             installed_at="2024-01-01T00:00:00"
         )
         
-        with patch('apm_cli.integration.prompt_integrator.get_auto_integrate', return_value=True):
-            result = self.integrator.integrate_package_prompts(package_info, self.project_root)
+        result = self.integrator.integrate_package_prompts(package_info, self.project_root)
         
         assert result.files_integrated == 0
         assert result.files_updated == 0
@@ -600,6 +587,122 @@ Installed: 2024-11-13T10:00:00
         # Verify skipped file is unchanged
         skip_content = (github_prompts / "skip-apm.prompt.md").read_text()
         assert skip_content == skip_same
+    
+    # ========== Sync Integration Tests (Cleanup) ==========
+    
+    def test_sync_integration_removes_orphaned_prompts(self):
+        """Test that sync removes prompts from uninstalled packages."""
+        github_prompts = self.project_root / ".github" / "prompts"
+        github_prompts.mkdir(parents=True)
+        
+        # Create integrated prompts from two packages
+        prompt1 = """<!-- 
+Source: design-guidelines (danielmeppiel/design-guidelines)
+Version: 1.0.0
+Commit: abc123
+Original: design-review.prompt.md
+Installed: 2024-11-13T10:00:00
+-->
+
+# Design Review"""
+        (github_prompts / "design-review-apm.prompt.md").write_text(prompt1)
+        
+        prompt2 = """<!-- 
+Source: compliance-rules (danielmeppiel/compliance-rules)
+Version: 1.0.0
+Commit: def456
+Original: compliance-audit.prompt.md
+Installed: 2024-11-13T10:00:00
+-->
+
+# Compliance Audit"""
+        (github_prompts / "compliance-audit-apm.prompt.md").write_text(prompt2)
+        
+        # Create APM package with only one dependency (design-guidelines uninstalled)
+        from apm_cli.models.apm_package import DependencyReference
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [
+            DependencyReference(
+                repo_url="danielmeppiel/compliance-rules",
+                reference="main"
+            )
+        ]
+        
+        # Run sync
+        self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Verify orphaned prompt removed, existing prompt preserved
+        assert not (github_prompts / "design-review-apm.prompt.md").exists()
+        assert (github_prompts / "compliance-audit-apm.prompt.md").exists()
+    
+    def test_sync_integration_preserves_installed_prompts(self):
+        """Test that sync doesn't remove prompts from installed packages."""
+        github_prompts = self.project_root / ".github" / "prompts"
+        github_prompts.mkdir(parents=True)
+        
+        # Create integrated prompt
+        prompt1 = """<!-- 
+Source: design-guidelines (danielmeppiel/design-guidelines)
+Version: 1.0.0
+Commit: abc123
+Original: design-review.prompt.md
+Installed: 2024-11-13T10:00:00
+-->
+
+# Design Review"""
+        (github_prompts / "design-review-apm.prompt.md").write_text(prompt1)
+        
+        # Create APM package with the dependency still installed
+        from apm_cli.models.apm_package import DependencyReference
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [
+            DependencyReference(
+                repo_url="danielmeppiel/design-guidelines",
+                reference="main"
+            )
+        ]
+        
+        # Run sync
+        self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Verify prompt still exists
+        assert (github_prompts / "design-review-apm.prompt.md").exists()
+    
+    def test_sync_integration_handles_missing_prompts_dir(self):
+        """Test that sync gracefully handles missing .github/prompts/ directory."""
+        from apm_cli.models.apm_package import DependencyReference
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [
+            DependencyReference(
+                repo_url="danielmeppiel/test",
+                reference="main"
+            )
+        ]
+        
+        # Should not raise exception
+        self.integrator.sync_integration(apm_package, self.project_root)
+    
+    def test_sync_integration_handles_files_without_metadata(self):
+        """Test that sync preserves files without valid metadata headers (user's custom files)."""
+        github_prompts = self.project_root / ".github" / "prompts"
+        github_prompts.mkdir(parents=True)
+        
+        # Create file without proper header - could be user's custom prompt
+        (github_prompts / "custom-apm.prompt.md").write_text("# Custom prompt without header")
+        
+        from apm_cli.models.apm_package import DependencyReference
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        # Should not raise exception
+        self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # File without header should be preserved (not removed) - it's a user's file
+        assert (github_prompts / "custom-apm.prompt.md").exists()
 
 
 class TestPromptSuffixPattern:

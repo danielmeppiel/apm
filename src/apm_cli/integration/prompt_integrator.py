@@ -6,8 +6,6 @@ from dataclasses import dataclass
 import shutil
 from datetime import datetime
 
-from apm_cli.config import get_auto_integrate
-
 
 @dataclass
 class IntegrationResult:
@@ -33,10 +31,9 @@ class PromptIntegrator:
             project_root: Root directory of the project
             
         Returns:
-            bool: True if both .github/ exists and auto_integrate is enabled
+            bool: Always True - integration happens automatically
         """
-        github_dir = project_root / ".github"
-        return github_dir.exists() and get_auto_integrate()
+        return True
     
     def find_prompt_files(self, package_path: Path) -> List[Path]:
         """Find all .prompt.md files in a package.
@@ -274,6 +271,61 @@ Installed: {installed_at}
             target_paths=target_paths,
             gitignore_updated=False
         )
+    
+    def sync_integration(self, apm_package, project_root: Path) -> None:
+        """Sync .github/prompts/ with currently installed packages.
+        
+        - Removes prompts from uninstalled packages (orphans)
+        - Updates prompts from updated packages
+        - Adds prompts from new packages
+        
+        Idempotent: safe to call anytime. Reuses existing smart update logic.
+        
+        Args:
+            apm_package: APMPackage with current dependencies
+            project_root: Root directory of the project
+        """
+        prompts_dir = project_root / ".github" / "prompts"
+        if not prompts_dir.exists():
+            return
+        
+        # Get currently installed package URLs
+        installed = {dep.repo_url for dep in apm_package.get_apm_dependencies()}
+        
+        # Remove orphaned prompts (from uninstalled packages)
+        for prompt_file in prompts_dir.glob("*-apm.prompt.md"):
+            metadata = self._parse_header_metadata(prompt_file)
+            
+            # Skip files without valid metadata - they might be user's custom files
+            if not metadata:
+                continue
+            
+            source = metadata.get('Source', '')
+            
+            # Skip if no source metadata
+            if not source:
+                continue
+            
+            # Extract package repo URL from source
+            # Format: "package-name (owner/repo)" or "package-name (host.com/owner/repo)"
+            # We need to match against the full URL including hostname if present
+            # Works with any Git host: github.com, gitlab.com, git.company.com, etc.
+            package_repo_url = None
+            if '(' in source and ')' in source:
+                # Extract content within parentheses - this is the full repo identifier
+                package_repo_url = source.split('(')[1].split(')')[0].strip()
+            
+            if not package_repo_url:
+                continue
+            
+            # Check if source package is still installed
+            package_match = any(pkg == package_repo_url for pkg in installed)
+            
+            if not package_match:
+                try:
+                    prompt_file.unlink()  # Orphaned - remove it
+                except Exception:
+                    pass  # Silent failure OK for cleanup
     
     def update_gitignore_for_integrated_prompts(self, project_root: Path) -> bool:
         """Update .gitignore with pattern for integrated prompts.

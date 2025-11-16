@@ -879,6 +879,18 @@ def uninstall(ctx, packages, dry_run):
                 else:
                     _rich_warning(f"Package {package_name} not found in apm_modules/")
 
+        # Sync prompt integration to remove orphaned prompts
+        if Path(".github/prompts").exists():
+            try:
+                from apm_cli.models.apm_package import APMPackage
+                from apm_cli.integration.prompt_integrator import PromptIntegrator
+                
+                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+                integrator = PromptIntegrator()
+                integrator.sync_integration(apm_package, Path("."))
+            except Exception:
+                pass  # Silent cleanup failure OK
+        
         # Final summary
         summary_lines = []
         summary_lines.append(
@@ -992,10 +1004,66 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                         # Fallback for invalid repo URLs
                         install_path = apm_modules_dir / dep_ref.repo_url
 
-                # Skip if already exists and not updating
+                # Skip download if already exists and not updating, but still integrate prompts
                 if install_path.exists() and not update_refs:
                     display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
                     _rich_info(f"✓ {display_name} (cached)")
+                    
+                    # Still need to integrate prompts for cached packages (zero-config behavior)
+                    if should_integrate:
+                        try:
+                            # Create PackageInfo from cached package
+                            from apm_cli.models.apm_package import APMPackage, PackageInfo, ResolvedReference, GitReferenceType
+                            from datetime import datetime
+                            
+                            # Load package from apm.yml in install path
+                            apm_yml_path = install_path / "apm.yml"
+                            if apm_yml_path.exists():
+                                cached_package = APMPackage.from_apm_yml(apm_yml_path)
+                                # Ensure source is set to the repo URL for sync matching
+                                if not cached_package.source:
+                                    cached_package.source = dep_ref.repo_url
+                            else:
+                                # Virtual package or no apm.yml - create minimal package
+                                cached_package = APMPackage(
+                                    name=dep_ref.repo_url.split('/')[-1],
+                                    version="unknown",
+                                    package_path=install_path,
+                                    source=dep_ref.repo_url
+                                )
+                            
+                            # Create basic resolved reference for cached packages
+                            resolved_ref = ResolvedReference(
+                                original_ref=dep_ref.reference,
+                                ref_type=GitReferenceType.BRANCH,
+                                resolved_commit="cached",  # Mark as cached since we don't know exact commit
+                                ref_name=dep_ref.reference
+                            )
+                            
+                            cached_package_info = PackageInfo(
+                                package=cached_package,
+                                install_path=install_path,
+                                resolved_reference=resolved_ref,
+                                installed_at=datetime.now().isoformat()
+                            )
+                            
+                            integration_result = integrator.integrate_package_prompts(
+                                cached_package_info,
+                                project_root
+                            )
+                            if integration_result.files_integrated > 0:
+                                total_integrated += integration_result.files_integrated
+                                _rich_info(
+                                    f"  └─ {integration_result.files_integrated} prompts integrated → .github/prompts/"
+                                )
+                            if integration_result.files_updated > 0:
+                                _rich_info(
+                                    f"  └─ {integration_result.files_updated} prompts updated"
+                                )
+                        except Exception as e:
+                            # Don't fail installation if integration fails
+                            _rich_warning(f"  ⚠ Failed to integrate prompts from cached package: {e}")
+                    
                     continue
 
                 # Download the package with progress feedback

@@ -140,7 +140,7 @@ VSCode already implements core Context concepts:
 APM automatically integrates prompts from installed packages into VSCode's native structure:
 
 ```bash
-# Install APM packages (with auto-integration enabled by default)
+# Install APM packages - integration happens automatically
 apm install danielmeppiel/design-guidelines
 
 # Prompts are automatically integrated to:
@@ -148,19 +148,22 @@ apm install danielmeppiel/design-guidelines
 ```
 
 **How Auto-Integration Works**:
-- **Automatic**: Enabled by default when `.github/` directory exists
-- **Controlled**: Configure with `apm config set auto-integrate true/false`
+- **Zero-Config**: Always enabled, works automatically with no configuration needed
+- **Auto-Cleanup**: Removes integrated prompts when you uninstall packages
 - **Smart Updates**: Tracks package version/commit; updates only when package changes
 - **Metadata Headers**: Integrated prompts include source, version, and commit information
 - **GitIgnore Protection**: Automatically adds pattern to `.gitignore` for integrated prompts
+- **User-Safe**: Preserves any custom `*-apm.prompt.md` files without APM metadata headers
 
 **Integration Flow**:
 1. Run `apm install` to fetch APM packages
-2. PromptIntegrator checks `auto-integrate` config setting
-3. If enabled and `.github/` exists, discovers `.prompt.md` files in each package
+2. APM automatically creates `.github/prompts/` directory if needed
+3. Discovers `.prompt.md` files in each package
 4. Copies prompts to `.github/prompts/` with `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
-5. Updates `.gitignore` to exclude integrated prompts
-6. VSCode automatically loads all prompts for your coding agents
+5. Adds metadata headers for version tracking
+6. Updates `.gitignore` to exclude integrated prompts
+7. VSCode automatically loads all prompts for your coding agents
+8. Run `apm uninstall` to automatically remove integrated prompts
 
 **Intent-First Discovery**:
 The `-apm` suffix pattern enables natural autocomplete in VSCode:
@@ -286,7 +289,7 @@ Any IDE with GitHub Copilot support (JetBrains, Visual Studio, etc.) works with 
 apm install danielmeppiel/design-guidelines
 
 # GitHub Copilot automatically picks up:
-# .github/prompts/@*.prompt.md (integrated prompts)
+# .github/prompts/*-apm.prompt.md (integrated prompts)
 # .github/chatmodes/ (chat personalities)
 # .github/instructions/ (file-pattern rules)
 ```

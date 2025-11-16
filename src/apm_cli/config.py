@@ -58,21 +58,3 @@ def set_default_client(client_type):
         client_type (str): Type of client to set as default.
     """
     update_config({"default_client": client_type})
-
-
-def get_auto_integrate():
-    """Get the auto-integrate prompts setting.
-    
-    Returns:
-        bool: True if auto-integration is enabled (default), False otherwise.
-    """
-    return get_config().get("auto_integrate", True)
-
-
-def set_auto_integrate(enabled):
-    """Set the auto-integrate prompts setting.
-    
-    Args:
-        enabled (bool): Whether to enable auto-integration.
-    """
-    update_config({"auto_integrate": enabled})
