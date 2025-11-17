@@ -15,7 +15,6 @@ These tests ensure the URL normalization logic works correctly across:
 - Different URL formats (with/without .git suffix)
 """
 
-import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock

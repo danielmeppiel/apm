@@ -3,9 +3,10 @@
 from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
-import shutil
 from datetime import datetime
 import hashlib
+
+from .utils import normalize_repo_url
 
 
 @dataclass
@@ -92,7 +93,8 @@ class AgentIntegrator:
                     'Commit': apm_data.get('commit', ''),
                     'Source': f"{apm_data.get('source', '')} ({apm_data.get('source_repo', '')})",
                     'Original': apm_data.get('original_path', ''),
-                    'Installed': apm_data.get('installed_at', '')
+                    'Installed': apm_data.get('installed_at', ''),
+                    'ContentHash': apm_data.get('content_hash', '')
                 }
                 return metadata
             
@@ -103,7 +105,8 @@ class AgentIntegrator:
                     'Commit': post.metadata.get('apm_commit', ''),
                     'Source': f"{post.metadata.get('apm_source', '')} ({post.metadata.get('apm_source_repo', '')})",
                     'Original': post.metadata.get('apm_original_path', ''),
-                    'Installed': post.metadata.get('apm_installed_at', '')
+                    'Installed': post.metadata.get('apm_installed_at', ''),
+                    'ContentHash': post.metadata.get('apm_content_hash', '')
                 }
                 return metadata
             
@@ -380,18 +383,7 @@ class AgentIntegrator:
                 continue
             
             # Normalize the repo URL to owner/repo format for comparison
-            # Remove protocol and host (https://github.com/ or https://gitlab.com/, etc.)
-            normalized_package_url = package_repo_url
-            if '://' in package_repo_url:
-                # Extract owner/repo from full URL: https://github.com/owner/repo -> owner/repo
-                parts = package_repo_url.split('://', 1)[1]  # Remove protocol
-                if '/' in parts:
-                    path_parts = parts.split('/', 1)  # Split host from path
-                    if len(path_parts) > 1:
-                        normalized_package_url = path_parts[1]
-                        # Remove .git suffix if present (use removesuffix for Python 3.9+)
-                        if normalized_package_url.endswith('.git'):
-                            normalized_package_url = normalized_package_url[:-4]
+            normalized_package_url = normalize_repo_url(package_repo_url)
             
             # Check if source package is still installed
             # Compare normalized URLs
@@ -434,17 +426,7 @@ class AgentIntegrator:
                 continue
             
             # Normalize the repo URL to owner/repo format for comparison
-            normalized_package_url = package_repo_url
-            if '://' in package_repo_url:
-                # Extract owner/repo from full URL: https://github.com/owner/repo -> owner/repo
-                parts = package_repo_url.split('://', 1)[1]  # Remove protocol
-                if '/' in parts:
-                    path_parts = parts.split('/', 1)  # Split host from path
-                    if len(path_parts) > 1:
-                        normalized_package_url = path_parts[1]
-                        # Remove .git suffix if present (use removesuffix for Python 3.9+)
-                        if normalized_package_url.endswith('.git'):
-                            normalized_package_url = normalized_package_url[:-4]
+            normalized_package_url = normalize_repo_url(package_repo_url)
             
             # Check if source package is still installed
             # Compare normalized URLs

@@ -1,10 +1,8 @@
 """Tests for agent integration functionality."""
 
-import pytest
 import tempfile
-import os
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from datetime import datetime
 
 from apm_cli.integration import AgentIntegrator
