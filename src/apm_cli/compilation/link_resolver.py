@@ -9,10 +9,11 @@ Following KISS principle - simple, pragmatic implementation.
 """
 
 import builtins
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict, Optional, Set
 from urllib.parse import urlparse
 
 # CRITICAL: Shadow Click commands to prevent namespace collision
@@ -256,7 +257,6 @@ class UnifiedLinkResolver:
         
         # Calculate relative path from target location to actual source file
         # Use os.path.relpath to support ../ for paths outside target directory
-        import os
         try:
             relative_path = os.path.relpath(actual_file, ctx.target_location)
             return relative_path

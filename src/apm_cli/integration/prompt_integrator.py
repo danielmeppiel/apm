@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
 import hashlib
+import re
 from datetime import datetime
 import frontmatter
 

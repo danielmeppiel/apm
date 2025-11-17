@@ -5,6 +5,7 @@ from typing import List, Dict
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+import re
 
 from .utils import normalize_repo_url
 from apm_cli.compilation.link_resolver import UnifiedLinkResolver

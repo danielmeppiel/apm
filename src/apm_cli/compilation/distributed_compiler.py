@@ -179,7 +179,15 @@ class DistributedAgentsCompiler:
             
             # Optional: Get referenced contexts for reporting (doesn't copy)
             try:
-                referenced_contexts = self.link_resolver.get_referenced_contexts()
+                # Collect all files from placements for context reference scanning
+                all_files_to_scan = []
+                for placement in placements:
+                    for instruction in placement.instructions:
+                        all_files_to_scan.append(instruction.file_path)
+                    for agent in placement.agents:
+                        all_files_to_scan.append(agent.file_path)
+                
+                referenced_contexts = self.link_resolver.get_referenced_contexts(all_files_to_scan)
                 stats["contexts_referenced"] = len(referenced_contexts)
             except Exception:
                 stats["contexts_referenced"] = 0

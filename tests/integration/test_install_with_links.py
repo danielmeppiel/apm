@@ -1,7 +1,6 @@
 """Integration tests for link resolution during installation."""
 
 import pytest
-from pathlib import Path
 from textwrap import dedent
 
 from apm_cli.integration.prompt_integrator import PromptIntegrator
