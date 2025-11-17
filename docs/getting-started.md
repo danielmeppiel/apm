@@ -284,11 +284,13 @@ This creates a complete Context structure:
 my-first-project/
 ├── apm.yml              # Project configuration
 └── .apm/
-    ├── chatmodes/       # AI assistant personalities  
+    ├── agents/          # AI assistant personalities
     ├── instructions/    # Context and coding standards
     ├── prompts/         # Reusable agent workflows
     └── context/         # Project knowledge base
 ```
+
+> **Note**: Legacy `.apm/chatmodes/` directory with `.chatmode.md` files is still supported.
 
 ### 2. Explore Generated Files
 
@@ -376,7 +378,6 @@ apm install company/templates/chatmodes/qa-assistant.chatmode.md
 
 - `.prompt.md` - Agent workflows
 - `.instructions.md` - Context and rules
-- `.chatmode.md` - Chat mode configurations
 - `.agent.md` - Agent definitions
 
 **Installation Structure:**

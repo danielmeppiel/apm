@@ -61,33 +61,41 @@ class TestPromptIntegrator:
         assert len(prompts) == 1
         assert prompts[0].name == "workflow.prompt.md"
     
-    def test_generate_header_comment(self):
-        """Test header comment generation."""
+    def test_copy_prompt_with_metadata(self):
+        """Test copying prompt file with metadata in frontmatter."""
+        source = self.project_root / "source.prompt.md"
+        target = self.project_root / "target.prompt.md"
+        
+        source_content = "# Test Prompt\n\nSome prompt content."
+        source.write_text(source_content)
+        
         package = APMPackage(
-            name="test-package",
+            name="test-pkg",
             version="1.0.0",
-            package_path=Path("/fake/path")
+            package_path=Path("/fake/path"),
+            source="github.com/test/repo"
         )
         resolved_ref = ResolvedReference(
             original_ref="main",
             ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123def456",
+            resolved_commit="abc123",
             ref_name="main"
         )
         package_info = PackageInfo(
             package=package,
             install_path=Path("/fake/install"),
             resolved_reference=resolved_ref,
-            installed_at="2024-01-01T00:00:00"
+            installed_at="2024-11-13T10:00:00"
         )
         
-        original_path = Path("/fake/install/test.prompt.md")
-        header = self.integrator.generate_header_comment(package_info, original_path)
+        self.integrator.copy_prompt_with_metadata(source, target, package_info, source)
         
-        assert "test-package" in header
-        assert "1.0.0" in header
-        assert "abc123def456" in header
-        assert "test.prompt.md" in header
+        target_content = target.read_text()
+        assert "---" in target_content  # YAML frontmatter
+        assert "apm:" in target_content
+        assert "version: 1.0.0" in target_content
+        assert "commit: abc123" in target_content
+        assert "Some prompt content" in target_content
     
     def test_get_target_filename(self):
         """Test target filename generation with -apm suffix (intent-first naming)."""
@@ -98,21 +106,7 @@ class TestPromptIntegrator:
         # Intent-first naming: -apm suffix before extension
         assert target == "accessibility-audit-apm.prompt.md"
     
-    def test_copy_prompt_with_header(self):
-        """Test copying prompt file with header prepended."""
-        source = self.project_root / "source.prompt.md"
-        target = self.project_root / "target.prompt.md"
-        
-        source_content = "# Original Content\n\nSome text here."
-        source.write_text(source_content)
-        
-        header = "<!-- Test Header -->\n"
-        
-        self.integrator.copy_prompt_with_header(source, target, header)
-        
-        target_content = target.read_text()
-        assert target_content.startswith(header)
-        assert source_content in target_content
+
     
     def test_integrate_package_prompts_creates_directory(self):
         """Test that integration creates .github/prompts/ if missing."""
@@ -280,9 +274,10 @@ Installed: 2024-11-13T10:30:00Z
             installed_at=datetime.now().isoformat()
         )
         
-        should_update = self.integrator._should_update_prompt(existing_header, package_info)
+        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
         
         assert should_update == True
+        assert was_modified == False
     
     def test_should_update_prompt_new_commit(self):
         """Test that prompt should be updated when commit changes."""
@@ -309,9 +304,10 @@ Installed: 2024-11-13T10:30:00Z
             installed_at=datetime.now().isoformat()
         )
         
-        should_update = self.integrator._should_update_prompt(existing_header, package_info)
+        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
         
         assert should_update == True
+        assert was_modified == False
     
     def test_should_update_prompt_no_change(self):
         """Test that prompt should not be updated when version and commit match."""
@@ -338,9 +334,10 @@ Installed: 2024-11-13T10:30:00Z
             installed_at=datetime.now().isoformat()
         )
         
-        should_update = self.integrator._should_update_prompt(existing_header, package_info)
+        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
         
         assert should_update == False
+        assert was_modified == False
     
     def test_should_update_prompt_no_header(self):
         """Test that prompt should be updated when no valid header exists."""
@@ -364,9 +361,10 @@ Installed: 2024-11-13T10:30:00Z
             installed_at=datetime.now().isoformat()
         )
         
-        should_update = self.integrator._should_update_prompt(existing_header, package_info)
+        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
         
         assert should_update == True
+        assert was_modified == False
     
     def test_integrate_first_time_creates_with_header(self):
         """Test that first-time integration creates files with proper headers."""
@@ -402,12 +400,13 @@ Installed: 2024-11-13T10:30:00Z
         assert result.files_updated == 0
         assert result.files_skipped == 0
         
-        # Verify header was added
+        # Verify frontmatter metadata was added
         target_file = github_prompts / "test-apm.prompt.md"
         content = target_file.read_text()
-        assert content.startswith('<!--')
-        assert 'Version: 1.0.0' in content
-        assert 'Commit: abc123' in content
+        assert content.startswith('---')  # YAML frontmatter
+        assert 'apm:' in content
+        assert 'version: 1.0.0' in content
+        assert 'commit: abc123' in content
         assert '# Test Content' in content
     
     def test_integrate_with_new_version_updates_file(self):
@@ -419,14 +418,17 @@ Installed: 2024-11-13T10:30:00Z
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
         
-        # Pre-create file with old version
-        old_content = """<!-- 
-Source: test-pkg (github.com/test/repo)
-Version: 1.0.0
-Commit: abc123
-Original: test.prompt.md
-Installed: 2024-11-13T10:00:00
--->
+        # Pre-create file with old version in YAML frontmatter
+        old_content = """---
+apm:
+  source: test-pkg
+  source_repo: github.com/test/repo
+  version: 1.0.0
+  commit: abc123
+  original_path: test.prompt.md
+  installed_at: '2024-11-13T10:00:00'
+  content_hash: abc123
+---
 
 # Old Content"""
         (github_prompts / "test-apm.prompt.md").write_text(old_content)
@@ -456,10 +458,10 @@ Installed: 2024-11-13T10:00:00
         assert result.files_updated == 1
         assert result.files_skipped == 0
         
-        # Verify content was updated
+        # Verify content was updated with new YAML frontmatter
         target_file = github_prompts / "test-apm.prompt.md"
         content = target_file.read_text()
-        assert 'Version: 2.0.0' in content
+        assert 'version: 2.0.0' in content
         assert '# Updated Content' in content
         assert '# Old Content' not in content
     
@@ -472,14 +474,17 @@ Installed: 2024-11-13T10:00:00
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
         
-        # Pre-create file with old commit
-        old_content = """<!-- 
-Source: test-pkg (github.com/test/repo)
-Version: 1.0.0
-Commit: abc123
-Original: test.prompt.md
-Installed: 2024-11-13T10:00:00
--->
+        # Pre-create file with old commit in YAML frontmatter
+        old_content = """---
+apm:
+  source: test-pkg
+  source_repo: github.com/test/repo
+  version: 1.0.0
+  commit: abc123
+  original_path: test.prompt.md
+  installed_at: '2024-11-13T10:00:00'
+  content_hash: abc123
+---
 
 # Old Content"""
         (github_prompts / "test-apm.prompt.md").write_text(old_content)
@@ -509,10 +514,10 @@ Installed: 2024-11-13T10:00:00
         assert result.files_updated == 1
         assert result.files_skipped == 0
         
-        # Verify commit was updated
+        # Verify commit was updated in YAML frontmatter
         target_file = github_prompts / "test-apm.prompt.md"
         content = target_file.read_text()
-        assert 'Commit: def456' in content
+        assert 'commit: def456' in content
         assert '# Updated Content' in content
     
     def test_integrate_mixed_operations(self):
@@ -528,28 +533,37 @@ Installed: 2024-11-13T10:00:00
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
         
-        # Pre-create file to be updated (old version)
-        update_old = """<!-- 
-Source: test-pkg (github.com/test/repo)
-Version: 1.0.0
-Commit: abc123
-Original: update.prompt.md
-Installed: 2024-11-13T10:00:00
--->
+        # Pre-create file to be updated (old version) in YAML frontmatter
+        update_old = """---
+apm:
+  source: test-pkg
+  source_repo: github.com/test/repo
+  version: 1.0.0
+  commit: abc123
+  original_path: update.prompt.md
+  installed_at: '2024-11-13T10:00:00'
+  content_hash: abc123
+---
 
 # Old Content"""
         (github_prompts / "update-apm.prompt.md").write_text(update_old)
         
-        # Pre-create file to be skipped (same version)
-        skip_same = """<!-- 
-Source: test-pkg (github.com/test/repo)
-Version: 2.0.0
-Commit: def456
-Original: skip.prompt.md
-Installed: 2024-11-13T10:00:00
--->
+        # Pre-create file to be skipped (same version) - need correct hash
+        import hashlib
+        skip_content = "# Unchanged File"
+        skip_hash = hashlib.sha256(skip_content.encode()).hexdigest()
+        skip_same = f"""---
+apm:
+  source: test-pkg
+  source_repo: github.com/test/repo
+  version: 2.0.0
+  commit: def456
+  original_path: skip.prompt.md
+  installed_at: '2024-11-13T10:00:00'
+  content_hash: {skip_hash}
+---
 
-# Unchanged File"""
+{skip_content}"""
         (github_prompts / "skip-apm.prompt.md").write_text(skip_same)
         
         package = APMPackage(
@@ -580,9 +594,9 @@ Installed: 2024-11-13T10:00:00
         # Verify new file exists
         assert (github_prompts / "new-apm.prompt.md").exists()
         
-        # Verify updated file has new version
+        # Verify updated file has new version in YAML frontmatter
         update_content = (github_prompts / "update-apm.prompt.md").read_text()
-        assert 'Version: 2.0.0' in update_content
+        assert 'version: 2.0.0' in update_content
         
         # Verify skipped file is unchanged
         skip_content = (github_prompts / "skip-apm.prompt.md").read_text()

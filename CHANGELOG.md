@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.4]
+
+### Added
+- **Agent Integration**: Automatic sync of `.agent.md` files to `.github/agents/` with `-apm` suffix (same pattern as prompt integration)
+
+### Fixed
+- `sync_integration` URL normalization bug that caused ALL integrated files to be removed during uninstall instead of only the uninstalled package's files
+  - Root cause: Metadata stored full URLs (`https://github.com/owner/repo`) while dependency list used short form (`owner/repo`)
+  - Impact: Uninstalling one package would incorrectly remove prompts/agents from ALL other packages
+  - Fix: Normalize both URL formats to `owner/repo` before comparison
+  - Added comprehensive test coverage for multi-package scenarios
+- Uninstall command now correctly removes only `apm_modules/owner/repo/` directory (not `apm_modules/owner/`)
+
 ## [0.5.3] - 2025-11-16
 
 ### Changed

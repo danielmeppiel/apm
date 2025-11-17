@@ -18,9 +18,9 @@ apm init my-project  # Creates complete Context scaffolding + apm.yml
 my-project/
 ├── apm.yml              # Project configuration and script definitions
 └── .apm/
-    ├── chatmodes/       # Role-based AI expertise with tool boundaries
-    │   ├── backend-dev.chatmode.md     # API development specialist
-    │   └── frontend-dev.chatmode.md    # UI development specialist
+    ├── agents/          # Role-based AI expertise with tool boundaries
+    │   ├── backend-dev.agent.md        # API development specialist
+    │   └── frontend-dev.agent.md       # UI development specialist
     ├── instructions/    # Targeted guidance by file type and domain  
     │   ├── security.instructions.md    # applyTo: "auth/**"
     │   └── testing.instructions.md     # applyTo: "**/*test*"
@@ -70,9 +70,11 @@ apm run review-copilot --param files="src/auth/"
 
 The APM CLI supports three types of primitives:
 
-- **Chatmodes** (`.chatmode.md`) - Define AI assistant personalities and behaviors
+- **Agents** (`.agent.md`) - Define AI assistant personalities and behaviors (legacy: `.chatmode.md`)
 - **Instructions** (`.instructions.md`) - Provide coding standards and guidelines for specific file types
 - **Context** (`.context.md`, `.memory.md`) - Supply background information and project context
+
+> **Note**: Both `.agent.md` (new format) and `.chatmode.md` (legacy format) are fully supported. VSCode provides Quick Fix actions to help migrate from `.chatmode.md` to `.agent.md`.
 
 ## File Structure
 
@@ -83,7 +85,9 @@ APM discovers primitives in these locations:
 ```
 # APM-native structure
 .apm/
-├── chatmodes/           # AI assistant definitions
+├── agents/             # AI assistant definitions (new format)
+│   └── *.agent.md
+├── chatmodes/          # AI assistant definitions (legacy format)
 │   └── *.chatmode.md
 ├── instructions/        # Coding standards and guidelines  
 │   └── *.instructions.md
@@ -94,12 +98,15 @@ APM discovers primitives in these locations:
 
 # VSCode-compatible structure  
 .github/
-├── chatmodes/          # VSCode Copilot chatmodes
+├── agents/             # VSCode Copilot agents (new format)
+│   └── *.agent.md
+├── chatmodes/          # VSCode Copilot chatmodes (legacy format)
 │   └── *.chatmode.md
 └── instructions/       # VSCode Copilot instructions
     └── *.instructions.md
 
 # Generic files (anywhere in project)
+*.agent.md
 *.chatmode.md
 *.instructions.md
 *.context.md
@@ -142,10 +149,10 @@ Use ${input:auth_method} with ${input:session_duration} sessions
 Review [security standards](../context/security.context.md) before implementation
 ```
 
-### Chat Modes (.chatmode.md)
+### Agents (.agent.md, legacy: .chatmode.md)
 **Agent Specialization Layer** - AI assistant personalities with tool boundaries
 
-Chat modes create specialized AI assistants focused on specific domains. They define expertise areas, communication styles, and available tools.
+Agents create specialized AI assistants focused on specific domains. They define expertise areas, communication styles, and available tools.
 
 ```yaml
 ---
@@ -156,6 +163,8 @@ expertise: ["security", "performance", "scalability"]
 You are a senior backend engineer with 10+ years experience in API development.
 Focus on security, performance, and maintainable architecture patterns.
 ```
+
+> **File Format**: Use `.agent.md` for new files. Legacy `.chatmode.md` files continue to work and can be migrated using VSCode Quick Fix actions.
 
 ### Context (.context.md)
 **Knowledge Management Layer** - Optimized project information for AI consumption
@@ -172,15 +181,14 @@ Context files package project knowledge, architectural decisions, and team stand
 
 ## Primitive Types
 
-### Chatmodes
+### Agents
 
-Chatmodes define AI assistant personalities and specialized behaviors for different development tasks.
+Agents define AI assistant personalities and specialized behaviors for different development tasks.
 
-**Format:** `.chatmode.md`
+**Format:** `.agent.md` (new) or `.chatmode.md` (legacy)
 
 **Frontmatter:**
-- `description` (required) - Clear explanation of the chatmode purpose
-- `applyTo` (optional) - Glob pattern for file targeting (e.g., `"**/*.{py,js}"`)
+- `description` (required) - Clear explanation of the agent purpose
 - `author` (optional) - Creator information
 - `version` (optional) - Version string
 
@@ -189,7 +197,6 @@ Chatmodes define AI assistant personalities and specialized behaviors for differ
 ---
 description: AI pair programming assistant for code review
 author: Development Team
-applyTo: "**/*.{py,js,ts}"
 version: "1.0.0"
 ---
 
@@ -312,32 +319,13 @@ Team information (`.apm/memory/team-contacts.memory.md`):
 
 ## Discovery and Parsing
 
-The APM CLI automatically discovers and parses all primitive files in your project:
-
-```python
-from apm_cli.primitives import discover_primitives
-
-# Discover all primitives in current directory
-collection = discover_primitives()
-
-print(f"Found {collection.count()} primitives:")
-print(f"  Chatmodes: {len(collection.chatmodes)}")
-print(f"  Instructions: {len(collection.instructions)}")  
-print(f"  Contexts: {len(collection.contexts)}")
-
-# Access individual primitives
-for chatmode in collection.chatmodes:
-    print(f"Chatmode: {chatmode.name}")
-    print(f"  Description: {chatmode.description}")
-    if chatmode.apply_to:
-        print(f"  Applies to: {chatmode.apply_to}")
-```
+The APM CLI automatically discovers and parses all primitive files in your project.
 
 ## Validation
 
 All primitives are automatically validated during discovery:
 
-- **Chatmodes**: Must have description and content
+- **Agents**: Must have description and content (supports both `.agent.md` and `.chatmode.md`)
 - **Instructions**: Must have description, applyTo pattern, and content
 - **Context**: Must have content (description optional)
 
@@ -347,7 +335,7 @@ Invalid files are skipped with warning messages, allowing valid primitives to co
 
 ### 1. Clear Naming
 Use descriptive names that indicate purpose:
-- `code-review-assistant.chatmode.md`
+- `code-review-assistant.agent.md`
 - `python-documentation.instructions.md`
 - `team-contacts.md`
 
@@ -364,9 +352,9 @@ Keep primitives in version control alongside your code. Use semantic versioning 
 Use the structured `.apm/` directories for better organization:
 ```
 .apm/
-├── chatmodes/
-│   ├── code-reviewer.chatmode.md
-│   └── documentation-writer.chatmode.md
+├── agents/
+│   ├── code-reviewer.agent.md
+│   └── documentation-writer.agent.md
 ├── instructions/
 │   ├── python-style.instructions.md
 │   └── typescript-conventions.instructions.md
@@ -385,13 +373,13 @@ Use the structured `.apm/` directories for better organization:
 For VSCode Copilot compatibility, place files in `.github/` directories:
 ```
 .github/
-├── chatmodes/
-│   └── assistant.chatmode.md
+├── agents/
+│   └── assistant.agent.md
 └── instructions/
     └── coding-standards.instructions.md
 ```
 
-These files follow the same format and will be discovered alongside APM-specific primitives.
+These files follow the same format and will be discovered alongside APM-specific primitives. 
 
 ## Error Handling
 

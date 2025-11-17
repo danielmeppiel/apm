@@ -69,10 +69,9 @@ class TestAutoIntegrationEndToEnd:
             installed_at=datetime.now().isoformat()
         )
         
-        # Run integration
+        # Run integration (auto-integration is always enabled now)
         integrator = PromptIntegrator()
-        with patch('apm_cli.integration.prompt_integrator.get_auto_integrate', return_value=True):
-            result = integrator.integrate_package_prompts(package_info, self.project_root)
+        result = integrator.integrate_package_prompts(package_info, self.project_root)
         
         # Verify results
         assert result.files_integrated == 2
@@ -82,8 +81,9 @@ class TestAutoIntegrationEndToEnd:
         assert (prompts_dir / "workflow1-apm.prompt.md").exists()
         assert (prompts_dir / "workflow2-apm.prompt.md").exists()
         
-        # Check header comments
+        # Check YAML frontmatter metadata
         content1 = (prompts_dir / "workflow1-apm.prompt.md").read_text()
-        assert "test-package" in content1
-        assert "abc123def456" in content1
+        assert "apm:" in content1
+        assert "source: test-package" in content1
+        assert "commit: abc123def456" in content1
         assert "# workflow1" in content1
