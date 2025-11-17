@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.5.4]
+## [0.5.5] - 2025-11-17
+
+### Added
+- **Context Link Resolution**: Automatic markdown link resolution for `.context.md` files across installation and compilation
+  - Links in prompts/agents automatically resolve to actual source locations (`apm_modules/` or `.apm/context/`)
+  - Works everywhere: IDE, GitHub, all coding agents supporting AGENTS.md
+  - No file copying needed—links point directly to source files
+
+## [0.5.4] - 2025-11-17
 
 ### Added
 - **Agent Integration**: Automatic sync of `.agent.md` files to `.github/agents/` with `-apm` suffix (same pattern as prompt integration)
