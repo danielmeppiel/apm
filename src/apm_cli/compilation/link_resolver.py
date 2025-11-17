@@ -1,9 +1,19 @@
-"""Markdown link resolution for AGENTS.md compilation."""
+"""Context link resolution for APM primitives.
+
+Resolves markdown links to context files across the APM lifecycle:
+- Installation: Rewrite links when copying from dependencies
+- Compilation: Rewrite links when generating AGENTS.md
+- Runtime: Resolve links when executing prompts
+
+Following KISS principle - simple, pragmatic implementation.
+"""
 
 import builtins
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Set
+from urllib.parse import urlparse
 
 # CRITICAL: Shadow Click commands to prevent namespace collision
 set = builtins.set
@@ -11,6 +21,311 @@ list = builtins.list
 dict = builtins.dict
 
 
+@dataclass
+class LinkResolutionContext:
+    """Context for resolving links during different APM operations."""
+    source_file: Path  # File containing the link
+    source_location: Path  # Original location (directory)
+    target_location: Path  # Where file will live (directory or file)
+    base_dir: Path  # Project root
+    available_contexts: Dict[str, Path]  # Map of context name → actual path
+
+
+class UnifiedLinkResolver:
+    """Resolves markdown links across all APM operations.
+    
+    Simple implementation focusing on:
+    - Registering available context files from .apm/ and apm_modules/
+    - Rewriting links to point directly to source locations
+    - No copying needed - links point to actual files
+    """
+    
+    # Regex for markdown links: [text](path)
+    LINK_PATTERN = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+    
+    # Context file extensions we handle
+    CONTEXT_EXTENSIONS = {'.context.md', '.memory.md'}
+    
+    def __init__(self, base_dir: Path):
+        """Initialize link resolver.
+        
+        Args:
+            base_dir: Project root directory
+        """
+        self.base_dir = Path(base_dir)
+        self.context_registry: Dict[str, Path] = {}
+    
+    def register_contexts(self, primitives) -> None:
+        """Build registry of all available context files.
+        
+        Registers contexts by:
+        1. Simple filename: "api-standards.context.md" → path
+        2. Qualified name (for dependencies): "company/standards:api.context.md" → path
+        
+        Args:
+            primitives: Collection of discovered primitives (PrimitiveCollection)
+        """
+        for context in primitives.contexts:
+            filename = context.file_path.name
+            
+            # Register by simple filename
+            self.context_registry[filename] = context.file_path
+            
+            # If from dependency, also register with qualified name
+            if context.source and context.source.startswith("dependency:"):
+                package = context.source.replace("dependency:", "")
+                qualified_name = f"{package}:{filename}"
+                self.context_registry[qualified_name] = context.file_path
+    
+    def resolve_links_for_installation(
+        self,
+        content: str,
+        source_file: Path,
+        target_file: Path
+    ) -> str:
+        """Resolve links when copying files during installation.
+        
+        Called when copying .prompt.md/.agent.md from apm_modules/ to .github/
+        
+        Args:
+            content: File content to process
+            source_file: Original file path in apm_modules/
+            target_file: Target path in .github/
+        
+        Returns:
+            Content with resolved links
+        """
+        ctx = LinkResolutionContext(
+            source_file=source_file,
+            source_location=source_file.parent,
+            target_location=target_file.parent,
+            base_dir=self.base_dir,
+            available_contexts=self.context_registry
+        )
+        
+        return self._rewrite_markdown_links(content, ctx)
+    
+    def resolve_links_for_compilation(
+        self,
+        content: str,
+        source_file: Path,
+        compiled_output: Optional[Path] = None
+    ) -> str:
+        """Resolve links when generating AGENTS.md.
+        
+        Links are rewritten to point directly to source files in:
+        - .apm/context/ (local contexts)
+        - apm_modules/org/repo/.apm/context/ (dependency contexts)
+        
+        Args:
+            content: Content to process
+            source_file: Source file or directory
+            compiled_output: Where AGENTS.md will be written
+        
+        Returns:
+            Content with resolved links
+        """
+        # If compiled_output is None, use source_file directory
+        if compiled_output is None:
+            compiled_output = source_file if source_file.is_dir() else source_file.parent
+        
+        # If compiled_output is a file, use its parent directory
+        if compiled_output.is_file() or str(compiled_output).endswith('.md'):
+            target_location = compiled_output.parent
+        else:
+            target_location = compiled_output
+        
+        ctx = LinkResolutionContext(
+            source_file=source_file,
+            source_location=source_file if source_file.is_dir() else source_file.parent,
+            target_location=target_location,
+            base_dir=self.base_dir,
+            available_contexts=self.context_registry
+        )
+        
+        return self._rewrite_markdown_links(content, ctx)
+    
+    def get_referenced_contexts(
+        self,
+        all_files_to_scan: List[Path]
+    ) -> Set[Path]:
+        """Scan files for context references (for reporting/validation).
+        
+        Args:
+            all_files_to_scan: Files to scan for context references
+        
+        Returns:
+            Set of referenced context file paths
+        """
+        referenced_contexts: Set[Path] = builtins.set()
+        
+        for file_path in all_files_to_scan:
+            if not file_path.exists():
+                continue
+            
+            try:
+                content = file_path.read_text(encoding='utf-8')
+                refs = self._extract_context_references(content, file_path)
+                referenced_contexts.update(refs)
+            except Exception:
+                continue
+        
+        return referenced_contexts
+    
+    def _rewrite_markdown_links(self, content: str, ctx: LinkResolutionContext) -> str:
+        """Core link rewriting logic.
+        
+        Process markdown links and rewrite context file references.
+        
+        Args:
+            content: Content to process
+            ctx: Resolution context
+        
+        Returns:
+            Content with rewritten links
+        """
+        def replace_link(match):
+            link_text = match.group(1)
+            link_path = match.group(2)
+            
+            # Skip external URLs
+            if self._is_external_url(link_path):
+                return match.group(0)  # Return unchanged
+            
+            # Only process context/memory files
+            if not self._is_context_file(link_path):
+                return match.group(0)  # Return unchanged
+            
+            # Try to resolve the link
+            resolved_path = self._resolve_context_link(link_path, ctx)
+            
+            if resolved_path:
+                return f"[{link_text}]({resolved_path})"
+            else:
+                # Can't resolve - preserve original
+                return match.group(0)
+        
+        return self.LINK_PATTERN.sub(replace_link, content)
+    
+    def _extract_context_references(self, content: str, source_file: Path) -> Set[Path]:
+        """Extract all context file references from content.
+        
+        Args:
+            content: Content to scan
+            source_file: File containing the content
+        
+        Returns:
+            Set of resolved context file paths
+        """
+        references: Set[Path] = builtins.set()
+        
+        for match in self.LINK_PATTERN.finditer(content):
+            link_path = match.group(2)
+            
+            # Skip external URLs and non-context files
+            if self._is_external_url(link_path) or not self._is_context_file(link_path):
+                continue
+            
+            # Try to resolve to actual file path
+            resolved = self._resolve_to_actual_file(link_path, source_file)
+            if resolved and resolved.exists():
+                references.add(resolved)
+        
+        return references
+    
+    def _resolve_context_link(self, link_path: str, ctx: LinkResolutionContext) -> Optional[str]:
+        """Resolve a context link to point directly to source file.
+        
+        Links point to actual source locations:
+        - .apm/context/file.context.md (local)
+        - apm_modules/org/repo/.apm/context/file.context.md (dependency)
+        
+        Args:
+            link_path: Original link path
+            ctx: Resolution context
+        
+        Returns:
+            Resolved relative path to actual source file, or None if can't resolve
+        """
+        # Find the actual source file
+        actual_file = self._resolve_to_actual_file(link_path, ctx.source_file)
+        
+        if not actual_file or not actual_file.exists():
+            # Can't find the file - preserve original link
+            return None
+        
+        # Calculate relative path from target location to actual source file
+        # Use os.path.relpath to support ../ for paths outside target directory
+        import os
+        try:
+            relative_path = os.path.relpath(actual_file, ctx.target_location)
+            return relative_path
+        except Exception:
+            return None
+    
+    def _resolve_to_actual_file(self, link_path: str, source_file: Path) -> Optional[Path]:
+        """Resolve a link path to the actual file on disk.
+        
+        Args:
+            link_path: Link path from markdown
+            source_file: File containing the link
+        
+        Returns:
+            Resolved file path or None
+        """
+        # Get filename from link
+        filename = Path(link_path).name
+        
+        # Try context registry first
+        if filename in self.context_registry:
+            return self.context_registry[filename]
+        
+        # Try resolving relative to source file
+        if source_file.is_file():
+            source_dir = source_file.parent
+        else:
+            source_dir = source_file
+        
+        potential_path = (source_dir / link_path).resolve()
+        if potential_path.exists():
+            return potential_path
+        
+        # Try resolving relative to base_dir
+        potential_path = (self.base_dir / link_path).resolve()
+        if potential_path.exists():
+            return potential_path
+        
+        return None
+    
+    def _is_external_url(self, path: str) -> bool:
+        """Check if path is an external URL.
+        
+        Args:
+            path: Path to check
+        
+        Returns:
+            True if external URL
+        """
+        try:
+            parsed = urlparse(path)
+            return parsed.scheme in ('http', 'https', 'mailto', 'ftp')
+        except Exception:
+            return False
+    
+    def _is_context_file(self, path: str) -> bool:
+        """Check if path is a context or memory file.
+        
+        Args:
+            path: Path to check
+        
+        Returns:
+            True if context/memory file
+        """
+        path_lower = path.lower()
+        return any(path_lower.endswith(ext) for ext in self.CONTEXT_EXTENSIONS)
+
+
+# Legacy functions for backward compatibility
 def resolve_markdown_links(content: str, base_path: Path) -> str:
     """Resolve markdown links and inline referenced content.
     

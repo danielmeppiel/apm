@@ -35,7 +35,7 @@ def parse_primitive_file(file_path: Union[str, Path], source: str = None) -> Pri
         content = post.content
         
         # Determine primitive type based on file extension
-        if file_path.name.endswith('.chatmode.md'):
+        if file_path.name.endswith('.chatmode.md') or file_path.name.endswith('.agent.md'):
             return _parse_chatmode(name, file_path, metadata, content, source)
         elif file_path.name.endswith('.instructions.md'):
             return _parse_instruction(name, file_path, metadata, content, source)

@@ -331,6 +331,62 @@ All primitives are automatically validated during discovery:
 
 Invalid files are skipped with warning messages, allowing valid primitives to continue loading.
 
+## Context Linking
+
+Context files are **linkable knowledge modules** that other primitives can reference via markdown links, enabling composable knowledge graphs.
+
+### Linking from Instructions
+
+```markdown
+<!-- .apm/instructions/api.instructions.md -->
+---
+applyTo: "backend/**/*.py"
+description: API development guidelines
+---
+
+Follow [our API standards](../context/api-standards.context.md) and ensure
+[GDPR compliance](../context/gdpr-compliance.context.md) for all endpoints.
+```
+
+### Linking from Agents
+
+```markdown
+<!-- .apm/agents/backend-expert.agent.md -->
+---
+description: Backend development expert
+---
+
+You are a backend expert. Always reference [our architecture patterns](../context/architecture.context.md)
+when designing systems.
+```
+
+### Automatic Link Resolution
+
+APM automatically resolves context file links during installation and compilation:
+
+1. **Discovery**: Scans all primitives for context file references
+2. **Resolution**: Rewrites links to point to actual source locations
+3. **Direct Linking**: Links point to files in `apm_modules/` and `.apm/` directories
+4. **Persistence**: Commit `apm_modules/` for link availability, or run `apm install` in CI/CD
+
+**Result**: Links work everywhere—IDE, GitHub, all coding agents—pointing directly to source files.
+
+### Link Resolution Examples
+
+Links are rewritten to point to actual source locations:
+
+**From installed prompts/agents** (`.github/` directory):
+```markdown
+[API Standards](../context/api.context.md)
+→ [API Standards](../../apm_modules/company/standards/.apm/context/api.context.md)
+```
+
+**From compiled AGENTS.md**:
+```markdown
+[Architecture](../context/architecture.context.md)
+→ [Architecture](.apm/context/architecture.context.md)
+```
+
 ## Best Practices
 
 ### 1. Clear Naming

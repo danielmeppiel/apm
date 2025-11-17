@@ -8,7 +8,8 @@ from datetime import datetime
 import frontmatter
 
 from .utils import normalize_repo_url
-import hashlib
+from apm_cli.compilation.link_resolver import UnifiedLinkResolver
+from apm_cli.primitives.discovery import discover_primitives
 
 
 @dataclass
@@ -19,6 +20,7 @@ class IntegrationResult:
     files_skipped: int  # Unchanged (same version/commit)
     target_paths: List[Path]
     gitignore_updated: bool
+    links_resolved: int = 0  # Number of context links resolved
 
 
 class PromptIntegrator:
@@ -26,7 +28,7 @@ class PromptIntegrator:
     
     def __init__(self):
         """Initialize the prompt integrator."""
-        pass
+        self.link_resolver = None  # Lazy init when needed
     
     def should_integrate(self, project_root: Path) -> bool:
         """Check if prompt integration should be performed.
@@ -174,22 +176,46 @@ class PromptIntegrator:
         should_update = (existing_version != new_version or existing_commit != new_commit)
         return (should_update, was_modified)
     
-    def copy_prompt_with_metadata(self, source: Path, target: Path, package_info, original_path: Path) -> None:
+    def copy_prompt_with_metadata(self, source: Path, target: Path, package_info, original_path: Path) -> int:
         """Copy prompt file with metadata embedded in frontmatter.
         
         If source has frontmatter, adds nested apm: metadata.
         If source has no frontmatter, creates frontmatter with apm: metadata only.
+        Resolves context links before writing.
         
         Args:
             source: Source file path
             target: Target file path
             package_info: PackageInfo object with package metadata
             original_path: Original path to the prompt file (for metadata)
+        
+        Returns:
+            int: Number of links resolved
         """
         # Parse source file
         post = frontmatter.load(source)
         
-        # Calculate content hash for modification detection
+        # Resolve context links in content
+        links_resolved = 0
+        if self.link_resolver:
+            original_content = post.content
+            resolved_content = self.link_resolver.resolve_links_for_installation(
+                content=post.content,
+                source_file=source,
+                target_file=target
+            )
+            post.content = resolved_content
+            # Count how many links changed by comparing actual link content
+            if resolved_content != original_content:
+                import re
+                # Extract all links from both versions
+                link_pattern = re.compile(r'\]\(([^)]+)\)')
+                original_links = set(link_pattern.findall(original_content))
+                resolved_links = set(link_pattern.findall(resolved_content))
+                # Count links that were changed
+                links_resolved = len(original_links - resolved_links)
+        
+        # Calculate content hash for modification detection (after link resolution)
         content_hash = hashlib.sha256(post.content.encode()).hexdigest()
         
         # Add nested apm metadata
@@ -214,6 +240,8 @@ class PromptIntegrator:
         # Write to target with updated frontmatter
         with open(target, 'w', encoding='utf-8') as f:
             f.write(frontmatter.dumps(post))
+        
+        return links_resolved
     
     def get_target_filename(self, source_file: Path, package_name: str) -> str:
         """Generate target filename with -apm suffix (intent-first naming).
@@ -241,6 +269,7 @@ class PromptIntegrator:
           - Compare version/commit with existing file
           - Update if different (re-copy with new header)
           - Skip if unchanged (preserve file timestamps)
+        Resolves context links during integration.
         
         Args:
             package_info: PackageInfo object with package metadata
@@ -249,6 +278,15 @@ class PromptIntegrator:
         Returns:
             IntegrationResult: Results of the integration operation
         """
+        # Initialize link resolver and register contexts
+        self.link_resolver = UnifiedLinkResolver(project_root)
+        try:
+            primitives = discover_primitives(package_info.install_path)
+            self.link_resolver.register_contexts(primitives)
+        except Exception:
+            # If context discovery fails, continue without link resolution
+            self.link_resolver = None
+        
         # Find all prompt files in the package
         prompt_files = self.find_prompt_files(package_info.install_path)
         
@@ -270,6 +308,7 @@ class PromptIntegrator:
         files_updated = 0
         files_skipped = 0
         target_paths = []
+        total_links_resolved = 0
         
         for source_file in prompt_files:
             # Generate target filename
@@ -295,7 +334,8 @@ class PromptIntegrator:
                             f"(your changes will be overwritten)"
                         )
                     # Version or commit changed - update the file
-                    self.copy_prompt_with_metadata(source_file, target_path, package_info, source_file)
+                    links_resolved = self.copy_prompt_with_metadata(source_file, target_path, package_info, source_file)
+                    total_links_resolved += links_resolved
                     files_updated += 1
                     target_paths.append(target_path)
                 else:
@@ -303,7 +343,8 @@ class PromptIntegrator:
                     files_skipped += 1
             else:
                 # New file - integrate it
-                self.copy_prompt_with_metadata(source_file, target_path, package_info, source_file)
+                links_resolved = self.copy_prompt_with_metadata(source_file, target_path, package_info, source_file)
+                total_links_resolved += links_resolved
                 files_integrated += 1
                 target_paths.append(target_path)
         
@@ -312,7 +353,8 @@ class PromptIntegrator:
             files_updated=files_updated,
             files_skipped=files_skipped,
             target_paths=target_paths,
-            gitignore_updated=False
+            gitignore_updated=False,
+            links_resolved=total_links_resolved
         )
     
     def sync_integration(self, apm_package, project_root: Path) -> Dict[str, int]:
