@@ -6,6 +6,7 @@ Following TDD approach - tests written before implementation.
 import pytest
 from pathlib import Path
 from textwrap import dedent
+import re
 
 from apm_cli.compilation.link_resolver import (
     UnifiedLinkResolver,
@@ -125,8 +126,10 @@ class TestLinkRewriting:
         
         result = resolver._rewrite_markdown_links(content, ctx)
         
-        assert "https://example.com/docs" in result
-        assert "http://example.org" in result
+        # Extract markdown link destinations using regex and check presence of the expected URLs
+        link_urls = re.findall(r"\[[^\]]+\]\(([^)]+)\)", result)
+        assert "https://example.com/docs" in link_urls
+        assert "http://example.org" in link_urls
     
     def test_reject_non_http_schemes(self, resolver):
         """Non-HTTP schemes should NOT be treated as external URLs."""
