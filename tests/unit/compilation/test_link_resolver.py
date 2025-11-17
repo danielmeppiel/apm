@@ -128,6 +128,56 @@ class TestLinkRewriting:
         assert "https://example.com/docs" in result
         assert "http://example.org" in result
     
+    def test_reject_non_http_schemes(self, resolver):
+        """Non-HTTP schemes should NOT be treated as external URLs."""
+        # These should be treated as internal paths (potentially rewritten or preserved)
+        test_cases = [
+            ("javascript:alert('xss')", "javascript scheme"),
+            ("data:text/html,<script>alert('xss')</script>", "data scheme"),
+            ("file:///etc/passwd", "file scheme"),
+            ("ftp://example.com/file", "ftp scheme"),
+            ("mailto:user@example.com", "mailto scheme"),
+        ]
+        
+        for url, description in test_cases:
+            content = f"See [link]({url})"
+            
+            ctx = LinkResolutionContext(
+                source_file=Path("/project/.apm/instructions/test.instructions.md"),
+                source_location=Path("/project/.apm/instructions"),
+                target_location=Path("/project"),
+                base_dir=Path("/project"),
+                available_contexts={}
+            )
+            
+            result = resolver._rewrite_markdown_links(content, ctx)
+            
+            # These URLs should NOT be preserved as-is since they're not external
+            # They may be rewritten or preserved depending on whether they match patterns
+            # The key is that _is_external_url returns False for these
+            assert not resolver._is_external_url(url), f"{description} should not be external"
+    
+    def test_reject_malformed_http_urls(self, resolver):
+        """Malformed HTTP URLs without netloc should not be treated as external."""
+        test_cases = [
+            "http:relative/path",
+            "https:/no-double-slash",
+            "http://",  # No netloc
+            "https://",  # No netloc
+        ]
+        
+        for url in test_cases:
+            assert not resolver._is_external_url(url), f"{url} should not be external"
+    
+    def test_handle_urls_with_whitespace(self, resolver):
+        """URLs with surrounding whitespace should be handled correctly."""
+        # Valid URL with whitespace should still be recognized
+        assert resolver._is_external_url(" https://example.com ")
+        assert resolver._is_external_url("\thttps://example.com\t")
+        
+        # Invalid URL with whitespace should not be recognized
+        assert not resolver._is_external_url(" javascript:alert('xss') ")
+    
     def test_preserve_non_context_links(self, resolver):
         """Links to non-context .md files should not be modified."""
         content = dedent("""

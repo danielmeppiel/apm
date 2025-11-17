@@ -300,15 +300,33 @@ class UnifiedLinkResolver:
     def _is_external_url(self, path: str) -> bool:
         """Check if path is an external URL.
         
+        Security: Only http/https URLs with valid netloc are considered external.
+        All other schemes (javascript:, data:, file:, etc.) are treated as internal
+        paths to prevent potential security issues.
+        
         Args:
             path: Path to check
         
         Returns:
-            True if external URL
+            True if external URL (http/https with valid netloc)
         """
         try:
+            # Strip whitespace to prevent bypass attempts
+            path = path.strip()
+            
+            # Parse the URL
             parsed = urlparse(path)
-            return parsed.scheme in ('http', 'https', 'mailto', 'ftp')
+            
+            # Only allow http/https schemes
+            if parsed.scheme not in ('http', 'https'):
+                return False
+            
+            # Must have a netloc (domain) to be a valid external URL
+            # This prevents URLs like "http:relative/path" from being treated as external
+            if not parsed.netloc:
+                return False
+            
+            return True
         except Exception:
             return False
     
