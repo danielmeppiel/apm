@@ -999,6 +999,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         should_integrate = prompt_integrator.should_integrate(project_root)
         total_prompts_integrated = 0
         total_agents_integrated = 0
+        total_links_resolved = 0
 
         # Install each dependency with Rich progress display
         from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
@@ -1119,6 +1120,8 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 _rich_info(
                                     f"  └─ {prompt_result.files_updated} prompts updated"
                                 )
+                            # Track links resolved
+                            total_links_resolved += prompt_result.links_resolved
                             
                             # Integrate agents
                             agent_result = agent_integrator.integrate_package_agents(
@@ -1134,6 +1137,8 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 _rich_info(
                                     f"  └─ {agent_result.files_updated} agents updated"
                                 )
+                            # Track links resolved
+                            total_links_resolved += agent_result.links_resolved
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(f"  ⚠ Failed to integrate primitives from cached package: {e}")
@@ -1183,6 +1188,8 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 _rich_info(
                                     f"  └─ {prompt_result.files_updated} prompts updated"
                                 )
+                            # Track links resolved
+                            total_links_resolved += prompt_result.links_resolved
                             
                             # Integrate agents
                             agent_result = agent_integrator.integrate_package_agents(
@@ -1198,6 +1205,8 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 _rich_info(
                                     f"  └─ {agent_result.files_updated} agents updated"
                                 )
+                            # Track links resolved
+                            total_links_resolved += agent_result.links_resolved
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(f"  ⚠ Failed to integrate primitives: {e}")
@@ -1232,6 +1241,10 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
             except Exception as e:
                 _rich_warning(f"Could not update .gitignore for agents: {e}")
 
+        # Show link resolution stats if any were resolved
+        if total_links_resolved > 0:
+            _rich_info(f"✓ Resolved {total_links_resolved} context file links")
+        
         _rich_success(f"Installed {installed_count} APM dependencies")
         
         return installed_count, total_prompts_integrated, total_agents_integrated

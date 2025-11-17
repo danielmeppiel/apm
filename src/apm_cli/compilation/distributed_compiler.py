@@ -17,6 +17,7 @@ from ..version import get_version
 from .template_builder import TemplateData, find_chatmode_by_name
 from .constants import BUILD_ID_PLACEHOLDER
 from .context_optimizer import ContextOptimizer
+from .link_resolver import UnifiedLinkResolver
 from ..output.formatters import CompilationFormatter
 from ..output.models import CompilationResults
 
@@ -77,6 +78,7 @@ class DistributedAgentsCompiler:
         self.errors: List[str] = []
         self.total_files_written = 0
         self.context_optimizer = ContextOptimizer(str(self.base_dir))
+        self.link_resolver = UnifiedLinkResolver(self.base_dir)
         self.output_formatter = CompilationFormatter()
         self._placement_map = None
     
@@ -107,6 +109,31 @@ class DistributedAgentsCompiler:
             debug = config.get('debug', False)
             clean_orphaned = config.get('clean_orphaned', False)
             dry_run = config.get('dry_run', False)
+            
+            # Phase 0: Context Link Resolution
+            # Register all context files and compile referenced ones
+            self.link_resolver.register_contexts(primitives)
+            
+            # Build list of files to scan for context references
+            all_files_to_scan = []
+            all_files_to_scan.extend([i.file_path for i in primitives.instructions])
+            all_files_to_scan.extend([c.file_path for c in primitives.chatmodes])
+            
+            # Include installed agents/prompts from .github/
+            github_agents_dir = self.base_dir / ".github" / "agents"
+            github_prompts_dir = self.base_dir / ".github" / "prompts"
+            if github_agents_dir.exists():
+                all_files_to_scan.extend(github_agents_dir.glob("*.agent.md"))
+            if github_prompts_dir.exists():
+                all_files_to_scan.extend(github_prompts_dir.glob("*.prompt.md"))
+            
+            # Phase 0: Validate context references (optional - for reporting)
+            if debug:
+                referenced_contexts = self.link_resolver.get_referenced_contexts(all_files_to_scan)
+                if referenced_contexts:
+                    self.warnings.append(
+                        f"Found {len(referenced_contexts)} referenced context files"
+                    )
             
             # Phase 1: Directory structure analysis
             directory_map = self.analyze_directory_structure(primitives.instructions)
@@ -149,6 +176,21 @@ class DistributedAgentsCompiler:
             
             # Compile statistics
             stats = self._compile_distributed_stats(placements, primitives)
+            
+            # Optional: Get referenced contexts for reporting (doesn't copy)
+            try:
+                # Collect all files from placements for context reference scanning
+                all_files_to_scan = []
+                for placement in placements:
+                    for instruction in placement.instructions:
+                        all_files_to_scan.append(instruction.file_path)
+                    for agent in placement.agents:
+                        all_files_to_scan.append(agent.file_path)
+                
+                referenced_contexts = self.link_resolver.get_referenced_contexts(all_files_to_scan)
+                stats["contexts_referenced"] = len(referenced_contexts)
+            except Exception:
+                stats["contexts_referenced"] = 0
             
             return CompilationResult(
                 success=len(self.errors) == 0,
@@ -514,7 +556,16 @@ class DistributedAgentsCompiler:
         sections.append("*To regenerate: `specify apm compile`*")
         sections.append("")
         
-        return "\n".join(sections)
+        content = "\n".join(sections)
+        
+        # Resolve context links in the generated content
+        content = self.link_resolver.resolve_links_for_compilation(
+            content=content,
+            source_file=placement.agents_path.parent,
+            compiled_output=placement.agents_path
+        )
+        
+        return content
     
     def _validate_coverage(
         self, 
