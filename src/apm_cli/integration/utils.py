@@ -24,10 +24,11 @@ def normalize_repo_url(package_repo_url: str) -> str:
         'owner/repo'
     """
     if '://' not in package_repo_url:
-        # Already in short form, just remove .git suffix if present
-        if package_repo_url.endswith('.git'):
-            return package_repo_url[:-4]
-        return package_repo_url
+        # Already in short form, just remove .git suffix and trailing slashes
+        normalized = package_repo_url
+        if normalized.endswith('.git'):
+            normalized = normalized[:-4]
+        return normalized.rstrip('/')
     
     # Extract owner/repo from full URL: https://github.com/owner/repo -> owner/repo
     parts = package_repo_url.split('://', 1)[1]  # Remove protocol
@@ -35,7 +36,9 @@ def normalize_repo_url(package_repo_url: str) -> str:
         path_parts = parts.split('/', 1)  # Split host from path
         if len(path_parts) > 1:
             normalized = path_parts[1]
-            # Remove .git suffix if present
+            # Remove trailing slashes first (e.g., "owner/repo.git/" -> "owner/repo.git")
+            normalized = normalized.rstrip('/')
+            # Then remove .git suffix if present
             if normalized.endswith('.git'):
                 normalized = normalized[:-4]
             return normalized

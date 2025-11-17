@@ -65,10 +65,16 @@ class TestNormalizeRepoUrl:
         assert normalize_repo_url("https://github.com/Owner/Repo") == "Owner/Repo"
     
     def test_normalize_handles_trailing_slash(self):
-        """Trailing slashes are part of the path and preserved."""
-        # Note: This might not be ideal, but documents current behavior
-        result = normalize_repo_url("https://github.com/owner/repo/")
-        assert result == "owner/repo/" or result == "owner/repo"  # Accept both
+        """Trailing slashes should be removed for consistent matching."""
+        assert normalize_repo_url("https://github.com/owner/repo/") == "owner/repo"
+    
+    def test_normalize_handles_trailing_slash_short_form(self):
+        """Trailing slashes should be removed from short form URLs too."""
+        assert normalize_repo_url("owner/repo/") == "owner/repo"
+    
+    def test_normalize_handles_trailing_slash_with_git(self):
+        """Trailing slashes and .git suffix should both be removed."""
+        assert normalize_repo_url("https://github.com/owner/repo.git/") == "owner/repo"
     
     def test_normalize_ssh_url_unchanged(self):
         """SSH URLs without :// shouldn't be modified (edge case)."""
