@@ -15,8 +15,9 @@
 
 📦 **Mix and match what your team needs**:
 
-- **Agents** - Agentic workflows (.prompt.md files)
-- **Context** - Company rules, standards, knowledge (.instructions.md files) and domain boundaries (.chatmode.md)
+- **Agents** - AI personas (.agent.md files)
+- **Prompts** - Executable workflows (.prompt.md files)
+- **Context** - Company rules, standards, knowledge (.instructions.md files)
 
 ![APM Demo](docs/apm-demo.gif)
 

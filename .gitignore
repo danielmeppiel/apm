@@ -60,6 +60,3 @@ docs/wip/
 .env.local
 .env.*.local
 AGENTS.md
-
-# APM dependencies
-apm_modules/

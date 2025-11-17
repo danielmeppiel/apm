@@ -1,17 +1,16 @@
-"""Prompt integration functionality for APM packages."""
+"""Agent integration functionality for APM packages."""
 
 from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
 import shutil
 from datetime import datetime
-import frontmatter
 import hashlib
 
 
 @dataclass
 class IntegrationResult:
-    """Result of prompt integration operation."""
+    """Result of agent integration operation."""
     files_integrated: int
     files_updated: int  # Updated due to version/commit change
     files_skipped: int  # Unchanged (same version/commit)
@@ -19,15 +18,15 @@ class IntegrationResult:
     gitignore_updated: bool
 
 
-class PromptIntegrator:
-    """Handles integration of APM package prompts into .github/prompts/."""
+class AgentIntegrator:
+    """Handles integration of APM package agents into .github/agents/."""
     
     def __init__(self):
-        """Initialize the prompt integrator."""
+        """Initialize the agent integrator."""
         pass
     
     def should_integrate(self, project_root: Path) -> bool:
-        """Check if prompt integration should be performed.
+        """Check if agent integration should be performed.
         
         Args:
             project_root: Root directory of the project
@@ -37,79 +36,78 @@ class PromptIntegrator:
         """
         return True
     
-    def find_prompt_files(self, package_path: Path) -> List[Path]:
-        """Find all .prompt.md files in a package.
+    def find_agent_files(self, package_path: Path) -> List[Path]:
+        """Find all .agent.md and .chatmode.md files in a package.
         
         Searches in:
-        - Package root directory
-        - .apm/prompts/ subdirectory
+        - Package root directory (.agent.md and .chatmode.md)
+        - .apm/agents/ subdirectory (new standard)
+        - .apm/chatmodes/ subdirectory (legacy)
         
         Args:
             package_path: Path to the package directory
             
         Returns:
-            List[Path]: List of absolute paths to .prompt.md files
+            List[Path]: List of absolute paths to agent files
         """
-        prompt_files = []
+        agent_files = []
         
         # Search in package root
         if package_path.exists():
-            prompt_files.extend(package_path.glob("*.prompt.md"))
+            agent_files.extend(package_path.glob("*.agent.md"))
+            agent_files.extend(package_path.glob("*.chatmode.md"))  # Legacy
         
-        # Search in .apm/prompts/
-        apm_prompts = package_path / ".apm" / "prompts"
-        if apm_prompts.exists():
-            prompt_files.extend(apm_prompts.glob("*.prompt.md"))
+        # Search in .apm/agents/ (new standard)
+        apm_agents = package_path / ".apm" / "agents"
+        if apm_agents.exists():
+            agent_files.extend(apm_agents.glob("*.agent.md"))
         
-        return prompt_files
+        # Search in .apm/chatmodes/ (legacy)
+        apm_chatmodes = package_path / ".apm" / "chatmodes"
+        if apm_chatmodes.exists():
+            agent_files.extend(apm_chatmodes.glob("*.chatmode.md"))
+        
+        return agent_files
     
     def _parse_header_metadata(self, file_path: Path) -> dict:
-        """Parse metadata from frontmatter or legacy header comment in an integrated prompt file.
+        """Parse APM metadata from YAML frontmatter in an integrated agent file.
         
         Args:
-            file_path: Path to the integrated prompt file
+            file_path: Path to the integrated agent file
             
         Returns:
-            dict: Metadata extracted from frontmatter/header (version, commit, source, etc.)
-                  Empty dict if no valid metadata found or parsing fails
+            dict: Metadata extracted from frontmatter (version, commit, source, etc.)
+                  Empty dict if no valid frontmatter found or parsing fails
         """
         try:
-            # Try parsing frontmatter first (new format)
+            import frontmatter
+            
             post = frontmatter.load(file_path)
             
-            # Check for nested apm metadata (new format)
+            # Extract APM metadata from nested 'apm' key (new format)
             apm_data = post.metadata.get('apm', {})
             if apm_data:
                 metadata = {
                     'Version': apm_data.get('version', ''),
                     'Commit': apm_data.get('commit', ''),
                     'Source': f"{apm_data.get('source', '')} ({apm_data.get('source_repo', '')})",
+                    'Original': apm_data.get('original_path', ''),
+                    'Installed': apm_data.get('installed_at', '')
                 }
                 return metadata
             
-            # Fallback: Try legacy HTML comment format
-            content = file_path.read_text(encoding='utf-8')
+            # Fallback: Check for old flat format (backwards compatibility)
+            if 'apm_version' in post.metadata:
+                metadata = {
+                    'Version': post.metadata.get('apm_version', ''),
+                    'Commit': post.metadata.get('apm_commit', ''),
+                    'Source': f"{post.metadata.get('apm_source', '')} ({post.metadata.get('apm_source_repo', '')})",
+                    'Original': post.metadata.get('apm_original_path', ''),
+                    'Installed': post.metadata.get('apm_installed_at', '')
+                }
+                return metadata
             
-            # Check if file starts with comment block
-            if not content.startswith('<!--'):
-                return {}
-            
-            # Extract comment block (everything before the closing -->)
-            end_marker = content.find('-->')
-            if end_marker == -1:
-                return {}
-            
-            header_text = content[4:end_marker].strip()
-            
-            # Parse key-value pairs from header
-            metadata = {}
-            for line in header_text.split('\n'):
-                line = line.strip()
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    metadata[key.strip()] = value.strip()
-            
-            return metadata
+            return {}  # Not an APM-integrated file
         except Exception:
             # If any error occurs during parsing, return empty dict
             return {}
@@ -124,14 +122,15 @@ class PromptIntegrator:
             str: Hexadecimal hash of the content
         """
         try:
+            import frontmatter
             post = frontmatter.load(file_path)
             # Hash only the content, not the frontmatter
             return hashlib.sha256(post.content.encode()).hexdigest()
         except Exception:
             return ""
     
-    def _should_update_prompt(self, existing_header: dict, package_info, existing_file: Path = None) -> tuple[bool, bool]:
-        """Determine if an existing prompt file should be updated.
+    def _should_update_agent(self, existing_header: dict, package_info, existing_file: Path = None) -> tuple[bool, bool]:
+        """Determine if an existing agent file should be updated.
         
         Args:
             existing_header: Metadata from existing file's header
@@ -171,25 +170,56 @@ class PromptIntegrator:
         should_update = (existing_version != new_version or existing_commit != new_commit)
         return (should_update, was_modified)
     
-    def copy_prompt_with_metadata(self, source: Path, target: Path, package_info, original_path: Path) -> None:
-        """Copy prompt file with metadata embedded in frontmatter.
+
+    
+    def get_target_filename(self, source_file: Path, package_name: str) -> str:
+        """Generate target filename with -apm suffix (intent-first naming).
         
-        If source has frontmatter, adds nested apm: metadata.
-        If source has no frontmatter, creates frontmatter with apm: metadata only.
+        Args:
+            source_file: Source file path
+            package_name: Name of the package (not used in simple naming)
+            
+        Returns:
+            str: Target filename with -apm suffix (e.g., security-apm.agent.md or security-apm.chatmode.md)
+        """
+        # Intent-first naming: insert -apm suffix before extension
+        # Preserve original extension (.agent.md or .chatmode.md)
+        # Examples:
+        #   security.agent.md -> security-apm.agent.md
+        #   default.chatmode.md -> default-apm.chatmode.md
+        
+        # Determine extension
+        if source_file.name.endswith('.agent.md'):
+            stem = source_file.name[:-9]  # Remove .agent.md
+            extension = '.agent.md'
+        elif source_file.name.endswith('.chatmode.md'):
+            stem = source_file.name[:-12]  # Remove .chatmode.md
+            extension = '.chatmode.md'
+        else:
+            # Fallback for unexpected naming
+            stem = source_file.stem
+            extension = ''.join(source_file.suffixes)
+        
+        return f"{stem}-apm{extension}"
+    
+    def copy_agent_with_metadata(self, source: Path, target: Path, package_info, original_path: Path) -> None:
+        """Copy agent file with APM metadata embedded in frontmatter.
         
         Args:
             source: Source file path
             target: Target file path
             package_info: PackageInfo object with package metadata
-            original_path: Original path to the prompt file (for metadata)
+            original_path: Original path to the agent file
         """
-        # Parse source file
+        import frontmatter
+        
+        # Read and parse source file with frontmatter
         post = frontmatter.load(source)
         
         # Calculate content hash for modification detection
         content_hash = hashlib.sha256(post.content.encode()).hexdigest()
         
-        # Add nested apm metadata
+        # Add APM metadata to frontmatter (nested under 'apm' key for clarity)
         post.metadata['apm'] = {
             'source': package_info.package.name,
             'source_repo': package_info.package.source or "unknown",
@@ -208,32 +238,15 @@ class PromptIntegrator:
             'content_hash': content_hash
         }
         
-        # Write to target with updated frontmatter
+        # Write to target with modified frontmatter
         with open(target, 'w', encoding='utf-8') as f:
             f.write(frontmatter.dumps(post))
     
-    def get_target_filename(self, source_file: Path, package_name: str) -> str:
-        """Generate target filename with -apm suffix (intent-first naming).
-        
-        Args:
-            source_file: Source file path
-            package_name: Name of the package (not used in simple naming)
-            
-        Returns:
-            str: Target filename with -apm suffix (e.g., accessibility-audit-apm.prompt.md)
-        """
-        # Intent-first naming: insert -apm suffix before .prompt.md extension
-        # Example: design-review.prompt.md -> design-review-apm.prompt.md
-        stem = source_file.stem.replace('.prompt', '')  # Remove .prompt from stem
-        return f"{stem}-apm.prompt.md"
-    
-
-    
-    def integrate_package_prompts(self, package_info, project_root: Path) -> IntegrationResult:
-        """Integrate all prompts from a package into .github/prompts/.
+    def integrate_package_agents(self, package_info, project_root: Path) -> IntegrationResult:
+        """Integrate all agents from a package into .github/agents/.
         
         Implements smart update logic:
-        - First install: Copy with header and @ prefix
+        - First install: Copy with header and -apm suffix
         - Subsequent installs:
           - Compare version/commit with existing file
           - Update if different (re-copy with new header)
@@ -246,10 +259,10 @@ class PromptIntegrator:
         Returns:
             IntegrationResult: Results of the integration operation
         """
-        # Find all prompt files in the package
-        prompt_files = self.find_prompt_files(package_info.install_path)
+        # Find all agent files in the package
+        agent_files = self.find_agent_files(package_info.install_path)
         
-        if not prompt_files:
+        if not agent_files:
             return IntegrationResult(
                 files_integrated=0,
                 files_updated=0,
@@ -258,28 +271,28 @@ class PromptIntegrator:
                 gitignore_updated=False
             )
         
-        # Create .github/prompts/ if it doesn't exist
-        prompts_dir = project_root / ".github" / "prompts"
-        prompts_dir.mkdir(parents=True, exist_ok=True)
+        # Create .github/agents/ if it doesn't exist
+        agents_dir = project_root / ".github" / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
         
-        # Process each prompt file
+        # Process each agent file
         files_integrated = 0
         files_updated = 0
         files_skipped = 0
         target_paths = []
         
-        for source_file in prompt_files:
+        for source_file in agent_files:
             # Generate target filename
             target_filename = self.get_target_filename(source_file, package_info.package.name)
-            target_path = prompts_dir / target_filename
+            target_path = agents_dir / target_filename
             
             # Check if target already exists
             if target_path.exists():
-                # Parse existing file's metadata
+                # Parse existing file's frontmatter metadata
                 existing_header = self._parse_header_metadata(target_path)
                 
                 # Check if update is needed and if content was modified
-                should_update, was_modified = self._should_update_prompt(
+                should_update, was_modified = self._should_update_agent(
                     existing_header, package_info, target_path
                 )
                 
@@ -292,15 +305,15 @@ class PromptIntegrator:
                             f"(your changes will be overwritten)"
                         )
                     # Version or commit changed - update the file
-                    self.copy_prompt_with_metadata(source_file, target_path, package_info, source_file)
+                    self.copy_agent_with_metadata(source_file, target_path, package_info, source_file)
                     files_updated += 1
                     target_paths.append(target_path)
                 else:
-                    # No change - skip to preserve file timestamp
+                    # Unchanged version/commit - skip to preserve file timestamp
                     files_skipped += 1
             else:
                 # New file - integrate it
-                self.copy_prompt_with_metadata(source_file, target_path, package_info, source_file)
+                self.copy_agent_with_metadata(source_file, target_path, package_info, source_file)
                 files_integrated += 1
                 target_paths.append(target_path)
         
@@ -313,11 +326,11 @@ class PromptIntegrator:
         )
     
     def sync_integration(self, apm_package, project_root: Path) -> Dict[str, int]:
-        """Sync .github/prompts/ with currently installed packages.
+        """Sync .github/agents/ with currently installed packages.
         
-        - Removes prompts from uninstalled packages (orphans)
-        - Updates prompts from updated packages
-        - Adds prompts from new packages
+        - Removes agents from uninstalled packages (orphans)
+        - Updates agents from updated packages
+        - Adds agents from new packages
         
         Idempotent: safe to call anytime. Reuses existing smart update logic.
         
@@ -328,8 +341,8 @@ class PromptIntegrator:
         Returns:
             Dict with 'files_removed' and 'errors' counts
         """
-        prompts_dir = project_root / ".github" / "prompts"
-        if not prompts_dir.exists():
+        agents_dir = project_root / ".github" / "agents"
+        if not agents_dir.exists():
             return {'files_removed': 0, 'errors': 0}
         
         # Get currently installed package URLs
@@ -339,9 +352,9 @@ class PromptIntegrator:
         files_removed = 0
         errors = 0
         
-        # Remove orphaned prompts (from uninstalled packages)
-        for prompt_file in prompts_dir.glob("*-apm.prompt.md"):
-            metadata = self._parse_header_metadata(prompt_file)
+        # Remove orphaned agents (from uninstalled packages)
+        for agent_file in agents_dir.glob("*-apm.agent.md"):
+            metadata = self._parse_header_metadata(agent_file)
             
             # Skip files without valid metadata - they might be user's custom files
             if not metadata:
@@ -391,15 +404,68 @@ class PromptIntegrator:
             
             if not package_match:
                 try:
-                    prompt_file.unlink()  # Orphaned - remove it
+                    agent_file.unlink()  # Orphaned - remove it
+                    files_removed += 1
+                except Exception:
+                    errors += 1
+        
+        # Also remove orphaned legacy chatmode files
+        for chatmode_file in agents_dir.glob("*-apm.chatmode.md"):
+            metadata = self._parse_header_metadata(chatmode_file)
+            
+            # Skip files without valid metadata
+            if not metadata:
+                continue
+            
+            source = metadata.get('Source', '')
+            
+            if not source:
+                continue
+            
+            # Extract package repo URL from source
+            # The source_repo field in metadata contains full URL (e.g., https://github.com/owner/repo)
+            # but dep.repo_url contains short form (e.g., owner/repo)
+            # We need to normalize both for comparison
+            package_repo_url = None
+            if '(' in source and ')' in source:
+                package_repo_url = source.split('(')[1].split(')')[0].strip()
+            
+            if not package_repo_url:
+                continue
+            
+            # Normalize the repo URL to owner/repo format for comparison
+            normalized_package_url = package_repo_url
+            if '://' in package_repo_url:
+                # Extract owner/repo from full URL: https://github.com/owner/repo -> owner/repo
+                parts = package_repo_url.split('://', 1)[1]  # Remove protocol
+                if '/' in parts:
+                    path_parts = parts.split('/', 1)  # Split host from path
+                    if len(path_parts) > 1:
+                        normalized_package_url = path_parts[1]
+                        # Remove .git suffix if present (use removesuffix for Python 3.9+)
+                        if normalized_package_url.endswith('.git'):
+                            normalized_package_url = normalized_package_url[:-4]
+            
+            # Check if source package is still installed
+            # Compare normalized URLs
+            package_match = any(
+                pkg == normalized_package_url or 
+                (pkg + '.git') == normalized_package_url or
+                pkg == package_repo_url  # Fallback for exact match
+                for pkg in installed
+            )
+            
+            if not package_match:
+                try:
+                    chatmode_file.unlink()  # Orphaned - remove it
                     files_removed += 1
                 except Exception:
                     errors += 1
         
         return {'files_removed': files_removed, 'errors': errors}
     
-    def update_gitignore_for_integrated_prompts(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for integrated prompts.
+    def update_gitignore_for_integrated_agents(self, project_root: Path) -> bool:
+        """Update .gitignore with pattern for integrated agents.
         
         Args:
             project_root: Root directory of the project
@@ -408,7 +474,12 @@ class PromptIntegrator:
             bool: True if .gitignore was updated, False if pattern already exists
         """
         gitignore_path = project_root / ".gitignore"
-        pattern = ".github/prompts/*-apm.prompt.md"
+        
+        # Define patterns for both new and legacy formats
+        patterns = [
+            ".github/agents/*-apm.agent.md",
+            ".github/agents/*-apm.chatmode.md"
+        ]
         
         # Read current content
         current_content = []
@@ -419,17 +490,24 @@ class PromptIntegrator:
             except Exception:
                 return False
         
-        # Check if pattern already exists
-        if any(pattern in line for line in current_content):
+        # Check which patterns need to be added
+        patterns_to_add = []
+        for pattern in patterns:
+            if not any(pattern in line for line in current_content):
+                patterns_to_add.append(pattern)
+        
+        if not patterns_to_add:
             return False
         
-        # Add pattern to .gitignore
+        # Add patterns to .gitignore
         try:
             with open(gitignore_path, "a", encoding="utf-8") as f:
                 # Add a blank line before our entry if file isn't empty
                 if current_content and current_content[-1].strip():
                     f.write("\n")
-                f.write(f"\n# APM integrated prompts\n{pattern}\n")
+                f.write("\n# APM integrated agents\n")
+                for pattern in patterns_to_add:
+                    f.write(f"{pattern}\n")
             return True
         except Exception:
             return False

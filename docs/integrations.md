@@ -131,13 +131,15 @@ APM works natively with VSCode's Context implementation:
 
 VSCode already implements core Context concepts:
 
-- **Chat Modes**: Domain-specific chat behavior with `.chatmode.md` files in `.github/chatmodes/`
+- **Agents**: AI personas and workflows with `.agent.md` files in `.github/agents/` (legacy: `.chatmode.md` in `.github/chatmodes/`)
 - **Instructions Files**: Modular instructions with `copilot-instructions.md` and `.instructions.md` files
 - **Prompt Files**: Reusable task templates with `.prompt.md` files in `.github/prompts/`
 
-### Automatic Prompt Integration with APM
+> **Note**: APM supports both the new `.agent.md` format and legacy `.chatmode.md` format. VSCode provides Quick Fix actions to migrate from `.chatmode.md` to `.agent.md`.
 
-APM automatically integrates prompts from installed packages into VSCode's native structure:
+### Automatic Prompt and Agent Integration with APM
+
+APM automatically integrates prompts and agents from installed packages into VSCode's native structure:
 
 ```bash
 # Install APM packages - integration happens automatically
@@ -145,6 +147,9 @@ apm install danielmeppiel/design-guidelines
 
 # Prompts are automatically integrated to:
 # .github/prompts/*-apm.prompt.md (with package metadata header)
+
+# Agents are automatically integrated to:
+# .github/agents/*-apm.agent.md (with package metadata header)
 ```
 
 **How Auto-Integration Works**:
@@ -157,13 +162,14 @@ apm install danielmeppiel/design-guidelines
 
 **Integration Flow**:
 1. Run `apm install` to fetch APM packages
-2. APM automatically creates `.github/prompts/` directory if needed
-3. Discovers `.prompt.md` files in each package
+2. APM automatically creates `.github/prompts/` and `.github/agents/` directories if needed
+3. Discovers `.prompt.md` and `.agent.md` files in each package
 4. Copies prompts to `.github/prompts/` with `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
-5. Adds metadata headers for version tracking
-6. Updates `.gitignore` to exclude integrated prompts
-7. VSCode automatically loads all prompts for your coding agents
-8. Run `apm uninstall` to automatically remove integrated prompts
+5. Copies agents to `.github/agents/` with `-apm` suffix (e.g., `security-apm.agent.md`)
+6. Adds metadata headers for version tracking
+7. Updates `.gitignore` to exclude integrated prompts and agents
+8. VSCode automatically loads all prompts and agents for your coding agents
+9. Run `apm uninstall` to automatically remove integrated prompts and agents
 
 **Intent-First Discovery**:
 The `-apm` suffix pattern enables natural autocomplete in VSCode:
@@ -177,9 +183,14 @@ The `-apm` suffix pattern enables natural autocomplete in VSCode:
 apm install danielmeppiel/design-guidelines
 
 # Result in VSCode:
+# Prompts:
 # .github/prompts/accessibility-audit-apm.prompt.md  ✓ Available in chat
 # .github/prompts/design-review-apm.prompt.md        ✓ Available in chat
 # .github/prompts/style-guide-check-apm.prompt.md    ✓ Available in chat
+
+# Agents:
+# .github/agents/design-reviewer-apm.agent.md        ✓ Available as chat mode
+# .github/agents/accessibility-expert-apm.agent.md   ✓ Available as chat mode
 
 # Use with natural autocomplete:
 # Type: /design
@@ -188,10 +199,11 @@ apm install danielmeppiel/design-guidelines
 
 **VSCode Native Features**:
 - All integrated prompts appear in VSCode's prompt picker
+- All integrated agents appear in VSCode's chat mode selector
 - Native chat integration with primitives
 - Seamless `/prompt` command support
 - File-pattern based instruction application
-- Chatmode support for different personas
+- Agent support for different personas and workflows
 
 ## Development Tool Integrations
 
@@ -290,7 +302,8 @@ apm install danielmeppiel/design-guidelines
 
 # GitHub Copilot automatically picks up:
 # .github/prompts/*-apm.prompt.md (integrated prompts)
-# .github/chatmodes/ (chat personalities)
+# .github/agents/*-apm.agent.md (integrated agents)
+# .github/agents/ or .github/chatmodes/ (AI personas - both formats supported)
 # .github/instructions/ (file-pattern rules)
 ```
 

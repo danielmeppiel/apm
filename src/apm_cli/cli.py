@@ -41,7 +41,7 @@ try:
     from apm_cli.deps.apm_resolver import APMDependencyResolver
     from apm_cli.deps.github_downloader import GitHubPackageDownloader
     from apm_cli.models.apm_package import APMPackage, DependencyReference
-    from apm_cli.integration import PromptIntegrator
+    from apm_cli.integration import PromptIntegrator, AgentIntegrator
 
     APM_DEPS_AVAILABLE = True
 except ImportError as e:
@@ -369,20 +369,22 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
             continue
 
         # Check if package is already in dependencies
-        if package in current_deps:
-            _rich_warning(f"Package {package} already exists in apm.yml")
-            continue
-
+        already_in_deps = package in current_deps
+        
         # Validate package exists and is accessible
         if _validate_package_exists(package):
-            validated_packages.append(package)
-            _rich_info(f"✓ {package} - accessible")
+            if already_in_deps:
+                _rich_info(f"✓ {package} - already in apm.yml, ensuring installation...")
+            else:
+                validated_packages.append(package)
+                _rich_info(f"✓ {package} - accessible")
         else:
             _rich_error(f"✗ {package} - not accessible or doesn't exist")
 
     if not validated_packages:
         if dry_run:
-            _rich_warning("No new valid packages to add")
+            _rich_warning("No new packages to add")
+        # If all packages already exist in apm.yml, that's OK - we'll reinstall them
         return []
 
     if dry_run:
@@ -546,9 +548,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
             validated_packages = _validate_and_add_packages_to_apm_yml(
                 packages, dry_run
             )
-            if not validated_packages and not dry_run:
-                _rich_error("No valid packages to install")
-                sys.exit(1)
+            # Note: Empty validated_packages is OK if packages are already in apm.yml
+            # We'll proceed with installation from apm.yml to ensure everything is synced
 
         _rich_info("Installing dependencies from apm.yml...")
 
@@ -593,6 +594,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
         # Install APM dependencies first (if requested)
         apm_count = 0
         prompt_count = 0
+        agent_count = 0
         if should_install_apm and apm_deps:
             if not APM_DEPS_AVAILABLE:
                 _rich_error("APM dependency system not available")
@@ -600,7 +602,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
                 sys.exit(1)
 
             try:
-                apm_count, prompt_count = _install_apm_dependencies(apm_package, update)
+                apm_count, prompt_count, agent_count = _install_apm_dependencies(apm_package, update)
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
@@ -619,7 +621,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
         if not only:
             # Load apm.yml config for summary
             apm_config = _load_apm_config()
-            _show_install_summary(apm_count, prompt_count, mcp_count, apm_config)
+            _show_install_summary(apm_count, prompt_count, agent_count, mcp_count, apm_config)
         elif only == "apm":
             _rich_success(f"Installed {apm_count} APM dependencies")
         elif only == "mcp":
@@ -862,24 +864,33 @@ def uninstall(ctx, packages, dry_run):
 
         if apm_modules_dir.exists():
             for package in packages_to_remove:
-                package_name = package.split("/")[-1]  # Extract package name
-                package_path = apm_modules_dir / package_name
+                # Parse package correctly using org/repo structure (like install does)
+                repo_parts = package.split("/")
+                if len(repo_parts) >= 2:
+                    org_name = repo_parts[0]
+                    repo_name = repo_parts[1]
+                    package_path = apm_modules_dir / org_name / repo_name
+                else:
+                    # Fallback for invalid format
+                    package_path = apm_modules_dir / package
 
                 if package_path.exists():
                     try:
                         import shutil
 
                         shutil.rmtree(package_path)
-                        _rich_info(f"✓ Removed {package_name} from apm_modules/")
+                        _rich_info(f"✓ Removed {package} from apm_modules/")
                         removed_from_modules += 1
                     except Exception as e:
                         _rich_error(
-                            f"✗ Failed to remove {package_name} from apm_modules/: {e}"
+                            f"✗ Failed to remove {package} from apm_modules/: {e}"
                         )
                 else:
-                    _rich_warning(f"Package {package_name} not found in apm_modules/")
+                    _rich_warning(f"Package {package} not found in apm_modules/")
 
         # Sync prompt integration to remove orphaned prompts
+        prompts_cleaned = 0
+        prompts_failed = 0
         if Path(".github/prompts").exists():
             try:
                 from apm_cli.models.apm_package import APMPackage
@@ -887,9 +898,35 @@ def uninstall(ctx, packages, dry_run):
                 
                 apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
                 integrator = PromptIntegrator()
-                integrator.sync_integration(apm_package, Path("."))
-            except Exception:
-                pass  # Silent cleanup failure OK
+                cleanup_result = integrator.sync_integration(apm_package, Path("."))
+                prompts_cleaned = cleanup_result.get('files_removed', 0)
+                prompts_failed = cleanup_result.get('errors', 0)
+            except Exception as e:
+                prompts_failed += 1
+        
+        # Sync agent integration to remove orphaned agents
+        agents_cleaned = 0
+        agents_failed = 0
+        if Path(".github/agents").exists():
+            try:
+                from apm_cli.models.apm_package import APMPackage
+                from apm_cli.integration.agent_integrator import AgentIntegrator
+                
+                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+                integrator = AgentIntegrator()
+                cleanup_result = integrator.sync_integration(apm_package, Path("."))
+                agents_cleaned = cleanup_result.get('files_removed', 0)
+                agents_failed = cleanup_result.get('errors', 0)
+            except Exception as e:
+                agents_failed += 1
+        
+        # Show cleanup feedback
+        if prompts_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {prompts_cleaned} integrated prompt(s)")
+        if agents_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {agents_cleaned} integrated agent(s)")
+        if prompts_failed > 0 or agents_failed > 0:
+            _rich_warning(f"⚠ Failed to clean up {prompts_failed + agents_failed} file(s)")
         
         # Final summary
         summary_lines = []
@@ -956,10 +993,12 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         apm_modules_dir = project_root / "apm_modules"
         apm_modules_dir.mkdir(exist_ok=True)
 
-        # Initialize prompt integrator
-        integrator = PromptIntegrator()
-        should_integrate = integrator.should_integrate(project_root)
-        total_integrated = 0
+        # Initialize integrators
+        prompt_integrator = PromptIntegrator()
+        agent_integrator = AgentIntegrator()
+        should_integrate = prompt_integrator.should_integrate(project_root)
+        total_prompts_integrated = 0
+        total_agents_integrated = 0
 
         # Install each dependency with Rich progress display
         from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
@@ -1004,10 +1043,29 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                         # Fallback for invalid repo URLs
                         install_path = apm_modules_dir / dep_ref.repo_url
 
-                # Skip download if already exists and not updating, but still integrate prompts
-                if install_path.exists() and not update_refs:
+                # npm-like behavior: Branches always fetch latest, only tags/commits use cache
+                # Resolve git reference to determine type
+                from apm_cli.models.apm_package import GitReferenceType
+                
+                resolved_ref = None
+                if dep_ref.reference:
+                    try:
+                        resolved_ref = downloader.resolve_git_reference(
+                            f"{dep_ref.repo_url}@{dep_ref.reference}"
+                        )
+                    except Exception:
+                        pass  # If resolution fails, skip cache (fetch latest)
+                
+                # Use cache only for tags and commits (not branches)
+                is_cacheable = (
+                    resolved_ref and 
+                    resolved_ref.ref_type in [GitReferenceType.TAG, GitReferenceType.COMMIT]
+                )
+                skip_download = install_path.exists() and is_cacheable and not update_refs
+                
+                if skip_download:
                     display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
-                    _rich_info(f"✓ {display_name} (cached)")
+                    _rich_info(f"✓ {display_name} @{dep_ref.reference} (cached)")
                     
                     # Still need to integrate prompts for cached packages (zero-config behavior)
                     if should_integrate:
@@ -1047,22 +1105,38 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 installed_at=datetime.now().isoformat()
                             )
                             
-                            integration_result = integrator.integrate_package_prompts(
+                            # Integrate prompts
+                            prompt_result = prompt_integrator.integrate_package_prompts(
                                 cached_package_info,
                                 project_root
                             )
-                            if integration_result.files_integrated > 0:
-                                total_integrated += integration_result.files_integrated
+                            if prompt_result.files_integrated > 0:
+                                total_prompts_integrated += prompt_result.files_integrated
                                 _rich_info(
-                                    f"  └─ {integration_result.files_integrated} prompts integrated → .github/prompts/"
+                                    f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
                                 )
-                            if integration_result.files_updated > 0:
+                            if prompt_result.files_updated > 0:
                                 _rich_info(
-                                    f"  └─ {integration_result.files_updated} prompts updated"
+                                    f"  └─ {prompt_result.files_updated} prompts updated"
+                                )
+                            
+                            # Integrate agents
+                            agent_result = agent_integrator.integrate_package_agents(
+                                cached_package_info,
+                                project_root
+                            )
+                            if agent_result.files_integrated > 0:
+                                total_agents_integrated += agent_result.files_integrated
+                                _rich_info(
+                                    f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                                )
+                            if agent_result.files_updated > 0:
+                                _rich_info(
+                                    f"  └─ {agent_result.files_updated} agents updated"
                                 )
                         except Exception as e:
                             # Don't fail installation if integration fails
-                            _rich_warning(f"  ⚠ Failed to integrate prompts from cached package: {e}")
+                            _rich_warning(f"  ⚠ Failed to integrate primitives from cached package: {e}")
                     
                     continue
 
@@ -1092,25 +1166,41 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                     installed_count += 1
                     _rich_success(f"✓ {display_name}")
 
-                    # Auto-integrate prompts if enabled
+                    # Auto-integrate prompts and agents if enabled
                     if should_integrate:
                         try:
-                            integration_result = integrator.integrate_package_prompts(
+                            # Integrate prompts
+                            prompt_result = prompt_integrator.integrate_package_prompts(
                                 package_info, 
                                 project_root
                             )
-                            if integration_result.files_integrated > 0:
-                                total_integrated += integration_result.files_integrated
+                            if prompt_result.files_integrated > 0:
+                                total_prompts_integrated += prompt_result.files_integrated
                                 _rich_info(
-                                    f"  └─ {integration_result.files_integrated} prompts integrated → .github/prompts/"
+                                    f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
                                 )
-                            if integration_result.files_updated > 0:
+                            if prompt_result.files_updated > 0:
                                 _rich_info(
-                                    f"  └─ {integration_result.files_updated} prompts updated"
+                                    f"  └─ {prompt_result.files_updated} prompts updated"
+                                )
+                            
+                            # Integrate agents
+                            agent_result = agent_integrator.integrate_package_agents(
+                                package_info, 
+                                project_root
+                            )
+                            if agent_result.files_integrated > 0:
+                                total_agents_integrated += agent_result.files_integrated
+                                _rich_info(
+                                    f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                                )
+                            if agent_result.files_updated > 0:
+                                _rich_info(
+                                    f"  └─ {agent_result.files_updated} agents updated"
                                 )
                         except Exception as e:
                             # Don't fail installation if integration fails
-                            _rich_warning(f"  ⚠ Failed to integrate prompts: {e}")
+                            _rich_warning(f"  ⚠ Failed to integrate primitives: {e}")
 
                 except Exception as e:
                     display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
@@ -1125,17 +1215,26 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         _update_gitignore_for_apm_modules()
 
         # Update .gitignore for integrated prompts if any were integrated
-        if should_integrate and total_integrated > 0:
+        if should_integrate and total_prompts_integrated > 0:
             try:
-                updated = integrator.update_gitignore_for_integrated_prompts(project_root)
+                updated = prompt_integrator.update_gitignore_for_integrated_prompts(project_root)
                 if updated:
                     _rich_info("Updated .gitignore for integrated prompts (*-apm.prompt.md)")
             except Exception as e:
                 _rich_warning(f"Could not update .gitignore for prompts: {e}")
+        
+        # Update .gitignore for integrated agents if any were integrated
+        if should_integrate and total_agents_integrated > 0:
+            try:
+                updated = agent_integrator.update_gitignore_for_integrated_agents(project_root)
+                if updated:
+                    _rich_info("Updated .gitignore for integrated agents (*-apm.agent.md, *-apm.chatmode.md)")
+            except Exception as e:
+                _rich_warning(f"Could not update .gitignore for agents: {e}")
 
         _rich_success(f"Installed {installed_count} APM dependencies")
         
-        return installed_count, total_integrated
+        return installed_count, total_prompts_integrated, total_agents_integrated
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
@@ -1366,12 +1465,13 @@ def _install_mcp_dependencies(
         raise RuntimeError("Registry operations module required for MCP installation")
 
 
-def _show_install_summary(apm_count: int, prompt_count: int, mcp_count: int, apm_config):
+def _show_install_summary(apm_count: int, prompt_count: int, agent_count: int, mcp_count: int, apm_config):
     """Show beautiful post-install summary with next steps.
     
     Args:
         apm_count: Number of APM packages installed
         prompt_count: Number of prompts integrated
+        agent_count: Number of agents integrated
         mcp_count: Number of MCP servers configured
         apm_config: The apm.yml configuration dict
     """
@@ -2006,11 +2106,17 @@ def _watch_mode(output, chatmode, no_links, dry_run):
             observer.schedule(event_handler, ".apm", recursive=True)
             watch_paths.append(".apm/")
 
-        # Check for .github/instructions and chatmodes
+        # Check for .github/instructions and agents/chatmodes
         if Path(".github/instructions").exists():
             observer.schedule(event_handler, ".github/instructions", recursive=True)
             watch_paths.append(".github/instructions/")
 
+        # Watch .github/agents/ (new standard)
+        if Path(".github/agents").exists():
+            observer.schedule(event_handler, ".github/agents", recursive=True)
+            watch_paths.append(".github/agents/")
+
+        # Watch .github/chatmodes/ (legacy)
         if Path(".github/chatmodes").exists():
             observer.schedule(event_handler, ".github/chatmodes", recursive=True)
             watch_paths.append(".github/chatmodes/")

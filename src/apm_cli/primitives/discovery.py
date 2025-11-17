@@ -13,6 +13,11 @@ from ..models.apm_package import APMPackage
 # Common primitive patterns for local discovery (with recursive search)
 LOCAL_PRIMITIVE_PATTERNS: Dict[str, List[str]] = {
     'chatmode': [
+        # New standard (.agent.md)
+        "**/.apm/agents/*.agent.md",
+        "**/.github/agents/*.agent.md",
+        "**/*.agent.md",  # Generic .agent.md files
+        # Legacy support (.chatmode.md)
         "**/.apm/chatmodes/*.chatmode.md",
         "**/.github/chatmodes/*.chatmode.md",
         "**/*.chatmode.md"  # Generic .chatmode.md files
@@ -34,7 +39,10 @@ LOCAL_PRIMITIVE_PATTERNS: Dict[str, List[str]] = {
 
 # Dependency primitive patterns (for .apm directory within dependencies)
 DEPENDENCY_PRIMITIVE_PATTERNS: Dict[str, List[str]] = {
-    'chatmode': ["chatmodes/*.chatmode.md"],
+    'chatmode': [
+        "agents/*.agent.md",  # New standard
+        "chatmodes/*.chatmode.md"  # Legacy
+    ],
     'instruction': ["instructions/*.instructions.md"],
     'context': [
         "context/*.context.md",
