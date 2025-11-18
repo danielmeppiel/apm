@@ -21,7 +21,7 @@ from ..models.apm_package import (
     validate_apm_package,
     APMPackage
 )
-from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, is_valid_fqdn, default_host
+from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, default_host
 
 
 class GitProgressReporter(RemoteProgress):
@@ -748,7 +748,7 @@ author: {dep_ref.repo_url.split('/')[0]}
         
         if dep_ref.host:
             self.github_host = dep_ref.host
-            
+
         # Handle virtual packages differently
         if dep_ref.is_virtual:
             if dep_ref.is_virtual_file():
