@@ -21,7 +21,7 @@ from ..models.apm_package import (
     validate_apm_package,
     APMPackage
 )
-from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, is_github_hostname, default_host
+from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, is_valid_fqdn, default_host
 
 
 class GitProgressReporter(RemoteProgress):
@@ -206,8 +206,8 @@ class GitHubPackageDownloader:
         
         # Method 3: Try standard HTTPS as fallback for public repos
         try:
-            public_url = f"https://github.com/{repo_url_base}"
-            return Repo.clone_from(public_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
+            https_url = self._build_repo_url(repo_url_base, use_ssh=False)
+            return Repo.clone_from(https_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
         except GitCommandError as e:
             last_error = e
         
@@ -244,6 +244,9 @@ class GitHubPackageDownloader:
         except ValueError as e:
             raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
+        if dep_ref.host:
+            self.github_host = dep_ref.host
+
         # Default to main branch if no reference specified
         ref = dep_ref.reference or "main"
         
@@ -259,9 +262,7 @@ class GitHubPackageDownloader:
             if is_likely_commit:
                 # For commit SHAs, clone full repository first, then checkout the commit
                 try:
-                    # Ensure host is set for enterprise repos
-                    if getattr(dep_ref, 'host', None):
-                        self.github_host = dep_ref.host
+                    # Ensure host is set for enterprise repos     
                     repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
@@ -274,8 +275,6 @@ class GitHubPackageDownloader:
                 # For branches and tags, try shallow clone first
                 try:
                     # Try to clone with specific branch/tag first
-                    if getattr(dep_ref, 'host', None):
-                        self.github_host = dep_ref.host
                     repo = self._clone_with_fallback(
                         dep_ref.repo_url,
                         temp_dir,
@@ -290,8 +289,6 @@ class GitHubPackageDownloader:
                 except GitCommandError:
                     # If branch/tag clone fails, try full clone and resolve reference
                     try:
-                        if getattr(dep_ref, 'host', None):
-                            self.github_host = dep_ref.host
                         repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None)
 
                         # Try to resolve the reference
@@ -749,6 +746,9 @@ author: {dep_ref.repo_url.split('/')[0]}
         except ValueError as e:
             raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
+        if dep_ref.host:
+            self.github_host = dep_ref.host
+            
         # Handle virtual packages differently
         if dep_ref.is_virtual:
             if dep_ref.is_virtual_file():
