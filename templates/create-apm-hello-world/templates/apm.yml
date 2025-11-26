@@ -1,0 +1,11 @@
+name: {{project_name}}
+version: 1.0.0
+description: APM project created from hello-world template
+author: {{author}}
+
+dependencies:
+  apm: []
+  mcp: []
+
+scripts:
+  start: "codex hello-world.prompt.md"
