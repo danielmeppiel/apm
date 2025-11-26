@@ -78,8 +78,13 @@ fs.writeFileSync(readmePath, readme);
 // Print success message
 console.log(`${colors.green}✨ Successfully created APM project!${colors.reset}\n`);
 
+// Determine if we need to cd into the directory
+const needsCd = targetDir !== process.cwd();
+
 console.log(`${colors.bright}Next steps:${colors.reset}`);
-console.log(`  ${colors.cyan}cd ${projectName}${colors.reset}`);
+if (needsCd) {
+  console.log(`  ${colors.cyan}cd ${projectName}${colors.reset}`);
+}
 console.log(`  ${colors.cyan}apm runtime setup copilot${colors.reset}   # Install coding agent`);
 console.log(`  ${colors.cyan}apm compile${colors.reset}                 # Generate AGENTS.md`);
 console.log(`  ${colors.cyan}apm run start${colors.reset}               # Run hello world prompt`);

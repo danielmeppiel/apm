@@ -126,22 +126,22 @@ fs.writeFileSync(apmYmlPath, apmYml);
 console.log(`\n✨ Created APM project: ${projectName}\n`);
 console.log('Next steps:');
 console.log(`  cd ${projectName}`);
-console.log('  apm install');
+console.log('  apm runtime setup copilot');
 console.log('  apm compile');
 console.log('  apm run start');
 
 function copyDir(src, dest) {
-  fs.readdirSync(src).forEach(file => {
-    const srcPath = path.join(src, file);
-    const destPath = path.join(dest, file);
-    
-    if (fs.statSync(srcPath).isDirectory()) {
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
       fs.mkdirSync(destPath, { recursive: true });
       copyDir(srcPath, destPath);
     } else {
       fs.copyFileSync(srcPath, destPath);
     }
-  });
+  }
 }
 ```
 
@@ -153,7 +153,7 @@ Templates can use variable placeholders that are substituted during project crea
 |----------|-------------|---------------|
 | `{{project_name}}` | Project directory name | `my-app` |
 | `{{author}}` | Auto-detected from git config | `John Doe` |
-| `{{year}}` | Current year | `2024` |
+| `{{year}}` | Current year | Current year (e.g., 2025) |
 
 ### Template `apm.yml` Example
 
