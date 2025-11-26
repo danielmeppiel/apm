@@ -15,6 +15,7 @@ Welcome to the Agent Package Manager documentation. Choose your path:
 - **[CLI Reference](cli-reference.md)** - Complete command documentation
 - **[Examples & Use Cases](examples.md)** - Real-world patterns
 - **[Integration Guide](integrations.md)** - VSCode, AI runtimes, tools
+- **[Template Ecosystem](templates.md)** - Community templates via npm
 
 ## 🔧 **Advanced**
 - **[Runtime Integration](runtime-integration.md)** - Codex and LLM setup

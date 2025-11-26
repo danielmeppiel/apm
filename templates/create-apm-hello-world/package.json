@@ -1,0 +1,33 @@
+{
+  "name": "create-apm-hello-world",
+  "version": "1.0.0",
+  "description": "APM template for getting started with AI-Native Development",
+  "keywords": [
+    "create-apm",
+    "apm",
+    "template",
+    "ai-native",
+    "agents",
+    "copilot"
+  ],
+  "author": "APM Community",
+  "license": "MIT",
+  "bin": {
+    "create-apm-hello-world": "./bin/index.js"
+  },
+  "files": [
+    "bin",
+    "templates"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielmeppiel/create-apm-hello-world"
+  },
+  "bugs": {
+    "url": "https://github.com/danielmeppiel/create-apm-hello-world/issues"
+  },
+  "homepage": "https://github.com/danielmeppiel/apm#template-ecosystem",
+  "engines": {
+    "node": ">=16"
+  }
+}
