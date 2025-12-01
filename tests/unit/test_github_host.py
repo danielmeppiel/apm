@@ -107,3 +107,35 @@ def test_sanitize_token_url_in_message():
     msg = f"fatal: Authentication failed for 'https://ghp_secret@{host}/user/repo.git'"
     sanitized = github_host.sanitize_token_url_in_message(msg, host=host)
     assert f"***@{host}" in sanitized
+
+
+# Azure DevOps URL builder tests
+
+def test_build_ado_https_clone_url():
+    """Test Azure DevOps HTTPS URL construction."""
+    # Without token
+    url = github_host.build_ado_https_clone_url("dmeppiel-org", "market-js-app", "compliance-rules")
+    assert url == "https://dev.azure.com/dmeppiel-org/market-js-app/_git/compliance-rules"
+    
+    # With token
+    url = github_host.build_ado_https_clone_url("dmeppiel-org", "market-js-app", "compliance-rules", token="mytoken")
+    assert url == "https://mytoken@dev.azure.com/dmeppiel-org/market-js-app/_git/compliance-rules"
+    
+    # With custom host (ADO Server)
+    url = github_host.build_ado_https_clone_url("myorg", "myproject", "myrepo", host="ado.company.internal")
+    assert url == "https://ado.company.internal/myorg/myproject/_git/myrepo"
+
+
+def test_build_ado_ssh_url():
+    """Test Azure DevOps SSH URL construction."""
+    url = github_host.build_ado_ssh_url("dmeppiel-org", "market-js-app", "compliance-rules")
+    assert url == "git@ssh.dev.azure.com:v3/dmeppiel-org/market-js-app/compliance-rules"
+
+
+def test_build_ado_api_url():
+    """Test Azure DevOps API URL construction."""
+    url = github_host.build_ado_api_url("dmeppiel-org", "market-js-app", "compliance-rules", "apm.yml", "main")
+    assert "/_apis/git/repositories/compliance-rules/items" in url
+    assert "path=apm.yml" in url
+    assert "versionDescriptor.version=main" in url
+    assert "api-version=7.0" in url

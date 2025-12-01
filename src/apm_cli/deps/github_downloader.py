@@ -21,7 +21,16 @@ from ..models.apm_package import (
     validate_apm_package,
     APMPackage
 )
-from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, default_host
+from ..utils.github_host import (
+    build_https_clone_url, 
+    build_ssh_url, 
+    build_ado_https_clone_url,
+    build_ado_ssh_url,
+    build_ado_api_url,
+    sanitize_token_url_in_message, 
+    default_host,
+    is_azure_devops_hostname
+)
 
 
 class GitProgressReporter(RemoteProgress):
@@ -138,32 +147,53 @@ class GitHubPackageDownloader:
         
         return sanitized
 
-    def _build_repo_url(self, repo_ref: str, use_ssh: bool = False) -> str:
+    def _build_repo_url(self, repo_ref: str, use_ssh: bool = False, dep_ref: DependencyReference = None) -> str:
         """Build the appropriate repository URL for cloning.
         
-        Uses GitHub Enterprise authentication format for private repositories:
-        - x-access-token format for authenticated HTTPS (GitHub Enterprise standard)
-        - SSH URLs for SSH key-based authentication
-        - Standard HTTPS URLs as fallback
+        Supports both GitHub and Azure DevOps URL formats:
+        - GitHub: https://github.com/owner/repo.git
+        - ADO: https://dev.azure.com/org/project/_git/repo
         
         Args:
-            repo_ref: Repository reference in format "owner/repo"
+            repo_ref: Repository reference in format "owner/repo" or "org/project/repo" for ADO
             use_ssh: Whether to use SSH URL for git operations
+            dep_ref: Optional DependencyReference for ADO-specific URL building
             
         Returns:
             str: Repository URL suitable for git clone operations
         """
-        # Determine host to use. If repo_ref is namespaced with a host (like host/owner/repo),
-        # the DependencyReference.parse will have normalized repo_ref to owner/repo and stored host separately.
-        # For this method, callers should pass repo_ref as owner/repo and optionally set self.github_host.
         host = getattr(self, 'github_host', None) or default_host()
-
-        if use_ssh:
-            return build_ssh_url(host, repo_ref)
-        elif self.github_token:
-            return build_https_clone_url(host, repo_ref, token=self.github_token)
+        
+        # Check if this is Azure DevOps (either via dep_ref or host detection)
+        is_ado = (dep_ref and dep_ref.is_azure_devops()) or is_azure_devops_hostname(host)
+        
+        if is_ado and dep_ref and dep_ref.ado_organization:
+            # Use Azure DevOps URL builders
+            if use_ssh:
+                return build_ado_ssh_url(dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo)
+            elif self.github_token:
+                return build_ado_https_clone_url(
+                    dep_ref.ado_organization, 
+                    dep_ref.ado_project, 
+                    dep_ref.ado_repo, 
+                    token=self.github_token,
+                    host=host
+                )
+            else:
+                return build_ado_https_clone_url(
+                    dep_ref.ado_organization, 
+                    dep_ref.ado_project, 
+                    dep_ref.ado_repo,
+                    host=host
+                )
         else:
-            return build_https_clone_url(host, repo_ref, token=None)
+            # Use GitHub URL builders
+            if use_ssh:
+                return build_ssh_url(host, repo_ref)
+            elif self.github_token:
+                return build_https_clone_url(host, repo_ref, token=self.github_token)
+            else:
+                return build_https_clone_url(host, repo_ref, token=None)
     
     def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, **clone_kwargs) -> Repo:
         """Attempt to clone a repository with fallback authentication methods.
@@ -340,7 +370,7 @@ class GitHubPackageDownloader:
         )
     
     def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
-        """Download a single file from GitHub repository.
+        """Download a single file from repository (GitHub or Azure DevOps).
         
         Args:
             dep_ref: Parsed dependency reference
@@ -352,6 +382,97 @@ class GitHubPackageDownloader:
             
         Raises:
             RuntimeError: If download fails or file not found
+        """
+        host = dep_ref.host or default_host()
+        
+        # Check if this is Azure DevOps
+        if dep_ref.is_azure_devops():
+            return self._download_ado_file(dep_ref, file_path, ref)
+        
+        # GitHub API
+        return self._download_github_file(dep_ref, file_path, ref)
+    
+    def _download_ado_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+        """Download a file from Azure DevOps repository.
+        
+        Args:
+            dep_ref: Parsed dependency reference with ADO-specific fields
+            file_path: Path to file within the repository
+            ref: Git reference (branch, tag, or commit SHA)
+            
+        Returns:
+            bytes: File content
+        """
+        import base64
+        
+        host = dep_ref.host or "dev.azure.com"
+        api_url = build_ado_api_url(
+            dep_ref.ado_organization,
+            dep_ref.ado_project,
+            dep_ref.ado_repo,
+            file_path,
+            ref,
+            host
+        )
+        
+        # Set up authentication headers - ADO uses Basic auth with PAT
+        headers = {}
+        if self.github_token:
+            # ADO uses Basic auth: username can be empty, password is the PAT
+            auth = base64.b64encode(f":{self.github_token}".encode()).decode()
+            headers['Authorization'] = f'Basic {auth}'
+        
+        try:
+            response = requests.get(api_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                # Try fallback branches
+                if ref not in ["main", "master"]:
+                    raise RuntimeError(f"File not found: {file_path} at ref '{ref}' in {dep_ref.repo_url}")
+                
+                fallback_ref = "master" if ref == "main" else "main"
+                fallback_url = build_ado_api_url(
+                    dep_ref.ado_organization,
+                    dep_ref.ado_project,
+                    dep_ref.ado_repo,
+                    file_path,
+                    fallback_ref,
+                    host
+                )
+                
+                try:
+                    response = requests.get(fallback_url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    return response.content
+                except requests.exceptions.HTTPError:
+                    raise RuntimeError(
+                        f"File not found: {file_path} in {dep_ref.repo_url} "
+                        f"(tried refs: {ref}, {fallback_ref})"
+                    )
+            elif e.response.status_code == 401 or e.response.status_code == 403:
+                error_msg = f"Authentication failed for Azure DevOps {dep_ref.repo_url}. "
+                if not self.github_token:
+                    error_msg += "Please set GITHUB_APM_PAT with an Azure DevOps PAT with Code (Read) scope."
+                else:
+                    error_msg += "Please check your Azure DevOps PAT permissions."
+                raise RuntimeError(error_msg)
+            else:
+                raise RuntimeError(f"Failed to download {file_path}: HTTP {e.response.status_code}")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error downloading {file_path}: {e}")
+    
+    def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+        """Download a file from GitHub repository.
+        
+        Args:
+            dep_ref: Parsed dependency reference
+            file_path: Path to file within the repository
+            ref: Git reference (branch, tag, or commit SHA)
+            
+        Returns:
+            bytes: File content
         """
         host = dep_ref.host or default_host()
         
@@ -401,8 +522,6 @@ class GitHubPackageDownloader:
                 
                 try:
                     response = requests.get(fallback_url, headers=headers, timeout=30)
-                    response.raise_for_status()
-                    return response.content
                     response.raise_for_status()
                     return response.content
                 except requests.exceptions.HTTPError:

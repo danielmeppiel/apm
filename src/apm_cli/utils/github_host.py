@@ -92,6 +92,69 @@ def build_https_clone_url(host: str, repo_ref: str, token: Optional[str] = None)
     return f"https://{host}/{repo_ref}"
 
 
+# Azure DevOps URL builders
+
+def build_ado_https_clone_url(org: str, project: str, repo: str, token: Optional[str] = None, host: str = "dev.azure.com") -> str:
+    """Build Azure DevOps HTTPS clone URL.
+    
+    Azure DevOps accepts PAT as password with any username, or as bearer token.
+    The standard format is: https://dev.azure.com/{org}/{project}/_git/{repo}
+    
+    Args:
+        org: Azure DevOps organization name
+        project: Azure DevOps project name
+        repo: Repository name
+        token: Optional Personal Access Token for authentication
+        host: Azure DevOps host (default: dev.azure.com)
+    
+    Returns:
+        str: HTTPS clone URL for Azure DevOps
+    """
+    if token:
+        # ADO uses PAT as password with empty username
+        return f"https://{token}@{host}/{org}/{project}/_git/{repo}"
+    return f"https://{host}/{org}/{project}/_git/{repo}"
+
+
+def build_ado_ssh_url(org: str, project: str, repo: str) -> str:
+    """Build Azure DevOps SSH clone URL.
+    
+    ADO SSH format: git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
+    
+    Args:
+        org: Azure DevOps organization name
+        project: Azure DevOps project name  
+        repo: Repository name
+    
+    Returns:
+        str: SSH clone URL for Azure DevOps
+    """
+    return f"git@ssh.dev.azure.com:v3/{org}/{project}/{repo}"
+
+
+def build_ado_api_url(org: str, project: str, repo: str, path: str, ref: str = "main", host: str = "dev.azure.com") -> str:
+    """Build Azure DevOps REST API URL for file contents.
+    
+    API format: https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo}/items
+    
+    Args:
+        org: Azure DevOps organization name
+        project: Azure DevOps project name
+        repo: Repository name
+        path: Path to file within the repository
+        ref: Git reference (branch, tag, or commit). Defaults to "main"
+        host: Azure DevOps host (default: dev.azure.com)
+    
+    Returns:
+        str: API URL for retrieving file contents
+    """
+    encoded_path = urllib.parse.quote(path, safe='')
+    return (
+        f"https://{host}/{org}/{project}/_apis/git/repositories/{repo}/items"
+        f"?path={encoded_path}&versionDescriptor.version={ref}&api-version=7.0"
+    )
+
+
 def is_valid_fqdn(hostname: str) -> bool:
     """Validate if a string is a valid Fully Qualified Domain Name (FQDN).
 

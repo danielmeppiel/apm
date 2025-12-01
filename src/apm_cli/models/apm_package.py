@@ -2,7 +2,7 @@
 
 import re
 import urllib.parse
-from ..utils.github_host import is_supported_git_host, default_host
+from ..utils.github_host import is_supported_git_host, is_azure_devops_hostname, default_host
 import yaml
 from dataclasses import dataclass
 from enum import Enum
@@ -52,15 +52,25 @@ class ResolvedReference:
 @dataclass 
 class DependencyReference:
     """Represents a reference to an APM dependency."""
-    repo_url: str  # e.g., "user/repo" or "github.com/user/repo"
-    host: Optional[str] = None  # Optional host (github.com or enterprise host)
+    repo_url: str  # e.g., "user/repo" for GitHub or "org/project/repo" for Azure DevOps
+    host: Optional[str] = None  # Optional host (github.com, dev.azure.com, or enterprise host)
     reference: Optional[str] = None  # e.g., "main", "v1.0.0", "abc123"
     alias: Optional[str] = None  # Optional alias for the dependency
     virtual_path: Optional[str] = None  # Path for virtual packages (e.g., "prompts/file.prompt.md")
     is_virtual: bool = False  # True if this is a virtual package (individual file or collection)
     
+    # Azure DevOps specific fields (ADO uses org/project/repo structure)
+    ado_organization: Optional[str] = None  # e.g., "dmeppiel-org"
+    ado_project: Optional[str] = None       # e.g., "market-js-app"
+    ado_repo: Optional[str] = None          # e.g., "compliance-rules"
+    
     # Supported file extensions for virtual packages
     VIRTUAL_FILE_EXTENSIONS = ('.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md')
+    
+    def is_azure_devops(self) -> bool:
+        """Check if this reference points to Azure DevOps."""
+        from ..utils.github_host import is_azure_devops_hostname
+        return self.host is not None and is_azure_devops_hostname(self.host)
     
     def is_virtual_file(self) -> bool:
         """Check if this is a virtual file package (individual file)."""
@@ -219,18 +229,32 @@ class DependencyReference:
             # Filter out empty segments (from double slashes like "user//repo")
             path_segments = [seg for seg in path_segments if seg]
             
-            if len(path_segments) >= 3:
+            # For Azure DevOps, the base package format is org/project/repo (3 segments)
+            # Virtual packages would have 4+ segments: org/project/repo/path/to/file
+            # For GitHub, base is owner/repo (2 segments), virtual is 3+ segments
+            is_ado = validated_host is not None and is_azure_devops_hostname(validated_host)
+            
+            # Handle _git in ADO URLs: org/project/_git/repo -> org/project/repo
+            if is_ado and '_git' in path_segments:
+                git_idx = path_segments.index('_git')
+                # Remove _git from the path segments
+                path_segments = path_segments[:git_idx] + path_segments[git_idx+1:]
+            
+            min_base_segments = 3 if is_ado else 2
+            min_virtual_segments = min_base_segments + 1
+            
+            if len(path_segments) >= min_virtual_segments:
                 # This is a virtual package!
-                # Format: owner/repo/path/to/file.prompt.md
-                # or: owner/repo/collections/collection-name
+                # For GitHub: owner/repo/path/to/file.prompt.md
+                # For ADO: org/project/repo/path/to/file.prompt.md
                 is_virtual_package = True
                 
-                # Extract owner/repo and virtual path
-                owner_repo = '/'.join(path_segments[:2])
-                virtual_path = '/'.join(path_segments[2:])
+                # Extract base repo and virtual path
+                owner_repo = '/'.join(path_segments[:min_base_segments])
+                virtual_path = '/'.join(path_segments[min_base_segments:])
                 
                 # Validate virtual package format
-                if '/collections/' in check_str:
+                if '/collections/' in check_str or virtual_path.startswith('collections/'):
                     # Collection virtual package
                     pass  # Collections are validated by fetching the .collection.yml
                 else:
@@ -288,21 +312,35 @@ class DependencyReference:
             
             repo_url = repo_part.strip()
             
-            # For virtual packages, extract just the owner/repo part
+            # For virtual packages, extract just the owner/repo part (or org/project/repo for ADO)
             if is_virtual_package and not repo_url.startswith(("https://", "http://")):
                 # Virtual packages have format: owner/repo/path/to/file or host/owner/repo/path/to/file
+                # For ADO: dev.azure.com/org/project/repo/path/to/file (4+ with host) or org/project/repo/path (3+ without host)
                 parts = repo_url.split("/")
+                
+                # Handle _git in path: org/project/_git/repo -> org/project/repo
+                if '_git' in parts:
+                    git_idx = parts.index('_git')
+                    parts = parts[:git_idx] + parts[git_idx+1:]
                 
                 # Check if starts with host
                 if len(parts) >= 3 and is_supported_git_host(parts[0]):
-                    # Format: github.com/owner/repo/path/... or dev.azure.com/org/project/path/...
                     host = parts[0]
-                    repo_url = "/".join(parts[1:3])  # Extract owner/repo only
+                    # For ADO: dev.azure.com/org/project/repo/path -> extract org/project/repo
+                    # For GitHub: github.com/owner/repo/path -> extract owner/repo
+                    if is_azure_devops_hostname(parts[0]):
+                        repo_url = "/".join(parts[1:4])  # org/project/repo
+                    else:
+                        repo_url = "/".join(parts[1:3])  # owner/repo
                 elif len(parts) >= 2:
-                    # Format: owner/repo/path/...
-                    repo_url = "/".join(parts[:2])  # Extract owner/repo only
+                    # No host prefix
                     if not host:
                         host = default_host()
+                    # Use validated_host to check if this is ADO
+                    if validated_host and is_azure_devops_hostname(validated_host):
+                        repo_url = "/".join(parts[:3])  # org/project/repo
+                    else:
+                        repo_url = "/".join(parts[:2])  # owner/repo
             
             # Normalize to URL format for secure parsing - always use urllib.parse, never substring checks
             if repo_url.startswith(("https://", "http://")):
@@ -313,37 +351,55 @@ class DependencyReference:
                 # Safely construct a URL from various input formats. Support GitHub, GitHub Enterprise,
                 # Azure DevOps, and other Git hosting platforms.
                 parts = repo_url.split("/")
+                
+                # Handle _git in path for ADO URLs
+                if '_git' in parts:
+                    git_idx = parts.index('_git')
+                    parts = parts[:git_idx] + parts[git_idx+1:]
+                
                 # host/user/repo  OR user/repo (no host)
                 if len(parts) >= 3 and is_supported_git_host(parts[0]):
-                    # Format: github.com/user/repo OR dev.azure.com/org/project OR custom host
+                    # Format with host prefix: github.com/user/repo OR dev.azure.com/org/project/repo
                     host = parts[0]
-                    user_repo = "/".join(parts[1:3])
+                    if is_azure_devops_hostname(host) and len(parts) >= 4:
+                        # ADO format: dev.azure.com/org/project/repo
+                        user_repo = "/".join(parts[1:4])
+                    else:
+                        # GitHub format: github.com/user/repo
+                        user_repo = "/".join(parts[1:3])
                 elif len(parts) >= 2 and "." not in parts[0]:
-                    # Format: user/repo (no dot in first segment, so treat as user)
+                    # Format without host: user/repo or org/project/repo (for ADO)
                     if not host:
                         host = default_host()
-                    user_repo = "/".join(parts[:2])
+                    # Check if default host is ADO
+                    if is_azure_devops_hostname(host) and len(parts) >= 3:
+                        user_repo = "/".join(parts[:3])  # org/project/repo
+                    else:
+                        user_repo = "/".join(parts[:2])  # user/repo
                 else:
-                    raise ValueError(f"Use 'user/repo' or 'github.com/user/repo' or 'dev.azure.com/org/project' format")
+                    raise ValueError(f"Use 'user/repo' or 'github.com/user/repo' or 'dev.azure.com/org/project/repo' format")
 
                 # Validate format before URL construction (security critical)
                 if not user_repo or "/" not in user_repo:
-                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'host/user/repo'")
+                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'org/project/repo'")
 
                 uparts = user_repo.split("/")
-                if len(uparts) < 2 or not uparts[0] or not uparts[1]:
-                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'host/user/repo'")
-
-                user, repo = uparts[0], uparts[1]
-
+                is_ado_host = host and is_azure_devops_hostname(host)
+                expected_parts = 3 if is_ado_host else 2
+                
+                if len(uparts) < expected_parts:
+                    if is_ado_host:
+                        raise ValueError(f"Invalid Azure DevOps repository format: {repo_url}. Expected 'org/project/repo'")
+                    else:
+                        raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
+                
                 # Security: validate characters to prevent injection
-                if not re.match(r'^[a-zA-Z0-9._-]+$', user):
-                    raise ValueError(f"Invalid user name: {user}")
-                if not re.match(r'^[a-zA-Z0-9._-]+$', repo.rstrip('.git')):
-                    raise ValueError(f"Invalid repository name: {repo}")
+                for part in uparts:
+                    if not re.match(r'^[a-zA-Z0-9._-]+$', part.rstrip('.git')):
+                        raise ValueError(f"Invalid repository path component: {part}")
 
                 # Safely construct URL using detected host
-                github_url = urllib.parse.urljoin(f"https://{host}/", f"{user}/{repo}")
+                github_url = urllib.parse.urljoin(f"https://{host}/", user_repo)
                 parsed_url = urllib.parse.urlparse(github_url)
 
             # SECURITY: Validate that this is actually a supported Git host URL.
@@ -361,35 +417,54 @@ class DependencyReference:
             if path.endswith(".git"):
                 path = path[:-4]
             
-            # Validate path is exactly user/repo format
+            # Handle _git in parsed path for ADO URLs
             path_parts = path.split("/")
-            if len(path_parts) != 2:
-                raise ValueError(f"Invalid repository path: expected 'user/repo', got '{path}'")
+            if '_git' in path_parts:
+                git_idx = path_parts.index('_git')
+                path_parts = path_parts[:git_idx] + path_parts[git_idx+1:]
             
-            user, repo = path_parts
-            if not user or not repo:
-                raise ValueError(f"Invalid repository format: user and repo names cannot be empty")
+            # Validate path format based on host type
+            is_ado_host = is_azure_devops_hostname(hostname)
+            expected_parts = 3 if is_ado_host else 2
             
-            # Validate user and repo names contain only allowed characters
-            if not re.match(r'^[a-zA-Z0-9._-]+$', user):
-                raise ValueError(f"Invalid user name: {user}")
-            if not re.match(r'^[a-zA-Z0-9._-]+$', repo):
-                raise ValueError(f"Invalid repository name: {repo}")
+            if len(path_parts) != expected_parts:
+                if is_ado_host:
+                    raise ValueError(f"Invalid Azure DevOps repository path: expected 'org/project/repo', got '{path}'")
+                else:
+                    raise ValueError(f"Invalid repository path: expected 'user/repo', got '{path}'")
             
-            repo_url = f"{user}/{repo}"
+            # Validate all path parts contain only allowed characters
+            for i, part in enumerate(path_parts):
+                if not part:
+                    raise ValueError(f"Invalid repository format: path component {i+1} cannot be empty")
+                if not re.match(r'^[a-zA-Z0-9._-]+$', part):
+                    raise ValueError(f"Invalid repository path component: {part}")
             
-            # Remove trailing .git if present after normalization
-            if repo_url.endswith(".git"):
-                repo_url = repo_url[:-4]
-
+            repo_url = "/".join(path_parts)
+            
             # If host not set via SSH or parsed parts, default to default_host()
             if not host:
                 host = default_host()
 
         
-        # Validate repo format (should be user/repo)
-        if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', repo_url):
-            raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
+        # Validate repo format based on host type
+        is_ado_final = host and is_azure_devops_hostname(host)
+        if is_ado_final:
+            # ADO format: org/project/repo (3 segments)
+            if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', repo_url):
+                raise ValueError(f"Invalid Azure DevOps repository format: {repo_url}. Expected 'org/project/repo'")
+            # Extract ADO-specific fields
+            ado_parts = repo_url.split('/')
+            ado_organization = ado_parts[0]
+            ado_project = ado_parts[1]
+            ado_repo = ado_parts[2]
+        else:
+            # GitHub format: user/repo (2 segments)
+            if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', repo_url):
+                raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
+            ado_organization = None
+            ado_project = None
+            ado_repo = None
         
         # Validate alias characters if present
         if alias and not re.match(r'^[a-zA-Z0-9._-]+$', alias):
@@ -401,14 +476,30 @@ class DependencyReference:
             reference=reference,
             alias=alias,
             virtual_path=virtual_path,
-            is_virtual=is_virtual_package
+            is_virtual=is_virtual_package,
+            ado_organization=ado_organization,
+            ado_project=ado_project,
+            ado_repo=ado_repo
         )
 
     def to_github_url(self) -> str:
-        """Convert to full GitHub URL."""
-        # Use stored host if present, otherwise default host (supports enterprise via GITHUB_HOST env var)
+        """Convert to full repository URL.
+        
+        For Azure DevOps, generates: https://dev.azure.com/org/project/_git/repo
+        For GitHub, generates: https://github.com/owner/repo
+        """
         host = self.host or default_host()
-        return f"https://{host}/{self.repo_url}"
+        
+        if self.is_azure_devops():
+            # ADO format: https://dev.azure.com/org/project/_git/repo
+            return f"https://{host}/{self.ado_organization}/{self.ado_project}/_git/{self.ado_repo}"
+        else:
+            # GitHub format: https://github.com/owner/repo
+            return f"https://{host}/{self.repo_url}"
+    
+    def to_clone_url(self) -> str:
+        """Convert to a clone-friendly URL (same as to_github_url for most purposes)."""
+        return self.to_github_url()
 
     def get_display_name(self) -> str:
         """Get display name for this dependency (alias or repo name)."""

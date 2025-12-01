@@ -157,21 +157,34 @@ class TestDependencyReference:
             assert dep.host is not None
     
     def test_parse_azure_devops_formats(self):
-        """Test that Azure DevOps hostnames are accepted.
+        """Test that Azure DevOps hostnames are accepted with org/project/repo format.
         
-        Ensures Azure DevOps Services (dev.azure.com) and legacy 
-        (*.visualstudio.com) hosts are supported.
+        Azure DevOps uses 3 segments (org/project/repo) instead of GitHub's 2 segments (owner/repo).
         """
-        # These should be ACCEPTED (valid Azure DevOps hostnames)
-        valid_ado_formats = [
-            ("dev.azure.com/org/project", "org/project", "dev.azure.com"),
-            ("mycompany.visualstudio.com/org/project", "org/project", "mycompany.visualstudio.com"),
-        ]
+        # Full ADO URL with _git segment
+        dep = DependencyReference.parse("dev.azure.com/dmeppiel-org/market-js-app/_git/compliance-rules")
+        assert dep.host == "dev.azure.com"
+        assert dep.ado_organization == "dmeppiel-org"
+        assert dep.ado_project == "market-js-app"
+        assert dep.ado_repo == "compliance-rules"
+        assert dep.is_azure_devops() == True
+        assert dep.repo_url == "dmeppiel-org/market-js-app/compliance-rules"
         
-        for valid_url, expected_repo, expected_host in valid_ado_formats:
-            dep = DependencyReference.parse(valid_url)
-            assert dep.repo_url == expected_repo
-            assert dep.host == expected_host
+        # Simplified ADO format (without _git)
+        dep = DependencyReference.parse("dev.azure.com/myorg/myproject/myrepo")
+        assert dep.host == "dev.azure.com"
+        assert dep.ado_organization == "myorg"
+        assert dep.ado_project == "myproject"
+        assert dep.ado_repo == "myrepo"
+        assert dep.is_azure_devops() == True
+        
+        # Legacy visualstudio.com format
+        dep = DependencyReference.parse("mycompany.visualstudio.com/myorg/myproject/myrepo")
+        assert dep.host == "mycompany.visualstudio.com"
+        assert dep.is_azure_devops() == True
+        assert dep.ado_organization == "myorg"
+        assert dep.ado_project == "myproject"
+        assert dep.ado_repo == "myrepo"
     
     def test_parse_virtual_package_with_malicious_host(self):
         """Test that virtual packages with malicious hosts are rejected."""
@@ -279,7 +292,7 @@ class TestDependencyReference:
         ]
         
         for invalid_format in invalid_formats:
-            with pytest.raises(ValueError, match="Unsupported Git host|Empty dependency string|Invalid repository format|Use 'user/repo'"):
+            with pytest.raises(ValueError, match="Unsupported Git host|Empty dependency string|Invalid repository|Use 'user/repo'|path component"):
                 DependencyReference.parse(invalid_format)
     
     def test_to_github_url(self):
