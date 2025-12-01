@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.6] - 2025-12-01
+
+### Fixed
+
+- Enterprise GitHub host support: fallback clone now respects `GITHUB_HOST` env var instead of hardcoding github.com
+- Version validation crash when YAML parses version as numeric type (e.g., `1.0` vs `"1.0"`)
+
+### Changed
+
+- CI/CD: Updated runner from macos-13 and macos-14 to macos-15 for both x86_64 and ARM64 builds
+
 ## [0.5.5] - 2025-11-17
 
 ### Added
