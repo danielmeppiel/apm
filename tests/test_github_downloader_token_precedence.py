@@ -129,3 +129,43 @@ class TestGitHubDownloaderErrorMessages:
         assert 'GITHUB_TOKEN' in error_msg
         # Should not mention the old token name
         assert 'GITHUB_CLI_PAT' not in error_msg
+    
+    def test_ado_token_sanitization_cloud(self):
+        """Test that ADO Cloud URLs with tokens are sanitized."""
+        downloader = GitHubPackageDownloader()
+        
+        # ADO Cloud URL with token
+        error_with_ado = "fatal: Authentication failed for 'https://ado_secret_pat@dev.azure.com/myorg/myproject/_git/myrepo'"
+        sanitized = downloader._sanitize_git_error(error_with_ado)
+        assert 'ado_secret_pat' not in sanitized
+        assert 'https://***@dev.azure.com' in sanitized
+    
+    def test_ado_token_sanitization_custom_server(self):
+        """Test that ADO Server (on-prem) URLs with custom domains are sanitized."""
+        downloader = GitHubPackageDownloader()
+        
+        # ADO Server with custom domain
+        error_with_ado_onprem = "fatal: Authentication failed for 'https://my_ado_token@ado.company.internal/DefaultCollection/Project/_git/repo'"
+        sanitized = downloader._sanitize_git_error(error_with_ado_onprem)
+        assert 'my_ado_token' not in sanitized
+        assert 'https://***@ado.company.internal' in sanitized
+    
+    def test_ado_token_sanitization_tfs_server(self):
+        """Test that TFS/Azure DevOps Server URLs are sanitized."""
+        downloader = GitHubPackageDownloader()
+        
+        # TFS-style URL
+        error_with_tfs = "fatal: could not read from 'https://secret123@tfs.corp.net:8080/tfs/DefaultCollection/_git/myrepo'"
+        sanitized = downloader._sanitize_git_error(error_with_tfs)
+        assert 'secret123' not in sanitized
+        assert 'https://***@tfs.corp.net:8080' in sanitized
+    
+    def test_ado_pat_env_var_sanitization(self):
+        """Test that ADO_APM_PAT environment variable values are sanitized."""
+        downloader = GitHubPackageDownloader()
+        
+        # Error containing ADO_APM_PAT value
+        error_with_pat = "Error: ADO_APM_PAT=my_secret_ado_token failed to authenticate"
+        sanitized = downloader._sanitize_git_error(error_with_pat)
+        assert 'my_secret_ado_token' not in sanitized
+        assert 'ADO_APM_PAT=***' in sanitized

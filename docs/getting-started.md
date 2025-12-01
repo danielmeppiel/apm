@@ -141,13 +141,13 @@ apm install dev.azure.com/myorg/myproject/myrepo#main
 
 #### Azure DevOps Authentication
 
-Set `GITHUB_APM_PAT` with an Azure DevOps Personal Access Token:
+Set `ADO_APM_PAT` with an Azure DevOps Personal Access Token:
 
 1. Go to: `https://dev.azure.com/{org}/_usersSettings/tokens`
 2. Create PAT with **Code (Read)** scope
 
 ```bash
-export GITHUB_APM_PAT=your_ado_pat
+export ADO_APM_PAT=your_ado_pat
 apm install dev.azure.com/myorg/myproject/myrepo
 ```
 
@@ -164,12 +164,11 @@ apm install mycompany.visualstudio.com/myorg/myproject/myrepo
 For self-hosted Azure DevOps Server instances:
 
 ```bash
-# Set your Azure DevOps Server as default
-export GITHUB_HOST=ado.company.internal
-export GITHUB_APM_PAT=your_ado_server_pat
+# Set your Azure DevOps Server PAT
+export ADO_APM_PAT=your_ado_server_pat
 
-# Install using org/project/repo format
-apm install myorg/myproject/myrepo
+# Install using full FQDN with org/project/repo format
+apm install ado.company.internal/myorg/myproject/myrepo
 ```
 
 #### Mixed GitHub and Azure DevOps
@@ -177,15 +176,23 @@ apm install myorg/myproject/myrepo
 If your organization uses both GitHub and Azure DevOps:
 
 ```bash
-# Use bare names for your primary host (GitHub)
+# GitHub token for GitHub.com and GitHub Enterprise
+export GITHUB_APM_PAT=your_github_pat
+
+# ADO token for Azure DevOps (separate token required)
+export ADO_APM_PAT=your_ado_pat
+
+# Optional: Set default host for bare package names
 export GITHUB_HOST=github.company.com
 
 # Install from GitHub (2-segment format)
 apm install team/package
 
-# Use FQDN for Azure DevOps repositories (3-segment format)
+# Install from GitHub Enterprise (FQDN)
+apm install ghe.company.com/team/package
+
+# Install from Azure DevOps (3-segment format with FQDN)
 apm install dev.azure.com/azure-org/azure-project/compliance-rules
-apm install mycompany.visualstudio.com/team/project/standards
 ```
 
 #### Virtual Packages on Azure DevOps

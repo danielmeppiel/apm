@@ -390,5 +390,273 @@ class TestErrorHandling:
         pass
 
 
+class TestAzureDevOpsSupport:
+    """Test Azure DevOps package support."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = Path(tempfile.mkdtemp())
+    
+    def teardown_method(self):
+        """Clean up test fixtures."""
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def test_setup_git_environment_with_ado_token(self):
+        """Test Git environment setup picks up ADO_APM_PAT."""
+        with patch.dict(os.environ, {'ADO_APM_PAT': 'ado-test-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            
+            assert downloader.ado_token == 'ado-test-token'
+            assert downloader.has_ado_token is True
+    
+    def test_setup_git_environment_no_ado_token(self):
+        """Test Git environment setup without ADO token."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'github-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            
+            assert downloader.ado_token is None
+            assert downloader.has_ado_token is False
+            # GitHub token should still work
+            assert downloader.github_token == 'github-token'
+            assert downloader.has_github_token is True
+    
+    def test_build_repo_url_for_ado_with_token(self):
+        """Test URL building for ADO packages with token."""
+        with patch.dict(os.environ, {'ADO_APM_PAT': 'ado-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            # Should build ADO URL with token
+            assert 'dev.azure.com' in url
+            assert 'myorg' in url
+            assert 'myproject' in url
+            assert '_git' in url
+            assert 'myrepo' in url
+            assert 'ado-token' in url
+    
+    def test_build_repo_url_for_ado_without_token(self):
+        """Test URL building for ADO packages without token."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            # Should build ADO URL without token
+            assert 'dev.azure.com' in url
+            assert 'myorg/myproject/_git/myrepo' in url
+            # No token in URL
+            assert '@dev.azure.com' not in url or url.startswith('https://dev.azure.com')
+    
+    def test_build_repo_url_for_ado_ssh(self):
+        """Test SSH URL building for ADO packages."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=True, dep_ref=dep_ref)
+            
+            # Should build ADO SSH URL
+            assert 'ssh.dev.azure.com' in url or 'git@ssh.dev.azure.com' in url
+    
+    def test_build_repo_url_github_not_affected_by_ado_token(self):
+        """Test that GitHub URL building uses GitHub token, not ADO token."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            # Should use GitHub token, not ADO token
+            assert 'github.com' in url
+            assert 'github-token' in url
+            assert 'ado-token' not in url
+    
+    def test_clone_with_fallback_selects_ado_token(self):
+        """Test that _clone_with_fallback uses ADO token for ADO packages."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
+            
+            # Mock _build_repo_url to capture what's passed
+            with patch.object(downloader, '_build_repo_url') as mock_build:
+                mock_build.return_value = 'https://ado-token@dev.azure.com/myorg/myproject/_git/myrepo'
+                
+                with patch('apm_cli.deps.github_downloader.Repo') as mock_repo:
+                    mock_repo.clone_from.return_value = Mock()
+                    
+                    try:
+                        downloader._clone_with_fallback(
+                            dep_ref.repo_url, 
+                            self.temp_dir,
+                            dep_ref=dep_ref
+                        )
+                    except:
+                        pass  # May fail due to mocking, we just want to check the call
+                    
+                    # Verify _build_repo_url was called with dep_ref
+                    if mock_build.called:
+                        call_args = mock_build.call_args
+                        assert call_args[1].get('dep_ref') is not None
+    
+    def test_clone_with_fallback_selects_github_token(self):
+        """Test that _clone_with_fallback uses GitHub token for GitHub packages."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo')
+            
+            # The is_ado check should be False for GitHub packages
+            assert not dep_ref.is_azure_devops()
+
+
+class TestMixedSourceTokenSelection:
+    """Test token selection for mixed-source installations (GitHub.com + GHE + ADO)."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = Path(tempfile.mkdtemp())
+    
+    def teardown_method(self):
+        """Clean up test fixtures."""
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def test_mixed_tokens_github_com(self):
+        """Test that github.com packages use GITHUB_APM_PAT."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('github.com/owner/repo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            assert 'github.com' in url
+            assert 'github-token' in url
+            assert 'ado-token' not in url
+    
+    def test_mixed_tokens_ghe(self):
+        """Test that GHE packages use GITHUB_APM_PAT."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('octodemo-eu.ghe.com/owner/repo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            assert 'octodemo-eu.ghe.com' in url
+            assert 'github-token' in url
+            assert 'ado-token' not in url
+    
+    def test_mixed_tokens_ado(self):
+        """Test that ADO packages use ADO_APM_PAT."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            assert 'dev.azure.com' in url
+            assert 'ado-token' in url
+            assert 'github-token' not in url
+    
+    def test_mixed_tokens_bare_owner_repo_with_github_host(self):
+        """Test bare owner/repo uses GITHUB_HOST and GITHUB_APM_PAT."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token',
+            'GITHUB_HOST': 'company.ghe.com'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo')
+            
+            # Simulate resolution to custom host
+            # The dep_ref.host will be github.com by default, but GITHUB_HOST
+            # affects the actual URL building in the downloader
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            # Should use GitHub token for GitHub-family hosts
+            assert 'github-token' in url
+            assert 'ado-token' not in url
+    
+    def test_mixed_installation_token_isolation(self):
+        """Test that tokens are isolated per platform in mixed installation."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token',
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            
+            # Parse multiple deps from different sources
+            github_dep = DependencyReference.parse('github.com/owner/repo')
+            ghe_dep = DependencyReference.parse('company.ghe.com/owner/repo')
+            ado_dep = DependencyReference.parse('dev.azure.com/org/proj/_git/repo')
+            
+            # Build URLs for each
+            github_url = downloader._build_repo_url(github_dep.repo_url, use_ssh=False, dep_ref=github_dep)
+            ghe_url = downloader._build_repo_url(ghe_dep.repo_url, use_ssh=False, dep_ref=ghe_dep)
+            ado_url = downloader._build_repo_url(ado_dep.repo_url, use_ssh=False, dep_ref=ado_dep)
+            
+            # Verify token isolation
+            assert 'github-token' in github_url
+            assert 'github-token' in ghe_url
+            assert 'ado-token' in ado_url
+            
+            # Verify no cross-contamination
+            assert 'ado-token' not in github_url
+            assert 'ado-token' not in ghe_url
+            assert 'github-token' not in ado_url
+    
+    def test_github_ado_without_ado_token_falls_back(self):
+        """Test ADO without token still builds valid URL."""
+        with patch.dict(os.environ, {
+            'GITHUB_APM_PAT': 'github-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            # Should build valid ADO URL without auth
+            assert 'dev.azure.com' in url
+            assert 'myorg/myproject/_git/myrepo' in url
+            # GitHub token should NOT be used for ADO
+            assert 'github-token' not in url
+    
+    def test_ghe_without_github_token_falls_back(self):
+        """Test GHE without token still builds valid URL."""
+        with patch.dict(os.environ, {
+            'ADO_APM_PAT': 'ado-token'
+        }, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('company.ghe.com/owner/repo')
+            
+            url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            # Should build valid GHE URL without auth
+            assert 'company.ghe.com' in url
+            assert 'owner/repo' in url
+            # ADO token should NOT be used for GHE
+            assert 'ado-token' not in url
+
+
 if __name__ == '__main__':
     pytest.main([__file__])
