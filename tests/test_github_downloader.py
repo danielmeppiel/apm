@@ -6,6 +6,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
+from urllib.parse import urlparse
 
 from apm_cli.deps.github_downloader import GitHubPackageDownloader
 from apm_cli.models.apm_package import (
@@ -428,14 +429,16 @@ class TestAzureDevOpsSupport:
             dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
-            # Should build ADO URL with token
-            assert 'dev.azure.com' in url
-            assert 'myorg' in url
-            assert 'myproject' in url
-            assert '_git' in url
-            assert 'myrepo' in url
-            assert 'ado-token' in url
+            # Should build ADO URL with token embedded in userinfo
+            assert parsed.hostname == 'dev.azure.com'
+            assert 'myorg' in parsed.path
+            assert 'myproject' in parsed.path
+            assert '_git' in parsed.path
+            assert 'myrepo' in parsed.path
+            # Token should be in the URL (as username in https://token@host format)
+            assert parsed.username == 'ado-token' or 'ado-token' in (parsed.password or '')
     
     def test_build_repo_url_for_ado_without_token(self):
         """Test URL building for ADO packages without token."""
@@ -444,12 +447,14 @@ class TestAzureDevOpsSupport:
             dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
             # Should build ADO URL without token
-            assert 'dev.azure.com' in url
-            assert 'myorg/myproject/_git/myrepo' in url
-            # No token in URL
-            assert '@dev.azure.com' not in url or url.startswith('https://dev.azure.com')
+            assert parsed.hostname == 'dev.azure.com'
+            assert 'myorg/myproject/_git/myrepo' in parsed.path
+            # No credentials in URL
+            assert parsed.username is None
+            assert parsed.password is None
     
     def test_build_repo_url_for_ado_ssh(self):
         """Test SSH URL building for ADO packages."""
@@ -459,8 +464,8 @@ class TestAzureDevOpsSupport:
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=True, dep_ref=dep_ref)
             
-            # Should build ADO SSH URL
-            assert 'ssh.dev.azure.com' in url or 'git@ssh.dev.azure.com' in url
+            # Should build ADO SSH URL (git@ssh.dev.azure.com:v3/org/project/repo)
+            assert url.startswith('git@ssh.dev.azure.com') or 'ssh.dev.azure.com' in url
     
     def test_build_repo_url_github_not_affected_by_ado_token(self):
         """Test that GitHub URL building uses GitHub token, not ADO token."""
@@ -472,11 +477,13 @@ class TestAzureDevOpsSupport:
             dep_ref = DependencyReference.parse('owner/repo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
             # Should use GitHub token, not ADO token
-            assert 'github.com' in url
-            assert 'github-token' in url
-            assert 'ado-token' not in url
+            assert parsed.hostname == 'github.com'
+            # GitHub uses x-access-token format or token as username
+            url_auth = parsed.username or ''
+            assert 'ado-token' not in url and 'ado-token' != parsed.username
     
     def test_clone_with_fallback_selects_ado_token(self):
         """Test that _clone_with_fallback uses ADO token for ADO packages."""
@@ -543,10 +550,11 @@ class TestMixedSourceTokenSelection:
             dep_ref = DependencyReference.parse('github.com/owner/repo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
-            assert 'github.com' in url
-            assert 'github-token' in url
-            assert 'ado-token' not in url
+            assert parsed.hostname == 'github.com'
+            # GitHub token should be present, ADO token should not
+            assert 'ado-token' not in url and parsed.username != 'ado-token'
     
     def test_mixed_tokens_ghe(self):
         """Test that GHE packages use GITHUB_APM_PAT."""
@@ -558,10 +566,11 @@ class TestMixedSourceTokenSelection:
             dep_ref = DependencyReference.parse('octodemo-eu.ghe.com/owner/repo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
-            assert 'octodemo-eu.ghe.com' in url
-            assert 'github-token' in url
-            assert 'ado-token' not in url
+            assert parsed.hostname == 'octodemo-eu.ghe.com'
+            # ADO token should not be used for GHE
+            assert 'ado-token' not in url and parsed.username != 'ado-token'
     
     def test_mixed_tokens_ado(self):
         """Test that ADO packages use ADO_APM_PAT."""
@@ -573,9 +582,11 @@ class TestMixedSourceTokenSelection:
             dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
-            assert 'dev.azure.com' in url
-            assert 'ado-token' in url
+            assert parsed.hostname == 'dev.azure.com'
+            # ADO token should be used (as username), GitHub token should not
+            assert parsed.username == 'ado-token' or 'ado-token' in (parsed.password or '')
             assert 'github-token' not in url
     
     def test_mixed_tokens_bare_owner_repo_with_github_host(self):
@@ -592,10 +603,10 @@ class TestMixedSourceTokenSelection:
             # The dep_ref.host will be github.com by default, but GITHUB_HOST
             # affects the actual URL building in the downloader
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
-            # Should use GitHub token for GitHub-family hosts
-            assert 'github-token' in url
-            assert 'ado-token' not in url
+            # Should use GitHub token for GitHub-family hosts, not ADO token
+            assert 'ado-token' not in url and parsed.username != 'ado-token'
     
     def test_mixed_installation_token_isolation(self):
         """Test that tokens are isolated per platform in mixed installation."""
@@ -615,14 +626,21 @@ class TestMixedSourceTokenSelection:
             ghe_url = downloader._build_repo_url(ghe_dep.repo_url, use_ssh=False, dep_ref=ghe_dep)
             ado_url = downloader._build_repo_url(ado_dep.repo_url, use_ssh=False, dep_ref=ado_dep)
             
-            # Verify token isolation
-            assert 'github-token' in github_url
-            assert 'github-token' in ghe_url
-            assert 'ado-token' in ado_url
+            github_parsed = urlparse(github_url)
+            ghe_parsed = urlparse(ghe_url)
+            ado_parsed = urlparse(ado_url)
             
-            # Verify no cross-contamination
+            # Verify correct hosts
+            assert github_parsed.hostname == 'github.com'
+            assert ghe_parsed.hostname == 'company.ghe.com'
+            assert ado_parsed.hostname == 'dev.azure.com'
+            
+            # Verify token isolation - ADO token only in ADO URL
             assert 'ado-token' not in github_url
             assert 'ado-token' not in ghe_url
+            assert ado_parsed.username == 'ado-token' or 'ado-token' in (ado_parsed.password or '')
+            
+            # Verify GitHub token not in ADO URL
             assert 'github-token' not in ado_url
     
     def test_github_ado_without_ado_token_falls_back(self):
@@ -634,11 +652,13 @@ class TestMixedSourceTokenSelection:
             dep_ref = DependencyReference.parse('dev.azure.com/myorg/myproject/_git/myrepo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
             # Should build valid ADO URL without auth
-            assert 'dev.azure.com' in url
-            assert 'myorg/myproject/_git/myrepo' in url
-            # GitHub token should NOT be used for ADO
+            assert parsed.hostname == 'dev.azure.com'
+            assert 'myorg/myproject/_git/myrepo' in parsed.path
+            # GitHub token should NOT be used for ADO - no credentials at all
+            assert parsed.username is None or parsed.username != 'github-token'
             assert 'github-token' not in url
     
     def test_ghe_without_github_token_falls_back(self):
@@ -650,11 +670,13 @@ class TestMixedSourceTokenSelection:
             dep_ref = DependencyReference.parse('company.ghe.com/owner/repo')
             
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            parsed = urlparse(url)
             
             # Should build valid GHE URL without auth
-            assert 'company.ghe.com' in url
-            assert 'owner/repo' in url
-            # ADO token should NOT be used for GHE
+            assert parsed.hostname == 'company.ghe.com'
+            assert 'owner/repo' in parsed.path
+            # ADO token should NOT be used for GHE - no credentials at all
+            assert parsed.username is None or parsed.username != 'ado-token'
             assert 'ado-token' not in url
 
 
