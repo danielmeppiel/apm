@@ -481,8 +481,7 @@ class TestAzureDevOpsSupport:
             
             # Should use GitHub token, not ADO token
             assert parsed.hostname == 'github.com'
-            # GitHub uses x-access-token format or token as username
-            url_auth = parsed.username or ''
+            # Verify ADO token is not used for GitHub URLs
             assert 'ado-token' not in url and 'ado-token' != parsed.username
     
     def test_clone_with_fallback_selects_ado_token(self):
@@ -507,7 +506,7 @@ class TestAzureDevOpsSupport:
                             self.temp_dir,
                             dep_ref=dep_ref
                         )
-                    except:
+                    except Exception:
                         pass  # May fail due to mocking, we just want to check the call
                     
                     # Verify _build_repo_url was called with dep_ref
@@ -521,7 +520,6 @@ class TestAzureDevOpsSupport:
             'GITHUB_APM_PAT': 'github-token',
             'ADO_APM_PAT': 'ado-token'
         }, clear=True):
-            downloader = GitHubPackageDownloader()
             dep_ref = DependencyReference.parse('owner/repo')
             
             # The is_ado check should be False for GitHub packages

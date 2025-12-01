@@ -132,6 +132,17 @@ def test_build_ado_ssh_url():
     assert url == "git@ssh.dev.azure.com:v3/dmeppiel-org/market-js-app/compliance-rules"
 
 
+def test_build_ado_ssh_url_server():
+    """Test Azure DevOps Server SSH URL construction for on-premises."""
+    # Custom host should use server format
+    url = github_host.build_ado_ssh_url("myorg", "myproject", "myrepo", host="ado.company.internal")
+    assert url == "ssh://git@ado.company.internal/myorg/myproject/_git/myrepo"
+    
+    # Cloud host should use cloud format
+    url = github_host.build_ado_ssh_url("myorg", "myproject", "myrepo", host="ssh.dev.azure.com")
+    assert url == "git@ssh.dev.azure.com:v3/myorg/myproject/myrepo"
+
+
 def test_build_ado_api_url():
     """Test Azure DevOps API URL construction."""
     url = github_host.build_ado_api_url("dmeppiel-org", "market-js-app", "compliance-rules", "apm.yml", "main")

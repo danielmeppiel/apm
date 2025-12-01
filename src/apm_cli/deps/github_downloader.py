@@ -441,6 +441,13 @@ class GitHubPackageDownloader:
         """
         import base64
         
+        # Validate required ADO fields before proceeding
+        if not all([dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo]):
+            raise ValueError(
+                f"Invalid Azure DevOps dependency reference: missing organization, project, or repo. "
+                f"Got: org={dep_ref.ado_organization}, project={dep_ref.ado_project}, repo={dep_ref.ado_repo}"
+            )
+        
         host = dep_ref.host or "dev.azure.com"
         api_url = build_ado_api_url(
             dep_ref.ado_organization,

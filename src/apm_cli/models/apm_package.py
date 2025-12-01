@@ -249,8 +249,7 @@ class DependencyReference:
                 # For ADO: org/project/repo/path/to/file.prompt.md
                 is_virtual_package = True
                 
-                # Extract base repo and virtual path
-                owner_repo = '/'.join(path_segments[:min_base_segments])
+                # Extract virtual path (base repo is derived later)
                 virtual_path = '/'.join(path_segments[min_base_segments:])
                 
                 # Validate virtual package format
@@ -329,6 +328,8 @@ class DependencyReference:
                     # For ADO: dev.azure.com/org/project/repo/path -> extract org/project/repo
                     # For GitHub: github.com/owner/repo/path -> extract owner/repo
                     if is_azure_devops_hostname(parts[0]):
+                        if len(parts) < 5:  # host + org + project + repo + at least one path segment
+                            raise ValueError("Invalid Azure DevOps virtual package format: must be dev.azure.com/org/project/repo/path")
                         repo_url = "/".join(parts[1:4])  # org/project/repo
                     else:
                         repo_url = "/".join(parts[1:3])  # owner/repo
@@ -338,6 +339,8 @@ class DependencyReference:
                         host = default_host()
                     # Use validated_host to check if this is ADO
                     if validated_host and is_azure_devops_hostname(validated_host):
+                        if len(parts) < 4:  # org + project + repo + at least one path segment
+                            raise ValueError("Invalid Azure DevOps virtual package format: expected at least org/project/repo/path")
                         repo_url = "/".join(parts[:3])  # org/project/repo
                     else:
                         repo_url = "/".join(parts[:2])  # owner/repo

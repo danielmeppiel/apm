@@ -116,20 +116,30 @@ def build_ado_https_clone_url(org: str, project: str, repo: str, token: Optional
     return f"https://{host}/{org}/{project}/_git/{repo}"
 
 
-def build_ado_ssh_url(org: str, project: str, repo: str) -> str:
-    """Build Azure DevOps SSH clone URL.
+def build_ado_ssh_url(org: str, project: str, repo: str, host: str = "ssh.dev.azure.com") -> str:
+    """Build Azure DevOps SSH clone URL for cloud or server.
     
-    ADO SSH format: git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
+    For Azure DevOps Services (cloud):
+        git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
+    
+    For Azure DevOps Server (on-premises):
+        ssh://git@{host}/{org}/{project}/_git/{repo}
     
     Args:
         org: Azure DevOps organization name
         project: Azure DevOps project name  
         repo: Repository name
+        host: SSH host (default: ssh.dev.azure.com for cloud; set to your server for on-prem)
     
     Returns:
         str: SSH clone URL for Azure DevOps
     """
-    return f"git@ssh.dev.azure.com:v3/{org}/{project}/{repo}"
+    if host == "ssh.dev.azure.com":
+        # Cloud format
+        return f"git@ssh.dev.azure.com:v3/{org}/{project}/{repo}"
+    else:
+        # Server format (user@host is optional, but commonly 'git@host')
+        return f"ssh://git@{host}/{org}/{project}/_git/{repo}"
 
 
 def build_ado_api_url(org: str, project: str, repo: str, path: str, ref: str = "main", host: str = "dev.azure.com") -> str:
