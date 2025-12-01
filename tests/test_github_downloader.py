@@ -465,7 +465,7 @@ class TestAzureDevOpsSupport:
             url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=True, dep_ref=dep_ref)
             
             # Should build ADO SSH URL (git@ssh.dev.azure.com:v3/org/project/repo)
-            assert url.startswith('git@ssh.dev.azure.com') or 'ssh.dev.azure.com' in url
+            assert url.startswith('git@ssh.dev.azure.com:')
     
     def test_build_repo_url_github_not_affected_by_ado_token(self):
         """Test that GitHub URL building uses GitHub token, not ADO token."""
