@@ -135,7 +135,7 @@ class TestDependencyReference:
         ]
         
         for malicious_url in malicious_formats:
-            with pytest.raises(ValueError, match="Only GitHub repositories are supported"):
+            with pytest.raises(ValueError, match="Unsupported Git host"):
                 DependencyReference.parse(malicious_url)
     
     def test_parse_legitimate_github_enterprise_formats(self):
@@ -155,6 +155,23 @@ class TestDependencyReference:
             dep = DependencyReference.parse(valid_url)
             assert dep.repo_url == "user/repo"
             assert dep.host is not None
+    
+    def test_parse_azure_devops_formats(self):
+        """Test that Azure DevOps hostnames are accepted.
+        
+        Ensures Azure DevOps Services (dev.azure.com) and legacy 
+        (*.visualstudio.com) hosts are supported.
+        """
+        # These should be ACCEPTED (valid Azure DevOps hostnames)
+        valid_ado_formats = [
+            ("dev.azure.com/org/project", "org/project", "dev.azure.com"),
+            ("mycompany.visualstudio.com/org/project", "org/project", "mycompany.visualstudio.com"),
+        ]
+        
+        for valid_url, expected_repo, expected_host in valid_ado_formats:
+            dep = DependencyReference.parse(valid_url)
+            assert dep.repo_url == expected_repo
+            assert dep.host == expected_host
     
     def test_parse_virtual_package_with_malicious_host(self):
         """Test that virtual packages with malicious hosts are rejected."""
@@ -262,7 +279,7 @@ class TestDependencyReference:
         ]
         
         for invalid_format in invalid_formats:
-            with pytest.raises(ValueError, match="Only GitHub repositories are supported|Empty dependency string|Invalid repository format"):
+            with pytest.raises(ValueError, match="Unsupported Git host|Empty dependency string|Invalid repository format|Use 'user/repo'"):
                 DependencyReference.parse(invalid_format)
     
     def test_to_github_url(self):

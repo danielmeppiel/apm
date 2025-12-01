@@ -2,7 +2,7 @@
 
 import re
 import urllib.parse
-from ..utils.github_host import is_github_hostname, default_host
+from ..utils.github_host import is_supported_git_host, default_host
 import yaml
 from dataclasses import dataclass
 from enum import Enum
@@ -152,7 +152,7 @@ class DependencyReference:
         
         # SECURITY: Reject protocol-relative URLs (//example.com)
         if dependency_str.startswith('//'):
-            raise ValueError("Only GitHub repositories are supported. Protocol-relative URLs are not allowed")
+            raise ValueError("Unsupported Git host. Protocol-relative URLs are not allowed")
         
         # Early detection of virtual packages (3+ path segments)
         # Extract the core path before processing reference (#) and alias (@)
@@ -188,26 +188,26 @@ class DependencyReference:
                         parsed = urllib.parse.urlparse(test_url)
                         hostname = parsed.hostname
                         
-                        # SECURITY CRITICAL: If there's a dot in first segment, it MUST be a valid GitHub hostname
+                        # SECURITY CRITICAL: If there's a dot in first segment, it MUST be a valid Git hostname
                         # Otherwise reject it - prevents evil-github.com, github.com.evil.com attacks
-                        if hostname and is_github_hostname(hostname):
-                            # Valid GitHub hostname - extract path after it
+                        if hostname and is_supported_git_host(hostname):
+                            # Valid Git hosting hostname - extract path after it
                             validated_host = hostname
                             path_parts = parsed.path.lstrip('/').split('/')
                             if len(path_parts) >= 2:
                                 # Remove the hostname from check_str by taking everything after first segment
                                 check_str = '/'.join(check_str.split('/')[1:])
                         else:
-                            # First segment has a dot but is NOT a valid GitHub hostname - REJECT
+                            # First segment has a dot but is NOT a valid Git host - REJECT
                             raise ValueError(
-                                f"Only GitHub repositories are supported. Invalid hostname: {hostname or first_segment}"
+                                f"Unsupported Git host. Invalid hostname: {hostname or first_segment}"
                             )
                     except (ValueError, AttributeError) as e:
                         # If we can't parse or validate, and first segment has dot, it's suspicious - REJECT
-                        if isinstance(e, ValueError) and "Only GitHub repositories" in str(e):
+                        if isinstance(e, ValueError) and "Unsupported Git host" in str(e):
                             raise  # Re-raise our security error
                         raise ValueError(
-                            f"Only GitHub repositories are supported. Could not validate hostname: {first_segment}"
+                            f"Unsupported Git host. Could not validate hostname: {first_segment}"
                         )
                 elif check_str.startswith('gh/'):
                     # Handle 'gh/' shorthand - only if it's exactly at the start
@@ -294,8 +294,8 @@ class DependencyReference:
                 parts = repo_url.split("/")
                 
                 # Check if starts with host
-                if len(parts) >= 3 and is_github_hostname(parts[0]):
-                    # Format: github.com/owner/repo/path/...
+                if len(parts) >= 3 and is_supported_git_host(parts[0]):
+                    # Format: github.com/owner/repo/path/... or dev.azure.com/org/project/path/...
                     host = parts[0]
                     repo_url = "/".join(parts[1:3])  # Extract owner/repo only
                 elif len(parts) >= 2:
@@ -310,12 +310,12 @@ class DependencyReference:
                 parsed_url = urllib.parse.urlparse(repo_url)
                 host = parsed_url.hostname or ""
             else:
-                # Safely construct a URL from various input formats. Support both github.com
-                # and GitHub Enterprise hostnames like orgname.ghe.com (org-specific GHE instances).
+                # Safely construct a URL from various input formats. Support GitHub, GitHub Enterprise,
+                # Azure DevOps, and other Git hosting platforms.
                 parts = repo_url.split("/")
                 # host/user/repo  OR user/repo (no host)
-                if len(parts) >= 3 and is_github_hostname(parts[0]):
-                    # Format: github.com/user/repo OR orgname.ghe.com/user/repo OR custom host
+                if len(parts) >= 3 and is_supported_git_host(parts[0]):
+                    # Format: github.com/user/repo OR dev.azure.com/org/project OR custom host
                     host = parts[0]
                     user_repo = "/".join(parts[1:3])
                 elif len(parts) >= 2 and "." not in parts[0]:
@@ -324,15 +324,15 @@ class DependencyReference:
                         host = default_host()
                     user_repo = "/".join(parts[:2])
                 else:
-                    raise ValueError(f"Only GitHub repositories are supported. Use 'user/repo' or 'github.com/user/repo' or '<org>.ghe.com/user/repo' format")
+                    raise ValueError(f"Use 'user/repo' or 'github.com/user/repo' or 'dev.azure.com/org/project' format")
 
                 # Validate format before URL construction (security critical)
                 if not user_repo or "/" not in user_repo:
-                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'github.com/user/repo' or '<org>.ghe.com/user/repo'")
+                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'host/user/repo'")
 
                 uparts = user_repo.split("/")
                 if len(uparts) < 2 or not uparts[0] or not uparts[1]:
-                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'github.com/user/repo' or '<org>.ghe.com/user/repo'")
+                    raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo' or 'host/user/repo'")
 
                 user, repo = uparts[0], uparts[1]
 
@@ -346,11 +346,11 @@ class DependencyReference:
                 github_url = urllib.parse.urljoin(f"https://{host}/", f"{user}/{repo}")
                 parsed_url = urllib.parse.urlparse(github_url)
 
-            # SECURITY: Validate that this is actually a supported GitHub URL.
-            # Accept github.com and GitHub Enterprise hostnames like '<org>.ghe.com'. Use parsed_url.hostname
+            # SECURITY: Validate that this is actually a supported Git host URL.
+            # Accept github.com, GitHub Enterprise, Azure DevOps, etc. Use parsed_url.hostname
             hostname = parsed_url.hostname or ""
-            if not is_github_hostname(hostname):
-                raise ValueError(f"Only GitHub repositories are supported, got hostname: {parsed_url.netloc}")
+            if not is_supported_git_host(hostname):
+                raise ValueError(f"Unsupported Git host, got hostname: {parsed_url.netloc}")
             
             # Extract and validate the path
             path = parsed_url.path.strip("/")

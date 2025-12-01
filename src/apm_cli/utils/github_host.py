@@ -1,4 +1,4 @@
-"""Utilities for handling GitHub and GitHub Enterprise hostnames and URLs."""
+"""Utilities for handling GitHub, GitHub Enterprise, and Azure DevOps hostnames and URLs."""
 
 import os
 import re
@@ -7,8 +7,26 @@ from typing import Optional
 
 
 def default_host() -> str:
-    """Return the default GitHub host (can be overridden via GITHUB_HOST env var)."""
+    """Return the default Git host (can be overridden via GITHUB_HOST env var)."""
     return os.environ.get("GITHUB_HOST", "github.com")
+
+
+def is_azure_devops_hostname(hostname: Optional[str]) -> bool:
+    """Return True if hostname is Azure DevOps (cloud or server).
+    
+    Accepts:
+    - dev.azure.com (Azure DevOps Services)
+    - *.visualstudio.com (legacy Azure DevOps URLs)
+    - Custom Azure DevOps Server hostnames are supported via GITHUB_HOST env var
+    """
+    if not hostname:
+        return False
+    h = hostname.lower()
+    if h == "dev.azure.com":
+        return True
+    if h.endswith(".visualstudio.com"):
+        return True
+    return False
 
 
 def is_github_hostname(hostname: Optional[str]) -> bool:
@@ -26,6 +44,35 @@ def is_github_hostname(hostname: Optional[str]) -> bool:
         return True
     if h.endswith(".ghe.com"):
         return True
+    return False
+
+
+def is_supported_git_host(hostname: Optional[str]) -> bool:
+    """Return True if hostname is a supported Git hosting platform.
+    
+    Supports:
+    - GitHub.com
+    - GitHub Enterprise (*.ghe.com)
+    - Azure DevOps Services (dev.azure.com)
+    - Azure DevOps legacy (*.visualstudio.com)
+    - Any FQDN set via GITHUB_HOST environment variable
+    """
+    if not hostname:
+        return False
+    
+    # Check GitHub hosts
+    if is_github_hostname(hostname):
+        return True
+    
+    # Check Azure DevOps hosts
+    if is_azure_devops_hostname(hostname):
+        return True
+    
+    # Accept the configured default host (supports custom Azure DevOps Server, etc.)
+    configured_host = os.environ.get("GITHUB_HOST", "").lower()
+    if configured_host and hostname.lower() == configured_host:
+        return True
+    
     return False
 
 
