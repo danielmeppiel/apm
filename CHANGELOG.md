@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.7] - 2025-12-01
+
+### Added
+
+- **Azure DevOps Support**: Install packages from Azure DevOps Services and Server
+  - New `ADO_APM_PAT` environment variable for ADO authentication (separate from GitHub tokens)
+  - Supports `dev.azure.com/org/project/_git/repo` URL format
+  - Works alongside GitHub and GitHub Enterprise in mixed-source projects
+- **Debug Mode**: Set `APM_DEBUG=1` to see detailed authentication and URL resolution output
+
+### Fixed
+
+- **GitHub Enterprise Private Repos**: Fixed authentication for `git ls-remote` validation on non-github.com hosts
+- **Token Selection**: Correct token now used per-platform (GitHub vs ADO) in mixed-source installations
+
 ## [0.5.6] - 2025-12-01
 
 ### Fixed

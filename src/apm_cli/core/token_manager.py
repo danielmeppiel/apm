@@ -1,13 +1,18 @@
-"""Centralized GitHub token management for different AI runtimes.
+"""Centralized token management for different AI runtimes and git platforms.
 
 This module handles the complex token environment setup required by different
 AI CLI tools, each of which expects different environment variable names for
-GitHub authentication and API access.
+authentication and API access.
 
 Token Architecture:
 - GITHUB_COPILOT_PAT: User-scoped PAT specifically for Copilot
-- GITHUB_APM_PAT: Fine-grained PAT for APM module access
+- GITHUB_APM_PAT: Fine-grained PAT for APM module access (GitHub)
+- ADO_APM_PAT: PAT for APM module access (Azure DevOps)
 - GITHUB_TOKEN: User-scoped PAT for GitHub Models API access
+
+Platform Token Selection:
+- GitHub: GITHUB_APM_PAT → GITHUB_TOKEN → GH_TOKEN
+- Azure DevOps: ADO_APM_PAT
 
 Runtime Requirements:
 - Codex CLI: Uses GITHUB_TOKEN (must be user-scoped for GitHub Models)
@@ -24,7 +29,8 @@ class GitHubTokenManager:
     TOKEN_PRECEDENCE = {
         'copilot': ['GITHUB_COPILOT_PAT', 'GITHUB_TOKEN', 'GITHUB_APM_PAT'],
         'models': ['GITHUB_TOKEN', 'GITHUB_APM_PAT'],  # GitHub Models prefers user-scoped PAT, falls back to APM PAT
-        'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN'],  # APM module access
+        'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN'],  # APM module access (GitHub)
+        'ado_modules': ['ADO_APM_PAT'],  # APM module access (Azure DevOps)
     }
     
     # Runtime-specific environment variable mappings
@@ -106,9 +112,10 @@ class GitHubTokenManager:
         
         if not has_any_token:
             return False, (
-                "No GitHub tokens found. Set one of:\n"
+                "No tokens found. Set one of:\n"
                 "- GITHUB_TOKEN (user-scoped PAT for GitHub Models)\n"
-                "- GITHUB_APM_PAT (fine-grained PAT for APM modules)"
+                "- GITHUB_APM_PAT (fine-grained PAT for APM modules on GitHub)\n"
+                "- ADO_APM_PAT (PAT for APM modules on Azure DevOps)"
             )
         
         # Warn about GitHub Models access if only fine-grained PAT is available
@@ -151,14 +158,10 @@ class GitHubTokenManager:
             models_token = self.get_token_for_purpose('models', available_tokens)
             if models_token and 'GITHUB_TOKEN' not in env:
                 env['GITHUB_TOKEN'] = models_token
-            if models_token and 'GITHUB_TOKEN' not in env:
-                env['GITHUB_TOKEN'] = models_token
         
         # Ensure GITHUB_APM_PAT is available if we have it
         if not (self.preserve_existing and 'GITHUB_APM_PAT' in env):
             apm_token = available_tokens.get('GITHUB_APM_PAT')
-            if apm_token and 'GITHUB_APM_PAT' not in env:
-                env['GITHUB_APM_PAT'] = apm_token
             if apm_token and 'GITHUB_APM_PAT' not in env:
                 env['GITHUB_APM_PAT'] = apm_token
     

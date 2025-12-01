@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
@@ -21,7 +22,22 @@ from ..models.apm_package import (
     validate_apm_package,
     APMPackage
 )
-from ..utils.github_host import build_https_clone_url, build_ssh_url, sanitize_token_url_in_message, default_host
+from ..utils.github_host import (
+    build_https_clone_url, 
+    build_ssh_url, 
+    build_ado_https_clone_url,
+    build_ado_ssh_url,
+    build_ado_api_url,
+    sanitize_token_url_in_message, 
+    default_host,
+    is_azure_devops_hostname
+)
+
+
+def _debug(message: str) -> None:
+    """Print debug message if APM_DEBUG environment variable is set."""
+    if os.environ.get('APM_DEBUG'):
+        print(f"[DEBUG] {message}", file=sys.stderr)
 
 
 class GitProgressReporter(RemoteProgress):
@@ -95,7 +111,7 @@ class GitHubPackageDownloader:
         self.git_env = self._setup_git_environment()
     
     def _setup_git_environment(self) -> Dict[str, Any]:
-        """Set up Git environment with GitHub authentication using centralized token manager.
+        """Set up Git environment with authentication using centralized token manager.
         
         Returns:
             Dict containing environment variables for Git operations
@@ -103,9 +119,16 @@ class GitHubPackageDownloader:
         # Use centralized token management
         env = self.token_manager.setup_environment()
         
-        # Get the token for modules (APM package access)
+        # Get tokens for modules (APM package access)
+        # GitHub: GITHUB_APM_PAT → GITHUB_TOKEN
         self.github_token = self.token_manager.get_token_for_purpose('modules', env)
         self.has_github_token = self.github_token is not None
+        
+        # Azure DevOps: ADO_APM_PAT
+        self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
+        self.has_ado_token = self.ado_token is not None
+        
+        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}")
         
         # Configure Git security settings
         env['GIT_TERMINAL_PROMPT'] = '0'
@@ -130,53 +153,86 @@ class GitHubPackageDownloader:
         # Sanitize for default host and common enterprise hosts via helper
         sanitized = sanitize_token_url_in_message(error_message, host=default_host())
         
+        # Sanitize Azure DevOps URLs - both cloud (dev.azure.com) and any on-prem server
+        # Use a generic pattern to catch https://token@anyhost format for all hosts
+        # This catches: dev.azure.com, ado.company.com, tfs.internal.corp, etc.
+        sanitized = re.sub(r'https://[^@\s]+@([^\s/]+)', r'https://***@\1', sanitized)
+        
         # Remove any tokens that might appear as standalone values
         sanitized = re.sub(r'(ghp_|gho_|ghu_|ghs_|ghr_)[a-zA-Z0-9_]+', '***', sanitized)
         
         # Remove environment variable values that might contain tokens
-        sanitized = re.sub(r'(GITHUB_TOKEN|GITHUB_APM_PAT|GH_TOKEN|GITHUB_COPILOT_PAT)=[^\s]+', r'\1=***', sanitized)
+        sanitized = re.sub(r'(GITHUB_TOKEN|GITHUB_APM_PAT|ADO_APM_PAT|GH_TOKEN|GITHUB_COPILOT_PAT)=[^\s]+', r'\1=***', sanitized)
         
         return sanitized
 
-    def _build_repo_url(self, repo_ref: str, use_ssh: bool = False) -> str:
+    def _build_repo_url(self, repo_ref: str, use_ssh: bool = False, dep_ref: DependencyReference = None) -> str:
         """Build the appropriate repository URL for cloning.
         
-        Uses GitHub Enterprise authentication format for private repositories:
-        - x-access-token format for authenticated HTTPS (GitHub Enterprise standard)
-        - SSH URLs for SSH key-based authentication
-        - Standard HTTPS URLs as fallback
+        Supports both GitHub and Azure DevOps URL formats:
+        - GitHub: https://github.com/owner/repo.git
+        - ADO: https://dev.azure.com/org/project/_git/repo
         
         Args:
-            repo_ref: Repository reference in format "owner/repo"
+            repo_ref: Repository reference in format "owner/repo" or "org/project/repo" for ADO
             use_ssh: Whether to use SSH URL for git operations
+            dep_ref: Optional DependencyReference for ADO-specific URL building
             
         Returns:
             str: Repository URL suitable for git clone operations
         """
-        # Determine host to use. If repo_ref is namespaced with a host (like host/owner/repo),
-        # the DependencyReference.parse will have normalized repo_ref to owner/repo and stored host separately.
-        # For this method, callers should pass repo_ref as owner/repo and optionally set self.github_host.
-        host = getattr(self, 'github_host', None) or default_host()
-
-        if use_ssh:
-            return build_ssh_url(host, repo_ref)
-        elif self.github_token:
-            return build_https_clone_url(host, repo_ref, token=self.github_token)
+        # Use dep_ref.host if available (for ADO), otherwise fall back to instance or default
+        if dep_ref and dep_ref.host:
+            host = dep_ref.host
         else:
-            return build_https_clone_url(host, repo_ref, token=None)
+            host = getattr(self, 'github_host', None) or default_host()
+        
+        # Check if this is Azure DevOps (either via dep_ref or host detection)
+        is_ado = (dep_ref and dep_ref.is_azure_devops()) or is_azure_devops_hostname(host)
+        
+        _debug(f"_build_repo_url: host={host}, is_ado={is_ado}, dep_ref={'present' if dep_ref else 'None'}, "
+               f"ado_org={dep_ref.ado_organization if dep_ref else None}")
+        
+        if is_ado and dep_ref and dep_ref.ado_organization:
+            # Use Azure DevOps URL builders with ADO-specific token
+            if use_ssh:
+                return build_ado_ssh_url(dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo)
+            elif self.ado_token:
+                return build_ado_https_clone_url(
+                    dep_ref.ado_organization, 
+                    dep_ref.ado_project, 
+                    dep_ref.ado_repo, 
+                    token=self.ado_token,
+                    host=host
+                )
+            else:
+                return build_ado_https_clone_url(
+                    dep_ref.ado_organization, 
+                    dep_ref.ado_project, 
+                    dep_ref.ado_repo,
+                    host=host
+                )
+        else:
+            # Use GitHub URL builders
+            if use_ssh:
+                return build_ssh_url(host, repo_ref)
+            elif self.github_token:
+                return build_https_clone_url(host, repo_ref, token=self.github_token)
+            else:
+                return build_https_clone_url(host, repo_ref, token=None)
     
-    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, **clone_kwargs) -> Repo:
+    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, **clone_kwargs) -> Repo:
         """Attempt to clone a repository with fallback authentication methods.
         
-        Uses GitHub Enterprise authentication patterns:
-        1. x-access-token format for private repos (GitHub Enterprise standard)
-        2. SSH for SSH key-based authentication
-        3. Standard HTTPS for public repos (fallback)
+        Uses authentication patterns appropriate for the platform:
+        - GitHub: x-access-token format for private repos, SSH, or HTTPS
+        - Azure DevOps: PAT-based authentication
         
         Args:
             repo_url_base: Base repository reference (owner/repo)
             target_path: Target path for cloning
             progress_reporter: GitProgressReporter instance for progress updates
+            dep_ref: Optional DependencyReference for platform-specific URL building
             **clone_kwargs: Additional arguments for Repo.clone_from
             
         Returns:
@@ -186,11 +242,18 @@ class GitHubPackageDownloader:
             RuntimeError: If all authentication methods fail
         """
         last_error = None
+        is_ado = dep_ref and dep_ref.is_azure_devops()
         
-        # Method 1: Try x-access-token format if token is available (GitHub Enterprise)
-        if self.github_token:
+        # For ADO, use ADO-specific token; for GitHub, use GitHub token
+        has_token = self.ado_token if is_ado else self.github_token
+        
+        _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, has_token={has_token is not None}")
+        
+        # Method 1: Try authenticated HTTPS if token is available
+        if has_token:
             try:
-                auth_url = self._build_repo_url(repo_url_base, use_ssh=False)
+                auth_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
+                _debug(f"Attempting clone with authenticated HTTPS (URL sanitized)")
                 return Repo.clone_from(auth_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
             except GitCommandError as e:
                 last_error = e
@@ -198,7 +261,7 @@ class GitHubPackageDownloader:
         
         # Method 2: Try SSH if it might work (for SSH key-based authentication)
         try:
-            ssh_url = self._build_repo_url(repo_url_base, use_ssh=True)
+            ssh_url = self._build_repo_url(repo_url_base, use_ssh=True, dep_ref=dep_ref)
             return Repo.clone_from(ssh_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
         except GitCommandError as e:
             last_error = e
@@ -206,14 +269,16 @@ class GitHubPackageDownloader:
         
         # Method 3: Try standard HTTPS as fallback for public repos
         try:
-            https_url = self._build_repo_url(repo_url_base, use_ssh=False)
+            https_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
             return Repo.clone_from(https_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
         except GitCommandError as e:
             last_error = e
         
         # All methods failed
         error_msg = f"Failed to clone repository {repo_url_base} using all available methods. "
-        if not self.has_github_token:
+        if is_ado and not self.has_ado_token:
+            error_msg += "For private Azure DevOps repositories, set ADO_APM_PAT environment variable."
+        elif not self.has_github_token:
             error_msg += "For private repositories, set GITHUB_APM_PAT or GITHUB_TOKEN environment variable, " \
                         "or ensure SSH keys are configured."
         else:
@@ -263,7 +328,7 @@ class GitHubPackageDownloader:
                 # For commit SHAs, clone full repository first, then checkout the commit
                 try:
                     # Ensure host is set for enterprise repos     
-                    repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None)
+                    repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None, dep_ref=dep_ref)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
                     resolved_commit = commit.hexsha
@@ -278,7 +343,8 @@ class GitHubPackageDownloader:
                     repo = self._clone_with_fallback(
                         dep_ref.repo_url,
                         temp_dir,
-                        progress_callback=None,
+                        progress_reporter=None,
+                        dep_ref=dep_ref,
                         depth=1,
                         branch=ref
                     )
@@ -289,7 +355,7 @@ class GitHubPackageDownloader:
                 except GitCommandError:
                     # If branch/tag clone fails, try full clone and resolve reference
                     try:
-                        repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None)
+                        repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None, dep_ref=dep_ref)
 
                         # Try to resolve the reference
                         try:
@@ -340,7 +406,7 @@ class GitHubPackageDownloader:
         )
     
     def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
-        """Download a single file from GitHub repository.
+        """Download a single file from repository (GitHub or Azure DevOps).
         
         Args:
             dep_ref: Parsed dependency reference
@@ -352,6 +418,104 @@ class GitHubPackageDownloader:
             
         Raises:
             RuntimeError: If download fails or file not found
+        """
+        host = dep_ref.host or default_host()
+        
+        # Check if this is Azure DevOps
+        if dep_ref.is_azure_devops():
+            return self._download_ado_file(dep_ref, file_path, ref)
+        
+        # GitHub API
+        return self._download_github_file(dep_ref, file_path, ref)
+    
+    def _download_ado_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+        """Download a file from Azure DevOps repository.
+        
+        Args:
+            dep_ref: Parsed dependency reference with ADO-specific fields
+            file_path: Path to file within the repository
+            ref: Git reference (branch, tag, or commit SHA)
+            
+        Returns:
+            bytes: File content
+        """
+        import base64
+        
+        # Validate required ADO fields before proceeding
+        if not all([dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo]):
+            raise ValueError(
+                f"Invalid Azure DevOps dependency reference: missing organization, project, or repo. "
+                f"Got: org={dep_ref.ado_organization}, project={dep_ref.ado_project}, repo={dep_ref.ado_repo}"
+            )
+        
+        host = dep_ref.host or "dev.azure.com"
+        api_url = build_ado_api_url(
+            dep_ref.ado_organization,
+            dep_ref.ado_project,
+            dep_ref.ado_repo,
+            file_path,
+            ref,
+            host
+        )
+        
+        # Set up authentication headers - ADO uses Basic auth with PAT
+        headers = {}
+        if self.ado_token:
+            # ADO uses Basic auth: username can be empty, password is the PAT
+            auth = base64.b64encode(f":{self.ado_token}".encode()).decode()
+            headers['Authorization'] = f'Basic {auth}'
+        
+        try:
+            response = requests.get(api_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                # Try fallback branches
+                if ref not in ["main", "master"]:
+                    raise RuntimeError(f"File not found: {file_path} at ref '{ref}' in {dep_ref.repo_url}")
+                
+                fallback_ref = "master" if ref == "main" else "main"
+                fallback_url = build_ado_api_url(
+                    dep_ref.ado_organization,
+                    dep_ref.ado_project,
+                    dep_ref.ado_repo,
+                    file_path,
+                    fallback_ref,
+                    host
+                )
+                
+                try:
+                    response = requests.get(fallback_url, headers=headers, timeout=30)
+                    response.raise_for_status()
+                    return response.content
+                except requests.exceptions.HTTPError:
+                    raise RuntimeError(
+                        f"File not found: {file_path} in {dep_ref.repo_url} "
+                        f"(tried refs: {ref}, {fallback_ref})"
+                    )
+            elif e.response.status_code == 401 or e.response.status_code == 403:
+                error_msg = f"Authentication failed for Azure DevOps {dep_ref.repo_url}. "
+                if not self.ado_token:
+                    error_msg += "Please set ADO_APM_PAT with an Azure DevOps PAT with Code (Read) scope."
+                else:
+                    error_msg += "Please check your Azure DevOps PAT permissions."
+                raise RuntimeError(error_msg)
+            else:
+                raise RuntimeError(f"Failed to download {file_path}: HTTP {e.response.status_code}")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error downloading {file_path}: {e}")
+    
+    def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+        """Download a file from GitHub repository.
+        
+        Args:
+            dep_ref: Parsed dependency reference
+            file_path: Path to file within the repository
+            ref: Git reference (branch, tag, or commit SHA)
+            
+        Returns:
+            bytes: File content
         """
         host = dep_ref.host or default_host()
         
@@ -401,8 +565,6 @@ class GitHubPackageDownloader:
                 
                 try:
                     response = requests.get(fallback_url, headers=headers, timeout=30)
-                    response.raise_for_status()
-                    return response.content
                     response.raise_for_status()
                     return response.content
                 except requests.exceptions.HTTPError:
@@ -785,7 +947,8 @@ author: {dep_ref.repo_url.split('/')[0]}
                 repo = self._clone_with_fallback(
                     dep_ref.repo_url, 
                     target_path, 
-                    progress_reporter=progress_reporter
+                    progress_reporter=progress_reporter,
+                    dep_ref=dep_ref
                 )
                 repo.git.checkout(resolved_ref.resolved_commit)
             else:
@@ -795,6 +958,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                     dep_ref.repo_url,
                     target_path,
                     progress_reporter=progress_reporter,
+                    dep_ref=dep_ref,
                     depth=1,
                     branch=resolved_ref.ref_name
                 )

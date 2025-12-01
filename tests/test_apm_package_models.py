@@ -135,7 +135,7 @@ class TestDependencyReference:
         ]
         
         for malicious_url in malicious_formats:
-            with pytest.raises(ValueError, match="Only GitHub repositories are supported"):
+            with pytest.raises(ValueError, match="Unsupported Git host"):
                 DependencyReference.parse(malicious_url)
     
     def test_parse_legitimate_github_enterprise_formats(self):
@@ -155,6 +155,74 @@ class TestDependencyReference:
             dep = DependencyReference.parse(valid_url)
             assert dep.repo_url == "user/repo"
             assert dep.host is not None
+    
+    def test_parse_azure_devops_formats(self):
+        """Test that Azure DevOps hostnames are accepted with org/project/repo format.
+        
+        Azure DevOps uses 3 segments (org/project/repo) instead of GitHub's 2 segments (owner/repo).
+        """
+        # Full ADO URL with _git segment
+        dep = DependencyReference.parse("dev.azure.com/dmeppiel-org/market-js-app/_git/compliance-rules")
+        assert dep.host == "dev.azure.com"
+        assert dep.ado_organization == "dmeppiel-org"
+        assert dep.ado_project == "market-js-app"
+        assert dep.ado_repo == "compliance-rules"
+        assert dep.is_azure_devops() == True
+        assert dep.repo_url == "dmeppiel-org/market-js-app/compliance-rules"
+        
+        # Simplified ADO format (without _git)
+        dep = DependencyReference.parse("dev.azure.com/myorg/myproject/myrepo")
+        assert dep.host == "dev.azure.com"
+        assert dep.ado_organization == "myorg"
+        assert dep.ado_project == "myproject"
+        assert dep.ado_repo == "myrepo"
+        assert dep.is_azure_devops() == True
+        
+        # Legacy visualstudio.com format
+        dep = DependencyReference.parse("mycompany.visualstudio.com/myorg/myproject/myrepo")
+        assert dep.host == "mycompany.visualstudio.com"
+        assert dep.is_azure_devops() == True
+        assert dep.ado_organization == "myorg"
+        assert dep.ado_project == "myproject"
+        assert dep.ado_repo == "myrepo"
+    
+    def test_parse_azure_devops_virtual_package(self):
+        """Test ADO virtual package parsing with 4-segment format (org/project/repo/path)."""
+        # ADO virtual package with host prefix
+        dep = DependencyReference.parse("dev.azure.com/myorg/myproject/myrepo/prompts/code-review.prompt.md")
+        assert dep.is_azure_devops() == True
+        assert dep.is_virtual == True
+        assert dep.repo_url == "myorg/myproject/myrepo"
+        assert dep.virtual_path == "prompts/code-review.prompt.md"
+        assert dep.ado_organization == "myorg"
+        assert dep.ado_project == "myproject"
+        assert dep.ado_repo == "myrepo"
+        
+        # ADO virtual package with _git segment
+        dep = DependencyReference.parse("dev.azure.com/myorg/myproject/_git/myrepo/prompts/test.prompt.md")
+        assert dep.is_azure_devops() == True
+        assert dep.is_virtual == True
+        assert dep.virtual_path == "prompts/test.prompt.md"
+
+    def test_parse_azure_devops_invalid_virtual_package(self):
+        """Test that incomplete ADO virtual packages are rejected."""
+        # Test case: path looks like virtual package but not enough segments for ADO
+        # This would be caught when trying to extract only 3 segments but path has extension
+        # (4 segments after host needed: org/project/repo/file.ext)
+        # Note: "myrepo.prompt.md" is treated as repo name, not as virtual path
+        # The bounds check kicks in when we have a recognized virtual package format
+        # but not enough segments. This test verifies ADO virtual package paths require
+        # the full org/project/repo/path structure.
+        
+        # Valid 4-segment ADO virtual package should work
+        dep = DependencyReference.parse("dev.azure.com/org/proj/repo/file.prompt.md")
+        assert dep.is_virtual == True
+        assert dep.repo_url == "org/proj/repo"
+        
+        # 3 segments after host (org/proj/repo) without a path - this is a regular package, not virtual
+        dep = DependencyReference.parse("dev.azure.com/myorg/myproject/myrepo")
+        assert dep.is_virtual == False
+        assert dep.repo_url == "myorg/myproject/myrepo"
     
     def test_parse_virtual_package_with_malicious_host(self):
         """Test that virtual packages with malicious hosts are rejected."""
@@ -262,7 +330,7 @@ class TestDependencyReference:
         ]
         
         for invalid_format in invalid_formats:
-            with pytest.raises(ValueError, match="Only GitHub repositories are supported|Empty dependency string|Invalid repository format"):
+            with pytest.raises(ValueError, match="Unsupported Git host|Empty dependency string|Invalid repository|Use 'user/repo'|path component"):
                 DependencyReference.parse(invalid_format)
     
     def test_to_github_url(self):

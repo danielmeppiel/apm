@@ -110,6 +110,100 @@ apm install github.com/public/open-source-package
 
 **Key Insight:** Use `GITHUB_HOST` to set your default for bare package names (e.g., `team/repo`). Use FQDN syntax (e.g., `host.com/org/repo`) to explicitly specify any Git host. No allowlist configuration needed.
 
+### Azure DevOps Support
+
+APM supports Azure DevOps Services (cloud) and Azure DevOps Server (self-hosted).
+
+#### Azure DevOps URL Format
+
+Azure DevOps uses a different URL structure than GitHub:
+- **GitHub**: `owner/repo` (2 segments)
+- **Azure DevOps**: `org/project/repo` (3 segments)
+
+The `_git` segment in Azure DevOps URLs is handled automatically:
+```bash
+# Both formats work:
+apm install dev.azure.com/myorg/myproject/_git/myrepo
+apm install dev.azure.com/myorg/myproject/myrepo
+```
+
+#### Azure DevOps Services (Cloud)
+
+For Azure DevOps hosted at `dev.azure.com`:
+
+```bash
+# Full FQDN syntax (recommended)
+apm install dev.azure.com/myorg/myproject/myrepo
+
+# With git reference
+apm install dev.azure.com/myorg/myproject/myrepo#main
+```
+
+#### Azure DevOps Authentication
+
+Set `ADO_APM_PAT` with an Azure DevOps Personal Access Token:
+
+1. Go to: `https://dev.azure.com/{org}/_usersSettings/tokens`
+2. Create PAT with **Code (Read)** scope
+
+```bash
+export ADO_APM_PAT=your_ado_pat
+apm install dev.azure.com/myorg/myproject/myrepo
+```
+
+#### Legacy visualstudio.com URLs
+
+Legacy Azure DevOps URLs are also supported:
+
+```bash
+apm install mycompany.visualstudio.com/myorg/myproject/myrepo
+```
+
+#### Azure DevOps Server (Self-Hosted)
+
+For self-hosted Azure DevOps Server instances:
+
+```bash
+# Set your Azure DevOps Server PAT
+export ADO_APM_PAT=your_ado_server_pat
+
+# Install using full FQDN with org/project/repo format
+apm install ado.company.internal/myorg/myproject/myrepo
+```
+
+#### Mixed GitHub and Azure DevOps
+
+If your organization uses both GitHub and Azure DevOps:
+
+```bash
+# GitHub token for GitHub.com and GitHub Enterprise
+export GITHUB_APM_PAT=your_github_pat
+
+# ADO token for Azure DevOps (separate token required)
+export ADO_APM_PAT=your_ado_pat
+
+# Optional: Set default host for bare package names
+export GITHUB_HOST=github.company.com
+
+# Install from GitHub (2-segment format)
+apm install team/package
+
+# Install from GitHub Enterprise (FQDN)
+apm install ghe.company.com/team/package
+
+# Install from Azure DevOps (3-segment format with FQDN)
+apm install dev.azure.com/azure-org/azure-project/compliance-rules
+```
+
+#### Virtual Packages on Azure DevOps
+
+Virtual packages (individual files) work with Azure DevOps using the 4-segment format:
+
+```bash
+# Install individual prompt file from ADO
+apm install dev.azure.com/myorg/myproject/myrepo/prompts/code-review.prompt.md
+```
+
 ### Token Creation Guide
 
 1. **Create Fine-grained PAT** for `GITHUB_APM_PAT`:

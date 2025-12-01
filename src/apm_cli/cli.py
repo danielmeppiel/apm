@@ -416,30 +416,44 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
 
 
 def _validate_package_exists(package):
-    """Validate that a package exists and is accessible on GitHub."""
+    """Validate that a package exists and is accessible on GitHub or Azure DevOps."""
     import os
     import subprocess
     import tempfile
 
-    # GitHub constants - construct proper HTTPS URL for git ls-remote
-    package_url = (
-        f"https://{package}.git"
-        if is_valid_fqdn(package)
-        else f"https://{default_host()}/{package}.git"
-    )
-
     try:
-        # Parse the package to check if it's a virtual package
+        # Parse the package to check if it's a virtual package or ADO
         from apm_cli.models.apm_package import DependencyReference
+        from apm_cli.deps.github_downloader import GitHubPackageDownloader
 
         dep_ref = DependencyReference.parse(package)
 
         # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
-            from apm_cli.deps.github_downloader import GitHubPackageDownloader
-
             downloader = GitHubPackageDownloader()
             return downloader.validate_virtual_package_exists(dep_ref)
+
+        # For Azure DevOps or GitHub Enterprise (non-github.com hosts), 
+        # use the downloader which handles authentication properly
+        if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != 'github.com'):
+            downloader = GitHubPackageDownloader()
+            # Set the host
+            if dep_ref.host:
+                downloader.github_host = dep_ref.host
+            
+            # Build authenticated URL using downloader's auth
+            package_url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            
+            # Use the downloader's git environment which has auth configured
+            cmd = ["git", "ls-remote", "--heads", "--exit-code", package_url]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=30,
+                env={**os.environ, **downloader.git_env}
+            )
+            return result.returncode == 0
+
+        # For GitHub.com, use standard approach (public repos don't need auth)
+        package_url = f"{dep_ref.to_github_url()}.git"
 
         # For regular packages, use git ls-remote
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -465,7 +479,12 @@ def _validate_package_exists(package):
                 return False
 
     except Exception:
-        # If parsing fails, assume it's a regular package
+        # If parsing fails, assume it's a regular GitHub package
+        package_url = (
+            f"https://{package}.git"
+            if is_valid_fqdn(package)
+            else f"https://{default_host()}/{package}.git"
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
                 cmd = [

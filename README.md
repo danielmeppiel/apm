@@ -26,7 +26,8 @@
 > [!NOTE] 
 > **📋 Prerequisites**: Get tokens at [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)  
 > - **`GITHUB_COPILOT_PAT`** - User-scoped Fine-grained PAT with Copilot CLI subscription access 
-> - **`GITHUB_APM_PAT`** - (optional) - Fine-grained PAT for access to private APM modules 
+> - **`GITHUB_APM_PAT`** - (optional) - Fine-grained PAT for access to private APM modules
+> - **`ADO_APM_PAT`** - (optional) - Azure DevOps PAT for ADO repositories
 >
 > 📖 **Complete Setup Guide**: [Getting Started](docs/getting-started.md)
 
