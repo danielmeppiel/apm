@@ -420,7 +420,10 @@ class DependencyReference:
 
     def __str__(self) -> str:
         """String representation of the dependency reference."""
-        result = self.repo_url
+        if self.host:
+            result = f"{self.host}/{self.repo_url}"
+        else:
+            result = self.repo_url
         if self.virtual_path:
             result += f"/{self.virtual_path}"
         if self.reference:
@@ -658,9 +661,11 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         result.add_warning("No primitive files found in .apm/ directory")
     
     # Version format validation (basic semver check)
-    if package and package.version:
-        if not re.match(r'^\d+\.\d+\.\d+', package.version):
-            result.add_warning(f"Version '{package.version}' doesn't follow semantic versioning (x.y.z)")
+    if package and package.version is not None:
+        # Defensive cast in case YAML parsed a numeric like 1 or 1.0 
+        version_str = str(package.version).strip()
+        if not re.match(r'^\d+\.\d+\.\d+', version_str):
+            result.add_warning(f"Version '{version_str}' doesn't follow semantic versioning (x.y.z)")
     
     return result
 
