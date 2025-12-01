@@ -110,6 +110,66 @@ apm install github.com/public/open-source-package
 
 **Key Insight:** Use `GITHUB_HOST` to set your default for bare package names (e.g., `team/repo`). Use FQDN syntax (e.g., `host.com/org/repo`) to explicitly specify any Git host. No allowlist configuration needed.
 
+### Azure DevOps Support
+
+APM supports Azure DevOps Services (cloud) and Azure DevOps Server (self-hosted).
+
+#### Azure DevOps Services (Cloud)
+
+For Azure DevOps hosted at `dev.azure.com`:
+
+```bash
+# Set Azure DevOps as your default host
+export GITHUB_HOST=dev.azure.com
+export GITHUB_APM_PAT=your_azure_devops_pat
+
+# Install packages from Azure DevOps
+apm install myorg/myproject
+# Resolves to: dev.azure.com/myorg/myproject
+```
+
+#### Azure DevOps with FQDN Syntax
+
+You can also use the FQDN syntax to explicitly reference Azure DevOps repositories:
+
+```bash
+# Explicit Azure DevOps reference
+apm install dev.azure.com/myorg/myproject
+apm install mycompany.visualstudio.com/team/repo
+```
+
+#### Azure DevOps Server (Self-Hosted)
+
+For self-hosted Azure DevOps Server instances:
+
+```bash
+# Set your Azure DevOps Server as default
+export GITHUB_HOST=ado.company.internal
+export GITHUB_APM_PAT=your_ado_server_pat
+
+# Packages now resolve to your server
+apm install team/internal-package
+# Resolves to: ado.company.internal/team/internal-package
+```
+
+#### Mixed GitHub and Azure DevOps
+
+If your organization uses both GitHub and Azure DevOps:
+
+```bash
+# Use bare names for your primary host
+export GITHUB_HOST=github.company.com
+
+# Install from primary host
+apm install team/package
+
+# Use FQDN for Azure DevOps repositories
+apm install dev.azure.com/azure-org/azure-project
+apm install mycompany.visualstudio.com/another-team/tool
+```
+
+**Note:** Azure DevOps uses `organization/project` format (similar to GitHub's `owner/repo`). Virtual packages (individual files) from Azure DevOps repositories work the same way as GitHub.
+
 ### Token Creation Guide
 
 1. **Create Fine-grained PAT** for `GITHUB_APM_PAT`:
