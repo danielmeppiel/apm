@@ -663,7 +663,7 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     # Version format validation (basic semver check)
     if package and package.version is not None:
         # Defensive cast in case YAML parsed a numeric like 1 or 1.0 
-        version_str = str(package.version).strip
+        version_str = str(package.version).strip()
         if not re.match(r'^\d+\.\d+\.\d+', version_str):
             result.add_warning(f"Version '{version_str}' doesn't follow semantic versioning (x.y.z)")
     

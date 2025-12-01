@@ -290,6 +290,87 @@ class TestGitHubPackageDownloaderIntegration:
         pytest.skip("Integration test requiring network access")
 
 
+class TestEnterpriseHostHandling:
+    """Test enterprise GitHub host handling (PR #33 bug fixes)."""
+    
+    @patch('apm_cli.deps.github_downloader.Repo')
+    def test_clone_fallback_respects_enterprise_host(self, mock_repo_class, monkeypatch):
+        """Test that fallback clone uses enterprise host, not hardcoded github.com.
+        
+        This tests the bug fix from PR #33 where Method 3 fallback was hardcoded
+        to github.com instead of respecting the configured host.
+        """
+        from git.exc import GitCommandError
+        
+        monkeypatch.setenv("GITHUB_HOST", "company.ghe.com")
+        
+        downloader = GitHubPackageDownloader()
+        downloader.github_host = "company.ghe.com"
+        
+        # Mock clone attempts: first two fail, third succeeds
+        mock_repo = Mock()
+        mock_repo.head.commit.hexsha = "abc123"
+        
+        mock_repo_class.clone_from.side_effect = [
+            GitCommandError("auth", "Authentication failed"),  # Method 1 fails
+            GitCommandError("ssh", "SSH failed"),              # Method 2 fails  
+            mock_repo                                            # Method 3 succeeds
+        ]
+        
+        target_path = Path("/tmp/test_enterprise")
+        
+        with patch('pathlib.Path.exists', return_value=False):
+            result = downloader._clone_with_fallback("team/internal-repo", target_path)
+        
+        # Verify Method 3 used enterprise host, NOT github.com
+        calls = mock_repo_class.clone_from.call_args_list
+        assert len(calls) == 3
+        
+        third_call_url = calls[2][0][0]  # First positional arg of third call
+        
+        # Should use company.ghe.com, NOT github.com
+        assert "company.ghe.com" in third_call_url
+        assert "team/internal-repo" in third_call_url
+        # Ensure it's NOT using github.com
+        assert "github.com" not in third_call_url or "company.ghe.com" in third_call_url
+    
+    def test_host_persists_through_clone_attempts(self, monkeypatch):
+        """Test that github_host attribute persists across fallback attempts."""
+        monkeypatch.setenv("GITHUB_HOST", "custom.ghe.com")
+        
+        downloader = GitHubPackageDownloader()
+        downloader.github_host = "custom.ghe.com"
+        
+        # Build URLs for both SSH and HTTPS methods
+        url_ssh = downloader._build_repo_url("owner/repo", use_ssh=True)
+        url_https = downloader._build_repo_url("owner/repo", use_ssh=False)
+        
+        assert "custom.ghe.com" in url_ssh
+        assert "custom.ghe.com" in url_https
+        assert "owner/repo" in url_https
+        # Should NOT fall back to github.com
+        assert "github.com" not in url_https or "custom.ghe.com" in url_https
+    
+    def test_multiple_hosts_resolution(self, monkeypatch):
+        """Test installing packages from multiple GitHub hosts."""
+        monkeypatch.setenv("GITHUB_HOST", "company.ghe.com")
+        
+        # Test bare dependency uses GITHUB_HOST
+        dep1 = DependencyReference.parse("team/internal-package")
+        assert dep1.repo_url == "team/internal-package"
+        # Host should be set when downloader processes it
+        
+        # Test explicit github.com
+        dep2 = DependencyReference.parse("github.com/public/open-source")
+        assert dep2.host == "github.com"
+        assert dep2.repo_url == "public/open-source"
+        
+        # Test explicit partner GHE
+        dep3 = DependencyReference.parse("partner.ghe.com/external/tool")
+        assert dep3.host == "partner.ghe.com"
+        assert dep3.repo_url == "external/tool"
+
+
 class TestErrorHandling:
     """Test error handling scenarios."""
     
