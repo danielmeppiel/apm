@@ -623,16 +623,19 @@ def _update_single_package(package_name: str, project_deps: List, apm_modules_pa
         return
     
     # Find the installed package directory using namespaced structure
+    # GitHub: owner/repo (2 parts)
+    # Azure DevOps: org/project/repo (3 parts)
     package_dir = None
     if target_dep.alias:
         package_dir = apm_modules_path / target_dep.alias
     else:
-        # Parse owner/repo from repo_url
+        # Parse path from repo_url
         repo_parts = target_dep.repo_url.split('/')
-        if len(repo_parts) >= 2:
-            owner = repo_parts[0]
-            repo = repo_parts[1]
-            package_dir = apm_modules_path / owner / repo
+        if target_dep.is_azure_devops() and len(repo_parts) >= 3:
+            # ADO structure: apm_modules/org/project/repo
+            package_dir = apm_modules_path / repo_parts[0] / repo_parts[1] / repo_parts[2]
+        elif len(repo_parts) >= 2:
+            package_dir = apm_modules_path / repo_parts[0] / repo_parts[1]
         else:
             # Fallback to simple name matching
             package_dir = apm_modules_path / package_name
@@ -668,16 +671,18 @@ def _update_all_packages(project_deps: List, apm_modules_path: Path):
     
     for dep in project_deps:
         # Determine package directory using namespaced structure
-        # APM packages are installed as: apm_modules/owner/repo-name/
+        # GitHub: apm_modules/owner/repo (2 parts)
+        # Azure DevOps: apm_modules/org/project/repo (3 parts)
         if dep.alias:
             package_dir = apm_modules_path / dep.alias
         else:
-            # Parse owner/repo from repo_url
+            # Parse path from repo_url
             repo_parts = dep.repo_url.split('/')
-            if len(repo_parts) >= 2:
-                owner = repo_parts[0]
-                repo = repo_parts[1]
-                package_dir = apm_modules_path / owner / repo
+            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                # ADO structure
+                package_dir = apm_modules_path / repo_parts[0] / repo_parts[1] / repo_parts[2]
+            elif len(repo_parts) >= 2:
+                package_dir = apm_modules_path / repo_parts[0] / repo_parts[1]
             else:
                 # Fallback to simple repo name (shouldn't happen)
                 package_dir = apm_modules_path / dep.repo_url

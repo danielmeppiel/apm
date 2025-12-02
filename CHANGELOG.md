@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.8] - 2025-12-02
+
+### Fixed
+
+- **ADO Path Structure**: Azure DevOps packages now use correct 3-level paths (`org/project/repo`) throughout install, discovery, update, prune, and uninstall commands
+- **Virtual Packages**: ADO collections and individual files install to correct 3-level paths
+- **Prune Command**: Fixed undefined variable bug in directory cleanup
+
 ## [0.5.7] - 2025-12-01
 
 ### Added

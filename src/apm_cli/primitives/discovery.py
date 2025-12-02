@@ -165,10 +165,16 @@ def scan_dependency_primitives(base_dir: str, collection: PrimitiveCollection) -
     
     # Process dependencies in declaration order
     for dep_name in dependency_order:
-        # Handle org-namespaced structure (e.g., "danielmeppiel/design-guidelines")
-        if "/" in dep_name:
-            org_name, repo_name = dep_name.split("/", 1)
-            dep_path = apm_modules_path / org_name / repo_name
+        # Handle org-namespaced structure
+        # GitHub: "owner/repo" (2 parts)
+        # Azure DevOps: "org/project/repo" (3 parts)
+        parts = dep_name.split("/")
+        if len(parts) >= 3:
+            # ADO structure: apm_modules/org/project/repo
+            dep_path = apm_modules_path / parts[0] / parts[1] / parts[2]
+        elif len(parts) == 2:
+            # GitHub structure: apm_modules/owner/repo
+            dep_path = apm_modules_path / parts[0] / parts[1]
         else:
             # Fallback for non-namespaced dependencies
             dep_path = apm_modules_path / dep_name

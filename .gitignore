@@ -60,3 +60,4 @@ docs/wip/
 .env.local
 .env.*.local
 AGENTS.md
+PRD.md
