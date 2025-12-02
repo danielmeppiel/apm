@@ -706,17 +706,25 @@ def prune(ctx, dry_run):
             sys.exit(1)
 
         # Find installed packages in apm_modules/ (now org-namespaced)
-        installed_packages = (
-            {}
-        )  # {"danielmeppiel/design-guidelines": "danielmeppiel/design-guidelines"}
+        # GitHub: apm_modules/owner/repo (2 levels)
+        # Azure DevOps: apm_modules/org/project/repo (3 levels)
+        installed_packages = {}  # {"path": "display_name"}
         if apm_modules_dir.exists():
-            for org_dir in apm_modules_dir.iterdir():
-                if org_dir.is_dir() and not org_dir.name.startswith("."):
-                    # Check if this is an org directory with packages inside
-                    for repo_dir in org_dir.iterdir():
-                        if repo_dir.is_dir() and not repo_dir.name.startswith("."):
-                            org_repo_name = f"{org_dir.name}/{repo_dir.name}"
-                            installed_packages[org_repo_name] = org_repo_name
+            for level1_dir in apm_modules_dir.iterdir():
+                if level1_dir.is_dir() and not level1_dir.name.startswith("."):
+                    for level2_dir in level1_dir.iterdir():
+                        if level2_dir.is_dir() and not level2_dir.name.startswith("."):
+                            # Check if level2 has apm.yml (GitHub 2-level structure)
+                            if (level2_dir / "apm.yml").exists() or (level2_dir / ".apm").exists():
+                                path_key = f"{level1_dir.name}/{level2_dir.name}"
+                                installed_packages[path_key] = path_key
+                            else:
+                                # Check for ADO 3-level structure
+                                for level3_dir in level2_dir.iterdir():
+                                    if level3_dir.is_dir() and not level3_dir.name.startswith("."):
+                                        if (level3_dir / "apm.yml").exists() or (level3_dir / ".apm").exists():
+                                            path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
+                                            installed_packages[path_key] = path_key
 
         # Find orphaned packages (installed but not declared)
         orphaned_packages = {}
@@ -743,9 +751,9 @@ def prune(ctx, dry_run):
         # Remove orphaned packages
         removed_count = 0
         for org_repo_name, display_name in orphaned_packages.items():
-            # Convert org/repo to filesystem path
-            org_name, repo_name = org_repo_name.split("/", 1)
-            pkg_path = apm_modules_dir / org_name / repo_name
+            # Convert org/repo or org/project/repo to filesystem path
+            path_parts = org_repo_name.split("/")
+            pkg_path = apm_modules_dir.joinpath(*path_parts)
             try:
                 import shutil
 
@@ -753,8 +761,14 @@ def prune(ctx, dry_run):
                 _rich_info(f"✓ Removed {display_name}")
                 removed_count += 1
 
-                # Clean up empty org directory
-                org_path = apm_modules_dir / org_name
+                # Clean up empty parent directories (project for ADO, org for both)
+                if len(path_parts) >= 3:
+                    # ADO 3-level: clean up project directory if empty
+                    project_path = apm_modules_dir / path_parts[0] / path_parts[1]
+                    if project_path.exists() and not any(project_path.iterdir()):
+                        project_path.rmdir()
+                # Clean up org directory if empty
+                org_path = apm_modules_dir / path_parts[0]
                 if org_path.exists() and not any(org_path.iterdir()):
                     org_path.rmdir()
 
@@ -883,12 +897,11 @@ def uninstall(ctx, packages, dry_run):
 
         if apm_modules_dir.exists():
             for package in packages_to_remove:
-                # Parse package correctly using org/repo structure (like install does)
+                # Parse package correctly - supports both GitHub (2-part) and ADO (3-part) paths
                 repo_parts = package.split("/")
                 if len(repo_parts) >= 2:
-                    org_name = repo_parts[0]
-                    repo_name = repo_parts[1]
-                    package_path = apm_modules_dir / org_name / repo_name
+                    # Use all parts of the path (works for both 2 and 3 part paths)
+                    package_path = apm_modules_dir.joinpath(*repo_parts)
                 else:
                     # Fallback for invalid format
                     package_path = apm_modules_dir / package
@@ -1044,18 +1057,28 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                     install_path = apm_modules_dir / install_name
                 elif dep_ref.is_virtual:
                     # Virtual packages get a sanitized name in the org subdirectory
+                    # For Azure DevOps: org/project/virtual-pkg-name (3 levels)
+                    # For GitHub: owner/virtual-pkg-name (2 levels)
                     repo_parts = dep_ref.repo_url.split("/")
-                    if len(repo_parts) >= 2:
-                        org_name = repo_parts[0]
-                        virtual_name = dep_ref.get_virtual_package_name()
-                        install_path = apm_modules_dir / org_name / virtual_name
+                    virtual_name = dep_ref.get_virtual_package_name()
+                    if dep_ref.is_azure_devops() and len(repo_parts) >= 3:
+                        # ADO structure: apm_modules/org/project/virtual-pkg-name
+                        install_path = apm_modules_dir / repo_parts[0] / repo_parts[1] / virtual_name
+                    elif len(repo_parts) >= 2:
+                        # GitHub structure: apm_modules/owner/virtual-pkg-name
+                        install_path = apm_modules_dir / repo_parts[0] / virtual_name
                     else:
                         # Fallback for invalid repo URLs
-                        install_path = apm_modules_dir / dep_ref.get_virtual_package_name()
+                        install_path = apm_modules_dir / virtual_name
                 else:
                     # Regular packages: Use org/repo structure to prevent collisions
+                    # For Azure DevOps: org/project/repo (3 parts)
+                    # For GitHub: owner/repo (2 parts)
                     repo_parts = dep_ref.repo_url.split("/")
-                    if len(repo_parts) >= 2:
+                    if dep_ref.is_azure_devops() and len(repo_parts) >= 3:
+                        # ADO structure: apm_modules/org/project/repo
+                        install_path = apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
+                    elif len(repo_parts) >= 2:
                         org_name = repo_parts[0]
                         repo_name = repo_parts[1]
                         install_path = apm_modules_dir / org_name / repo_name

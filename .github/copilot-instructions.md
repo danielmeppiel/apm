@@ -3,6 +3,7 @@
     - Use `uv run <command>` to run commands in the uv-managed environment.
     - For development dependencies, use `uv sync --extra dev`.
 - Unit tests are run with pytest, but remember you must activate the virtual environment first as described above.
+- **Test coverage principle**: When modifying existing code, add tests for the code paths you touch, on top of tests for the new functionality.
 - **Development Workflow**: To run APM from source while working in other directories:
     - Install in development mode: `cd /path/to/awd-cli && uv run pip install -e .`
     - Use absolute path: `/Users/danielmeppiel/Repos/awd-cli/.venv/bin/apm compile --verbose --dry-run`
