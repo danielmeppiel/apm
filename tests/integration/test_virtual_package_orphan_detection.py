@@ -3,6 +3,9 @@ Integration tests for orphan detection with virtual packages.
 
 Tests that virtual packages (individual files and collections) are correctly
 recognized and not flagged as orphaned when they are declared in apm.yml.
+
+Also tests Azure DevOps (ADO) packages which use a 3-level directory structure
+(org/project/repo) instead of GitHub's 2-level structure (owner/repo).
 """
 
 import tempfile
@@ -10,6 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 from apm_cli.models.apm_package import APMPackage
+from apm_cli.primitives.discovery import get_dependency_declaration_order
 
 
 @pytest.mark.integration
@@ -235,3 +239,247 @@ def test_mixed_dependencies_orphan_detection(tmp_path):
     assert "danielmeppiel/design-guidelines" in expected_installed
     assert "github/awesome-copilot-awesome-copilot" in expected_installed
     assert "danielmeppiel/compliance-rules-gdpr" in expected_installed
+
+
+@pytest.mark.integration
+def test_azure_devops_virtual_collection_not_flagged_as_orphan(tmp_path):
+    """Test that Azure DevOps virtual collection is not flagged as orphaned.
+    
+    ADO packages use 3-level directory structure (org/project/repo) unlike
+    GitHub's 2-level structure (owner/repo).
+    """
+    # Create test project structure
+    project_dir = tmp_path / "test-project"
+    project_dir.mkdir()
+    
+    # Create apm.yml with ADO collection dependency
+    # Format: dev.azure.com/org/project/repo/collections/collection-name
+    apm_yml_content = {
+        "name": "test-project",
+        "version": "1.0.0",
+        "dependencies": {
+            "apm": [
+                "dev.azure.com/company/my-azurecollection/copilot-instructions/collections/csharp-ddd-cleanarchitecture"
+            ]
+        }
+    }
+    
+    with open(project_dir / "apm.yml", "w") as f:
+        yaml.dump(apm_yml_content, f)
+    
+    # Simulate installed ADO virtual collection package
+    # ADO 3-level structure: apm_modules/org/project/virtual-pkg-name
+    collection_dir = project_dir / "apm_modules" / "company" / "my-azurecollection" / "copilot-instructions-csharp-ddd-cleanarchitecture"
+    collection_dir.mkdir(parents=True)
+    
+    # Create generated apm.yml in the collection
+    collection_apm = {
+        "name": "copilot-instructions-csharp-ddd-cleanarchitecture",
+        "version": "1.0.0",
+        "description": "Virtual collection package from Azure DevOps"
+    }
+    with open(collection_dir / "apm.yml", "w") as f:
+        yaml.dump(collection_apm, f)
+    
+    # Add some files to make it realistic
+    (collection_dir / ".apm").mkdir()
+    (collection_dir / ".apm" / "instructions").mkdir()
+    (collection_dir / ".apm" / "instructions" / "test.instructions.md").write_text("# Test instruction")
+    
+    # Parse apm.yml and check for orphans using the same logic as _check_orphaned_packages
+    apm_package = APMPackage.from_apm_yml(project_dir / "apm.yml")
+    declared_deps = apm_package.get_apm_dependencies()
+    
+    # Build expected installed packages set (updated logic matching _check_orphaned_packages fix)
+    expected_installed = set()
+    for dep in declared_deps:
+        repo_parts = dep.repo_url.split('/')
+        if dep.is_virtual:
+            package_name = dep.get_virtual_package_name()
+            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                # ADO structure: org/project/virtual-pkg-name
+                expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+            elif len(repo_parts) >= 2:
+                expected_installed.add(f"{repo_parts[0]}/{package_name}")
+        else:
+            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}")
+            elif len(repo_parts) >= 2:
+                expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
+    
+    # Find installed packages in apm_modules/ (supports both 2-level and 3-level structures)
+    apm_modules_dir = project_dir / "apm_modules"
+    installed_packages = []
+    for level1_dir in apm_modules_dir.iterdir():
+        if level1_dir.is_dir() and not level1_dir.name.startswith("."):
+            for level2_dir in level1_dir.iterdir():
+                if level2_dir.is_dir() and not level2_dir.name.startswith("."):
+                    if (level2_dir / "apm.yml").exists() or (level2_dir / ".apm").exists():
+                        path_key = f"{level1_dir.name}/{level2_dir.name}"
+                        installed_packages.append(path_key)
+                    else:
+                        for level3_dir in level2_dir.iterdir():
+                            if level3_dir.is_dir() and not level3_dir.name.startswith("."):
+                                if (level3_dir / "apm.yml").exists() or (level3_dir / ".apm").exists():
+                                    path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
+                                    installed_packages.append(path_key)
+    
+    # Find orphaned packages
+    orphaned_packages = [pkg for pkg in installed_packages if pkg not in expected_installed]
+    
+    # Assert no orphans found
+    assert len(orphaned_packages) == 0, \
+        f"ADO virtual collection should not be flagged as orphaned. Found: {orphaned_packages}. Expected: {expected_installed}"
+    
+    # Verify the expected path is correct for ADO 3-level structure
+    assert "company/my-azurecollection/copilot-instructions-csharp-ddd-cleanarchitecture" in expected_installed
+
+
+@pytest.mark.integration
+def test_azure_devops_regular_package_not_flagged_as_orphan(tmp_path):
+    """Test that Azure DevOps regular package is not flagged as orphaned.
+    
+    ADO regular packages use 3-level directory structure (org/project/repo).
+    """
+    # Create test project structure
+    project_dir = tmp_path / "test-project"
+    project_dir.mkdir()
+    
+    # Create apm.yml with ADO regular dependency
+    apm_yml_content = {
+        "name": "test-project",
+        "version": "1.0.0",
+        "dependencies": {
+            "apm": [
+                "dev.azure.com/company/my-project/my-apm-package"
+            ]
+        }
+    }
+    
+    with open(project_dir / "apm.yml", "w") as f:
+        yaml.dump(apm_yml_content, f)
+    
+    # Simulate installed ADO regular package
+    # ADO 3-level structure: apm_modules/org/project/repo
+    pkg_dir = project_dir / "apm_modules" / "company" / "my-project" / "my-apm-package"
+    pkg_dir.mkdir(parents=True)
+    
+    # Create apm.yml in the package
+    pkg_apm = {
+        "name": "my-apm-package",
+        "version": "1.0.0",
+        "description": "Regular APM package from Azure DevOps"
+    }
+    with open(pkg_dir / "apm.yml", "w") as f:
+        yaml.dump(pkg_apm, f)
+    
+    # Parse apm.yml and check for orphans
+    apm_package = APMPackage.from_apm_yml(project_dir / "apm.yml")
+    declared_deps = apm_package.get_apm_dependencies()
+    
+    # Build expected installed packages set
+    expected_installed = set()
+    for dep in declared_deps:
+        repo_parts = dep.repo_url.split('/')
+        if dep.is_virtual:
+            package_name = dep.get_virtual_package_name()
+            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+            elif len(repo_parts) >= 2:
+                expected_installed.add(f"{repo_parts[0]}/{package_name}")
+        else:
+            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}")
+            elif len(repo_parts) >= 2:
+                expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
+    
+    # Find installed packages in apm_modules/ (supports both 2-level and 3-level structures)
+    apm_modules_dir = project_dir / "apm_modules"
+    installed_packages = []
+    for level1_dir in apm_modules_dir.iterdir():
+        if level1_dir.is_dir() and not level1_dir.name.startswith("."):
+            for level2_dir in level1_dir.iterdir():
+                if level2_dir.is_dir() and not level2_dir.name.startswith("."):
+                    if (level2_dir / "apm.yml").exists() or (level2_dir / ".apm").exists():
+                        path_key = f"{level1_dir.name}/{level2_dir.name}"
+                        installed_packages.append(path_key)
+                    else:
+                        for level3_dir in level2_dir.iterdir():
+                            if level3_dir.is_dir() and not level3_dir.name.startswith("."):
+                                if (level3_dir / "apm.yml").exists() or (level3_dir / ".apm").exists():
+                                    path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
+                                    installed_packages.append(path_key)
+    
+    # Find orphaned packages
+    orphaned_packages = [pkg for pkg in installed_packages if pkg not in expected_installed]
+    
+    # Assert no orphans found
+    assert len(orphaned_packages) == 0, \
+        f"ADO regular package should not be flagged as orphaned. Found: {orphaned_packages}. Expected: {expected_installed}"
+    
+    # Verify the expected path is correct for ADO 3-level structure
+    assert "company/my-project/my-apm-package" in expected_installed
+
+
+@pytest.mark.integration
+def test_get_dependency_declaration_order_ado_virtual(tmp_path):
+    """Test that get_dependency_declaration_order returns correct paths for ADO virtual packages."""
+    # Create test project structure
+    project_dir = tmp_path / "test-project"
+    project_dir.mkdir()
+    
+    # Create apm.yml with ADO virtual collection
+    apm_yml_content = {
+        "name": "test-project",
+        "version": "1.0.0",
+        "dependencies": {
+            "apm": [
+                "dev.azure.com/company/my-azurecollection/copilot-instructions/collections/csharp-ddd-cleanarchitecture"
+            ]
+        }
+    }
+    
+    with open(project_dir / "apm.yml", "w") as f:
+        yaml.dump(apm_yml_content, f)
+    
+    # Get dependency order
+    dep_order = get_dependency_declaration_order(str(project_dir))
+    
+    # Should return the correct installed path for ADO virtual collection
+    assert len(dep_order) == 1
+    assert dep_order[0] == "company/my-azurecollection/copilot-instructions-csharp-ddd-cleanarchitecture"
+
+
+@pytest.mark.integration
+def test_get_dependency_declaration_order_mixed_github_and_ado(tmp_path):
+    """Test that get_dependency_declaration_order returns correct paths for mixed GitHub and ADO packages."""
+    # Create test project structure
+    project_dir = tmp_path / "test-project"
+    project_dir.mkdir()
+    
+    # Create apm.yml with mixed dependencies
+    apm_yml_content = {
+        "name": "test-project",
+        "version": "1.0.0",
+        "dependencies": {
+            "apm": [
+                "danielmeppiel/design-guidelines",  # GitHub regular
+                "github/awesome-copilot/prompts/code-review.prompt.md",  # GitHub virtual file
+                "dev.azure.com/company/project/repo",  # ADO regular
+                "dev.azure.com/company/my-azurecollection/copilot-instructions/collections/csharp-ddd"  # ADO virtual collection
+            ]
+        }
+    }
+    
+    with open(project_dir / "apm.yml", "w") as f:
+        yaml.dump(apm_yml_content, f)
+    
+    # Get dependency order
+    dep_order = get_dependency_declaration_order(str(project_dir))
+    
+    # Verify all dependency paths are returned correctly
+    assert len(dep_order) == 4
+    assert dep_order[0] == "danielmeppiel/design-guidelines"  # GitHub regular: owner/repo
+    assert dep_order[1] == "github/awesome-copilot-code-review"  # GitHub virtual: owner/virtual-pkg-name
+    assert dep_order[2] == "company/project/repo"  # ADO regular: org/project/repo
+    assert dep_order[3] == "company/my-azurecollection/copilot-instructions-csharp-ddd"  # ADO virtual: org/project/virtual-pkg-name
