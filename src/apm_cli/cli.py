@@ -711,19 +711,28 @@ def prune(ctx, dry_run):
             # Build set of expected installed package paths
             # For virtual packages, use the sanitized package name from get_virtual_package_name()
             # For regular packages, use repo_url as-is
+            # GitHub: owner/repo or owner/virtual-pkg-name (2 levels)
+            # Azure DevOps: org/project/repo or org/project/virtual-pkg-name (3 levels)
             expected_installed = builtins.set()
             for dep in declared_deps:
                 repo_parts = dep.repo_url.split("/")
-                if len(repo_parts) >= 2:
-                    org_name = repo_parts[0]
-                    if dep.is_virtual:
-                        # Virtual package: org/repo-name-package-name
-                        package_name = dep.get_virtual_package_name()
-                        expected_installed.add(f"{org_name}/{package_name}")
-                    else:
-                        # Regular package: org/repo-name
-                        repo_name = repo_parts[1]
-                        expected_installed.add(f"{org_name}/{repo_name}")
+                if dep.is_virtual:
+                    # Virtual package: include full path based on platform
+                    package_name = dep.get_virtual_package_name()
+                    if dep.is_azure_devops() and len(repo_parts) >= 3:
+                        # ADO structure: org/project/virtual-pkg-name
+                        expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+                    elif len(repo_parts) >= 2:
+                        # GitHub structure: owner/virtual-pkg-name
+                        expected_installed.add(f"{repo_parts[0]}/{package_name}")
+                else:
+                    # Regular package: use full repo_url path
+                    if dep.is_azure_devops() and len(repo_parts) >= 3:
+                        # ADO structure: org/project/repo
+                        expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}")
+                    elif len(repo_parts) >= 2:
+                        # GitHub structure: owner/repo
+                        expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
