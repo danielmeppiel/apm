@@ -50,6 +50,8 @@ def list_packages():
             return
         
         # Load project dependencies to check for orphaned packages
+        # GitHub: owner/repo or owner/virtual-pkg-name (2 levels)
+        # Azure DevOps: org/project/repo or org/project/virtual-pkg-name (3 levels)
         declared_deps = set()
         try:
             apm_yml_path = project_root / "apm.yml"
@@ -58,38 +60,44 @@ def list_packages():
                 for dep in project_package.get_apm_dependencies():
                     # Build the expected installed package name
                     repo_parts = dep.repo_url.split('/')
-                    if len(repo_parts) >= 2:
-                        org_name = repo_parts[0]
-                        if dep.is_virtual:
-                            # Virtual package: org/repo-name-package-name
-                            package_name = dep.get_virtual_package_name()
-                            declared_deps.add(f"{org_name}/{package_name}")
-                        else:
-                            # Regular package: org/repo-name
-                            repo_name = repo_parts[1]
-                            declared_deps.add(f"{org_name}/{repo_name}")
+                    if dep.is_virtual:
+                        # Virtual package: include full path based on platform
+                        package_name = dep.get_virtual_package_name()
+                        if dep.is_azure_devops() and len(repo_parts) >= 3:
+                            # ADO structure: org/project/virtual-pkg-name
+                            declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+                        elif len(repo_parts) >= 2:
+                            # GitHub structure: owner/virtual-pkg-name
+                            declared_deps.add(f"{repo_parts[0]}/{package_name}")
+                    else:
+                        # Regular package: use full repo_url path
+                        if dep.is_azure_devops() and len(repo_parts) >= 3:
+                            # ADO structure: org/project/repo
+                            declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}")
+                        elif len(repo_parts) >= 2:
+                            # GitHub structure: owner/repo
+                            declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}")
         except Exception:
             pass  # Continue without orphan detection if apm.yml parsing fails
         
         # Scan for installed packages in org-namespaced structure
+        # GitHub: apm_modules/owner/repo (2 levels)
+        # Azure DevOps: apm_modules/org/project/repo (3 levels)
         installed_packages = []
         orphaned_packages = []
-        for org_dir in apm_modules_path.iterdir():
-            if org_dir.is_dir() and not org_dir.name.startswith('.'):
-                for package_dir in org_dir.iterdir():
-                    if package_dir.is_dir() and not package_dir.name.startswith('.'):
-                        try:
-                            # org/repo format
-                            org_repo_name = f"{org_dir.name}/{package_dir.name}"
-                            
-                            # Try to load package metadata
-                            apm_yml_path = package_dir / "apm.yml"
-                            if apm_yml_path.exists():
+        for level1_dir in apm_modules_path.iterdir():
+            if level1_dir.is_dir() and not level1_dir.name.startswith('.'):
+                for level2_dir in level1_dir.iterdir():
+                    if level2_dir.is_dir() and not level2_dir.name.startswith('.'):
+                        # Check if level2 has apm.yml (GitHub 2-level structure)
+                        apm_yml_path = level2_dir / "apm.yml"
+                        if apm_yml_path.exists():
+                            try:
+                                # GitHub 2-level: org/repo format
+                                org_repo_name = f"{level1_dir.name}/{level2_dir.name}"
                                 package = APMPackage.from_apm_yml(apm_yml_path)
-                                # Count context files and workflows separately
-                                context_count, workflow_count = _count_package_files(package_dir)
+                                context_count, workflow_count = _count_package_files(level2_dir)
                                 
-                                # Check if this package is orphaned
                                 is_orphaned = org_repo_name not in declared_deps
                                 if is_orphaned:
                                     orphaned_packages.append(org_repo_name)
@@ -100,26 +108,38 @@ def list_packages():
                                     'source': 'orphaned' if is_orphaned else 'github',
                                     'context': context_count,
                                     'workflows': workflow_count,
-                                    'path': str(package_dir),
+                                    'path': str(level2_dir),
                                     'is_orphaned': is_orphaned
                                 })
-                            else:
-                                # Package without apm.yml - show basic info
-                                context_count, workflow_count = _count_package_files(package_dir)
-                                is_orphaned = True  # Assume orphaned if no apm.yml
-                                orphaned_packages.append(org_repo_name)
-                                
-                                installed_packages.append({
-                                    'name': org_repo_name,
-                                    'version': 'unknown',
-                                    'source': 'orphaned',
-                                    'context': context_count,
-                                    'workflows': workflow_count,
-                                    'path': str(package_dir),
-                                    'is_orphaned': is_orphaned
-                                })
-                        except Exception as e:
-                            click.echo(f"⚠️ Warning: Failed to read package {org_dir.name}/{package_dir.name}: {e}")
+                            except Exception as e:
+                                click.echo(f"⚠️ Warning: Failed to read package {level1_dir.name}/{level2_dir.name}: {e}")
+                        else:
+                            # Check for ADO 3-level structure: org/project/repo
+                            for level3_dir in level2_dir.iterdir():
+                                if level3_dir.is_dir() and not level3_dir.name.startswith('.'):
+                                    apm_yml_path = level3_dir / "apm.yml"
+                                    if apm_yml_path.exists():
+                                        try:
+                                            # ADO 3-level: org/project/repo format
+                                            org_repo_name = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
+                                            package = APMPackage.from_apm_yml(apm_yml_path)
+                                            context_count, workflow_count = _count_package_files(level3_dir)
+                                            
+                                            is_orphaned = org_repo_name not in declared_deps
+                                            if is_orphaned:
+                                                orphaned_packages.append(org_repo_name)
+                                            
+                                            installed_packages.append({
+                                                'name': org_repo_name,
+                                                'version': package.version or 'unknown', 
+                                                'source': 'orphaned' if is_orphaned else 'azure-devops',
+                                                'context': context_count,
+                                                'workflows': workflow_count,
+                                                'path': str(level3_dir),
+                                                'is_orphaned': is_orphaned
+                                            })
+                                        except Exception as e:
+                                            click.echo(f"⚠️ Warning: Failed to read package {level1_dir.name}/{level2_dir.name}/{level3_dir.name}: {e}")
         
         if not installed_packages:
             if has_rich:

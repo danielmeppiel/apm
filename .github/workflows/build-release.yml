@@ -245,7 +245,8 @@ jobs:
         env:
           APM_E2E_TESTS: "1"
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}    # Models access
-          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}    # Primary: APM module access 
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}    # Primary: APM module access
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}      # Azure DevOps module access
         run: |
           chmod +x scripts/test-integration.sh
           uv run ./scripts/test-integration.sh
@@ -328,6 +329,7 @@ jobs:
           APM_E2E_TESTS: "1"                           # Avoids interactive prompts for MCP env values with apm install
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
           GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}    # Primary: APM module access
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}      # Azure DevOps module access
         run: |
           cd /tmp/apm-isolated-test
           chmod +x scripts/test-release-validation.sh

@@ -184,13 +184,17 @@ def scan_dependency_primitives(base_dir: str, collection: PrimitiveCollection) -
 
 
 def get_dependency_declaration_order(base_dir: str) -> List[str]:
-    """Get APM dependency names in their declaration order from apm.yml.
+    """Get APM dependency installed paths in their declaration order from apm.yml.
+    
+    Returns the actual installed paths for each dependency, which differs for:
+    - Regular packages: owner/repo (GitHub) or org/project/repo (ADO)
+    - Virtual packages: owner/virtual-pkg-name (GitHub) or org/project/virtual-pkg-name (ADO)
     
     Args:
         base_dir (str): Base directory containing apm.yml.
     
     Returns:
-        List[str]: List of dependency names in declaration order.
+        List[str]: List of dependency installed paths in declaration order.
     """
     try:
         apm_yml_path = Path(base_dir) / "apm.yml"
@@ -200,14 +204,29 @@ def get_dependency_declaration_order(base_dir: str) -> List[str]:
         package = APMPackage.from_apm_yml(apm_yml_path)
         apm_dependencies = package.get_apm_dependencies()
         
-        # Extract package names from dependency references
-        # Use alias if provided, otherwise use full org/repo path for org-namespaced structure
+        # Extract installed paths from dependency references
+        # Virtual packages use get_virtual_package_name() for the final directory component
         dependency_names = []
         for dep in apm_dependencies:
             if dep.alias:
                 dependency_names.append(dep.alias)
+            elif dep.is_virtual:
+                # Virtual packages: construct path with virtual package name
+                # GitHub: owner/virtual-pkg-name
+                # ADO: org/project/virtual-pkg-name
+                repo_parts = dep.repo_url.split("/")
+                virtual_name = dep.get_virtual_package_name()
+                if dep.is_azure_devops() and len(repo_parts) >= 3:
+                    # ADO structure: org/project/virtual-pkg-name
+                    dependency_names.append(f"{repo_parts[0]}/{repo_parts[1]}/{virtual_name}")
+                elif len(repo_parts) >= 2:
+                    # GitHub structure: owner/virtual-pkg-name
+                    dependency_names.append(f"{repo_parts[0]}/{virtual_name}")
+                else:
+                    # Fallback
+                    dependency_names.append(virtual_name)
             else:
-                # Use full org/repo path (e.g., "danielmeppiel/design-guidelines")
+                # Regular packages: use full org/repo path
                 # This matches our org-namespaced directory structure
                 dependency_names.append(dep.repo_url)
         

@@ -291,12 +291,19 @@ run_e2e_tests() {
     log_info "Environment:"
     echo "  APM_E2E_TESTS: $APM_E2E_TESTS"
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-        echo "  GITHUB_TOKEN is set..."
+        echo "  GITHUB_TOKEN: (set)"
     else
         echo "  GITHUB_TOKEN: (not set)"
     fi
     if [[ -n "${GITHUB_APM_PAT:-}" ]]; then
-        echo "  GITHUB_APM_PAT: ${GITHUB_APM_PAT:0:10}..."
+        echo "  GITHUB_APM_PAT: (set)"
+    else
+        echo "  GITHUB_APM_PAT: (not set)"
+    fi
+    if [[ -n "${ADO_APM_PAT:-}" ]]; then
+        echo "  ADO_APM_PAT: (set)"
+    else
+        echo "  ADO_APM_PAT: (not set)"
     fi
     echo "  PATH contains: $(dirname "$(which apm)")"
     echo "  APM binary: $(which apm)"
@@ -351,6 +358,21 @@ run_e2e_tests() {
     else
         log_error "APM Dependencies integration tests failed!"
         exit 1
+    fi
+    
+    # Run Azure DevOps E2E tests (requires ADO_APM_PAT)
+    if [[ -n "${ADO_APM_PAT:-}" ]]; then
+        log_info "Running Azure DevOps E2E tests..."
+        echo "Command: pytest tests/integration/test_ado_e2e.py -v -s --tb=short"
+        
+        if pytest tests/integration/test_ado_e2e.py -v -s --tb=short; then
+            log_success "Azure DevOps E2E tests passed!"
+        else
+            log_error "Azure DevOps E2E tests failed!"
+            exit 1
+        fi
+    else
+        log_info "Skipping Azure DevOps E2E tests (ADO_APM_PAT not set)"
     fi
     
     log_success "All integration test suites completed successfully!"
