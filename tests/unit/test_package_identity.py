@@ -7,8 +7,6 @@ The package identity system ensures consistency between:
 3. Agent/prompt metadata for orphan detection
 """
 
-import pytest
-import tempfile
 from pathlib import Path
 
 from src.apm_cli.models.apm_package import DependencyReference
@@ -241,10 +239,17 @@ class TestOrphanDetectionScenarios:
             try:
                 dep = DependencyReference.parse(entry)
                 canonical = dep.get_canonical_dependency_string()
-                # For entries without host prefix, canonical should match
-                # For entries with host prefix, canonical strips the host
-                if not entry.startswith(("dev.azure.com/", "github.com/")):
-                    assert canonical == entry or entry.startswith(canonical)
+                # For ADO entries with host prefix, canonical should match without the host
+                if entry.startswith("dev.azure.com/"):
+                    expected = entry.replace("dev.azure.com/", "")
+                    expected = expected.replace("/_git/", "/")
+                    assert canonical == expected
+                elif entry.startswith("github.com/"):
+                    expected = entry.replace("github.com/", "")
+                    assert canonical == expected
+                else:
+                    # Entries without host prefix should match exactly
+                    assert canonical == entry
             except ValueError:
                 # Skip entries that can't be parsed due to ADO format issues
                 pass

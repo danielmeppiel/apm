@@ -141,9 +141,7 @@ class DependencyReference:
         Returns:
             str: Canonical dependency string (e.g., "owner/repo" or "owner/repo/collections/name")
         """
-        if self.is_virtual and self.virtual_path:
-            return f"{self.repo_url}/{self.virtual_path}"
-        return self.repo_url
+        return self.get_unique_key()
     
     def get_install_path(self, apm_modules_dir: Path) -> Path:
         """Get the canonical filesystem path where this package should be installed.

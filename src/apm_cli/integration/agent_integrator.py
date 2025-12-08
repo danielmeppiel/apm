@@ -470,12 +470,9 @@ class AgentIntegrator:
             source_dependency = metadata.get('SourceDependency', '')
             
             if source_dependency and source_dependency != 'unknown':
-                # New format: compare full dependency strings
-                normalized_dep = normalize_repo_url(source_dependency)
-                package_match = any(
-                    dep == normalized_dep or dep == source_dependency
-                    for dep in installed_deps
-                )
+                # New format: compare full dependency strings directly
+                # Both source_dependency and installed_deps are in canonical form
+                package_match = source_dependency in installed_deps
             else:
                 # Fallback: old format using repo URL from Source field
                 source = metadata.get('Source', '')

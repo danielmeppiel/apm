@@ -5,11 +5,8 @@ The fix ensures that orphan detection compares full dependency strings
 instead of just base repo URLs.
 """
 
-import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-import yaml
 
 from src.apm_cli.integration.agent_integrator import AgentIntegrator
 from src.apm_cli.integration.prompt_integrator import PromptIntegrator
