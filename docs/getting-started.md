@@ -330,6 +330,7 @@ This creates a complete Context structure:
 ```yaml
 my-first-project/
 ├── apm.yml              # Project configuration
+├── SKILL.md             # Package meta-guide for AI discovery
 └── .apm/
     ├── agents/          # AI assistant personalities
     ├── instructions/    # Context and coding standards

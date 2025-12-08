@@ -17,6 +17,7 @@ apm init my-project  # Creates complete Context scaffolding + apm.yml
 ```yaml
 my-project/
 ├── apm.yml              # Project configuration and script definitions
+├── SKILL.md             # Package meta-guide for AI discovery
 └── .apm/
     ├── agents/          # Role-based AI expertise with tool boundaries
     │   ├── backend-dev.agent.md        # API development specialist
@@ -71,8 +72,8 @@ apm run review-copilot --param files="src/auth/"
 The APM CLI supports four types of primitives:
 
 - **Agents** (`.agent.md`) - Define AI assistant personalities and behaviors (legacy: `.chatmode.md`)
-- **Skills** (`SKILL.md`) - Package meta-guides that explain how to use an APM package
 - **Instructions** (`.instructions.md`) - Provide coding standards and guidelines for specific file types
+- **Skills** (`SKILL.md`) - Package meta-guides that help AI agents understand what a package does
 - **Context** (`.context.md`, `.memory.md`) - Supply background information and project context
 
 > **Note**: Both `.agent.md` (new format) and `.chatmode.md` (legacy format) are fully supported. VSCode provides Quick Fix actions to help migrate from `.chatmode.md` to `.agent.md`.

@@ -97,6 +97,7 @@ apm init my-project --yes
 
 **Creates:**
 - `apm.yml` - Minimal project configuration with empty dependencies and scripts sections
+- `SKILL.md` - Package meta-guide for AI discovery (describes what the package does)
 
 **Auto-detected fields:**
 - `name` - From project directory name
@@ -162,6 +163,8 @@ apm install --exclude codex
 
 - **APM Dependencies**: GitHub repositories containing `apm.yml`
 - **Claude Skills**: Repositories with `SKILL.md` (auto-generates `apm.yml` upon installation)
+  - Example: `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
+  - Skills are transformed to `.github/agents/*.agent.md` for VSCode target
 - **Virtual Packages**: Single files or collections installed directly from URLs
   - Single `.prompt.md` or `.agent.md` files from any GitHub repository
   - Collections from curated sources (e.g., `github/awesome-copilot`)
