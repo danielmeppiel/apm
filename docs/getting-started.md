@@ -49,6 +49,17 @@ export GITHUB_TOKEN=ghp_models_token         # For GitHub Models free inference
 # APM will work with public modules without any authentication
 ```
 
+## Package Sources
+
+APM installs packages from multiple sources that can be combined. Use the format that matches your repository host:
+
+| Source | Format | Example |
+|--------|--------|---------|
+| GitHub.com | `owner/repo` | `apm install danielmeppiel/compliance-rules` |
+| GitHub Enterprise | `ghe.company.com/owner/repo` | `apm install ghe.myco.com/team/standards` |
+| Azure DevOps | `dev.azure.com/org/project/repo` | `apm install dev.azure.com/myorg/proj/rules` |
+| Virtual Package | `owner/repo/path/file.prompt.md` | `apm install github/awesome-copilot/prompts/code-review.prompt.md` |
+
 ### GitHub Enterprise Support
 
 APM supports all GitHub Enterprise deployment models. Configuration depends on your organization's GitHub deployment.
@@ -447,6 +458,9 @@ apm deps tree
 #### Virtual Packages
 
 APM supports **virtual packages** - installing individual files directly from any repository without requiring a full APM package structure. This is perfect for reusing individual workflow files or configuration from existing projects.
+
+> 💡 **Explore ready-to-use prompts and agents!**  
+> Browse [github/awesome-copilot](https://github.com/github/awesome-copilot) for a curated collection of community-contributed prompts, instructions, and agents across all major languages and frameworks. Install any file directly with APM. Also works with Awesome Copilot's collections.
 
 **What are Virtual Packages?**
 

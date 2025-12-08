@@ -2,7 +2,65 @@
 
 **Solving the AI agent scalability problem through constraint satisfaction optimization**
 
-APM's compilation system implements a mathematically rigorous solution to the **context pollution problem** that degrades AI agent performance as projects grow. Through constraint satisfaction optimization and hierarchical coverage guarantees, `apm compile` transforms scattered primitives into perfectly optimized AGENTS.md files.
+APM's compilation system implements a mathematically rigorous solution to the **context pollution problem** that degrades AI agent performance as projects grow. Through constraint satisfaction optimization and hierarchical coverage guarantees, `apm compile` transforms scattered primitives into optimized context files for every major AI coding agent.
+
+## Multi-Agent Output
+
+APM compiles your primitives into native formats for each major AI coding agent. Target selection is automatic based on your project structure.
+
+### Target Auto-Detection
+
+When you run `apm compile` without specifying a target, APM automatically detects:
+
+| Project Structure | Target | What Gets Generated |
+|-------------------|--------|---------------------|
+| `.github/` folder only | `vscode` | AGENTS.md + .github/ integration |
+| `.claude/` folder only | `claude` | CLAUDE.md + .claude/ integration |
+| Both folders exist | `all` | All formats |
+| Neither folder exists | `minimal` | AGENTS.md only (universal format) |
+
+```bash
+apm compile                    # Auto-detects target from project structure
+apm compile --target vscode    # Force GitHub Copilot, Cursor, Codex, Gemini
+apm compile --target claude    # Force Claude Code, Claude Desktop
+```
+
+You can set a persistent target in `apm.yml`:
+```yaml
+name: my-project
+version: 1.0.0
+target: vscode  # or claude, or all
+```
+
+### Output Files
+
+| Target | Files Generated | Consumers |
+|--------|-----------------|-----------|
+| `vscode` | `AGENTS.md`, `.github/prompts/`, `.github/agents/` | GitHub Copilot, Cursor, Codex, Gemini |
+| `claude` | `CLAUDE.md`, `.claude/commands/`, `SKILL.md` | Claude Code, Claude Desktop |
+| `all` | All of the above | Universal compatibility |
+| `minimal` | `AGENTS.md` only | Works everywhere, no folder integration |
+
+### How It Works
+
+1. **Primitives Discovery**: Scans `.apm/` and `.github/` directories for instructions, prompts, and agents
+2. **Dependency Merging**: Incorporates primitives from installed packages in `apm_modules/`
+3. **Optimization**: Applies mathematical context optimization (see below)
+4. **Format Generation**: Outputs native files for each target agent format
+
+### Example Output
+
+```
+my-project/
+├── AGENTS.md              # Optimized context for Copilot, Cursor, etc.
+├── CLAUDE.md              # Optimized context for Claude
+├── SKILL.md               # Claude Skills format
+├── .github/
+│   ├── prompts/           # VSCode-native prompts
+│   └── agents/            # VSCode-native agents
+└── .claude/
+    └── commands/          # Claude slash commands
+```
 
 ## The Context Pollution Problem
 

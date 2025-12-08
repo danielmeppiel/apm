@@ -976,13 +976,49 @@ def uninstall(ctx, packages, dry_run):
             except Exception as e:
                 agents_failed += 1
         
+        # Sync skill integration to remove orphaned Claude skills
+        skills_cleaned = 0
+        skills_failed = 0
+        if Path(".claude/skills").exists():
+            try:
+                from apm_cli.models.apm_package import APMPackage
+                from apm_cli.integration.skill_integrator import SkillIntegrator
+                
+                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+                integrator = SkillIntegrator()
+                cleanup_result = integrator.sync_integration(apm_package, Path("."))
+                skills_cleaned = cleanup_result.get('files_removed', 0)
+                skills_failed = cleanup_result.get('errors', 0)
+            except Exception as e:
+                skills_failed += 1
+        
+        # Sync command integration to remove orphaned Claude commands
+        commands_cleaned = 0
+        commands_failed = 0
+        if Path(".claude/commands").exists():
+            try:
+                from apm_cli.models.apm_package import APMPackage
+                from apm_cli.integration.command_integrator import CommandIntegrator
+                
+                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+                integrator = CommandIntegrator()
+                cleanup_result = integrator.sync_integration(apm_package, Path("."))
+                commands_cleaned = cleanup_result.get('files_removed', 0)
+                commands_failed = cleanup_result.get('errors', 0)
+            except Exception as e:
+                commands_failed += 1
+        
         # Show cleanup feedback
         if prompts_cleaned > 0:
             _rich_info(f"✓ Cleaned up {prompts_cleaned} integrated prompt(s)")
         if agents_cleaned > 0:
             _rich_info(f"✓ Cleaned up {agents_cleaned} integrated agent(s)")
-        if prompts_failed > 0 or agents_failed > 0:
-            _rich_warning(f"⚠ Failed to clean up {prompts_failed + agents_failed} file(s)")
+        if skills_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {skills_cleaned} Claude skill(s)")
+        if commands_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {commands_cleaned} Claude command(s)")
+        if prompts_failed > 0 or agents_failed > 0 or skills_failed > 0 or commands_failed > 0:
+            _rich_warning(f"⚠ Failed to clean up {prompts_failed + agents_failed + skills_failed + commands_failed} file(s)")
         
         # Final summary
         summary_lines = []
@@ -1049,12 +1085,38 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         apm_modules_dir = project_root / "apm_modules"
         apm_modules_dir.mkdir(exist_ok=True)
 
+        # Auto-detect target for integration (same logic as compile)
+        from apm_cli.core.target_detection import (
+            detect_target, 
+            should_integrate_vscode, 
+            should_integrate_claude,
+            get_target_description
+        )
+        
+        # Get config target from apm.yml if available
+        config_target = apm_package.target
+        
+        detected_target, detection_reason = detect_target(
+            project_root=project_root,
+            explicit_target=None,  # No explicit flag for install
+            config_target=config_target,
+        )
+        
+        # Determine which integrations to run based on detected target
+        integrate_vscode = should_integrate_vscode(detected_target)
+        integrate_claude = should_integrate_claude(detected_target)
+
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
         agent_integrator = AgentIntegrator()
-        should_integrate = prompt_integrator.should_integrate(project_root)
+        from apm_cli.integration.skill_integrator import SkillIntegrator
+        from apm_cli.integration.command_integrator import CommandIntegrator
+        skill_integrator = SkillIntegrator()
+        command_integrator = CommandIntegrator()
         total_prompts_integrated = 0
         total_agents_integrated = 0
+        total_skills_generated = 0
+        total_commands_integrated = 0
         total_links_resolved = 0
 
         # Install each dependency with Rich progress display
@@ -1135,7 +1197,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                     _rich_info(f"✓ {display_name} @{dep_ref.reference} (cached)")
                     
                     # Still need to integrate prompts for cached packages (zero-config behavior)
-                    if should_integrate:
+                    if integrate_vscode or integrate_claude:
                         try:
                             # Create PackageInfo from cached package
                             from apm_cli.models.apm_package import APMPackage, PackageInfo, ResolvedReference, GitReferenceType
@@ -1173,39 +1235,70 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 dependency_ref=dep_ref  # Store for canonical dependency string
                             )
                             
-                            # Integrate prompts
-                            prompt_result = prompt_integrator.integrate_package_prompts(
-                                cached_package_info,
-                                project_root
-                            )
-                            if prompt_result.files_integrated > 0:
-                                total_prompts_integrated += prompt_result.files_integrated
-                                _rich_info(
-                                    f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
+                            # VSCode integration (prompts + agents)
+                            if integrate_vscode:
+                                # Integrate prompts
+                                prompt_result = prompt_integrator.integrate_package_prompts(
+                                    cached_package_info,
+                                    project_root
                                 )
-                            if prompt_result.files_updated > 0:
-                                _rich_info(
-                                    f"  └─ {prompt_result.files_updated} prompts updated"
+                                if prompt_result.files_integrated > 0:
+                                    total_prompts_integrated += prompt_result.files_integrated
+                                    _rich_info(
+                                        f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
+                                    )
+                                if prompt_result.files_updated > 0:
+                                    _rich_info(
+                                        f"  └─ {prompt_result.files_updated} prompts updated"
+                                    )
+                                # Track links resolved
+                                total_links_resolved += prompt_result.links_resolved
+                                
+                                # Integrate agents
+                                agent_result = agent_integrator.integrate_package_agents(
+                                    cached_package_info,
+                                    project_root
                                 )
-                            # Track links resolved
-                            total_links_resolved += prompt_result.links_resolved
+                                if agent_result.files_integrated > 0:
+                                    total_agents_integrated += agent_result.files_integrated
+                                    _rich_info(
+                                        f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                                    )
+                                if agent_result.files_updated > 0:
+                                    _rich_info(
+                                        f"  └─ {agent_result.files_updated} agents updated"
+                                    )
+                                # Track links resolved
+                                total_links_resolved += agent_result.links_resolved
                             
-                            # Integrate agents
-                            agent_result = agent_integrator.integrate_package_agents(
-                                cached_package_info,
-                                project_root
-                            )
-                            if agent_result.files_integrated > 0:
-                                total_agents_integrated += agent_result.files_integrated
-                                _rich_info(
-                                    f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                            # Claude integration (skills + commands)
+                            if integrate_claude:
+                                # Generate SKILL.md for Claude Skills
+                                skill_result = skill_integrator.integrate_package_skill(
+                                    cached_package_info,
+                                    project_root
                                 )
-                            if agent_result.files_updated > 0:
-                                _rich_info(
-                                    f"  └─ {agent_result.files_updated} agents updated"
+                                if skill_result.skill_created:
+                                    total_skills_generated += 1
+                                    _rich_info(
+                                        f"  └─ SKILL.md generated for Claude Skills"
+                                    )
+                                
+                                # Generate Claude commands from prompts
+                                command_result = command_integrator.integrate_package_commands(
+                                    cached_package_info,
+                                    project_root
                                 )
-                            # Track links resolved
-                            total_links_resolved += agent_result.links_resolved
+                                if command_result.files_integrated > 0:
+                                    total_commands_integrated += command_result.files_integrated
+                                    _rich_info(
+                                        f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/"
+                                    )
+                                if command_result.files_updated > 0:
+                                    _rich_info(
+                                        f"  └─ {command_result.files_updated} commands updated"
+                                    )
+                                total_links_resolved += command_result.links_resolved
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(f"  ⚠ Failed to integrate primitives from cached package: {e}")
@@ -1239,41 +1332,72 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                     _rich_success(f"✓ {display_name}")
 
                     # Auto-integrate prompts and agents if enabled
-                    if should_integrate:
+                    if integrate_vscode or integrate_claude:
                         try:
-                            # Integrate prompts
-                            prompt_result = prompt_integrator.integrate_package_prompts(
-                                package_info, 
-                                project_root
-                            )
-                            if prompt_result.files_integrated > 0:
-                                total_prompts_integrated += prompt_result.files_integrated
-                                _rich_info(
-                                    f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
+                            # VSCode integration (prompts + agents)
+                            if integrate_vscode:
+                                # Integrate prompts
+                                prompt_result = prompt_integrator.integrate_package_prompts(
+                                    package_info, 
+                                    project_root
                                 )
-                            if prompt_result.files_updated > 0:
-                                _rich_info(
-                                    f"  └─ {prompt_result.files_updated} prompts updated"
+                                if prompt_result.files_integrated > 0:
+                                    total_prompts_integrated += prompt_result.files_integrated
+                                    _rich_info(
+                                        f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
+                                    )
+                                if prompt_result.files_updated > 0:
+                                    _rich_info(
+                                        f"  └─ {prompt_result.files_updated} prompts updated"
+                                    )
+                                # Track links resolved
+                                total_links_resolved += prompt_result.links_resolved
+                                
+                                # Integrate agents
+                                agent_result = agent_integrator.integrate_package_agents(
+                                    package_info, 
+                                    project_root
                                 )
-                            # Track links resolved
-                            total_links_resolved += prompt_result.links_resolved
+                                if agent_result.files_integrated > 0:
+                                    total_agents_integrated += agent_result.files_integrated
+                                    _rich_info(
+                                        f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                                    )
+                                if agent_result.files_updated > 0:
+                                    _rich_info(
+                                        f"  └─ {agent_result.files_updated} agents updated"
+                                    )
+                                # Track links resolved
+                                total_links_resolved += agent_result.links_resolved
                             
-                            # Integrate agents
-                            agent_result = agent_integrator.integrate_package_agents(
-                                package_info, 
-                                project_root
-                            )
-                            if agent_result.files_integrated > 0:
-                                total_agents_integrated += agent_result.files_integrated
-                                _rich_info(
-                                    f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                            # Claude integration (skills + commands)
+                            if integrate_claude:
+                                # Generate SKILL.md for Claude Skills
+                                skill_result = skill_integrator.integrate_package_skill(
+                                    package_info,
+                                    project_root
                                 )
-                            if agent_result.files_updated > 0:
-                                _rich_info(
-                                    f"  └─ {agent_result.files_updated} agents updated"
+                                if skill_result.skill_created:
+                                    total_skills_generated += 1
+                                    _rich_info(
+                                        f"  └─ SKILL.md generated for Claude Skills"
+                                    )
+                                
+                                # Generate Claude commands from prompts
+                                command_result = command_integrator.integrate_package_commands(
+                                    package_info,
+                                    project_root
                                 )
-                            # Track links resolved
-                            total_links_resolved += agent_result.links_resolved
+                                if command_result.files_integrated > 0:
+                                    total_commands_integrated += command_result.files_integrated
+                                    _rich_info(
+                                        f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/"
+                                    )
+                                if command_result.files_updated > 0:
+                                    _rich_info(
+                                        f"  └─ {command_result.files_updated} commands updated"
+                                    )
+                                total_links_resolved += command_result.links_resolved
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(f"  ⚠ Failed to integrate primitives: {e}")
@@ -1291,7 +1415,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         _update_gitignore_for_apm_modules()
 
         # Update .gitignore for integrated prompts if any were integrated
-        if should_integrate and total_prompts_integrated > 0:
+        if integrate_vscode and total_prompts_integrated > 0:
             try:
                 updated = prompt_integrator.update_gitignore_for_integrated_prompts(project_root)
                 if updated:
@@ -1300,7 +1424,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                 _rich_warning(f"Could not update .gitignore for prompts: {e}")
         
         # Update .gitignore for integrated agents if any were integrated
-        if should_integrate and total_agents_integrated > 0:
+        if integrate_vscode and total_agents_integrated > 0:
             try:
                 updated = agent_integrator.update_gitignore_for_integrated_agents(project_root)
                 if updated:
@@ -1311,6 +1435,14 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:
             _rich_info(f"✓ Resolved {total_links_resolved} context file links")
+        
+        # Show Claude Skills stats if any were generated
+        if total_skills_generated > 0:
+            _rich_info(f"✓ Generated {total_skills_generated} Claude Skill(s)")
+        
+        # Show Claude commands stats if any were integrated
+        if total_commands_integrated > 0:
+            _rich_info(f"✓ Integrated {total_commands_integrated} Claude command(s)")
         
         _rich_success(f"Installed {installed_count} APM dependencies")
         
@@ -2275,6 +2407,13 @@ def _watch_mode(output, chatmode, no_links, dry_run):
     help="Output file path (for single-file mode)",
 )
 @click.option(
+    "--target",
+    "-t",
+    type=click.Choice(["vscode", "agents", "claude", "all"]),
+    default=None,
+    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), or all. Auto-detects if not specified.",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="🔍 Preview compilation without writing files (shows placement decisions)",
@@ -2315,6 +2454,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 def compile(
     ctx,
     output,
+    target,
     dry_run,
     no_links,
     chatmode,
@@ -2332,6 +2472,11 @@ def compile(
     files across your directory structure following the Minimal Context Principle.
 
     Use --single-agents for traditional single-file compilation when needed.
+
+    Target platforms:
+    • vscode/agents: Generates AGENTS.md + .github/ structure (VSCode/GitHub Copilot)
+    • claude: Generates CLAUDE.md + .claude/ structure (Claude Code)
+    • all: Generates both targets (default)
 
     Advanced options:
     • --dry-run: Preview compilation without writing files (shows placement decisions)
@@ -2421,6 +2566,28 @@ def compile(
 
         _rich_info("Starting context compilation...", symbol="cogs")
 
+        # Auto-detect target if not explicitly provided
+        from apm_cli.core.target_detection import detect_target, get_target_description
+        
+        # Get config target from apm.yml if available
+        config_target = None
+        try:
+            from apm_cli.models.apm_package import APMPackage
+            apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
+            config_target = apm_pkg.target
+        except Exception:
+            # No apm.yml or parsing error - proceed with auto-detection
+            pass
+        
+        detected_target, detection_reason = detect_target(
+            project_root=Path("."),
+            explicit_target=target,
+            config_target=config_target,
+        )
+        
+        # Map 'minimal' to 'vscode' for the compiler (AGENTS.md only, no folder integration)
+        effective_target = detected_target if detected_target != "minimal" else "vscode"
+
         # Build config with distributed compilation flags (Task 7)
         config = CompilationConfig.from_apm_yml(
             output_path=output if output != "AGENTS.md" else None,
@@ -2432,12 +2599,23 @@ def compile(
             local_only=local_only,
             debug=verbose,
             clean_orphaned=clean,
+            target=effective_target,
         )
         config.with_constitution = with_constitution
 
         # Handle distributed vs single-file compilation
         if config.strategy == "distributed" and not single_agents:
-            _rich_info("Using distributed compilation (multiple AGENTS.md files)")
+            # Show target-aware message with detection reason
+            if detected_target == "minimal":
+                _rich_info(f"Compiling for AGENTS.md only ({detection_reason})")
+                _rich_info("💡 Create .github/ or .claude/ folder for full integration", symbol="light_bulb")
+            elif detected_target == "vscode" or detected_target == "agents":
+                _rich_info(f"Compiling for AGENTS.md (VSCode/Copilot) - {detection_reason}")
+            elif detected_target == "claude":
+                _rich_info(f"Compiling for CLAUDE.md (Claude Code) - {detection_reason}")
+            else:  # "all"
+                _rich_info(f"Compiling for AGENTS.md + CLAUDE.md - {detection_reason}")
+            
             if dry_run:
                 _rich_info(
                     "Dry run mode: showing placement without writing files",

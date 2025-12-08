@@ -125,11 +125,13 @@ apm runtime test llm
 
 ## VSCode Integration
 
-APM works natively with VSCode's Context implementation:
+APM works natively with VSCode's GitHub Copilot implementation.
 
-### Native VSCode Context
+> **Auto-Detection**: VSCode integration is automatically enabled when a `.github/` folder exists in your project. If neither `.github/` nor `.claude/` exists, `apm install` skips folder integration (packages are still installed to `apm_modules/`).
 
-VSCode already implements core Context concepts:
+### Native VSCode Primitives
+
+VSCode already implements core primitives for GitHub Copilot:
 
 - **Agents**: AI personas and workflows with `.agent.md` files in `.github/agents/` (legacy: `.chatmode.md` in `.github/chatmodes/`)
 - **Instructions Files**: Modular instructions with `copilot-instructions.md` and `.instructions.md` files
@@ -137,12 +139,12 @@ VSCode already implements core Context concepts:
 
 > **Note**: APM supports both the new `.agent.md` format and legacy `.chatmode.md` format. VSCode provides Quick Fix actions to migrate from `.chatmode.md` to `.agent.md`.
 
-### Automatic Prompt and Agent Integration with APM
+### Automatic Prompt and Agent Integration
 
 APM automatically integrates prompts and agents from installed packages into VSCode's native structure:
 
 ```bash
-# Install APM packages - integration happens automatically
+# Install APM packages - integration happens automatically when .github/ exists
 apm install danielmeppiel/design-guidelines
 
 # Prompts are automatically integrated to:
@@ -204,6 +206,103 @@ apm install danielmeppiel/design-guidelines
 - Seamless `/prompt` command support
 - File-pattern based instruction application
 - Agent support for different personas and workflows
+
+## Claude Integration
+
+APM provides first-class support for Claude Code and Claude Desktop through native format generation.
+
+> **Auto-Detection**: Claude integration is automatically enabled when a `.claude/` folder exists in your project. If neither `.github/` nor `.claude/` exists, `apm install` skips folder integration (packages are still installed to `apm_modules/`).
+
+### Output Files for Claude
+
+When you run `apm compile`, APM generates Claude-native files alongside the standard AGENTS.md:
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Project instructions for Claude (like AGENTS.md but Claude-optimized) |
+| `.claude/commands/*.md` | Slash commands from installed packages |
+| `SKILL.md` | Claude Skills format for Claude Desktop |
+
+### Automatic Command Integration
+
+APM automatically converts `.prompt.md` files from installed packages into Claude slash commands:
+
+```bash
+# Install a package with prompts
+apm install danielmeppiel/design-guidelines
+
+# Result:
+# .claude/commands/accessibility-audit-apm.md   → /accessibility-audit
+# .claude/commands/design-review-apm.md         → /design-review
+```
+
+**How it works:**
+1. `apm install` detects `.prompt.md` files in the package
+2. Converts each to Claude command format in `.claude/commands/`
+3. Adds `-apm` suffix and metadata header for tracking
+4. Updates `.gitignore` to exclude generated commands
+5. `apm uninstall` automatically removes the package's commands
+
+### Target-Specific Compilation
+
+Generate only Claude formats when needed:
+
+```bash
+# Generate all formats (default)
+apm compile
+
+# Generate only Claude formats
+apm compile --target claude
+# Creates: CLAUDE.md, .claude/commands/, SKILL.md
+
+# Generate only VSCode/Copilot formats  
+apm compile --target vscode
+# Creates: AGENTS.md, .github/prompts/, .github/agents/
+```
+
+### Claude Command Format
+
+Generated commands follow Claude's native structure:
+
+```markdown
+<!-- APM Managed: danielmeppiel/design-guidelines@abc123 -->
+# Design Review
+
+Review the current design for accessibility and UI standards.
+
+## Instructions
+[Content from original .prompt.md]
+```
+
+### Example Workflow
+
+```bash
+# 1. Install packages
+apm install danielmeppiel/compliance-rules
+apm install github/awesome-copilot/prompts/code-review.prompt.md
+
+# 2. Compile for Claude
+apm compile --target claude
+
+# 3. In Claude Code, use:
+#    /code-review     → Runs the code review workflow
+#    /gdpr-assessment → Runs GDPR compliance check
+
+# 4. CLAUDE.md provides project context automatically
+```
+
+### Claude Desktop Integration
+
+The generated `SKILL.md` file can be used with Claude Desktop for skill-based interactions. This enables Claude Desktop to understand your project's available capabilities.
+
+### Cleanup and Sync
+
+APM maintains synchronization between packages and Claude commands:
+
+- **Install**: Adds commands for new packages
+- **Uninstall**: Removes only that package's commands  
+- **Update**: Refreshes commands when package version changes
+- **Virtual Packages**: Individual files (e.g., `github/awesome-copilot/prompts/code-review.prompt.md`) are tracked and removed correctly
 
 ## Development Tool Integrations
 

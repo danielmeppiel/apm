@@ -596,6 +596,7 @@ class APMPackage:
     dependencies: Optional[Dict[str, List[Union[DependencyReference, str]]]] = None  # Mixed types for APM/MCP
     scripts: Optional[Dict[str, str]] = None
     package_path: Optional[Path] = None  # Local path to package
+    target: Optional[str] = None  # Target agent: vscode, claude, or all (applies to compile and install)
     
     @classmethod
     def from_apm_yml(cls, apm_yml_path: Path) -> "APMPackage":
@@ -657,7 +658,8 @@ class APMPackage:
             license=data.get('license'),
             dependencies=dependencies,
             scripts=data.get('scripts'),
-            package_path=apm_yml_path.parent
+            package_path=apm_yml_path.parent,
+            target=data.get('target'),
         )
     
     def get_apm_dependencies(self) -> List[DependencyReference]:
