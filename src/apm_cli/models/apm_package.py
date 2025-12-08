@@ -129,6 +129,62 @@ class DependencyReference:
             return f"{self.repo_url}/{self.virtual_path}"
         return self.repo_url
     
+    def get_canonical_dependency_string(self) -> str:
+        """Get the canonical dependency string as stored in apm.yml.
+        
+        This is the unique identifier for a package in the dependency list.
+        It includes:
+        - repo_url (always)
+        - virtual_path (for virtual packages)
+        - Does NOT include: reference (#) or alias (@) as these don't affect identity
+        
+        Returns:
+            str: Canonical dependency string (e.g., "owner/repo" or "owner/repo/collections/name")
+        """
+        return self.get_unique_key()
+    
+    def get_install_path(self, apm_modules_dir: Path) -> Path:
+        """Get the canonical filesystem path where this package should be installed.
+        
+        This is the single source of truth for where a package lives in apm_modules/.
+        
+        For regular packages:
+            - GitHub: apm_modules/owner/repo/
+            - ADO: apm_modules/org/project/repo/
+        
+        For virtual packages:
+            - GitHub: apm_modules/owner/<virtual-package-name>/
+            - ADO: apm_modules/org/project/<virtual-package-name>/
+        
+        Args:
+            apm_modules_dir: Path to the apm_modules directory
+            
+        Returns:
+            Path: Absolute path to the package installation directory
+        """
+        repo_parts = self.repo_url.split("/")
+        
+        if self.is_virtual:
+            # Virtual package: use sanitized package name
+            package_name = self.get_virtual_package_name()
+            if self.is_azure_devops() and len(repo_parts) >= 3:
+                # ADO: org/project/virtual-pkg-name
+                return apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
+            elif len(repo_parts) >= 2:
+                # GitHub: owner/virtual-pkg-name
+                return apm_modules_dir / repo_parts[0] / package_name
+        else:
+            # Regular package: use full repo path
+            if self.is_azure_devops() and len(repo_parts) >= 3:
+                # ADO: org/project/repo
+                return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
+            elif len(repo_parts) >= 2:
+                # GitHub: owner/repo
+                return apm_modules_dir / repo_parts[0] / repo_parts[1]
+        
+        # Fallback: join all parts
+        return apm_modules_dir.joinpath(*repo_parts)
+    
     @classmethod
     def parse(cls, dependency_str: str) -> "DependencyReference":
         """Parse a dependency string into a DependencyReference.
@@ -668,6 +724,22 @@ class PackageInfo:
     install_path: Path
     resolved_reference: Optional[ResolvedReference] = None
     installed_at: Optional[str] = None  # ISO timestamp
+    dependency_ref: Optional["DependencyReference"] = None  # Original dependency reference for canonical string
+    
+    def get_canonical_dependency_string(self) -> str:
+        """Get the canonical dependency string for this package.
+        
+        Used for orphan detection - this is the unique identifier as stored in apm.yml.
+        For virtual packages, includes the full path (e.g., owner/repo/collections/name).
+        For regular packages, just the repo URL (e.g., owner/repo).
+        
+        Returns:
+            str: Canonical dependency string, or package source/name as fallback
+        """
+        if self.dependency_ref:
+            return self.dependency_ref.get_canonical_dependency_string()
+        # Fallback to package source or name
+        return self.package.source or self.package.name or "unknown"
     
     def get_primitives_path(self) -> Path:
         """Get path to the .apm directory for this package."""
