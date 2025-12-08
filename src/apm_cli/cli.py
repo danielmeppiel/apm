@@ -976,13 +976,31 @@ def uninstall(ctx, packages, dry_run):
             except Exception as e:
                 agents_failed += 1
         
+        # Sync skill integration to remove orphaned Claude skills
+        skills_cleaned = 0
+        skills_failed = 0
+        if Path(".claude/skills").exists():
+            try:
+                from apm_cli.models.apm_package import APMPackage
+                from apm_cli.integration.skill_integrator import SkillIntegrator
+                
+                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+                integrator = SkillIntegrator()
+                cleanup_result = integrator.sync_integration(apm_package, Path("."))
+                skills_cleaned = cleanup_result.get('files_removed', 0)
+                skills_failed = cleanup_result.get('errors', 0)
+            except Exception as e:
+                skills_failed += 1
+        
         # Show cleanup feedback
         if prompts_cleaned > 0:
             _rich_info(f"✓ Cleaned up {prompts_cleaned} integrated prompt(s)")
         if agents_cleaned > 0:
             _rich_info(f"✓ Cleaned up {agents_cleaned} integrated agent(s)")
-        if prompts_failed > 0 or agents_failed > 0:
-            _rich_warning(f"⚠ Failed to clean up {prompts_failed + agents_failed} file(s)")
+        if skills_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {skills_cleaned} Claude skill(s)")
+        if prompts_failed > 0 or agents_failed > 0 or skills_failed > 0:
+            _rich_warning(f"⚠ Failed to clean up {prompts_failed + agents_failed + skills_failed} file(s)")
         
         # Final summary
         summary_lines = []

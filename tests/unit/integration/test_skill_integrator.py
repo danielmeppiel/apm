@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
 from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType
+from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference
 
 
 class TestToHyphenCase:
@@ -91,6 +91,12 @@ class TestSkillIntegrator:
     def teardown_method(self):
         """Clean up after tests."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def _get_skill_path(self, package_info) -> Path:
+        """Get the expected skill directory path for a package."""
+        source = package_info.package.source or package_info.package.name
+        skill_name = to_hyphen_case(source)
+        return self.project_root / ".claude" / "skills" / skill_name
     
     # ========== should_integrate tests ==========
     
@@ -280,45 +286,54 @@ class TestSkillIntegrator:
         package_dir.mkdir()
         (package_dir / "test.prompt.md").write_text("# Test Prompt")
         
-        references_dir = self.project_root / "references"
+        skill_dir = self.project_root / "skill"
+        skill_dir.mkdir()
         
-        copied = self.integrator._copy_prompts_to_references(package_dir, references_dir)
+        primitives = {'prompts': [package_dir / "test.prompt.md"]}
+        copied = self.integrator._copy_primitives_to_skill(primitives, skill_dir)
         
         assert copied == 1
-        assert references_dir.exists()
-        assert (references_dir / "test.prompt.md").exists()
+        assert (skill_dir / "prompts").exists()
+        assert (skill_dir / "prompts" / "test.prompt.md").exists()
     
-    def test_copy_prompts_to_references_copies_all_prompts(self):
-        """Test that all prompt files are copied."""
+    def test_copy_primitives_copies_all_types(self):
+        """Test that all primitive types are copied to correct subdirectories."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
+        apm_instructions = package_dir / ".apm" / "instructions"
+        apm_instructions.mkdir(parents=True)
         apm_prompts = package_dir / ".apm" / "prompts"
         apm_prompts.mkdir(parents=True)
         
+        (apm_instructions / "coding.instructions.md").write_text("# Coding")
+        (apm_prompts / "review.prompt.md").write_text("# Review")
         (package_dir / "root.prompt.md").write_text("# Root")
-        (apm_prompts / "nested.prompt.md").write_text("# Nested")
         
-        references_dir = self.project_root / "references"
+        skill_dir = self.project_root / "skill"
+        skill_dir.mkdir()
         
-        copied = self.integrator._copy_prompts_to_references(package_dir, references_dir)
+        primitives = {
+            'instructions': [apm_instructions / "coding.instructions.md"],
+            'prompts': [apm_prompts / "review.prompt.md", package_dir / "root.prompt.md"]
+        }
+        copied = self.integrator._copy_primitives_to_skill(primitives, skill_dir)
         
-        assert copied == 2
-        assert (references_dir / "root.prompt.md").exists()
-        assert (references_dir / "nested.prompt.md").exists()
+        assert copied == 3
+        assert (skill_dir / "instructions" / "coding.instructions.md").exists()
+        assert (skill_dir / "prompts" / "review.prompt.md").exists()
+        assert (skill_dir / "prompts" / "root.prompt.md").exists()
     
-    def test_copy_prompts_to_references_returns_zero_when_no_prompts(self):
-        """Test returns 0 when no prompt files exist."""
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
+    def test_copy_primitives_returns_zero_when_empty(self):
+        """Test returns 0 when no primitives exist."""
+        skill_dir = self.project_root / "skill"
+        skill_dir.mkdir()
         
-        references_dir = self.project_root / "references"
-        
-        copied = self.integrator._copy_prompts_to_references(package_dir, references_dir)
+        primitives = {}
+        copied = self.integrator._copy_primitives_to_skill(primitives, skill_dir)
         
         assert copied == 0
-        assert not references_dir.exists()
     
-    def test_copy_prompts_to_references_preserves_content(self):
+    def test_copy_primitives_preserves_content(self):
         """Test that file content is preserved when copying."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
@@ -326,11 +341,13 @@ class TestSkillIntegrator:
         original_content = "# Test Prompt\n\nThis is the content."
         (package_dir / "test.prompt.md").write_text(original_content)
         
-        references_dir = self.project_root / "references"
+        skill_dir = self.project_root / "skill"
+        skill_dir.mkdir()
         
-        self.integrator._copy_prompts_to_references(package_dir, references_dir)
+        primitives = {'prompts': [package_dir / "test.prompt.md"]}
+        self.integrator._copy_primitives_to_skill(primitives, skill_dir)
         
-        copied_content = (references_dir / "test.prompt.md").read_text()
+        copied_content = (skill_dir / "prompts" / "test.prompt.md").read_text()
         assert copied_content == original_content
     
     # ========== integrate_package_skill tests ==========
@@ -342,7 +359,8 @@ class TestSkillIntegrator:
         commit: str = "abc123",
         install_path: Path = None,
         source: str = None,
-        description: str = None
+        description: str = None,
+        dependency_ref: DependencyReference = None
     ) -> PackageInfo:
         """Helper to create PackageInfo objects for tests."""
         package = APMPackage(
@@ -362,7 +380,8 @@ class TestSkillIntegrator:
             package=package,
             install_path=install_path or self.project_root / "package",
             resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref
         )
     
     def test_integrate_package_skill_creates_skill_md(self):
@@ -373,14 +392,15 @@ class TestSkillIntegrator:
         (apm_instructions / "coding.instructions.md").write_text("# Coding Guidelines")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
         assert result.skill_created is True
         assert result.skill_updated is False
         assert result.skill_skipped is False
-        assert result.skill_path == package_dir / "SKILL.md"
-        assert (package_dir / "SKILL.md").exists()
+        assert result.skill_path == skill_dir / "SKILL.md"
+        assert (skill_dir / "SKILL.md").exists()
     
     def test_integrate_package_skill_skips_when_no_content(self):
         """Test that integration is skipped when package has no primitives."""
@@ -397,20 +417,98 @@ class TestSkillIntegrator:
         assert result.skill_path is None
         assert not (package_dir / "SKILL.md").exists()
     
-    def test_integrate_package_skill_creates_references_directory(self):
-        """Test that references directory is created with prompt files."""
+    def test_integrate_package_skill_skips_virtual_packages(self):
+        """Test that virtual packages (single files) do not generate Skills.
+        
+        Virtual packages are individual files like owner/repo/agents/myagent.agent.md.
+        They should not generate Skills because:
+        1. Multiple virtual packages from the same repo would collide on skill name
+        2. A single file doesn't constitute a proper skill with context
+        """
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        # Even if there's content, virtual packages should be skipped
+        (package_dir / "terraform.agent.md").write_text("# Terraform Agent\nSome agent content")
+        
+        # Create a virtual package dependency reference
+        virtual_dep_ref = DependencyReference.parse("github/awesome-copilot/agents/terraform.agent.md")
+        assert virtual_dep_ref.is_virtual  # Sanity check
+        
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            name="terraform",
+            source="github/awesome-copilot",
+            dependency_ref=virtual_dep_ref
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        # Virtual packages should be skipped
+        assert result.skill_created is False
+        assert result.skill_updated is False
+        assert result.skill_skipped is True
+        assert result.skill_path is None
+        # No skill directory should be created
+        skill_dir = self.project_root / ".claude" / "skills" / "awesome-copilot"
+        assert not skill_dir.exists()
+    
+    def test_integrate_package_skill_multiple_virtual_packages_no_collision(self):
+        """Test that multiple virtual packages from same repo don't create conflicting Skills.
+        
+        This is a regression test: previously both would try to create 'awesome-copilot' skill.
+        """
+        # First virtual package
+        pkg1_dir = self.project_root / "pkg1"
+        pkg1_dir.mkdir()
+        (pkg1_dir / "jfrog-sec.agent.md").write_text("# JFrog Security Agent")
+        
+        virtual_dep1 = DependencyReference.parse("github/awesome-copilot/agents/jfrog-sec.agent.md")
+        pkg1_info = self._create_package_info(
+            install_path=pkg1_dir,
+            name="jfrog-sec",
+            source="github/awesome-copilot",
+            dependency_ref=virtual_dep1
+        )
+        
+        # Second virtual package from same repo
+        pkg2_dir = self.project_root / "pkg2"
+        pkg2_dir.mkdir()
+        (pkg2_dir / "terraform.agent.md").write_text("# Terraform Agent")
+        
+        virtual_dep2 = DependencyReference.parse("github/awesome-copilot/agents/terraform.agent.md")
+        pkg2_info = self._create_package_info(
+            install_path=pkg2_dir,
+            name="terraform",
+            source="github/awesome-copilot",
+            dependency_ref=virtual_dep2
+        )
+        
+        # Both should be skipped, no collision occurs
+        result1 = self.integrator.integrate_package_skill(pkg1_info, self.project_root)
+        result2 = self.integrator.integrate_package_skill(pkg2_info, self.project_root)
+        
+        assert result1.skill_skipped is True
+        assert result2.skill_skipped is True
+        
+        # No skill directories should exist
+        skills_dir = self.project_root / ".claude" / "skills"
+        assert not skills_dir.exists()
+
+    def test_integrate_package_skill_creates_prompts_subdirectory(self):
+        """Test that prompts subdirectory is created with prompt files."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "test.prompt.md").write_text("# Test Prompt")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
         assert result.skill_created is True
         assert result.references_copied == 1
-        assert (package_dir / "references").exists()
-        assert (package_dir / "references" / "test.prompt.md").exists()
+        assert (skill_dir / "prompts").exists()
+        assert (skill_dir / "prompts" / "test.prompt.md").exists()
     
     def test_integrate_package_skill_yaml_frontmatter_has_required_fields(self):
         """Test that generated SKILL.md has required YAML frontmatter fields."""
@@ -426,10 +524,11 @@ class TestSkillIntegrator:
             install_path=package_dir,
             description="A test package"
         )
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        content = (package_dir / "SKILL.md").read_text()
+        content = (skill_dir / "SKILL.md").read_text()
         
         # Check YAML frontmatter structure
         assert content.startswith("---")
@@ -454,63 +553,75 @@ class TestSkillIntegrator:
             install_path=package_dir,
             source="github.com/owner/MyAwesomePackage"
         )
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        content = (package_dir / "SKILL.md").read_text()
+        content = (skill_dir / "SKILL.md").read_text()
         
         # The name should be converted to hyphen-case
         assert "name: my-awesome-package" in content
     
     def test_integrate_package_skill_includes_instructions_section(self):
-        """Test that SKILL.md includes instructions content."""
+        """Test that SKILL.md references instructions and copies files."""
         package_dir = self.project_root / "package"
         apm_instructions = package_dir / ".apm" / "instructions"
         apm_instructions.mkdir(parents=True)
         (apm_instructions / "coding.instructions.md").write_text("Follow coding standards")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        content = (package_dir / "SKILL.md").read_text()
+        # SKILL.md should be concise with resource table
+        content = (skill_dir / "SKILL.md").read_text()
+        assert "What's Included" in content
+        assert "instructions/" in content
         
-        assert "## Instructions" in content
-        assert "### Coding" in content
-        assert "Follow coding standards" in content
+        # Actual file should be in subdirectory
+        assert (skill_dir / "instructions" / "coding.instructions.md").exists()
+        copied_content = (skill_dir / "instructions" / "coding.instructions.md").read_text()
+        assert "Follow coding standards" in copied_content
     
     def test_integrate_package_skill_includes_agents_section(self):
-        """Test that SKILL.md includes agents content."""
+        """Test that SKILL.md references agents and copies files."""
         package_dir = self.project_root / "package"
         apm_agents = package_dir / ".apm" / "agents"
         apm_agents.mkdir(parents=True)
         (apm_agents / "reviewer.agent.md").write_text("Review code for quality")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        content = (package_dir / "SKILL.md").read_text()
+        content = (skill_dir / "SKILL.md").read_text()
+        assert "What's Included" in content
+        assert "agents/" in content
         
-        assert "## Agents" in content
-        assert "### Reviewer" in content
-        assert "Review code for quality" in content
+        # Actual file should be in subdirectory
+        assert (skill_dir / "agents" / "reviewer.agent.md").exists()
+        copied_content = (skill_dir / "agents" / "reviewer.agent.md").read_text()
+        assert "Review code for quality" in copied_content
     
     def test_integrate_package_skill_includes_prompts_section(self):
-        """Test that SKILL.md includes prompts reference section."""
+        """Test that SKILL.md references prompts and copies files."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "design-review.prompt.md").write_text("# Design Review")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        content = (package_dir / "SKILL.md").read_text()
+        content = (skill_dir / "SKILL.md").read_text()
+        assert "What's Included" in content
+        assert "prompts/" in content
         
-        assert "## Available Prompts" in content
-        assert "references/" in content
-        assert "design-review.prompt.md" in content
+        # Actual file should be in subdirectory
+        assert (skill_dir / "prompts" / "design-review.prompt.md").exists()
     
     def test_integrate_package_skill_updates_when_version_changes(self):
         """Test that SKILL.md is updated when package version changes."""
@@ -518,6 +629,16 @@ class TestSkillIntegrator:
         apm_agents = package_dir / ".apm" / "agents"
         apm_agents.mkdir(parents=True)
         (apm_agents / "helper.agent.md").write_text("# Helper")
+        
+        # Create package_info first to get the skill path
+        package_info = self._create_package_info(
+            version="2.0.0",
+            commit="abc123",
+            install_path=package_dir
+        )
+        skill_dir = self._get_skill_path(package_info)
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_path = skill_dir / "SKILL.md"
         
         # Create initial SKILL.md with old version
         old_content = """---
@@ -532,15 +653,7 @@ metadata:
 ---
 
 # Old content"""
-        skill_path = package_dir / "SKILL.md"
         skill_path.write_text(old_content)
-        
-        # Install with new version
-        package_info = self._create_package_info(
-            version="2.0.0",
-            commit="abc123",
-            install_path=package_dir
-        )
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
@@ -558,6 +671,16 @@ metadata:
         apm_agents.mkdir(parents=True)
         (apm_agents / "helper.agent.md").write_text("# Helper")
         
+        # Create package_info first to get the skill path
+        package_info = self._create_package_info(
+            version="1.0.0",
+            commit="def456",  # New commit
+            install_path=package_dir
+        )
+        skill_dir = self._get_skill_path(package_info)
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_path = skill_dir / "SKILL.md"
+        
         # Create initial SKILL.md with old commit
         old_content = """---
 name: test-pkg
@@ -571,15 +694,7 @@ metadata:
 ---
 
 # Old content"""
-        skill_path = package_dir / "SKILL.md"
         skill_path.write_text(old_content)
-        
-        # Install with new commit
-        package_info = self._create_package_info(
-            version="1.0.0",
-            commit="def456",  # New commit
-            install_path=package_dir
-        )
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
@@ -594,6 +709,16 @@ metadata:
         apm_agents.mkdir(parents=True)
         (apm_agents / "helper.agent.md").write_text("# Helper")
         
+        # Create package_info first to get the skill path
+        package_info = self._create_package_info(
+            version="1.0.0",
+            commit="abc123",
+            install_path=package_dir
+        )
+        skill_dir = self._get_skill_path(package_info)
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_path = skill_dir / "SKILL.md"
+        
         # Create initial SKILL.md with same version and commit
         old_content = """---
 name: test-pkg
@@ -607,15 +732,7 @@ metadata:
 ---
 
 # Old content"""
-        skill_path = package_dir / "SKILL.md"
         skill_path.write_text(old_content)
-        
-        # Install with same version and commit
-        package_info = self._create_package_info(
-            version="1.0.0",
-            commit="abc123",
-            install_path=package_dir
-        )
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
@@ -630,11 +747,13 @@ metadata:
         (package_dir / "review.prompt.md").write_text("# Review Prompt")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
         assert result.skill_created is True
         assert result.references_copied == 1
+        assert (skill_dir / "SKILL.md").exists()
     
     def test_integrate_package_skill_with_only_context(self):
         """Test integration works with only context files."""
@@ -644,12 +763,15 @@ metadata:
         (apm_context / "project.context.md").write_text("# Project Context")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
         assert result.skill_created is True
-        content = (package_dir / "SKILL.md").read_text()
-        assert "## Context" in content
+        content = (skill_dir / "SKILL.md").read_text()
+        assert "What's Included" in content
+        assert "context/" in content
+        assert (skill_dir / "context" / "project.context.md").exists()
     
     # ========== YAML frontmatter validation tests ==========
     
@@ -665,10 +787,11 @@ metadata:
             install_path=package_dir,
             description=long_description
         )
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        content = (package_dir / "SKILL.md").read_text()
+        content = (skill_dir / "SKILL.md").read_text()
         
         # Parse the frontmatter to check description length
         import frontmatter
@@ -683,16 +806,17 @@ metadata:
         (apm_instructions / "test.instructions.md").write_text("# Test Content")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        content = (package_dir / "SKILL.md").read_text()
+        content = (skill_dir / "SKILL.md").read_text()
         assert "apm_content_hash:" in content
     
     # ========== update_gitignore_for_skills tests ==========
     
     def test_update_gitignore_adds_skill_patterns(self):
-        """Test that gitignore is updated with SKILL.md patterns."""
+        """Test that gitignore is updated with skill patterns."""
         gitignore = self.project_root / ".gitignore"
         gitignore.write_text("# Existing content\napm_modules/\n")
         
@@ -700,13 +824,12 @@ metadata:
         
         assert updated is True
         content = gitignore.read_text()
-        assert "apm_modules/**/SKILL.md" in content
-        assert "apm_modules/**/references/" in content
+        assert ".claude/skills/*-apm/" in content
     
     def test_update_gitignore_skips_if_patterns_exist(self):
         """Test that gitignore update is skipped if patterns already exist."""
         gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("apm_modules/**/SKILL.md\napm_modules/**/references/\n")
+        gitignore.write_text(".claude/skills/*-apm/\n# APM-generated Claude skills\n")
         
         updated = self.integrator.update_gitignore_for_skills(self.project_root)
         
@@ -720,7 +843,7 @@ metadata:
         gitignore = self.project_root / ".gitignore"
         assert gitignore.exists()
         content = gitignore.read_text()
-        assert "apm_modules/**/SKILL.md" in content
+        assert ".claude/skills/*-apm/" in content
     
     # ========== sync_integration tests ==========
     
@@ -736,7 +859,7 @@ metadata:
     # ========== Edge cases ==========
     
     def test_integrate_handles_frontmatter_in_source_files(self):
-        """Test that frontmatter is stripped from source files."""
+        """Test that source files are copied to subdirectories (frontmatter preserved)."""
         package_dir = self.project_root / "package"
         apm_instructions = package_dir / ".apm" / "instructions"
         apm_instructions.mkdir(parents=True)
@@ -752,14 +875,17 @@ This is the content."""
         (apm_instructions / "test.instructions.md").write_text(content_with_frontmatter)
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        skill_content = (package_dir / "SKILL.md").read_text()
+        # File should be copied to subdirectory
+        copied_file = skill_dir / "instructions" / "test.instructions.md"
+        assert copied_file.exists()
         
-        # The content should be included without duplicate frontmatter
-        assert "# Actual Instructions" in skill_content
-        assert "This is the content." in skill_content
+        copied_content = copied_file.read_text()
+        assert "# Actual Instructions" in copied_content
+        assert "This is the content." in copied_content
     
     def test_integrate_with_multiple_primitive_types(self):
         """Test integration with all primitive types present."""
@@ -780,17 +906,21 @@ This is the content."""
         (package_dir / "workflow.prompt.md").write_text("# Workflow")
         
         package_info = self._create_package_info(install_path=package_dir)
+        skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
         assert result.skill_created is True
-        assert result.references_copied == 1
+        assert result.references_copied == 4  # All 4 primitives copied
         
-        skill_content = (package_dir / "SKILL.md").read_text()
-        assert "## Instructions" in skill_content
-        assert "## Agents" in skill_content
-        assert "## Context" in skill_content
-        assert "## Available Prompts" in skill_content
+        skill_content = (skill_dir / "SKILL.md").read_text()
+        assert "What's Included" in skill_content
+        
+        # All subdirectories should exist with files
+        assert (skill_dir / "instructions" / "coding.instructions.md").exists()
+        assert (skill_dir / "agents" / "reviewer.agent.md").exists()
+        assert (skill_dir / "context" / "project.context.md").exists()
+        assert (skill_dir / "prompts" / "workflow.prompt.md").exists()
 
 
 class TestSkillIntegrationResult:
