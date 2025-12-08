@@ -4,54 +4,98 @@ Welcome to APM - the AI Package Manager that transforms any project into reliabl
 
 ## Prerequisites
 
-### GitHub Tokens Required
+### Token Configuration (All Optional)
 
-APM requires GitHub tokens for accessing models and package registries. Get your tokens at [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
+APM works without any tokens for public modules. Tokens unlock additional capabilities:
 
-#### Required Tokens
+#### For Private Module Access
 
-##### GITHUB_APM_PAT (Fine-grained PAT - Recommended)
+| Variable | Purpose | When Needed |
+|----------|---------|-------------|
+| `GITHUB_APM_PAT` | Private GitHub/GHE repos | Private GitHub packages |
+| `ADO_APM_PAT` | Private Azure DevOps repos | Private ADO packages |
+
+##### GITHUB_APM_PAT
 ```bash
 export GITHUB_APM_PAT=ghp_finegrained_token_here  
 ```
-- **Purpose**: Access to private APM modules
+- **Purpose**: Access to private APM modules on GitHub/GitHub Enterprise
 - **Type**: Fine-grained Personal Access Token (org or user-scoped)
-- **Permissions**: Repository read access to whatever repositories you want APM to install APM modules from
-- **Required**: Only for private modules (public modules work without auth)
-- **Fallback**: Public module installation works without any token
+- **Permissions**: Repository read access to repositories you want to install from
 
-##### GITHUB_TOKEN (User PAT - Optional)
+##### ADO_APM_PAT
 ```bash
-export GITHUB_TOKEN=ghp_user_token_here
+export ADO_APM_PAT=your_ado_pat
 ```
-- **Purpose**: Codex CLI authentication for GitHub Models free inference
-- **Type**: Fine-grained Personal Access Token (user-scoped)
-- **Permissions**: Models scope (read)
-- **Required**: Only when using Codex CLI with GitHub Models
-- **Fallback**: Used by Codex CLI when no dedicated token is provided
+- **Purpose**: Access to private APM modules on Azure DevOps
+- **Type**: Azure DevOps Personal Access Token
+- **Permissions**: Code (Read) scope
+
+#### For Running Prompts (`apm run`)
+
+| Variable | Purpose | When Needed |
+|----------|---------|-------------|
+| `GITHUB_COPILOT_PAT` | Copilot runtime | `apm run` with Copilot |
+
+##### GITHUB_COPILOT_PAT
+```bash
+export GITHUB_COPILOT_PAT=ghp_copilot_token
+```
+- **Purpose**: Authentication for `apm run` with Copilot runtime
+- **Type**: Personal Access Token with Copilot access
+- **Fallback**: Falls back to `GITHUB_TOKEN` if not set
+
+#### Host Configuration
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `GITHUB_HOST` | Default host for bare package names | `github.com` |
+
+##### GITHUB_HOST
+```bash
+export GITHUB_HOST=github.company.com
+```
+- **Purpose**: Set default host for bare package names (e.g., `owner/repo`)
+- **Default**: `github.com`
+- **Note**: Azure DevOps has no equivalent - always use FQDN syntax (e.g., `dev.azure.com/org/project/repo`)
 
 ### Common Setup Scenarios
 
-#### Scenario 1: Basic Setup (Public modules + Codex)
+#### Scenario 1: Public Modules Only (Most Users)
 ```bash
-export GITHUB_TOKEN=ghp_models_token         # For GitHub Models (optional)
+# No tokens needed - just works!
+apm install danielmeppiel/compliance-rules
+apm compile
 ```
 
-#### Scenario 2: Enterprise Setup (Private org modules + GitHub Models)
+#### Scenario 2: Private GitHub Modules
 ```bash
-export GITHUB_APM_PAT=ghp_org_token          # For private org modules
-export GITHUB_TOKEN=ghp_models_token         # For GitHub Models free inference
+export GITHUB_APM_PAT=ghp_org_token    # For GitHub/GHE
 ```
 
-#### Scenario 3: Minimal Setup (Public modules only)
+#### Scenario 3: Private Azure DevOps Modules  
 ```bash
-# No tokens needed for public modules
-# APM will work with public modules without any authentication
+export ADO_APM_PAT=your_ado_pat
+# Note: Always use FQDN syntax for ADO
+apm install dev.azure.com/org/project/repo
+```
+
+#### Scenario 4: GitHub Enterprise as Default
+```bash
+export GITHUB_HOST=github.company.com
+export GITHUB_APM_PAT=ghp_enterprise_token
+# Now bare packages resolve to your enterprise
+apm install team/package  # → github.company.com/team/package
+```
+
+#### Scenario 5: Running Prompts
+```bash
+export GITHUB_COPILOT_PAT=ghp_copilot_token  # For apm run
 ```
 
 ## Package Sources
 
-APM installs packages from multiple sources that can be combined. Use the format that matches your repository host:
+APM installs packages from multiple sources. Use the format that matches your repository host:
 
 | Source | Format | Example |
 |--------|--------|---------|
@@ -62,173 +106,71 @@ APM installs packages from multiple sources that can be combined. Use the format
 
 ### GitHub Enterprise Support
 
-APM supports all GitHub Enterprise deployment models. Configuration depends on your organization's GitHub deployment.
+APM supports all GitHub Enterprise deployment models via `GITHUB_HOST` (see [Host Configuration](#host-configuration)).
 
-#### Default Behavior (github.com)
-
-By default, APM resolves package references to `github.com`:
+#### Examples
 
 ```bash
-apm install danielmeppiel/compliance-rules
-# Resolves to: github.com/danielmeppiel/compliance-rules
-```
-
-#### GitHub Enterprise Server (Self-Hosted)
-
-For organizations using self-hosted GitHub Enterprise with custom domains:
-
-```bash
-# Set your enterprise domain as default
+# GitHub Enterprise Server
 export GITHUB_HOST=github.company.com
-export GITHUB_APM_PAT=ghp_enterprise_token
+apm install team/package  # → github.company.com/team/package
 
-# Packages now resolve to your enterprise domain
-apm install team/internal-package
-# Resolves to: github.company.com/team/internal-package
-```
-
-#### GitHub Enterprise Cloud with Data Residency
-
-For organizations using GitHub Enterprise Cloud with regional data residency (`.ghe.com` domains):
-
-```bash
-# Set your GHE Cloud domain as default
+# GitHub Enterprise Cloud with Data Residency
 export GITHUB_HOST=myorg.ghe.com
-export GITHUB_APM_PAT=ghp_data_residency_token
+apm install platform/standards  # → myorg.ghe.com/platform/standards
 
-# Packages now resolve to your data residency domain
-apm install platform/standards
-# Resolves to: myorg.ghe.com/platform/standards
-```
-
-#### Multiple GitHub Instances
-
-If your organization uses multiple GitHub instances simultaneously:
-
-```bash
-# Configure primary host for bare package names
-export GITHUB_HOST=github.company.com
-
-# Bare packages use GITHUB_HOST
-apm install team/package
-# Resolves to: github.company.com/team/package
-
-# FQDN packages work directly (no configuration needed)
-apm install partner.ghe.com/external/integration
-apm install vendor.github.io/third-party/tool
+# Multiple instances: Use FQDN for explicit hosts
+apm install partner.ghe.com/external/integration  # FQDN always works
 apm install github.com/public/open-source-package
 ```
 
-**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names (e.g., `team/repo`). Use FQDN syntax (e.g., `host.com/org/repo`) to explicitly specify any Git host. No allowlist configuration needed.
+**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax to explicitly specify any Git host.
 
 ### Azure DevOps Support
 
-APM supports Azure DevOps Services (cloud) and Azure DevOps Server (self-hosted).
+APM supports Azure DevOps Services (cloud) and Azure DevOps Server (self-hosted). **Note:** There is no `ADO_HOST` equivalent - Azure DevOps always requires FQDN syntax.
 
-#### Azure DevOps URL Format
+#### URL Format
 
-Azure DevOps uses a different URL structure than GitHub:
-- **GitHub**: `owner/repo` (2 segments)
-- **Azure DevOps**: `org/project/repo` (3 segments)
+Azure DevOps uses 3 segments vs GitHub's 2:
+- **GitHub**: `owner/repo`
+- **Azure DevOps**: `org/project/repo`
 
-The `_git` segment in Azure DevOps URLs is handled automatically:
 ```bash
-# Both formats work:
+# Both formats work (the _git segment is optional):
+apm install dev.azure.com/myorg/myproject/myrepo
 apm install dev.azure.com/myorg/myproject/_git/myrepo
-apm install dev.azure.com/myorg/myproject/myrepo
-```
-
-#### Azure DevOps Services (Cloud)
-
-For Azure DevOps hosted at `dev.azure.com`:
-
-```bash
-# Full FQDN syntax (recommended)
-apm install dev.azure.com/myorg/myproject/myrepo
 
 # With git reference
 apm install dev.azure.com/myorg/myproject/myrepo#main
-```
 
-#### Azure DevOps Authentication
-
-Set `ADO_APM_PAT` with an Azure DevOps Personal Access Token:
-
-1. Go to: `https://dev.azure.com/{org}/_usersSettings/tokens`
-2. Create PAT with **Code (Read)** scope
-
-```bash
-export ADO_APM_PAT=your_ado_pat
-apm install dev.azure.com/myorg/myproject/myrepo
-```
-
-#### Legacy visualstudio.com URLs
-
-Legacy Azure DevOps URLs are also supported:
-
-```bash
+# Legacy visualstudio.com URLs
 apm install mycompany.visualstudio.com/myorg/myproject/myrepo
-```
 
-#### Azure DevOps Server (Self-Hosted)
-
-For self-hosted Azure DevOps Server instances:
-
-```bash
-# Set your Azure DevOps Server PAT
-export ADO_APM_PAT=your_ado_server_pat
-
-# Install using full FQDN with org/project/repo format
+# Self-hosted Azure DevOps Server
 apm install ado.company.internal/myorg/myproject/myrepo
-```
 
-#### Mixed GitHub and Azure DevOps
-
-If your organization uses both GitHub and Azure DevOps:
-
-```bash
-# GitHub token for GitHub.com and GitHub Enterprise
-export GITHUB_APM_PAT=your_github_pat
-
-# ADO token for Azure DevOps (separate token required)
-export ADO_APM_PAT=your_ado_pat
-
-# Optional: Set default host for bare package names
-export GITHUB_HOST=github.company.com
-
-# Install from GitHub (2-segment format)
-apm install team/package
-
-# Install from GitHub Enterprise (FQDN)
-apm install ghe.company.com/team/package
-
-# Install from Azure DevOps (3-segment format with FQDN)
-apm install dev.azure.com/azure-org/azure-project/compliance-rules
-```
-
-#### Virtual Packages on Azure DevOps
-
-Virtual packages (individual files) work with Azure DevOps using the 4-segment format:
-
-```bash
-# Install individual prompt file from ADO
+# Virtual packages (individual files)
 apm install dev.azure.com/myorg/myproject/myrepo/prompts/code-review.prompt.md
 ```
 
+For authentication, see [Token Configuration](#token-configuration-all-optional).
+
 ### Token Creation Guide
 
-1. **Create Fine-grained PAT** for `GITHUB_APM_PAT`:
+1. **Create Fine-grained PAT** for `GITHUB_APM_PAT` (Private GitHub modules):
    - Go to [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)  
    - Select "Fine-grained Personal Access Token"
    - Scope: Organization or Personal account (as needed)
    - Permissions: Repository read access
 
+2. **Create Azure DevOps PAT** for `ADO_APM_PAT` (Private ADO modules):
+   - Go to `https://dev.azure.com/{org}/_usersSettings/tokens`
+   - Create PAT with **Code (Read)** scope
 
-2. **Create User PAT** for `GITHUB_TOKEN` (if using Codex with GitHub Models):
-   - Go to [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)
-   - Select "Fine-grained Personal Access Token" 
-   - Permissions: Models scope with read access
-   - Required for Codex CLI to unlock free GitHub Models inference
+3. **Create Copilot PAT** for `GITHUB_COPILOT_PAT` (Running prompts):
+   - Go to [github.com/settings/tokens](https://github.com/settings/tokens)
+   - Create token with Copilot access
 
 ## Installation
 

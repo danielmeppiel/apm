@@ -134,6 +134,9 @@ apm install danielmeppiel/design-guidelines
 # Add multiple packages and install
 apm install org/pkg1 org/pkg2
 
+# Install a Claude Skill from a subdirectory
+apm install ComposioHQ/awesome-claude-skills/brand-guidelines
+
 # Install only APM dependencies (skip MCP servers)
 apm install --only=apm
 
@@ -156,7 +159,13 @@ apm install --exclude codex
 - **With apm.yml**: Works as before - installs existing dependencies or adds new packages
 
 **Dependency Types:**
-- **APM Dependencies**: GitHub repositories containing `.apm/` context collections
+
+- **APM Dependencies**: GitHub repositories containing `apm.yml`
+- **Claude Skills**: Repositories with `SKILL.md` (auto-generates `apm.yml` upon installation)
+- **Virtual Packages**: Single files or collections installed directly from URLs
+  - Single `.prompt.md` or `.agent.md` files from any GitHub repository
+  - Collections from curated sources (e.g., `github/awesome-copilot`)
+  - Example: `apm install github/awesome-copilot/prompts/code-review.prompt.md`
 - **MCP Dependencies**: Model Context Protocol servers for runtime integration
 
 **Working Example with Dependencies:**

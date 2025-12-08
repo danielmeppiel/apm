@@ -82,8 +82,40 @@ class Context:
         return errors
 
 
+@dataclass
+class Skill:
+    """Represents a SKILL.md primitive (package meta-guide).
+    
+    SKILL.md is an optional file at the package root that describes
+    how to use the package. It's the fourth APM primitive type.
+    
+    For Claude: SKILL.md is used natively for contextual activation.
+    For VSCode: SKILL.md is transformed to .agent.md for dropdown selection.
+    """
+    name: str
+    file_path: Path
+    description: str
+    content: str
+    source: Optional[str] = None  # Source of primitive: "local" or "dependency:{package_name}"
+    
+    def validate(self) -> List[str]:
+        """Validate skill structure.
+        
+        Returns:
+            List[str]: List of validation errors.
+        """
+        errors = []
+        if not self.name:
+            errors.append("Missing 'name' in frontmatter")
+        if not self.description:
+            errors.append("Missing 'description' in frontmatter")
+        if not self.content.strip():
+            errors.append("Empty content")
+        return errors
+
+
 # Union type for all primitive types
-Primitive = Union[Chatmode, Instruction, Context]
+Primitive = Union[Chatmode, Instruction, Context, Skill]
 
 
 @dataclass
@@ -107,12 +139,14 @@ class PrimitiveCollection:
     chatmodes: List[Chatmode]
     instructions: List[Instruction]  
     contexts: List[Context]
+    skills: List[Skill]  # SKILL.md primitives (package meta-guides)
     conflicts: List[PrimitiveConflict]  # Track conflicts during discovery
     
     def __init__(self):
         self.chatmodes = []
         self.instructions = []
         self.contexts = []
+        self.skills = []
         self.conflicts = []
     
     def add_primitive(self, primitive: Primitive) -> None:
@@ -128,6 +162,8 @@ class PrimitiveCollection:
             self._add_with_conflict_detection(primitive, self.instructions, "instruction")
         elif isinstance(primitive, Context):
             self._add_with_conflict_detection(primitive, self.contexts, "context")
+        elif isinstance(primitive, Skill):
+            self._add_with_conflict_detection(primitive, self.skills, "skill")
         else:
             raise ValueError(f"Unknown primitive type: {type(primitive)}")
     
@@ -192,11 +228,11 @@ class PrimitiveCollection:
     
     def all_primitives(self) -> List[Primitive]:
         """Get all primitives as a single list."""
-        return self.chatmodes + self.instructions + self.contexts
+        return self.chatmodes + self.instructions + self.contexts + self.skills
     
     def count(self) -> int:
         """Get total count of all primitives."""
-        return len(self.chatmodes) + len(self.instructions) + len(self.contexts)
+        return len(self.chatmodes) + len(self.instructions) + len(self.contexts) + len(self.skills)
     
     def has_conflicts(self) -> bool:
         """Check if any conflicts were detected during discovery."""

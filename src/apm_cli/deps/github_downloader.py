@@ -19,6 +19,7 @@ from ..models.apm_package import (
     PackageInfo, 
     ResolvedReference, 
     GitReferenceType,
+    PackageType,
     validate_apm_package,
     APMPackage
 )
@@ -585,7 +586,12 @@ class GitHubPackageDownloader:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
     
     def validate_virtual_package_exists(self, dep_ref: DependencyReference) -> bool:
-        """Validate that a virtual package (file or collection) exists on GitHub.
+        """Validate that a virtual package (file, collection, or subdirectory) exists on GitHub.
+        
+        Supports:
+        - Virtual files: owner/repo/path/file.prompt.md
+        - Collections: owner/repo/collections/name (checks for .collection.yml)
+        - Subdirectory packages: owner/repo/path/subdir (checks for apm.yml or SKILL.md)
         
         Args:
             dep_ref: Parsed dependency reference for virtual package
@@ -600,15 +606,45 @@ class GitHubPackageDownloader:
         file_path = dep_ref.virtual_path
         
         # For collections, check for .collection.yml file
-        if 'collections/' in dep_ref.virtual_path:
+        if dep_ref.is_virtual_collection():
             file_path = f"{dep_ref.virtual_path}.collection.yml"
+            try:
+                self.download_raw_file(dep_ref, file_path, ref)
+                return True
+            except RuntimeError:
+                return False
         
-        # Try to download the file (will use existing auth and host detection)
+        # For virtual files, check the file directly
+        if dep_ref.is_virtual_file():
+            try:
+                self.download_raw_file(dep_ref, file_path, ref)
+                return True
+            except RuntimeError:
+                return False
+        
+        # For subdirectory packages, check for apm.yml or SKILL.md
+        if dep_ref.is_virtual_subdirectory():
+            # Try apm.yml first
+            try:
+                self.download_raw_file(dep_ref, f"{dep_ref.virtual_path}/apm.yml", ref)
+                return True
+            except RuntimeError:
+                pass
+            
+            # Try SKILL.md
+            try:
+                self.download_raw_file(dep_ref, f"{dep_ref.virtual_path}/SKILL.md", ref)
+                return True
+            except RuntimeError:
+                pass
+            
+            return False
+        
+        # Fallback: try to download the file directly
         try:
             self.download_raw_file(dep_ref, file_path, ref)
             return True
         except RuntimeError:
-            # File doesn't exist or isn't accessible
             return False
     
     def download_virtual_file_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
@@ -879,6 +915,134 @@ author: {dep_ref.repo_url.split('/')[0]}
             dependency_ref=dep_ref  # Store for canonical dependency string
         )
     
+    def download_subdirectory_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
+        """Download a subdirectory from a repo as an APM package.
+        
+        Used for Claude Skills or APM packages nested in monorepos.
+        Clones the repo, extracts the subdirectory, and cleans up.
+        
+        Args:
+            dep_ref: Dependency reference with virtual_path set to subdirectory
+            target_path: Local path where package should be created
+            progress_task_id: Rich Progress task ID for progress updates
+            progress_obj: Rich Progress object for progress updates
+            
+        Returns:
+            PackageInfo: Information about the downloaded package
+            
+        Raises:
+            ValueError: If the dependency is not a valid subdirectory package
+            RuntimeError: If download or validation fails
+        """
+        if not dep_ref.is_virtual or not dep_ref.virtual_path:
+            raise ValueError("Dependency must be a virtual subdirectory package")
+        
+        if not dep_ref.is_virtual_subdirectory():
+            raise ValueError(f"Path '{dep_ref.virtual_path}' is not a valid subdirectory package")
+        
+        # Use user-specified ref, or None to use repo's default branch
+        ref = dep_ref.reference  # None if not specified
+        subdir_path = dep_ref.virtual_path
+        
+        # Update progress - starting
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=10, total=100)
+        
+        # Clone to a temporary directory first
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_clone_path = Path(temp_dir) / "repo"
+            
+            # Update progress - cloning
+            if progress_obj and progress_task_id is not None:
+                progress_obj.update(progress_task_id, completed=20, total=100)
+            
+            # Clone the repository (shallow clone for performance)
+            # Don't specify branch if none provided - let git use repo's default
+            package_display_name = subdir_path.split('/')[-1]
+            progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
+            
+            clone_kwargs = {
+                'dep_ref': dep_ref,
+                'depth': 1,
+            }
+            if ref:
+                clone_kwargs['branch'] = ref
+            
+            try:
+                self._clone_with_fallback(
+                    dep_ref.repo_url,
+                    temp_clone_path,
+                    progress_reporter=progress_reporter,
+                    **clone_kwargs
+                )
+            except Exception as e:
+                raise RuntimeError(f"Failed to clone repository: {e}")
+            
+            # Disable progress reporter after clone
+            if progress_reporter:
+                progress_reporter.disabled = True
+            
+            # Update progress - extracting subdirectory
+            if progress_obj and progress_task_id is not None:
+                progress_obj.update(progress_task_id, completed=70, total=100)
+            
+            # Check if subdirectory exists
+            source_subdir = temp_clone_path / subdir_path
+            if not source_subdir.exists():
+                raise RuntimeError(f"Subdirectory '{subdir_path}' not found in repository")
+            
+            if not source_subdir.is_dir():
+                raise RuntimeError(f"Path '{subdir_path}' is not a directory")
+            
+            # Create target directory
+            target_path.mkdir(parents=True, exist_ok=True)
+            
+            # If target exists and has content, remove it
+            if target_path.exists() and any(target_path.iterdir()):
+                shutil.rmtree(target_path)
+                target_path.mkdir(parents=True, exist_ok=True)
+            
+            # Copy subdirectory contents to target
+            for item in source_subdir.iterdir():
+                src = source_subdir / item.name
+                dst = target_path / item.name
+                if src.is_dir():
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+            
+            # Update progress - validating
+            if progress_obj and progress_task_id is not None:
+                progress_obj.update(progress_task_id, completed=90, total=100)
+        
+        # Validate the extracted package (after temp dir is cleaned up)
+        validation_result = validate_apm_package(target_path)
+        if not validation_result.is_valid:
+            error_msgs = "; ".join(validation_result.errors)
+            raise RuntimeError(f"Subdirectory is not a valid APM package or Claude Skill: {error_msgs}")
+        
+        # Get the resolved reference for metadata
+        resolved_ref = ResolvedReference(
+            original_ref=ref or "default",  # Use "default" if no ref was specified
+            ref_name=ref or "default",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="unknown"  # We don't have commit info from shallow clone
+        )
+        
+        # Update progress - complete
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=100, total=100)
+        
+        return PackageInfo(
+            package=validation_result.package,
+            install_path=target_path,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dep_ref,
+            package_type=validation_result.package_type
+        )
+    
     def download_package(
         self, 
         repo_ref: str, 
@@ -921,6 +1085,9 @@ author: {dep_ref.repo_url.split('/')[0]}
             elif dep_ref.is_virtual_collection():
                 # Collection virtual package
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
+            elif dep_ref.is_virtual_subdirectory():
+                # Subdirectory package (e.g., Claude Skill in a monorepo)
+                return self.download_subdirectory_package(dep_ref, target_path, progress_task_id, progress_obj)
             else:
                 raise ValueError(f"Unknown virtual package type for {dep_ref.virtual_path}")
         
@@ -1017,7 +1184,8 @@ author: {dep_ref.repo_url.split('/')[0]}
             install_path=target_path,
             resolved_reference=resolved_ref,
             installed_at=datetime.now().isoformat(),
-            dependency_ref=dep_ref  # Store for canonical dependency string
+            dependency_ref=dep_ref,  # Store for canonical dependency string
+            package_type=validation_result.package_type  # Track if APM, Claude Skill, or Hybrid
         )
     
     def _get_clone_progress_callback(self):

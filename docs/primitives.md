@@ -68,9 +68,10 @@ apm run review-copilot --param files="src/auth/"
 
 ## Overview
 
-The APM CLI supports three types of primitives:
+The APM CLI supports four types of primitives:
 
 - **Agents** (`.agent.md`) - Define AI assistant personalities and behaviors (legacy: `.chatmode.md`)
+- **Skills** (`SKILL.md`) - Package meta-guides that explain how to use an APM package
 - **Instructions** (`.instructions.md`) - Provide coding standards and guidelines for specific file types
 - **Context** (`.context.md`, `.memory.md`) - Supply background information and project context
 
@@ -165,6 +166,27 @@ Focus on security, performance, and maintainable architecture patterns.
 ```
 
 > **File Format**: Use `.agent.md` for new files. Legacy `.chatmode.md` files continue to work and can be migrated using VSCode Quick Fix actions.
+
+### Skills (SKILL.md)
+**Package Meta-Guide Layer** - Quick reference for AI agents
+
+Skills are concise summaries that help AI agents understand what an APM package does and how to leverage its content. They provide an AI-optimized overview of the package's capabilities.
+
+```markdown
+---
+name: Brand Guidelines
+description: Apply corporate brand colors and typography
+---
+# How to Use
+When asked about branding, apply these standards...
+```
+
+**Key Features:**
+- Install from Claude Skill repositories: `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
+- Provides AI agents with quick understanding of package purpose
+- Resources (scripts, references) stay in `apm_modules/`
+
+→ [Complete Skills Guide](skills.md)
 
 ### Context (.context.md)
 **Knowledge Management Layer** - Optimized project information for AI consumption
