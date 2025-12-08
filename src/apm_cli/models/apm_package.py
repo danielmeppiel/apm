@@ -370,7 +370,6 @@ class DependencyReference:
                             f"For subdirectory packages, the path should not have a file extension."
                         )
                     # Subdirectory package - will be validated by checking for apm.yml or SKILL.md
-                    pass
         
         # Handle SSH URLs first (before @ processing) to avoid conflict with alias separator
         original_str = dependency_str
@@ -967,8 +966,6 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
         version_str = str(package.version).strip()
         if not re.match(r'^\d+\.\d+\.\d+', version_str):
             result.add_warning(f"Version '{version_str}' doesn't follow semantic versioning (x.y.z)")
-    
-    return result
     
     return result
 

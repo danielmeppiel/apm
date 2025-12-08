@@ -86,12 +86,13 @@ class SkillTransformer:
             f"description: {skill.description}",
         ]
         
-        # Add source attribution if from dependency
-        if skill.source and skill.source != "local":
-            lines.append(f"# Source: {skill.source}")
-        
         lines.append("---")
         lines.append("")
+        
+        # Add source attribution if from dependency
+        if skill.source and skill.source != "local":
+            lines.append(f"<!-- Source: {skill.source} -->")
+            lines.append("")
         
         # Add body content
         lines.append(skill.content)

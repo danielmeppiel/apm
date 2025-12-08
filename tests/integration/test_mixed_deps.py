@@ -108,8 +108,7 @@ class TestMixedDependencyInstall:
         apm_yml = temp_project / "apm.yml"
         content = apm_yml.read_text()
         
-        # Both should be in dependencies
-        has_compliance = "compliance-rules" in content
+        # Verify the skill is in dependencies
         has_skill = "awesome-claude-skills/brand-guidelines" in content
         
         # At least the skill should be there (compliance-rules may fail)

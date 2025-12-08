@@ -115,9 +115,6 @@ class AgentIntegrator:
         # Add source attribution
         skill.source = f"dependency:{package_info.get_canonical_dependency_string()}"
         
-        # Transform to agent
-        transformer = SkillTransformer()
-        
         # Determine target path
         agent_name = to_hyphen_case(skill.name)
         agents_dir = project_root / ".github" / "agents"
@@ -217,7 +214,7 @@ class AgentIntegrator:
                     'Source': f"{post.metadata.get('apm_source', '')} ({post.metadata.get('apm_source_repo', '')})",
                     'Original': post.metadata.get('apm_original_path', ''),
                     'Installed': post.metadata.get('apm_installed_at', ''),
-                    'ContentHash': apm_data.get('apm_content_hash', '')
+                    'ContentHash': post.metadata.get('apm_content_hash', '')
                 }
                 return metadata
             

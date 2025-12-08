@@ -127,7 +127,7 @@ class TestSkillTransformer:
         result = self.transformer.transform_to_agent(skill, self.project_root)
         content = result.read_text()
         
-        assert "# Source: dependency:owner/repo" in content
+        assert "<!-- Source: dependency:owner/repo -->" in content
     
     def test_transform_to_agent_dry_run(self):
         """Test that dry_run returns path but doesn't write file."""
@@ -220,7 +220,6 @@ class TestAgentIntegratorSkillSupport:
         will match SKILL.md. On Linux (case-sensitive), it won't.
         This test documents the expected behavior.
         """
-        import platform
         from apm_cli.integration.agent_integrator import AgentIntegrator
         
         # Create lowercase skill.md

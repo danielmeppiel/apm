@@ -7,7 +7,6 @@ These tests require network access to GitHub.
 """
 
 import os
-import shutil
 import subprocess
 import pytest
 from pathlib import Path
