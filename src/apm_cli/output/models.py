@@ -110,6 +110,7 @@ class CompilationResults:
     warnings: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     is_dry_run: bool = False
+    target_name: str = "AGENTS.md"  # Target file name for output messages
     
     @property
     def total_instructions(self) -> int:

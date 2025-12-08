@@ -702,6 +702,104 @@ Use type hints.
         assert "AGENTS.md" in result.output_path or "CLAUDE" in result.output_path
 
 
+class TestClaudeAndAgentsMdConsistentOutput:
+    """Tests to ensure CLAUDE.md and AGENTS.md use the same optimization logic.
+    
+    Both targets should produce:
+    - Same optimization decisions (placement table)
+    - Same efficiency metrics
+    - Same placement distribution
+    Only the output file names should differ.
+    """
+
+    @pytest.fixture
+    def temp_project_with_instructions(self):
+        """Create a temporary project with instruction files."""
+        temp_dir = tempfile.mkdtemp()
+        temp_path = Path(temp_dir)
+        
+        # Create .apm directory with instructions
+        apm_dir = temp_path / ".apm" / "instructions"
+        apm_dir.mkdir(parents=True)
+        
+        # Create instruction file that targets specific pattern
+        (apm_dir / "code-standards.instructions.md").write_text("""---
+applyTo: "**/*.py"
+description: "Python coding standards"
+---
+# Python Coding Standards
+Follow PEP 8 guidelines.
+""")
+        
+        # Create another instruction file with different pattern
+        (apm_dir / "test-guidelines.instructions.md").write_text("""---
+applyTo: "tests/**/*.py"
+description: "Testing guidelines"
+---
+# Testing Guidelines
+Use pytest for all tests.
+""")
+        
+        # Create target directories to match patterns
+        (temp_path / "src").mkdir()
+        (temp_path / "src" / "main.py").write_text("# Main file")
+        (temp_path / "tests").mkdir()
+        (temp_path / "tests" / "test_main.py").write_text("# Test file")
+        
+        # Create apm.yml
+        (temp_path / "apm.yml").write_text("""
+name: test-project
+version: 0.1.0
+""")
+        
+        yield temp_path
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_claude_and_agents_have_same_placement_count(self, temp_project_with_instructions):
+        """Test that CLAUDE.md and AGENTS.md generate the same number of placement files."""
+        compiler = AgentsCompiler(str(temp_project_with_instructions))
+        
+        # Compile for VSCode/AGENTS.md
+        vscode_config = CompilationConfig(target="vscode", dry_run=True)
+        vscode_result = compiler.compile(vscode_config)
+        
+        # Reset compiler state
+        compiler = AgentsCompiler(str(temp_project_with_instructions))
+        
+        # Compile for Claude/CLAUDE.md  
+        claude_config = CompilationConfig(target="claude", dry_run=True)
+        claude_result = compiler.compile(claude_config)
+        
+        # Both should succeed
+        assert vscode_result.success
+        assert claude_result.success
+        
+        # Both should have the same file count in stats (using target-specific keys)
+        vscode_file_count = vscode_result.stats.get('agents_files_generated', vscode_result.stats.get('total_agents_files', 0))
+        claude_file_count = claude_result.stats.get('claude_files_generated', 0)
+        
+        # The file counts should be equal (same optimization logic)
+        assert vscode_file_count == claude_file_count, \
+            f"File counts differ: AGENTS.md={vscode_file_count}, CLAUDE.md={claude_file_count}"
+
+    def test_claude_compilation_produces_optimization_output(self, temp_project_with_instructions):
+        """Test that CLAUDE.md compilation produces proper optimization metrics."""
+        compiler = AgentsCompiler(str(temp_project_with_instructions))
+        
+        # Compile for Claude/CLAUDE.md  
+        claude_config = CompilationConfig(target="claude", dry_run=True)
+        claude_result = compiler.compile(claude_config)
+        
+        # Should succeed
+        assert claude_result.success
+        
+        # Should have file count
+        assert claude_result.stats.get('claude_files_generated', 0) > 0
+        
+        # Should have primitives count
+        assert claude_result.stats.get('primitives_found', 0) > 0
+
+
 class TestConfigFromApmYml:
     """Tests for reading target from apm.yml configuration."""
 

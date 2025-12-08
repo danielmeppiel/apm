@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.6.0] - 2025-12-08
+
+### Added
+
+- **Claude Integration**: First-class support for Claude Code and Claude Desktop
+  - `CLAUDE.md` generation alongside `AGENTS.md`
+  - `.claude/commands/` auto-integration from installed packages
+  - `SKILL.md` generation for Claude Skills format
+  - Commands get `-apm` suffix (same pattern as VSCode prompts)
+
+- **Target Auto-Detection**: Smart compilation based on project structure
+  - `.github/` only → generates `AGENTS.md` + VSCode integration
+  - `.claude/` only → generates `CLAUDE.md` + Claude integration  
+  - Both folders → generates all formats
+  - Neither folder → generates `AGENTS.md` only (universal format)
+
+- **`target` field in apm.yml**: Persistent target configuration
+  ```yaml
+  target: vscode  # or claude, or all
+  ```
+  Applies to both `apm compile` and `apm install`
+
+- **`--target` flag**: Override auto-detection
+  ```bash
+  apm compile --target claude
+  apm compile --target vscode
+  apm compile --target all
+  ```
+
+### Fixed
+
+- Virtual package uninstall sync: `apm uninstall` now correctly removes only the specific virtual package's integrated files (uses `get_unique_key()` for proper path matching)
+
+### Changed
+
+- `apm compile` default: Changed from `--target all` to auto-detect
+- README refactored with npm-style zero-friction onboarding
+- Documentation reorganized with Claude integration guide
+
 ## [0.5.9] - 2025-12-04
 
 ### Fixed

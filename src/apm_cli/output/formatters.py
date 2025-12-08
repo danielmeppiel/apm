@@ -30,6 +30,7 @@ class CompilationFormatter:
         """
         self.use_color = use_color and RICH_AVAILABLE
         self.console = Console() if self.use_color else None
+        self._target_name = "AGENTS.md"  # Default, updated per format call
     
     def format_default(self, results: CompilationResults) -> str:
         """Format default compilation output.
@@ -40,6 +41,7 @@ class CompilationFormatter:
         Returns:
             Formatted output string.
         """
+        self._target_name = results.target_name
         lines = []
         
         # Phase 1: Project Discovery
@@ -69,6 +71,7 @@ class CompilationFormatter:
         Returns:
             Formatted verbose output string.
         """
+        self._target_name = results.target_name
         lines = []
         
         # Phase 1: Project Discovery
@@ -107,10 +110,11 @@ class CompilationFormatter:
         
         # Main result
         file_count = len(results.placement_summaries)
-        summary_line = f"Generated {file_count} AGENTS.md file{'s' if file_count != 1 else ''}"
+        target = results.target_name
+        summary_line = f"Generated {file_count} {target} file{'s' if file_count != 1 else ''}"
         
         if results.is_dry_run:
-            summary_line = f"[DRY RUN] Would generate {file_count} AGENTS.md file{'s' if file_count != 1 else ''}"
+            summary_line = f"[DRY RUN] Would generate {file_count} {target} file{'s' if file_count != 1 else ''}"
         
         if self.use_color:
             color = "yellow" if results.is_dry_run else "green"
@@ -160,7 +164,7 @@ class CompilationFormatter:
         else:
             lines.append("Placement Distribution")
         
-        # Show distribution of AGENTS.md files
+        # Show distribution of files
         for summary in results.placement_summaries:
             rel_path = str(summary.get_relative_path(Path.cwd()))
             content_text = self._get_placement_description(summary)
@@ -186,6 +190,7 @@ class CompilationFormatter:
         Returns:
             Formatted dry run output string.
         """
+        self._target_name = results.target_name
         lines = []
         
         # Standard analysis
@@ -342,10 +347,11 @@ class CompilationFormatter:
         
         # Main result
         file_count = len(results.placement_summaries)
-        summary_line = f"Generated {file_count} AGENTS.md file{'s' if file_count != 1 else ''}"
+        target = results.target_name
+        summary_line = f"Generated {file_count} {target} file{'s' if file_count != 1 else ''}"
         
         if results.is_dry_run:
-            summary_line = f"[DRY RUN] Would generate {file_count} AGENTS.md file{'s' if file_count != 1 else ''}"
+            summary_line = f"[DRY RUN] Would generate {file_count} {target} file{'s' if file_count != 1 else ''}"
         
         if self.use_color:
             color = "yellow" if results.is_dry_run else "green"
@@ -395,7 +401,7 @@ class CompilationFormatter:
         else:
             lines.append("Placement Distribution")
         
-        # Show distribution of AGENTS.md files
+        # Show distribution of files
         for summary in results.placement_summaries:
             rel_path = str(summary.get_relative_path(Path.cwd()))
             content_text = self._get_placement_description(summary)
@@ -828,10 +834,10 @@ Pollution Level:
         try:
             rel_path = path.relative_to(Path.cwd())
             if rel_path == Path('.'):
-                return "./AGENTS.md"
-            return str(rel_path / "AGENTS.md")
+                return f"./{self._target_name}"
+            return str(rel_path / self._target_name)
         except ValueError:
-            return str(path / "AGENTS.md")
+            return str(path / self._target_name)
     
     def _format_coverage_explanation(self, stats) -> List[str]:
         """Explain the coverage vs. efficiency trade-off."""

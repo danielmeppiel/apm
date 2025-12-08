@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from ..primitives.models import PrimitiveCollection
+from ..output.models import CompilationResults
 from ..primitives.discovery import discover_primitives
 from ..version import get_version
 from .claude_formatter import ClaudeFormatter, ClaudeCompilationResult
@@ -398,22 +399,18 @@ class AgentsCompiler:
         }
         claude_result = claude_formatter.format_distributed(primitives, placement_map, claude_config)
         
-        # Generate Claude commands from prompt files
-        command_result = claude_formatter.generate_commands(
-            claude_formatter.discover_prompt_files(),
-            dry_run=config.dry_run
-        )
+        # NOTE: Claude commands are now generated at install time via CommandIntegrator,
+        # not at compile time. This keeps behavior consistent with VSCode prompt integration.
         
-        # Merge warnings and errors
-        all_warnings = claude_result.warnings + command_result.warnings
-        all_errors = claude_result.errors + command_result.errors
+        # Merge warnings and errors (no command result anymore)
+        all_warnings = claude_result.warnings
+        all_errors = claude_result.errors
         
         # Handle dry-run mode
         if config.dry_run:
             # Generate preview summary
             preview_lines = [
-                f"CLAUDE.md Preview: Would generate {len(claude_result.placements)} files",
-                f"Commands Preview: Would generate {len(command_result.commands_generated)} commands"
+                f"CLAUDE.md Preview: Would generate {len(claude_result.placements)} files"
             ]
             for claude_path in claude_result.content_map.keys():
                 try:
@@ -460,9 +457,37 @@ class AgentsCompiler:
         # Update stats
         stats = claude_result.stats.copy()
         stats['claude_files_written'] = files_written
-        stats['commands_written'] = command_result.files_written
         
-        # Generate summary content
+        # Display CLAUDE.md compilation output using standard formatter
+        # Get proper compilation results from distributed compiler (has optimization decisions)
+        from ..output.formatters import CompilationFormatter
+        from ..output.models import CompilationResults
+        
+        compilation_results = distributed_compiler.get_compilation_results_for_display(is_dry_run=config.dry_run)
+        if compilation_results:
+            # Update target name for CLAUDE.md output
+            formatter_results = CompilationResults(
+                project_analysis=compilation_results.project_analysis,
+                optimization_decisions=compilation_results.optimization_decisions,
+                placement_summaries=compilation_results.placement_summaries,
+                optimization_stats=compilation_results.optimization_stats,
+                warnings=all_warnings,
+                errors=all_errors,
+                is_dry_run=config.dry_run,
+                target_name="CLAUDE.md"
+            )
+            
+            # Use the same formatter as AGENTS.md
+            formatter = CompilationFormatter(use_color=True)
+            if config.debug or config.trace:
+                output = formatter.format_verbose(formatter_results)
+            elif config.dry_run:
+                output = formatter.format_dry_run(formatter_results)
+            else:
+                output = formatter.format_default(formatter_results)
+            print(output)
+        
+        # Generate summary content for result object
         summary_lines = [
             f"# CLAUDE.md Compilation Summary",
             f"",
@@ -474,12 +499,6 @@ class AgentsCompiler:
             except ValueError:
                 rel_path = placement.claude_path
             summary_lines.append(f"- {rel_path} ({len(placement.instructions)} instructions)")
-        
-        if command_result.files_written > 0:
-            summary_lines.extend([
-                f"",
-                f"Generated {command_result.files_written} Claude commands in .claude/commands/"
-            ])
         
         return CompilationResult(
             success=len(all_errors) == 0,

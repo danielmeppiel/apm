@@ -482,12 +482,39 @@ apm compile [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output file path (default: AGENTS.md)
+- `-t, --target TEXT` - Target agent format: `vscode`, `claude`, or `all`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Generate content without writing file
 - `--no-links` - Skip markdown link resolution
 - `--with-constitution/--no-constitution` - Include Spec Kit `memory/constitution.md` verbatim at top inside a delimited block (default: `--with-constitution`). When disabled, any existing block is preserved but not regenerated.
 - `--watch` - Auto-regenerate on changes (file system monitoring)
 - `--validate` - Validate context without compiling
+
+**Target Auto-Detection:**
+
+When `--target` is not specified, APM auto-detects based on existing project structure:
+
+| Condition | Target | Output |
+|-----------|--------|--------|
+| `.github/` exists only | `vscode` | AGENTS.md + .github/ |
+| `.claude/` exists only | `claude` | CLAUDE.md + .claude/ |
+| Both folders exist | `all` | All outputs |
+| Neither folder exists | `minimal` | AGENTS.md only |
+
+You can also set a persistent target in `apm.yml`:
+```yaml
+name: my-project
+version: 1.0.0
+target: vscode  # or claude, or all
+```
+
+**Target Formats (explicit):**
+
+| Target | Output Files | Best For |
+|--------|--------------|----------|
+| `vscode` | AGENTS.md, .github/prompts/, .github/agents/ | GitHub Copilot, Cursor, Codex, Gemini |
+| `claude` | CLAUDE.md, .claude/commands/, SKILL.md | Claude Code, Claude Desktop |
+| `all` | All of the above | Universal compatibility |
 
 **Examples:**
 ```bash
@@ -511,6 +538,11 @@ apm compile --watch
 
 # Watch mode with dry-run for testing
 apm compile --watch --dry-run
+
+# Target specific agent formats
+apm compile --target vscode    # AGENTS.md + .github/ only
+apm compile --target claude    # CLAUDE.md + .claude/ only
+apm compile --target all       # All formats (default)
 
 # Compile injecting Spec Kit constitution (auto-detected)
 apm compile --with-constitution
