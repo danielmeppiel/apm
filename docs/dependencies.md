@@ -11,6 +11,30 @@ APM dependencies are GitHub repositories containing `.apm/` directories with con
 - **Build on tested context** instead of starting from scratch
 - **Maintain consistency** across multiple repositories and teams
 
+## Dependency Types
+
+APM supports multiple dependency types:
+
+| Type | Detection | Example |
+|------|-----------|---------|
+| **APM Package** | Has `apm.yml` | `danielmeppiel/compliance-rules` |
+| **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` |
+| **Virtual Package** | Single file path | `github/awesome-copilot/prompts/code-review.prompt.md` |
+
+### Claude Skills
+
+Claude Skills are packages with a `SKILL.md` file that describe capabilities for AI agents. APM can install them and transform them for your target platform:
+
+```bash
+# Install a Claude Skill
+apm install ComposioHQ/awesome-claude-skills/brand-guidelines
+
+# For VSCode target: generates .github/agents/brand-guidelines.agent.md
+# For Claude target: keeps native SKILL.md format
+```
+
+→ See [Skills Guide](skills.md) for complete documentation.
+
 ## Quick Start
 
 ### 1. Add Dependencies to Your Project

@@ -110,13 +110,16 @@ apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 apm init my-standards && cd my-standards
 ```
 
-Add primitives to the `.apm/` folder (similar to VSCode's `.github/` convention):
+This creates:
 
 ```
-.apm/
-├── instructions/    # Guardrails (.instructions.md)
-├── prompts/         # Workflows (.prompt.md)  
-└── agents/          # Personas (.agent.md)
+my-standards/
+├── apm.yml              # Package manifest
+├── SKILL.md             # Package meta-guide for AI discovery
+└── .apm/
+    ├── instructions/    # Guardrails (.instructions.md)
+    ├── prompts/         # Workflows (.prompt.md)  
+    └── agents/          # Personas (.agent.md)
 ```
 
 Example guardrail:
@@ -200,6 +203,7 @@ For private packages, Azure DevOps, or running prompts via AI runtimes:
 |-------|-------------|
 | [CLI Reference](docs/cli-reference.md) | All commands and options |
 | [Compilation Engine](docs/compilation.md) | Context optimization algorithm |
+| [Skills](docs/skills.md) | Package meta-guides for AI discovery |
 | [Integrations](docs/integrations.md) | VSCode, Spec-kit, MCP servers |
 
 ### Advanced

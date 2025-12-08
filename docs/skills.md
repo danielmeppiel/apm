@@ -102,6 +102,22 @@ my-skill/
 
 ## Creating Your Own Skills
 
+### Quick Start with apm init
+
+`apm init` automatically creates a SKILL.md at root:
+
+```bash
+apm init my-skill && cd my-skill
+```
+
+This creates:
+```
+my-skill/
+├── apm.yml       # Package manifest
+├── SKILL.md      # Package meta-guide (edit this!)
+└── .apm/         # Primitives folder
+```
+
 ### Option 1: Standalone Skill
 
 Create a repo with just `SKILL.md`:

@@ -309,12 +309,16 @@ def init(ctx, project_name, yes):
         try:
             console = _get_console()
             if console:
-                files_data = [("✨", "apm.yml", "Project configuration")]
+                files_data = [
+                    ("✨", "apm.yml", "Project configuration"),
+                    ("📖", "SKILL.md", "Package meta-guide for AI discovery"),
+                ]
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
         except (ImportError, NameError):
             _rich_info("Created:")
             _rich_echo("  ✨ apm.yml - Project configuration", style="muted")
+            _rich_echo("  📖 SKILL.md - Package meta-guide for AI discovery", style="muted")
 
         _rich_blank_line()
 
@@ -3686,7 +3690,7 @@ def _get_default_config(project_name):
 
 
 def _create_minimal_apm_yml(config):
-    """Create minimal apm.yml file with auto-detected metadata."""
+    """Create minimal apm.yml file and SKILL.md with auto-detected metadata."""
     yaml = _lazy_yaml()
 
     # Create minimal apm.yml structure
@@ -3702,6 +3706,36 @@ def _create_minimal_apm_yml(config):
     # Write apm.yml
     with open("apm.yml", "w") as f:
         yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)
+    
+    # Create SKILL.md (package meta-guide for AI discovery)
+    skill_content = f"""---
+name: {config["name"]}
+description: {config["description"]}
+---
+
+# {config["name"]}
+
+{config["description"]}
+
+## What This Package Does
+
+Describe what this package provides and how AI agents should use it.
+
+## Getting Started
+
+```bash
+apm install your-org/{config["name"]}
+apm compile
+```
+
+## Available Primitives
+
+- **Instructions**: Guardrails and standards in `.apm/instructions/`
+- **Prompts**: Executable workflows in `.apm/prompts/`
+- **Agents**: Specialized personas in `.apm/agents/`
+"""
+    with open("SKILL.md", "w") as f:
+        f.write(skill_content)
 
 
 def main():

@@ -236,15 +236,19 @@ Optimized project knowledge for AI consumption:
 
 ## Universal Compatibility
 
-APM generates `AGENTS.md` files that work across all major coding agents:
+APM generates context files for all major coding agents:
 
+**VSCode/GitHub Target** (AGENTS.md + .github/):
 - **GitHub Copilot** - VSCode integration, chat, and CLI
 - **Cursor** - AI-first code editor  
 - **Codex CLI** - OpenAI's development tool
-- **Aider** - AI pair programming in terminal
-- **Any agent** supporting the agents.md standard
+- **Gemini** - Google's AI assistant
 
-This ensures your investment in Context works regardless of which AI tools your team chooses.
+**Claude Target** (CLAUDE.md + .claude/):
+- **Claude Code** - Anthropic's coding assistant
+- **Claude Desktop** - Desktop application
+
+APM auto-detects your target based on project structure (`.github/` or `.claude/` folders) and generates the appropriate format. This ensures your investment in primitives works regardless of which AI tools your team chooses.
 
 ## Learn the Complete Framework
 
