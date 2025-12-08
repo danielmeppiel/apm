@@ -51,9 +51,10 @@ apm compile
 
 **One package. Every AI agent. Native format for each.**
 
-> 💡 **Install any `.prompt.md` or `.agent.md` directly from GitHub!**  
-> Explore ready-to-use prompts and agents at [github/awesome-copilot](https://github.com/github/awesome-copilot) and install them with a simple command:  
-> `apm install github/awesome-copilot/prompts/code-review.prompt.md`
+> 💡 **Install prompts, agents, and Claude Skills from anywhere!**  
+> Browse [github/awesome-copilot](https://github.com/github/awesome-copilot) or [awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills) and install with:  
+> `apm install github/awesome-copilot/prompts/code-review.prompt.md`  
+> `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
 
 ## Real Example: corporate-website
 
@@ -98,6 +99,9 @@ apm install dev.azure.com/org/project/repo
 
 # Single file (Virtual Package)
 apm install github/awesome-copilot/prompts/code-review.prompt.md
+
+# Claude Skills
+apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 ```
 
 ## Create Your Own Package

@@ -5,7 +5,52 @@ from pathlib import Path
 from typing import Union, List
 import frontmatter
 
-from .models import Chatmode, Instruction, Context, Primitive
+from .models import Chatmode, Instruction, Context, Skill, Primitive
+
+
+def parse_skill_file(file_path: Union[str, Path], source: str = None) -> Skill:
+    """Parse a SKILL.md file.
+    
+    SKILL.md files are package meta-guides that describe how to use the package.
+    They have a simple frontmatter with 'name' and 'description' fields.
+    
+    Args:
+        file_path (Union[str, Path]): Path to the SKILL.md file.
+        source (str, optional): Source identifier (e.g., "local", "dependency:package_name").
+    
+    Returns:
+        Skill: Parsed skill primitive.
+    
+    Raises:
+        ValueError: If file cannot be parsed or has invalid format.
+    """
+    file_path = Path(file_path)
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            post = frontmatter.load(f)
+        
+        metadata = post.metadata
+        content = post.content
+        
+        # Extract required fields from frontmatter
+        name = metadata.get('name', '')
+        description = metadata.get('description', '')
+        
+        # If name is missing, derive from parent directory name
+        if not name:
+            name = file_path.parent.name
+        
+        return Skill(
+            name=name,
+            file_path=file_path,
+            description=description,
+            content=content,
+            source=source
+        )
+        
+    except Exception as e:
+        raise ValueError(f"Failed to parse SKILL.md file {file_path}: {e}")
 
 
 def parse_primitive_file(file_path: Union[str, Path], source: str = None) -> Primitive:

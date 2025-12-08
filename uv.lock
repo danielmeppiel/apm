@@ -166,7 +166,7 @@ wheels = [
 
 [[package]]
 name = "apm-cli"
-version = "0.5.9"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },

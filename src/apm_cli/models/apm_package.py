@@ -17,6 +17,14 @@ class GitReferenceType(Enum):
     COMMIT = "commit"
 
 
+class PackageType(Enum):
+    """Types of packages that APM can install."""
+    APM_PACKAGE = "apm_package"      # Has apm.yml
+    CLAUDE_SKILL = "claude_skill"    # Has SKILL.md, no apm.yml
+    HYBRID = "hybrid"                # Has both apm.yml and SKILL.md
+    INVALID = "invalid"              # Neither apm.yml nor SKILL.md
+
+
 class ValidationError(Enum):
     """Types of validation errors for APM packages."""
     MISSING_APM_YML = "missing_apm_yml"
@@ -85,6 +93,24 @@ class DependencyReference:
         # Collections have /collections/ in their path or start with collections/
         return '/collections/' in self.virtual_path or self.virtual_path.startswith('collections/')
     
+    def is_virtual_subdirectory(self) -> bool:
+        """Check if this is a virtual subdirectory package (e.g., Claude Skill).
+        
+        A subdirectory package is a virtual package that:
+        - Has a virtual_path that is NOT a file extension we recognize
+        - Is NOT a collection (doesn't have /collections/ in path)
+        - Is a directory path (likely containing SKILL.md or apm.yml)
+        
+        Examples:
+            - ComposioHQ/awesome-claude-skills/brand-guidelines → True
+            - owner/repo/prompts/file.prompt.md → False (is_virtual_file)
+            - owner/repo/collections/name → False (is_virtual_collection)
+        """
+        if not self.is_virtual or not self.virtual_path:
+            return False
+        # Not a file and not a collection = subdirectory
+        return not self.is_virtual_file() and not self.is_virtual_collection()
+    
     def get_virtual_package_name(self) -> str:
         """Generate a package name for this virtual package.
         
@@ -152,9 +178,13 @@ class DependencyReference:
             - GitHub: apm_modules/owner/repo/
             - ADO: apm_modules/org/project/repo/
         
-        For virtual packages:
+        For virtual file/collection packages:
             - GitHub: apm_modules/owner/<virtual-package-name>/
             - ADO: apm_modules/org/project/<virtual-package-name>/
+        
+        For subdirectory packages (Claude Skills, nested APM packages):
+            - GitHub: apm_modules/owner/repo/subdir/path/
+            - ADO: apm_modules/org/project/repo/subdir/path/
         
         Args:
             apm_modules_dir: Path to the apm_modules directory
@@ -165,14 +195,24 @@ class DependencyReference:
         repo_parts = self.repo_url.split("/")
         
         if self.is_virtual:
-            # Virtual package: use sanitized package name
-            package_name = self.get_virtual_package_name()
-            if self.is_azure_devops() and len(repo_parts) >= 3:
-                # ADO: org/project/virtual-pkg-name
-                return apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
-            elif len(repo_parts) >= 2:
-                # GitHub: owner/virtual-pkg-name
-                return apm_modules_dir / repo_parts[0] / package_name
+            # Subdirectory packages (like Claude Skills) should use natural path structure
+            if self.is_virtual_subdirectory():
+                # Use repo path + subdirectory path
+                if self.is_azure_devops() and len(repo_parts) >= 3:
+                    # ADO: org/project/repo/subdir
+                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2] / self.virtual_path
+                elif len(repo_parts) >= 2:
+                    # GitHub: owner/repo/subdir
+                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / self.virtual_path
+            else:
+                # Virtual file/collection: use sanitized package name (flattened)
+                package_name = self.get_virtual_package_name()
+                if self.is_azure_devops() and len(repo_parts) >= 3:
+                    # ADO: org/project/virtual-pkg-name
+                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
+                elif len(repo_parts) >= 2:
+                    # GitHub: owner/virtual-pkg-name
+                    return apm_modules_dir / repo_parts[0] / package_name
         else:
             # Regular package: use full repo path
             if self.is_azure_devops() and len(repo_parts) >= 3:
@@ -308,18 +348,29 @@ class DependencyReference:
                 # Extract virtual path (base repo is derived later)
                 virtual_path = '/'.join(path_segments[min_base_segments:])
                 
-                # Validate virtual package format
+                # Virtual package types (validated later during download):
+                # 1. Collections: /collections/ in path
+                # 2. Individual files: ends with .prompt.md, .agent.md, etc.
+                # 3. Subdirectory packages: directory path (may contain apm.yml or SKILL.md)
+                #    This allows Claude Skills and nested APM packages in monorepos
                 if '/collections/' in check_str or virtual_path.startswith('collections/'):
-                    # Collection virtual package
-                    pass  # Collections are validated by fetching the .collection.yml
+                    # Collection virtual package - validated by fetching .collection.yml
+                    pass
+                elif any(virtual_path.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
+                    # Individual file virtual package - valid extension
+                    pass
                 else:
-                    # Individual file virtual package - must end with valid extension
-                    valid_extension = any(virtual_path.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS)
-                    if not valid_extension:
+                    # Check if it looks like a file (has extension) vs directory
+                    last_segment = virtual_path.split('/')[-1]
+                    if '.' in last_segment:
+                        # Looks like a file with unknown extension - reject
                         raise InvalidVirtualPackageExtensionError(
                             f"Invalid virtual package path '{virtual_path}'. "
-                            f"Individual files must end with one of: {', '.join(cls.VIRTUAL_FILE_EXTENSIONS)}"
+                            f"Individual files must end with one of: {', '.join(cls.VIRTUAL_FILE_EXTENSIONS)}. "
+                            f"For subdirectory packages, the path should not have a file extension."
                         )
+                    # Subdirectory package - will be validated by checking for apm.yml or SKILL.md
+                    pass
         
         # Handle SSH URLs first (before @ processing) to avoid conflict with alias separator
         original_str = dependency_str
@@ -689,12 +740,14 @@ class ValidationResult:
     errors: List[str]
     warnings: List[str]
     package: Optional[APMPackage] = None
+    package_type: Optional[PackageType] = None  # APM_PACKAGE, CLAUDE_SKILL, or HYBRID
     
     def __init__(self):
         self.is_valid = True
         self.errors = []
         self.warnings = []
         self.package = None
+        self.package_type = None
     
     def add_error(self, error: str) -> None:
         """Add a validation error."""
@@ -727,6 +780,7 @@ class PackageInfo:
     resolved_reference: Optional[ResolvedReference] = None
     installed_at: Optional[str] = None  # ISO timestamp
     dependency_ref: Optional["DependencyReference"] = None  # Original dependency reference for canonical string
+    package_type: Optional[PackageType] = None  # APM_PACKAGE, CLAUDE_SKILL, or HYBRID
     
     def get_canonical_dependency_string(self) -> str:
         """Get the canonical dependency string for this package.
@@ -762,7 +816,12 @@ class PackageInfo:
 
 
 def validate_apm_package(package_path: Path) -> ValidationResult:
-    """Validate that a directory contains a valid APM package.
+    """Validate that a directory contains a valid APM package or Claude Skill.
+    
+    Supports three package types:
+    - APM_PACKAGE: Has apm.yml and .apm/ directory
+    - CLAUDE_SKILL: Has SKILL.md but no apm.yml (auto-generates apm.yml)
+    - HYBRID: Has both apm.yml and SKILL.md
     
     Args:
         package_path: Path to the directory to validate
@@ -781,12 +840,86 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         result.add_error(f"Package path is not a directory: {package_path}")
         return result
     
-    # Check for apm.yml
+    # Detect package type
     apm_yml_path = package_path / "apm.yml"
-    if not apm_yml_path.exists():
-        result.add_error("Missing required file: apm.yml")
+    skill_md_path = package_path / "SKILL.md"
+    has_apm_yml = apm_yml_path.exists()
+    has_skill_md = skill_md_path.exists()
+    
+    # Determine package type
+    if has_apm_yml and has_skill_md:
+        result.package_type = PackageType.HYBRID
+    elif has_apm_yml:
+        result.package_type = PackageType.APM_PACKAGE
+    elif has_skill_md:
+        result.package_type = PackageType.CLAUDE_SKILL
+    else:
+        result.package_type = PackageType.INVALID
+        result.add_error("Missing required file: apm.yml or SKILL.md")
         return result
     
+    # Handle Claude Skills (no apm.yml) - auto-generate minimal apm.yml
+    if result.package_type == PackageType.CLAUDE_SKILL:
+        return _validate_claude_skill(package_path, skill_md_path, result)
+    
+    # Standard APM package validation (has apm.yml)
+    return _validate_apm_package_with_yml(package_path, apm_yml_path, result)
+
+
+def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: ValidationResult) -> ValidationResult:
+    """Validate a Claude Skill and auto-generate apm.yml.
+    
+    Args:
+        package_path: Path to the package directory
+        skill_md_path: Path to SKILL.md
+        result: ValidationResult to populate
+        
+    Returns:
+        ValidationResult: Updated validation result
+    """
+    import frontmatter
+    
+    try:
+        # Parse SKILL.md to extract metadata
+        with open(skill_md_path, 'r', encoding='utf-8') as f:
+            post = frontmatter.load(f)
+        
+        skill_name = post.metadata.get('name', package_path.name)
+        skill_description = post.metadata.get('description', f"Claude Skill: {skill_name}")
+        
+        # Auto-generate minimal apm.yml
+        apm_yml_content = f"""# Auto-generated by APM from Claude Skill
+name: {skill_name}
+version: "1.0.0"
+description: {skill_description}
+type: skill
+"""
+        
+        apm_yml_path = package_path / "apm.yml"
+        apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
+        
+        # Parse the generated apm.yml
+        package = APMPackage.from_apm_yml(apm_yml_path)
+        result.package = package
+        
+    except Exception as e:
+        result.add_error(f"Failed to process SKILL.md: {e}")
+        return result
+    
+    return result
+
+
+def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, result: ValidationResult) -> ValidationResult:
+    """Validate a standard APM package with apm.yml.
+    
+    Args:
+        package_path: Path to the package directory
+        apm_yml_path: Path to apm.yml
+        result: ValidationResult to populate
+        
+    Returns:
+        ValidationResult: Updated validation result
+    """
     # Try to parse apm.yml
     try:
         package = APMPackage.from_apm_yml(apm_yml_path)
@@ -834,6 +967,8 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         version_str = str(package.version).strip()
         if not re.match(r'^\d+\.\d+\.\d+', version_str):
             result.add_warning(f"Version '{version_str}' doesn't follow semantic versioning (x.y.z)")
+    
+    return result
     
     return result
 

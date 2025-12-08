@@ -515,7 +515,7 @@ class TestScriptRunnerAutoInstall:
     
     def test_is_virtual_package_reference_invalid_format(self):
         """Test detection rejects invalid formats."""
-        # Invalid format
+        # Invalid format - looks like a file with unsupported extension
         ref = "owner/repo/some/invalid/path.txt"
         assert self.script_runner._is_virtual_package_reference(ref) is False
     

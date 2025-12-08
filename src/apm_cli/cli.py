@@ -631,7 +631,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
                 sys.exit(1)
 
             try:
-                apm_count, prompt_count, agent_count = _install_apm_dependencies(apm_package, update)
+                apm_count, prompt_count, agent_count = _install_apm_dependencies(apm_package, update, verbose)
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
@@ -1042,12 +1042,13 @@ def uninstall(ctx, packages, dry_run):
         sys.exit(1)
 
 
-def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = False):
+def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = False, verbose: bool = False):
     """Install APM package dependencies.
 
     Args:
         apm_package: Parsed APM package with dependencies
         update_refs: Whether to update existing packages to latest refs
+        verbose: Show detailed installation information
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -1137,40 +1138,14 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                 # Determine installation directory using namespaced structure
                 # e.g., danielmeppiel/design-guidelines -> apm_modules/danielmeppiel/design-guidelines/
                 # For virtual packages: github/awesome-copilot/prompts/file.prompt.md -> apm_modules/github/awesome-copilot-file/
+                # For subdirectory packages: owner/repo/subdir -> apm_modules/owner/repo/subdir/
                 if dep_ref.alias:
                     # If alias is provided, use it directly (assume user handles namespacing)
                     install_name = dep_ref.alias
                     install_path = apm_modules_dir / install_name
-                elif dep_ref.is_virtual:
-                    # Virtual packages get a sanitized name in the org subdirectory
-                    # For Azure DevOps: org/project/virtual-pkg-name (3 levels)
-                    # For GitHub: owner/virtual-pkg-name (2 levels)
-                    repo_parts = dep_ref.repo_url.split("/")
-                    virtual_name = dep_ref.get_virtual_package_name()
-                    if dep_ref.is_azure_devops() and len(repo_parts) >= 3:
-                        # ADO structure: apm_modules/org/project/virtual-pkg-name
-                        install_path = apm_modules_dir / repo_parts[0] / repo_parts[1] / virtual_name
-                    elif len(repo_parts) >= 2:
-                        # GitHub structure: apm_modules/owner/virtual-pkg-name
-                        install_path = apm_modules_dir / repo_parts[0] / virtual_name
-                    else:
-                        # Fallback for invalid repo URLs
-                        install_path = apm_modules_dir / virtual_name
                 else:
-                    # Regular packages: Use org/repo structure to prevent collisions
-                    # For Azure DevOps: org/project/repo (3 parts)
-                    # For GitHub: owner/repo (2 parts)
-                    repo_parts = dep_ref.repo_url.split("/")
-                    if dep_ref.is_azure_devops() and len(repo_parts) >= 3:
-                        # ADO structure: apm_modules/org/project/repo
-                        install_path = apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
-                    elif len(repo_parts) >= 2:
-                        org_name = repo_parts[0]
-                        repo_name = repo_parts[1]
-                        install_path = apm_modules_dir / org_name / repo_name
-                    else:
-                        # Fallback for invalid repo URLs
-                        install_path = apm_modules_dir / dep_ref.repo_url
+                    # Use the canonical install path from DependencyReference
+                    install_path = dep_ref.get_install_path(apm_modules_dir)
 
                 # npm-like behavior: Branches always fetch latest, only tags/commits use cache
                 # Resolve git reference to determine type
@@ -1221,10 +1196,10 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                             
                             # Create basic resolved reference for cached packages
                             resolved_ref = ResolvedReference(
-                                original_ref=dep_ref.reference,
+                                original_ref=dep_ref.reference or "default",
                                 ref_type=GitReferenceType.BRANCH,
                                 resolved_commit="cached",  # Mark as cached since we don't know exact commit
-                                ref_name=dep_ref.reference
+                                ref_name=dep_ref.reference or "default"
                             )
                             
                             cached_package_info = PackageInfo(
@@ -1263,6 +1238,10 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                     total_agents_integrated += agent_result.files_integrated
                                     _rich_info(
                                         f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                                    )
+                                if agent_result.skills_integrated > 0:
+                                    _rich_info(
+                                        f"  └─ {agent_result.skills_integrated} skill(s) transformed → .github/agents/ (from SKILL.md)"
                                     )
                                 if agent_result.files_updated > 0:
                                     _rich_info(
@@ -1330,6 +1309,17 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                     
                     installed_count += 1
                     _rich_success(f"✓ {display_name}")
+                    
+                    # Show package type in verbose mode
+                    if verbose and hasattr(package_info, 'package_type'):
+                        from apm_cli.models.apm_package import PackageType
+                        package_type = package_info.package_type
+                        if package_type == PackageType.CLAUDE_SKILL:
+                            _rich_info(f"  └─ Package type: Claude Skill (SKILL.md detected)")
+                        elif package_type == PackageType.HYBRID:
+                            _rich_info(f"  └─ Package type: Hybrid (apm.yml + SKILL.md)")
+                        elif package_type == PackageType.APM_PACKAGE:
+                            _rich_info(f"  └─ Package type: APM Package (apm.yml)")
 
                     # Auto-integrate prompts and agents if enabled
                     if integrate_vscode or integrate_claude:
@@ -1362,6 +1352,10 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                     total_agents_integrated += agent_result.files_integrated
                                     _rich_info(
                                         f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                                    )
+                                if agent_result.skills_integrated > 0:
+                                    _rich_info(
+                                        f"  └─ {agent_result.skills_integrated} skill(s) transformed → .github/agents/ (from SKILL.md)"
                                     )
                                 if agent_result.files_updated > 0:
                                     _rich_info(

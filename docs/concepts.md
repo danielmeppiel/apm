@@ -154,7 +154,8 @@ Package your prompt engineering into reusable, configurable components:
 
 - **Instructions** (.instructions.md) - Context and coding standards
 - **Prompts** (.prompt.md) - Executable AI workflows  
-- **Chat Modes** (.chatmode.md) - AI assistant personalities
+- **Agents** (.agent.md) - AI assistant personalities
+- **Skills** (SKILL.md) - Package meta-guides for AI agents
 - **Context** (.context.md) - Project knowledge base
 
 ### Layer 3: Context Engineering
@@ -194,17 +195,32 @@ input: [auth_method, session_duration]
 Use ${input:auth_method} with ${input:session_duration} sessions
 ```
 
-### Chat Modes (.chatmode.md)
+### Agents (.agent.md)
 AI assistant personalities with tool boundaries:
 
 ```yaml
 ---
 name: "Backend Developer"
 model: "gpt-4"
+description: "Senior backend developer focused on API design"
 tools: ["terminal", "file-manager"] 
 ---
 You are a senior backend developer focused on API design and security.
 ```
+
+### Skills (SKILL.md)
+Package meta-guides that help AI agents understand what a package does:
+
+```yaml
+---
+name: Brand Guidelines
+description: Apply corporate brand standards
+---
+# How to Use
+Apply these colors and typography standards...
+```
+
+Skills provide AI agents with a quick summary of package purpose and usage.
 
 ### Context (.context.md)
 Optimized project knowledge for AI consumption:

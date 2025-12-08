@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Dict
 
 from .models import PrimitiveCollection
-from .parser import parse_primitive_file
+from .parser import parse_primitive_file, parse_skill_file
 from ..models.apm_package import APMPackage
 
 
@@ -54,8 +54,8 @@ DEPENDENCY_PRIMITIVE_PATTERNS: Dict[str, List[str]] = {
 def discover_primitives(base_dir: str = ".") -> PrimitiveCollection:
     """Find all APM primitive files in the project.
     
-    Searches for .chatmode.md, .instructions.md, .context.md, and .memory.md files
-    in both .apm/ and .github/ directory structures.
+    Searches for .chatmode.md, .instructions.md, .context.md, .memory.md files
+    in both .apm/ and .github/ directory structures, plus SKILL.md at root.
     
     Args:
         base_dir (str): Base directory to search in. Defaults to current directory.
@@ -75,6 +75,9 @@ def discover_primitives(base_dir: str = ".") -> PrimitiveCollection:
                 collection.add_primitive(primitive)
             except Exception as e:
                 print(f"Warning: Failed to parse {file_path}: {e}")
+    
+    # Discover SKILL.md at project root
+    _discover_local_skill(base_dir, collection)
     
     return collection
 
@@ -96,6 +99,9 @@ def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveColle
     
     # Phase 1: Local primitives (highest priority)
     scan_local_primitives(base_dir, collection)
+    
+    # Phase 1b: Local SKILL.md
+    _discover_local_skill(base_dir, collection)
     
     # Phase 2: Dependency primitives (lower priority, with conflict detection)
     scan_dependency_primitives(base_dir, collection)
@@ -248,6 +254,8 @@ def scan_directory_with_source(directory: Path, collection: PrimitiveCollection,
     # Look for .apm directory within the dependency
     apm_dir = directory / ".apm"
     if not apm_dir.exists():
+        # Even without .apm, check for SKILL.md (Claude Skills support)
+        _discover_skill_in_directory(directory, collection, source)
         return
     
     # Find and parse files for each primitive type
@@ -264,6 +272,42 @@ def scan_directory_with_source(directory: Path, collection: PrimitiveCollection,
                         collection.add_primitive(primitive)
                     except Exception as e:
                         print(f"Warning: Failed to parse dependency primitive {file_path}: {e}")
+    
+    # Also check for SKILL.md in the dependency root
+    _discover_skill_in_directory(directory, collection, source)
+
+
+def _discover_local_skill(base_dir: str, collection: PrimitiveCollection) -> None:
+    """Discover SKILL.md at the project root.
+    
+    Args:
+        base_dir (str): Base directory to search in.
+        collection (PrimitiveCollection): Collection to add skill to.
+    """
+    skill_path = Path(base_dir) / "SKILL.md"
+    if skill_path.exists() and _is_readable(skill_path):
+        try:
+            skill = parse_skill_file(skill_path, source="local")
+            collection.add_primitive(skill)
+        except Exception as e:
+            print(f"Warning: Failed to parse SKILL.md: {e}")
+
+
+def _discover_skill_in_directory(directory: Path, collection: PrimitiveCollection, source: str) -> None:
+    """Discover SKILL.md in a package directory.
+    
+    Args:
+        directory (Path): Package directory to check.
+        collection (PrimitiveCollection): Collection to add skill to.
+        source (str): Source identifier for the skill.
+    """
+    skill_path = directory / "SKILL.md"
+    if skill_path.exists() and _is_readable(skill_path):
+        try:
+            skill = parse_skill_file(skill_path, source=source)
+            collection.add_primitive(skill)
+        except Exception as e:
+            print(f"Warning: Failed to parse SKILL.md in {directory}: {e}")
 
 
 def find_primitive_files(base_dir: str, patterns: List[str]) -> List[Path]:
