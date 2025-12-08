@@ -727,7 +727,8 @@ author: {dep_ref.repo_url.split('/')[0]}
         return PackageInfo(
             package=package,
             install_path=target_path,
-            installed_at=datetime.now().isoformat()
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dep_ref  # Store for canonical dependency string
         )
     
     def download_collection_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
@@ -874,7 +875,8 @@ author: {dep_ref.repo_url.split('/')[0]}
         return PackageInfo(
             package=package,
             install_path=target_path,
-            installed_at=datetime.now().isoformat()
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dep_ref  # Store for canonical dependency string
         )
     
     def download_package(
@@ -1014,7 +1016,8 @@ author: {dep_ref.repo_url.split('/')[0]}
             package=package,
             install_path=target_path,
             resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dep_ref  # Store for canonical dependency string
         )
     
     def _get_clone_progress_callback(self):

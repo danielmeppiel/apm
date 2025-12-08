@@ -89,6 +89,7 @@ class PromptIntegrator:
                     'Version': apm_data.get('version', ''),
                     'Commit': apm_data.get('commit', ''),
                     'Source': f"{apm_data.get('source', '')} ({apm_data.get('source_repo', '')})",
+                    'SourceDependency': apm_data.get('source_dependency', ''),  # Full dependency string
                     'ContentHash': apm_data.get('content_hash', '')
                 }
                 return metadata
@@ -223,6 +224,7 @@ class PromptIntegrator:
         post.metadata['apm'] = {
             'source': package_info.package.name,
             'source_repo': package_info.package.source or "unknown",
+            'source_dependency': package_info.get_canonical_dependency_string(),  # Full dependency string for orphan detection
             'version': package_info.package.version,
             'commit': (
                 package_info.resolved_reference.resolved_commit
@@ -378,8 +380,14 @@ class PromptIntegrator:
         if not prompts_dir.exists():
             return {'files_removed': 0, 'errors': 0}
         
-        # Get currently installed package URLs
-        installed = {dep.repo_url for dep in apm_package.get_apm_dependencies()}
+        # Build set of canonical dependency strings for comparison
+        # For virtual packages: owner/repo/path/to/file or owner/repo/collections/name
+        # For regular packages: owner/repo
+        installed_deps = set()
+        installed_repo_urls = set()  # Fallback for old metadata format
+        for dep in apm_package.get_apm_dependencies():
+            installed_deps.add(dep.get_canonical_dependency_string())
+            installed_repo_urls.add(dep.repo_url)
         
         # Track cleanup statistics
         files_removed = 0
@@ -393,36 +401,41 @@ class PromptIntegrator:
             if not metadata:
                 continue
             
-            source = metadata.get('Source', '')
+            # Try new format first: source_dependency contains full dependency string
+            source_dependency = metadata.get('SourceDependency', '')
             
-            # Skip if no source metadata
-            if not source:
-                continue
-            
-            # Extract package repo URL from source
-            # Format: "package-name (owner/repo)" or "package-name (host.com/owner/repo)"
-            # The source_repo field in metadata contains full URL (e.g., https://github.com/owner/repo)
-            # but dep.repo_url contains short form (e.g., owner/repo)
-            # We need to normalize both for comparison
-            package_repo_url = None
-            if '(' in source and ')' in source:
-                # Extract content within parentheses - this is the full repo identifier
-                package_repo_url = source.split('(')[1].split(')')[0].strip()
-            
-            if not package_repo_url:
-                continue
-            
-            # Normalize the repo URL to owner/repo format for comparison
-            normalized_package_url = normalize_repo_url(package_repo_url)
-            
-            # Check if source package is still installed
-            # Compare normalized URLs
-            package_match = any(
-                pkg == normalized_package_url or 
-                (pkg + '.git') == normalized_package_url or
-                pkg == package_repo_url  # Fallback for exact match
-                for pkg in installed
-            )
+            if source_dependency and source_dependency != 'unknown':
+                # New format: compare full dependency strings
+                normalized_dep = normalize_repo_url(source_dependency)
+                package_match = any(
+                    dep == normalized_dep or dep == source_dependency
+                    for dep in installed_deps
+                )
+            else:
+                # Fallback: old format using repo URL from Source field
+                source = metadata.get('Source', '')
+                if not source:
+                    continue
+                
+                # Extract package repo URL from source
+                # Format: "package-name (owner/repo)" or "package-name (host.com/owner/repo)"
+                package_repo_url = None
+                if '(' in source and ')' in source:
+                    package_repo_url = source.split('(')[1].split(')')[0].strip()
+                
+                if not package_repo_url:
+                    continue
+                
+                # Normalize the repo URL for comparison
+                normalized_package_url = normalize_repo_url(package_repo_url)
+                
+                # Check if source package is still installed (using repo_url for backwards compat)
+                package_match = any(
+                    pkg == normalized_package_url or 
+                    (pkg + '.git') == normalized_package_url or
+                    pkg == package_repo_url
+                    for pkg in installed_repo_urls
+                )
             
             if not package_match:
                 try:
