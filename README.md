@@ -5,7 +5,7 @@
 [![Downloads](https://img.shields.io/pypi/dm/apm-cli.svg)](https://pypi.org/project/apm-cli/)
 [![GitHub stars](https://img.shields.io/github/stars/danielmeppiel/apm.svg?style=social&label=Star)](https://github.com/danielmeppiel/apm/stargazers)
 
-**npm for AI coding agents.** Package guardrails, workflows, and personas. Deploy to every agent.
+**npm for AI coding agents.** Package prompts, agents, and rules. Install once, native everywhere.
 
 GitHub Copilot · Cursor · Claude · Codex · Gemini
 
@@ -18,14 +18,29 @@ curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | 
 ## Quick Start
 
 ```bash
-# Install a compliance package from GitHub (github.com/danielmeppiel/compliance-rules)
+# Install a package from GitHub
 apm install danielmeppiel/compliance-rules
+```
 
-# Generate context for all AI agents  
+**What's inside?**
+```
+compliance-rules/
+├── apm.yml                               # Package manifest
+├── SKILL.md                              # AI discovery guide
+└── .apm/
+  ├── prompts/
+  │   ├── gdpr-assessment.prompt.md     → /gdpr-assessment
+  │   └── security-audit.prompt.md      → /security-audit
+  └── instructions/
+    └── compliance.instructions.md   → Always-on rules
+```
+
+```bash
+# Compile instructions for your AI tools
 apm compile
 ```
 
-**Done.** Your AI agents now respect GDPR, security standards, and audit requirements.
+**Done.** Type `/gdpr-assessment` in Copilot or Claude. It just works.
 
 ## What APM Does
 
@@ -180,11 +195,11 @@ For private packages, Azure DevOps, or running prompts via AI runtimes:
 
 [![Install with APM](https://img.shields.io/badge/📦_Install_with-APM-blue?style=flat-square)](https://github.com/danielmeppiel/apm#community-packages)
 
-| Package | Description |
+| Package | What you get |
 |---------|-------------|
-| [danielmeppiel/compliance-rules](https://github.com/danielmeppiel/compliance-rules) | GDPR, security, audit workflows |
-| [danielmeppiel/design-guidelines](https://github.com/danielmeppiel/design-guidelines) | Accessibility, UI standards |
-| [DevExpGbb/platform-mode](https://github.com/DevExpGbb/platform-mode) | Platform engineering patterns |
+| [danielmeppiel/compliance-rules](https://github.com/danielmeppiel/compliance-rules) | `/gdpr-assessment`, `/security-audit` + compliance rules |
+| [danielmeppiel/design-guidelines](https://github.com/danielmeppiel/design-guidelines) | `/accessibility-audit`, `/design-review` + UI standards |
+| [DevExpGbb/platform-mode](https://github.com/DevExpGbb/platform-mode) | Platform engineering prompts & agents |
 | [Add yours →](https://github.com/danielmeppiel/apm/discussions/new) | |
 
 ---
