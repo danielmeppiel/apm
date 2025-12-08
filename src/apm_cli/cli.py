@@ -1052,9 +1052,12 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
         agent_integrator = AgentIntegrator()
+        from apm_cli.integration.skill_integrator import SkillIntegrator
+        skill_integrator = SkillIntegrator()
         should_integrate = prompt_integrator.should_integrate(project_root)
         total_prompts_integrated = 0
         total_agents_integrated = 0
+        total_skills_generated = 0
         total_links_resolved = 0
 
         # Install each dependency with Rich progress display
@@ -1206,6 +1209,17 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 )
                             # Track links resolved
                             total_links_resolved += agent_result.links_resolved
+                            
+                            # Generate SKILL.md for Claude Skills
+                            skill_result = skill_integrator.integrate_package_skill(
+                                cached_package_info,
+                                project_root
+                            )
+                            if skill_result.skill_created:
+                                total_skills_generated += 1
+                                _rich_info(
+                                    f"  └─ SKILL.md generated for Claude Skills"
+                                )
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(f"  ⚠ Failed to integrate primitives from cached package: {e}")
@@ -1274,6 +1288,17 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 )
                             # Track links resolved
                             total_links_resolved += agent_result.links_resolved
+                            
+                            # Generate SKILL.md for Claude Skills
+                            skill_result = skill_integrator.integrate_package_skill(
+                                package_info,
+                                project_root
+                            )
+                            if skill_result.skill_created:
+                                total_skills_generated += 1
+                                _rich_info(
+                                    f"  └─ SKILL.md generated for Claude Skills"
+                                )
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(f"  ⚠ Failed to integrate primitives: {e}")
@@ -1311,6 +1336,10 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:
             _rich_info(f"✓ Resolved {total_links_resolved} context file links")
+        
+        # Show Claude Skills stats if any were generated
+        if total_skills_generated > 0:
+            _rich_info(f"✓ Generated {total_skills_generated} Claude Skill(s)")
         
         _rich_success(f"Installed {installed_count} APM dependencies")
         
@@ -2275,6 +2304,13 @@ def _watch_mode(output, chatmode, no_links, dry_run):
     help="Output file path (for single-file mode)",
 )
 @click.option(
+    "--target",
+    "-t",
+    type=click.Choice(["vscode", "agents", "claude", "all"]),
+    default="all",
+    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), or all",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="🔍 Preview compilation without writing files (shows placement decisions)",
@@ -2315,6 +2351,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 def compile(
     ctx,
     output,
+    target,
     dry_run,
     no_links,
     chatmode,
@@ -2332,6 +2369,11 @@ def compile(
     files across your directory structure following the Minimal Context Principle.
 
     Use --single-agents for traditional single-file compilation when needed.
+
+    Target platforms:
+    • vscode/agents: Generates AGENTS.md + .github/ structure (VSCode/GitHub Copilot)
+    • claude: Generates CLAUDE.md + .claude/ structure (Claude Code)
+    • all: Generates both targets (default)
 
     Advanced options:
     • --dry-run: Preview compilation without writing files (shows placement decisions)
@@ -2432,6 +2474,7 @@ def compile(
             local_only=local_only,
             debug=verbose,
             clean_orphaned=clean,
+            target=target,
         )
         config.with_constitution = with_constitution
 

@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any
 from ..primitives.models import PrimitiveCollection
 from ..primitives.discovery import discover_primitives
 from ..version import get_version
+from .claude_formatter import ClaudeFormatter, ClaudeCompilationResult
 from .template_builder import (
     build_conditional_sections,
     generate_agents_md_template,
@@ -28,6 +29,12 @@ class CompilationConfig:
     resolve_links: bool = True
     dry_run: bool = False
     with_constitution: bool = True  # Phase 0 feature flag
+    
+    # Multi-target compilation settings
+    # "vscode" or "agents" -> AGENTS.md + .github/
+    # "claude" -> CLAUDE.md + .claude/
+    # "all" -> both targets
+    target: str = "all"
     
     # Distributed compilation settings (Task 7)
     strategy: str = "distributed"  # "distributed" or "single-file"
@@ -75,6 +82,8 @@ class CompilationConfig:
                     config.chatmode = compilation_config['chatmode']
                 if 'resolve_links' in compilation_config:
                     config.resolve_links = compilation_config['resolve_links']
+                if 'target' in compilation_config:
+                    config.target = compilation_config['target']
                 
                 # Distributed compilation settings (Task 7)
                 if 'strategy' in compilation_config:
@@ -135,7 +144,12 @@ class AgentsCompiler:
         self.errors: List[str] = []
     
     def compile(self, config: CompilationConfig, primitives: Optional[PrimitiveCollection] = None) -> CompilationResult:
-        """Compile AGENTS.md with the given configuration.
+        """Compile AGENTS.md and/or CLAUDE.md based on target configuration.
+        
+        Routes compilation to appropriate targets based on config.target:
+        - "vscode" or "agents": Generate AGENTS.md + .github/ structure
+        - "claude": Generate CLAUDE.md + .claude/ structure  
+        - "all": Generate both targets
         
         Args:
             config (CompilationConfig): Compilation configuration.
@@ -158,12 +172,19 @@ class AgentsCompiler:
                     from ..primitives.discovery import discover_primitives_with_dependencies
                     primitives = discover_primitives_with_dependencies(str(self.base_dir))
             
-            # Handle distributed compilation (Task 7 - new default behavior)
-            if config.strategy == "distributed" and not config.single_agents:
-                return self._compile_distributed(config, primitives)
-            else:
-                # Traditional single-file compilation (backward compatibility)
-                return self._compile_single_file(config, primitives)
+            # Route to targets based on config.target
+            results: List[CompilationResult] = []
+            
+            # AGENTS.md target (vscode/agents)
+            if config.target in ("vscode", "agents", "all"):
+                results.append(self._compile_agents_md(config, primitives))
+            
+            # CLAUDE.md target
+            if config.target in ("claude", "all"):
+                results.append(self._compile_claude_md(config, primitives))
+            
+            # Merge results from all targets
+            return self._merge_results(results)
                 
         except Exception as e:
             self.errors.append(f"Compilation failed: {str(e)}")
@@ -175,6 +196,23 @@ class AgentsCompiler:
                 errors=self.errors.copy(),
                 stats={}
             )
+    
+    def _compile_agents_md(self, config: CompilationConfig, primitives: PrimitiveCollection) -> CompilationResult:
+        """Compile AGENTS.md files (VSCode/Copilot target).
+        
+        Args:
+            config (CompilationConfig): Compilation configuration.
+            primitives (PrimitiveCollection): Primitives to compile.
+        
+        Returns:
+            CompilationResult: Result of the AGENTS.md compilation.
+        """
+        # Handle distributed compilation (Task 7 - new default behavior)
+        if config.strategy == "distributed" and not config.single_agents:
+            return self._compile_distributed(config, primitives)
+        else:
+            # Traditional single-file compilation (backward compatibility)
+            return self._compile_single_file(config, primitives)
     
     def _compile_distributed(self, config: CompilationConfig, primitives: PrimitiveCollection) -> CompilationResult:
         """Compile using distributed AGENTS.md approach (Task 7).
@@ -321,6 +359,197 @@ class AgentsCompiler:
             warnings=self.warnings.copy(),
             errors=self.errors.copy(),
             stats=stats
+        )
+    
+    def _compile_claude_md(self, config: CompilationConfig, primitives: PrimitiveCollection) -> CompilationResult:
+        """Compile CLAUDE.md files (Claude Code target).
+        
+        Uses ClaudeFormatter to generate CLAUDE.md files following Claude's
+        Memory format with @import syntax, grouped project standards, and
+        workflows section for agents/roles.
+        
+        Args:
+            config (CompilationConfig): Compilation configuration.
+            primitives (PrimitiveCollection): Primitives to compile.
+        
+        Returns:
+            CompilationResult: Result of the CLAUDE.md compilation.
+        """
+        # Create Claude formatter
+        claude_formatter = ClaudeFormatter(str(self.base_dir))
+        
+        # Get placement map from distributed compiler for consistency
+        from .distributed_compiler import DistributedAgentsCompiler
+        distributed_compiler = DistributedAgentsCompiler(str(self.base_dir))
+        
+        # Analyze directory structure and determine placement
+        directory_map = distributed_compiler.analyze_directory_structure(primitives.instructions)
+        placement_map = distributed_compiler.determine_agents_placement(
+            primitives.instructions,
+            directory_map,
+            min_instructions=config.min_instructions_per_file,
+            debug=config.debug
+        )
+        
+        # Format CLAUDE.md files
+        claude_config = {
+            'source_attribution': config.source_attribution,
+            'debug': config.debug
+        }
+        claude_result = claude_formatter.format_distributed(primitives, placement_map, claude_config)
+        
+        # Generate Claude commands from prompt files
+        command_result = claude_formatter.generate_commands(
+            claude_formatter.discover_prompt_files(),
+            dry_run=config.dry_run
+        )
+        
+        # Merge warnings and errors
+        all_warnings = claude_result.warnings + command_result.warnings
+        all_errors = claude_result.errors + command_result.errors
+        
+        # Handle dry-run mode
+        if config.dry_run:
+            # Generate preview summary
+            preview_lines = [
+                f"CLAUDE.md Preview: Would generate {len(claude_result.placements)} files",
+                f"Commands Preview: Would generate {len(command_result.commands_generated)} commands"
+            ]
+            for claude_path in claude_result.content_map.keys():
+                try:
+                    rel_path = claude_path.relative_to(self.base_dir)
+                except ValueError:
+                    rel_path = claude_path
+                preview_lines.append(f"  📄 {rel_path}")
+            
+            return CompilationResult(
+                success=len(all_errors) == 0,
+                output_path="Preview mode - CLAUDE.md",
+                content="\n".join(preview_lines),
+                warnings=all_warnings,
+                errors=all_errors,
+                stats=claude_result.stats
+            )
+        
+        # Write CLAUDE.md files
+        files_written = 0
+        for claude_path, content in claude_result.content_map.items():
+            try:
+                # Create directory if needed
+                claude_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Handle constitution injection if enabled
+                final_content = content
+                if config.with_constitution:
+                    try:
+                        from .injector import ConstitutionInjector
+                        injector = ConstitutionInjector(str(claude_path.parent))
+                        final_content, _, _ = injector.inject(
+                            content,
+                            with_constitution=True,
+                            output_path=claude_path
+                        )
+                    except Exception:
+                        pass  # Use original content if injection fails
+                
+                claude_path.write_text(final_content, encoding='utf-8')
+                files_written += 1
+            except OSError as e:
+                all_errors.append(f"Failed to write {claude_path}: {str(e)}")
+        
+        # Update stats
+        stats = claude_result.stats.copy()
+        stats['claude_files_written'] = files_written
+        stats['commands_written'] = command_result.files_written
+        
+        # Generate summary content
+        summary_lines = [
+            f"# CLAUDE.md Compilation Summary",
+            f"",
+            f"Generated {files_written} CLAUDE.md files:"
+        ]
+        for placement in claude_result.placements:
+            try:
+                rel_path = placement.claude_path.relative_to(self.base_dir)
+            except ValueError:
+                rel_path = placement.claude_path
+            summary_lines.append(f"- {rel_path} ({len(placement.instructions)} instructions)")
+        
+        if command_result.files_written > 0:
+            summary_lines.extend([
+                f"",
+                f"Generated {command_result.files_written} Claude commands in .claude/commands/"
+            ])
+        
+        return CompilationResult(
+            success=len(all_errors) == 0,
+            output_path=f"CLAUDE.md: {files_written} files",
+            content="\n".join(summary_lines),
+            warnings=all_warnings,
+            errors=all_errors,
+            stats=stats
+        )
+    
+    def _merge_results(self, results: List[CompilationResult]) -> CompilationResult:
+        """Merge multiple compilation results into a single result.
+        
+        Combines warnings, errors, stats, and content from multiple target
+        compilations into a unified result.
+        
+        Args:
+            results (List[CompilationResult]): List of compilation results to merge.
+        
+        Returns:
+            CompilationResult: Merged compilation result.
+        """
+        if not results:
+            return CompilationResult(
+                success=True,
+                output_path="",
+                content="",
+                warnings=[],
+                errors=[],
+                stats={}
+            )
+        
+        if len(results) == 1:
+            return results[0]
+        
+        # Merge all results
+        merged_warnings: List[str] = []
+        merged_errors: List[str] = []
+        merged_stats: Dict[str, Any] = {}
+        output_paths: List[str] = []
+        content_parts: List[str] = []
+        
+        for result in results:
+            merged_warnings.extend(result.warnings)
+            merged_errors.extend(result.errors)
+            
+            # Merge stats with prefixes to avoid collisions
+            for key, value in result.stats.items():
+                if key in merged_stats:
+                    # Handle numeric stats by summing
+                    if isinstance(value, (int, float)) and isinstance(merged_stats[key], (int, float)):
+                        merged_stats[key] = merged_stats[key] + value
+                else:
+                    merged_stats[key] = value
+            
+            if result.output_path:
+                output_paths.append(result.output_path)
+            if result.content:
+                content_parts.append(result.content)
+        
+        # Determine overall success
+        overall_success = all(r.success for r in results)
+        
+        return CompilationResult(
+            success=overall_success,
+            output_path=" | ".join(output_paths) if output_paths else "",
+            content="\n\n---\n\n".join(content_parts) if content_parts else "",
+            warnings=merged_warnings,
+            errors=merged_errors,
+            stats=merged_stats
         )
     
     def validate_primitives(self, primitives: PrimitiveCollection) -> List[str]:
