@@ -17,30 +17,23 @@ curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | 
 
 ## Quick Start
 
+**One package. Every AI agent. Native format for each.**
+
 ```bash
-# Install a package from GitHub
+# Install from GitHub
 apm install danielmeppiel/compliance-rules
-```
 
-**What's inside?**
-```
-compliance-rules/
-├── apm.yml                               # Package manifest
-├── SKILL.md                              # AI discovery guide
-└── .apm/
-  ├── prompts/
-  │   ├── gdpr-assessment.prompt.md     → /gdpr-assessment
-  │   └── security-audit.prompt.md      → /security-audit
-  └── instructions/
-    └── compliance.instructions.md   → Always-on rules
-```
+# Install from awesome-copilot
+apm install github/awesome-copilot/prompts/code-review.prompt.md
 
-```bash
+# Install Claude Skills
+apm install ComposioHQ/awesome-claude-skills/brand-guidelines
+
 # Compile instructions for your AI tools
 apm compile
 ```
 
-**Done.** Type `/gdpr-assessment` in Copilot or Claude. It just works.
+**Done.** Type `/gdpr-assessment` or `/code-review` in Copilot or Claude. It just works.
 
 ## What APM Does
 
@@ -65,11 +58,6 @@ apm compile
 ```
 
 **One package. Every AI agent. Native format for each.**
-
-> 💡 **Install prompts, agents, and Claude Skills from anywhere!**  
-> Browse [github/awesome-copilot](https://github.com/github/awesome-copilot) or [awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills) and install with:  
-> `apm install github/awesome-copilot/prompts/code-review.prompt.md`  
-> `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
 
 ## Real Example: corporate-website
 
