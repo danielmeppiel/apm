@@ -8,8 +8,35 @@ The package identity system ensures consistency between:
 """
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 from src.apm_cli.models.apm_package import DependencyReference
+
+
+def _get_host_from_entry(entry: str) -> str | None:
+    """Safely extract hostname from an entry using URL parsing.
+    
+    This is a security-safe way to check for host prefixes without
+    using vulnerable string operations like startswith().
+    
+    Args:
+        entry: The dependency string to parse
+        
+    Returns:
+        The hostname if present, None otherwise
+    """
+    # Try parsing as a URL with scheme
+    if '://' in entry:
+        parsed = urlparse(entry)
+        return parsed.netloc if parsed.netloc else None
+    
+    # For entries like "dev.azure.com/org/proj/repo", treat first segment as potential host
+    parts = entry.split('/')
+    if len(parts) >= 1 and '.' in parts[0]:
+        # Looks like a hostname (contains dots)
+        return parts[0]
+    
+    return None
 
 
 class TestCanonicalDependencyString:
@@ -239,13 +266,19 @@ class TestOrphanDetectionScenarios:
             try:
                 dep = DependencyReference.parse(entry)
                 canonical = dep.get_canonical_dependency_string()
-                # For ADO entries with host prefix, canonical should match without the host
-                if entry.startswith("dev.azure.com/"):
-                    expected = entry.replace("dev.azure.com/", "")
+                
+                # Use proper URL parsing to extract hostname safely
+                host = _get_host_from_entry(entry)
+                
+                if host == "dev.azure.com":
+                    # ADO entries: canonical should match without the host
+                    # Remove host prefix: dev.azure.com/org/proj/repo -> org/proj/repo
+                    expected = '/'.join(entry.split('/')[1:])
                     expected = expected.replace("/_git/", "/")
                     assert canonical == expected
-                elif entry.startswith("github.com/"):
-                    expected = entry.replace("github.com/", "")
+                elif host == "github.com":
+                    # GitHub entries: canonical should match without the host
+                    expected = '/'.join(entry.split('/')[1:])
                     assert canonical == expected
                 else:
                     # Entries without host prefix should match exactly
