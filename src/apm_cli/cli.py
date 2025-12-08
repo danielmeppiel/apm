@@ -2576,6 +2576,7 @@ def compile(
             apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
             config_target = apm_pkg.target
         except Exception:
+            # No apm.yml or parsing error - proceed with auto-detection
             pass
         
         detected_target, detection_reason = detect_target(

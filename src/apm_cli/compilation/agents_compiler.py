@@ -9,10 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from ..primitives.models import PrimitiveCollection
-from ..output.models import CompilationResults
 from ..primitives.discovery import discover_primitives
 from ..version import get_version
-from .claude_formatter import ClaudeFormatter, ClaudeCompilationResult
+from .claude_formatter import ClaudeFormatter
 from .template_builder import (
     build_conditional_sections,
     generate_agents_md_template,

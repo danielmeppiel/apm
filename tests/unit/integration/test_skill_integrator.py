@@ -1,11 +1,9 @@
 """Tests for skill integration functionality (Claude Code SKILL.md support)."""
 
-import pytest
 import tempfile
 import shutil
-import hashlib
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock
 from datetime import datetime
 
 from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case

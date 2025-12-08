@@ -1,9 +1,5 @@
 """Tests for target detection module."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch
-
 from apm_cli.core.target_detection import (
     detect_target,
     should_integrate_vscode,

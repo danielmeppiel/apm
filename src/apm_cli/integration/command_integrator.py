@@ -5,12 +5,11 @@ mirroring how PromptIntegrator handles .github/prompts/.
 """
 
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict
 from dataclasses import dataclass
 import hashlib
 from datetime import datetime
 import frontmatter
-import shutil
 
 from apm_cli.compilation.link_resolver import UnifiedLinkResolver
 
@@ -455,6 +454,7 @@ class CommandIntegrator:
                     command_file.unlink()
                     files_removed += 1
             except Exception:
+                # Skip files that can't be read or removed - continue with remaining files
                 pass
         
         return files_removed

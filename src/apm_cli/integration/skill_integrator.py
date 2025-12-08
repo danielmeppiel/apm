@@ -10,8 +10,6 @@ import re
 
 import frontmatter
 
-from .utils import normalize_repo_url
-
 
 @dataclass
 class SkillIntegrationResult:
@@ -221,13 +219,14 @@ class SkillIntegrator:
         all_files.extend(self.find_context_files(package_path))
         
         # Sort for deterministic hashing
-        all_files.sort(key=lambda p: str(p))
+        all_files.sort(key=str)
         
         for file_path in all_files:
             try:
                 content = file_path.read_text(encoding='utf-8')
                 hasher.update(content.encode())
             except Exception:
+                # Skip unreadable files - hash will reflect only readable content
                 pass
         
         return hasher.hexdigest()
@@ -404,6 +403,7 @@ class SkillIntegrator:
                     shutil.copy2(src_file, target_path)
                     total_copied += 1
                 except Exception:
+                    # Skip files that can't be copied - continue with remaining files
                     pass
         
         return total_copied

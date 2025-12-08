@@ -14,7 +14,6 @@ import tempfile
 import shutil
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 from click.testing import CliRunner
