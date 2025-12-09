@@ -514,5 +514,168 @@ class TestContextOptimizer:
             assert optimized_efficiency >= naive_efficiency or optimized_efficiency >= 0.3
 
 
+class TestDirectoryExclusion:
+    """Test directory exclusion patterns in ContextOptimizer."""
+    
+    def test_should_exclude_path_no_patterns(self):
+        """Test that no exclusions occur when no patterns are provided."""
+        optimizer = ContextOptimizer(base_dir="/test", exclude_patterns=None)
+        assert not optimizer._should_exclude_path(Path("/test/src"))
+        assert not optimizer._should_exclude_path(Path("/test/apm_modules"))
+    
+    def test_should_exclude_path_simple_directory(self):
+        """Test exclusion of simple directory patterns."""
+        optimizer = ContextOptimizer(
+            base_dir="/test", 
+            exclude_patterns=["apm_modules", "tmp"]
+        )
+        assert optimizer._should_exclude_path(Path("/test/apm_modules"))
+        assert optimizer._should_exclude_path(Path("/test/tmp"))
+        assert not optimizer._should_exclude_path(Path("/test/src"))
+    
+    def test_should_exclude_path_with_trailing_slash(self):
+        """Test exclusion patterns with trailing slashes."""
+        optimizer = ContextOptimizer(
+            base_dir="/test", 
+            exclude_patterns=["apm_modules/", "tmp/"]
+        )
+        assert optimizer._should_exclude_path(Path("/test/apm_modules"))
+        assert optimizer._should_exclude_path(Path("/test/apm_modules/package"))
+        assert optimizer._should_exclude_path(Path("/test/tmp"))
+        assert not optimizer._should_exclude_path(Path("/test/src"))
+    
+    def test_should_exclude_path_nested_directories(self):
+        """Test exclusion of nested directory patterns."""
+        optimizer = ContextOptimizer(
+            base_dir="/test", 
+            exclude_patterns=["projects/packages/apm"]
+        )
+        assert optimizer._should_exclude_path(Path("/test/projects/packages/apm"))
+        assert optimizer._should_exclude_path(Path("/test/projects/packages/apm/src"))
+        assert not optimizer._should_exclude_path(Path("/test/projects/packages/other"))
+    
+    def test_should_exclude_path_glob_patterns(self):
+        """Test exclusion using glob patterns."""
+        optimizer = ContextOptimizer(
+            base_dir="/test", 
+            exclude_patterns=["**/test-fixtures", "coverage/**"]
+        )
+        assert optimizer._should_exclude_path(Path("/test/test-fixtures"))
+        assert optimizer._should_exclude_path(Path("/test/src/test-fixtures"))
+        assert optimizer._should_exclude_path(Path("/test/coverage"))
+        assert optimizer._should_exclude_path(Path("/test/coverage/report"))
+        assert not optimizer._should_exclude_path(Path("/test/src"))
+    
+    def test_should_exclude_path_wildcard_patterns(self):
+        """Test exclusion using wildcard patterns."""
+        optimizer = ContextOptimizer(
+            base_dir="/test", 
+            exclude_patterns=["tmp*", "*cache*"]
+        )
+        assert optimizer._should_exclude_path(Path("/test/tmp"))
+        assert optimizer._should_exclude_path(Path("/test/tmp123"))
+        assert optimizer._should_exclude_path(Path("/test/cache"))
+        assert optimizer._should_exclude_path(Path("/test/mycache"))
+        assert not optimizer._should_exclude_path(Path("/test/src"))
+    
+    def test_should_exclude_path_complex_glob(self):
+        """Test complex glob patterns."""
+        optimizer = ContextOptimizer(
+            base_dir="/test", 
+            exclude_patterns=["projects/**/apm/**", "**/node_modules/**"]
+        )
+        assert optimizer._should_exclude_path(Path("/test/projects/packages/apm"))
+        assert optimizer._should_exclude_path(Path("/test/projects/packages/apm/src"))
+        assert optimizer._should_exclude_path(Path("/test/node_modules"))
+        assert optimizer._should_exclude_path(Path("/test/src/node_modules"))
+        assert not optimizer._should_exclude_path(Path("/test/projects/other"))
+    
+    def test_should_exclude_path_path_outside_base_dir(self):
+        """Test that paths outside base_dir are not excluded."""
+        optimizer = ContextOptimizer(
+            base_dir="/test", 
+            exclude_patterns=["apm_modules"]
+        )
+        # Path that's not relative to base_dir should not be excluded
+        assert not optimizer._should_exclude_path(Path("/other/apm_modules"))
+    
+    def test_analyze_project_structure_with_exclusions(self):
+        """Test that _analyze_project_structure respects exclusion patterns."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir)
+            
+            # Create directory structure
+            (base_path / "src").mkdir()
+            (base_path / "src" / "file.py").touch()
+            (base_path / "apm_modules").mkdir()
+            (base_path / "apm_modules" / "file.py").touch()
+            (base_path / "tmp").mkdir()
+            (base_path / "tmp" / "file.py").touch()
+            
+            # Create optimizer with exclusions
+            optimizer = ContextOptimizer(
+                base_dir=str(base_path),
+                exclude_patterns=["apm_modules", "tmp"]
+            )
+            optimizer._analyze_project_structure()
+            
+            # Check that excluded directories are not in cache
+            cached_dirs = set(optimizer._directory_cache.keys())
+            assert base_path / "src" in cached_dirs
+            assert base_path / "apm_modules" not in cached_dirs
+            assert base_path / "tmp" not in cached_dirs
+    
+    def test_analyze_project_structure_with_nested_exclusions(self):
+        """Test that nested exclusions work correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir)
+            
+            # Create nested directory structure
+            (base_path / "projects" / "packages" / "apm" / "src").mkdir(parents=True)
+            (base_path / "projects" / "packages" / "apm" / "src" / "file.py").touch()
+            (base_path / "projects" / "packages" / "other" / "src").mkdir(parents=True)
+            (base_path / "projects" / "packages" / "other" / "src" / "file.py").touch()
+            
+            # Create optimizer with nested exclusion
+            optimizer = ContextOptimizer(
+                base_dir=str(base_path),
+                exclude_patterns=["projects/packages/apm/**"]
+            )
+            optimizer._analyze_project_structure()
+            
+            # Check that excluded directories are not in cache
+            cached_dirs = set(optimizer._directory_cache.keys())
+            assert base_path / "projects" / "packages" / "apm" not in cached_dirs
+            assert base_path / "projects" / "packages" / "apm" / "src" not in cached_dirs
+            # Other directories should be present
+            assert base_path / "projects" / "packages" / "other" / "src" in cached_dirs
+    
+    def test_default_exclusions_still_work(self):
+        """Test that default hardcoded exclusions still work alongside custom patterns."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir)
+            
+            # Create directories including default exclusions
+            (base_path / "src").mkdir()
+            (base_path / "src" / "file.py").touch()
+            (base_path / "node_modules").mkdir()
+            (base_path / "node_modules" / "file.js").touch()
+            (base_path / "custom_exclude").mkdir()
+            (base_path / "custom_exclude" / "file.py").touch()
+            
+            # Create optimizer with custom exclusion only
+            optimizer = ContextOptimizer(
+                base_dir=str(base_path),
+                exclude_patterns=["custom_exclude"]
+            )
+            optimizer._analyze_project_structure()
+            
+            # Check that both default and custom exclusions work
+            cached_dirs = set(optimizer._directory_cache.keys())
+            assert base_path / "src" in cached_dirs
+            assert base_path / "node_modules" not in cached_dirs  # Default exclusion
+            assert base_path / "custom_exclude" not in cached_dirs  # Custom exclusion
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
