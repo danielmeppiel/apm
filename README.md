@@ -49,11 +49,11 @@ apm compile
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Universal Output                                               │
-│  ├── AGENTS.md      → GitHub Copilot, Cursor, Codex, Gemini     │
-│  ├── CLAUDE.md      → Claude Code, Claude Desktop               │
+│  Universal Output (auto-detected from .github/ and .claude/)    │
+│  ├── AGENTS.md      → Instructions for Copilot, Cursor, Codex   │
+│  ├── CLAUDE.md      → Instructions for Claude Code              │
 │  ├── .github/       → VSCode native prompts & agents            │
-│  └── .claude/       → Claude native commands & skills           │
+│  └── .claude/       → Claude commands & skills                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -164,6 +164,8 @@ apm compile --target vscode    # AGENTS.md + .github/ only
 apm compile --target claude    # CLAUDE.md + .claude/ only
 apm compile --target all       # Force all formats
 ```
+
+> **Note:** `apm compile` generates instruction files (AGENTS.md, CLAUDE.md). Prompts, agents, and skills are integrated by `apm install` into `.github/` and `.claude/` folders.
 
 ## Advanced Configuration
 
