@@ -941,6 +941,15 @@ def uninstall(ctx, packages, dry_run):
                         shutil.rmtree(package_path)
                         _rich_info(f"✓ Removed {package} from apm_modules/")
                         removed_from_modules += 1
+                        
+                        # Cleanup empty parent directories up to apm_modules/
+                        parent = package_path.parent
+                        while parent != apm_modules_dir and parent.exists():
+                            if not any(parent.iterdir()):
+                                parent.rmdir()
+                                parent = parent.parent
+                            else:
+                                break
                     except Exception as e:
                         _rich_error(
                             f"✗ Failed to remove {package} from apm_modules/: {e}"

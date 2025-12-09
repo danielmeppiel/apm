@@ -257,8 +257,12 @@ class TestDependenciesImportSyntax:
         assert deps == []
 
 
-class TestAgentsAndWorkflows:
-    """Tests for agents/workflows inclusion in CLAUDE.md."""
+class TestAgentsExcludedFromClaudeMd:
+    """Tests verifying agents/workflows are NOT included in CLAUDE.md.
+    
+    Agents are handled separately via .github/agents/ files and .claude/skills/
+    folders - they should NOT be embedded in CLAUDE.md (same as AGENTS.md).
+    """
 
     @pytest.fixture
     def temp_project(self):
@@ -267,8 +271,8 @@ class TestAgentsAndWorkflows:
         yield Path(temp_dir).resolve()
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def test_agents_included_in_workflows_section(self, temp_project):
-        """Test that agents/chatmodes are included in Workflows section."""
+    def test_agents_not_in_claude_md(self, temp_project):
+        """Test that agents/chatmodes are NOT included in CLAUDE.md."""
         formatter = ClaudeFormatter(str(temp_project))
         primitives = PrimitiveCollection()
         
@@ -298,13 +302,14 @@ class TestAgentsAndWorkflows:
         
         content = result.content_map[formatter.base_dir / "CLAUDE.md"]
         
-        assert "# Workflows" in content
-        assert "## code-reviewer" in content
-        assert "*Expert code reviewer*" in content
-        assert "You are an expert code reviewer." in content
+        # Workflows section should NOT exist - agents go to .github/agents/
+        assert "# Workflows" not in content
+        assert "## code-reviewer" not in content
+        # Instructions should still be there
+        assert "Test content" in content
 
-    def test_agents_only_in_root_claude_md(self, temp_project):
-        """Test that agents are only included in root CLAUDE.md."""
+    def test_claude_md_only_contains_instructions(self, temp_project):
+        """Test that CLAUDE.md only contains instructions, not agents."""
         formatter = ClaudeFormatter(str(temp_project))
         primitives = PrimitiveCollection()
         
@@ -319,35 +324,30 @@ class TestAgentsAndWorkflows:
         primitives.add_primitive(chatmode)
         
         instruction = Instruction(
-            name="test",
-            file_path=temp_project / "test.instructions.md",
-            description="Test",
-            apply_to="src/**/*.py",
-            content="Test content",
+            name="python-standards",
+            file_path=temp_project / "python.instructions.md",
+            description="Python standards",
+            apply_to="**/*.py",
+            content="Use type hints for all functions.",
             author="test"
         )
         primitives.add_primitive(instruction)
         
-        # Create subdirectory placement using resolved paths
-        src_dir = formatter.base_dir / "src"
-        src_dir.mkdir(exist_ok=True)
-        
-        placement_map = {
-            formatter.base_dir: [instruction],
-            src_dir: [instruction]
-        }
+        placement_map = {formatter.base_dir: [instruction]}
         result = formatter.format_distributed(primitives, placement_map)
         
-        # Root should have workflows
-        root_content = result.content_map[formatter.base_dir / "CLAUDE.md"]
-        assert "# Workflows" in root_content
+        content = result.content_map[formatter.base_dir / "CLAUDE.md"]
         
-        # Subdirectory should not have workflows
-        src_content = result.content_map[src_dir / "CLAUDE.md"]
-        assert "# Workflows" not in src_content
+        # Should have instructions
+        assert "Use type hints for all functions." in content
+        assert "**/*.py" in content
+        
+        # Should NOT have agent content
+        assert "You are a reviewer." not in content
+        assert "Workflows" not in content
 
-    def test_multiple_agents_included(self, temp_project):
-        """Test that multiple agents are all included."""
+    def test_multiple_chatmodes_excluded(self, temp_project):
+        """Test that multiple chatmodes are all excluded from CLAUDE.md."""
         formatter = ClaudeFormatter(str(temp_project))
         primitives = PrimitiveCollection()
         
@@ -375,7 +375,7 @@ class TestAgentsAndWorkflows:
             file_path=temp_project / "test.instructions.md",
             description="Test",
             apply_to="**/*.py",
-            content="Test",
+            content="Test instruction content",
             author="test"
         )
         primitives.add_primitive(instruction)
@@ -385,10 +385,14 @@ class TestAgentsAndWorkflows:
         
         content = result.content_map[formatter.base_dir / "CLAUDE.md"]
         
-        assert "## reviewer" in content
-        assert "## architect" in content
-        assert "Review code." in content
-        assert "Design systems." in content
+        # Agents should NOT be in CLAUDE.md
+        assert "## reviewer" not in content
+        assert "## architect" not in content
+        assert "Review code." not in content
+        assert "Design systems." not in content
+        
+        # But instructions should be there
+        assert "Test instruction content" in content
 
 
 class TestGenerateCommands:

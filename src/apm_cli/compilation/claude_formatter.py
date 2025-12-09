@@ -59,7 +59,9 @@ class ClaudeFormatter:
     Generates CLAUDE.md files following Claude's Memory format with:
     - @import syntax for dependencies
     - Grouped project standards from instructions
-    - Workflows section for agents/roles
+    
+    Note: Agents/workflows are handled separately as .github/agents/ files,
+    not included in CLAUDE.md (same as AGENTS.md behavior).
     """
     
     def __init__(self, base_dir: str = "."):
@@ -306,30 +308,9 @@ class ClaudeFormatter:
                         sections.append(content)
                         sections.append("")
         
-        # Workflows section (agents/roles - only for root)
-        if placement.agents:
-            sections.append("# Workflows")
-            sections.append("")
-            
-            for agent in placement.agents:
-                # Agent name as heading
-                sections.append(f"## {agent.name}")
-                if agent.description:
-                    sections.append(f"*{agent.description}*")
-                sections.append("")
-                
-                # Agent content
-                content = agent.content.strip()
-                if content:
-                    try:
-                        rel_path = agent.file_path.relative_to(self.base_dir)
-                    except ValueError:
-                        rel_path = agent.file_path
-                    
-                    sections.append(f"<!-- Source: {rel_path} -->")
-                    sections.append(content)
-                    sections.append(f"<!-- End source: {rel_path} -->")
-                    sections.append("")
+        # Note: CLAUDE.md only contains instructions (Project Standards).
+        # Agents/workflows are NOT included - they go to .github/agents/ as separate files.
+        # This matches AGENTS.md behavior which also only contains instructions.
         
         # Footer
         sections.append("---")
@@ -355,14 +336,12 @@ class ClaudeFormatter:
         """
         total_instructions = sum(len(p.instructions) for p in placements)
         total_patterns = sum(len(p.coverage_patterns) for p in placements)
-        total_agents = sum(len(p.agents) for p in placements)
         total_deps = sum(len(p.dependencies) for p in placements)
         
         return {
             "claude_files_generated": len(placements),
             "total_instructions_placed": total_instructions,
             "total_patterns_covered": total_patterns,
-            "total_agents_included": total_agents,
             "total_dependencies": total_deps,
             "primitives_found": primitives.count(),
         }

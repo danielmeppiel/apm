@@ -134,10 +134,9 @@ class TestSkillIntegrator:
     def _get_skill_path(self, package_info) -> Path:
         """Get the expected skill directory path for a package.
         
-        Uses skill_name_from_dependency to match the actual integrate_package_skill behavior.
+        Uses the install folder name for simplicity and consistency.
         """
-        canonical = package_info.get_canonical_dependency_string()
-        skill_name = skill_name_from_dependency(canonical)
+        skill_name = package_info.install_path.name
         return self.project_root / ".claude" / "skills" / skill_name
     
     # ========== should_integrate tests ==========
