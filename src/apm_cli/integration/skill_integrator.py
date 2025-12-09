@@ -54,6 +54,56 @@ def to_hyphen_case(name: str) -> str:
     return result[:64]
 
 
+def _normalize_name_part(part: str) -> str:
+    """Normalize a single name part to hyphen-case."""
+    result = part.replace("_", "-").replace(" ", "-")
+    result = re.sub(r'([a-z])([A-Z])', r'\1-\2', result)
+    result = re.sub(r'[^a-z0-9-]', '', result.lower())
+    result = re.sub(r'-+', '-', result)
+    return result.strip('-')
+
+
+def skill_name_from_dependency(canonical: str) -> str:
+    """Generate unique skill name from canonical dependency string.
+    
+    Uses owner-repo for standard packages, owner-repo-skill for subdirectory packages.
+    This ensures uniqueness while keeping names readable.
+    
+    Examples:
+        owner/repo           → owner-repo
+        owner/repo/skill     → owner-repo-skill
+        owner/repo/a/b/skill → owner-repo-skill
+    
+    Args:
+        canonical: Canonical dependency string (e.g., "ComposioHQ/awesome-claude-skills/mcp-builder")
+        
+    Returns:
+        str: Unique skill name, max 64 chars
+    """
+    parts = canonical.split("/")
+    
+    if len(parts) < 2:
+        # Single name, just normalize it
+        return _normalize_name_part(parts[0])[:64]
+    elif len(parts) == 2:
+        # Standard package: owner/repo → owner-repo
+        owner = _normalize_name_part(parts[0])
+        repo = _normalize_name_part(parts[1])
+        result = f"{owner}-{repo}"
+    else:
+        # Subdirectory package: owner/repo/.../skill → owner-repo-skill
+        owner = _normalize_name_part(parts[0])
+        repo = _normalize_name_part(parts[1])
+        skill = _normalize_name_part(parts[-1])
+        result = f"{owner}-{repo}-{skill}"
+    
+    # Remove consecutive hyphens that might result from empty parts
+    result = re.sub(r'-+', '-', result).strip('-')
+    
+    # Truncate to 64 chars (Claude Skills spec limit)
+    return result[:64]
+
+
 class SkillIntegrator:
     """Handles generation of SKILL.md files for Claude Code integration.
     
@@ -473,9 +523,12 @@ class SkillIntegrator:
         
         This follows Claude Code's skill discovery path (.claude/skills/).
         
-        Note: Virtual packages (individual files like owner/repo/path/to/file.agent.md) 
-        do NOT generate Skills. Only full APM packages with proper structure generate Skills.
-        This prevents naming collisions when multiple files from the same repo are installed.
+        Note: Virtual FILE packages (individual files like owner/repo/path/to/file.agent.md) 
+        and COLLECTION packages do NOT generate Skills. Only full APM packages and 
+        subdirectory packages (like Claude Skills) generate Skills.
+        
+        Subdirectory packages (e.g., ComposioHQ/awesome-claude-skills/mcp-builder) ARE 
+        processed because they represent complete skill packages with their own SKILL.md.
         
         Args:
             package_info: PackageInfo object with package metadata
@@ -484,17 +537,20 @@ class SkillIntegrator:
         Returns:
             SkillIntegrationResult: Results of the integration operation
         """
-        # Skip virtual packages - they're individual files, not full packages
-        # Multiple virtual packages from the same repo would collide on skill name
+        # Skip virtual FILE and COLLECTION packages - they're individual files, not full packages
+        # Multiple virtual files from the same repo would collide on skill name
+        # BUT: subdirectory packages (like Claude Skills) SHOULD generate skills
         if package_info.dependency_ref and package_info.dependency_ref.is_virtual:
-            return SkillIntegrationResult(
-                skill_created=False,
-                skill_updated=False,
-                skill_skipped=True,
-                skill_path=None,
-                references_copied=0,
-                links_resolved=0
-            )
+            # Allow subdirectory packages through - they are complete skill packages
+            if not package_info.dependency_ref.is_virtual_subdirectory():
+                return SkillIntegrationResult(
+                    skill_created=False,
+                    skill_updated=False,
+                    skill_skipped=True,
+                    skill_path=None,
+                    references_copied=0,
+                    links_resolved=0
+                )
         
         package_path = package_info.install_path
         
@@ -526,8 +582,11 @@ class SkillIntegrator:
             )
         
         # Determine target paths - write to .claude/skills/{skill-name}/
-        repo_url = package_info.package.source or package_info.package.name
-        skill_name = to_hyphen_case(repo_url)
+        # Use skill_name_from_dependency for unique, consistent names:
+        # - owner/repo → owner-repo
+        # - owner/repo/skill → owner-repo-skill
+        canonical_dep = package_info.get_canonical_dependency_string()
+        skill_name = skill_name_from_dependency(canonical_dep)
         skill_dir = project_root / ".claude" / "skills" / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)
         
@@ -586,9 +645,10 @@ class SkillIntegrator:
             return {'files_removed': 0, 'errors': 0}
         
         # Get list of currently installed package skill names
+        # Use skill_name_from_dependency to match how integrate_package_skill names them
         installed_skill_names = set()
         for dep in apm_package.get_apm_dependencies():
-            skill_name = to_hyphen_case(str(dep))
+            skill_name = skill_name_from_dependency(dep.get_canonical_dependency_string())
             installed_skill_names.add(skill_name)
         
         # Find orphaned skill directories (those with -apm suffix pattern or all if needed)
