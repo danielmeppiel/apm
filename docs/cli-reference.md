@@ -124,12 +124,16 @@ apm install [PACKAGES...] [OPTIONS]
 - `--dry-run` - Show what would be installed without installing
 - `--verbose` - Show detailed installation information
 
+**Behavior:**
+- `apm install` (no args): Installs **all** packages from `apm.yml`
+- `apm install <package>`: Installs **only** the specified package (adds to `apm.yml` if not present)
+
 **Examples:**
 ```bash
 # Install all dependencies from apm.yml
 apm install
 
-# Auto-create apm.yml and install package (no init needed!)
+# Install ONLY this package (not others in apm.yml)
 apm install danielmeppiel/design-guidelines
 
 # Add multiple packages and install

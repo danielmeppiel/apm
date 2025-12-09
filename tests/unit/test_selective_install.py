@@ -8,7 +8,6 @@ would also install unrelated packages like `design-guidelines` from apm.yml.
 """
 
 import builtins
-import pytest
 
 
 class TestFilterMatchingLogic:
@@ -19,16 +18,24 @@ class TestFilterMatchingLogic:
     str(dep) returns 'github.com/owner/repo').
     """
 
+    def _normalize_pkg(self, pkg: str) -> str:
+        """Normalize package string for comparison."""
+        # Remove _git/ from ADO URLs
+        if '/_git/' in pkg:
+            pkg = pkg.replace('/_git/', '/')
+        return pkg
+
     def _matches_filter(self, dep_str: str, only_packages: list) -> bool:
         """Replicate the filter logic from cli.py for testing."""
-        only_set = builtins.set(only_packages)
+        only_set = builtins.set(self._normalize_pkg(p) for p in only_packages)
         
         # Check exact match
         if dep_str in only_set:
             return True
-        # Check if dep_str ends with the user-provided package (handles host prefix)
+        # Check if dep_str ends with "/<pkg>" to ensure path boundary matching
+        # This prevents "prefix-owner/repo" from matching "owner/repo"
         for pkg in only_set:
-            if dep_str.endswith(pkg) or dep_str.endswith(f"/{pkg}"):
+            if dep_str.endswith(f"/{pkg}"):
                 return True
         return False
 
@@ -96,8 +103,41 @@ class TestFilterMatchingLogic:
         # This should match if user passes the full path
         assert self._matches_filter(dep_str, ["org/project/repo"])
 
+    def test_azure_devops_git_normalization(self):
+        """Test that ADO URLs with _git/ are normalized for matching.
+        
+        User may pass: dev.azure.com/org/project/_git/repo
+        But str(dep) returns: dev.azure.com/org/project/repo (without _git/)
+        The filter should normalize _git/ out before comparing.
+        """
+        dep_str = "dev.azure.com/dmeppiel-org/market-js-app/compliance-rules"
+        # User passes with _git/ but filter should normalize it
+        assert self._matches_filter(
+            dep_str, 
+            ["dev.azure.com/dmeppiel-org/market-js-app/_git/compliance-rules"]
+        )
+        # Also test just the path portion
+        assert self._matches_filter(
+            dep_str,
+            ["dmeppiel-org/market-js-app/_git/compliance-rules"]
+        )
+
     def test_empty_filter_matches_nothing(self):
         """Test that empty filter matches nothing."""
         # This shouldn't happen in practice, but let's be safe
         assert not self._matches_filter("github.com/owner/repo", [])
+
+    def test_substring_owner_name_does_not_match(self):
+        """Test that substring owner names don't cause false positives.
+        
+        This test catches the bug where endswith(pkg) without path boundary
+        would cause 'github.com/prefix-owner/repo' to match 'owner/repo'.
+        """
+        # User wants 'owner/repo', shouldn't match 'prefix-owner/repo'
+        dep_str = "github.com/prefix-owner/repo"
+        assert not self._matches_filter(dep_str, ["owner/repo"])
+        
+        # Also test the reverse: 'prefix-owner/repo' shouldn't match 'owner/repo'
+        dep_str2 = "github.com/owner/repo"
+        assert not self._matches_filter(dep_str2, ["prefix-owner/repo"])
 

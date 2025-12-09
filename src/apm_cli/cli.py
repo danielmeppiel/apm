@@ -1106,16 +1106,25 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
             # str(dep) includes host: "github.com/owner/repo/subdir"
             # dep.repo_url is just "owner/repo" (no subdir)
             # We need to match the user input against the dep string (without host prefix)
-            only_set = builtins.set(only_packages)
+            # Also normalize _git/ from ADO URLs (dev.azure.com/org/proj/_git/repo -> org/proj/repo)
+            def normalize_pkg(pkg: str) -> str:
+                """Normalize package string for comparison."""
+                # Remove _git/ from ADO URLs
+                if '/_git/' in pkg:
+                    pkg = pkg.replace('/_git/', '/')
+                return pkg
+            
+            only_set = builtins.set(normalize_pkg(p) for p in only_packages)
             
             def matches_filter(dep):
                 # Check exact match with str(dep) 
                 if str(dep) in only_set:
                     return True
-                # Check if str(dep) ends with the user-provided package (handles host prefix)
+                # Check if str(dep) ends with "/<pkg>" to ensure path boundary matching
+                # This prevents "prefix-owner/repo" from matching "owner/repo"
                 dep_str = str(dep)
                 for pkg in only_set:
-                    if dep_str.endswith(pkg) or dep_str.endswith(f"/{pkg}"):
+                    if dep_str.endswith(f"/{pkg}"):
                         return True
                 return False
             
