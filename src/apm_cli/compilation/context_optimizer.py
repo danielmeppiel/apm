@@ -96,11 +96,12 @@ class ContextOptimizer:
     LOW_DISTRIBUTION_THRESHOLD = 0.3
     HIGH_DISTRIBUTION_THRESHOLD = 0.7
     
-    def __init__(self, base_dir: str = "."):
+    def __init__(self, base_dir: str = ".", exclude_patterns: Optional[List[str]] = None):
         """Initialize the context optimizer.
         
         Args:
             base_dir (str): Base directory for optimization analysis.
+            exclude_patterns (Optional[List[str]]): Glob patterns for directories to exclude.
         """
         try:
             self.base_dir = Path(base_dir).resolve()
@@ -121,6 +122,9 @@ class ContextOptimizer:
         self._warnings: List[str] = []
         self._errors: List[str] = []
         self._start_time: Optional[float] = None
+        
+        # Configurable exclusion patterns
+        self._exclude_patterns = exclude_patterns or []
     
     def enable_timing(self, verbose: bool = False):
         """Enable performance timing instrumentation."""
@@ -418,7 +422,12 @@ class ContextOptimizer:
             if any(part.startswith('.') for part in current_path.parts[len(self.base_dir.parts):]):
                 continue
             
+            # Default hardcoded exclusions for backwards compatibility
             if any(ignore in str(current_path) for ignore in ['node_modules', '__pycache__', '.git', 'dist', 'build']):
+                continue
+            
+            # Apply configurable exclusion patterns
+            if self._should_exclude_path(current_path):
                 continue
             
             # Analyze files in this directory
@@ -441,6 +450,49 @@ class ContextOptimizer:
                 analysis.file_types.add(file_path.suffix)
             
             self._directory_cache[current_path] = analysis
+    
+    def _should_exclude_path(self, path: Path) -> bool:
+        """Check if a path matches any exclusion pattern.
+        
+        Args:
+            path: Path to check against exclusion patterns
+            
+        Returns:
+            True if path should be excluded, False otherwise
+        """
+        if not self._exclude_patterns:
+            return False
+        
+        # Get path relative to base_dir for pattern matching
+        try:
+            rel_path = path.relative_to(self.base_dir)
+        except ValueError:
+            # Path is not relative to base_dir, don't exclude
+            return False
+        
+        # Convert to string with forward slashes for consistent glob matching
+        rel_path_str = str(rel_path).replace(os.sep, '/')
+        
+        # Check each exclusion pattern
+        for pattern in self._exclude_patterns:
+            # Normalize pattern to use forward slashes
+            normalized_pattern = pattern.replace(os.sep, '/')
+            
+            # Use fnmatch for glob pattern matching
+            if fnmatch.fnmatch(rel_path_str, normalized_pattern):
+                return True
+            
+            # Also check if the path starts with the pattern (for directory matching)
+            # This handles cases like "apm_modules/" matching "apm_modules/foo/bar"
+            if normalized_pattern.endswith('/'):
+                if rel_path_str.startswith(normalized_pattern) or rel_path_str == normalized_pattern.rstrip('/'):
+                    return True
+            else:
+                # Check if pattern with trailing slash would match
+                if rel_path_str.startswith(normalized_pattern + '/') or rel_path_str == normalized_pattern:
+                    return True
+        
+        return False
     
     def _find_optimal_placements(
         self,
