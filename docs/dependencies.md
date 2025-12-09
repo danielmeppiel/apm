@@ -19,7 +19,13 @@ APM supports multiple dependency types:
 |------|-----------|---------|
 | **APM Package** | Has `apm.yml` | `danielmeppiel/compliance-rules` |
 | **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` |
-| **Virtual Package** | Single file path | `github/awesome-copilot/prompts/code-review.prompt.md` |
+| **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
+| **Virtual File Package** | Single file path | `github/awesome-copilot/prompts/code-review.prompt.md` |
+| **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` |
+
+**Virtual Subdirectory Packages** are skill folders from monorepos - they download an entire folder and may contain a SKILL.md plus resources.
+
+**Virtual File Packages** download a single file (like a prompt or instruction) and integrate it directly.
 
 ### Claude Skills
 
@@ -31,6 +37,27 @@ apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 
 # For VSCode target: generates .github/agents/brand-guidelines.agent.md
 # For Claude target: keeps native SKILL.md format
+```
+
+#### Skill Integration During Install
+
+When your project has a `.claude/` folder, skills are integrated automatically:
+
+| Source | Result |
+|--------|--------|
+| Package with existing `SKILL.md` | Skill folder copied to `.claude/skills/{folder-name}/` |
+| APM package with `.apm/` primitives (no SKILL.md) | SKILL.md auto-generated, folder copied to `.claude/skills/{folder-name}/` |
+| Package without SKILL.md or primitives | No skill folder created |
+
+#### Skill Folder Naming
+
+Skill folders use the **source folder name directly** (not flattened paths):
+
+```
+.claude/skills/
+├── brand-guidelines/      # From ComposioHQ/awesome-claude-skills/brand-guidelines
+├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
+└── compliance-rules/      # From danielmeppiel/compliance-rules
 ```
 
 → See [Skills Guide](skills.md) for complete documentation.

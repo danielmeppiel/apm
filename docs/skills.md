@@ -9,6 +9,11 @@ Skills describe an APM package in a format AI agents can quickly parse:
 - **How** to use it (body content with guidelines)
 - **Resources** available (bundled scripts, references, examples)
 
+### Skills Can Be Used Two Ways
+
+1. **Package meta-guides for your own package**: Add a `SKILL.md` to your APM package to help AI agents understand what your package does
+2. **Installed from Claude skill repositories**: Install skills from monorepos like `ComposioHQ/awesome-claude-skills` to gain new capabilities
+
 When you install a package with a SKILL.md, AI agents can quickly understand how to use it.
 
 ## Installing Skills
@@ -25,10 +30,35 @@ apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 apm install ComposioHQ/awesome-claude-skills/skill-creator
 ```
 
-**What happens:**
-1. APM downloads the subdirectory to `apm_modules/owner/repo/skill-name/`
-2. Adds dependency to your `apm.yml`
-3. AI agents can read SKILL.md to understand the package
+## What Happens During Install
+
+When you run `apm install`, APM handles skill integration automatically:
+
+### Step 1: Download to apm_modules/
+APM downloads packages to `apm_modules/owner/repo/` (or `apm_modules/owner/repo/skill-name/` for subdirectory packages).
+
+### Step 2: Skill Integration (if `.claude/` exists)
+When your project has a `.claude/` folder, APM integrates skills:
+
+| Package Type | Behavior |
+|--------------|----------|
+| **Has existing SKILL.md** | Entire skill folder copied to `.claude/skills/{folder-name}/` |
+| **Has `.apm/` primitives but no SKILL.md** | SKILL.md auto-generated, folder copied to `.claude/skills/{folder-name}/` |
+| **No SKILL.md and no primitives** | No skill folder created |
+
+### Skill Folder Naming
+
+Skills use the **source folder name directly**:
+
+```
+.claude/skills/
+├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
+├── design-guidelines/     # From danielmeppiel/design-guidelines
+└── compliance-rules/      # From danielmeppiel/compliance-rules
+```
+
+### Step 3: Primitive Integration
+APM also integrates prompts (with `-apm` suffix) and commands from the package.
 
 ### Installation Path Structure
 

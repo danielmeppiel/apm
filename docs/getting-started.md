@@ -338,6 +338,8 @@ my-first-project/
     └── context/         # Project knowledge base
 ```
 
+**About SKILL.md:** This file serves as a meta-guide that helps AI agents discover and understand the package's capabilities. When your package is installed as a dependency, the `SKILL.md` content helps the AI understand what skills/workflows are available and how to use them.
+
 > **Note**: Legacy `.apm/chatmodes/` directory with `.chatmode.md` files is still supported.
 
 ### 2. Explore Generated Files
@@ -357,13 +359,22 @@ ls .apm/prompts/
 
 ### 3. Compile Context
 
-Transform your context into the universal `AGENTS.md` format:
+Transform your context into agent-specific formats:
 
 ```bash
 apm compile
 ```
 
-This generates `AGENTS.md` - a file compatible with all major coding agents.
+**Auto-Detection:** APM automatically detects which integrations to generate based on folder presence:
+- If `.github/` exists → VSCode/Copilot integration (generates `AGENTS.md`)
+- If `.claude/` exists → Claude Code integration (generates `CLAUDE.md`)
+- Both can coexist - APM generates outputs for all detected integrations
+
+**Generated Files:**
+- `AGENTS.md` - Contains instructions grouped by `applyTo` patterns (VSCode-compatible)
+- `CLAUDE.md` - Contains instructions with `@import` syntax (Claude-compatible)
+
+> **Note:** These files contain **only instructions** - prompts and agents are installed separately during `apm install`.
 
 ### 4. Install Dependencies
 
@@ -372,6 +383,18 @@ Install APM and MCP dependencies from your `apm.yml` configuration:
 ```bash
 apm install
 ```
+
+**What gets installed:**
+
+For VSCode/Copilot (when `.github/` exists):
+- `.github/prompts/*-apm.prompt.md` - Reusable prompt templates
+- `.github/agents/*-apm.agent.md` - Agent definitions
+
+For Claude Code (when `.claude/` exists):
+- `.claude/commands/*-apm.md` - Slash commands
+- `.claude/skills/{folder-name}/` - Skills with `SKILL.md` meta-guide
+
+> **Tip:** Both integrations can coexist in the same project. APM installs to all detected targets.
 
 #### Adding APM Dependencies (Optional)
 
@@ -638,8 +661,12 @@ apm deps list         # 🔗 Show installed APM dependencies
 
 ### File Structure
 - `apm.yml` - Project configuration and scripts
-- `.apm/` - Context directory
-- `AGENTS.md` - Generated compatibility layer
+- `.apm/` - Context directory (source primitives)
+- `SKILL.md` - Package meta-guide for AI discovery
+- `AGENTS.md` - Generated VSCode/Copilot instructions
+- `CLAUDE.md` - Generated Claude Code instructions
+- `.github/prompts/`, `.github/agents/` - Installed VSCode primitives
+- `.claude/commands/`, `.claude/skills/` - Installed Claude primitives
 - `apm_modules/` - Installed APM dependencies
 - `*.prompt.md` - Executable agent workflows
 
