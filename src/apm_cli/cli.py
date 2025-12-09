@@ -635,7 +635,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
                 sys.exit(1)
 
             try:
-                apm_count, prompt_count, agent_count = _install_apm_dependencies(apm_package, update, verbose)
+                # If specific packages were requested, only install those
+                # Otherwise install all from apm.yml
+                only_pkgs = builtins.list(packages) if packages else None
+                apm_count, prompt_count, agent_count = _install_apm_dependencies(apm_package, update, verbose, only_pkgs)
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
@@ -1059,20 +1062,21 @@ def uninstall(ctx, packages, dry_run):
         sys.exit(1)
 
 
-def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = False, verbose: bool = False):
+def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = False, verbose: bool = False, only_packages: "builtins.list" = None):
     """Install APM package dependencies.
 
     Args:
         apm_package: Parsed APM package with dependencies
         update_refs: Whether to update existing packages to latest refs
         verbose: Show detailed installation information
+        only_packages: If provided, only install these specific packages (not all from apm.yml)
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
 
     apm_deps = apm_package.get_apm_dependencies()
     if not apm_deps:
-        return
+        return 0, 0, 0
 
     _rich_info(f"Installing APM dependencies ({len(apm_deps)})...")
 
@@ -1095,9 +1099,31 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         flat_deps = dependency_graph.flattened_dependencies
         deps_to_install = flat_deps.get_installation_list()
 
+        # If specific packages were requested, filter to only those
+        if only_packages:
+            # Normalize package strings for comparison
+            # User passes "owner/repo" or "owner/repo/subdir"
+            # str(dep) includes host: "github.com/owner/repo/subdir"
+            # dep.repo_url is just "owner/repo" (no subdir)
+            # We need to match the user input against the dep string (without host prefix)
+            only_set = builtins.set(only_packages)
+            
+            def matches_filter(dep):
+                # Check exact match with str(dep) 
+                if str(dep) in only_set:
+                    return True
+                # Check if str(dep) ends with the user-provided package (handles host prefix)
+                dep_str = str(dep)
+                for pkg in only_set:
+                    if dep_str.endswith(pkg) or dep_str.endswith(f"/{pkg}"):
+                        return True
+                return False
+            
+            deps_to_install = [dep for dep in deps_to_install if matches_filter(dep)]
+
         if not deps_to_install:
             _rich_info("No APM dependencies to install", symbol="check")
-            return
+            return 0, 0, 0
 
         # Create apm_modules directory
         apm_modules_dir = project_root / "apm_modules"
