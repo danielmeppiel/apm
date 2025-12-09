@@ -91,9 +91,11 @@ class TestSkillIntegrator:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def _get_skill_path(self, package_info) -> Path:
-        """Get the expected skill directory path for a package."""
-        source = package_info.package.source or package_info.package.name
-        skill_name = to_hyphen_case(source)
+        """Get the expected skill directory path for a package.
+        
+        Uses the install folder name for simplicity and consistency.
+        """
+        skill_name = package_info.install_path.name
         return self.project_root / ".claude" / "skills" / skill_name
     
     # ========== should_integrate tests ==========
@@ -415,22 +417,25 @@ class TestSkillIntegrator:
         assert result.skill_path is None
         assert not (package_dir / "SKILL.md").exists()
     
-    def test_integrate_package_skill_skips_virtual_packages(self):
-        """Test that virtual packages (single files) do not generate Skills.
+    def test_integrate_package_skill_skips_virtual_file_packages(self):
+        """Test that virtual FILE packages (single files) do not generate Skills.
         
-        Virtual packages are individual files like owner/repo/agents/myagent.agent.md.
+        Virtual file packages are individual files like owner/repo/agents/myagent.agent.md.
         They should not generate Skills because:
         1. Multiple virtual packages from the same repo would collide on skill name
         2. A single file doesn't constitute a proper skill with context
+        
+        Note: Virtual SUBDIRECTORY packages (like Claude Skills) SHOULD generate Skills.
         """
         package_dir = self.project_root / "package"
         package_dir.mkdir()
-        # Even if there's content, virtual packages should be skipped
+        # Even if there's content, virtual file packages should be skipped
         (package_dir / "terraform.agent.md").write_text("# Terraform Agent\nSome agent content")
         
-        # Create a virtual package dependency reference
+        # Create a virtual FILE package dependency reference
         virtual_dep_ref = DependencyReference.parse("github/awesome-copilot/agents/terraform.agent.md")
         assert virtual_dep_ref.is_virtual  # Sanity check
+        assert virtual_dep_ref.is_virtual_file()  # This is a file, not subdirectory
         
         package_info = self._create_package_info(
             install_path=package_dir,
@@ -441,7 +446,7 @@ class TestSkillIntegrator:
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        # Virtual packages should be skipped
+        # Virtual FILE packages should be skipped
         assert result.skill_created is False
         assert result.skill_updated is False
         assert result.skill_skipped is True
@@ -450,12 +455,48 @@ class TestSkillIntegrator:
         skill_dir = self.project_root / ".claude" / "skills" / "awesome-copilot"
         assert not skill_dir.exists()
     
-    def test_integrate_package_skill_multiple_virtual_packages_no_collision(self):
-        """Test that multiple virtual packages from same repo don't create conflicting Skills.
+    def test_integrate_package_skill_processes_virtual_subdirectory_packages(self):
+        """Test that virtual SUBDIRECTORY packages (like Claude Skills) DO generate Skills.
+        
+        Subdirectory packages like ComposioHQ/awesome-claude-skills/mcp-builder are
+        complete skill packages with their own content. They should generate Skills
+        because they represent full packages, not individual files.
+        """
+        package_dir = self.project_root / "mcp-builder"
+        package_dir.mkdir()
+        # Create a subdirectory package with content
+        (package_dir / "SKILL.md").write_text("# MCP Builder\nBuild MCP servers")
+        instructions_dir = package_dir / ".apm" / "instructions"
+        instructions_dir.mkdir(parents=True)
+        (instructions_dir / "mcp.instructions.md").write_text("---\napplyTo: '**/*'\n---\n# MCP Guidelines")
+        
+        # Create a virtual SUBDIRECTORY package dependency reference
+        virtual_dep_ref = DependencyReference.parse("ComposioHQ/awesome-claude-skills/mcp-builder")
+        assert virtual_dep_ref.is_virtual  # Sanity check
+        assert virtual_dep_ref.is_virtual_subdirectory()  # This is a subdirectory, not file
+        
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            name="mcp-builder",
+            source="ComposioHQ/awesome-claude-skills",
+            dependency_ref=virtual_dep_ref
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        # Virtual SUBDIRECTORY packages SHOULD generate skills
+        assert result.skill_skipped is False
+        assert result.skill_created is True
+        assert result.skill_path is not None
+        # Skill directory should be created
+        assert result.skill_path.exists()
+    
+    def test_integrate_package_skill_multiple_virtual_file_packages_no_collision(self):
+        """Test that multiple virtual FILE packages from same repo don't create conflicting Skills.
         
         This is a regression test: previously both would try to create 'awesome-copilot' skill.
         """
-        # First virtual package
+        # First virtual file package
         pkg1_dir = self.project_root / "pkg1"
         pkg1_dir.mkdir()
         (pkg1_dir / "jfrog-sec.agent.md").write_text("# JFrog Security Agent")
@@ -468,7 +509,7 @@ class TestSkillIntegrator:
             dependency_ref=virtual_dep1
         )
         
-        # Second virtual package from same repo
+        # Second virtual file package from same repo
         pkg2_dir = self.project_root / "pkg2"
         pkg2_dir.mkdir()
         (pkg2_dir / "terraform.agent.md").write_text("# Terraform Agent")
@@ -853,6 +894,72 @@ metadata:
         result = self.integrator.sync_integration(apm_package, self.project_root)
         
         assert result == {'files_removed': 0, 'errors': 0}
+    
+    def test_sync_integration_removes_orphaned_subdirectory_skill(self):
+        """Test that sync removes skills for uninstalled subdirectory packages.
+        
+        This tests the full install → uninstall flow for virtual subdirectory packages
+        like ComposioHQ/awesome-claude-skills/mcp-builder.
+        """
+        # Simulate an installed skill from a subdirectory package
+        # Skill name uses the folder name directly: mcp-builder
+        skill_name = "mcp-builder"
+        skill_dir = self.project_root / ".claude" / "skills" / skill_name
+        skill_dir.mkdir(parents=True)
+        
+        # Create SKILL.md with APM metadata (matching _generate_skill_file's nested format)
+        skill_content = """---
+name: mcp-builder
+description: MCP Builder Skill
+metadata:
+  apm_package: ComposioHQ/awesome-claude-skills/mcp-builder
+  apm_version: '1.0.0'
+---
+# MCP Builder Skill
+"""
+        (skill_dir / "SKILL.md").write_text(skill_content)
+        
+        # Now simulate that this package was uninstalled (not in dependencies)
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []  # Empty = uninstalled
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Orphaned skill should be removed
+        assert result['files_removed'] == 1
+        assert not skill_dir.exists()
+    
+    def test_sync_integration_keeps_installed_subdirectory_skill(self):
+        """Test that sync keeps skills for still-installed subdirectory packages."""
+        # Simulate an installed skill from a subdirectory package
+        # Skill name uses the folder name directly: mcp-builder
+        skill_name = "mcp-builder"
+        skill_dir = self.project_root / ".claude" / "skills" / skill_name
+        skill_dir.mkdir(parents=True)
+        
+        # Create SKILL.md with APM metadata (matching _generate_skill_file's nested format)
+        skill_content = """---
+name: mcp-builder
+description: MCP Builder Skill
+metadata:
+  apm_package: ComposioHQ/awesome-claude-skills/mcp-builder
+  apm_version: '1.0.0'
+---
+# MCP Builder Skill
+"""
+        (skill_dir / "SKILL.md").write_text(skill_content)
+        
+        # Simulate that this package is still installed
+        dep_ref = DependencyReference.parse("ComposioHQ/awesome-claude-skills/mcp-builder")
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [dep_ref]
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Skill should NOT be removed
+        assert result['files_removed'] == 0
+        assert skill_dir.exists()
     
     # ========== Edge cases ==========
     

@@ -215,13 +215,18 @@ APM provides first-class support for Claude Code and Claude Desktop through nati
 
 ### Output Files for Claude
 
-When you run `apm compile`, APM generates Claude-native files alongside the standard AGENTS.md:
+When you run `apm compile`, APM generates Claude-native files:
 
 | File | Purpose |
-|------|---------|
-| `CLAUDE.md` | Project instructions for Claude (like AGENTS.md but Claude-optimized) |
-| `.claude/commands/*.md` | Slash commands from installed packages |
-| `SKILL.md` | Claude Skills format for Claude Desktop |
+|------|---------||
+| `CLAUDE.md` | Project instructions for Claude (instructions only, using `@import` syntax) |
+
+When you run `apm install`, APM integrates package primitives into Claude's native structure:
+
+| Location | Purpose |
+|----------|---------||
+| `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
+| `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
 
 ### Automatic Command Integration
 
@@ -243,6 +248,28 @@ apm install danielmeppiel/design-guidelines
 4. Updates `.gitignore` to exclude generated commands
 5. `apm uninstall` automatically removes the package's commands
 
+### Automatic Skills Integration
+
+APM automatically integrates skills from installed packages into `.claude/skills/`:
+
+```bash
+# Install a package with skills
+apm install ComposioHQ/awesome-claude-skills/mcp-builder
+
+# Result:
+# .claude/skills/mcp-builder/SKILL.md    → Skill available in Claude
+# .claude/skills/mcp-builder/...         → Full skill folder copied
+```
+
+**Skill Folder Naming**: Uses the source folder name directly (e.g., `mcp-builder`, `design-guidelines`), not flattened paths.
+
+**How skill integration works:**
+1. `apm install` checks if the package contains a `SKILL.md` file
+2. If `SKILL.md` exists: copies the entire skill folder to `.claude/skills/{folder-name}/`
+3. If no `SKILL.md` but package has `.apm/` primitives: auto-generates `SKILL.md` in `.claude/skills/{folder-name}/`
+4. Updates `.gitignore` to exclude generated skills
+5. `apm uninstall` removes the skill folder
+
 ### Target-Specific Compilation
 
 Generate only Claude formats when needed:
@@ -253,12 +280,14 @@ apm compile
 
 # Generate only Claude formats
 apm compile --target claude
-# Creates: CLAUDE.md, .claude/commands/, SKILL.md
+# Creates: CLAUDE.md (instructions only)
 
 # Generate only VSCode/Copilot formats  
 apm compile --target vscode
-# Creates: AGENTS.md, .github/prompts/, .github/agents/
+# Creates: AGENTS.md (instructions only)
 ```
+
+> **Remember**: `apm compile` generates instruction files only. Use `apm install` to integrate prompts, agents, commands, and skills from packages.
 
 ### Claude Command Format
 
@@ -277,23 +306,24 @@ Review the current design for accessibility and UI standards.
 ### Example Workflow
 
 ```bash
-# 1. Install packages
+# 1. Install packages (integrates commands and skills automatically)
 apm install danielmeppiel/compliance-rules
 apm install github/awesome-copilot/prompts/code-review.prompt.md
 
-# 2. Compile for Claude
+# 2. Compile instructions for Claude
 apm compile --target claude
 
 # 3. In Claude Code, use:
 #    /code-review     → Runs the code review workflow
 #    /gdpr-assessment → Runs GDPR compliance check
 
-# 4. CLAUDE.md provides project context automatically
+# 4. CLAUDE.md provides project instructions automatically
+# 5. Skills in .claude/skills/ are available for Claude to reference
 ```
 
 ### Claude Desktop Integration
 
-The generated `SKILL.md` file can be used with Claude Desktop for skill-based interactions. This enables Claude Desktop to understand your project's available capabilities.
+Skills installed to `.claude/skills/` are automatically available in Claude Desktop. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
 
 ### Cleanup and Sync
 

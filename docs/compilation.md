@@ -14,9 +14,9 @@ When you run `apm compile` without specifying a target, APM automatically detect
 
 | Project Structure | Target | What Gets Generated |
 |-------------------|--------|---------------------|
-| `.github/` folder only | `vscode` | AGENTS.md + .github/ integration |
-| `.claude/` folder only | `claude` | CLAUDE.md + .claude/ integration |
-| Both folders exist | `all` | All formats |
+| `.github/` folder only | `vscode` | AGENTS.md (instructions only) |
+| `.claude/` folder only | `claude` | CLAUDE.md (instructions only) |
+| Both folders exist | `all` | Both AGENTS.md and CLAUDE.md |
 | Neither folder exists | `minimal` | AGENTS.md only (universal format) |
 
 ```bash
@@ -36,10 +36,12 @@ target: vscode  # or claude, or all
 
 | Target | Files Generated | Consumers |
 |--------|-----------------|-----------|
-| `vscode` | `AGENTS.md`, `.github/prompts/`, `.github/agents/` | GitHub Copilot, Cursor, Codex, Gemini |
-| `claude` | `CLAUDE.md`, `.claude/commands/`, `SKILL.md` | Claude Code, Claude Desktop |
-| `all` | All of the above | Universal compatibility |
+| `vscode` | `AGENTS.md` | GitHub Copilot, Cursor, Codex, Gemini |
+| `claude` | `CLAUDE.md` | Claude Code, Claude Desktop |
+| `all` | Both `AGENTS.md` and `CLAUDE.md` | Universal compatibility |
 | `minimal` | `AGENTS.md` only | Works everywhere, no folder integration |
+
+> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](integrations.md) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.claude/commands/`, and `.claude/skills/`.
 
 ### How It Works
 
@@ -50,16 +52,22 @@ target: vscode  # or claude, or all
 
 ### Example Output
 
+**After `apm compile`:**
 ```
 my-project/
-├── AGENTS.md              # Optimized context for Copilot, Cursor, etc.
-├── CLAUDE.md              # Optimized context for Claude
-├── SKILL.md               # Claude Skills format
+├── AGENTS.md              # Instructions only (for Copilot, Cursor, etc.)
+└── CLAUDE.md              # Instructions only (for Claude)
+```
+
+**After `apm install` (folder integration):**
+```
+my-project/
 ├── .github/
-│   ├── prompts/           # VSCode-native prompts
-│   └── agents/            # VSCode-native agents
+│   ├── prompts/           # Prompts from installed packages
+│   └── agents/            # Agents from installed packages
 └── .claude/
-    └── commands/          # Claude slash commands
+    ├── commands/          # Claude slash commands from packages
+    └── skills/            # Skills from packages with SKILL.md
 ```
 
 ## The Context Pollution Problem

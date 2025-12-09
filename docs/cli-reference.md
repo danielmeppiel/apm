@@ -195,24 +195,85 @@ apm install --only=apm
 apm install --dry-run
 ```
 
-**Automatic Prompt Integration**:
+**Auto-Detection:**
 
-When you run `apm install`, APM automatically integrates prompts from installed packages into your project's `.github/prompts/` directory (if it exists and auto-integration is enabled):
+APM automatically detects which integrations to enable based on your project structure:
 
-- **Auto-enabled**: By default, enabled when `.github/` directory exists
+- **VSCode integration**: Enabled when `.github/` directory exists
+- **Claude integration**: Enabled when `.claude/` directory exists
+- Both integrations can coexist in the same project
+
+**VSCode Integration (`.github/` present):**
+
+When you run `apm install`, APM automatically integrates primitives from installed packages:
+
+- **Prompts**: `.prompt.md` files → `.github/prompts/*-apm.prompt.md`
+- **Agents**: `.agent.md` files → `.github/agents/*-apm.agent.md`
+- **Chatmodes**: `.chatmode.md` files → `.github/agents/*-apm.chatmode.md`
 - **Control**: Disable with `apm config set auto-integrate false`
-- **Smart updates**: Only updates prompts when package version/commit changes
-- **Metadata**: Integrated prompts include source, version, and commit information
-- **Naming**: Prompts are prefixed with `@` (e.g., `@accessibility-audit.prompt.md`)
-- **GitIgnore**: Pattern `.github/prompts/@*.prompt.md` automatically added to `.gitignore`
+- **Smart updates**: Only updates when package version/commit changes
+- **Naming**: Integrated files use `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
+- **GitIgnore**: Pattern `*-apm.prompt.md` automatically added to `.gitignore`
+
+**Claude Integration (`.claude/` present):**
+
+APM also integrates with Claude Code when `.claude/` directory exists:
+
+- **Commands**: `.prompt.md` files → `.claude/commands/*-apm.md`
+- **Skills**: Skill packages → `.claude/skills/{folder-name}/` (copies entire folder)
+- **APM packages**: Packages with `.apm/` primitives → `.claude/skills/{folder-name}/SKILL.md` (generated)
 
 **Example Integration Output**:
 ```
 ✓ danielmeppiel/design-guidelines
-  └─ 3 prompts integrated → .github/prompts/
+  ├─ 3 prompts integrated → .github/prompts/
+  └─ 3 commands integrated → .claude/commands/
 ```
 
-This makes all package prompts available in VSCode and compatible editors for immediate use with your coding agents.
+This makes all package prompts available in VSCode, Claude Code, and compatible editors for immediate use with your coding agents.
+
+### `apm uninstall` - 🗑️ Remove APM packages
+
+Remove installed APM packages and their integrated files.
+
+```bash
+apm uninstall PACKAGE [OPTIONS]
+```
+
+**Arguments:**
+- `PACKAGE` - Package to uninstall (format: `owner/repo`)
+
+**Options:**
+- `--dry-run` - Show what would be removed without removing
+- `--verbose` - Show detailed removal information
+
+**Examples:**
+```bash
+# Uninstall a package
+apm uninstall danielmeppiel/design-guidelines
+
+# Preview what would be removed
+apm uninstall danielmeppiel/design-guidelines --dry-run
+```
+
+**What Gets Removed:**
+
+| Item | Location |
+|------|----------|
+| Package entry | `apm.yml` dependencies section |
+| Package folder | `apm_modules/owner/repo/` |
+| Integrated prompts | `.github/prompts/*-apm.prompt.md` |
+| Integrated agents | `.github/agents/*-apm.agent.md` |
+| Integrated chatmodes | `.github/agents/*-apm.chatmode.md` |
+| Claude commands | `.claude/commands/*-apm.md` |
+| Skill folders | `.claude/skills/{folder-name}/` |
+
+**Behavior:**
+- Removes package from `apm.yml` dependencies
+- Deletes package folder from `apm_modules/`
+- Removes all integrated files with `-apm` suffix that originated from the package
+- Cleans up empty parent directories
+- Safe operation: only removes APM-managed files (identified by `-apm` suffix)
 
 ### `apm deps` - 🔗 Manage APM package dependencies
 
@@ -525,7 +586,7 @@ target: vscode  # or claude, or all
 | Target | Output Files | Best For |
 |--------|--------------|----------|
 | `vscode` | AGENTS.md, .github/prompts/, .github/agents/ | GitHub Copilot, Cursor, Codex, Gemini |
-| `claude` | CLAUDE.md, .claude/commands/, SKILL.md | Claude Code, Claude Desktop |
+| `claude` | CLAUDE.md, .claude/commands/, .claude/skills/, SKILL.md | Claude Code, Claude Desktop |
 | `all` | All of the above | Universal compatibility |
 
 **Examples:**

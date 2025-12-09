@@ -464,6 +464,110 @@ class SkillIntegrator:
         
         return files_copied
     
+    def _integrate_native_claude_skill(
+        self, package_info, project_root: Path, source_skill_md: Path
+    ) -> SkillIntegrationResult:
+        """Copy a native Claude Skill (with existing SKILL.md) to .claude/skills/.
+        
+        For packages that already have a SKILL.md at their root (like those from
+        awesome-claude-skills), we copy the entire skill folder rather than 
+        regenerating from .apm/ primitives.
+        
+        The skill folder name is the source folder name (e.g., `mcp-builder`).
+        
+        We add APM tracking metadata to the copied SKILL.md so sync_integration
+        can properly identify and clean up orphaned skills.
+        
+        Args:
+            package_info: PackageInfo object with package metadata
+            project_root: Root directory of the project
+            source_skill_md: Path to the source SKILL.md file
+            
+        Returns:
+            SkillIntegrationResult: Results of the integration operation
+        """
+        package_path = package_info.install_path
+        
+        # Use the source folder name as the skill name
+        # e.g., apm_modules/ComposioHQ/awesome-claude-skills/mcp-builder → mcp-builder
+        skill_name = package_path.name
+        
+        skill_dir = project_root / ".claude" / "skills" / skill_name
+        target_skill_md = skill_dir / "SKILL.md"
+        
+        # Check if we need to update
+        skill_created = False
+        skill_updated = False
+        skill_skipped = False
+        
+        if target_skill_md.exists():
+            # Check existing metadata for version/commit changes
+            existing_metadata = self._parse_skill_metadata(target_skill_md)
+            current_version = package_info.package.version
+            current_commit = (
+                package_info.resolved_reference.resolved_commit
+                if package_info.resolved_reference
+                else "unknown"
+            )
+            
+            if (existing_metadata.get('Version') == current_version and
+                existing_metadata.get('Commit') == current_commit):
+                skill_skipped = True
+            else:
+                skill_updated = True
+        else:
+            skill_created = True
+        
+        files_copied = 0
+        
+        if skill_created or skill_updated:
+            # Remove existing skill directory if updating
+            if skill_dir.exists():
+                shutil.rmtree(skill_dir)
+            
+            # Copy the entire package directory to the skill location
+            shutil.copytree(package_path, skill_dir)
+            
+            # Add APM tracking metadata to the SKILL.md for orphan detection
+            self._add_apm_metadata_to_skill(target_skill_md, package_info)
+            
+            # Count files copied
+            files_copied = sum(1 for _ in skill_dir.rglob('*') if _.is_file())
+        
+        return SkillIntegrationResult(
+            skill_created=skill_created,
+            skill_updated=skill_updated,
+            skill_skipped=skill_skipped,
+            skill_path=target_skill_md if (skill_created or skill_updated) else None,
+            references_copied=files_copied,
+            links_resolved=0
+        )
+    
+    def _add_apm_metadata_to_skill(self, skill_path: Path, package_info) -> None:
+        """Add APM tracking metadata to a SKILL.md file.
+        
+        This ensures sync_integration can identify APM-managed skills for cleanup.
+        """
+        post = frontmatter.load(skill_path)
+        
+        # Add nested metadata for APM tracking
+        if 'metadata' not in post.metadata:
+            post.metadata['metadata'] = {}
+        
+        post.metadata['metadata']['apm_package'] = package_info.get_canonical_dependency_string()
+        post.metadata['metadata']['apm_version'] = package_info.package.version
+        post.metadata['metadata']['apm_commit'] = (
+            package_info.resolved_reference.resolved_commit
+            if package_info.resolved_reference
+            else "unknown"
+        )
+        post.metadata['metadata']['apm_installed_at'] = (
+            package_info.installed_at or datetime.now().isoformat()
+        )
+        
+        with open(skill_path, 'w', encoding='utf-8') as f:
+            f.write(frontmatter.dumps(post))
+
     def integrate_package_skill(self, package_info, project_root: Path) -> SkillIntegrationResult:
         """Generate SKILL.md for a package in .claude/skills/ directory.
         
@@ -473,9 +577,12 @@ class SkillIntegrator:
         
         This follows Claude Code's skill discovery path (.claude/skills/).
         
-        Note: Virtual packages (individual files like owner/repo/path/to/file.agent.md) 
-        do NOT generate Skills. Only full APM packages with proper structure generate Skills.
-        This prevents naming collisions when multiple files from the same repo are installed.
+        Note: Virtual FILE packages (individual files like owner/repo/path/to/file.agent.md) 
+        and COLLECTION packages do NOT generate Skills. Only full APM packages and 
+        subdirectory packages (like Claude Skills) generate Skills.
+        
+        Subdirectory packages (e.g., ComposioHQ/awesome-claude-skills/mcp-builder) ARE 
+        processed because they represent complete skill packages with their own SKILL.md.
         
         Args:
             package_info: PackageInfo object with package metadata
@@ -484,21 +591,29 @@ class SkillIntegrator:
         Returns:
             SkillIntegrationResult: Results of the integration operation
         """
-        # Skip virtual packages - they're individual files, not full packages
-        # Multiple virtual packages from the same repo would collide on skill name
+        # Skip virtual FILE and COLLECTION packages - they're individual files, not full packages
+        # Multiple virtual files from the same repo would collide on skill name
+        # BUT: subdirectory packages (like Claude Skills) SHOULD generate skills
         if package_info.dependency_ref and package_info.dependency_ref.is_virtual:
-            return SkillIntegrationResult(
-                skill_created=False,
-                skill_updated=False,
-                skill_skipped=True,
-                skill_path=None,
-                references_copied=0,
-                links_resolved=0
-            )
+            # Allow subdirectory packages through - they are complete skill packages
+            if not package_info.dependency_ref.is_virtual_subdirectory():
+                return SkillIntegrationResult(
+                    skill_created=False,
+                    skill_updated=False,
+                    skill_skipped=True,
+                    skill_path=None,
+                    references_copied=0,
+                    links_resolved=0
+                )
         
         package_path = package_info.install_path
         
-        # Discover all primitives
+        # Check if this is a native Claude Skill (already has SKILL.md at root)
+        source_skill_md = package_path / "SKILL.md"
+        if source_skill_md.exists():
+            return self._integrate_native_claude_skill(package_info, project_root, source_skill_md)
+        
+        # Discover all primitives for APM packages without SKILL.md
         instruction_files = self.find_instruction_files(package_path)
         agent_files = self.find_agent_files(package_path)
         context_files = self.find_context_files(package_path)
@@ -526,8 +641,9 @@ class SkillIntegrator:
             )
         
         # Determine target paths - write to .claude/skills/{skill-name}/
-        repo_url = package_info.package.source or package_info.package.name
-        skill_name = to_hyphen_case(repo_url)
+        # Use the install folder name for simplicity and consistency
+        # e.g., apm_modules/danielmeppiel/design-guidelines → design-guidelines
+        skill_name = package_path.name
         skill_dir = project_root / ".claude" / "skills" / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)
         
@@ -573,6 +689,7 @@ class SkillIntegrator:
         """Sync .claude/skills/ with currently installed packages.
         
         Removes skill directories for packages that are no longer installed.
+        Uses apm_package metadata in SKILL.md to identify APM-managed skills.
         
         Args:
             apm_package: APMPackage with current dependencies
@@ -585,26 +702,24 @@ class SkillIntegrator:
         if not skills_dir.exists():
             return {'files_removed': 0, 'errors': 0}
         
-        # Get list of currently installed package skill names
-        installed_skill_names = set()
+        # Get canonical dependency strings for all installed packages
+        installed_packages = set()
         for dep in apm_package.get_apm_dependencies():
-            skill_name = to_hyphen_case(str(dep))
-            installed_skill_names.add(skill_name)
+            installed_packages.add(dep.get_canonical_dependency_string())
         
-        # Find orphaned skill directories (those with -apm suffix pattern or all if needed)
+        # Find orphaned skill directories by checking apm_package metadata
         files_removed = 0
         errors = 0
         
         for skill_subdir in skills_dir.iterdir():
             if skill_subdir.is_dir():
-                # Check if this skill came from APM (has apm_package in metadata)
                 skill_md = skill_subdir / "SKILL.md"
                 if skill_md.exists():
                     try:
                         metadata = self._parse_skill_metadata(skill_md)
-                        if metadata.get('Package'):  # Has APM metadata
-                            skill_name = skill_subdir.name
-                            if skill_name not in installed_skill_names:
+                        apm_package_ref = metadata.get('Package')
+                        if apm_package_ref:  # This is an APM-managed skill
+                            if apm_package_ref not in installed_packages:
                                 # Remove orphaned skill directory
                                 shutil.rmtree(skill_subdir)
                                 files_removed += 1
