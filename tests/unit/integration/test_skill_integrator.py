@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock
 from datetime import datetime
 
-from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case, skill_name_from_dependency
+from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case
 from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference
 
 
@@ -75,47 +75,6 @@ class TestToHyphenCase:
         """Test numbers are preserved."""
         assert to_hyphen_case("package123") == "package123"
         assert to_hyphen_case("my2ndPackage") == "my2nd-package"
-
-
-class TestSkillNameFromDependency:
-    """Test skill_name_from_dependency function for unique, consistent naming."""
-    
-    def test_owner_repo_format(self):
-        """Test standard owner/repo → owner-repo."""
-        assert skill_name_from_dependency("owner/repo") == "owner-repo"
-        assert skill_name_from_dependency("danielmeppiel/compliance-rules") == "danielmeppiel-compliance-rules"
-    
-    def test_subdirectory_package(self):
-        """Test owner/repo/skill → owner-repo-skill."""
-        assert skill_name_from_dependency("owner/repo/skill") == "owner-repo-skill"
-    
-    def test_deep_subdirectory_flattened(self):
-        """Test deep paths are flattened to owner-repo-skill."""
-        assert skill_name_from_dependency("owner/repo/a/b/c/skill") == "owner-repo-skill"
-    
-    def test_camel_case_handling(self):
-        """Test camelCase parts are converted to hyphen-case."""
-        result = skill_name_from_dependency("ComposioHQ/awesome-claude-skills/mcp-builder")
-        assert result == "composio-hq-awesome-claude-skills-mcp-builder"
-    
-    def test_single_name(self):
-        """Test single name without slashes."""
-        assert skill_name_from_dependency("mypackage") == "mypackage"
-        assert skill_name_from_dependency("MyPackage") == "my-package"
-    
-    def test_uniqueness_different_owners(self):
-        """Test that different owners result in different skill names."""
-        alice = skill_name_from_dependency("alice/utils")
-        bob = skill_name_from_dependency("bob/utils")
-        assert alice != bob
-        assert alice == "alice-utils"
-        assert bob == "bob-utils"
-    
-    def test_truncates_to_64_chars(self):
-        """Test truncation to Claude Skills spec limit."""
-        long_canonical = "owner/" + "a" * 100 + "/skill"
-        result = skill_name_from_dependency(long_canonical)
-        assert len(result) <= 64
 
 
 class TestSkillIntegrator:
@@ -943,8 +902,8 @@ metadata:
         like ComposioHQ/awesome-claude-skills/mcp-builder.
         """
         # Simulate an installed skill from a subdirectory package
-        # skill_name_from_dependency produces: composio-hq-awesome-claude-skills-mcp-builder
-        skill_name = "composio-hq-awesome-claude-skills-mcp-builder"
+        # Skill name uses the folder name directly: mcp-builder
+        skill_name = "mcp-builder"
         skill_dir = self.project_root / ".claude" / "skills" / skill_name
         skill_dir.mkdir(parents=True)
         
@@ -973,8 +932,8 @@ metadata:
     def test_sync_integration_keeps_installed_subdirectory_skill(self):
         """Test that sync keeps skills for still-installed subdirectory packages."""
         # Simulate an installed skill from a subdirectory package
-        # skill_name_from_dependency produces: composio-hq-awesome-claude-skills-mcp-builder
-        skill_name = "composio-hq-awesome-claude-skills-mcp-builder"
+        # Skill name uses the folder name directly: mcp-builder
+        skill_name = "mcp-builder"
         skill_dir = self.project_root / ".claude" / "skills" / skill_name
         skill_dir.mkdir(parents=True)
         

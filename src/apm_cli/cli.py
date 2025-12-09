@@ -945,10 +945,14 @@ def uninstall(ctx, packages, dry_run):
                         # Cleanup empty parent directories up to apm_modules/
                         parent = package_path.parent
                         while parent != apm_modules_dir and parent.exists():
-                            if not any(parent.iterdir()):
-                                parent.rmdir()
-                                parent = parent.parent
-                            else:
+                            try:
+                                if not any(parent.iterdir()):
+                                    parent.rmdir()
+                                    parent = parent.parent
+                                else:
+                                    break
+                            except OSError:
+                                # Directory not empty or permission error - stop cleanup
                                 break
                     except Exception as e:
                         _rich_error(

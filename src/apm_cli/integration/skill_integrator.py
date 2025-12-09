@@ -54,56 +54,6 @@ def to_hyphen_case(name: str) -> str:
     return result[:64]
 
 
-def _normalize_name_part(part: str) -> str:
-    """Normalize a single name part to hyphen-case."""
-    result = part.replace("_", "-").replace(" ", "-")
-    result = re.sub(r'([a-z])([A-Z])', r'\1-\2', result)
-    result = re.sub(r'[^a-z0-9-]', '', result.lower())
-    result = re.sub(r'-+', '-', result)
-    return result.strip('-')
-
-
-def skill_name_from_dependency(canonical: str) -> str:
-    """Generate unique skill name from canonical dependency string.
-    
-    Uses owner-repo for standard packages, owner-repo-skill for subdirectory packages.
-    This ensures uniqueness while keeping names readable.
-    
-    Examples:
-        owner/repo           → owner-repo
-        owner/repo/skill     → owner-repo-skill
-        owner/repo/a/b/skill → owner-repo-skill
-    
-    Args:
-        canonical: Canonical dependency string (e.g., "ComposioHQ/awesome-claude-skills/mcp-builder")
-        
-    Returns:
-        str: Unique skill name, max 64 chars
-    """
-    parts = canonical.split("/")
-    
-    if len(parts) < 2:
-        # Single name, just normalize it
-        return _normalize_name_part(parts[0])[:64]
-    elif len(parts) == 2:
-        # Standard package: owner/repo → owner-repo
-        owner = _normalize_name_part(parts[0])
-        repo = _normalize_name_part(parts[1])
-        result = f"{owner}-{repo}"
-    else:
-        # Subdirectory package: owner/repo/.../skill → owner-repo-skill
-        owner = _normalize_name_part(parts[0])
-        repo = _normalize_name_part(parts[1])
-        skill = _normalize_name_part(parts[-1])
-        result = f"{owner}-{repo}-{skill}"
-    
-    # Remove consecutive hyphens that might result from empty parts
-    result = re.sub(r'-+', '-', result).strip('-')
-    
-    # Truncate to 64 chars (Claude Skills spec limit)
-    return result[:64]
-
-
 class SkillIntegrator:
     """Handles generation of SKILL.md files for Claude Code integration.
     
