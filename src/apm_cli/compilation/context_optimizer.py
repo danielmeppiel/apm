@@ -430,6 +430,10 @@ class ContextOptimizer:
             if self._should_exclude_path(current_path):
                 continue
             
+            # Prune subdirectories from os.walk to avoid descending into excluded paths
+            # This significantly improves performance by avoiding expensive traversal
+            dirs[:] = [d for d in dirs if not self._should_exclude_subdir(current_path / d)]
+            
             # Analyze files in this directory
             total_files = len([f for f in files if not f.startswith('.')])
             if total_files == 0:
@@ -450,6 +454,33 @@ class ContextOptimizer:
                 analysis.file_types.add(file_path.suffix)
             
             self._directory_cache[current_path] = analysis
+    
+    def _should_exclude_subdir(self, path: Path) -> bool:
+        """Check if a subdirectory should be pruned from os.walk traversal.
+        
+        This is an optimization to avoid descending into excluded directories,
+        which significantly improves performance in large monorepos.
+        
+        Args:
+            path: Subdirectory path to check
+            
+        Returns:
+            True if subdirectory should be pruned from traversal
+        """
+        # Check if the subdirectory itself matches an exclusion pattern
+        if self._should_exclude_path(path):
+            return True
+        
+        # Also check if subdirectory is a default exclusion
+        dir_name = path.name
+        if dir_name in ['node_modules', '__pycache__', '.git', 'dist', 'build']:
+            return True
+        
+        # Skip hidden directories
+        if dir_name.startswith('.'):
+            return True
+        
+        return False
     
     def _should_exclude_path(self, path: Path) -> bool:
         """Check if a path matches any exclusion pattern.
