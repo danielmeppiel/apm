@@ -432,6 +432,8 @@ class ContextOptimizer:
             
             # Prune subdirectories from os.walk to avoid descending into excluded paths
             # This significantly improves performance by avoiding expensive traversal
+            # Note: Modifying dirs[:] (slice assignment) is the standard Python idiom
+            # to control which subdirectories os.walk will descend into
             dirs[:] = [d for d in dirs if not self._should_exclude_subdir(current_path / d)]
             
             # Analyze files in this directory
@@ -520,8 +522,10 @@ class ContextOptimizer:
         Returns:
             True if path matches pattern, False otherwise
         """
-        # Normalize pattern to use forward slashes
-        normalized_pattern = pattern.replace(os.sep, '/')
+        # Normalize both pattern and path to use forward slashes for consistent matching
+        # This handles Windows paths (backslashes) and Unix paths (forward slashes)
+        # Users can provide patterns with either separator
+        normalized_pattern = pattern.replace('\\', '/').replace(os.sep, '/')
         
         # Convert path to string with forward slashes
         rel_path_str = str(rel_path).replace(os.sep, '/')
@@ -567,6 +571,8 @@ class ContextOptimizer:
         
         if not path_parts:
             # Check if remaining pattern parts are all ** or empty
+            # Empty parts can occur from patterns like "foo/" which split to ['foo', '']
+            # or from consecutive slashes like "foo//bar"
             return all(p == '**' or p == '' for p in pattern_parts)
         
         pattern_part = pattern_parts[0]
