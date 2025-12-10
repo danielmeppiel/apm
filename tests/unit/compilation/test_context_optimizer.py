@@ -602,7 +602,7 @@ class TestDirectoryExclusion:
     def test_analyze_project_structure_with_exclusions(self):
         """Test that _analyze_project_structure respects exclusion patterns."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            base_path = Path(tmpdir)
+            base_path = Path(tmpdir).resolve()  # Resolve to handle symlinks (e.g., macOS /var -> /private/var)
             
             # Create directory structure
             (base_path / "src").mkdir()
@@ -628,7 +628,7 @@ class TestDirectoryExclusion:
     def test_analyze_project_structure_with_nested_exclusions(self):
         """Test that nested exclusions work correctly."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            base_path = Path(tmpdir)
+            base_path = Path(tmpdir).resolve()  # Resolve to handle symlinks (e.g., macOS /var -> /private/var)
             
             # Create nested directory structure
             (base_path / "projects" / "packages" / "apm" / "src").mkdir(parents=True)
@@ -653,7 +653,7 @@ class TestDirectoryExclusion:
     def test_default_exclusions_still_work(self):
         """Test that default hardcoded exclusions still work alongside custom patterns."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            base_path = Path(tmpdir)
+            base_path = Path(tmpdir).resolve()  # Resolve to handle symlinks (e.g., macOS /var -> /private/var)
             
             # Create directories including default exclusions
             (base_path / "src").mkdir()
