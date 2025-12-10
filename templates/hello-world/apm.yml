@@ -13,3 +13,10 @@ dependencies:
     - danielmeppiel/design-guidelines  # Accessibility rules + UI review workflows
   mcp:
     - microsoft/azure-devops-mcp
+
+# Compilation configuration (optional)
+# compilation:
+#   exclude:
+#     - "apm_modules/**"           # Exclude installed packages during compilation
+#     - "tmp/**"                   # Exclude temporary files
+#     - "**/test-fixtures/**"      # Exclude test fixtures at any depth

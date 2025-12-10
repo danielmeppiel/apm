@@ -45,11 +45,15 @@ class CompilationConfig:
     min_instructions_per_file: int = 1  # Minimum instructions per AGENTS.md file (Minimal Context Principle)
     source_attribution: bool = True  # Include source file comments
     clean_orphaned: bool = False  # Remove orphaned AGENTS.md files
+    exclude: List[str] = None  # Glob patterns for directories to exclude during compilation
     
     def __post_init__(self):
         """Handle CLI flag precedence after initialization."""
         if self.single_agents:
             self.strategy = "single-file"
+        # Initialize exclude list if None
+        if self.exclude is None:
+            self.exclude = []
     
     @classmethod
     def from_apm_yml(cls, **overrides) -> 'CompilationConfig':
@@ -102,6 +106,15 @@ class CompilationConfig:
                 # Source attribution
                 if 'source_attribution' in compilation_config:
                     config.source_attribution = compilation_config['source_attribution']
+                
+                # Directory exclusion patterns
+                if 'exclude' in compilation_config:
+                    exclude_patterns = compilation_config['exclude']
+                    if isinstance(exclude_patterns, list):
+                        config.exclude = exclude_patterns
+                    elif isinstance(exclude_patterns, str):
+                        # Support single pattern as string
+                        config.exclude = [exclude_patterns]
                 
         except Exception:
             # If config loading fails, use defaults
@@ -226,8 +239,11 @@ class AgentsCompiler:
         """
         from .distributed_compiler import DistributedAgentsCompiler
         
-        # Create distributed compiler
-        distributed_compiler = DistributedAgentsCompiler(str(self.base_dir))
+        # Create distributed compiler with exclude patterns
+        distributed_compiler = DistributedAgentsCompiler(
+            str(self.base_dir),
+            exclude_patterns=config.exclude
+        )
         
         # Prepare configuration for distributed compilation
         distributed_config = {
@@ -380,7 +396,10 @@ class AgentsCompiler:
         
         # Get placement map from distributed compiler for consistency
         from .distributed_compiler import DistributedAgentsCompiler
-        distributed_compiler = DistributedAgentsCompiler(str(self.base_dir))
+        distributed_compiler = DistributedAgentsCompiler(
+            str(self.base_dir),
+            exclude_patterns=config.exclude
+        )
         
         # Analyze directory structure and determine placement
         directory_map = distributed_compiler.analyze_directory_structure(primitives.instructions)

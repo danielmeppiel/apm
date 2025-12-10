@@ -96,11 +96,12 @@ class ContextOptimizer:
     LOW_DISTRIBUTION_THRESHOLD = 0.3
     HIGH_DISTRIBUTION_THRESHOLD = 0.7
     
-    def __init__(self, base_dir: str = "."):
+    def __init__(self, base_dir: str = ".", exclude_patterns: Optional[List[str]] = None):
         """Initialize the context optimizer.
         
         Args:
             base_dir (str): Base directory for optimization analysis.
+            exclude_patterns (Optional[List[str]]): Glob patterns for directories to exclude.
         """
         try:
             self.base_dir = Path(base_dir).resolve()
@@ -121,6 +122,9 @@ class ContextOptimizer:
         self._warnings: List[str] = []
         self._errors: List[str] = []
         self._start_time: Optional[float] = None
+        
+        # Configurable exclusion patterns
+        self._exclude_patterns = exclude_patterns or []
     
     def enable_timing(self, verbose: bool = False):
         """Enable performance timing instrumentation."""
@@ -418,8 +422,19 @@ class ContextOptimizer:
             if any(part.startswith('.') for part in current_path.parts[len(self.base_dir.parts):]):
                 continue
             
+            # Default hardcoded exclusions for backwards compatibility
             if any(ignore in str(current_path) for ignore in ['node_modules', '__pycache__', '.git', 'dist', 'build']):
                 continue
+            
+            # Apply configurable exclusion patterns
+            if self._should_exclude_path(current_path):
+                continue
+            
+            # Prune subdirectories from os.walk to avoid descending into excluded paths
+            # This significantly improves performance by avoiding expensive traversal
+            # Note: Modifying dirs[:] (slice assignment) is the standard Python idiom
+            # to control which subdirectories os.walk will descend into
+            dirs[:] = [d for d in dirs if not self._should_exclude_subdir(current_path / d)]
             
             # Analyze files in this directory
             total_files = len([f for f in files if not f.startswith('.')])
@@ -441,6 +456,141 @@ class ContextOptimizer:
                 analysis.file_types.add(file_path.suffix)
             
             self._directory_cache[current_path] = analysis
+    
+    def _should_exclude_subdir(self, path: Path) -> bool:
+        """Check if a subdirectory should be pruned from os.walk traversal.
+        
+        This is an optimization to avoid descending into excluded directories,
+        which significantly improves performance in large monorepos.
+        
+        Args:
+            path: Subdirectory path to check
+            
+        Returns:
+            True if subdirectory should be pruned from traversal
+        """
+        # Check if the subdirectory itself matches an exclusion pattern
+        if self._should_exclude_path(path):
+            return True
+        
+        # Also check if subdirectory is a default exclusion
+        dir_name = path.name
+        if dir_name in ['node_modules', '__pycache__', '.git', 'dist', 'build']:
+            return True
+        
+        # Skip hidden directories
+        if dir_name.startswith('.'):
+            return True
+        
+        return False
+    
+    def _should_exclude_path(self, path: Path) -> bool:
+        """Check if a path matches any exclusion pattern.
+        
+        Args:
+            path: Path to check against exclusion patterns
+            
+        Returns:
+            True if path should be excluded, False otherwise
+        """
+        if not self._exclude_patterns:
+            return False
+        
+        # Get path relative to base_dir for pattern matching
+        try:
+            rel_path = path.relative_to(self.base_dir)
+        except ValueError:
+            # Path is not relative to base_dir, don't exclude
+            return False
+        
+        # Check each exclusion pattern
+        for pattern in self._exclude_patterns:
+            if self._matches_pattern(rel_path, pattern):
+                return True
+        
+        return False
+    
+    def _matches_pattern(self, rel_path: Path, pattern: str) -> bool:
+        """Check if a relative path matches an exclusion pattern.
+        
+        Supports glob patterns including ** for recursive matching.
+        
+        Args:
+            rel_path: Path relative to base_dir
+            pattern: Exclusion pattern (glob syntax)
+            
+        Returns:
+            True if path matches pattern, False otherwise
+        """
+        # Normalize both pattern and path to use forward slashes for consistent matching
+        # This handles Windows paths (backslashes) and Unix paths (forward slashes)
+        # Users can provide patterns with either separator
+        normalized_pattern = pattern.replace('\\', '/').replace(os.sep, '/')
+        
+        # Convert path to string with forward slashes
+        rel_path_str = str(rel_path).replace(os.sep, '/')
+        
+        # Handle ** patterns (match any number of directories)
+        if '**' in normalized_pattern:
+            # Convert ** glob to regex-like matching
+            # Split pattern into parts
+            parts = normalized_pattern.split('/')
+            path_parts = rel_path_str.split('/')
+            
+            # Try to match using recursive logic
+            return self._match_glob_recursive(path_parts, parts)
+        
+        # Simple fnmatch for patterns without **
+        if fnmatch.fnmatch(rel_path_str, normalized_pattern):
+            return True
+        
+        # Also check if the path starts with the pattern (for directory matching)
+        # This handles cases like "apm_modules/" matching "apm_modules/foo/bar"
+        if normalized_pattern.endswith('/'):
+            if rel_path_str.startswith(normalized_pattern) or rel_path_str == normalized_pattern.rstrip('/'):
+                return True
+        else:
+            # Check if pattern with trailing slash would match
+            if rel_path_str.startswith(normalized_pattern + '/') or rel_path_str == normalized_pattern:
+                return True
+        
+        return False
+    
+    def _match_glob_recursive(self, path_parts: list, pattern_parts: list) -> bool:
+        """Recursively match path parts against pattern parts with ** support.
+        
+        Args:
+            path_parts: List of path components
+            pattern_parts: List of pattern components
+            
+        Returns:
+            True if path matches pattern, False otherwise
+        """
+        if not pattern_parts:
+            return not path_parts
+        
+        if not path_parts:
+            # Check if remaining pattern parts are all ** or empty
+            # Empty parts can occur from patterns like "foo/" which split to ['foo', '']
+            # or from consecutive slashes like "foo//bar"
+            return all(p == '**' or p == '' for p in pattern_parts)
+        
+        pattern_part = pattern_parts[0]
+        
+        if pattern_part == '**':
+            # ** matches zero or more directories
+            # Try matching with zero directories
+            if self._match_glob_recursive(path_parts, pattern_parts[1:]):
+                return True
+            # Try matching with one or more directories
+            if self._match_glob_recursive(path_parts[1:], pattern_parts):
+                return True
+            return False
+        else:
+            # Regular pattern part - must match current path part
+            if fnmatch.fnmatch(path_parts[0], pattern_part):
+                return self._match_glob_recursive(path_parts[1:], pattern_parts[1:])
+            return False
     
     def _find_optimal_placements(
         self,
