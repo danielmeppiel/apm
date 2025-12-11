@@ -13,7 +13,6 @@ from apm_cli.utils.version_checker import (
     should_check_for_updates,
     save_version_check_timestamp,
     check_for_updates,
-    get_update_cache_path,
 )
 
 
@@ -47,7 +46,9 @@ class TestVersionParser(unittest.TestCase):
         self.assertIsNone(parse_version("invalid"))
         self.assertIsNone(parse_version("1.2"))
         self.assertIsNone(parse_version("1.2.3.4"))
-        self.assertIsNone(parse_version("v0.6.3"))  # Should strip 'v' before parsing
+        self.assertIsNone(
+            parse_version("v0.6.3")
+        )  # 'v' prefix is not accepted by parse_version
         self.assertIsNone(parse_version(""))
 
 
