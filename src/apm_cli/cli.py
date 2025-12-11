@@ -35,6 +35,7 @@ from apm_cli.utils.github_host import is_valid_fqdn, default_host
 
 # APM imports - use absolute imports everywhere for consistency
 from apm_cli.version import get_version
+from apm_cli.utils.version_checker import check_for_updates
 
 # APM Dependencies - Import for Task 5 integration
 try:
@@ -220,6 +221,43 @@ def print_version(ctx, param, value):
     ctx.exit()
 
 
+def _check_and_notify_updates():
+    """Check for updates and notify user non-blockingly."""
+    try:
+        current_version = get_version()
+        
+        # Skip check for development versions
+        if current_version == "unknown":
+            return
+        
+        latest_version = check_for_updates(current_version)
+        
+        if latest_version:
+            # Display yellow warning with update command
+            _rich_warning(
+                f"A new version of APM is available: {latest_version} (current: {current_version})",
+                symbol="warning"
+            )
+            
+            # Show update command
+            console = _get_console()
+            if console:
+                from rich.text import Text
+                update_msg = Text()
+                update_msg.append("Run ", style="yellow")
+                update_msg.append("apm update", style="bold yellow")
+                update_msg.append(" to upgrade", style="yellow")
+                console.print(update_msg)
+            else:
+                click.echo(f"{WARNING}Run {HIGHLIGHT}apm update{RESET}{WARNING} to upgrade{RESET}")
+            
+            # Add a blank line for visual separation
+            click.echo()
+    except Exception:
+        # Silently fail - version checking should never block CLI usage
+        pass
+
+
 @click.group(
     help="Agent Package Manager (APM): The package manager for AI-Native Development"
 )
@@ -235,6 +273,10 @@ def print_version(ctx, param, value):
 def cli(ctx):
     """Main entry point for the APM CLI."""
     ctx.ensure_object(dict)
+    
+    # Check for updates non-blockingly (only if not already showing version)
+    if not ctx.resilient_parsing:
+        _check_and_notify_updates()
 
 
 # Register command groups
@@ -809,6 +851,117 @@ def prune(ctx, dry_run):
 
     except Exception as e:
         _rich_error(f"Error pruning packages: {e}")
+        sys.exit(1)
+
+
+@cli.command(help="⬆️  Update APM to the latest version")
+@click.option(
+    "--check", is_flag=True, help="Only check for updates without installing"
+)
+def update(check):
+    """Update APM CLI to the latest version (like npm update -g npm).
+    
+    This command fetches and installs the latest version of APM using the
+    official install script. It will detect your platform and architecture
+    automatically.
+    
+    Examples:
+        apm update         # Update to latest version
+        apm update --check # Only check if update is available
+    """
+    try:
+        import subprocess
+        import tempfile
+        
+        current_version = get_version()
+        
+        # Skip check for development versions
+        if current_version == "unknown":
+            _rich_warning("Cannot determine current version. Running in development mode?")
+            if not check:
+                _rich_info("To update, reinstall from the repository.")
+            return
+        
+        _rich_info(f"Current version: {current_version}", symbol="info")
+        _rich_info("Checking for updates...", symbol="running")
+        
+        # Check for latest version
+        from apm_cli.utils.version_checker import get_latest_version_from_github
+        latest_version = get_latest_version_from_github()
+        
+        if not latest_version:
+            _rich_error("Unable to fetch latest version from GitHub")
+            _rich_info("Please check your internet connection or try again later")
+            sys.exit(1)
+        
+        from apm_cli.utils.version_checker import is_newer_version
+        
+        if not is_newer_version(current_version, latest_version):
+            _rich_success(f"You're already on the latest version: {current_version}", symbol="check")
+            return
+        
+        _rich_info(f"Latest version available: {latest_version}", symbol="sparkles")
+        
+        if check:
+            _rich_warning(f"Update available: {current_version} → {latest_version}")
+            _rich_info("Run 'apm update' (without --check) to install", symbol="info")
+            return
+        
+        # Proceed with update
+        _rich_info("Downloading and installing update...", symbol="running")
+        
+        # Download install script to temp file
+        try:
+            import requests
+            install_script_url = "https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh"
+            response = requests.get(install_script_url, timeout=10)
+            response.raise_for_status()
+            
+            # Create temporary file for install script
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                temp_script = f.name
+                f.write(response.text)
+            
+            # Make script executable
+            os.chmod(temp_script, 0o755)
+            
+            # Run install script
+            _rich_info("Running installer...", symbol="gear")
+            result = subprocess.run(
+                ['sh', temp_script],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            # Clean up temp file
+            try:
+                os.unlink(temp_script)
+            except Exception:
+                pass
+            
+            if result.returncode == 0:
+                _rich_success(f"Successfully updated to version {latest_version}!", symbol="sparkles")
+                _rich_info("Please restart your terminal or run 'apm --version' to verify")
+            else:
+                _rich_error("Installation failed")
+                if result.stderr:
+                    click.echo(result.stderr, err=True)
+                sys.exit(1)
+                
+        except ImportError:
+            _rich_error("'requests' library not available")
+            _rich_info("Please update manually using:")
+            click.echo("  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh")
+            sys.exit(1)
+        except Exception as e:
+            _rich_error(f"Update failed: {e}")
+            _rich_info("Please update manually using:")
+            click.echo("  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh")
+            sys.exit(1)
+            
+    except Exception as e:
+        _rich_error(f"Error during update: {e}")
         sys.exit(1)
 
 
