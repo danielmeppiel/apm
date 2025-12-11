@@ -176,14 +176,21 @@ def _check_orphaned_packages():
                 for level2_dir in level1_dir.iterdir():
                     if level2_dir.is_dir() and not level2_dir.name.startswith("."):
                         # Check if level2 has apm.yml or .apm (GitHub 2-level structure)
-                        if (level2_dir / "apm.yml").exists() or (level2_dir / ".apm").exists():
+                        if (level2_dir / "apm.yml").exists() or (
+                            level2_dir / ".apm"
+                        ).exists():
                             path_key = f"{level1_dir.name}/{level2_dir.name}"
                             installed_packages.append(path_key)
                         else:
                             # Check for ADO 3-level structure
                             for level3_dir in level2_dir.iterdir():
-                                if level3_dir.is_dir() and not level3_dir.name.startswith("."):
-                                    if (level3_dir / "apm.yml").exists() or (level3_dir / ".apm").exists():
+                                if (
+                                    level3_dir.is_dir()
+                                    and not level3_dir.name.startswith(".")
+                                ):
+                                    if (level3_dir / "apm.yml").exists() or (
+                                        level3_dir / ".apm"
+                                    ).exists():
                                         path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
                                         installed_packages.append(path_key)
 
@@ -225,32 +232,23 @@ def _check_and_notify_updates():
     """Check for updates and notify user non-blockingly."""
     try:
         current_version = get_version()
-        
+
         # Skip check for development versions
         if current_version == "unknown":
             return
-        
+
         latest_version = check_for_updates(current_version)
-        
+
         if latest_version:
             # Display yellow warning with update command
             _rich_warning(
                 f"A new version of APM is available: {latest_version} (current: {current_version})",
-                symbol="warning"
+                symbol="warning",
             )
-            
-            # Show update command
-            console = _get_console()
-            if console:
-                from rich.text import Text
-                update_msg = Text()
-                update_msg.append("Run ", style="yellow")
-                update_msg.append("apm update", style="bold yellow")
-                update_msg.append(" to upgrade", style="yellow")
-                console.print(update_msg)
-            else:
-                click.echo(f"{WARNING}Run {HIGHLIGHT}apm update{RESET}{WARNING} to upgrade{RESET}")
-            
+
+            # Show update command using helper for consistency
+            _rich_echo("Run apm update to upgrade", color="yellow", bold=True)
+
             # Add a blank line for visual separation
             click.echo()
     except Exception:
@@ -273,7 +271,7 @@ def _check_and_notify_updates():
 def cli(ctx):
     """Main entry point for the APM CLI."""
     ctx.ensure_object(dict)
-    
+
     # Check for updates non-blockingly (only if not already showing version)
     if not ctx.resilient_parsing:
         _check_and_notify_updates()
@@ -360,7 +358,9 @@ def init(ctx, project_name, yes):
         except (ImportError, NameError):
             _rich_info("Created:")
             _rich_echo("  ✨ apm.yml - Project configuration", style="muted")
-            _rich_echo("  📖 SKILL.md - Package meta-guide for AI discovery", style="muted")
+            _rich_echo(
+                "  📖 SKILL.md - Package meta-guide for AI discovery", style="muted"
+            )
 
         _rich_blank_line()
 
@@ -426,11 +426,13 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
 
         # Check if package is already in dependencies
         already_in_deps = package in current_deps
-        
+
         # Validate package exists and is accessible
         if _validate_package_exists(package):
             if already_in_deps:
-                _rich_info(f"✓ {package} - already in apm.yml, ensuring installation...")
+                _rich_info(
+                    f"✓ {package} - already in apm.yml, ensuring installation..."
+                )
             else:
                 validated_packages.append(package)
                 _rich_info(f"✓ {package} - accessible")
@@ -489,22 +491,27 @@ def _validate_package_exists(package):
             downloader = GitHubPackageDownloader()
             return downloader.validate_virtual_package_exists(dep_ref)
 
-        # For Azure DevOps or GitHub Enterprise (non-github.com hosts), 
+        # For Azure DevOps or GitHub Enterprise (non-github.com hosts),
         # use the downloader which handles authentication properly
-        if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != 'github.com'):
+        if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
             downloader = GitHubPackageDownloader()
             # Set the host
             if dep_ref.host:
                 downloader.github_host = dep_ref.host
-            
+
             # Build authenticated URL using downloader's auth
-            package_url = downloader._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
-            
+            package_url = downloader._build_repo_url(
+                dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref
+            )
+
             # Use the downloader's git environment which has auth configured
             cmd = ["git", "ls-remote", "--heads", "--exit-code", package_url]
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30,
-                env={**os.environ, **downloader.git_env}
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={**os.environ, **downloader.git_env},
             )
             return result.returncode == 0
 
@@ -578,9 +585,7 @@ def _validate_package_exists(package):
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be installed without installing"
 )
-@click.option(
-    "--verbose", is_flag=True, help="Show detailed installation information"
-)
+@click.option("--verbose", is_flag=True, help="Show detailed installation information")
 @click.pass_context
 def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
     """Install APM and MCP dependencies from apm.yml (like npm install).
@@ -680,7 +685,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
                 # If specific packages were requested, only install those
                 # Otherwise install all from apm.yml
                 only_pkgs = builtins.list(packages) if packages else None
-                apm_count, prompt_count, agent_count = _install_apm_dependencies(apm_package, update, verbose, only_pkgs)
+                apm_count, prompt_count, agent_count = _install_apm_dependencies(
+                    apm_package, update, verbose, only_pkgs
+                )
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
@@ -699,7 +706,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
         if not only:
             # Load apm.yml config for summary
             apm_config = _load_apm_config()
-            _show_install_summary(apm_count, prompt_count, agent_count, mcp_count, apm_config)
+            _show_install_summary(
+                apm_count, prompt_count, agent_count, mcp_count, apm_config
+            )
         elif only == "apm":
             _rich_success(f"Installed {apm_count} APM dependencies")
         elif only == "mcp":
@@ -757,7 +766,9 @@ def prune(ctx, dry_run):
                     package_name = dep.get_virtual_package_name()
                     if dep.is_azure_devops() and len(repo_parts) >= 3:
                         # ADO structure: org/project/virtual-pkg-name
-                        expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+                        expected_installed.add(
+                            f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
+                        )
                     elif len(repo_parts) >= 2:
                         # GitHub structure: owner/virtual-pkg-name
                         expected_installed.add(f"{repo_parts[0]}/{package_name}")
@@ -765,7 +776,9 @@ def prune(ctx, dry_run):
                     # Regular package: use full repo_url path
                     if dep.is_azure_devops() and len(repo_parts) >= 3:
                         # ADO structure: org/project/repo
-                        expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}")
+                        expected_installed.add(
+                            f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"
+                        )
                     elif len(repo_parts) >= 2:
                         # GitHub structure: owner/repo
                         expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
@@ -783,14 +796,21 @@ def prune(ctx, dry_run):
                     for level2_dir in level1_dir.iterdir():
                         if level2_dir.is_dir() and not level2_dir.name.startswith("."):
                             # Check if level2 has apm.yml (GitHub 2-level structure)
-                            if (level2_dir / "apm.yml").exists() or (level2_dir / ".apm").exists():
+                            if (level2_dir / "apm.yml").exists() or (
+                                level2_dir / ".apm"
+                            ).exists():
                                 path_key = f"{level1_dir.name}/{level2_dir.name}"
                                 installed_packages[path_key] = path_key
                             else:
                                 # Check for ADO 3-level structure
                                 for level3_dir in level2_dir.iterdir():
-                                    if level3_dir.is_dir() and not level3_dir.name.startswith("."):
-                                        if (level3_dir / "apm.yml").exists() or (level3_dir / ".apm").exists():
+                                    if (
+                                        level3_dir.is_dir()
+                                        and not level3_dir.name.startswith(".")
+                                    ):
+                                        if (level3_dir / "apm.yml").exists() or (
+                                            level3_dir / ".apm"
+                                        ).exists():
                                             path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
                                             installed_packages[path_key] = path_key
 
@@ -855,16 +875,14 @@ def prune(ctx, dry_run):
 
 
 @cli.command(help="⬆️  Update APM to the latest version")
-@click.option(
-    "--check", is_flag=True, help="Only check for updates without installing"
-)
+@click.option("--check", is_flag=True, help="Only check for updates without installing")
 def update(check):
     """Update APM CLI to the latest version (like npm update -g npm).
-    
+
     This command fetches and installs the latest version of APM using the
     official install script. It will detect your platform and architecture
     automatically.
-    
+
     Examples:
         apm update         # Update to latest version
         apm update --check # Only check if update is available
@@ -872,94 +890,113 @@ def update(check):
     try:
         import subprocess
         import tempfile
-        
+
         current_version = get_version()
-        
+
         # Skip check for development versions
         if current_version == "unknown":
-            _rich_warning("Cannot determine current version. Running in development mode?")
+            _rich_warning(
+                "Cannot determine current version. Running in development mode?"
+            )
             if not check:
                 _rich_info("To update, reinstall from the repository.")
             return
-        
+
         _rich_info(f"Current version: {current_version}", symbol="info")
         _rich_info("Checking for updates...", symbol="running")
-        
+
         # Check for latest version
         from apm_cli.utils.version_checker import get_latest_version_from_github
+
         latest_version = get_latest_version_from_github()
-        
+
         if not latest_version:
             _rich_error("Unable to fetch latest version from GitHub")
             _rich_info("Please check your internet connection or try again later")
             sys.exit(1)
-        
+
         from apm_cli.utils.version_checker import is_newer_version
-        
+
         if not is_newer_version(current_version, latest_version):
-            _rich_success(f"You're already on the latest version: {current_version}", symbol="check")
+            _rich_success(
+                f"You're already on the latest version: {current_version}",
+                symbol="check",
+            )
             return
-        
+
         _rich_info(f"Latest version available: {latest_version}", symbol="sparkles")
-        
+
         if check:
             _rich_warning(f"Update available: {current_version} → {latest_version}")
             _rich_info("Run 'apm update' (without --check) to install", symbol="info")
             return
-        
+
         # Proceed with update
         _rich_info("Downloading and installing update...", symbol="running")
-        
+
         # Download install script to temp file
         try:
             import requests
-            install_script_url = "https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh"
+
+            install_script_url = (
+                "https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh"
+            )
             response = requests.get(install_script_url, timeout=10)
             response.raise_for_status()
-            
+
             # Create temporary file for install script
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
                 temp_script = f.name
                 f.write(response.text)
-            
+
             # Make script executable
             os.chmod(temp_script, 0o755)
-            
+
             # Run install script
             _rich_info("Running installer...", symbol="gear")
+
+            # Use /bin/sh for better cross-platform compatibility
+            shell_path = "/bin/sh" if os.path.exists("/bin/sh") else "sh"
             result = subprocess.run(
-                ['sh', temp_script],
-                capture_output=True,
-                text=True,
-                check=False
+                [shell_path, temp_script], capture_output=True, text=True, check=False
             )
-            
+
             # Clean up temp file
             try:
                 os.unlink(temp_script)
             except Exception:
+                # Non-fatal: failed to delete temp install script
                 pass
-            
+
             if result.returncode == 0:
-                _rich_success(f"Successfully updated to version {latest_version}!", symbol="sparkles")
-                _rich_info("Please restart your terminal or run 'apm --version' to verify")
+                _rich_success(
+                    f"Successfully updated to version {latest_version}!",
+                    symbol="sparkles",
+                )
+                _rich_info(
+                    "Please restart your terminal or run 'apm --version' to verify"
+                )
             else:
                 _rich_error("Installation failed")
                 if result.stderr:
                     click.echo(result.stderr, err=True)
                 sys.exit(1)
-                
+
         except ImportError:
             _rich_error("'requests' library not available")
             _rich_info("Please update manually using:")
-            click.echo("  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh")
+            click.echo(
+                "  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh"
+            )
             sys.exit(1)
         except Exception as e:
             _rich_error(f"Update failed: {e}")
             _rich_info("Please update manually using:")
-            click.echo("  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh")
+            click.echo(
+                "  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh"
+            )
             sys.exit(1)
-            
+
     except Exception as e:
         _rich_error(f"Error during update: {e}")
         sys.exit(1)
@@ -1097,7 +1134,7 @@ def uninstall(ctx, packages, dry_run):
                         shutil.rmtree(package_path)
                         _rich_info(f"✓ Removed {package} from apm_modules/")
                         removed_from_modules += 1
-                        
+
                         # Cleanup empty parent directories up to apm_modules/
                         parent = package_path.parent
                         while parent != apm_modules_dir and parent.exists():
@@ -1124,15 +1161,15 @@ def uninstall(ctx, packages, dry_run):
             try:
                 from apm_cli.models.apm_package import APMPackage
                 from apm_cli.integration.prompt_integrator import PromptIntegrator
-                
+
                 apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
                 integrator = PromptIntegrator()
                 cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                prompts_cleaned = cleanup_result.get('files_removed', 0)
-                prompts_failed = cleanup_result.get('errors', 0)
+                prompts_cleaned = cleanup_result.get("files_removed", 0)
+                prompts_failed = cleanup_result.get("errors", 0)
             except Exception as e:
                 prompts_failed += 1
-        
+
         # Sync agent integration to remove orphaned agents
         agents_cleaned = 0
         agents_failed = 0
@@ -1140,15 +1177,15 @@ def uninstall(ctx, packages, dry_run):
             try:
                 from apm_cli.models.apm_package import APMPackage
                 from apm_cli.integration.agent_integrator import AgentIntegrator
-                
+
                 apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
                 integrator = AgentIntegrator()
                 cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                agents_cleaned = cleanup_result.get('files_removed', 0)
-                agents_failed = cleanup_result.get('errors', 0)
+                agents_cleaned = cleanup_result.get("files_removed", 0)
+                agents_failed = cleanup_result.get("errors", 0)
             except Exception as e:
                 agents_failed += 1
-        
+
         # Sync skill integration to remove orphaned Claude skills
         skills_cleaned = 0
         skills_failed = 0
@@ -1156,15 +1193,15 @@ def uninstall(ctx, packages, dry_run):
             try:
                 from apm_cli.models.apm_package import APMPackage
                 from apm_cli.integration.skill_integrator import SkillIntegrator
-                
+
                 apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
                 integrator = SkillIntegrator()
                 cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                skills_cleaned = cleanup_result.get('files_removed', 0)
-                skills_failed = cleanup_result.get('errors', 0)
+                skills_cleaned = cleanup_result.get("files_removed", 0)
+                skills_failed = cleanup_result.get("errors", 0)
             except Exception as e:
                 skills_failed += 1
-        
+
         # Sync command integration to remove orphaned Claude commands
         commands_cleaned = 0
         commands_failed = 0
@@ -1172,15 +1209,15 @@ def uninstall(ctx, packages, dry_run):
             try:
                 from apm_cli.models.apm_package import APMPackage
                 from apm_cli.integration.command_integrator import CommandIntegrator
-                
+
                 apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
                 integrator = CommandIntegrator()
                 cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                commands_cleaned = cleanup_result.get('files_removed', 0)
-                commands_failed = cleanup_result.get('errors', 0)
+                commands_cleaned = cleanup_result.get("files_removed", 0)
+                commands_failed = cleanup_result.get("errors", 0)
             except Exception as e:
                 commands_failed += 1
-        
+
         # Show cleanup feedback
         if prompts_cleaned > 0:
             _rich_info(f"✓ Cleaned up {prompts_cleaned} integrated prompt(s)")
@@ -1190,9 +1227,16 @@ def uninstall(ctx, packages, dry_run):
             _rich_info(f"✓ Cleaned up {skills_cleaned} Claude skill(s)")
         if commands_cleaned > 0:
             _rich_info(f"✓ Cleaned up {commands_cleaned} Claude command(s)")
-        if prompts_failed > 0 or agents_failed > 0 or skills_failed > 0 or commands_failed > 0:
-            _rich_warning(f"⚠ Failed to clean up {prompts_failed + agents_failed + skills_failed + commands_failed} file(s)")
-        
+        if (
+            prompts_failed > 0
+            or agents_failed > 0
+            or skills_failed > 0
+            or commands_failed > 0
+        ):
+            _rich_warning(
+                f"⚠ Failed to clean up {prompts_failed + agents_failed + skills_failed + commands_failed} file(s)"
+            )
+
         # Final summary
         summary_lines = []
         summary_lines.append(
@@ -1215,7 +1259,12 @@ def uninstall(ctx, packages, dry_run):
         sys.exit(1)
 
 
-def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = False, verbose: bool = False, only_packages: "builtins.list" = None):
+def _install_apm_dependencies(
+    apm_package: "APMPackage",
+    update_refs: bool = False,
+    verbose: bool = False,
+    only_packages: "builtins.list" = None,
+):
     """Install APM package dependencies.
 
     Args:
@@ -1263,14 +1312,14 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
             def normalize_pkg(pkg: str) -> str:
                 """Normalize package string for comparison."""
                 # Remove _git/ from ADO URLs
-                if '/_git/' in pkg:
-                    pkg = pkg.replace('/_git/', '/')
+                if "/_git/" in pkg:
+                    pkg = pkg.replace("/_git/", "/")
                 return pkg
-            
+
             only_set = builtins.set(normalize_pkg(p) for p in only_packages)
-            
+
             def matches_filter(dep):
-                # Check exact match with str(dep) 
+                # Check exact match with str(dep)
                 if str(dep) in only_set:
                     return True
                 # Check if str(dep) ends with "/<pkg>" to ensure path boundary matching
@@ -1280,7 +1329,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                     if dep_str.endswith(f"/{pkg}"):
                         return True
                 return False
-            
+
             deps_to_install = [dep for dep in deps_to_install if matches_filter(dep)]
 
         if not deps_to_install:
@@ -1293,21 +1342,21 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
 
         # Auto-detect target for integration (same logic as compile)
         from apm_cli.core.target_detection import (
-            detect_target, 
-            should_integrate_vscode, 
+            detect_target,
+            should_integrate_vscode,
             should_integrate_claude,
-            get_target_description
+            get_target_description,
         )
-        
+
         # Get config target from apm.yml if available
         config_target = apm_package.target
-        
+
         detected_target, detection_reason = detect_target(
             project_root=project_root,
             explicit_target=None,  # No explicit flag for install
             config_target=config_target,
         )
-        
+
         # Determine which integrations to run based on detected target
         integrate_vscode = should_integrate_vscode(detected_target)
         integrate_claude = should_integrate_claude(detected_target)
@@ -1317,6 +1366,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         agent_integrator = AgentIntegrator()
         from apm_cli.integration.skill_integrator import SkillIntegrator
         from apm_cli.integration.command_integrator import CommandIntegrator
+
         skill_integrator = SkillIntegrator()
         command_integrator = CommandIntegrator()
         total_prompts_integrated = 0
@@ -1326,8 +1376,14 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         total_links_resolved = 0
 
         # Install each dependency with Rich progress display
-        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-        
+        from rich.progress import (
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+            BarColumn,
+            TaskProgressColumn,
+        )
+
         downloader = GitHubPackageDownloader()
         installed_count = 0
 
@@ -1355,7 +1411,7 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                 # npm-like behavior: Branches always fetch latest, only tags/commits use cache
                 # Resolve git reference to determine type
                 from apm_cli.models.apm_package import GitReferenceType
-                
+
                 resolved_ref = None
                 if dep_ref.reference:
                     try:
@@ -1364,25 +1420,34 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                         )
                     except Exception:
                         pass  # If resolution fails, skip cache (fetch latest)
-                
+
                 # Use cache only for tags and commits (not branches)
-                is_cacheable = (
-                    resolved_ref and 
-                    resolved_ref.ref_type in [GitReferenceType.TAG, GitReferenceType.COMMIT]
+                is_cacheable = resolved_ref and resolved_ref.ref_type in [
+                    GitReferenceType.TAG,
+                    GitReferenceType.COMMIT,
+                ]
+                skip_download = (
+                    install_path.exists() and is_cacheable and not update_refs
                 )
-                skip_download = install_path.exists() and is_cacheable and not update_refs
-                
+
                 if skip_download:
-                    display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    display_name = (
+                        str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    )
                     _rich_info(f"✓ {display_name} @{dep_ref.reference} (cached)")
-                    
+
                     # Still need to integrate prompts for cached packages (zero-config behavior)
                     if integrate_vscode or integrate_claude:
                         try:
                             # Create PackageInfo from cached package
-                            from apm_cli.models.apm_package import APMPackage, PackageInfo, ResolvedReference, GitReferenceType
+                            from apm_cli.models.apm_package import (
+                                APMPackage,
+                                PackageInfo,
+                                ResolvedReference,
+                                GitReferenceType,
+                            )
                             from datetime import datetime
-                            
+
                             # Load package from apm.yml in install path
                             apm_yml_path = install_path / "apm.yml"
                             if apm_yml_path.exists():
@@ -1393,37 +1458,40 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                             else:
                                 # Virtual package or no apm.yml - create minimal package
                                 cached_package = APMPackage(
-                                    name=dep_ref.repo_url.split('/')[-1],
+                                    name=dep_ref.repo_url.split("/")[-1],
                                     version="unknown",
                                     package_path=install_path,
-                                    source=dep_ref.repo_url
+                                    source=dep_ref.repo_url,
                                 )
-                            
+
                             # Create basic resolved reference for cached packages
                             resolved_ref = ResolvedReference(
                                 original_ref=dep_ref.reference or "default",
                                 ref_type=GitReferenceType.BRANCH,
                                 resolved_commit="cached",  # Mark as cached since we don't know exact commit
-                                ref_name=dep_ref.reference or "default"
+                                ref_name=dep_ref.reference or "default",
                             )
-                            
+
                             cached_package_info = PackageInfo(
                                 package=cached_package,
                                 install_path=install_path,
                                 resolved_reference=resolved_ref,
                                 installed_at=datetime.now().isoformat(),
-                                dependency_ref=dep_ref  # Store for canonical dependency string
+                                dependency_ref=dep_ref,  # Store for canonical dependency string
                             )
-                            
+
                             # VSCode integration (prompts + agents)
                             if integrate_vscode:
                                 # Integrate prompts
-                                prompt_result = prompt_integrator.integrate_package_prompts(
-                                    cached_package_info,
-                                    project_root
+                                prompt_result = (
+                                    prompt_integrator.integrate_package_prompts(
+                                        cached_package_info, project_root
+                                    )
                                 )
                                 if prompt_result.files_integrated > 0:
-                                    total_prompts_integrated += prompt_result.files_integrated
+                                    total_prompts_integrated += (
+                                        prompt_result.files_integrated
+                                    )
                                     _rich_info(
                                         f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
                                     )
@@ -1433,14 +1501,17 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                     )
                                 # Track links resolved
                                 total_links_resolved += prompt_result.links_resolved
-                                
+
                                 # Integrate agents
-                                agent_result = agent_integrator.integrate_package_agents(
-                                    cached_package_info,
-                                    project_root
+                                agent_result = (
+                                    agent_integrator.integrate_package_agents(
+                                        cached_package_info, project_root
+                                    )
                                 )
                                 if agent_result.files_integrated > 0:
-                                    total_agents_integrated += agent_result.files_integrated
+                                    total_agents_integrated += (
+                                        agent_result.files_integrated
+                                    )
                                     _rich_info(
                                         f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
                                     )
@@ -1454,27 +1525,29 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                     )
                                 # Track links resolved
                                 total_links_resolved += agent_result.links_resolved
-                            
+
                             # Claude integration (skills + commands)
                             if integrate_claude:
                                 # Generate SKILL.md for Claude Skills
                                 skill_result = skill_integrator.integrate_package_skill(
-                                    cached_package_info,
-                                    project_root
+                                    cached_package_info, project_root
                                 )
                                 if skill_result.skill_created:
                                     total_skills_generated += 1
                                     _rich_info(
                                         f"  └─ SKILL.md generated for Claude Skills"
                                     )
-                                
+
                                 # Generate Claude commands from prompts
-                                command_result = command_integrator.integrate_package_commands(
-                                    cached_package_info,
-                                    project_root
+                                command_result = (
+                                    command_integrator.integrate_package_commands(
+                                        cached_package_info, project_root
+                                    )
                                 )
                                 if command_result.files_integrated > 0:
-                                    total_commands_integrated += command_result.files_integrated
+                                    total_commands_integrated += (
+                                        command_result.files_integrated
+                                    )
                                     _rich_info(
                                         f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/"
                                     )
@@ -1485,44 +1558,57 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                 total_links_resolved += command_result.links_resolved
                         except Exception as e:
                             # Don't fail installation if integration fails
-                            _rich_warning(f"  ⚠ Failed to integrate primitives from cached package: {e}")
-                    
+                            _rich_warning(
+                                f"  ⚠ Failed to integrate primitives from cached package: {e}"
+                            )
+
                     continue
 
                 # Download the package with progress feedback
                 try:
-                    display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
-                    short_name = display_name.split('/')[-1] if '/' in display_name else display_name
-                    
+                    display_name = (
+                        str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    )
+                    short_name = (
+                        display_name.split("/")[-1]
+                        if "/" in display_name
+                        else display_name
+                    )
+
                     # Create a progress task for this download
                     task_id = progress.add_task(
                         description=f"Fetching {short_name}",
-                        total=None  # Indeterminate initially; git will update with actual counts
+                        total=None,  # Indeterminate initially; git will update with actual counts
                     )
-                    
+
                     # Download with live progress bar
                     package_info = downloader.download_package(
-                        str(dep_ref), 
+                        str(dep_ref),
                         install_path,
                         progress_task_id=task_id,
-                        progress_obj=progress
+                        progress_obj=progress,
                     )
-                    
+
                     # CRITICAL: Hide progress BEFORE printing success message to avoid overlap
                     progress.update(task_id, visible=False)
                     progress.refresh()  # Force immediate refresh to hide the bar
-                    
+
                     installed_count += 1
                     _rich_success(f"✓ {display_name}")
-                    
+
                     # Show package type in verbose mode
-                    if verbose and hasattr(package_info, 'package_type'):
+                    if verbose and hasattr(package_info, "package_type"):
                         from apm_cli.models.apm_package import PackageType
+
                         package_type = package_info.package_type
                         if package_type == PackageType.CLAUDE_SKILL:
-                            _rich_info(f"  └─ Package type: Claude Skill (SKILL.md detected)")
+                            _rich_info(
+                                f"  └─ Package type: Claude Skill (SKILL.md detected)"
+                            )
                         elif package_type == PackageType.HYBRID:
-                            _rich_info(f"  └─ Package type: Hybrid (apm.yml + SKILL.md)")
+                            _rich_info(
+                                f"  └─ Package type: Hybrid (apm.yml + SKILL.md)"
+                            )
                         elif package_type == PackageType.APM_PACKAGE:
                             _rich_info(f"  └─ Package type: APM Package (apm.yml)")
 
@@ -1532,12 +1618,15 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                             # VSCode integration (prompts + agents)
                             if integrate_vscode:
                                 # Integrate prompts
-                                prompt_result = prompt_integrator.integrate_package_prompts(
-                                    package_info, 
-                                    project_root
+                                prompt_result = (
+                                    prompt_integrator.integrate_package_prompts(
+                                        package_info, project_root
+                                    )
                                 )
                                 if prompt_result.files_integrated > 0:
-                                    total_prompts_integrated += prompt_result.files_integrated
+                                    total_prompts_integrated += (
+                                        prompt_result.files_integrated
+                                    )
                                     _rich_info(
                                         f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
                                     )
@@ -1547,14 +1636,17 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                     )
                                 # Track links resolved
                                 total_links_resolved += prompt_result.links_resolved
-                                
+
                                 # Integrate agents
-                                agent_result = agent_integrator.integrate_package_agents(
-                                    package_info, 
-                                    project_root
+                                agent_result = (
+                                    agent_integrator.integrate_package_agents(
+                                        package_info, project_root
+                                    )
                                 )
                                 if agent_result.files_integrated > 0:
-                                    total_agents_integrated += agent_result.files_integrated
+                                    total_agents_integrated += (
+                                        agent_result.files_integrated
+                                    )
                                     _rich_info(
                                         f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
                                     )
@@ -1568,27 +1660,29 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                                     )
                                 # Track links resolved
                                 total_links_resolved += agent_result.links_resolved
-                            
+
                             # Claude integration (skills + commands)
                             if integrate_claude:
                                 # Generate SKILL.md for Claude Skills
                                 skill_result = skill_integrator.integrate_package_skill(
-                                    package_info,
-                                    project_root
+                                    package_info, project_root
                                 )
                                 if skill_result.skill_created:
                                     total_skills_generated += 1
                                     _rich_info(
                                         f"  └─ SKILL.md generated for Claude Skills"
                                     )
-                                
+
                                 # Generate Claude commands from prompts
-                                command_result = command_integrator.integrate_package_commands(
-                                    package_info,
-                                    project_root
+                                command_result = (
+                                    command_integrator.integrate_package_commands(
+                                        package_info, project_root
+                                    )
                                 )
                                 if command_result.files_integrated > 0:
-                                    total_commands_integrated += command_result.files_integrated
+                                    total_commands_integrated += (
+                                        command_result.files_integrated
+                                    )
                                     _rich_info(
                                         f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/"
                                     )
@@ -1602,9 +1696,11 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
                             _rich_warning(f"  ⚠ Failed to integrate primitives: {e}")
 
                 except Exception as e:
-                    display_name = str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    display_name = (
+                        str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
+                    )
                     # Remove the progress task on error
-                    if 'task_id' in locals():
+                    if "task_id" in locals():
                         progress.remove_task(task_id)
                     _rich_error(f"❌ Failed to install {display_name}: {e}")
                     # Continue with other packages instead of failing completely
@@ -1616,35 +1712,43 @@ def _install_apm_dependencies(apm_package: "APMPackage", update_refs: bool = Fal
         # Update .gitignore for integrated prompts if any were integrated
         if integrate_vscode and total_prompts_integrated > 0:
             try:
-                updated = prompt_integrator.update_gitignore_for_integrated_prompts(project_root)
+                updated = prompt_integrator.update_gitignore_for_integrated_prompts(
+                    project_root
+                )
                 if updated:
-                    _rich_info("Updated .gitignore for integrated prompts (*-apm.prompt.md)")
+                    _rich_info(
+                        "Updated .gitignore for integrated prompts (*-apm.prompt.md)"
+                    )
             except Exception as e:
                 _rich_warning(f"Could not update .gitignore for prompts: {e}")
-        
+
         # Update .gitignore for integrated agents if any were integrated
         if integrate_vscode and total_agents_integrated > 0:
             try:
-                updated = agent_integrator.update_gitignore_for_integrated_agents(project_root)
+                updated = agent_integrator.update_gitignore_for_integrated_agents(
+                    project_root
+                )
                 if updated:
-                    _rich_info("Updated .gitignore for integrated agents (*-apm.agent.md, *-apm.chatmode.md)")
+                    _rich_info(
+                        "Updated .gitignore for integrated agents (*-apm.agent.md, *-apm.chatmode.md)"
+                    )
             except Exception as e:
                 _rich_warning(f"Could not update .gitignore for agents: {e}")
 
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:
             _rich_info(f"✓ Resolved {total_links_resolved} context file links")
-        
+
         # Show Claude Skills stats if any were generated
         if total_skills_generated > 0:
             _rich_info(f"✓ Generated {total_skills_generated} Claude Skill(s)")
-        
+
         # Show Claude commands stats if any were integrated
         if total_commands_integrated > 0:
             _rich_info(f"✓ Integrated {total_commands_integrated} Claude command(s)")
-        
+
         _rich_success(f"Installed {installed_count} APM dependencies")
-        
+
         return installed_count, total_prompts_integrated, total_agents_integrated
 
     except Exception as e:
@@ -1661,7 +1765,7 @@ def _install_mcp_dependencies(
         runtime: Target specific runtime only
         exclude: Exclude specific runtime from installation
         verbose: Show detailed installation information
-    
+
     Returns:
         int: Number of MCP servers configured
     """
@@ -1670,13 +1774,13 @@ def _install_mcp_dependencies(
         return 0
 
     console = _get_console()
-    
+
     # Start MCP section with clean header
     if console:
         try:
             from rich.panel import Panel
             from rich.text import Text
-            
+
             header = Text()
             header.append("┌─ MCP Servers (", style="cyan")
             header.append(str(len(mcp_deps)), style="cyan bold")
@@ -1745,22 +1849,28 @@ def _install_mcp_dependencies(
         if script_runtimes:
             # Only install for runtimes that are installed AND used in scripts
             target_runtimes = [rt for rt in installed_runtimes if rt in script_runtimes]
-            
+
             # Show runtime detection details only in verbose mode
             if verbose:
                 if console:
                     console.print("│  [cyan]ℹ️  Runtime Detection[/cyan]")
-                    console.print(f"│     └─ Installed: {', '.join(installed_runtimes)}")
-                    console.print(f"│     └─ Used in scripts: {', '.join(script_runtimes)}")
+                    console.print(
+                        f"│     └─ Installed: {', '.join(installed_runtimes)}"
+                    )
+                    console.print(
+                        f"│     └─ Used in scripts: {', '.join(script_runtimes)}"
+                    )
                     if target_runtimes:
-                        console.print(f"│     └─ Target: {', '.join(target_runtimes)} (available + used in scripts)")
+                        console.print(
+                            f"│     └─ Target: {', '.join(target_runtimes)} (available + used in scripts)"
+                        )
                     console.print("│")
                 else:
                     _rich_info(f"Installed runtimes: {', '.join(installed_runtimes)}")
                     _rich_info(f"Script runtimes: {', '.join(script_runtimes)}")
                     if target_runtimes:
                         _rich_info(f"Target runtimes: {', '.join(target_runtimes)}")
-            
+
             if not target_runtimes:
                 _rich_warning("Scripts reference runtimes that are not installed")
                 _rich_info(
@@ -1824,7 +1934,9 @@ def _install_mcp_dependencies(
             # All already configured
             if console:
                 for dep in mcp_deps:
-                    console.print(f"│  [green]✓[/green] {dep} [dim](already configured)[/dim]")
+                    console.print(
+                        f"│  [green]✓[/green] {dep} [dim](already configured)[/dim]"
+                    )
                 console.print("└─ [green]All servers up to date[/green]")
             else:
                 _rich_success("All MCP servers already configured")
@@ -1847,8 +1959,10 @@ def _install_mcp_dependencies(
             for dep in servers_to_install:
                 if console:
                     console.print(f"│  [cyan]⬇️[/cyan]  {dep}")
-                    console.print(f"│     └─ Configuring for {', '.join([rt.title() for rt in target_runtimes])}...")
-                
+                    console.print(
+                        f"│     └─ Configuring for {', '.join([rt.title() for rt in target_runtimes])}..."
+                    )
+
                 for rt in target_runtimes:
                     if verbose:
                         _rich_info(f"Configuring {rt}...")
@@ -1859,14 +1973,18 @@ def _install_mcp_dependencies(
                         server_info_cache,
                         shared_runtime_vars,
                     )
-                
+
                 if console:
-                    console.print(f"│  [green]✓[/green]  {dep} → {', '.join([rt.title() for rt in target_runtimes])}")
+                    console.print(
+                        f"│  [green]✓[/green]  {dep} → {', '.join([rt.title() for rt in target_runtimes])}"
+                    )
                 configured_count += 1
-            
+
             # Close the panel
             if console:
-                console.print(f"└─ [green]Configured {configured_count} server{'s' if configured_count != 1 else ''}[/green]")
+                console.print(
+                    f"└─ [green]Configured {configured_count} server{'s' if configured_count != 1 else ''}[/green]"
+                )
 
         return configured_count
 
@@ -1876,9 +1994,11 @@ def _install_mcp_dependencies(
         raise RuntimeError("Registry operations module required for MCP installation")
 
 
-def _show_install_summary(apm_count: int, prompt_count: int, agent_count: int, mcp_count: int, apm_config):
+def _show_install_summary(
+    apm_count: int, prompt_count: int, agent_count: int, mcp_count: int, apm_config
+):
     """Show beautiful post-install summary with next steps.
-    
+
     Args:
         apm_count: Number of APM packages installed
         prompt_count: Number of prompts integrated
@@ -1891,35 +2011,37 @@ def _show_install_summary(apm_count: int, prompt_count: int, agent_count: int, m
         # Fallback to basic output if Rich not available
         _rich_success("Installation complete!")
         return
-    
+
     try:
         from rich.panel import Panel
-        
+
         # Build next steps - align with README Quick Start
         lines = []
-        
+
         # Next steps section
         lines.append("Next steps:")
-        
+
         # Show compile command if there are APM packages (context/agents to compile)
         if apm_count > 0:
             lines.append("  apm compile              # Generate AGENTS.md guardrails")
-        
+
         # Show generic run command tip
-        if prompt_count > 0 or (apm_config and 'scripts' in apm_config and apm_config['scripts']):
+        if prompt_count > 0 or (
+            apm_config and "scripts" in apm_config and apm_config["scripts"]
+        ):
             lines.append("  apm run <prompt>         # Execute prompt/workflow")
-        
+
         lines.append("  apm list                 # Show all prompts")
-        
+
         content = "\n".join(lines)
-        
+
         panel = Panel(
             content,
             title="✨ Installation complete",
             border_style="green",
-            padding=(1, 2)
+            padding=(1, 2),
         )
-        
+
         console.print()
         console.print(panel)
     except Exception as e:
@@ -1972,7 +2094,7 @@ def _detect_runtimes_from_scripts(scripts: dict) -> List[str]:
     """Extract runtime commands from apm.yml scripts."""
     import re
     import builtins
-    
+
     # CRITICAL FIX: Use builtins.set explicitly to avoid Click command collision!
     # The 'set' name collides with the 'config set' Click subcommand
     detected = builtins.set()
@@ -2767,23 +2889,24 @@ def compile(
 
         # Auto-detect target if not explicitly provided
         from apm_cli.core.target_detection import detect_target, get_target_description
-        
+
         # Get config target from apm.yml if available
         config_target = None
         try:
             from apm_cli.models.apm_package import APMPackage
+
             apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
             config_target = apm_pkg.target
         except Exception:
             # No apm.yml or parsing error - proceed with auto-detection
             pass
-        
+
         detected_target, detection_reason = detect_target(
             project_root=Path("."),
             explicit_target=target,
             config_target=config_target,
         )
-        
+
         # Map 'minimal' to 'vscode' for the compiler (AGENTS.md only, no folder integration)
         effective_target = detected_target if detected_target != "minimal" else "vscode"
 
@@ -2807,14 +2930,21 @@ def compile(
             # Show target-aware message with detection reason
             if detected_target == "minimal":
                 _rich_info(f"Compiling for AGENTS.md only ({detection_reason})")
-                _rich_info("💡 Create .github/ or .claude/ folder for full integration", symbol="light_bulb")
+                _rich_info(
+                    "💡 Create .github/ or .claude/ folder for full integration",
+                    symbol="light_bulb",
+                )
             elif detected_target == "vscode" or detected_target == "agents":
-                _rich_info(f"Compiling for AGENTS.md (VSCode/Copilot) - {detection_reason}")
+                _rich_info(
+                    f"Compiling for AGENTS.md (VSCode/Copilot) - {detection_reason}"
+                )
             elif detected_target == "claude":
-                _rich_info(f"Compiling for CLAUDE.md (Claude Code) - {detection_reason}")
+                _rich_info(
+                    f"Compiling for CLAUDE.md (Claude Code) - {detection_reason}"
+                )
             else:  # "all"
                 _rich_info(f"Compiling for AGENTS.md + CLAUDE.md - {detection_reason}")
-            
+
             if dry_run:
                 _rich_info(
                     "Dry run mode: showing placement without writing files",
@@ -3175,13 +3305,13 @@ def config(ctx):
 @click.argument("value")
 def set(key, value):
     """Set a configuration value.
-    
+
     Examples:
         apm config set auto-integrate false
         apm config set auto-integrate true
     """
     from apm_cli.config import set_auto_integrate
-    
+
     if key == "auto-integrate":
         if value.lower() in ["true", "1", "yes"]:
             set_auto_integrate(True)
@@ -3195,7 +3325,9 @@ def set(key, value):
     else:
         _rich_error(f"Unknown configuration key: '{key}'")
         _rich_info("Valid keys: auto-integrate")
-        _rich_info("This error may indicate a bug in command routing. Please report this issue.")
+        _rich_info(
+            "This error may indicate a bug in command routing. Please report this issue."
+        )
         sys.exit(1)
 
 
@@ -3203,13 +3335,13 @@ def set(key, value):
 @click.argument("key", required=False)
 def get(key):
     """Get a configuration value or show all configuration.
-    
+
     Examples:
         apm config get auto-integrate
         apm config get
     """
     from apm_cli.config import get_config, get_auto_integrate
-    
+
     if key:
         if key == "auto-integrate":
             value = get_auto_integrate()
@@ -3217,7 +3349,9 @@ def get(key):
         else:
             _rich_error(f"Unknown configuration key: '{key}'")
             _rich_info("Valid keys: auto-integrate")
-            _rich_info("This error may indicate a bug in command routing. Please report this issue.")
+            _rich_info(
+                "This error may indicate a bug in command routing. Please report this issue."
+            )
             sys.exit(1)
     else:
         # Show all config
@@ -3907,7 +4041,7 @@ def _create_minimal_apm_yml(config):
     # Write apm.yml
     with open("apm.yml", "w") as f:
         yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)
-    
+
     # Create SKILL.md (package meta-guide for AI discovery)
     skill_content = f"""---
 name: {config["name"]}
