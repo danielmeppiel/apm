@@ -231,6 +231,10 @@ def print_version(ctx, param, value):
 def _check_and_notify_updates():
     """Check for updates and notify user non-blockingly."""
     try:
+        # Skip version check in E2E test mode to avoid interfering with tests
+        if os.environ.get("APM_E2E_TESTS", "").lower() in ("1", "true", "yes"):
+            return
+
         current_version = get_version()
 
         # Skip check for development versions

@@ -1,6 +1,7 @@
 """Integration tests for version update notification in CLI."""
 
 import unittest
+import os
 from unittest.mock import patch
 from click.testing import CliRunner
 
@@ -13,6 +14,7 @@ class TestVersionNotificationIntegration(unittest.TestCase):
         self.runner = CliRunner()
 
     @patch("apm_cli.cli.check_for_updates")
+    @patch.dict("os.environ", {"APM_E2E_TESTS": ""}, clear=False)
     def test_version_notification_on_init(self, mock_check):
         """Test that version notification appears on init command."""
         # Mock that an update is available
