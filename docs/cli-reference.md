@@ -279,6 +279,49 @@ apm uninstall danielmeppiel/design-guidelines --dry-run
 - Cleans up empty parent directories
 - Safe operation: only removes APM-managed files (identified by `-apm` suffix)
 
+### `apm update` - ⬆️ Update APM to the latest version
+
+Update the APM CLI to the latest version available on GitHub releases.
+
+```bash
+apm update [OPTIONS]
+```
+
+**Options:**
+- `--check` - Only check for updates without installing
+
+**Examples:**
+```bash
+# Check if an update is available
+apm update --check
+
+# Update to the latest version
+apm update
+```
+
+**Behavior:**
+- Fetches latest release from GitHub
+- Compares with current installed version
+- Downloads and runs the official install script
+- Preserves existing configuration and projects
+- Shows progress and success/failure status
+
+**Version Checking:**
+APM automatically checks for updates (at most once per day) when running any command. If a newer version is available, you'll see a yellow warning:
+
+```
+⚠️  A new version of APM is available: 0.7.0 (current: 0.6.3)
+Run apm update to upgrade
+```
+
+This check is non-blocking and cached to avoid slowing down the CLI.
+
+**Manual Update:**
+If the automatic update fails, you can always update manually:
+```bash
+curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+```
+
 ### `apm deps` - 🔗 Manage APM package dependencies
 
 Manage APM package dependencies with installation status, tree visualization, and package information.
