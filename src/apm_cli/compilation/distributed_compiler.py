@@ -63,11 +63,12 @@ class CompilationResult:
 class DistributedAgentsCompiler:
     """Main compiler for generating distributed AGENTS.md files."""
     
-    def __init__(self, base_dir: str = "."):
+    def __init__(self, base_dir: str = ".", exclude_patterns: Optional[List[str]] = None):
         """Initialize the distributed AGENTS.md compiler.
         
         Args:
             base_dir (str): Base directory for compilation.
+            exclude_patterns (Optional[List[str]]): Glob patterns for directories to exclude.
         """
         try:
             self.base_dir = Path(base_dir).resolve()
@@ -77,7 +78,7 @@ class DistributedAgentsCompiler:
         self.warnings: List[str] = []
         self.errors: List[str] = []
         self.total_files_written = 0
-        self.context_optimizer = ContextOptimizer(str(self.base_dir))
+        self.context_optimizer = ContextOptimizer(str(self.base_dir), exclude_patterns=exclude_patterns)
         self.link_resolver = UnifiedLinkResolver(self.base_dir)
         self.output_formatter = CompilationFormatter()
         self._placement_map = None

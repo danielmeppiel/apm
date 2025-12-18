@@ -375,6 +375,102 @@ class TestCLIIntegration(unittest.TestCase):
         
         # Clean up
         Path('apm.yml').unlink()
+    
+    def test_compilation_config_exclude_patterns_from_yml(self):
+        """Test loading exclude patterns from apm.yml."""
+        # Create test apm.yml with exclude patterns
+        test_config = {
+            'name': 'test-project',
+            'version': '1.0.0',
+            'compilation': {
+                'exclude': [
+                    'apm_modules/**',
+                    'tmp/**',
+                    'projects/packages/apm/**'
+                ]
+            }
+        }
+        
+        with open('apm.yml', 'w') as f:
+            yaml.dump(test_config, f)
+        
+        # Test config loading
+        config = CompilationConfig.from_apm_yml()
+        self.assertIsNotNone(config.exclude)
+        self.assertEqual(len(config.exclude), 3)
+        self.assertIn('apm_modules/**', config.exclude)
+        self.assertIn('tmp/**', config.exclude)
+        self.assertIn('projects/packages/apm/**', config.exclude)
+        
+        # Clean up
+        Path('apm.yml').unlink()
+    
+    def test_compilation_config_exclude_patterns_single_string(self):
+        """Test loading a single exclude pattern as string from apm.yml."""
+        # Create test apm.yml with single exclude pattern as string
+        test_config = {
+            'name': 'test-project',
+            'version': '1.0.0',
+            'compilation': {
+                'exclude': 'tmp/**'
+            }
+        }
+        
+        with open('apm.yml', 'w') as f:
+            yaml.dump(test_config, f)
+        
+        # Test config loading
+        config = CompilationConfig.from_apm_yml()
+        self.assertIsNotNone(config.exclude)
+        self.assertEqual(len(config.exclude), 1)
+        self.assertEqual(config.exclude[0], 'tmp/**')
+        
+        # Clean up
+        Path('apm.yml').unlink()
+    
+    def test_compilation_config_no_exclude_patterns(self):
+        """Test that config initializes with empty list when no exclude patterns."""
+        # Create test apm.yml without exclude patterns
+        test_config = {
+            'name': 'test-project',
+            'version': '1.0.0',
+            'compilation': {
+                'output': 'AGENTS.md'
+            }
+        }
+        
+        with open('apm.yml', 'w') as f:
+            yaml.dump(test_config, f)
+        
+        # Test config loading
+        config = CompilationConfig.from_apm_yml()
+        self.assertIsNotNone(config.exclude)
+        self.assertEqual(len(config.exclude), 0)
+        
+        # Clean up
+        Path('apm.yml').unlink()
+    
+    def test_compilation_config_exclude_patterns_override(self):
+        """Test that command-line overrides work for exclude patterns."""
+        # Create test apm.yml with exclude patterns
+        test_config = {
+            'name': 'test-project',
+            'version': '1.0.0',
+            'compilation': {
+                'exclude': ['apm_modules/**']
+            }
+        }
+        
+        with open('apm.yml', 'w') as f:
+            yaml.dump(test_config, f)
+        
+        # Test config with override
+        override_patterns = ['tmp/**', 'coverage/**']
+        config = CompilationConfig.from_apm_yml(exclude=override_patterns)
+        self.assertEqual(config.exclude, override_patterns)
+        
+        # Clean up
+        Path('apm.yml').unlink()
 
 
 if __name__ == '__main__':

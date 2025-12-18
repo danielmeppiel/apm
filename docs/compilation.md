@@ -255,6 +255,12 @@ apm compile --verbose
 # apm.yml
 compilation:
   strategy: "distributed"  # Default: mathematical optimization
+  exclude:
+    # Directory exclusion patterns (glob syntax)
+    - "apm_modules/**"           # Exclude installed packages
+    - "tmp/**"                   # Exclude temporary files
+    - "coverage/**"              # Exclude test coverage
+    - "**/test-fixtures/**"      # Exclude test fixtures everywhere
   placement:
     min_instructions_per_file: 1  # Minimal context principle
     clean_orphaned: true  # Remove outdated files
@@ -264,6 +270,33 @@ compilation:
     pollution_weight: 0.8     # Pollution minimization
     locality_weight: 0.3      # Maintenance locality
 ```
+
+#### Directory Exclusion Patterns
+
+Use the `exclude` field to skip directories during compilation, improving performance in large monorepos:
+
+**Pattern Syntax:**
+- `tmp` - Matches directory named "tmp" at any depth
+- `tmp/` - Same as above (trailing slash optional)
+- `projects/packages/apm` - Matches specific nested path
+- `**/node_modules` - Matches "node_modules" at any depth
+- `coverage/**` - Matches "coverage" and all subdirectories
+- `projects/**/apm/**` - Complex nested matching
+
+**Use Cases:**
+- Exclude source package development directories in monorepos
+- Skip temporary directories and build artifacts
+- Improve compilation performance by avoiding unnecessary scans
+- Prevent duplicate instruction discovery
+
+**Default Exclusions:**
+APM always excludes these directories (no configuration needed):
+- `node_modules`
+- `__pycache__`
+- `.git`
+- `dist`
+- `build`
+- Hidden directories (starting with `.`)
 
 ## Advanced Optimization Features
 

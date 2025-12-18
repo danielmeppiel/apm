@@ -649,7 +649,27 @@ compilation:
   output: "AGENTS.md"           # Default output file
   chatmode: "backend-engineer"  # Default chatmode to use
   resolve_links: true           # Enable markdown link resolution
+  exclude:                      # Directory exclusion patterns (glob syntax)
+    - "apm_modules/**"          # Exclude installed packages
+    - "tmp/**"                  # Exclude temporary files
+    - "coverage/**"             # Exclude test coverage
+    - "**/test-fixtures/**"     # Exclude test fixtures at any depth
 ```
+
+**Directory Exclusion Patterns:**
+
+Use the `exclude` field to skip directories during compilation. This improves performance in large monorepos and prevents duplicate instruction discovery from source package development directories.
+
+**Pattern examples:**
+- `tmp` - Matches directory named "tmp" at any depth
+- `projects/packages/apm` - Matches specific nested path
+- `**/node_modules` - Matches "node_modules" at any depth
+- `coverage/**` - Matches "coverage" and all subdirectories
+- `projects/**/apm/**` - Complex nested matching with `**`
+
+**Default exclusions** (always applied):
+- `node_modules`, `__pycache__`, `.git`, `dist`, `build`
+- Hidden directories (starting with `.`)
 
 Command-line options always override `apm.yml` settings. Priority order:
 1. Command-line flags (highest priority)
