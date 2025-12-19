@@ -23,7 +23,7 @@ curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | 
 
 ```bash
 # Install a skill — give your agent new capabilities
-apm install ComposioHQ/awesome-claude-skills/brand-guidelines
+apm install danielmeppiel/form-builder
 
 # Install guardrails — keep your agent compliant
 apm install danielmeppiel/compliance-rules
@@ -68,9 +68,9 @@ A production project using APM with skills and layered guardrails:
 name: corporate-website
 dependencies:
   apm:
-    - ComposioHQ/awesome-claude-skills/brand-guidelines  # Brand consistency
-    - danielmeppiel/compliance-rules                      # GDPR, security
-    - danielmeppiel/design-guidelines                     # UI standards
+    - danielmeppiel/form-builder      # Build forms with React Hook Form + Zod
+    - danielmeppiel/compliance-rules  # GDPR, security
+    - danielmeppiel/design-guidelines # UI standards
 ```
 
 ```bash
