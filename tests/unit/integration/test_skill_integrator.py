@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from datetime import datetime
 
 from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case, validate_skill_name, normalize_skill_name, copy_skill_to_target
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference
+from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference, PackageType, PackageContentType
 
 
 class TestToHyphenCase:
@@ -360,15 +360,23 @@ class TestSkillIntegrator:
         install_path: Path = None,
         source: str = None,
         description: str = None,
-        dependency_ref: DependencyReference = None
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = None,
+        content_type: "PackageContentType" = None
     ) -> PackageInfo:
-        """Helper to create PackageInfo objects for tests."""
+        """Helper to create PackageInfo objects for tests.
+        
+        Args:
+            package_type: Internal detection type (CLAUDE_SKILL, HYBRID, APM_PACKAGE)
+            content_type: Explicit type from apm.yml (skill, hybrid, instructions, prompts)
+        """
         package = APMPackage(
             name=name,
             version=version,
             package_path=install_path or self.project_root / "package",
             source=source or f"github.com/test/{name}",
-            description=description
+            description=description,
+            type=content_type
         )
         resolved_ref = ResolvedReference(
             original_ref="main",
@@ -381,17 +389,26 @@ class TestSkillIntegrator:
             install_path=install_path or self.project_root / "package",
             resolved_reference=resolved_ref,
             installed_at=datetime.now().isoformat(),
-            dependency_ref=dependency_ref
+            dependency_ref=dependency_ref,
+            package_type=package_type
         )
     
     def test_integrate_package_skill_creates_skill_md(self):
-        """Test that SKILL.md is created when package has content."""
+        """Test that SKILL.md is created when package has content and type=HYBRID.
+        
+        Per skill-strategy.md Decision 2: Skills are explicit, not implicit.
+        Packages with primitives only become skills if they declare type: hybrid.
+        """
         package_dir = self.project_root / "package"
         apm_instructions = package_dir / ".apm" / "instructions"
         apm_instructions.mkdir(parents=True)
         (apm_instructions / "coding.instructions.md").write_text("# Coding Guidelines")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        # Must set HYBRID type - primitives alone don't auto-become skills
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -475,11 +492,13 @@ class TestSkillIntegrator:
         assert virtual_dep_ref.is_virtual  # Sanity check
         assert virtual_dep_ref.is_virtual_subdirectory()  # This is a subdirectory, not file
         
+        # Has SKILL.md → CLAUDE_SKILL type
         package_info = self._create_package_info(
             install_path=package_dir,
             name="mcp-builder",
             source="ComposioHQ/awesome-claude-skills",
-            dependency_ref=virtual_dep_ref
+            dependency_ref=virtual_dep_ref,
+            package_type=PackageType.CLAUDE_SKILL
         )
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -534,12 +553,18 @@ class TestSkillIntegrator:
         assert not skills_dir.exists()
 
     def test_integrate_package_skill_creates_prompts_subdirectory(self):
-        """Test that prompts subdirectory is created with prompt files."""
+        """Test that prompts subdirectory is created with prompt files.
+        
+        Per skill-strategy.md: prompts-only packages need explicit type: hybrid to become skills.
+        """
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "test.prompt.md").write_text("# Test Prompt")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -561,7 +586,8 @@ class TestSkillIntegrator:
             version="2.0.0",
             commit="def456",
             install_path=package_dir,
-            description="A test package"
+            description="A test package",
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         
@@ -590,7 +616,8 @@ class TestSkillIntegrator:
         package_info = self._create_package_info(
             name="MyAwesomePackage",
             install_path=package_dir,
-            source="github.com/owner/MyAwesomePackage"
+            source="github.com/owner/MyAwesomePackage",
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         
@@ -608,7 +635,10 @@ class TestSkillIntegrator:
         apm_instructions.mkdir(parents=True)
         (apm_instructions / "coding.instructions.md").write_text("Follow coding standards")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -630,7 +660,10 @@ class TestSkillIntegrator:
         apm_agents.mkdir(parents=True)
         (apm_agents / "reviewer.agent.md").write_text("Review code for quality")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -650,7 +683,10 @@ class TestSkillIntegrator:
         package_dir.mkdir()
         (package_dir / "design-review.prompt.md").write_text("# Design Review")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -673,7 +709,8 @@ class TestSkillIntegrator:
         package_info = self._create_package_info(
             version="2.0.0",
             commit="abc123",
-            install_path=package_dir
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         skill_dir.mkdir(parents=True, exist_ok=True)
@@ -714,7 +751,8 @@ metadata:
         package_info = self._create_package_info(
             version="1.0.0",
             commit="def456",  # New commit
-            install_path=package_dir
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         skill_dir.mkdir(parents=True, exist_ok=True)
@@ -780,12 +818,18 @@ metadata:
         assert result.skill_skipped is True
     
     def test_integrate_package_skill_with_only_prompts(self):
-        """Test integration works with only prompt files."""
+        """Test integration works with only prompt files.
+        
+        Per skill-strategy.md: prompts-only packages need explicit type: hybrid.
+        """
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "review.prompt.md").write_text("# Review Prompt")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -795,13 +839,19 @@ metadata:
         assert (skill_dir / "SKILL.md").exists()
     
     def test_integrate_package_skill_with_only_context(self):
-        """Test integration works with only context files."""
+        """Test integration works with only context files.
+        
+        Per skill-strategy.md: context-only packages need explicit type: hybrid.
+        """
         package_dir = self.project_root / "package"
         apm_context = package_dir / ".apm" / "context"
         apm_context.mkdir(parents=True)
         (apm_context / "project.context.md").write_text("# Project Context")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -824,7 +874,8 @@ metadata:
         long_description = "A" * 2000  # Longer than 1024 limit
         package_info = self._create_package_info(
             install_path=package_dir,
-            description=long_description
+            description=long_description,
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         
@@ -844,7 +895,10 @@ metadata:
         apm_instructions.mkdir(parents=True)
         (apm_instructions / "test.instructions.md").write_text("# Test Content")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -979,7 +1033,10 @@ version: 1.0
 This is the content."""
         (apm_instructions / "test.instructions.md").write_text(content_with_frontmatter)
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -1010,7 +1067,10 @@ This is the content."""
         (apm_context / "project.context.md").write_text("# Project")
         (package_dir / "workflow.prompt.md").write_text("# Workflow")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -1441,9 +1501,14 @@ class TestCopySkillToTarget:
         source: str = None,
         description: str = None,
         dependency_ref: DependencyReference = None,
-        pkg_type: str = None
+        pkg_type: PackageContentType = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
     ) -> PackageInfo:
-        """Helper to create PackageInfo objects for tests."""
+        """Helper to create PackageInfo objects for tests.
+        
+        For native skill tests, package_type defaults to CLAUDE_SKILL since
+        these packages have SKILL.md and should be installed to .github/skills/.
+        """
         package = APMPackage(
             name=name,
             version=version,
@@ -1463,7 +1528,8 @@ class TestCopySkillToTarget:
             install_path=install_path or self.project_root / "package",
             resolved_reference=resolved_ref,
             installed_at=datetime.now().isoformat(),
-            dependency_ref=dependency_ref
+            dependency_ref=dependency_ref,
+            package_type=package_type
         )
     
     # ========== Test T6: Direct copy preserves SKILL.md content exactly ==========
@@ -1852,7 +1918,11 @@ Use when building MCP servers or tools.
 
 
 class TestNativeSkillIntegration:
-    """Additional tests for native skill integration via SkillIntegrator._integrate_native_skill (T6)."""
+    """Additional tests for native skill integration via SkillIntegrator._integrate_native_skill (T6).
+    
+    These tests verify that packages with existing SKILL.md files are correctly
+    copied to .github/skills/ and .claude/skills/ directories.
+    """
     
     def setup_method(self):
         """Set up test fixtures."""
@@ -1871,9 +1941,14 @@ class TestNativeSkillIntegration:
         commit: str = "abc123",
         install_path: Path = None,
         source: str = None,
-        dependency_ref: DependencyReference = None
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
     ) -> PackageInfo:
-        """Helper to create PackageInfo objects for tests."""
+        """Helper to create PackageInfo objects for tests.
+        
+        For native skill tests, package_type defaults to CLAUDE_SKILL since
+        these packages have SKILL.md and should be installed to .github/skills/.
+        """
         package = APMPackage(
             name=name,
             version=version,
@@ -1891,7 +1966,8 @@ class TestNativeSkillIntegration:
             install_path=install_path or self.project_root / "package",
             resolved_reference=resolved_ref,
             installed_at=datetime.now().isoformat(),
-            dependency_ref=dependency_ref
+            dependency_ref=dependency_ref,
+            package_type=package_type
         )
     
     def test_native_skill_preserves_complete_structure(self):
@@ -2024,9 +2100,14 @@ class TestClaudeSkillsCompatibilityCopy:
         commit: str = "abc123",
         install_path: Path = None,
         source: str = None,
-        dependency_ref: DependencyReference = None
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
     ) -> PackageInfo:
-        """Helper to create PackageInfo objects for tests."""
+        """Helper to create PackageInfo objects for tests.
+        
+        For skill compatibility tests, package_type defaults to CLAUDE_SKILL since
+        these packages have SKILL.md and should be installed to .github/skills/.
+        """
         package = APMPackage(
             name=name,
             version=version,
@@ -2044,7 +2125,8 @@ class TestClaudeSkillsCompatibilityCopy:
             install_path=install_path or self.project_root / "package",
             resolved_reference=resolved_ref,
             installed_at=datetime.now().isoformat(),
-            dependency_ref=dependency_ref
+            dependency_ref=dependency_ref,
+            package_type=package_type
         )
     
     # ========== Test: Skill copies to .github/skills/ only when .claude/ doesn't exist ==========
