@@ -68,9 +68,9 @@ A production project using APM with skills and layered guardrails:
 name: corporate-website
 dependencies:
   apm:
-    - ComposioHQ/awesome-claude-skills/mcp-builder  # Build MCP servers
-    - danielmeppiel/compliance-rules                 # GDPR, security
-    - danielmeppiel/design-guidelines                # UI standards
+    - ComposioHQ/awesome-claude-skills/brand-guidelines  # Brand consistency
+    - danielmeppiel/compliance-rules                      # GDPR, security
+    - danielmeppiel/design-guidelines                     # UI standards
 ```
 
 ```bash
