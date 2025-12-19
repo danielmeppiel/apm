@@ -5,9 +5,11 @@
 [![Downloads](https://img.shields.io/pypi/dm/apm-cli.svg)](https://pypi.org/project/apm-cli/)
 [![GitHub stars](https://img.shields.io/github/stars/danielmeppiel/apm.svg?style=social&label=Star)](https://github.com/danielmeppiel/apm/stargazers)
 
-**npm for AI coding agents.** Package prompts, agents, and rules. Install once, native everywhere.
+**npm for AI coding agents.** The package manager for [AGENTS.md](https://agents.md), [Agent Skills](https://agentskills.io), and MCP servers.
 
 GitHub Copilot · Cursor · Claude · Codex · Gemini
+
+> 📐 **Built on open standards:** APM generates [AGENTS.md](https://agents.md) instructions, installs [Agent Skills](https://agentskills.io) natively, and manages [MCP](https://modelcontextprotocol.io) servers.
 
 ## Install
 
@@ -26,7 +28,7 @@ apm install danielmeppiel/compliance-rules
 # Install from awesome-copilot
 apm install github/awesome-copilot/prompts/code-review.prompt.md
 
-# Install Claude Skills
+# Install Agent Skills (agentskills.io standard)
 apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 
 # Compile instructions for your AI tools
@@ -39,10 +41,11 @@ apm compile
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  APM Packages (hosted on GitHub, Azure DevOps)                  │
-│  ├── Guardrails   → Rules, compliance, standards                │
-│  ├── Workflows    → Executable prompts, abilities               │
-│  └── Personas     → Specialized AI agents                       │
+│  APM Packages (GitHub, Azure DevOps, registries)                │
+│  ├── Instructions → Coding standards, guardrails (AGENTS.md)    │
+│  ├── Skills       → AI capabilities, workflows (agentskills.io) │
+│  ├── Prompts      → Reusable commands and templates             │
+│  └── MCP Servers  → Tool integrations                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
                     apm install && apm compile
@@ -208,7 +211,7 @@ For private packages, Azure DevOps, or running prompts via AI runtimes:
 |-------|-------------|
 | [CLI Reference](docs/cli-reference.md) | All commands and options |
 | [Compilation Engine](docs/compilation.md) | Context optimization algorithm |
-| [Skills](docs/skills.md) | Package meta-guides for AI discovery |
+| [Skills](docs/skills.md) | Native [agentskills.io](https://agentskills.io) support |
 | [Integrations](docs/integrations.md) | VSCode, Spec-kit, MCP servers |
 
 ### Advanced
@@ -219,6 +222,8 @@ For private packages, Azure DevOps, or running prompts via AI runtimes:
 | [Contributing](CONTRIBUTING.md) | Join the ecosystem |
 
 ---
+
+**Open Standards:** [AGENTS.md](https://agents.md) · [Agent Skills](https://agentskills.io) · [MCP](https://modelcontextprotocol.io)
 
 **Learn AI-Native Development** → [Awesome AI Native](https://danielmeppiel.github.io/awesome-ai-native)  
 A practical learning path for AI-Native Development, leveraging APM along the way.
