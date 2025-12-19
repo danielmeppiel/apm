@@ -62,7 +62,15 @@ case $OS in
         ;;
     *)
         echo -e "${RED}Error: Unsupported operating system: $OS${NC}"
-        echo "Supported platforms: macOS (Darwin), Linux"
+        echo ""
+        echo "APM currently supports:"
+        echo "  • Linux (Ubuntu 24.04 or compatible) - x86_64 and arm64"
+        echo "  • macOS 15 (or later) - x86_64 and arm64"
+        echo ""
+        echo "Your system: $OS ($ARCH)"
+        echo ""
+        echo "If you're on Windows, APM is not currently supported on Windows systems."
+        echo "Please use one of the supported platforms listed above."
         exit 1
         ;;
 esac
