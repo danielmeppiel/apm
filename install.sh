@@ -69,7 +69,7 @@ case $OS in
         echo ""
         echo "Your system: $OS ($ARCH)"
         echo ""
-        echo "If you're on Windows, APM is not currently supported on Windows systems."
+        echo "Windows is not currently supported."
         echo "Please use one of the supported platforms listed above."
         exit 1
         ;;
