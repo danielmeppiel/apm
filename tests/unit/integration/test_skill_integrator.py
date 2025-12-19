@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest.mock import Mock
 from datetime import datetime
 
-from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference
+from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case, validate_skill_name, normalize_skill_name, copy_skill_to_target
+from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference, PackageType, PackageContentType
 
 
 class TestToHyphenCase:
@@ -96,7 +96,7 @@ class TestSkillIntegrator:
         Uses the install folder name for simplicity and consistency.
         """
         skill_name = package_info.install_path.name
-        return self.project_root / ".claude" / "skills" / skill_name
+        return self.project_root / ".github" / "skills" / skill_name
     
     # ========== should_integrate tests ==========
     
@@ -360,15 +360,23 @@ class TestSkillIntegrator:
         install_path: Path = None,
         source: str = None,
         description: str = None,
-        dependency_ref: DependencyReference = None
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = None,
+        content_type: "PackageContentType" = None
     ) -> PackageInfo:
-        """Helper to create PackageInfo objects for tests."""
+        """Helper to create PackageInfo objects for tests.
+        
+        Args:
+            package_type: Internal detection type (CLAUDE_SKILL, HYBRID, APM_PACKAGE)
+            content_type: Explicit type from apm.yml (skill, hybrid, instructions, prompts)
+        """
         package = APMPackage(
             name=name,
             version=version,
             package_path=install_path or self.project_root / "package",
             source=source or f"github.com/test/{name}",
-            description=description
+            description=description,
+            type=content_type
         )
         resolved_ref = ResolvedReference(
             original_ref="main",
@@ -381,17 +389,26 @@ class TestSkillIntegrator:
             install_path=install_path or self.project_root / "package",
             resolved_reference=resolved_ref,
             installed_at=datetime.now().isoformat(),
-            dependency_ref=dependency_ref
+            dependency_ref=dependency_ref,
+            package_type=package_type
         )
     
     def test_integrate_package_skill_creates_skill_md(self):
-        """Test that SKILL.md is created when package has content."""
+        """Test that SKILL.md is created when package has content and type=HYBRID.
+        
+        Per skill-strategy.md Decision 2: Skills are explicit, not implicit.
+        Packages with primitives only become skills if they declare type: hybrid.
+        """
         package_dir = self.project_root / "package"
         apm_instructions = package_dir / ".apm" / "instructions"
         apm_instructions.mkdir(parents=True)
         (apm_instructions / "coding.instructions.md").write_text("# Coding Guidelines")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        # Must set HYBRID type - primitives alone don't auto-become skills
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -452,7 +469,7 @@ class TestSkillIntegrator:
         assert result.skill_skipped is True
         assert result.skill_path is None
         # No skill directory should be created
-        skill_dir = self.project_root / ".claude" / "skills" / "awesome-copilot"
+        skill_dir = self.project_root / ".github" / "skills" / "awesome-copilot"
         assert not skill_dir.exists()
     
     def test_integrate_package_skill_processes_virtual_subdirectory_packages(self):
@@ -475,11 +492,13 @@ class TestSkillIntegrator:
         assert virtual_dep_ref.is_virtual  # Sanity check
         assert virtual_dep_ref.is_virtual_subdirectory()  # This is a subdirectory, not file
         
+        # Has SKILL.md → CLAUDE_SKILL type
         package_info = self._create_package_info(
             install_path=package_dir,
             name="mcp-builder",
             source="ComposioHQ/awesome-claude-skills",
-            dependency_ref=virtual_dep_ref
+            dependency_ref=virtual_dep_ref,
+            package_type=PackageType.CLAUDE_SKILL
         )
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -530,16 +549,22 @@ class TestSkillIntegrator:
         assert result2.skill_skipped is True
         
         # No skill directories should exist
-        skills_dir = self.project_root / ".claude" / "skills"
+        skills_dir = self.project_root / ".github" / "skills"
         assert not skills_dir.exists()
 
     def test_integrate_package_skill_creates_prompts_subdirectory(self):
-        """Test that prompts subdirectory is created with prompt files."""
+        """Test that prompts subdirectory is created with prompt files.
+        
+        Per skill-strategy.md: prompts-only packages need explicit type: hybrid to become skills.
+        """
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "test.prompt.md").write_text("# Test Prompt")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -561,7 +586,8 @@ class TestSkillIntegrator:
             version="2.0.0",
             commit="def456",
             install_path=package_dir,
-            description="A test package"
+            description="A test package",
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         
@@ -590,7 +616,8 @@ class TestSkillIntegrator:
         package_info = self._create_package_info(
             name="MyAwesomePackage",
             install_path=package_dir,
-            source="github.com/owner/MyAwesomePackage"
+            source="github.com/owner/MyAwesomePackage",
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         
@@ -608,7 +635,10 @@ class TestSkillIntegrator:
         apm_instructions.mkdir(parents=True)
         (apm_instructions / "coding.instructions.md").write_text("Follow coding standards")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -630,7 +660,10 @@ class TestSkillIntegrator:
         apm_agents.mkdir(parents=True)
         (apm_agents / "reviewer.agent.md").write_text("Review code for quality")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -650,7 +683,10 @@ class TestSkillIntegrator:
         package_dir.mkdir()
         (package_dir / "design-review.prompt.md").write_text("# Design Review")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -673,7 +709,8 @@ class TestSkillIntegrator:
         package_info = self._create_package_info(
             version="2.0.0",
             commit="abc123",
-            install_path=package_dir
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         skill_dir.mkdir(parents=True, exist_ok=True)
@@ -714,7 +751,8 @@ metadata:
         package_info = self._create_package_info(
             version="1.0.0",
             commit="def456",  # New commit
-            install_path=package_dir
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         skill_dir.mkdir(parents=True, exist_ok=True)
@@ -780,12 +818,18 @@ metadata:
         assert result.skill_skipped is True
     
     def test_integrate_package_skill_with_only_prompts(self):
-        """Test integration works with only prompt files."""
+        """Test integration works with only prompt files.
+        
+        Per skill-strategy.md: prompts-only packages need explicit type: hybrid.
+        """
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "review.prompt.md").write_text("# Review Prompt")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -795,13 +839,19 @@ metadata:
         assert (skill_dir / "SKILL.md").exists()
     
     def test_integrate_package_skill_with_only_context(self):
-        """Test integration works with only context files."""
+        """Test integration works with only context files.
+        
+        Per skill-strategy.md: context-only packages need explicit type: hybrid.
+        """
         package_dir = self.project_root / "package"
         apm_context = package_dir / ".apm" / "context"
         apm_context.mkdir(parents=True)
         (apm_context / "project.context.md").write_text("# Project Context")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -824,7 +874,8 @@ metadata:
         long_description = "A" * 2000  # Longer than 1024 limit
         package_info = self._create_package_info(
             install_path=package_dir,
-            description=long_description
+            description=long_description,
+            package_type=PackageType.HYBRID
         )
         skill_dir = self._get_skill_path(package_info)
         
@@ -844,7 +895,10 @@ metadata:
         apm_instructions.mkdir(parents=True)
         (apm_instructions / "test.instructions.md").write_text("# Test Content")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -863,12 +917,12 @@ metadata:
         
         assert updated is True
         content = gitignore.read_text()
-        assert ".claude/skills/*-apm/" in content
+        assert ".github/skills/*-apm/" in content
     
     def test_update_gitignore_skips_if_patterns_exist(self):
         """Test that gitignore update is skipped if patterns already exist."""
         gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".claude/skills/*-apm/\n# APM-generated Claude skills\n")
+        gitignore.write_text(".github/skills/*-apm/\n# APM-generated skills\n")
         
         updated = self.integrator.update_gitignore_for_skills(self.project_root)
         
@@ -882,7 +936,7 @@ metadata:
         gitignore = self.project_root / ".gitignore"
         assert gitignore.exists()
         content = gitignore.read_text()
-        assert ".claude/skills/*-apm/" in content
+        assert ".github/skills/*-apm/" in content
     
     # ========== sync_integration tests ==========
     
@@ -904,7 +958,7 @@ metadata:
         # Simulate an installed skill from a subdirectory package
         # Skill name uses the folder name directly: mcp-builder
         skill_name = "mcp-builder"
-        skill_dir = self.project_root / ".claude" / "skills" / skill_name
+        skill_dir = self.project_root / ".github" / "skills" / skill_name
         skill_dir.mkdir(parents=True)
         
         # Create SKILL.md with APM metadata (matching _generate_skill_file's nested format)
@@ -934,7 +988,7 @@ metadata:
         # Simulate an installed skill from a subdirectory package
         # Skill name uses the folder name directly: mcp-builder
         skill_name = "mcp-builder"
-        skill_dir = self.project_root / ".claude" / "skills" / skill_name
+        skill_dir = self.project_root / ".github" / "skills" / skill_name
         skill_dir.mkdir(parents=True)
         
         # Create SKILL.md with APM metadata (matching _generate_skill_file's nested format)
@@ -979,7 +1033,10 @@ version: 1.0
 This is the content."""
         (apm_instructions / "test.instructions.md").write_text(content_with_frontmatter)
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -1010,7 +1067,10 @@ This is the content."""
         (apm_context / "project.context.md").write_text("# Project")
         (package_dir / "workflow.prompt.md").write_text("# Workflow")
         
-        package_info = self._create_package_info(install_path=package_dir)
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.HYBRID
+        )
         skill_dir = self._get_skill_path(package_info)
         
         result = self.integrator.integrate_package_skill(package_info, self.project_root)
@@ -1064,3 +1124,1583 @@ class TestSkillIntegrationResult:
         assert result.skill_path == skill_path
         assert result.references_copied == 3
         assert result.links_resolved == 5
+
+
+class TestValidateSkillName:
+    """Test skill name validation per agentskills.io spec."""
+    
+    # ========== Valid names ==========
+    
+    def test_valid_simple_lowercase(self):
+        """Test valid simple lowercase name."""
+        is_valid, error = validate_skill_name("mypackage")
+        assert is_valid is True
+        assert error == ""
+    
+    def test_valid_with_hyphens(self):
+        """Test valid name with hyphens."""
+        is_valid, error = validate_skill_name("my-awesome-package")
+        assert is_valid is True
+        assert error == ""
+    
+    def test_valid_with_numbers(self):
+        """Test valid name with numbers."""
+        is_valid, error = validate_skill_name("package123")
+        assert is_valid is True
+        assert error == ""
+    
+    def test_valid_numbers_and_hyphens(self):
+        """Test valid name with numbers and hyphens."""
+        is_valid, error = validate_skill_name("my-package-2")
+        assert is_valid is True
+        assert error == ""
+    
+    def test_valid_single_char(self):
+        """Test valid single character name."""
+        is_valid, error = validate_skill_name("a")
+        assert is_valid is True
+        assert error == ""
+    
+    def test_valid_single_number(self):
+        """Test valid single number name."""
+        is_valid, error = validate_skill_name("1")
+        assert is_valid is True
+        assert error == ""
+    
+    def test_valid_64_chars(self):
+        """Test valid name at max length (64 chars)."""
+        name = "a" * 64
+        is_valid, error = validate_skill_name(name)
+        assert is_valid is True
+        assert error == ""
+    
+    def test_valid_realistic_names(self):
+        """Test valid realistic skill names."""
+        valid_names = [
+            "mcp-builder",
+            "brand-guidelines",
+            "code-review",
+            "gdpr-assessment",
+            "python-standards",
+            "react-components",
+            "aws-lambda-v2",
+            "openai-gpt4o",
+        ]
+        for name in valid_names:
+            is_valid, error = validate_skill_name(name)
+            assert is_valid is True, f"Expected '{name}' to be valid, got error: {error}"
+    
+    # ========== Invalid: Uppercase letters ==========
+    
+    def test_invalid_uppercase(self):
+        """Test invalid name with uppercase letters."""
+        is_valid, error = validate_skill_name("MyPackage")
+        assert is_valid is False
+        assert "lowercase" in error.lower()
+    
+    def test_invalid_all_uppercase(self):
+        """Test invalid name with all uppercase."""
+        is_valid, error = validate_skill_name("MYPACKAGE")
+        assert is_valid is False
+        assert "lowercase" in error.lower()
+    
+    def test_invalid_mixed_case(self):
+        """Test invalid name with mixed case."""
+        is_valid, error = validate_skill_name("myPackage")
+        assert is_valid is False
+        assert "lowercase" in error.lower()
+    
+    # ========== Invalid: Underscores ==========
+    
+    def test_invalid_underscore(self):
+        """Test invalid name with underscores."""
+        is_valid, error = validate_skill_name("my_package")
+        assert is_valid is False
+        assert "underscore" in error.lower()
+    
+    def test_invalid_multiple_underscores(self):
+        """Test invalid name with multiple underscores."""
+        is_valid, error = validate_skill_name("my_awesome_package")
+        assert is_valid is False
+        assert "underscore" in error.lower()
+    
+    # ========== Invalid: Spaces ==========
+    
+    def test_invalid_space(self):
+        """Test invalid name with spaces."""
+        is_valid, error = validate_skill_name("my package")
+        assert is_valid is False
+        assert "space" in error.lower()
+    
+    def test_invalid_multiple_spaces(self):
+        """Test invalid name with multiple spaces."""
+        is_valid, error = validate_skill_name("my awesome package")
+        assert is_valid is False
+        assert "space" in error.lower()
+    
+    # ========== Invalid: Special characters ==========
+    
+    def test_invalid_special_chars(self):
+        """Test invalid name with special characters."""
+        is_valid, error = validate_skill_name("my@package")
+        assert is_valid is False
+        assert "invalid character" in error.lower() or "alphanumeric" in error.lower()
+    
+    def test_invalid_dots(self):
+        """Test invalid name with dots."""
+        is_valid, error = validate_skill_name("my.package")
+        assert is_valid is False
+        assert "invalid character" in error.lower() or "alphanumeric" in error.lower()
+    
+    def test_invalid_slashes(self):
+        """Test invalid name with slashes."""
+        is_valid, error = validate_skill_name("my/package")
+        assert is_valid is False
+        assert "invalid character" in error.lower() or "alphanumeric" in error.lower()
+    
+    # ========== Invalid: Consecutive hyphens ==========
+    
+    def test_invalid_consecutive_hyphens(self):
+        """Test invalid name with consecutive hyphens."""
+        is_valid, error = validate_skill_name("my--package")
+        assert is_valid is False
+        assert "consecutive" in error.lower()
+    
+    def test_invalid_triple_hyphens(self):
+        """Test invalid name with triple hyphens."""
+        is_valid, error = validate_skill_name("my---package")
+        assert is_valid is False
+        assert "consecutive" in error.lower()
+    
+    def test_invalid_multiple_consecutive_groups(self):
+        """Test invalid name with multiple groups of consecutive hyphens."""
+        is_valid, error = validate_skill_name("my--awesome--package")
+        assert is_valid is False
+        assert "consecutive" in error.lower()
+    
+    # ========== Invalid: Leading/trailing hyphens ==========
+    
+    def test_invalid_leading_hyphen(self):
+        """Test invalid name starting with hyphen."""
+        is_valid, error = validate_skill_name("-mypackage")
+        assert is_valid is False
+        assert "start" in error.lower()
+    
+    def test_invalid_trailing_hyphen(self):
+        """Test invalid name ending with hyphen."""
+        is_valid, error = validate_skill_name("mypackage-")
+        assert is_valid is False
+        assert "end" in error.lower()
+    
+    def test_invalid_both_leading_trailing_hyphens(self):
+        """Test invalid name with both leading and trailing hyphens."""
+        is_valid, error = validate_skill_name("-mypackage-")
+        assert is_valid is False
+        # Either error is acceptable
+        assert "start" in error.lower() or "end" in error.lower()
+    
+    def test_invalid_only_hyphen(self):
+        """Test invalid name that is just a hyphen."""
+        is_valid, error = validate_skill_name("-")
+        assert is_valid is False
+        assert "start" in error.lower()
+    
+    # ========== Invalid: Length ==========
+    
+    def test_invalid_empty_string(self):
+        """Test invalid empty name."""
+        is_valid, error = validate_skill_name("")
+        assert is_valid is False
+        assert "empty" in error.lower()
+    
+    def test_invalid_too_long(self):
+        """Test invalid name exceeding 64 characters."""
+        name = "a" * 65
+        is_valid, error = validate_skill_name(name)
+        assert is_valid is False
+        assert "64" in error or "65" in error
+    
+    def test_invalid_way_too_long(self):
+        """Test invalid name far exceeding limit."""
+        name = "a" * 200
+        is_valid, error = validate_skill_name(name)
+        assert is_valid is False
+        assert "64" in error or "200" in error
+
+
+class TestNormalizeSkillName:
+    """Test skill name normalization for creating valid names from any input."""
+    
+    # ========== Basic normalization ==========
+    
+    def test_normalize_already_valid(self):
+        """Test that already valid names remain unchanged."""
+        assert normalize_skill_name("my-package") == "my-package"
+        assert normalize_skill_name("package123") == "package123"
+    
+    def test_normalize_uppercase_to_lowercase(self):
+        """Test uppercase conversion to lowercase."""
+        assert normalize_skill_name("MyPackage") == "my-package"
+        assert normalize_skill_name("MYPACKAGE") == "mypackage"
+    
+    def test_normalize_camel_case(self):
+        """Test camelCase conversion."""
+        assert normalize_skill_name("myPackage") == "my-package"
+        assert normalize_skill_name("myAwesomePackage") == "my-awesome-package"
+    
+    def test_normalize_pascal_case(self):
+        """Test PascalCase conversion."""
+        assert normalize_skill_name("MyPackage") == "my-package"
+        assert normalize_skill_name("MyAwesomePackage") == "my-awesome-package"
+    
+    # ========== Separator normalization ==========
+    
+    def test_normalize_underscores_to_hyphens(self):
+        """Test underscores converted to hyphens."""
+        assert normalize_skill_name("my_package") == "my-package"
+        assert normalize_skill_name("my_awesome_package") == "my-awesome-package"
+    
+    def test_normalize_spaces_to_hyphens(self):
+        """Test spaces converted to hyphens."""
+        assert normalize_skill_name("my package") == "my-package"
+        assert normalize_skill_name("my awesome package") == "my-awesome-package"
+    
+    def test_normalize_mixed_separators(self):
+        """Test mixed separators normalized."""
+        assert normalize_skill_name("my_awesome package") == "my-awesome-package"
+    
+    # ========== Consecutive hyphens ==========
+    
+    def test_normalize_removes_consecutive_hyphens(self):
+        """Test consecutive hyphens are collapsed."""
+        assert normalize_skill_name("my--package") == "my-package"
+        assert normalize_skill_name("my---package") == "my-package"
+    
+    def test_normalize_underscores_create_single_hyphen(self):
+        """Test multiple underscores become single hyphen."""
+        assert normalize_skill_name("my___package") == "my-package"
+    
+    # ========== Leading/trailing normalization ==========
+    
+    def test_normalize_strips_leading_hyphens(self):
+        """Test leading hyphens are stripped."""
+        assert normalize_skill_name("-mypackage") == "mypackage"
+        assert normalize_skill_name("--mypackage") == "mypackage"
+    
+    def test_normalize_strips_trailing_hyphens(self):
+        """Test trailing hyphens are stripped."""
+        assert normalize_skill_name("mypackage-") == "mypackage"
+        assert normalize_skill_name("mypackage--") == "mypackage"
+    
+    def test_normalize_strips_leading_underscores(self):
+        """Test leading underscores are stripped after conversion."""
+        assert normalize_skill_name("_mypackage") == "mypackage"
+    
+    def test_normalize_strips_trailing_underscores(self):
+        """Test trailing underscores are stripped after conversion."""
+        assert normalize_skill_name("mypackage_") == "mypackage"
+    
+    # ========== Special character removal ==========
+    
+    def test_normalize_removes_special_chars(self):
+        """Test special characters are removed."""
+        assert normalize_skill_name("my@package") == "mypackage"
+        assert normalize_skill_name("my!package#name") == "mypackagename"
+    
+    def test_normalize_removes_dots(self):
+        """Test dots are removed."""
+        assert normalize_skill_name("my.package") == "mypackage"
+    
+    # ========== Owner/repo format ==========
+    
+    def test_normalize_extracts_repo_name(self):
+        """Test owner/repo format extracts repo name."""
+        assert normalize_skill_name("owner/my-package") == "my-package"
+        assert normalize_skill_name("danielmeppiel/compliance-rules") == "compliance-rules"
+    
+    def test_normalize_extracts_and_converts_repo_name(self):
+        """Test owner/repo format with conversion needed."""
+        assert normalize_skill_name("owner/MyPackage") == "my-package"
+        assert normalize_skill_name("owner/my_package") == "my-package"
+    
+    # ========== Truncation ==========
+    
+    def test_normalize_truncates_to_64_chars(self):
+        """Test names are truncated to 64 characters."""
+        long_name = "a" * 100
+        result = normalize_skill_name(long_name)
+        assert len(result) == 64
+    
+    def test_normalize_truncation_preserves_content(self):
+        """Test truncation preserves the start of the name."""
+        long_name = "abcdefghij" * 10  # 100 chars
+        result = normalize_skill_name(long_name)
+        assert result == "abcdefghij" * 6 + "abcd"  # First 64 chars
+    
+    # ========== Integration: Normalized names are valid ==========
+    
+    def test_normalize_produces_valid_names(self):
+        """Test that normalized names pass validation."""
+        test_inputs = [
+            "MyPackage",
+            "my_awesome_package",
+            "owner/repo",
+            "My Package Name",
+            "package@v1.2.3",
+            "--leading-hyphens--",
+            "a" * 100,
+            "camelCasePackageName",
+            "UPPERCASE",
+        ]
+        
+        for input_name in test_inputs:
+            normalized = normalize_skill_name(input_name)
+            if normalized:  # Skip if normalization produces empty string
+                is_valid, error = validate_skill_name(normalized)
+                assert is_valid is True, f"normalize_skill_name('{input_name}') = '{normalized}' is invalid: {error}"
+    
+    def test_normalize_realistic_package_names(self):
+        """Test normalization of realistic package names."""
+        test_cases = [
+            ("danielmeppiel/design-guidelines", "design-guidelines"),
+            ("ComposioHQ/awesome-claude-skills", "awesome-claude-skills"),
+            ("github/awesome-copilot", "awesome-copilot"),
+            ("My_Awesome_Package", "my-awesome-package"),
+            ("code-review", "code-review"),
+        ]
+        
+        for input_name, expected in test_cases:
+            result = normalize_skill_name(input_name)
+            assert result == expected, f"normalize_skill_name('{input_name}') = '{result}', expected '{expected}'"
+
+
+class TestCopySkillToTarget:
+    """Test the copy_skill_to_target standalone function (T6).
+    
+    This tests direct skill copy functionality for native skills
+    that already have SKILL.md files.
+    """
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+    
+    def teardown_method(self):
+        """Clean up after tests."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        version: str = "1.0.0",
+        commit: str = "abc123",
+        install_path: Path = None,
+        source: str = None,
+        description: str = None,
+        dependency_ref: DependencyReference = None,
+        pkg_type: PackageContentType = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        """Helper to create PackageInfo objects for tests.
+        
+        For native skill tests, package_type defaults to CLAUDE_SKILL since
+        these packages have SKILL.md and should be installed to .github/skills/.
+        """
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=source or f"github.com/test/{name}",
+            description=description,
+            type=pkg_type
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit=commit,
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref,
+            package_type=package_type
+        )
+    
+    # ========== Test T6: Direct copy preserves SKILL.md content exactly ==========
+    
+    def test_copy_skill_preserves_skill_md_content_exactly(self):
+        """Test that direct copy preserves SKILL.md content exactly."""
+        # Create a skill package with specific content
+        skill_source = self.apm_modules / "owner" / "mcp-builder"
+        skill_source.mkdir(parents=True)
+        
+        original_content = """---
+name: mcp-builder
+description: Build MCP servers with best practices
+version: 1.0.0
+---
+
+# MCP Builder
+
+This skill helps you build **Model Context Protocol** servers.
+
+## Features
+
+- TypeScript support
+- Python support
+- Automatic validation
+
+## Usage
+
+Use when building MCP servers or tools.
+"""
+        (skill_source / "SKILL.md").write_text(original_content)
+        
+        package_info = self._create_package_info(
+            name="mcp-builder",
+            install_path=skill_source,
+            source="owner/mcp-builder"
+        )
+        
+        # Copy skill to target
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        target_skill_md = github_path / "SKILL.md"
+        assert target_skill_md.exists()
+        
+        # Read copied content
+        copied_content = target_skill_md.read_text()
+        
+        # The body content should be preserved exactly
+        # (frontmatter will have APM metadata added)
+        assert "# MCP Builder" in copied_content
+        assert "This skill helps you build **Model Context Protocol** servers." in copied_content
+        assert "- TypeScript support" in copied_content
+        assert "- Python support" in copied_content
+        assert "- Automatic validation" in copied_content
+        assert "Use when building MCP servers or tools." in copied_content
+    
+    # ========== Test T6: Subdirectories are copied correctly ==========
+    
+    def test_copy_skill_copies_scripts_directory(self):
+        """Test that scripts/ subdirectory is copied correctly."""
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+        
+        # Create scripts directory with content
+        scripts_dir = skill_source / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "validate.sh").write_text("#!/bin/bash\necho 'validating...'")
+        (scripts_dir / "build.py").write_text("#!/usr/bin/env python3\nprint('building...')")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert (github_path / "scripts").exists()
+        assert (github_path / "scripts" / "validate.sh").exists()
+        assert (github_path / "scripts" / "build.py").exists()
+        
+        # Verify content preserved
+        assert "echo 'validating...'" in (github_path / "scripts" / "validate.sh").read_text()
+    
+    def test_copy_skill_copies_references_directory(self):
+        """Test that references/ subdirectory is copied correctly."""
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+        
+        # Create references directory with content
+        refs_dir = skill_source / "references"
+        refs_dir.mkdir()
+        (refs_dir / "api-spec.md").write_text("# API Specification\n\nEndpoints...")
+        (refs_dir / "patterns.md").write_text("# Common Patterns\n\n...")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert (github_path / "references").exists()
+        assert (github_path / "references" / "api-spec.md").exists()
+        assert (github_path / "references" / "patterns.md").exists()
+    
+    def test_copy_skill_copies_assets_directory(self):
+        """Test that assets/ subdirectory is copied correctly."""
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+        
+        # Create assets directory with content
+        assets_dir = skill_source / "assets"
+        assets_dir.mkdir()
+        (assets_dir / "template.json").write_text('{"type": "template"}')
+        (assets_dir / "example.yaml").write_text("name: example\nversion: 1.0")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert (github_path / "assets").exists()
+        assert (github_path / "assets" / "template.json").exists()
+        assert (github_path / "assets" / "example.yaml").exists()
+    
+    def test_copy_skill_copies_all_subdirectories(self):
+        """Test that all skill subdirectories are copied correctly."""
+        skill_source = self.apm_modules / "owner" / "complete-skill"
+        skill_source.mkdir(parents=True)
+        
+        (skill_source / "SKILL.md").write_text("---\nname: complete-skill\n---\n# Complete Skill")
+        
+        # Create all standard subdirectories
+        (skill_source / "scripts").mkdir()
+        (skill_source / "scripts" / "run.sh").write_text("#!/bin/bash")
+        
+        (skill_source / "references").mkdir()
+        (skill_source / "references" / "guide.md").write_text("# Guide")
+        
+        (skill_source / "assets").mkdir()
+        (skill_source / "assets" / "config.json").write_text("{}")
+        
+        # Also create a custom subdirectory (should be copied too)
+        (skill_source / "examples").mkdir()
+        (skill_source / "examples" / "basic.md").write_text("# Basic Example")
+        
+        package_info = self._create_package_info(
+            name="complete-skill",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert (github_path / "SKILL.md").exists()
+        assert (github_path / "scripts" / "run.sh").exists()
+        assert (github_path / "references" / "guide.md").exists()
+        assert (github_path / "assets" / "config.json").exists()
+        assert (github_path / "examples" / "basic.md").exists()
+    
+    # ========== Test T6: Skill name validation is applied ==========
+    
+    def test_copy_skill_validates_skill_name(self):
+        """Test that skill name is validated when copying."""
+        # Create a skill with a valid name
+        skill_source = self.apm_modules / "owner" / "valid-skill-name"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: valid-skill-name\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="valid-skill-name",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert github_path.name == "valid-skill-name"
+    
+    def test_copy_skill_normalizes_invalid_skill_name(self):
+        """Test that invalid skill names are normalized."""
+        # Create a skill with an invalid name (uppercase)
+        skill_source = self.apm_modules / "owner" / "MyInvalidSkillName"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: MyInvalidSkillName\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="MyInvalidSkillName",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        # Name should be normalized to hyphen-case lowercase
+        assert github_path.name == "my-invalid-skill-name"
+    
+    # ========== Test T6: Existing skill is updated on reinstall ==========
+    
+    def test_copy_skill_updates_existing_skill(self):
+        """Test that existing skill is updated on reinstall (overwrite)."""
+        # Create target skill directory first
+        skill_dir = self.project_root / ".github" / "skills" / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n# OLD CONTENT")
+        (skill_dir / "old-file.txt").write_text("This should be removed")
+        
+        # Create new source skill
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# NEW CONTENT")
+        (skill_source / "new-file.txt").write_text("This is new")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert github_path == skill_dir
+        
+        # Verify content is updated
+        skill_content = (skill_dir / "SKILL.md").read_text()
+        assert "# NEW CONTENT" in skill_content
+        assert "# OLD CONTENT" not in skill_content
+        
+        # Old file should be removed, new file should exist
+        assert not (skill_dir / "old-file.txt").exists()
+        assert (skill_dir / "new-file.txt").exists()
+    
+    # ========== Test T6: Packages without SKILL.md are skipped ==========
+    
+    def test_copy_skill_skips_packages_without_skill_md(self):
+        """Test that packages without SKILL.md are skipped."""
+        # Create a package without SKILL.md (only has instructions)
+        pkg_source = self.apm_modules / "owner" / "instructions-only"
+        pkg_source.mkdir(parents=True)
+        apm_dir = pkg_source / ".apm" / "instructions"
+        apm_dir.mkdir(parents=True)
+        (apm_dir / "coding.instructions.md").write_text("# Coding Standards")
+        
+        package_info = self._create_package_info(
+            name="instructions-only",
+            install_path=pkg_source
+        )
+        
+        github_path, claude_path = copy_skill_to_target(package_info, pkg_source, self.project_root)
+        
+        # Should return None (skipped) - both paths should be None
+        assert github_path is None
+        assert claude_path is None
+        
+        # No skill directory should be created
+        assert not (self.project_root / ".github" / "skills" / "instructions-only").exists()
+    
+    # ========== Test T6: Package type routing ==========
+    
+    def test_copy_skill_respects_instructions_type(self):
+        """Test that packages with type='instructions' are skipped."""
+        from apm_cli.models.apm_package import PackageContentType
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source,
+            pkg_type=PackageContentType.INSTRUCTIONS  # This type should skip skill install
+        )
+        
+        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        # Should return None because type is INSTRUCTIONS - both paths should be None
+        assert github_path is None
+        assert claude_path is None
+    
+    def test_copy_skill_respects_skill_type(self):
+        """Test that packages with type='skill' are processed."""
+        from apm_cli.models.apm_package import PackageContentType
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source,
+            pkg_type=PackageContentType.SKILL
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert (github_path / "SKILL.md").exists()
+    
+    def test_copy_skill_respects_hybrid_type(self):
+        """Test that packages with type='hybrid' are processed."""
+        from apm_cli.models.apm_package import PackageContentType
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source,
+            pkg_type=PackageContentType.HYBRID
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert (github_path / "SKILL.md").exists()
+    
+    # ========== Test T6: Creates .github/skills/ if doesn't exist ==========
+    
+    def test_copy_skill_creates_github_skills_directory(self):
+        """Test that .github/skills/ is created if it doesn't exist."""
+        # Start with no .github directory
+        assert not (self.project_root / ".github").exists()
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert (self.project_root / ".github" / "skills").exists()
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+    
+    # ========== Test T6: APM metadata is added for orphan detection ==========
+    
+    def test_copy_skill_adds_apm_metadata(self):
+        """Test that APM tracking metadata is added to copied SKILL.md."""
+        import frontmatter
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\ndescription: Test\n---\n# My Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            version="2.5.0",
+            commit="xyz789",
+            install_path=skill_source,
+            source="owner/my-skill"
+        )
+        
+        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        
+        # Parse the copied SKILL.md
+        post = frontmatter.load(github_path / "SKILL.md")
+        
+        # Verify APM metadata is present
+        assert 'metadata' in post.metadata
+        apm_metadata = post.metadata['metadata']
+        assert 'apm_package' in apm_metadata
+        assert 'apm_version' in apm_metadata
+        assert apm_metadata['apm_version'] == '2.5.0'
+        assert 'apm_commit' in apm_metadata
+        assert apm_metadata['apm_commit'] == 'xyz789'
+        assert 'apm_installed_at' in apm_metadata
+
+
+class TestNativeSkillIntegration:
+    """Additional tests for native skill integration via SkillIntegrator._integrate_native_skill (T6).
+    
+    These tests verify that packages with existing SKILL.md files are correctly
+    copied to .github/skills/ and .claude/skills/ directories.
+    """
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = SkillIntegrator()
+    
+    def teardown_method(self):
+        """Clean up after tests."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        version: str = "1.0.0",
+        commit: str = "abc123",
+        install_path: Path = None,
+        source: str = None,
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        """Helper to create PackageInfo objects for tests.
+        
+        For native skill tests, package_type defaults to CLAUDE_SKILL since
+        these packages have SKILL.md and should be installed to .github/skills/.
+        """
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=source or f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit=commit,
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref,
+            package_type=package_type
+        )
+    
+    def test_native_skill_preserves_complete_structure(self):
+        """Test that native skill integration preserves complete directory structure."""
+        # Create a complete skill package
+        package_dir = self.project_root / "complete-skill"
+        package_dir.mkdir()
+        
+        # Create SKILL.md
+        (package_dir / "SKILL.md").write_text("""---
+name: complete-skill
+description: A complete skill with all subdirectories
+---
+# Complete Skill
+
+Use this skill for comprehensive guidance.
+""")
+        
+        # Create scripts/
+        (package_dir / "scripts").mkdir()
+        (package_dir / "scripts" / "validate.sh").write_text("#!/bin/bash\necho 'validating'")
+        
+        # Create references/
+        (package_dir / "references").mkdir()
+        (package_dir / "references" / "api.md").write_text("# API Reference")
+        
+        # Create assets/
+        (package_dir / "assets").mkdir()
+        (package_dir / "assets" / "template.json").write_text('{"key": "value"}')
+        
+        package_info = self._create_package_info(
+            name="complete-skill",
+            install_path=package_dir
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        assert result.skill_created is True
+        assert result.skill_path is not None
+        
+        skill_dir = self.project_root / ".github" / "skills" / "complete-skill"
+        
+        # Verify all subdirectories are copied
+        assert (skill_dir / "SKILL.md").exists()
+        assert (skill_dir / "scripts" / "validate.sh").exists()
+        assert (skill_dir / "references" / "api.md").exists()
+        assert (skill_dir / "assets" / "template.json").exists()
+        
+        # Verify content preserved
+        assert "validating" in (skill_dir / "scripts" / "validate.sh").read_text()
+        assert "API Reference" in (skill_dir / "references" / "api.md").read_text()
+    
+    def test_native_skill_normalizes_uppercase_name(self):
+        """Test that native skill with uppercase folder name is normalized."""
+        # Create a skill with uppercase folder name
+        package_dir = self.project_root / "MyUpperCaseSkill"
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="MyUpperCaseSkill",
+            install_path=package_dir
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        assert result.skill_created is True
+        
+        # Skill should be installed with normalized name
+        normalized_skill_dir = self.project_root / ".github" / "skills" / "my-upper-case-skill"
+        assert normalized_skill_dir.exists()
+        assert (normalized_skill_dir / "SKILL.md").exists()
+    
+    def test_native_skill_files_copied_count(self):
+        """Test that references_copied accurately counts all copied files."""
+        package_dir = self.project_root / "counting-skill"
+        package_dir.mkdir()
+        
+        (package_dir / "SKILL.md").write_text("---\nname: counting-skill\n---\n# Skill")
+        
+        (package_dir / "scripts").mkdir()
+        (package_dir / "scripts" / "a.sh").write_text("a")
+        (package_dir / "scripts" / "b.sh").write_text("b")
+        
+        (package_dir / "references").mkdir()
+        (package_dir / "references" / "c.md").write_text("c")
+        
+        # Total files: SKILL.md + a.sh + b.sh + c.md = 4
+        
+        package_info = self._create_package_info(
+            name="counting-skill",
+            install_path=package_dir
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        assert result.skill_created is True
+        assert result.references_copied == 4  # All 4 files
+
+
+# =============================================================================
+# T7: Claude Skills Compatibility Copy Tests
+# =============================================================================
+
+class TestClaudeSkillsCompatibilityCopy:
+    """Test T7: Claude Skills compatibility copy to .claude/skills/.
+    
+    When a skill is installed to .github/skills/, it should also be copied
+    to .claude/skills/ IF the .claude/ directory already exists.
+    This ensures Claude Code users get skills while not polluting projects
+    that don't use Claude.
+    """
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+        self.integrator = SkillIntegrator()
+    
+    def teardown_method(self):
+        """Clean up after tests."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        version: str = "1.0.0",
+        commit: str = "abc123",
+        install_path: Path = None,
+        source: str = None,
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        """Helper to create PackageInfo objects for tests.
+        
+        For skill compatibility tests, package_type defaults to CLAUDE_SKILL since
+        these packages have SKILL.md and should be installed to .github/skills/.
+        """
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=source or f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit=commit,
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref,
+            package_type=package_type
+        )
+    
+    # ========== Test: Skill copies to .github/skills/ only when .claude/ doesn't exist ==========
+    
+    def test_skill_copies_to_github_only_when_no_claude_dir(self):
+        """Test skill copies to .github/skills/ when .claude/ doesn't exist."""
+        # Ensure .claude/ does NOT exist
+        assert not (self.project_root / ".claude").exists()
+        
+        # Create a native skill package
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        # Should create in .github/skills/
+        assert result.skill_created is True
+        github_skill = self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md"
+        assert github_skill.exists()
+        
+        # Should NOT create .claude/ folder
+        assert not (self.project_root / ".claude").exists()
+        
+        # Should NOT create .claude/skills/
+        assert not (self.project_root / ".claude" / "skills").exists()
+    
+    # ========== Test: Skill copies to BOTH when .claude/ exists ==========
+    
+    def test_skill_copies_to_both_when_claude_exists(self):
+        """Test skill copies to BOTH .github/skills/ and .claude/skills/ when .claude/ exists."""
+        # Create .claude/ directory (simulating a Claude Code project)
+        (self.project_root / ".claude").mkdir()
+        
+        # Create a native skill package
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill Content")
+        (skill_source / "references").mkdir()
+        (skill_source / "references" / "guide.md").write_text("# Guide")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        # Should create in .github/skills/
+        assert result.skill_created is True
+        github_skill_dir = self.project_root / ".github" / "skills" / "my-skill"
+        assert github_skill_dir.exists()
+        assert (github_skill_dir / "SKILL.md").exists()
+        assert (github_skill_dir / "references" / "guide.md").exists()
+        
+        # Should ALSO create in .claude/skills/
+        claude_skill_dir = self.project_root / ".claude" / "skills" / "my-skill"
+        assert claude_skill_dir.exists()
+        assert (claude_skill_dir / "SKILL.md").exists()
+        assert (claude_skill_dir / "references" / "guide.md").exists()
+    
+    # ========== Test: Copies are identical ==========
+    
+    def test_copies_are_identical(self):
+        """Test that .github/skills/ and .claude/skills/ copies are identical."""
+        # Create .claude/ directory
+        (self.project_root / ".claude").mkdir()
+        
+        # Create a native skill package with multiple files
+        skill_source = self.apm_modules / "owner" / "complete-skill"
+        skill_source.mkdir(parents=True)
+        
+        skill_content = """---
+name: complete-skill
+description: A complete skill
+---
+
+# Complete Skill
+
+Detailed instructions here.
+"""
+        (skill_source / "SKILL.md").write_text(skill_content)
+        
+        (skill_source / "scripts").mkdir()
+        (skill_source / "scripts" / "run.sh").write_text("#!/bin/bash\necho 'running'")
+        
+        (skill_source / "references").mkdir()
+        (skill_source / "references" / "api.md").write_text("# API\n\nEndpoints...")
+        
+        (skill_source / "assets").mkdir()
+        (skill_source / "assets" / "config.json").write_text('{"key": "value"}')
+        
+        package_info = self._create_package_info(
+            name="complete-skill",
+            install_path=skill_source
+        )
+        
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        github_skill_dir = self.project_root / ".github" / "skills" / "complete-skill"
+        claude_skill_dir = self.project_root / ".claude" / "skills" / "complete-skill"
+        
+        # Compare all files
+        github_files = set(f.relative_to(github_skill_dir) for f in github_skill_dir.rglob('*') if f.is_file())
+        claude_files = set(f.relative_to(claude_skill_dir) for f in claude_skill_dir.rglob('*') if f.is_file())
+        
+        assert github_files == claude_files, "File structure should be identical"
+        
+        # Compare content of each file (except SKILL.md which may have slightly different timestamps)
+        for rel_path in github_files:
+            if rel_path.name != "SKILL.md":
+                github_content = (github_skill_dir / rel_path).read_text()
+                claude_content = (claude_skill_dir / rel_path).read_text()
+                assert github_content == claude_content, f"Content of {rel_path} should be identical"
+        
+        # SKILL.md should have same body content
+        github_skill_body = (github_skill_dir / "SKILL.md").read_text()
+        claude_skill_body = (claude_skill_dir / "SKILL.md").read_text()
+        assert "# Complete Skill" in github_skill_body
+        assert "# Complete Skill" in claude_skill_body
+        assert "Detailed instructions here." in github_skill_body
+        assert "Detailed instructions here." in claude_skill_body
+    
+    # ========== Test: Updates affect both locations ==========
+    
+    def test_updates_affect_both_locations(self):
+        """Test that skill updates affect both .github/skills/ and .claude/skills/."""
+        # Create .claude/ directory
+        (self.project_root / ".claude").mkdir()
+        
+        # Create initial skill
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Version 1")
+        
+        package_info_v1 = self._create_package_info(
+            name="my-skill",
+            version="1.0.0",
+            commit="abc123",
+            install_path=skill_source
+        )
+        
+        # First install
+        result1 = self.integrator.integrate_package_skill(package_info_v1, self.project_root)
+        assert result1.skill_created is True
+        
+        # Verify both locations have v1 content
+        github_content_v1 = (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").read_text()
+        claude_content_v1 = (self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md").read_text()
+        assert "# Version 1" in github_content_v1
+        assert "# Version 1" in claude_content_v1
+        
+        # Update skill source
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Version 2")
+        
+        package_info_v2 = self._create_package_info(
+            name="my-skill",
+            version="2.0.0",  # New version triggers update
+            commit="def456",
+            install_path=skill_source
+        )
+        
+        # Second install (update)
+        result2 = self.integrator.integrate_package_skill(package_info_v2, self.project_root)
+        assert result2.skill_updated is True
+        
+        # Verify both locations have v2 content
+        github_content_v2 = (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").read_text()
+        claude_content_v2 = (self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md").read_text()
+        assert "# Version 2" in github_content_v2
+        assert "# Version 2" in claude_content_v2
+    
+    # ========== Test: .claude/ not created if doesn't exist ==========
+    
+    def test_claude_dir_not_created_if_not_exists(self):
+        """Test that .claude/ directory is NOT created if it doesn't exist."""
+        # Ensure .claude/ does NOT exist
+        assert not (self.project_root / ".claude").exists()
+        
+        # Create and install multiple skills
+        for i in range(3):
+            skill_source = self.apm_modules / "owner" / f"skill-{i}"
+            skill_source.mkdir(parents=True)
+            (skill_source / "SKILL.md").write_text(f"---\nname: skill-{i}\n---\n# Skill {i}")
+            
+            package_info = self._create_package_info(
+                name=f"skill-{i}",
+                install_path=skill_source
+            )
+            
+            self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        # .github/skills/ should have all skills
+        github_skills = self.project_root / ".github" / "skills"
+        assert github_skills.exists()
+        assert (github_skills / "skill-0").exists()
+        assert (github_skills / "skill-1").exists()
+        assert (github_skills / "skill-2").exists()
+        
+        # .claude/ should NOT exist (we never created it)
+        assert not (self.project_root / ".claude").exists()
+    
+    # ========== Test: Generated skills also copy to .claude/ ==========
+    
+    def test_generated_skill_copies_to_claude_when_exists(self):
+        """Test that generated skills (from .apm/ primitives) also copy to .claude/."""
+        # Create .claude/ directory
+        (self.project_root / ".claude").mkdir()
+        
+        # Create a package with .apm/ primitives (not a native skill)
+        package_dir = self.project_root / "my-package"
+        apm_instructions = package_dir / ".apm" / "instructions"
+        apm_instructions.mkdir(parents=True)
+        (apm_instructions / "coding.instructions.md").write_text("# Coding Standards")
+        
+        package_info = self._create_package_info(
+            name="my-package",
+            install_path=package_dir
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        assert result.skill_created is True
+        
+        # Should exist in .github/skills/
+        github_skill = self.project_root / ".github" / "skills" / "my-package"
+        assert github_skill.exists()
+        assert (github_skill / "SKILL.md").exists()
+        
+        # Should ALSO exist in .claude/skills/
+        claude_skill = self.project_root / ".claude" / "skills" / "my-package"
+        assert claude_skill.exists()
+        assert (claude_skill / "SKILL.md").exists()
+    
+    # ========== Test: copy_skill_to_target returns both paths ==========
+    
+    def test_copy_skill_to_target_returns_both_paths_when_claude_exists(self):
+        """Test that copy_skill_to_target returns both paths when .claude/ exists."""
+        # Create .claude/ directory
+        (self.project_root / ".claude").mkdir()
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert claude_path is not None
+        assert github_path == self.project_root / ".github" / "skills" / "my-skill"
+        assert claude_path == self.project_root / ".claude" / "skills" / "my-skill"
+    
+    def test_copy_skill_to_target_returns_none_claude_when_no_claude_dir(self):
+        """Test that copy_skill_to_target returns None for claude_path when .claude/ doesn't exist."""
+        # Ensure .claude/ does NOT exist
+        assert not (self.project_root / ".claude").exists()
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+        
+        assert github_path is not None
+        assert claude_path is None
+    
+    # ========== Test: sync_integration cleans both locations ==========
+    
+    def test_sync_removes_orphans_from_both_locations(self):
+        """Test that sync_integration removes orphaned skills from both locations."""
+        # Create skill directories in both locations
+        github_skill = self.project_root / ".github" / "skills" / "orphan-skill"
+        github_skill.mkdir(parents=True)
+        (github_skill / "SKILL.md").write_text("""---
+name: orphan-skill
+metadata:
+  apm_package: owner/orphan-skill
+  apm_version: '1.0.0'
+---
+# Orphan Skill
+""")
+        
+        claude_skill = self.project_root / ".claude" / "skills" / "orphan-skill"
+        claude_skill.mkdir(parents=True)
+        (claude_skill / "SKILL.md").write_text("""---
+name: orphan-skill
+metadata:
+  apm_package: owner/orphan-skill
+  apm_version: '1.0.0'
+---
+# Orphan Skill
+""")
+        
+        # Mock apm_package with no dependencies (orphan)
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Both orphans should be removed
+        assert result['files_removed'] == 2
+        assert not github_skill.exists()
+        assert not claude_skill.exists()
+    
+    def test_sync_keeps_installed_skills_in_both_locations(self):
+        """Test that sync_integration keeps installed skills in both locations."""
+        # Create skill directories in both locations
+        skill_name = "installed-skill"
+        canonical_ref = "owner/installed-skill"
+        
+        github_skill = self.project_root / ".github" / "skills" / skill_name
+        github_skill.mkdir(parents=True)
+        (github_skill / "SKILL.md").write_text(f"""---
+name: {skill_name}
+metadata:
+  apm_package: {canonical_ref}
+  apm_version: '1.0.0'
+---
+# Installed Skill
+""")
+        
+        claude_skill = self.project_root / ".claude" / "skills" / skill_name
+        claude_skill.mkdir(parents=True)
+        (claude_skill / "SKILL.md").write_text(f"""---
+name: {skill_name}
+metadata:
+  apm_package: {canonical_ref}
+  apm_version: '1.0.0'
+---
+# Installed Skill
+""")
+        
+        # Mock apm_package with this dependency installed
+        dep_ref = DependencyReference.parse(canonical_ref)
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [dep_ref]
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Nothing should be removed
+        assert result['files_removed'] == 0
+        assert github_skill.exists()
+        assert claude_skill.exists()
+    
+    # ========== Test: Only .claude/skills/ cleaned when .claude/ exists ==========
+    
+    def test_sync_only_cleans_claude_skills_when_claude_exists(self):
+        """Test that sync only cleans .claude/skills/ when .claude/ directory exists."""
+        # Only .github/ exists, not .claude/
+        github_skill = self.project_root / ".github" / "skills" / "orphan-skill"
+        github_skill.mkdir(parents=True)
+        (github_skill / "SKILL.md").write_text("""---
+name: orphan-skill
+metadata:
+  apm_package: owner/orphan-skill
+---
+# Orphan Skill
+""")
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Only the github orphan should be removed (claude doesn't exist)
+        assert result['files_removed'] == 1
+        assert not github_skill.exists()
+        assert not (self.project_root / ".claude").exists()
+    
+    # ========== Test: APM metadata added to both copies ==========
+    
+    def test_apm_metadata_added_to_both_copies(self):
+        """Test that APM metadata is added to SKILL.md in both locations."""
+        import frontmatter
+        
+        # Create .claude/ directory
+        (self.project_root / ".claude").mkdir()
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\ndescription: Test\n---\n# My Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            version="2.0.0",
+            commit="xyz789",
+            install_path=skill_source,
+            source="owner/my-skill"
+        )
+        
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        # Check .github/skills/
+        github_post = frontmatter.load(self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md")
+        assert 'metadata' in github_post.metadata
+        assert github_post.metadata['metadata']['apm_version'] == '2.0.0'
+        assert github_post.metadata['metadata']['apm_commit'] == 'xyz789'
+        
+        # Check .claude/skills/
+        claude_post = frontmatter.load(self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md")
+        assert 'metadata' in claude_post.metadata
+        assert claude_post.metadata['metadata']['apm_version'] == '2.0.0'
+        assert claude_post.metadata['metadata']['apm_commit'] == 'xyz789'
+
+    # ========== T12: Additional orphan cleanup tests ==========
+    
+    def test_sync_preserves_user_created_skills_without_apm_metadata(self):
+        """Test that sync does NOT remove user-created skills without APM metadata.
+        
+        User-created skill directories (without apm_package in metadata) should
+        never be removed during sync. This prevents data loss of manually created skills.
+        """
+        # Create a user-created skill in .github/skills/ (no APM metadata)
+        user_skill = self.project_root / ".github" / "skills" / "user-created-skill"
+        user_skill.mkdir(parents=True)
+        (user_skill / "SKILL.md").write_text("""---
+name: user-created-skill
+description: A skill I created manually
+---
+# My Custom Skill
+
+This is a skill I created by hand, not via APM.
+""")
+        
+        # Create a user-created skill in .claude/skills/ (no APM metadata)
+        (self.project_root / ".claude").mkdir()
+        claude_user_skill = self.project_root / ".claude" / "skills" / "my-workflow"
+        claude_user_skill.mkdir(parents=True)
+        (claude_user_skill / "SKILL.md").write_text("""---
+name: my-workflow
+description: Custom workflow
+---
+# Workflow
+""")
+        
+        # Run sync with no dependencies (simulates `apm prune`)
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # User skills should NOT be removed (no apm_package metadata)
+        assert result['files_removed'] == 0
+        assert user_skill.exists()
+        assert claude_user_skill.exists()
+    
+    def test_sync_skips_skill_dirs_without_skill_md(self):
+        """Test that sync gracefully handles skill directories without SKILL.md.
+        
+        Skill directories without a SKILL.md file should be skipped, not removed.
+        This can happen with corrupted installs or partial cleanups.
+        """
+        # Create a skill directory without SKILL.md
+        empty_skill = self.project_root / ".github" / "skills" / "empty-skill"
+        empty_skill.mkdir(parents=True)
+        # Just add some other file
+        (empty_skill / "README.md").write_text("# Some file")
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Should not be removed (no SKILL.md to check metadata)
+        assert result['files_removed'] == 0
+        assert empty_skill.exists()
+    
+    def test_sync_handles_malformed_skill_md_gracefully(self):
+        """Test that sync handles SKILL.md with malformed frontmatter gracefully.
+        
+        If a SKILL.md has invalid YAML frontmatter, it is treated as a user-created
+        skill (no APM metadata found) and is NOT removed. This is the safe behavior
+        to prevent accidental data loss.
+        """
+        # Create a skill with malformed frontmatter
+        malformed_skill = self.project_root / ".github" / "skills" / "malformed"
+        malformed_skill.mkdir(parents=True)
+        (malformed_skill / "SKILL.md").write_text("""---
+invalid yaml: [this is broken
+  no closing bracket
+---
+# Content
+""")
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Skill should NOT be removed (treated as no APM metadata = user-created)
+        assert result['files_removed'] == 0
+        assert malformed_skill.exists()
+    
+    def test_sync_removes_orphans_only_from_github_when_no_claude(self):
+        """Test cleanup works correctly when .claude/ directory doesn't exist.
+        
+        When .claude/ doesn't exist, only .github/skills/ should be cleaned.
+        """
+        # Ensure .claude/ does NOT exist
+        assert not (self.project_root / ".claude").exists()
+        
+        # Create an APM-managed orphan skill in .github/skills/
+        orphan_skill = self.project_root / ".github" / "skills" / "orphan"
+        orphan_skill.mkdir(parents=True)
+        (orphan_skill / "SKILL.md").write_text("""---
+name: orphan
+metadata:
+  apm_package: owner/orphan-pkg
+  apm_version: '1.0.0'
+---
+# Orphan Skill
+""")
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Only github orphan should be removed
+        assert result['files_removed'] == 1
+        assert not orphan_skill.exists()
+    
+    def test_sync_aggregates_stats_from_both_locations(self):
+        """Test that sync correctly aggregates removal stats from both locations.
+        
+        When orphans exist in both .github/skills/ and .claude/skills/,
+        the stats should reflect total removals from both locations.
+        """
+        # Create .claude/ directory
+        (self.project_root / ".claude").mkdir()
+        
+        # Create orphan in .github/skills/
+        github_orphan = self.project_root / ".github" / "skills" / "orphan-a"
+        github_orphan.mkdir(parents=True)
+        (github_orphan / "SKILL.md").write_text("""---
+name: orphan-a
+metadata:
+  apm_package: owner/orphan-a
+---
+# Orphan A
+""")
+        
+        # Create different orphan in .claude/skills/
+        claude_orphan = self.project_root / ".claude" / "skills" / "orphan-b"
+        claude_orphan.mkdir(parents=True)
+        (claude_orphan / "SKILL.md").write_text("""---
+name: orphan-b
+metadata:
+  apm_package: owner/orphan-b
+---
+# Orphan B
+""")
+        
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        # Both orphans should be removed (1 from each location)
+        assert result['files_removed'] == 2
+        assert not github_orphan.exists()
+        assert not claude_orphan.exists()

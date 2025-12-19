@@ -37,21 +37,28 @@ When you run `apm install`, APM handles skill integration automatically:
 ### Step 1: Download to apm_modules/
 APM downloads packages to `apm_modules/owner/repo/` (or `apm_modules/owner/repo/skill-name/` for subdirectory packages).
 
-### Step 2: Skill Integration (if `.claude/` exists)
-When your project has a `.claude/` folder, APM integrates skills:
+### Step 2: Skill Integration
+APM copies skills directly to `.github/skills/` (primary) and `.claude/skills/` (compatibility):
 
 | Package Type | Behavior |
 |--------------|----------|
-| **Has existing SKILL.md** | Entire skill folder copied to `.claude/skills/{folder-name}/` |
-| **Has `.apm/` primitives but no SKILL.md** | SKILL.md auto-generated, folder copied to `.claude/skills/{folder-name}/` |
+| **Has existing SKILL.md** | Entire skill folder copied to `.github/skills/{skill-name}/` |
 | **No SKILL.md and no primitives** | No skill folder created |
+
+**Target Directories:**
+- **Primary**: `.github/skills/{skill-name}/` — Works with Copilot, Cursor, Codex, Gemini
+- **Compatibility**: `.claude/skills/{skill-name}/` — Only if `.claude/` folder already exists
 
 ### Skill Folder Naming
 
-Skills use the **source folder name directly**:
+Skill names are validated per the [agentskills.io](https://agentskills.io/) spec:
+- 1-64 characters
+- Lowercase alphanumeric + hyphens only
+- No consecutive hyphens (`--`)
+- Cannot start/end with hyphen
 
 ```
-.claude/skills/
+.github/skills/
 ├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
 ├── design-guidelines/     # From danielmeppiel/design-guidelines
 └── compliance-rules/      # From danielmeppiel/compliance-rules
@@ -231,14 +238,13 @@ APM automatically detects package types:
 
 ## Target Detection
 
-APM decides where to output based on project structure:
+APM decides where to output skills based on project structure:
 
-| Condition | Target | Skill Output |
-|-----------|--------|--------------|
-| `.github/` exists | VSCode | `.github/agents/*.agent.md` |
-| `.claude/` exists | Claude | Native SKILL.md |
-| Both exist | All | Both outputs |
-| Neither | Minimal | AGENTS.md only |
+| Condition | Skill Output |
+|-----------|---------------|
+| `.github/` exists | `.github/skills/{skill-name}/SKILL.md` |
+| `.claude/` also exists | Also copies to `.claude/skills/{skill-name}/SKILL.md` |
+| Neither exists | Creates `.github/skills/` |
 
 Override with:
 ```bash
@@ -320,16 +326,16 @@ Error: Could not find SKILL.md or apm.yml
 apm install owner/repo/subdirectory
 ```
 
-### Agent Not Generated
+### Skill Name Validation Error
 
-If `.github/agents/*.agent.md` isn't created:
+If you see a skill name validation warning:
 
-1. **Check target:** Create `.github/` folder or use `--target vscode`
-2. **Reinstall:** Run `apm install package-name` again
+1. **Check naming:** Names must be lowercase, 1-64 chars, hyphens only (no underscores)
+2. **Auto-normalization:** APM automatically normalizes invalid names when possible
 
 ### Metadata Missing
 
-If agent lacks APM metadata:
+If skill lacks APM metadata:
 
 1. Check the skill was installed via APM (not manually copied)
 2. Reinstall the package

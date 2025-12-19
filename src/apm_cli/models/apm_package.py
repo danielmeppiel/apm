@@ -18,11 +18,58 @@ class GitReferenceType(Enum):
 
 
 class PackageType(Enum):
-    """Types of packages that APM can install."""
+    """Types of packages that APM can install.
+    
+    This enum is used internally to classify packages based on their content
+    (presence of apm.yml, SKILL.md, etc.).
+    """
     APM_PACKAGE = "apm_package"      # Has apm.yml
     CLAUDE_SKILL = "claude_skill"    # Has SKILL.md, no apm.yml
     HYBRID = "hybrid"                # Has both apm.yml and SKILL.md
     INVALID = "invalid"              # Neither apm.yml nor SKILL.md
+
+
+class PackageContentType(Enum):
+    """Explicit package content type declared in apm.yml.
+    
+    This is the user-facing `type` field in apm.yml that controls how the
+    package is processed during install/compile:
+    - INSTRUCTIONS: Compile to AGENTS.md only, no skill created
+    - SKILL: Install as native skill only, no AGENTS.md compilation
+    - HYBRID: Both AGENTS.md instructions AND skill installation (default)
+    - PROMPTS: Commands/prompts only, no instructions or skills
+    """
+    INSTRUCTIONS = "instructions"  # Compile to AGENTS.md only
+    SKILL = "skill"               # Install as native skill only
+    HYBRID = "hybrid"             # Both (default)
+    PROMPTS = "prompts"           # Commands/prompts only
+    
+    @classmethod
+    def from_string(cls, value: str) -> "PackageContentType":
+        """Parse a string value into a PackageContentType enum.
+        
+        Args:
+            value: String value to parse (e.g., "instructions", "skill")
+            
+        Returns:
+            PackageContentType: The corresponding enum value
+            
+        Raises:
+            ValueError: If the value is not a valid package content type
+        """
+        if not value:
+            raise ValueError("Package type cannot be empty")
+        
+        value_lower = value.lower().strip()
+        for member in cls:
+            if member.value == value_lower:
+                return member
+        
+        valid_types = ", ".join(f"'{m.value}'" for m in cls)
+        raise ValueError(
+            f"Invalid package type '{value}'. "
+            f"Valid types are: {valid_types}"
+        )
 
 
 class ValidationError(Enum):
@@ -647,6 +694,7 @@ class APMPackage:
     scripts: Optional[Dict[str, str]] = None
     package_path: Optional[Path] = None  # Local path to package
     target: Optional[str] = None  # Target agent: vscode, claude, or all (applies to compile and install)
+    type: Optional[PackageContentType] = None  # Package content type: instructions, skill, hybrid, or prompts
     
     @classmethod
     def from_apm_yml(cls, apm_yml_path: Path) -> "APMPackage":
@@ -700,6 +748,17 @@ class APMPackage:
                         # Other dependencies (like MCP) remain as strings
                         dependencies[dep_type] = [str(dep) for dep in dep_list if isinstance(dep, str)]
         
+        # Parse package content type
+        pkg_type = None
+        if 'type' in data and data['type'] is not None:
+            type_value = data['type']
+            if not isinstance(type_value, str):
+                raise ValueError(f"Invalid 'type' field: expected string, got {type(type_value).__name__}")
+            try:
+                pkg_type = PackageContentType.from_string(type_value)
+            except ValueError as e:
+                raise ValueError(f"Invalid 'type' field in apm.yml: {e}")
+        
         return cls(
             name=data['name'],
             version=data['version'],
@@ -710,6 +769,7 @@ class APMPackage:
             scripts=data.get('scripts'),
             package_path=apm_yml_path.parent,
             target=data.get('target'),
+            type=pkg_type,
         )
     
     def get_apm_dependencies(self) -> List[DependencyReference]:

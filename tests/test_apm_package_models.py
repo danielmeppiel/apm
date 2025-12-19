@@ -14,6 +14,7 @@ from src.apm_cli.models.apm_package import (
     ResolvedReference,
     PackageInfo,
     GitReferenceType,
+    PackageContentType,
     validate_apm_package,
     parse_git_reference,
 )
@@ -828,3 +829,237 @@ class TestPackageInfo:
             # .apm with primitive files
             (apm_dir / "instructions" / "test.md").write_text("# Test")
             assert info.has_primitives()
+
+
+class TestPackageContentType:
+    """Test PackageContentType enum and parsing."""
+    
+    def test_enum_values(self):
+        """Test that all expected enum values exist."""
+        assert PackageContentType.INSTRUCTIONS.value == "instructions"
+        assert PackageContentType.SKILL.value == "skill"
+        assert PackageContentType.HYBRID.value == "hybrid"
+        assert PackageContentType.PROMPTS.value == "prompts"
+    
+    def test_from_string_valid_values(self):
+        """Test parsing all valid type values."""
+        assert PackageContentType.from_string("instructions") == PackageContentType.INSTRUCTIONS
+        assert PackageContentType.from_string("skill") == PackageContentType.SKILL
+        assert PackageContentType.from_string("hybrid") == PackageContentType.HYBRID
+        assert PackageContentType.from_string("prompts") == PackageContentType.PROMPTS
+    
+    def test_from_string_case_insensitive(self):
+        """Test that parsing is case-insensitive."""
+        assert PackageContentType.from_string("INSTRUCTIONS") == PackageContentType.INSTRUCTIONS
+        assert PackageContentType.from_string("Skill") == PackageContentType.SKILL
+        assert PackageContentType.from_string("HYBRID") == PackageContentType.HYBRID
+        assert PackageContentType.from_string("Prompts") == PackageContentType.PROMPTS
+    
+    def test_from_string_with_whitespace(self):
+        """Test that parsing handles leading/trailing whitespace."""
+        assert PackageContentType.from_string("  instructions  ") == PackageContentType.INSTRUCTIONS
+        assert PackageContentType.from_string("\tskill\n") == PackageContentType.SKILL
+    
+    def test_from_string_invalid_value(self):
+        """Test that invalid values raise ValueError with helpful message."""
+        with pytest.raises(ValueError) as exc_info:
+            PackageContentType.from_string("invalid")
+        
+        error_msg = str(exc_info.value)
+        assert "Invalid package type 'invalid'" in error_msg
+        assert "'instructions'" in error_msg
+        assert "'skill'" in error_msg
+        assert "'hybrid'" in error_msg
+        assert "'prompts'" in error_msg
+    
+    def test_from_string_empty_value(self):
+        """Test that empty string raises ValueError."""
+        with pytest.raises(ValueError, match="Package type cannot be empty"):
+            PackageContentType.from_string("")
+    
+    def test_from_string_typo_suggestions(self):
+        """Test helpful error message for common typos."""
+        # Test that error message lists all valid types
+        with pytest.raises(ValueError) as exc_info:
+            PackageContentType.from_string("instruction")  # Missing 's'
+        
+        error_msg = str(exc_info.value)
+        assert "'instructions'" in error_msg  # Shows correct spelling
+
+
+class TestAPMPackageTypeField:
+    """Test APMPackage type field parsing from apm.yml."""
+    
+    def test_type_field_instructions(self):
+        """Test parsing type: instructions from apm.yml."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0',
+            'type': 'instructions'
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            package = APMPackage.from_apm_yml(Path(f.name))
+            assert package.type == PackageContentType.INSTRUCTIONS
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_skill(self):
+        """Test parsing type: skill from apm.yml."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0',
+            'type': 'skill'
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            package = APMPackage.from_apm_yml(Path(f.name))
+            assert package.type == PackageContentType.SKILL
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_hybrid(self):
+        """Test parsing type: hybrid from apm.yml."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0',
+            'type': 'hybrid'
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            package = APMPackage.from_apm_yml(Path(f.name))
+            assert package.type == PackageContentType.HYBRID
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_prompts(self):
+        """Test parsing type: prompts from apm.yml."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0',
+            'type': 'prompts'
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            package = APMPackage.from_apm_yml(Path(f.name))
+            assert package.type == PackageContentType.PROMPTS
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_missing_defaults_to_none(self):
+        """Test that missing type field defaults to None (hybrid behavior)."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0'
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            package = APMPackage.from_apm_yml(Path(f.name))
+            assert package.type is None  # Default to None for backward compatibility
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_invalid_raises_error(self):
+        """Test that invalid type value raises ValueError."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0',
+            'type': 'invalid-type'
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            with pytest.raises(ValueError) as exc_info:
+                APMPackage.from_apm_yml(Path(f.name))
+            
+            error_msg = str(exc_info.value)
+            assert "Invalid 'type' field" in error_msg
+            assert "invalid-type" in error_msg
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_non_string_raises_error(self):
+        """Test that non-string type value raises ValueError."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0',
+            'type': 123  # Numeric type
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            with pytest.raises(ValueError) as exc_info:
+                APMPackage.from_apm_yml(Path(f.name))
+            
+            error_msg = str(exc_info.value)
+            assert "expected string" in error_msg
+            assert "int" in error_msg
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_case_insensitive_in_yaml(self):
+        """Test that type field parsing is case-insensitive in YAML."""
+        apm_content = {
+            'name': 'test-package',
+            'version': '1.0.0',
+            'type': 'SKILL'  # Uppercase
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            yaml.dump(apm_content, f)
+            f.flush()
+            
+            package = APMPackage.from_apm_yml(Path(f.name))
+            assert package.type == PackageContentType.SKILL
+            
+        Path(f.name).unlink()
+    
+    def test_type_field_null_treated_as_missing(self):
+        """Test that explicit null type field is treated as missing."""
+        # Write YAML directly to handle null explicitly
+        yaml_content = """name: test-package
+version: "1.0.0"
+type: null
+"""
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            
+            package = APMPackage.from_apm_yml(Path(f.name))
+            assert package.type is None
+            
+        Path(f.name).unlink()
+    
+    def test_package_dataclass_with_type(self):
+        """Test that APMPackage dataclass accepts type parameter."""
+        package = APMPackage(
+            name="test",
+            version="1.0.0",
+            type=PackageContentType.SKILL
+        )
+        assert package.type == PackageContentType.SKILL
+    
+    def test_package_dataclass_type_defaults_to_none(self):
+        """Test that APMPackage type defaults to None when not provided."""
+        package = APMPackage(name="test", version="1.0.0")
+        assert package.type is None

@@ -751,6 +751,87 @@ apm:
         # File without header should be preserved (not removed) - it's a user's file
         assert (github_agents / "custom-apm.agent.md").exists()
 
+    # ========== Skill Separation Regression Tests (T5) ==========
+    # ARCHITECTURE DECISION: Skills are NOT Agents
+    # Skills go to .github/skills/ via SkillIntegrator
+    # Agents go to .github/agents/ via AgentIntegrator  
+    # These tests verify agent_integrator does NOT transform skills
+    
+    def test_skill_files_not_converted_to_agents(self):
+        """Regression test: SKILL.md files must NOT be transformed to .agent.md.
+        
+        This was removed in T5 of the Skills Strategy refactoring.
+        Skills and Agents have different semantics:
+        - Skills: Declarative context/knowledge packages (.github/skills/)
+        - Agents: Executable VSCode chat modes (.github/agents/)
+        """
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        
+        # Create a SKILL.md file
+        (package_dir / "SKILL.md").write_text("""---
+name: test-skill
+description: A test skill
+---
+# Test Skill
+
+This is a skill, not an agent.""")
+        
+        github_dir = self.project_root / ".github"
+        github_dir.mkdir()
+        
+        package = APMPackage(
+            name="skill-pkg",
+            version="1.0.0",
+            package_path=package_dir
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main"
+        )
+        package_info = PackageInfo(
+            package=package,
+            install_path=package_dir,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat()
+        )
+        
+        result = self.integrator.integrate_package_agents(package_info, self.project_root)
+        
+        # No agents should be created from skills
+        assert result.files_integrated == 0
+        
+        # Verify .github/agents/ does NOT contain skill-derived files
+        agents_dir = self.project_root / ".github" / "agents"
+        if agents_dir.exists():
+            agent_files = list(agents_dir.glob("*.agent.md"))
+            for agent_file in agent_files:
+                assert "skill" not in agent_file.name.lower(), \
+                    f"SKILL.md was incorrectly transformed to agent: {agent_file}"
+
+    def test_find_agent_files_ignores_skill_files(self):
+        """AgentIntegrator.find_agent_files() must not find SKILL.md files."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        
+        # Create various files
+        (package_dir / "security.agent.md").write_text("# Real Agent")
+        (package_dir / "SKILL.md").write_text("# This is a skill")
+        (package_dir / "skill.md").write_text("# Also a skill")
+        
+        agents = self.integrator.find_agent_files(package_dir)
+        
+        # Only .agent.md files should be found
+        assert len(agents) == 1
+        assert agents[0].name == "security.agent.md"
+        
+        # Verify no SKILL.md files were picked up
+        found_names = [a.name for a in agents]
+        assert "SKILL.md" not in found_names
+        assert "skill.md" not in found_names
+
 
 class TestAgentSuffixPattern:
     """Test -apm suffix pattern edge cases for agents."""

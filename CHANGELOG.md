@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.7.0] - 2025-12-19
+
+### Changed
+
+- **Native Skills Support**: Skills now install to `.github/skills/` as the primary target (per [agentskills.io](https://agentskills.io/) standard)
+- **Skills ≠ Agents**: Removed skill → agent transformation; skills and agents are now separate primitives
+- **Explicit Package Types**: Added `type` field to apm.yml (`instructions`, `skill`, `hybrid`, `prompts`) for routing control
+- **Skill Name Validation**: Validates and normalizes skill names per agentskills.io spec (lowercase, hyphens, 1-64 chars)
+- **Claude Compatibility**: Skills also copy to `.claude/skills/` when `.claude/` folder exists
+
+### Added
+
+- Auto-creates `.github/` directory on install if neither `.github/` nor `.claude/` exists
+
 ## [0.6.3] - 2025-12-09
 
 ### Fixed

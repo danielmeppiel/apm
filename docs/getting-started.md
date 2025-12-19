@@ -389,10 +389,10 @@ apm install
 For VSCode/Copilot (when `.github/` exists):
 - `.github/prompts/*-apm.prompt.md` - Reusable prompt templates
 - `.github/agents/*-apm.agent.md` - Agent definitions
+- `.github/skills/{folder-name}/` - Skills with `SKILL.md` meta-guide
 
 For Claude Code (when `.claude/` exists):
 - `.claude/commands/*-apm.md` - Slash commands
-- `.claude/skills/{folder-name}/` - Skills with `SKILL.md` meta-guide
 
 > **Tip:** Both integrations can coexist in the same project. APM installs to all detected targets.
 
@@ -665,8 +665,8 @@ apm deps list         # 🔗 Show installed APM dependencies
 - `SKILL.md` - Package meta-guide for AI discovery
 - `AGENTS.md` - Generated VSCode/Copilot instructions
 - `CLAUDE.md` - Generated Claude Code instructions
-- `.github/prompts/`, `.github/agents/` - Installed VSCode primitives
-- `.claude/commands/`, `.claude/skills/` - Installed Claude primitives
+- `.github/prompts/`, `.github/agents/`, `.github/skills/` - Installed VSCode primitives and skills
+- `.claude/commands/` - Installed Claude commands
 - `apm_modules/` - Installed APM dependencies
 - `*.prompt.md` - Executable agent workflows
 

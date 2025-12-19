@@ -1,29 +1,36 @@
-"""Agent integration functionality for APM packages."""
+"""Agent integration functionality for APM packages.
+
+Note: SKILL.md files are NOT transformed to .agent.md files. Skills are handled
+separately by SkillIntegrator and installed to .github/skills/ as native skills.
+See skill-strategy.md for the full architectural rationale (T5).
+"""
 
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import re
 
 from .utils import normalize_repo_url
-from .skill_transformer import SkillTransformer, to_hyphen_case
 from apm_cli.compilation.link_resolver import UnifiedLinkResolver
 from apm_cli.primitives.discovery import discover_primitives
-from apm_cli.primitives.parser import parse_skill_file
 
 
 @dataclass
 class IntegrationResult:
-    """Result of agent integration operation."""
+    """Result of agent integration operation.
+    
+    Note: Skills are NOT transformed to agents. They are handled separately
+    by SkillIntegrator and installed to .github/skills/ as native skills.
+    See skill-strategy.md for architectural rationale.
+    """
     files_integrated: int
     files_updated: int  # Updated due to version/commit change
     files_skipped: int  # Unchanged (same version/commit)
     target_paths: List[Path]
     gitignore_updated: bool
     links_resolved: int = 0  # Number of context links resolved
-    skills_integrated: int = 0  # Number of skills transformed to agents
 
 
 class AgentIntegrator:
@@ -77,104 +84,13 @@ class AgentIntegrator:
         
         return agent_files
     
-    def find_skill_file(self, package_path: Path) -> Optional[Path]:
-        """Find SKILL.md file in a package (Claude Skill format).
-        
-        SKILL.md must be at the package root (Claude convention).
-        
-        Args:
-            package_path: Path to the package directory
-            
-        Returns:
-            Optional[Path]: Path to SKILL.md if found, None otherwise
-        """
-        skill_file = package_path / "SKILL.md"
-        return skill_file if skill_file.exists() else None
-    
-    def integrate_skill(self, package_info, project_root: Path) -> Tuple[int, List[Path]]:
-        """Integrate a SKILL.md from a package into .github/agents/.
-        
-        Transforms SKILL.md → .github/agents/{name}.agent.md
-        
-        Args:
-            package_info: PackageInfo object with package metadata
-            project_root: Root directory of the project
-            
-        Returns:
-            Tuple[int, List[Path]]: (number of skills integrated, list of target paths)
-        """
-        skill_file = self.find_skill_file(package_info.install_path)
-        if not skill_file:
-            return (0, [])
-        
-        # Parse the skill file
-        skill = parse_skill_file(skill_file)
-        if not skill:
-            return (0, [])
-        
-        # Add source attribution
-        skill.source = f"dependency:{package_info.get_canonical_dependency_string()}"
-        
-        # Determine target path
-        agent_name = to_hyphen_case(skill.name)
-        agents_dir = project_root / ".github" / "agents"
-        agents_dir.mkdir(parents=True, exist_ok=True)
-        target_path = agents_dir / f"{agent_name}.agent.md"
-        
-        # Generate content with APM metadata
-        agent_content = self._generate_skill_agent_content(skill, package_info)
-        
-        # Write file
-        target_path.write_text(agent_content, encoding='utf-8')
-        
-        return (1, [target_path])
-    
-    def _generate_skill_agent_content(self, skill, package_info) -> str:
-        """Generate agent.md content from a skill with APM metadata.
-        
-        Args:
-            skill: Skill primitive to convert
-            package_info: PackageInfo for source attribution
-            
-        Returns:
-            str: Agent.md file content with frontmatter
-        """
-        import hashlib
-        from datetime import datetime
-        
-        # Calculate content hash
-        content_hash = hashlib.sha256(skill.content.encode()).hexdigest()
-        
-        lines = [
-            "---",
-            f"name: {skill.name}",
-        ]
-        
-        if skill.description:
-            lines.append(f"description: {skill.description}")
-        
-        # Add APM metadata
-        lines.append("apm:")
-        lines.append(f"  source: {package_info.package.name}")
-        lines.append(f"  source_repo: {package_info.package.source or 'unknown'}")
-        lines.append(f"  source_dependency: {package_info.get_canonical_dependency_string()}")
-        lines.append(f"  version: {package_info.package.version}")
-        commit = (
-            package_info.resolved_reference.resolved_commit
-            if package_info.resolved_reference
-            else "unknown"
-        )
-        lines.append(f"  commit: {commit}")
-        lines.append(f"  original_path: SKILL.md")
-        lines.append(f"  installed_at: {datetime.now().isoformat()}")
-        lines.append(f"  content_hash: {content_hash}")
-        lines.append(f"  source_type: claude-skill")
-        
-        lines.append("---")
-        lines.append("")
-        lines.append(skill.content)
-        
-        return "\n".join(lines)
+    # NOTE: find_skill_file(), integrate_skill(), and _generate_skill_agent_content()
+    # have been REMOVED as part of T5 (skill-strategy.md).
+    #
+    # Skills are NOT transformed to .agent.md files. Instead:
+    # - Skills go directly to .github/skills/ via SkillIntegrator
+    # - This preserves the native skill format and avoids semantic confusion
+    # - See skill-strategy.md for the full architectural rationale
 
     def _parse_header_metadata(self, file_path: Path) -> dict:
         """Parse APM metadata from YAML frontmatter in an integrated agent file.
@@ -391,6 +307,10 @@ class AgentIntegrator:
           - Skip if unchanged (preserve file timestamps)
         Resolves context links during integration.
         
+        Note: SKILL.md files are NOT transformed to .agent.md files.
+        Skills are handled separately by SkillIntegrator and go to .github/skills/.
+        See skill-strategy.md for architectural rationale.
+        
         Args:
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
@@ -407,14 +327,12 @@ class AgentIntegrator:
             # If context discovery fails, continue without link resolution
             self.link_resolver = None
         
-        # Find all agent files in the package
+        # Find all agent files in the package (.agent.md and .chatmode.md)
+        # NOTE: SKILL.md is NOT included - skills go to .github/skills/ via SkillIntegrator
         agent_files = self.find_agent_files(package_info.install_path)
         
-        # Also check for SKILL.md (Claude Skill format)
-        skill_file = self.find_skill_file(package_info.install_path)
-        
-        # If no agent files AND no skill file, return empty result
-        if not agent_files and not skill_file:
+        # If no agent files, return empty result
+        if not agent_files:
             return IntegrationResult(
                 files_integrated=0,
                 files_updated=0,
@@ -472,20 +390,13 @@ class AgentIntegrator:
                 files_integrated += 1
                 target_paths.append(target_path)
         
-        # Also integrate SKILL.md if present (Claude Skill → VSCode agent)
-        skills_integrated, skill_paths = self.integrate_skill(package_info, project_root)
-        if skills_integrated > 0:
-            files_integrated += skills_integrated
-            target_paths.extend(skill_paths)
-        
         return IntegrationResult(
             files_integrated=files_integrated,
             files_updated=files_updated,
             files_skipped=files_skipped,
             target_paths=target_paths,
             gitignore_updated=False,
-            links_resolved=total_links_resolved,
-            skills_integrated=skills_integrated
+            links_resolved=total_links_resolved
         )
     
     def sync_integration(self, apm_package, project_root: Path) -> Dict[str, int]:

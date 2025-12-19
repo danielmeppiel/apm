@@ -1190,10 +1190,11 @@ def uninstall(ctx, packages, dry_run):
             except Exception as e:
                 agents_failed += 1
 
-        # Sync skill integration to remove orphaned Claude skills
+        # Sync skill integration to remove orphaned skills
+        # T12: Check both .github/skills/ and .claude/skills/ locations
         skills_cleaned = 0
         skills_failed = 0
-        if Path(".claude/skills").exists():
+        if Path(".github/skills").exists() or Path(".claude/skills").exists():
             try:
                 from apm_cli.models.apm_package import APMPackage
                 from apm_cli.integration.skill_integrator import SkillIntegrator
@@ -1228,9 +1229,9 @@ def uninstall(ctx, packages, dry_run):
         if agents_cleaned > 0:
             _rich_info(f"✓ Cleaned up {agents_cleaned} integrated agent(s)")
         if skills_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {skills_cleaned} Claude skill(s)")
+            _rich_info(f"✓ Cleaned up {skills_cleaned} skill(s)")
         if commands_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {commands_cleaned} Claude command(s)")
+            _rich_info(f"✓ Cleaned up {commands_cleaned} command(s)")
         if (
             prompts_failed > 0
             or agents_failed > 0
@@ -1355,6 +1356,19 @@ def _install_apm_dependencies(
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
+        # Auto-create .github/ if neither .github/ nor .claude/ exists.
+        # Per skill-strategy Decision 1, .github/skills/ is the standard skills location;
+        # creating .github/ here ensures a consistent skills root and also enables
+        # VSCode/Copilot integration by default (quick path to value), even for
+        # projects that don't yet use .claude/.
+        github_dir = project_root / ".github"
+        claude_dir = project_root / ".claude"
+        if not github_dir.exists() and not claude_dir.exists():
+            github_dir.mkdir(parents=True, exist_ok=True)
+            _rich_info(
+                "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
+            )
+
         detected_target, detection_reason = detect_target(
             project_root=project_root,
             explicit_target=None,  # No explicit flag for install
@@ -1368,7 +1382,7 @@ def _install_apm_dependencies(
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
         agent_integrator = AgentIntegrator()
-        from apm_cli.integration.skill_integrator import SkillIntegrator
+        from apm_cli.integration.skill_integrator import SkillIntegrator, should_install_skill
         from apm_cli.integration.command_integrator import CommandIntegrator
 
         skill_integrator = SkillIntegrator()
@@ -1519,10 +1533,6 @@ def _install_apm_dependencies(
                                     _rich_info(
                                         f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
                                     )
-                                if agent_result.skills_integrated > 0:
-                                    _rich_info(
-                                        f"  └─ {agent_result.skills_integrated} skill(s) transformed → .github/agents/ (from SKILL.md)"
-                                    )
                                 if agent_result.files_updated > 0:
                                     _rich_info(
                                         f"  └─ {agent_result.files_updated} agents updated"
@@ -1530,19 +1540,20 @@ def _install_apm_dependencies(
                                 # Track links resolved
                                 total_links_resolved += agent_result.links_resolved
 
-                            # Claude integration (skills + commands)
-                            if integrate_claude:
-                                # Generate SKILL.md for Claude Skills
+                            # Skill integration (works for both VSCode and Claude)
+                            # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
+                            if integrate_vscode or integrate_claude:
                                 skill_result = skill_integrator.integrate_package_skill(
                                     cached_package_info, project_root
                                 )
                                 if skill_result.skill_created:
                                     total_skills_generated += 1
                                     _rich_info(
-                                        f"  └─ SKILL.md generated for Claude Skills"
+                                        f"  └─ Skill integrated → .github/skills/"
                                     )
 
-                                # Generate Claude commands from prompts
+                            # Claude-specific integration (commands)
+                            if integrate_claude:
                                 command_result = (
                                     command_integrator.integrate_package_commands(
                                         cached_package_info, project_root
@@ -1607,7 +1618,7 @@ def _install_apm_dependencies(
                         package_type = package_info.package_type
                         if package_type == PackageType.CLAUDE_SKILL:
                             _rich_info(
-                                f"  └─ Package type: Claude Skill (SKILL.md detected)"
+                                f"  └─ Package type: Skill (SKILL.md detected)"
                             )
                         elif package_type == PackageType.HYBRID:
                             _rich_info(
@@ -1654,10 +1665,6 @@ def _install_apm_dependencies(
                                     _rich_info(
                                         f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
                                     )
-                                if agent_result.skills_integrated > 0:
-                                    _rich_info(
-                                        f"  └─ {agent_result.skills_integrated} skill(s) transformed → .github/agents/ (from SKILL.md)"
-                                    )
                                 if agent_result.files_updated > 0:
                                     _rich_info(
                                         f"  └─ {agent_result.files_updated} agents updated"
@@ -1665,18 +1672,20 @@ def _install_apm_dependencies(
                                 # Track links resolved
                                 total_links_resolved += agent_result.links_resolved
 
-                            # Claude integration (skills + commands)
-                            if integrate_claude:
-                                # Generate SKILL.md for Claude Skills
+                            # Skill integration (works for both VSCode and Claude)
+                            # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
+                            if integrate_vscode or integrate_claude:
                                 skill_result = skill_integrator.integrate_package_skill(
                                     package_info, project_root
                                 )
                                 if skill_result.skill_created:
                                     total_skills_generated += 1
                                     _rich_info(
-                                        f"  └─ SKILL.md generated for Claude Skills"
+                                        f"  └─ Skill integrated → .github/skills/"
                                     )
 
+                            # Claude-specific integration (commands)
+                            if integrate_claude:
                                 # Generate Claude commands from prompts
                                 command_result = (
                                     command_integrator.integrate_package_commands(
@@ -1745,11 +1754,11 @@ def _install_apm_dependencies(
 
         # Show Claude Skills stats if any were generated
         if total_skills_generated > 0:
-            _rich_info(f"✓ Generated {total_skills_generated} Claude Skill(s)")
+            _rich_info(f"✓ Generated {total_skills_generated} Skill(s)")
 
         # Show Claude commands stats if any were integrated
         if total_commands_integrated > 0:
-            _rich_info(f"✓ Integrated {total_commands_integrated} Claude command(s)")
+            _rich_info(f"✓ Integrated {total_commands_integrated} command(s)")
 
         _rich_success(f"Installed {installed_count} APM dependencies")
 
