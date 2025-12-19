@@ -91,7 +91,7 @@ def validate_skill_name(name: str) -> tuple[bool, str]:
     
     # Check for valid characters (lowercase alphanumeric + hyphens only)
     # Pattern: must start and end with alphanumeric, with alphanumeric or hyphens in between
-    pattern = r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$|^[a-z0-9]$'
+    pattern = r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
     if not re.match(pattern, name):
         # Determine specific error
         if any(c.isupper() for c in name):

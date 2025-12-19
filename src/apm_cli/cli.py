@@ -1356,13 +1356,18 @@ def _install_apm_dependencies(
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
-        # Auto-create .github/ if neither .github/ nor .claude/ exists
-        # This enables VSCode/Copilot integration by default (quick path to value)
+        # Auto-create .github/ if neither .github/ nor .claude/ exists.
+        # Per skill-strategy Decision 1, .github/skills/ is the standard skills location;
+        # creating .github/ here ensures a consistent skills root and also enables
+        # VSCode/Copilot integration by default (quick path to value), even for
+        # projects that don't yet use .claude/.
         github_dir = project_root / ".github"
         claude_dir = project_root / ".claude"
         if not github_dir.exists() and not claude_dir.exists():
             github_dir.mkdir(parents=True, exist_ok=True)
-            _rich_info("Created .github/ for VSCode/Copilot integration")
+            _rich_info(
+                "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
+            )
 
         detected_target, detection_reason = detect_target(
             project_root=project_root,
