@@ -226,7 +226,7 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 | Location | Purpose |
 |----------|---------||
 | `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
-| `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
+| `.github/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
 
 ### Automatic Command Integration
 
@@ -250,23 +250,23 @@ apm install danielmeppiel/design-guidelines
 
 ### Automatic Skills Integration
 
-APM automatically integrates skills from installed packages into `.claude/skills/`:
+APM automatically integrates skills from installed packages into `.github/skills/`:
 
 ```bash
 # Install a package with skills
 apm install ComposioHQ/awesome-claude-skills/mcp-builder
 
 # Result:
-# .claude/skills/mcp-builder/SKILL.md    → Skill available in Claude
-# .claude/skills/mcp-builder/...         → Full skill folder copied
+# .github/skills/mcp-builder/SKILL.md    → Skill available for agents
+# .github/skills/mcp-builder/...         → Full skill folder copied
 ```
 
 **Skill Folder Naming**: Uses the source folder name directly (e.g., `mcp-builder`, `design-guidelines`), not flattened paths.
 
 **How skill integration works:**
 1. `apm install` checks if the package contains a `SKILL.md` file
-2. If `SKILL.md` exists: copies the entire skill folder to `.claude/skills/{folder-name}/`
-3. If no `SKILL.md` but package has `.apm/` primitives: auto-generates `SKILL.md` in `.claude/skills/{folder-name}/`
+2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/`
+3. If no `SKILL.md` but package has `.apm/` primitives: auto-generates `SKILL.md` in `.github/skills/{folder-name}/`
 4. Updates `.gitignore` to exclude generated skills
 5. `apm uninstall` removes the skill folder
 
@@ -318,12 +318,12 @@ apm compile --target claude
 #    /gdpr-assessment → Runs GDPR compliance check
 
 # 4. CLAUDE.md provides project instructions automatically
-# 5. Skills in .claude/skills/ are available for Claude to reference
+# 5. Skills in .github/skills/ are available for agents to reference
 ```
 
 ### Claude Desktop Integration
 
-Skills installed to `.claude/skills/` are automatically available in Claude Desktop. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
+Skills installed to `.github/skills/` are automatically available for AI agents. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
 
 ### Cleanup and Sync
 

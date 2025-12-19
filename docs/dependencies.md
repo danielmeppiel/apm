@@ -41,12 +41,12 @@ apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 
 #### Skill Integration During Install
 
-When your project has a `.claude/` folder, skills are integrated automatically:
+Skills are integrated to `.github/skills/`:
 
 | Source | Result |
 |--------|--------|
-| Package with existing `SKILL.md` | Skill folder copied to `.claude/skills/{folder-name}/` |
-| APM package with `.apm/` primitives (no SKILL.md) | SKILL.md auto-generated, folder copied to `.claude/skills/{folder-name}/` |
+| Package with existing `SKILL.md` | Skill folder copied to `.github/skills/{folder-name}/` |
+| APM package with `.apm/` primitives (no SKILL.md) | SKILL.md auto-generated, folder copied to `.github/skills/{folder-name}/` |
 | Package without SKILL.md or primitives | No skill folder created |
 
 #### Skill Folder Naming
@@ -54,7 +54,7 @@ When your project has a `.claude/` folder, skills are integrated automatically:
 Skill folders use the **source folder name directly** (not flattened paths):
 
 ```
-.claude/skills/
+.github/skills/
 ├── brand-guidelines/      # From ComposioHQ/awesome-claude-skills/brand-guidelines
 ├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
 └── compliance-rules/      # From danielmeppiel/compliance-rules

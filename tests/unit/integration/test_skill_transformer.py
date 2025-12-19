@@ -1,4 +1,10 @@
-"""Tests for skill transformer functionality (SKILL.md → .agent.md conversion)."""
+"""Tests for skill transformer functionality.
+
+Note: The SkillTransformer class is used internally by SkillIntegrator for
+skill name normalization and formatting. Skills are NO LONGER transformed
+to .agent.md files - they go directly to .github/skills/ as native skills.
+See skill-strategy.md for architectural rationale (T5).
+"""
 
 import tempfile
 import shutil
@@ -49,7 +55,12 @@ class TestToHyphenCase:
 
 
 class TestSkillTransformer:
-    """Test SkillTransformer class."""
+    """Test SkillTransformer class.
+    
+    Note: The SkillTransformer is kept for backwards compatibility and internal use.
+    The transform_to_agent() method is deprecated but still functional for testing
+    purposes. In production, skills go directly to .github/skills/ via SkillIntegrator.
+    """
     
     def setup_method(self):
         """Set up test fixtures."""
@@ -176,61 +187,9 @@ class TestSkillTransformer:
         assert result.name == "my-awesome-skill-v2.agent.md"
 
 
-class TestAgentIntegratorSkillSupport:
-    """Test AgentIntegrator's skill handling."""
-    
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.project_root = Path(self.temp_dir)
-        self.package_dir = self.project_root / "apm_modules" / "test-package"
-        self.package_dir.mkdir(parents=True)
-    
-    def teardown_method(self):
-        """Clean up after tests."""
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-    
-    def test_find_skill_file_when_exists(self):
-        """Test finding SKILL.md when it exists."""
-        from apm_cli.integration.agent_integrator import AgentIntegrator
-        
-        # Create SKILL.md
-        skill_file = self.package_dir / "SKILL.md"
-        skill_file.write_text("---\nname: Test\n---\n# Content")
-        
-        integrator = AgentIntegrator()
-        result = integrator.find_skill_file(self.package_dir)
-        
-        assert result is not None
-        assert result == skill_file
-    
-    def test_find_skill_file_when_not_exists(self):
-        """Test finding SKILL.md when it doesn't exist."""
-        from apm_cli.integration.agent_integrator import AgentIntegrator
-        
-        integrator = AgentIntegrator()
-        result = integrator.find_skill_file(self.package_dir)
-        
-        assert result is None
-    
-    def test_find_skill_file_case_sensitive(self):
-        """Test SKILL.md detection on case-insensitive filesystems.
-        
-        Note: On macOS/Windows with case-insensitive filesystems, skill.md 
-        will match SKILL.md. On Linux (case-sensitive), it won't.
-        This test documents the expected behavior.
-        """
-        from apm_cli.integration.agent_integrator import AgentIntegrator
-        
-        # Create lowercase skill.md
-        skill_file = self.package_dir / "skill.md"
-        skill_file.write_text("---\nname: Test\n---\n# Content")
-        
-        integrator = AgentIntegrator()
-        result = integrator.find_skill_file(self.package_dir)
-        
-        # On case-insensitive filesystems (macOS, Windows), this will match
-        # On case-sensitive filesystems (Linux), it won't
-        # We just verify the function doesn't crash
-        if result is not None:
-            assert result.name.upper() == "SKILL.MD"
+# NOTE: TestAgentIntegratorSkillSupport class has been REMOVED as part of T5.
+# 
+# The find_skill_file() method was removed from AgentIntegrator because:
+# - Skills are NO LONGER transformed to .agent.md files
+# - Skills now go directly to .github/skills/ via SkillIntegrator
+# - See skill-strategy.md for the full architectural rationale

@@ -8,6 +8,7 @@ from .apm_package import (
     ResolvedReference,
     PackageInfo,
     GitReferenceType,
+    PackageContentType,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "ResolvedReference",
     "PackageInfo",
     "GitReferenceType",
+    "PackageContentType",
 ]

@@ -224,8 +224,13 @@ When you run `apm install`, APM automatically integrates primitives from install
 APM also integrates with Claude Code when `.claude/` directory exists:
 
 - **Commands**: `.prompt.md` files → `.claude/commands/*-apm.md`
-- **Skills**: Skill packages → `.claude/skills/{folder-name}/` (copies entire folder)
-- **APM packages**: Packages with `.apm/` primitives → `.claude/skills/{folder-name}/SKILL.md` (generated)
+
+**Skill Integration:**
+
+Skills are copied directly to target directories:
+
+- **Primary**: `.github/skills/{skill-name}/` — Entire skill folder copied
+- **Compatibility**: `.claude/skills/{skill-name}/` — Also copied if `.claude/` folder exists
 
 **Example Integration Output**:
 ```
@@ -270,7 +275,7 @@ apm uninstall danielmeppiel/design-guidelines --dry-run
 | Integrated agents | `.github/agents/*-apm.agent.md` |
 | Integrated chatmodes | `.github/agents/*-apm.chatmode.md` |
 | Claude commands | `.claude/commands/*-apm.md` |
-| Skill folders | `.claude/skills/{folder-name}/` |
+| Skill folders | `.github/skills/{folder-name}/` |
 
 **Behavior:**
 - Removes package from `apm.yml` dependencies
@@ -632,8 +637,8 @@ target: vscode  # or claude, or all
 
 | Target | Output Files | Best For |
 |--------|--------------|----------|
-| `vscode` | AGENTS.md, .github/prompts/, .github/agents/ | GitHub Copilot, Cursor, Codex, Gemini |
-| `claude` | CLAUDE.md, .claude/commands/, .claude/skills/, SKILL.md | Claude Code, Claude Desktop |
+| `vscode` | AGENTS.md, .github/prompts/, .github/agents/, .github/skills/ | GitHub Copilot, Cursor, Codex, Gemini |
+| `claude` | CLAUDE.md, .claude/commands/, SKILL.md | Claude Code, Claude Desktop |
 | `all` | All of the above | Universal compatibility |
 
 **Examples:**
