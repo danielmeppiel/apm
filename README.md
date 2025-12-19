@@ -41,7 +41,7 @@ apm compile
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  APM Packages (GitHub, Azure DevOps, registries)                │
+│  APM Packages (from GitHub, Azure DevOps)                       │
 │  ├── Instructions → Coding standards, guardrails (AGENTS.md)    │
 │  ├── Skills       → AI capabilities, workflows (agentskills.io) │
 │  ├── Prompts      → Reusable commands and templates             │
@@ -94,20 +94,17 @@ apm install && apm compile
 ## Install From Anywhere
 
 ```bash
-# GitHub
+# For packages hosted on GitHub 
 apm install owner/repo
 
-# GitHub Enterprise  
-apm install ghe.company.com/owner/repo
-
-# Azure DevOps
-apm install dev.azure.com/org/project/repo
-
-# Single file (Virtual Package)
+# Paths or Single file are also OK (Virtual Package)
 apm install github/awesome-copilot/prompts/code-review.prompt.md
 
-# Claude Skills
-apm install ComposioHQ/awesome-claude-skills/brand-guidelines
+# For packages in GitHub Enterprise with Data Residency 
+apm install ghe.company.com/owner/repo
+
+# For packages Azure DevOps
+apm install dev.azure.com/org/project/repo
 ```
 
 ## Create Your Own Package
