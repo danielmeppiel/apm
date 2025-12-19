@@ -22,16 +22,13 @@ curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | 
 **One package. Every AI agent. Native format for each.**
 
 ```bash
-# Install from GitHub
-apm install danielmeppiel/compliance-rules
-
-# Install from awesome-copilot
-apm install github/awesome-copilot/prompts/code-review.prompt.md
-
-# Install Agent Skills (agentskills.io standard)
+# Install a skill — give your agent new capabilities
 apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 
-# Compile instructions for your AI tools
+# Install guardrails — keep your agent compliant
+apm install danielmeppiel/compliance-rules
+
+# Compile for your AI tools
 apm compile
 ```
 
@@ -64,15 +61,16 @@ apm compile
 
 ## Real Example: corporate-website
 
-A production project using APM with layered guardrails:
+A production project using APM with skills and layered guardrails:
 
 ```yaml
 # apm.yml
 name: corporate-website
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules    # GDPR, security, audit
-    - danielmeppiel/design-guidelines   # Accessibility, UI standards
+    - ComposioHQ/awesome-claude-skills/mcp-builder  # Build MCP servers
+    - danielmeppiel/compliance-rules                 # GDPR, security
+    - danielmeppiel/design-guidelines                # UI standards
 ```
 
 ```bash
