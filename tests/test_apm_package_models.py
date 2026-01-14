@@ -130,7 +130,7 @@ class TestDependencyReference:
         
         # Domains that LOOK suspicious but are actually valid FQDNs
         # These are ACCEPTED because they're valid hostnames - if someone runs a Git server there, APM can use it
-        # The user must explicitly type these in their apm.yml, so there's no confusion
+        # The user must explicitly type these in their package path (e.g., CLI or apm.yml), so there's no confusion
         valid_but_suspicious = [
             # Valid FQDNs that happen to have "github" in them
             "fakegithub.com/user/repo",
@@ -257,7 +257,7 @@ class TestDependencyReference:
         
         for valid_url, expected_path in valid_virtual_packages:
             dep = DependencyReference.parse(valid_url)
-            assert dep.is_virtual == True
+            assert dep.is_virtual
             assert dep.virtual_path == expected_path
     
     def test_parse_virtual_file_package(self):

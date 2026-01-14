@@ -40,7 +40,7 @@ class TestCustomGitHubHost:
         assert is_supported_git_host("dev.azure.com")
     
     def test_is_supported_git_host_respects_github_host_env(self, monkeypatch):
-        """Test that GITHUB_HOST env var makes any host supported."""
+        """Test that GITHUB_HOST env var makes the configured host supported."""
         monkeypatch.setenv("GITHUB_HOST", "custom.internal.server")
         
         # The configured host should be supported

@@ -81,6 +81,7 @@ def test_is_supported_git_host():
     
     # Custom GitHub Server instances (any valid FQDN is accepted)
     # This aligns with documentation: "APM accepts any Git host via FQDN syntax"
+    # Intentionally accepting non-GitHub hosts as valid FQDNs - Git operations validate actual server compatibility
     assert github_host.is_supported_git_host("github.company.com")
     assert github_host.is_supported_git_host("git.enterprise.io")
     
