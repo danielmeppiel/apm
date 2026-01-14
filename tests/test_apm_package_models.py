@@ -250,15 +250,15 @@ class TestDependencyReference:
         
         # Valid FQDNs should be accepted (user explicitly specified the domain)
         valid_virtual_packages = [
-            "github.com.evil.com/user/repo/prompts/file.prompt.md",
-            "attacker.net/user/repo/prompts/file.prompt.md",
-            "custom.server.com/team/repo/prompts/test.prompt.md",
+            ("github.com.evil.com/user/repo/prompts/file.prompt.md", "prompts/file.prompt.md"),
+            ("attacker.net/user/repo/prompts/file.prompt.md", "prompts/file.prompt.md"),
+            ("custom.server.com/team/repo/prompts/test.prompt.md", "prompts/test.prompt.md"),
         ]
         
-        for valid_url in valid_virtual_packages:
+        for valid_url, expected_path in valid_virtual_packages:
             dep = DependencyReference.parse(valid_url)
             assert dep.is_virtual == True
-            assert dep.virtual_path == "prompts/file.prompt.md" or dep.virtual_path == "prompts/test.prompt.md"
+            assert dep.virtual_path == expected_path
     
     def test_parse_virtual_file_package(self):
         """Test parsing virtual file package (individual file)."""
