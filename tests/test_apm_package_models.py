@@ -107,37 +107,46 @@ class TestDependencyReference:
                 DependencyReference.parse(invalid_format)
     
     def test_parse_malicious_url_bypass_attempts(self):
-        """Test that malicious URL bypass attempts are properly rejected.
+        """Test that malicious URL bypass attempts are handled correctly.
         
         This tests the security fix for CWE-20: Improper Input Validation.
-        Prevents attacks where an attacker embeds allowed hostnames in unexpected locations.
+        With the updated behavior, APM accepts any valid FQDN when explicitly provided.
+        This is intentional - users can use any custom Git server at any domain.
+        However, we still reject path injection attacks and invalid formats.
         """
-        # Attack vectors that should be REJECTED
-        malicious_formats = [
-            # Subdomain attack: attacker owns prefix subdomain
-            "evil-github.com/user/repo",
-            "malicious-github.com/user/repo",
-            "github.com.evil.com/user/repo",
-            
-            # Path injection: embedding github.com in path
+        # Attack vectors that should be REJECTED (path injection)
+        path_injection_attacks = [
+            # Path injection: embedding github.com in path, not host
             "evil.com/github.com/user/repo",
             "attacker.net/github.com/malicious/repo",
             
-            # Domain suffix attacks
-            "fakegithub.com/user/repo",
-            "notgithub.com/user/repo",
-            
             # Protocol-relative URL attacks
             "//evil.com/github.com/user/repo",
-            
-            # Mixed case attacks (domains are case-insensitive)
-            "GitHub.COM.evil.com/user/repo",
-            "GITHUB.com.attacker.net/user/repo",
         ]
         
-        for malicious_url in malicious_formats:
-            with pytest.raises(ValueError, match="Unsupported Git host"):
+        for malicious_url in path_injection_attacks:
+            with pytest.raises(ValueError):
                 DependencyReference.parse(malicious_url)
+        
+        # Domains that LOOK suspicious but are actually valid FQDNs
+        # These are ACCEPTED because they're valid hostnames - if someone runs a Git server there, APM can use it
+        # The user must explicitly type these in their apm.yml, so there's no confusion
+        valid_but_suspicious = [
+            # Valid FQDNs that happen to have "github" in them
+            "fakegithub.com/user/repo",
+            "notgithub.com/user/repo",
+            "evil-github.com/user/repo",
+            "malicious-github.com/user/repo",
+            "github.com.evil.com/user/repo",  # This is a valid subdomain of evil.com
+            "GITHUB.com.attacker.net/user/repo",  # Valid subdomain of attacker.net
+            "GitHub.COM.evil.com/user/repo",
+        ]
+        
+        for valid_url in valid_but_suspicious:
+            # These should parse successfully - they're valid FQDNs
+            dep = DependencyReference.parse(valid_url)
+            assert dep.repo_url == "user/repo"
+            assert dep.host is not None  # Host is extracted from the URL
     
     def test_parse_legitimate_github_enterprise_formats(self):
         """Test that legitimate GitHub Enterprise hostnames are accepted.
@@ -226,16 +235,30 @@ class TestDependencyReference:
         assert dep.repo_url == "myorg/myproject/myrepo"
     
     def test_parse_virtual_package_with_malicious_host(self):
-        """Test that virtual packages with malicious hosts are rejected."""
-        malicious_virtual_formats = [
+        """Test that virtual packages with various hosts are handled correctly.
+        
+        Path injection attacks should be rejected, but valid FQDNs should be accepted.
+        """
+        # Path injection should be rejected
+        path_injection = [
             "evil.com/github.com/user/repo/prompts/file.prompt.md",
-            "github.com.evil.com/user/repo/prompts/file.prompt.md",
-            "attacker.net/user/repo/prompts/file.prompt.md",
         ]
         
-        for malicious_url in malicious_virtual_formats:
+        for malicious_url in path_injection:
             with pytest.raises(ValueError):
                 DependencyReference.parse(malicious_url)
+        
+        # Valid FQDNs should be accepted (user explicitly specified the domain)
+        valid_virtual_packages = [
+            "github.com.evil.com/user/repo/prompts/file.prompt.md",
+            "attacker.net/user/repo/prompts/file.prompt.md",
+            "custom.server.com/team/repo/prompts/test.prompt.md",
+        ]
+        
+        for valid_url in valid_virtual_packages:
+            dep = DependencyReference.parse(valid_url)
+            assert dep.is_virtual == True
+            assert dep.virtual_path == "prompts/file.prompt.md" or dep.virtual_path == "prompts/test.prompt.md"
     
     def test_parse_virtual_file_package(self):
         """Test parsing virtual file package (individual file)."""
