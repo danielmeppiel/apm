@@ -79,10 +79,20 @@ def test_is_supported_git_host():
     assert github_host.is_supported_git_host("dev.azure.com")
     assert github_host.is_supported_git_host("mycompany.visualstudio.com")
     
-    # Unsupported hosts
-    assert not github_host.is_supported_git_host("gitlab.com")
-    assert not github_host.is_supported_git_host("bitbucket.org")
-    assert not github_host.is_supported_git_host("example.com")
+    # Custom GitHub Server instances (any valid FQDN is accepted)
+    # This aligns with documentation: "APM accepts any Git host via FQDN syntax"
+    assert github_host.is_supported_git_host("github.company.com")
+    assert github_host.is_supported_git_host("git.enterprise.io")
+    
+    # Even non-GitHub Git hosts are accepted if they're valid FQDNs
+    # The actual Git operations will fail if the host is not reachable
+    assert github_host.is_supported_git_host("gitlab.com")
+    assert github_host.is_supported_git_host("bitbucket.org")
+    assert github_host.is_supported_git_host("example.com")
+    
+    # Invalid hosts (not valid FQDNs)
+    assert not github_host.is_supported_git_host("localhost")  # No dot
+    assert not github_host.is_supported_git_host("single")     # No dot
     assert not github_host.is_supported_git_host(None)
     assert not github_host.is_supported_git_host("")
 

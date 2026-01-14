@@ -55,7 +55,13 @@ def is_supported_git_host(hostname: Optional[str]) -> bool:
     - GitHub Enterprise (*.ghe.com)
     - Azure DevOps Services (dev.azure.com)
     - Azure DevOps legacy (*.visualstudio.com)
-    - Any FQDN set via GITHUB_HOST environment variable
+    - Any host set via GITHUB_HOST environment variable
+    - Any valid FQDN when used with explicit package syntax (validated during parsing)
+    
+    Note: This function is permissive by design. It accepts any valid FQDN
+    to support custom GitHub Server instances and enterprise deployments.
+    The actual Git operations will fail if the host is not reachable or
+    not a valid Git server.
     """
     if not hostname:
         return False
@@ -71,6 +77,12 @@ def is_supported_git_host(hostname: Optional[str]) -> bool:
     # Accept the configured default host (supports custom Azure DevOps Server, etc.)
     configured_host = os.environ.get("GITHUB_HOST", "").lower()
     if configured_host and hostname.lower() == configured_host:
+        return True
+    
+    # Accept any valid FQDN when explicitly provided in package path
+    # This allows custom GitHub Server instances like github.company.com
+    # without requiring them to be in a specific format or env var
+    if is_valid_fqdn(hostname):
         return True
     
     return False

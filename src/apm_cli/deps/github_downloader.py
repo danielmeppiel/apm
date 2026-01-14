@@ -531,7 +531,8 @@ class GitHubPackageDownloader:
             # GitHub Enterprise Cloud Data Residency: https://api.{subdomain}.ghe.com/repos/owner/repo/contents/path
             api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         else:
-            # GitHub Enterprise Server: https://{host}/api/v3/repos/owner/repo/contents/path
+            # GitHub Enterprise Server or custom GitHub instance: https://{host}/api/v3/repos/owner/repo/contents/path
+            # This handles custom domains like github.company.com or github.whatever.com
             api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         
         # Set up authentication headers
@@ -562,6 +563,7 @@ class GitHubPackageDownloader:
                 elif host.endswith(".ghe.com"):
                     fallback_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
                 else:
+                    # GitHub Enterprise Server or custom GitHub instance
                     fallback_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
                 
                 try:

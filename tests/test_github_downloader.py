@@ -304,6 +304,7 @@ class TestEnterpriseHostHandling:
         from git.exc import GitCommandError
         
         monkeypatch.setenv("GITHUB_HOST", "company.ghe.com")
+        monkeypatch.setenv("GITHUB_APM_PAT", "test-token")  # Set token to trigger Method 1
         
         downloader = GitHubPackageDownloader()
         downloader.github_host = "company.ghe.com"
@@ -334,6 +335,8 @@ class TestEnterpriseHostHandling:
         assert "team/internal-repo" in third_call_url
         # Ensure it's NOT using github.com
         assert "github.com" not in third_call_url or "company.ghe.com" in third_call_url
+        
+        monkeypatch.delenv("GITHUB_APM_PAT", raising=False)
     
     def test_host_persists_through_clone_attempts(self, monkeypatch):
         """Test that github_host attribute persists across fallback attempts."""
