@@ -716,6 +716,101 @@ class TestPackageValidation:
                     assert "has no attribute" not in error
 
 
+class TestClaudeSkillValidation:
+    """Test Claude Skill (SKILL.md-only) validation and APMPackage creation from SKILL metadata without generating an apm.yml."""
+    
+    def test_validate_skill_with_simple_description(self):
+        """Test validating a Claude Skill with simple description."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_md = Path(tmpdir) / "SKILL.md"
+            skill_md.write_text("""---
+name: test-skill
+description: A simple test skill
+---
+
+# Test Skill
+
+This is a test skill content.
+""")
+            
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package is not None
+            assert result.package.name == "test-skill"
+    
+    def test_validate_skill_with_colons_in_description(self):
+        """Test validating a Claude Skill with colons in description (GitHub issue #66)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_md = Path(tmpdir) / "SKILL.md"
+            # This is the actual pptx skill description that was causing issues
+            skill_md.write_text('''---
+name: pptx
+description: "Presentation creation, editing, and analysis. When Claude needs to work with presentations (.pptx files) for: (1) Creating new presentations, (2) Modifying or editing content, (3) Working with layouts, (4) Adding comments or speaker notes, or any other presentation tasks"
+---
+
+# PPTX Skill
+
+Content here.
+''')
+            
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package is not None
+            assert result.package.name == "pptx"
+            # Verify the description was preserved (colons and all)
+            assert "for:" in result.package.description
+    
+    def test_validate_skill_with_quotes_in_description(self):
+        """Test validating a Claude Skill with quotes in description."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_md = Path(tmpdir) / "SKILL.md"
+            skill_md.write_text('''---
+name: test-skill
+description: 'A skill that handles "quoted" strings'
+---
+
+# Test Skill
+''')
+            
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package is not None
+            assert '"quoted"' in result.package.description
+    
+    def test_validate_skill_with_special_yaml_characters(self):
+        """Test validating a Claude Skill with various YAML special characters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_md = Path(tmpdir) / "SKILL.md"
+            skill_md.write_text('''---
+name: special-skill
+description: "Handles: colons, #hashtags, [brackets], {braces}, and 'quotes'"
+---
+
+# Special Skill
+''')
+            
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package is not None
+    
+    def test_validate_skill_without_description(self):
+        """Test validating a Claude Skill without description field."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_md = Path(tmpdir) / "SKILL.md"
+            skill_md.write_text('''---
+name: minimal-skill
+---
+
+# Minimal Skill
+''')
+            
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package is not None
+            # Description should be auto-generated
+            assert "Claude Skill: minimal-skill" in result.package.description
+
+
 class TestGitReferenceUtils:
     """Test Git reference parsing utilities."""
     
