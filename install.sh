@@ -251,11 +251,11 @@ if ! echo "$LATEST_RELEASE" | grep -q '"tag_name":'; then
 fi
 
 # Extract tag name and download URLs
-TAG_NAME=$(echo "$LATEST_RELEASE" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+TAG_NAME=$(echo "$LATEST_RELEASE" | grep '"tag_name":' | awk -F'"' '{print $4}')
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG_NAME/$DOWNLOAD_BINARY"
 
 # Extract API asset URL for private repository downloads
-ASSET_URL=$(echo "$LATEST_RELEASE" | grep -B 3 "\"name\": \"$DOWNLOAD_BINARY\"" | grep '"url":' | sed -E 's/.*"url": "([^"]+)".*/\1/')
+ASSET_URL=$(echo "$LATEST_RELEASE" | grep -B 3 "\"name\": \"$DOWNLOAD_BINARY\"" | grep '"url":' | awk -F'"' '{print $4}')
 
 if [ -z "$TAG_NAME" ]; then
     echo -e "${RED}Error: Could not determine latest release version${NC}"
