@@ -2,7 +2,7 @@
 
 import re
 import urllib.parse
-from ..utils.github_host import is_supported_git_host, is_azure_devops_hostname, default_host
+from ..utils.github_host import is_supported_git_host, is_azure_devops_hostname, default_host, unsupported_host_error
 import yaml
 from dataclasses import dataclass
 from enum import Enum
@@ -305,7 +305,7 @@ class DependencyReference:
         
         # SECURITY: Reject protocol-relative URLs (//example.com)
         if dependency_str.startswith('//'):
-            raise ValueError("Unsupported Git host. Protocol-relative URLs are not allowed")
+            raise ValueError(unsupported_host_error("//...", context="Protocol-relative URLs are not supported"))
         
         # Early detection of virtual packages (3+ path segments)
         # Extract the core path before processing reference (#) and alias (@)
@@ -353,14 +353,14 @@ class DependencyReference:
                         else:
                             # First segment has a dot but is NOT a valid Git host - REJECT
                             raise ValueError(
-                                f"Unsupported Git host. Invalid hostname: {hostname or first_segment}"
+                                unsupported_host_error(hostname or first_segment)
                             )
                     except (ValueError, AttributeError) as e:
                         # If we can't parse or validate, and first segment has dot, it's suspicious - REJECT
                         if isinstance(e, ValueError) and "Unsupported Git host" in str(e):
                             raise  # Re-raise our security error
                         raise ValueError(
-                            f"Unsupported Git host. Could not validate hostname: {first_segment}"
+                            unsupported_host_error(first_segment)
                         )
                 elif check_str.startswith('gh/'):
                     # Handle 'gh/' shorthand - only if it's exactly at the start
@@ -562,7 +562,7 @@ class DependencyReference:
             # Accept github.com, GitHub Enterprise, Azure DevOps, etc. Use parsed_url.hostname
             hostname = parsed_url.hostname or ""
             if not is_supported_git_host(hostname):
-                raise ValueError(f"Unsupported Git host, got hostname: {parsed_url.netloc}")
+                raise ValueError(unsupported_host_error(hostname or parsed_url.netloc))
             
             # Extract and validate the path
             path = parsed_url.path.strip("/")
