@@ -164,6 +164,7 @@ class DependencyReference:
         For virtual packages, we create a sanitized name from the path:
         - github/awesome-copilot/prompts/code-review.prompt.md → awesome-copilot-code-review
         - github/awesome-copilot/collections/project-planning → awesome-copilot-project-planning
+        - github/awesome-copilot/collections/project-planning.collection.yml → awesome-copilot-project-planning
         """
         if not self.is_virtual or not self.virtual_path:
             return self.repo_url.split('/')[-1]  # Return repo name as fallback
@@ -175,9 +176,15 @@ class DependencyReference:
         # Get the basename without extension
         path_parts = self.virtual_path.split('/')
         if self.is_virtual_collection():
-            # For collections: use the collection name
+            # For collections: use the collection name without extension
             # collections/project-planning → project-planning
+            # collections/project-planning.collection.yml → project-planning
             collection_name = path_parts[-1]
+            # Strip .collection.yml/.collection.yaml extension if present
+            for ext in ('.collection.yml', '.collection.yaml'):
+                if collection_name.endswith(ext):
+                    collection_name = collection_name[:-len(ext)]
+                    break
             return f"{repo_name}-{collection_name}"
         else:
             # For individual files: use the filename without extension

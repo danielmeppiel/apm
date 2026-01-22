@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import shutil
 
-from apm_cli.deps.github_downloader import GitHubPackageDownloader
+from apm_cli.deps.github_downloader import GitHubPackageDownloader, normalize_collection_path
 from apm_cli.models.apm_package import DependencyReference
 
 
@@ -163,3 +163,56 @@ items:
         
         with pytest.raises(ValueError, match="missing required field"):
             parse_collection_yml(invalid_yaml)
+    
+    def test_parse_collection_with_yml_extension(self):
+        """Test parsing a collection dependency with .collection.yml extension.
+        
+        Regression test for bug where specifying the full extension caused
+        double-extension paths like 'collections/name.collection.yml.collection.yml'.
+        """
+        dep_ref = DependencyReference.parse("copilot/copilot-primitives/collections/markdown-documentation.collection.yml")
+        
+        assert dep_ref.is_virtual is True
+        assert dep_ref.is_virtual_collection() is True
+        assert dep_ref.repo_url == "copilot/copilot-primitives"
+        # virtual_path preserves the extension as specified by user
+        assert dep_ref.virtual_path == "collections/markdown-documentation.collection.yml"
+        # get_virtual_package_name() should return sanitized name without extension
+        assert dep_ref.get_virtual_package_name() == "copilot-primitives-markdown-documentation"
+    
+    def test_parse_collection_with_yaml_extension(self):
+        """Test parsing a collection dependency with .collection.yaml extension."""
+        dep_ref = DependencyReference.parse("owner/repo/collections/my-collection.collection.yaml")
+        
+        assert dep_ref.is_virtual is True
+        assert dep_ref.is_virtual_collection() is True
+        assert dep_ref.repo_url == "owner/repo"
+        assert dep_ref.virtual_path == "collections/my-collection.collection.yaml"
+        # get_virtual_package_name() should return sanitized name without extension
+        assert dep_ref.get_virtual_package_name() == "repo-my-collection"
+    
+    def test_collection_manifest_path_normalization(self):
+        """Test that normalize_collection_path correctly strips extensions.
+        
+        Regression test: when user specifies .collection.yml in their dependency,
+        the downloader should NOT append .collection.yml again.
+        """
+        test_cases = [
+            # (virtual_path, expected_normalized_path)
+            ("collections/markdown-documentation", "collections/markdown-documentation"),
+            ("collections/markdown-documentation.collection.yml", "collections/markdown-documentation"),
+            ("collections/markdown-documentation.collection.yaml", "collections/markdown-documentation"),
+            ("path/to/collections/nested", "path/to/collections/nested"),
+            ("path/to/collections/nested.collection.yml", "path/to/collections/nested"),
+        ]
+        
+        for virtual_path, expected_base in test_cases:
+            # Test the actual normalize_collection_path function
+            normalized = normalize_collection_path(virtual_path)
+            assert normalized == expected_base, \
+                f"normalize_collection_path('{virtual_path}'): expected '{expected_base}', got '{normalized}'"
+            
+            # Verify that appending extension gives correct manifest path
+            manifest_path = f"{normalized}.collection.yml"
+            expected_manifest = f"{expected_base}.collection.yml"
+            assert manifest_path == expected_manifest

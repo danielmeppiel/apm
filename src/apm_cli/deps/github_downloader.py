@@ -35,6 +35,25 @@ from ..utils.github_host import (
 )
 
 
+def normalize_collection_path(virtual_path: str) -> str:
+    """Normalize a collection virtual path by stripping any existing extension.
+    
+    This allows users to specify collection dependencies with or without the extension:
+      - owner/repo/collections/name (without extension)
+      - owner/repo/collections/name.collection.yml (with extension)
+    
+    Args:
+        virtual_path: The virtual path from the dependency reference
+        
+    Returns:
+        str: The normalized path without .collection.yml/.collection.yaml suffix
+    """
+    for ext in ('.collection.yml', '.collection.yaml'):
+        if virtual_path.endswith(ext):
+            return virtual_path[:-len(ext)]
+    return virtual_path
+
+
 def _debug(message: str) -> None:
     """Print debug message if APM_DEBUG environment variable is set."""
     if os.environ.get('APM_DEBUG'):
@@ -799,11 +818,17 @@ author: {dep_ref.repo_url.split('/')[0]}
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=10, total=100)
         
-        # Extract collection name from path (e.g., "collections/project-planning" -> "project-planning")
-        collection_name = dep_ref.virtual_path.split('/')[-1]
+        # Normalize virtual_path by stripping .collection.yml/.yaml suffix if already present
+        # This allows users to specify either:
+        #   - owner/repo/collections/name (without extension)
+        #   - owner/repo/collections/name.collection.yml (with extension)
+        virtual_path_base = normalize_collection_path(dep_ref.virtual_path)
+        
+        # Extract collection name from normalized path (e.g., "collections/project-planning" -> "project-planning")
+        collection_name = virtual_path_base.split('/')[-1]
         
         # Build collection manifest path - try .yml first, then .yaml as fallback
-        collection_manifest_path = f"{dep_ref.virtual_path}.collection.yml"
+        collection_manifest_path = f"{virtual_path_base}.collection.yml"
         
         # Download the collection manifest
         try:
@@ -811,11 +836,11 @@ author: {dep_ref.repo_url.split('/')[0]}
         except RuntimeError as e:
             # Try .yaml extension as fallback
             if ".collection.yml" in str(e):
-                collection_manifest_path = f"{dep_ref.virtual_path}.collection.yaml"
+                collection_manifest_path = f"{virtual_path_base}.collection.yaml"
                 try:
                     manifest_content = self.download_raw_file(dep_ref, collection_manifest_path, ref)
                 except RuntimeError:
-                    raise RuntimeError(f"Collection manifest not found: {dep_ref.virtual_path}.collection.yml (also tried .yaml)")
+                    raise RuntimeError(f"Collection manifest not found: {virtual_path_base}.collection.yml (also tried .yaml)")
             else:
                 raise RuntimeError(f"Failed to download collection manifest: {e}")
         
