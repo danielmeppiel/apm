@@ -1,7 +1,7 @@
 """APM dependency resolution engine with recursive resolution and conflict detection."""
 
 from pathlib import Path
-from typing import Dict, List, Set, Optional, Tuple
+from typing import Dict, List, Set, Optional, Tuple, Callable
 from collections import deque
 
 from ..models.apm_package import APMPackage, DependencyReference
@@ -10,14 +10,35 @@ from .dependency_graph import (
     CircularRef, ConflictInfo
 )
 
+# Type alias for the download callback
+# Takes a DependencyReference and apm_modules_dir, returns the install path if successful
+DownloadCallback = Callable[[DependencyReference, Path], Optional[Path]]
+
 
 class APMDependencyResolver:
     """Handles recursive APM dependency resolution similar to NPM."""
     
-    def __init__(self, max_depth: int = 50):
-        """Initialize the resolver with maximum recursion depth."""
+    def __init__(
+        self, 
+        max_depth: int = 50, 
+        apm_modules_dir: Optional[Path] = None,
+        download_callback: Optional[DownloadCallback] = None
+    ):
+        """Initialize the resolver with maximum recursion depth.
+        
+        Args:
+            max_depth: Maximum depth for dependency resolution (default: 50)
+            apm_modules_dir: Optional explicit apm_modules directory. If not provided,
+                             will be determined from project_root during resolution.
+            download_callback: Optional callback to download missing packages. If provided,
+                               the resolver will attempt to fetch uninstalled transitive deps.
+        """
         self.max_depth = max_depth
         self._resolution_path = []  # For test compatibility
+        self._apm_modules_dir: Optional[Path] = apm_modules_dir
+        self._project_root: Optional[Path] = None
+        self._download_callback = download_callback
+        self._downloaded_packages: Set[str] = set()  # Track what we downloaded during this resolution
     
     def resolve_dependencies(self, project_root: Path) -> DependencyGraph:
         """
@@ -29,6 +50,11 @@ class APMDependencyResolver:
         Returns:
             DependencyGraph: Complete resolved dependency graph
         """
+        # Store project root for package loading
+        self._project_root = project_root
+        if self._apm_modules_dir is None:
+            self._apm_modules_dir = project_root / "apm_modules"
+        
         # Load the root package
         apm_yml_path = project_root / "apm.yml"
         if not apm_yml_path.exists():
@@ -203,13 +229,15 @@ class APMDependencyResolver:
         def dfs_detect_cycles(node: DependencyNode) -> None:
             """Recursive DFS function to detect cycles."""
             node_id = node.get_id()
-            repo_url = node.dependency_ref.repo_url
+            # Use unique key (includes subdirectory path) to distinguish monorepo packages
+            # e.g., vineethsoma/agent-packages/agents/X vs vineethsoma/agent-packages/skills/Y
+            unique_key = node.dependency_ref.get_unique_key()
             
-            # Check if this repo URL is already in our current path (cycle detected)
-            if repo_url in current_path:
+            # Check if this unique key is already in our current path (cycle detected)
+            if unique_key in current_path:
                 # Found a cycle - create the cycle path
-                cycle_start_index = current_path.index(repo_url)
-                cycle_path = current_path[cycle_start_index:] + [repo_url]
+                cycle_start_index = current_path.index(unique_key)
+                cycle_path = current_path[cycle_start_index:] + [unique_key]
                 
                 circular_ref = CircularRef(
                     cycle_path=cycle_path,
@@ -218,16 +246,16 @@ class APMDependencyResolver:
                 circular_deps.append(circular_ref)
                 return
             
-            # Mark current node as visited and add repo URL to path
+            # Mark current node as visited and add unique key to path
             visited.add(node_id)
-            current_path.append(repo_url)
+            current_path.append(unique_key)
             
             # Check all children
             for child in node.children:
                 child_id = child.get_id()
                 
                 # Only recurse if we haven't processed this subtree completely
-                if child_id not in visited or child.dependency_ref.repo_url in current_path:
+                if child_id not in visited or child.dependency_ref.get_unique_key() in current_path:
                     dfs_detect_cycles(child)
             
             # Remove from path when backtracking (but keep in visited)
@@ -301,11 +329,12 @@ class APMDependencyResolver:
     
     def _try_load_dependency_package(self, dep_ref: DependencyReference) -> Optional[APMPackage]:
         """
-        Try to load a dependency package from local paths.
+        Try to load a dependency package from apm_modules/.
         
-        This is a placeholder implementation for Task 3 (dependency resolution algorithm).
-        The actual package loading from apm_modules/ will be implemented in Task 4 
-        (Enhanced Primitive Discovery System) and Task 2 (GitHub Package Downloader).
+        This method scans apm_modules/ to find installed packages and loads their
+        apm.yml to enable transitive dependency resolution. If a package is not
+        installed and a download_callback is available, it will attempt to fetch
+        the package first.
         
         Args:
             dep_ref: Reference to the dependency to load
@@ -317,18 +346,59 @@ class APMDependencyResolver:
             ValueError: If package exists but has invalid format
             FileNotFoundError: If package cannot be found
         """
-        # For Task 3 (dependency resolution), we focus on the algorithm logic
-        # without implementing specific file system scanning which belongs to Task 4
-        # 
-        # In the final implementation:
-        # - Task 2 will handle downloading packages from GitHub repositories  
-        # - Task 4 will handle scanning apm_modules/ directory structure
-        # - This method will integrate with both systems
+        if self._apm_modules_dir is None:
+            return None
         
-        # For now, return None to indicate package not found locally
-        # This allows the resolution algorithm to create placeholder nodes
-        # and continue with dependency graph construction
-        return None
+        # Get the canonical install path for this dependency
+        install_path = dep_ref.get_install_path(self._apm_modules_dir)
+        
+        # If package doesn't exist locally, try to download it
+        if not install_path.exists():
+            if self._download_callback is not None:
+                unique_key = dep_ref.get_unique_key()
+                # Avoid re-downloading the same package in a single resolution
+                if unique_key not in self._downloaded_packages:
+                    try:
+                        downloaded_path = self._download_callback(dep_ref, self._apm_modules_dir)
+                        if downloaded_path and downloaded_path.exists():
+                            self._downloaded_packages.add(unique_key)
+                            install_path = downloaded_path
+                    except Exception:
+                        # Download failed - continue without this dependency's sub-deps
+                        pass
+            
+            # Still doesn't exist after download attempt
+            if not install_path.exists():
+                return None
+        
+        # Look for apm.yml in the install path
+        apm_yml_path = install_path / "apm.yml"
+        if not apm_yml_path.exists():
+            # Package exists but has no apm.yml (e.g., Claude Skill)
+            # Check for SKILL.md and create minimal package
+            skill_md_path = install_path / "SKILL.md"
+            if skill_md_path.exists():
+                # Claude Skill without apm.yml - no transitive deps
+                return APMPackage(
+                    name=dep_ref.get_display_name(),
+                    version="1.0.0",
+                    source=dep_ref.repo_url,
+                    package_path=install_path
+                )
+            # No manifest found
+            return None
+        
+        # Load and return the package
+        try:
+            package = APMPackage.from_apm_yml(apm_yml_path)
+            # Ensure source is set for tracking
+            if not package.source:
+                package.source = dep_ref.repo_url
+            return package
+        except (ValueError, FileNotFoundError) as e:
+            # Package has invalid apm.yml - log warning but continue
+            # In production, we might want to surface this to the user
+            return None
     
     def _create_resolution_summary(self, graph: DependencyGraph) -> str:
         """

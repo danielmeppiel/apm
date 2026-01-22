@@ -299,6 +299,74 @@ apm deps update compliance-rules
 apm install --update
 ```
 
+## Reproducible Builds with apm.lock
+
+APM generates a lockfile (`apm.lock`) after each successful install to ensure reproducible builds across machines and CI environments.
+
+### What is apm.lock?
+
+The `apm.lock` file captures the exact state of your dependency tree:
+
+```yaml
+lockfile_version: "1.0"
+generated_at: "2026-01-22T10:30:00Z"
+apm_version: "0.8.0"
+dependencies:
+  danielmeppiel/compliance-rules:
+    repo_url: "https://github.com/danielmeppiel/compliance-rules"
+    resolved_commit: "abc123def456"
+    resolved_ref: "main"
+    version: "1.0.0"
+    depth: 1
+  danielmeppiel/validation-patterns:
+    repo_url: "https://github.com/danielmeppiel/validation-patterns"
+    resolved_commit: "789xyz012"
+    resolved_ref: "main"
+    version: "1.2.0"
+    depth: 2
+    resolved_by: "danielmeppiel/compliance-rules"
+```
+
+### How It Works
+
+1. **First install**: APM resolves dependencies, downloads packages, and writes `apm.lock`
+2. **Subsequent installs**: APM reads `apm.lock` and uses locked commits for exact reproducibility
+3. **Updating**: Use `--update` to re-resolve dependencies and generate a fresh lockfile
+
+### Version Control
+
+**Commit `apm.lock`** to version control:
+
+```bash
+git add apm.lock
+git commit -m "Lock dependencies"
+```
+
+This ensures all team members and CI pipelines get identical dependencies.
+
+### Forcing Re-resolution
+
+When you want the latest versions (ignoring the lockfile):
+
+```bash
+# Re-resolve all dependencies and update lockfile
+apm install --update
+```
+
+### Transitive Dependencies
+
+APM fully resolves transitive dependencies. If package A depends on B, and B depends on C:
+
+```
+apm install danielmeppiel/package-a
+```
+
+Result:
+- Downloads A, B, and C
+- Records all three in `apm.lock` with depth information
+- `depth: 1` = direct dependency
+- `depth: 2+` = transitive dependency
+
 ### Cleaning Dependencies
 
 ```bash

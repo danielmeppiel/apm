@@ -960,9 +960,10 @@ def update(check):
             _rich_info("Running installer...", symbol="gear")
 
             # Use /bin/sh for better cross-platform compatibility
+            # Note: We don't capture output so the installer can prompt for sudo
             shell_path = "/bin/sh" if os.path.exists("/bin/sh") else "sh"
             result = subprocess.run(
-                [shell_path, temp_script], capture_output=True, text=True, check=False
+                [shell_path, temp_script], check=False
             )
 
             # Clean up temp file
@@ -981,9 +982,7 @@ def update(check):
                     "Please restart your terminal or run 'apm --version' to verify"
                 )
             else:
-                _rich_error("Installation failed")
-                if result.stderr:
-                    click.echo(result.stderr, err=True)
+                _rich_error("Installation failed - see output above for details")
                 sys.exit(1)
 
         except ImportError:
@@ -1287,9 +1286,64 @@ def _install_apm_dependencies(
 
     _rich_info(f"Installing APM dependencies ({len(apm_deps)})...")
 
-    # Resolve dependencies
-    resolver = APMDependencyResolver()
     project_root = Path.cwd()
+    
+    # T5: Check for existing lockfile - use locked versions for reproducible installs
+    from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+    lockfile_path = get_lockfile_path(project_root)
+    existing_lockfile = None
+    if lockfile_path.exists() and not update_refs:
+        existing_lockfile = LockFile.read(lockfile_path)
+        if existing_lockfile and existing_lockfile.dependencies:
+            _rich_info(f"Using apm.lock ({len(existing_lockfile.dependencies)} locked dependencies)")
+    
+    apm_modules_dir = project_root / "apm_modules"
+    apm_modules_dir.mkdir(exist_ok=True)
+    
+    # Create downloader early so it can be used for transitive dependency resolution
+    downloader = GitHubPackageDownloader()
+    
+    # Create a download callback for transitive dependency resolution
+    # This allows the resolver to fetch packages on-demand during tree building
+    def download_callback(dep_ref, modules_dir):
+        """Download a package during dependency resolution."""
+        install_path = dep_ref.get_install_path(modules_dir)
+        if install_path.exists():
+            return install_path
+        try:
+            # Build repo_ref string - include reference if specified
+            repo_ref = dep_ref.repo_url
+            if dep_ref.virtual_path:
+                repo_ref = f"{repo_ref}/{dep_ref.virtual_path}"
+            
+            # T5: Use locked commit if available (reproducible installs)
+            locked_ref = None
+            if existing_lockfile:
+                locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                    locked_ref = locked_dep.resolved_commit
+            
+            # Priority: locked commit > explicit reference > default branch
+            if locked_ref:
+                repo_ref = f"{repo_ref}#{locked_ref}"
+            elif dep_ref.reference:
+                repo_ref = f"{repo_ref}#{dep_ref.reference}"
+            
+            # Silent download - no progress display for transitive deps
+            package_info = downloader.download_package(repo_ref, install_path)
+            _rich_info(f"  └─ Resolved transitive: {dep_ref.get_display_name()}")
+            return install_path
+        except Exception as e:
+            # Log but don't fail - allow resolution to continue
+            if verbose:
+                _rich_error(f"  └─ Failed to resolve transitive dep {dep_ref.repo_url}: {e}")
+            return None
+    
+    # Resolve dependencies with transitive download support
+    resolver = APMDependencyResolver(
+        apm_modules_dir=apm_modules_dir,
+        download_callback=download_callback
+    )
 
     try:
         dependency_graph = resolver.resolve_dependencies(project_root)
@@ -1341,9 +1395,7 @@ def _install_apm_dependencies(
             _rich_info("No APM dependencies to install", symbol="check")
             return 0, 0, 0
 
-        # Create apm_modules directory
-        apm_modules_dir = project_root / "apm_modules"
-        apm_modules_dir.mkdir(exist_ok=True)
+        # apm_modules directory already created above
 
         # Auto-detect target for integration (same logic as compile)
         from apm_cli.core.target_detection import (
@@ -1393,6 +1445,10 @@ def _install_apm_dependencies(
         total_commands_integrated = 0
         total_links_resolved = 0
 
+        # Collect installed packages for lockfile generation
+        from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth)
+
         # Install each dependency with Rich progress display
         from rich.progress import (
             Progress,
@@ -1402,7 +1458,7 @@ def _install_apm_dependencies(
             TaskProgressColumn,
         )
 
-        downloader = GitHubPackageDownloader()
+        # downloader already created above for transitive resolution
         installed_count = 0
 
         # Create progress display for downloads
@@ -1497,6 +1553,12 @@ def _install_apm_dependencies(
                                 installed_at=datetime.now().isoformat(),
                                 dependency_ref=dep_ref,  # Store for canonical dependency string
                             )
+
+                            # Collect for lockfile (cached packages still need to be tracked)
+                            node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
+                            depth = node.depth if node else 1
+                            resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+                            installed_packages.append((dep_ref, "cached", depth, resolved_by))
 
                             # VSCode integration (prompts + agents)
                             if integrate_vscode:
@@ -1596,9 +1658,20 @@ def _install_apm_dependencies(
                         total=None,  # Indeterminate initially; git will update with actual counts
                     )
 
+                    # T5: Build download ref - use locked commit if available
+                    download_ref = str(dep_ref)
+                    if existing_lockfile:
+                        locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                        if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                            # Override with locked commit for reproducible install
+                            base_ref = dep_ref.repo_url
+                            if dep_ref.virtual_path:
+                                base_ref = f"{base_ref}/{dep_ref.virtual_path}"
+                            download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
+
                     # Download with live progress bar
                     package_info = downloader.download_package(
-                        str(dep_ref),
+                        download_ref,
                         install_path,
                         progress_task_id=task_id,
                         progress_obj=progress,
@@ -1610,6 +1683,16 @@ def _install_apm_dependencies(
 
                     installed_count += 1
                     _rich_success(f"✓ {display_name}")
+
+                    # Collect for lockfile: get resolved commit and depth
+                    resolved_commit = None
+                    if hasattr(package_info, 'resolved_reference') and package_info.resolved_reference:
+                        resolved_commit = package_info.resolved_reference.resolved_commit
+                    # Get depth from dependency tree
+                    node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
+                    depth = node.depth if node else 1
+                    resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by))
 
                     # Show package type in verbose mode
                     if verbose and hasattr(package_info, "package_type"):
@@ -1721,6 +1804,16 @@ def _install_apm_dependencies(
 
         # Update .gitignore
         _update_gitignore_for_apm_modules()
+
+        # Generate apm.lock for reproducible installs (T4: lockfile generation)
+        if installed_packages:
+            try:
+                lockfile = LockFile.from_installed_packages(installed_packages, dependency_graph)
+                lockfile_path = get_lockfile_path(project_root)
+                lockfile.save(lockfile_path)
+                _rich_info(f"Generated apm.lock with {len(installed_packages)} dependencies")
+            except Exception as e:
+                _rich_warning(f"Could not generate apm.lock: {e}")
 
         # Update .gitignore for integrated prompts if any were integrated
         if integrate_vscode and total_prompts_integrated > 0:
