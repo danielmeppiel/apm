@@ -2,8 +2,7 @@
 set -e
 
 # APM CLI Installer Script
-# Usage: curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/mai# Extract API asset URL for private repository downloads
-ASSET_URL=$(echo "$LATEST_RELEASE" | grep -B 2 '"name": "'$DOWNLOAD_BINARY'"' | grep '"url":' | sed -E 's/.*"url": "([^"]+)".*/\1/')install.sh | sh
+# Usage: curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
 # For private repositories, use with authentication:
 #   curl -sSL -H "Authorization: token $GITHUB_APM_PAT" \
 #     https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | \
