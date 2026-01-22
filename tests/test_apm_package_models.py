@@ -717,7 +717,7 @@ class TestPackageValidation:
 
 
 class TestClaudeSkillValidation:
-    """Test Claude Skill (SKILL.md only) validation and auto-generation of apm.yml."""
+    """Test Claude Skill (SKILL.md-only) validation and APMPackage creation from SKILL metadata without generating an apm.yml."""
     
     def test_validate_skill_with_simple_description(self):
         """Test validating a Claude Skill with simple description."""
