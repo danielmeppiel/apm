@@ -802,8 +802,18 @@ author: {dep_ref.repo_url.split('/')[0]}
         # Extract collection name from path (e.g., "collections/project-planning" -> "project-planning")
         collection_name = dep_ref.virtual_path.split('/')[-1]
         
+        # Normalize virtual_path by stripping .collection.yml/.yaml suffix if already present
+        # This allows users to specify either:
+        #   - owner/repo/collections/name (without extension)
+        #   - owner/repo/collections/name.collection.yml (with extension)
+        virtual_path_base = dep_ref.virtual_path
+        for ext in ('.collection.yml', '.collection.yaml'):
+            if virtual_path_base.endswith(ext):
+                virtual_path_base = virtual_path_base[:-len(ext)]
+                break
+        
         # Build collection manifest path - try .yml first, then .yaml as fallback
-        collection_manifest_path = f"{dep_ref.virtual_path}.collection.yml"
+        collection_manifest_path = f"{virtual_path_base}.collection.yml"
         
         # Download the collection manifest
         try:
@@ -811,11 +821,11 @@ author: {dep_ref.repo_url.split('/')[0]}
         except RuntimeError as e:
             # Try .yaml extension as fallback
             if ".collection.yml" in str(e):
-                collection_manifest_path = f"{dep_ref.virtual_path}.collection.yaml"
+                collection_manifest_path = f"{virtual_path_base}.collection.yaml"
                 try:
                     manifest_content = self.download_raw_file(dep_ref, collection_manifest_path, ref)
                 except RuntimeError:
-                    raise RuntimeError(f"Collection manifest not found: {dep_ref.virtual_path}.collection.yml (also tried .yaml)")
+                    raise RuntimeError(f"Collection manifest not found: {virtual_path_base}.collection.yml (also tried .yaml)")
             else:
                 raise RuntimeError(f"Failed to download collection manifest: {e}")
         

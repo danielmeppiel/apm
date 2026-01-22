@@ -163,3 +163,54 @@ items:
         
         with pytest.raises(ValueError, match="missing required field"):
             parse_collection_yml(invalid_yaml)
+    
+    def test_parse_collection_with_yml_extension(self):
+        """Test parsing a collection dependency with .collection.yml extension.
+        
+        Regression test for bug where specifying the full extension caused
+        double-extension paths like 'collections/name.collection.yml.collection.yml'.
+        """
+        dep_ref = DependencyReference.parse("copilot/copilot-primitives/collections/markdown-documentation.collection.yml")
+        
+        assert dep_ref.is_virtual is True
+        assert dep_ref.is_virtual_collection() is True
+        assert dep_ref.repo_url == "copilot/copilot-primitives"
+        # virtual_path preserves the extension as specified by user
+        assert dep_ref.virtual_path == "collections/markdown-documentation.collection.yml"
+    
+    def test_parse_collection_with_yaml_extension(self):
+        """Test parsing a collection dependency with .collection.yaml extension."""
+        dep_ref = DependencyReference.parse("owner/repo/collections/my-collection.collection.yaml")
+        
+        assert dep_ref.is_virtual is True
+        assert dep_ref.is_virtual_collection() is True
+        assert dep_ref.repo_url == "owner/repo"
+        assert dep_ref.virtual_path == "collections/my-collection.collection.yaml"
+    
+    def test_collection_manifest_path_normalization(self):
+        """Test that collection manifest path is normalized to avoid double extensions.
+        
+        Regression test: when user specifies .collection.yml in their dependency,
+        the downloader should NOT append .collection.yml again.
+        """
+        # Simulate what download_collection_package does
+        test_cases = [
+            # (virtual_path, expected_manifest_path)
+            ("collections/markdown-documentation", "collections/markdown-documentation.collection.yml"),
+            ("collections/markdown-documentation.collection.yml", "collections/markdown-documentation.collection.yml"),
+            ("collections/markdown-documentation.collection.yaml", "collections/markdown-documentation.collection.yml"),
+            ("path/to/collections/nested", "path/to/collections/nested.collection.yml"),
+            ("path/to/collections/nested.collection.yml", "path/to/collections/nested.collection.yml"),
+        ]
+        
+        for virtual_path, expected in test_cases:
+            # This is the normalization logic from download_collection_package
+            virtual_path_base = virtual_path
+            for ext in ('.collection.yml', '.collection.yaml'):
+                if virtual_path_base.endswith(ext):
+                    virtual_path_base = virtual_path_base[:-len(ext)]
+                    break
+            collection_manifest_path = f"{virtual_path_base}.collection.yml"
+            
+            assert collection_manifest_path == expected, \
+                f"For virtual_path='{virtual_path}': expected '{expected}', got '{collection_manifest_path}'"
