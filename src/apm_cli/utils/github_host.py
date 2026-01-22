@@ -76,6 +76,49 @@ def is_supported_git_host(hostname: Optional[str]) -> bool:
     return False
 
 
+def unsupported_host_error(hostname: str, context: Optional[str] = None) -> str:
+    """Generate an actionable error message for unsupported Git hosts.
+    
+    Args:
+        hostname: The hostname that was rejected
+        context: Optional context message (e.g., "Protocol-relative URLs are not supported")
+    
+    Returns:
+        str: A user-friendly error message with fix instructions
+    """
+    current_host = os.environ.get("GITHUB_HOST", "")
+    
+    msg = ""
+    if context:
+        msg += f"{context}\n\n"
+    
+    msg += f"Unsupported Git host: '{hostname}'.\n"
+    msg += "\n"
+    msg += "APM only allows these Git hosts by default:\n"
+    msg += "  • github.com\n"
+    msg += "  • *.ghe.com (GitHub Enterprise Cloud)\n"
+    msg += "  • dev.azure.com, *.visualstudio.com (Azure DevOps)\n"
+    msg += "\n"
+    
+    if current_host:
+        msg += f"Your GITHUB_HOST is set to: '{current_host}'\n"
+        msg += f"But you're trying to use: '{hostname}'\n"
+        msg += "\n"
+    
+    msg += f"To use '{hostname}', set the GITHUB_HOST environment variable:\n"
+    msg += "\n"
+    msg += f"  # Linux/macOS:\n"
+    msg += f"  export GITHUB_HOST={hostname}\n"
+    msg += "\n"
+    msg += f"  # Windows (PowerShell):\n"
+    msg += f'  $env:GITHUB_HOST = "{hostname}"\n'
+    msg += "\n"
+    msg += f"  # Windows (Command Prompt):\n"
+    msg += f"  set GITHUB_HOST={hostname}\n"
+    
+    return msg
+
+
 def build_ssh_url(host: str, repo_ref: str) -> str:
     """Build an SSH clone URL for the given host and repo_ref (owner/repo)."""
     return f"git@{host}:{repo_ref}.git"

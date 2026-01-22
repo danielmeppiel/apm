@@ -109,6 +109,37 @@ def test_sanitize_token_url_in_message():
     assert f"***@{host}" in sanitized
 
 
+def test_unsupported_host_error_message():
+    """Test that unsupported host error provides actionable guidance."""
+    error_msg = github_host.unsupported_host_error("github.company.com")
+    
+    # Should mention the hostname
+    assert "github.company.com" in error_msg
+    
+    # Should list supported hosts
+    assert "github.com" in error_msg
+    assert "*.ghe.com" in error_msg
+    assert "dev.azure.com" in error_msg
+    
+    # Should provide fix instructions for all platforms
+    assert "export GITHUB_HOST=" in error_msg
+    assert "$env:GITHUB_HOST" in error_msg
+    assert "set GITHUB_HOST=" in error_msg
+
+
+def test_unsupported_host_error_shows_current_host(monkeypatch):
+    """Test that error shows current GITHUB_HOST if set."""
+    monkeypatch.setenv("GITHUB_HOST", "other.company.com")
+    
+    error_msg = github_host.unsupported_host_error("github.company.com")
+    
+    # Should show the mismatch
+    assert "other.company.com" in error_msg
+    assert "github.company.com" in error_msg
+    
+    monkeypatch.delenv("GITHUB_HOST", raising=False)
+
+
 # Azure DevOps URL builder tests
 
 def test_build_ado_https_clone_url():
@@ -150,3 +181,48 @@ def test_build_ado_api_url():
     assert "path=apm.yml" in url
     assert "versionDescriptor.version=main" in url
     assert "api-version=7.0" in url
+
+
+# Unsupported host error message tests
+
+def test_unsupported_host_error_message():
+    """Test that unsupported host error provides actionable guidance."""
+    error_msg = github_host.unsupported_host_error("github.company.com")
+    
+    # Should mention the hostname
+    assert "github.company.com" in error_msg
+    
+    # Should list supported hosts
+    assert "github.com" in error_msg
+    assert "*.ghe.com" in error_msg
+    assert "dev.azure.com" in error_msg
+    
+    # Should provide fix instructions for all platforms
+    assert "export GITHUB_HOST=" in error_msg
+    assert "$env:GITHUB_HOST" in error_msg
+    assert "set GITHUB_HOST=" in error_msg
+
+
+def test_unsupported_host_error_with_context():
+    """Test that context message is included when provided."""
+    error_msg = github_host.unsupported_host_error("//evil.com", context="Protocol-relative URLs are not supported")
+    
+    # Should include the context
+    assert "Protocol-relative URLs are not supported" in error_msg
+    
+    # Should still include standard guidance
+    assert "github.com" in error_msg
+    assert "GITHUB_HOST" in error_msg
+
+
+def test_unsupported_host_error_shows_current_host(monkeypatch):
+    """Test that error shows current GITHUB_HOST if set."""
+    monkeypatch.setenv("GITHUB_HOST", "other.company.com")
+    
+    error_msg = github_host.unsupported_host_error("github.company.com")
+    
+    # Should show the mismatch
+    assert "other.company.com" in error_msg
+    assert "github.company.com" in error_msg
+    
+    monkeypatch.delenv("GITHUB_HOST", raising=False)

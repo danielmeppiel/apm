@@ -124,7 +124,7 @@ apm install partner.ghe.com/external/integration  # FQDN always works
 apm install github.com/public/open-source-package
 ```
 
-**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax to explicitly specify any Git host.
+**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax to specify supported hosts explicitly (e.g., `github.com`, `*.ghe.com`, Azure DevOps). Custom hosts require setting `GITHUB_HOST`.
 
 ### Azure DevOps Support
 
