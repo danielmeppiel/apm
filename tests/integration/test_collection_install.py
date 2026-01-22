@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import shutil
 
-from apm_cli.deps.github_downloader import GitHubPackageDownloader
+from apm_cli.deps.github_downloader import GitHubPackageDownloader, normalize_collection_path
 from apm_cli.models.apm_package import DependencyReference
 
 
@@ -177,6 +177,8 @@ items:
         assert dep_ref.repo_url == "copilot/copilot-primitives"
         # virtual_path preserves the extension as specified by user
         assert dep_ref.virtual_path == "collections/markdown-documentation.collection.yml"
+        # get_virtual_package_name() should return sanitized name without extension
+        assert dep_ref.get_virtual_package_name() == "copilot-primitives-markdown-documentation"
     
     def test_parse_collection_with_yaml_extension(self):
         """Test parsing a collection dependency with .collection.yaml extension."""
@@ -186,31 +188,31 @@ items:
         assert dep_ref.is_virtual_collection() is True
         assert dep_ref.repo_url == "owner/repo"
         assert dep_ref.virtual_path == "collections/my-collection.collection.yaml"
+        # get_virtual_package_name() should return sanitized name without extension
+        assert dep_ref.get_virtual_package_name() == "repo-my-collection"
     
     def test_collection_manifest_path_normalization(self):
-        """Test that collection manifest path is normalized to avoid double extensions.
+        """Test that normalize_collection_path correctly strips extensions.
         
         Regression test: when user specifies .collection.yml in their dependency,
         the downloader should NOT append .collection.yml again.
         """
-        # Simulate what download_collection_package does
         test_cases = [
-            # (virtual_path, expected_manifest_path)
-            ("collections/markdown-documentation", "collections/markdown-documentation.collection.yml"),
-            ("collections/markdown-documentation.collection.yml", "collections/markdown-documentation.collection.yml"),
-            ("collections/markdown-documentation.collection.yaml", "collections/markdown-documentation.collection.yml"),
-            ("path/to/collections/nested", "path/to/collections/nested.collection.yml"),
-            ("path/to/collections/nested.collection.yml", "path/to/collections/nested.collection.yml"),
+            # (virtual_path, expected_normalized_path)
+            ("collections/markdown-documentation", "collections/markdown-documentation"),
+            ("collections/markdown-documentation.collection.yml", "collections/markdown-documentation"),
+            ("collections/markdown-documentation.collection.yaml", "collections/markdown-documentation"),
+            ("path/to/collections/nested", "path/to/collections/nested"),
+            ("path/to/collections/nested.collection.yml", "path/to/collections/nested"),
         ]
         
-        for virtual_path, expected in test_cases:
-            # This is the normalization logic from download_collection_package
-            virtual_path_base = virtual_path
-            for ext in ('.collection.yml', '.collection.yaml'):
-                if virtual_path_base.endswith(ext):
-                    virtual_path_base = virtual_path_base[:-len(ext)]
-                    break
-            collection_manifest_path = f"{virtual_path_base}.collection.yml"
+        for virtual_path, expected_base in test_cases:
+            # Test the actual normalize_collection_path function
+            normalized = normalize_collection_path(virtual_path)
+            assert normalized == expected_base, \
+                f"normalize_collection_path('{virtual_path}'): expected '{expected_base}', got '{normalized}'"
             
-            assert collection_manifest_path == expected, \
-                f"For virtual_path='{virtual_path}': expected '{expected}', got '{collection_manifest_path}'"
+            # Verify that appending extension gives correct manifest path
+            manifest_path = f"{normalized}.collection.yml"
+            expected_manifest = f"{expected_base}.collection.yml"
+            assert manifest_path == expected_manifest
