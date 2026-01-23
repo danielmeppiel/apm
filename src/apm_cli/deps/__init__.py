@@ -9,6 +9,7 @@ from .aggregator import sync_workflow_dependencies, scan_workflows_for_dependenc
 from .verifier import verify_dependencies, install_missing_dependencies, load_apm_config
 from .github_downloader import GitHubPackageDownloader
 from .package_validator import PackageValidator
+from .lockfile import LockFile, LockedDependency, get_lockfile_path
 
 __all__ = [
     'sync_workflow_dependencies',
@@ -24,5 +25,8 @@ __all__ = [
     'FlatDependencyMap',
     'CircularRef',
     'ConflictInfo',
-    'APMDependencyResolver'
+    'APMDependencyResolver',
+    'LockFile',
+    'LockedDependency',
+    'get_lockfile_path',
 ]
