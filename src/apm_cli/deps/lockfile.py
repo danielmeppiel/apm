@@ -138,6 +138,8 @@ class LockFile:
         data = yaml.safe_load(yaml_str)
         if not data:
             return cls()
+        if not isinstance(data, dict):
+            return cls()
         lock = cls(
             lockfile_version=data.get("lockfile_version", "1"),
             generated_at=data.get("generated_at", ""),

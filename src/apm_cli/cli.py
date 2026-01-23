@@ -1311,8 +1311,10 @@ def _install_apm_dependencies(
         if install_path.exists():
             return install_path
         try:
-            # Build repo_ref string - include reference if specified
+            # Build repo_ref string - include host for GHE/ADO, plus reference if specified
             repo_ref = dep_ref.repo_url
+            if dep_ref.host and dep_ref.host not in ("github.com", None):
+                repo_ref = f"{dep_ref.host}/{dep_ref.repo_url}"
             if dep_ref.virtual_path:
                 repo_ref = f"{repo_ref}/{dep_ref.virtual_path}"
             
@@ -1330,7 +1332,7 @@ def _install_apm_dependencies(
                 repo_ref = f"{repo_ref}#{dep_ref.reference}"
             
             # Silent download - no progress display for transitive deps
-            package_info = downloader.download_package(repo_ref, install_path)
+            downloader.download_package(repo_ref, install_path)
             _rich_info(f"  └─ Resolved transitive: {dep_ref.get_display_name()}")
             return install_path
         except Exception as e:
@@ -1447,7 +1449,7 @@ def _install_apm_dependencies(
 
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
-        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth)
+        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by)
 
         # Install each dependency with Rich progress display
         from rich.progress import (
@@ -1558,7 +1560,15 @@ def _install_apm_dependencies(
                             node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
                             depth = node.depth if node else 1
                             resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
-                            installed_packages.append((dep_ref, "cached", depth, resolved_by))
+                            # Get actual commit SHA from existing lockfile or use reference for reproducibility
+                            cached_commit = None
+                            if existing_lockfile:
+                                locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                                if locked_dep:
+                                    cached_commit = locked_dep.resolved_commit
+                            if not cached_commit:
+                                cached_commit = getattr(cached_package, 'resolved_ref', None) or dep_ref.reference or "latest"
+                            installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
 
                             # VSCode integration (prompts + agents)
                             if integrate_vscode:
@@ -1811,7 +1821,7 @@ def _install_apm_dependencies(
                 lockfile = LockFile.from_installed_packages(installed_packages, dependency_graph)
                 lockfile_path = get_lockfile_path(project_root)
                 lockfile.save(lockfile_path)
-                _rich_info(f"Generated apm.lock with {len(installed_packages)} dependencies")
+                _rich_info(f"Generated apm.lock with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
                 _rich_warning(f"Could not generate apm.lock: {e}")
 

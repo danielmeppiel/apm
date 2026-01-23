@@ -1,7 +1,7 @@
 """APM dependency resolution engine with recursive resolution and conflict detection."""
 
 from pathlib import Path
-from typing import Dict, List, Set, Optional, Tuple, Callable
+from typing import List, Set, Optional, Tuple, Callable
 from collections import deque
 
 from ..models.apm_package import APMPackage, DependencyReference
