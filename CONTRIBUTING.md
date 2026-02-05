@@ -44,11 +44,11 @@ Enhancement suggestions are welcome! Please:
 ### Pull Request Process
 
 1. **Choose the appropriate PR template** for your change:
-   - **🚀 New Feature**: [Create Feature PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=feature.md)
-   - **🐛 Bug Fix**: [Create Bug Fix PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=bugfix.md)  
-   - **📖 Documentation**: [Create Docs PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=documentation.md)
-   - **🔧 Maintenance**: [Create Maintenance PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=maintenance.md)
-   - **Other**: [Create Standard PR](https://github.com/danielmeppiel/apm/compare/main...HEAD)
+   - **🚀 New Feature**: Use the `feature.md` template
+   - **🐛 Bug Fix**: Use the `bugfix.md` template
+   - **📖 Documentation**: Use the `documentation.md` template
+   - **🔧 Maintenance**: Use the `maintenance.md` template
+   - **Other**: Use the standard PR template
 
 2. **Apply the correct label** after creating your PR:
    - `enhancement` or `feature` - New functionality
@@ -70,7 +70,7 @@ This project uses uv to manage Python environments and dependencies:
 
 ```bash
 # Clone the repository
-git clone https://github.com/danielmeppiel/apm.git
+git clone <this-repo-url>
 cd apm
 
 # Create a virtual environment and install dependencies
