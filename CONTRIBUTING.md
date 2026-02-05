@@ -70,8 +70,8 @@ This project uses uv to manage Python environments and dependencies:
 
 ```bash
 # Clone the repository
-git clone https://github.com/danielmeppiel/apm-cli.git
-cd apm-cli
+git clone https://github.com/danielmeppiel/apm.git
+cd apm
 
 # Create a virtual environment and install dependencies
 uv venv
