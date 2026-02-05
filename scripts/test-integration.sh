@@ -258,9 +258,17 @@ install_test_dependencies() {
     # Check if uv is available, otherwise use pip
     if command -v uv >/dev/null 2>&1; then
         log_info "Using uv for dependency installation..."
-        uv venv --python 3.12 || uv venv  # Try 3.12 first, fallback to default
-        source .venv/bin/activate
-        uv pip install -e ".[dev]"
+        
+        # Check if .venv already exists (CI mode where workflow already ran uv sync)
+        if [[ -d ".venv" ]]; then
+            log_info "Virtual environment already exists, activating it..."
+            source .venv/bin/activate
+        else
+            log_info "Creating new virtual environment..."
+            uv venv --python 3.12 || uv venv  # Try 3.12 first, fallback to default
+            source .venv/bin/activate
+            uv pip install -e ".[dev]"
+        fi
     else
         log_info "Using pip for dependency installation..."
         pip install -e ".[dev]"
