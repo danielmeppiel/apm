@@ -47,13 +47,13 @@ setup_llm() {
     
     # Install LLM in virtual environment
     log_info "Installing LLM library..."
-    "$llm_venv/bin/pip" install --upgrade pip
-    "$llm_venv/bin/pip" install llm
+    "$llm_venv/bin/pip" install --upgrade pip --retries 5 --timeout 60
+    "$llm_venv/bin/pip" install llm --retries 5 --timeout 60
     
     # Install GitHub Models plugin in non-vanilla mode
     if [[ "$VANILLA_MODE" == "false" ]]; then
         log_info "Installing GitHub Models plugin for APM defaults..."
-        "$llm_venv/bin/pip" install llm-github-models
+        "$llm_venv/bin/pip" install llm-github-models --retries 5 --timeout 60
         log_success "GitHub Models plugin installed"
     else
         log_info "Vanilla mode: Skipping GitHub Models plugin installation"
