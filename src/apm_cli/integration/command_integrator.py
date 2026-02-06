@@ -7,8 +7,6 @@ mirroring how PromptIntegrator handles .github/prompts/.
 from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
-import hashlib
-from datetime import datetime
 import frontmatter
 
 from apm_cli.compilation.link_resolver import UnifiedLinkResolver
@@ -18,11 +16,11 @@ from apm_cli.compilation.link_resolver import UnifiedLinkResolver
 class CommandIntegrationResult:
     """Result of command integration operation."""
     files_integrated: int
-    files_updated: int  # Updated due to version/commit change
-    files_skipped: int  # Unchanged (same version/commit)
+    files_updated: int
+    files_skipped: int
     target_paths: List[Path]
     gitignore_updated: bool
-    links_resolved: int = 0  # Number of context links resolved
+    links_resolved: int = 0
 
 
 class CommandIntegrator:
@@ -73,81 +71,6 @@ class CommandIntegrator:
         
         return prompt_files
     
-    def _parse_header_metadata(self, file_path: Path) -> dict:
-        """Parse metadata from frontmatter in an integrated command file.
-        
-        Args:
-            file_path: Path to the integrated command file
-            
-        Returns:
-            dict: Metadata extracted from frontmatter (version, commit, source, etc.)
-                  Empty dict if no valid metadata found
-        """
-        try:
-            post = frontmatter.load(file_path)
-            apm_metadata = post.metadata.get('apm', {})
-            
-            if apm_metadata:
-                return {
-                    'Version': apm_metadata.get('version', ''),
-                    'Commit': apm_metadata.get('commit', ''),
-                    'Source': apm_metadata.get('source', ''),
-                    'SourceDependency': apm_metadata.get('source_dependency', ''),
-                    'ContentHash': apm_metadata.get('content_hash', ''),
-                }
-            return {}
-        except Exception:
-            return {}
-    
-    def _calculate_content_hash(self, file_path: Path) -> str:
-        """Calculate hash of command content (excluding metadata).
-        
-        Args:
-            file_path: Path to the command file
-            
-        Returns:
-            str: SHA256 hash of content, or empty string if error
-        """
-        try:
-            post = frontmatter.load(file_path)
-            return hashlib.sha256(post.content.encode()).hexdigest()
-        except Exception:
-            return ""
-    
-    def _should_update_command(self, existing_header: dict, package_info, existing_file: Path = None) -> tuple:
-        """Determine if an existing command file should be updated.
-        
-        Args:
-            existing_header: Metadata from existing file's header
-            package_info: PackageInfo object with new package metadata
-            existing_file: Path to existing file for content hash verification
-            
-        Returns:
-            tuple[bool, bool]: (should_update, was_modified)
-        """
-        if not existing_header:
-            return (True, False)
-        
-        new_version = package_info.package.version
-        new_commit = (
-            package_info.resolved_reference.resolved_commit
-            if package_info.resolved_reference
-            else "unknown"
-        )
-        
-        existing_version = existing_header.get('Version', '')
-        existing_commit = existing_header.get('Commit', '')
-        
-        was_modified = False
-        if existing_file and existing_file.exists():
-            stored_hash = existing_header.get('ContentHash', '')
-            if stored_hash:
-                current_hash = self._calculate_content_hash(existing_file)
-                was_modified = (current_hash != stored_hash and current_hash != "")
-        
-        should_update = (existing_version != new_version or existing_commit != new_commit)
-        return (should_update, was_modified)
-    
     def _transform_prompt_to_command(self, source: Path) -> tuple:
         """Transform a .prompt.md file into Claude command format.
         
@@ -195,7 +118,7 @@ class CommandIntegrator:
         return (command_name, new_post, warnings)
     
     def integrate_command(self, source: Path, target: Path, package_info, original_path: Path) -> int:
-        """Integrate a prompt file as a Claude command with metadata.
+        """Integrate a prompt file as a Claude command (verbatim copy with format conversion).
         
         Args:
             source: Source .prompt.md file path
@@ -225,29 +148,6 @@ class CommandIntegrator:
                 original_links = set(link_pattern.findall(original_content))
                 resolved_links = set(link_pattern.findall(resolved_content))
                 links_resolved = len(original_links - resolved_links)
-        
-        # Calculate content hash for modification detection
-        content_hash = hashlib.sha256(post.content.encode()).hexdigest()
-        
-        # Add APM metadata for tracking
-        post.metadata['apm'] = {
-            'source': package_info.package.name,
-            'source_repo': package_info.package.source or "unknown",
-            'source_dependency': package_info.get_canonical_dependency_string(),
-            'version': package_info.package.version,
-            'commit': (
-                package_info.resolved_reference.resolved_commit
-                if package_info.resolved_reference
-                else "unknown"
-            ),
-            'original_path': (
-                str(original_path.relative_to(package_info.install_path))
-                if original_path.is_relative_to(package_info.install_path)
-                else original_path.name
-            ),
-            'installed_at': package_info.installed_at or datetime.now().isoformat(),
-            'content_hash': content_hash
-        }
         
         # Ensure target directory exists
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -286,8 +186,6 @@ class CommandIntegrator:
             self.link_resolver = UnifiedLinkResolver(project_root)
         
         files_integrated = 0
-        files_updated = 0
-        files_skipped = 0
         target_paths = []
         total_links_resolved = 0
         
@@ -303,39 +201,12 @@ class CommandIntegrator:
             command_name = f"{base_name}-apm"
             target_path = commands_dir / f"{command_name}.md"
             
-            # Check if update is needed
-            if target_path.exists():
-                existing_header = self._parse_header_metadata(target_path)
-                should_update, was_modified = self._should_update_command(
-                    existing_header, package_info, target_path
-                )
-                
-                if was_modified:
-                    # User modified the file - skip to preserve their changes
-                    files_skipped += 1
-                    target_paths.append(target_path)
-                    continue
-                
-                if not should_update:
-                    # Same version/commit - skip
-                    files_skipped += 1
-                    target_paths.append(target_path)
-                    continue
-                
-                # Update needed
-                links_resolved = self.integrate_command(
-                    prompt_file, target_path, package_info, prompt_file
-                )
-                files_updated += 1
-                total_links_resolved += links_resolved
-            else:
-                # New file
-                links_resolved = self.integrate_command(
-                    prompt_file, target_path, package_info, prompt_file
-                )
-                files_integrated += 1
-                total_links_resolved += links_resolved
-            
+            # Always overwrite
+            links_resolved = self.integrate_command(
+                prompt_file, target_path, package_info, prompt_file
+            )
+            files_integrated += 1
+            total_links_resolved += links_resolved
             target_paths.append(target_path)
         
         # Update .gitignore
@@ -343,8 +214,8 @@ class CommandIntegrator:
         
         return CommandIntegrationResult(
             files_integrated=files_integrated,
-            files_updated=files_updated,
-            files_skipped=files_skipped,
+            files_updated=0,
+            files_skipped=0,
             target_paths=target_paths,
             gitignore_updated=gitignore_updated,
             links_resolved=total_links_resolved
@@ -379,60 +250,35 @@ class CommandIntegrator:
         return True
     
     def sync_integration(self, apm_package, project_root: Path) -> Dict:
-        """Synchronize command integration - remove orphaned commands.
-        
-        Called during uninstall to clean up commands from removed packages.
+        """Remove all APM-managed command files for clean regeneration.
         
         Args:
-            apm_package: APMPackage with current dependencies
+            apm_package: APMPackage (unused, kept for interface compatibility)
             project_root: Root directory of the project
             
         Returns:
             Dict with cleanup stats: {'files_removed': int, 'errors': int}
         """
+        stats = {'files_removed': 0, 'errors': 0}
+        
         commands_dir = project_root / ".claude" / "commands"
-        
         if not commands_dir.exists():
-            return {'files_removed': 0, 'errors': 0}
+            return stats
         
-        # Get current APM dependencies using get_unique_key() for proper matching
-        # For regular packages: "owner/repo"
-        # For virtual packages: "owner/repo/path/to/file.prompt.md"
-        current_deps = set()
-        if apm_package and apm_package.dependencies:
-            apm_deps = apm_package.dependencies.get('apm', [])
-            for dep in apm_deps:
-                # DependencyReference has get_unique_key() for proper virtual package handling
-                if hasattr(dep, 'get_unique_key'):
-                    current_deps.add(dep.get_unique_key())
-                elif hasattr(dep, 'repo_url'):
-                    current_deps.add(dep.repo_url)
-                elif isinstance(dep, str):
-                    current_deps.add(dep)
-        
-        files_removed = 0
-        errors = 0
-        
-        # Scan integrated command files (those with -apm suffix)
-        for command_file in commands_dir.glob("*-apm.md"):
+        for cmd_file in commands_dir.glob("*-apm.md"):
             try:
-                metadata = self._parse_header_metadata(command_file)
-                source_dep = metadata.get('SourceDependency', '')
-                
-                if source_dep and source_dep not in current_deps:
-                    # Package is no longer installed - remove command
-                    command_file.unlink()
-                    files_removed += 1
+                cmd_file.unlink()
+                stats['files_removed'] += 1
             except Exception:
-                errors += 1
+                stats['errors'] += 1
         
-        return {'files_removed': files_removed, 'errors': errors}
+        return stats
     
     def remove_package_commands(self, package_name: str, project_root: Path) -> int:
-        """Remove all commands for a specific package.
+        """Remove all APM-managed command files.
         
         Args:
-            package_name: Name of the package (e.g., "danielmeppiel/compliance-rules")
+            package_name: Name of the package (unused, all -apm files are removed)
             project_root: Root directory of the project
             
         Returns:
@@ -444,17 +290,11 @@ class CommandIntegrator:
             return 0
         
         files_removed = 0
-        
-        for command_file in commands_dir.glob("*-apm.md"):
+        for cmd_file in commands_dir.glob("*-apm.md"):
             try:
-                metadata = self._parse_header_metadata(command_file)
-                source_dep = metadata.get('SourceDependency', '')
-                
-                if package_name in source_dep:
-                    command_file.unlink()
-                    files_removed += 1
+                cmd_file.unlink()
+                files_removed += 1
             except Exception:
-                # Skip files that can't be read or removed - continue with remaining files
                 pass
         
         return files_removed

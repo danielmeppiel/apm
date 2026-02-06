@@ -5,125 +5,118 @@
 [![Downloads](https://img.shields.io/pypi/dm/apm-cli.svg)](https://pypi.org/project/apm-cli/)
 [![GitHub stars](https://img.shields.io/github/stars/danielmeppiel/apm.svg?style=social&label=Star)](https://github.com/danielmeppiel/apm/stargazers)
 
-**npm for AI coding agents.** The package manager for [AGENTS.md](https://agents.md), [Agent Skills](https://agentskills.io), and MCP servers.
+**The dependency manager for AI agents.** `apm.yml` declares the skills, prompts, instructions, and tools your project needs — so every developer gets the same agent setup. Packages can depend on packages, and APM resolves the full tree.
+
+Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent configuration.
 
 GitHub Copilot · Cursor · Claude · Codex · Gemini
 
-> 📐 **Built on open standards:** APM generates [AGENTS.md](https://agents.md) instructions, installs [Agent Skills](https://agentskills.io) natively, and manages [MCP](https://modelcontextprotocol.io) servers.
+## Why APM
 
-## Install
+AI coding agents need context to be useful: what standards to follow, what prompts to use, what skills to leverage. Today this is manual — each developer installs things one by one, writes instructions from scratch, copies files around. None of it is portable. There's no manifest for it.
+
+**APM fixes this.** You declare your project's agentic dependencies once, and every developer who clones your repo gets a fully configured agent setup in seconds. Packages can depend on other packages — APM resolves transitive dependencies automatically, just like npm or pip.
+
+## See It in Action
+
+```yaml
+# apm.yml — ships with your project, like package.json
+name: corporate-website
+dependencies:
+  apm:
+    - danielmeppiel/form-builder       # Skills: React Hook Form + Zod
+    - danielmeppiel/compliance-rules   # Guardrails: GDPR, security audits
+    - danielmeppiel/design-guidelines  # Standards: UI consistency, a11y
+```
+
+New developer joins the team:
+
+```bash
+git clone your-org/corporate-website
+cd corporate-website
+apm install && apm compile
+```
+
+**That's it.** Copilot, Claude, Cursor — every agent is configured with the right skills, prompts, and coding standards. No wiki. No "ask Sarah which skills to install." It just works.
+
+→ [View the full example project](https://github.com/danielmeppiel/corporate-website)
+
+## Not Just Skills
+
+Skill registries install skills. APM manages **every primitive** your AI agents need:
+
+| Primitive | What it does | Example |
+|-----------|-------------|---------|
+| **Instructions** | Coding standards, guardrails | "Use type hints in all Python files" |
+| **Skills** | AI capabilities, workflows | Form builder, code reviewer |
+| **Prompts** | Reusable slash commands | `/security-audit`, `/design-review` |
+| **Agents** | Specialized personas | Accessibility auditor, API designer |
+| **MCP Servers** | Tool integrations | Database access, API connectors |
+
+All declared in one manifest. All installed with one command — including transitive dependencies:
+
+**`apm install`** → integrates prompts, agents, and skills into `.github/` and `.claude/`
+**`apm compile`** → compiles instructions into `AGENTS.md` (Copilot, Cursor, Codex) and `CLAUDE.md` (Claude)
+
+## Get Started
+
+**1. Install APM**
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
 ```
 
-## Quick Start
-
-**One package. Every AI agent. Native format for each.**
+<details>
+<summary>Homebrew or pip</summary>
 
 ```bash
-# Install a skill — give your agent new capabilities
-apm install danielmeppiel/form-builder
+brew tap danielmeppiel/apm-cli && brew install apm-cli
+# or
+pip install apm-cli
+```
+</details>
 
-# Install guardrails — keep your agent compliant
+**2. Add packages to your project**
+
+```bash
 apm install danielmeppiel/compliance-rules
+```
 
-# Compile for your AI tools
+> No `apm.yml` yet? APM creates one automatically on first install.
+
+**3. Compile your instructions**
+
+```bash
 apm compile
 ```
 
-**Done.** Type `/gdpr-assessment` or `/code-review` in Copilot or Claude. It just works.
-
-## What APM Does
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  APM Packages (from GitHub, Azure DevOps)                       │
-│  ├── Instructions → Coding standards, guardrails (AGENTS.md)    │
-│  ├── Skills       → AI capabilities, workflows (agentskills.io) │
-│  ├── Prompts      → Reusable commands and templates             │
-│  └── MCP Servers  → Tool integrations                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                    apm install && apm compile
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Universal Output (auto-detected from .github/ and .claude/)    │
-│  ├── AGENTS.md      → Instructions for Copilot, Cursor, Codex   │
-│  ├── CLAUDE.md      → Instructions for Claude Code              │
-│  ├── .github/       → VSCode native prompts & agents            │
-│  └── .claude/       → Claude commands & skills                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**One package. Every AI agent. Native format for each.**
-
-## Real Example: corporate-website
-
-A production project using APM with skills and layered guardrails:
-
-```yaml
-# apm.yml
-name: corporate-website
-dependencies:
-  apm:
-    - danielmeppiel/form-builder      # Build forms with React Hook Form + Zod
-    - danielmeppiel/compliance-rules  # GDPR, security
-    - danielmeppiel/design-guidelines # UI standards
-```
-
-```bash
-apm install && apm compile
-```
-
-→ [View the full example](https://github.com/danielmeppiel/corporate-website)
-
-## Commands
-
-| Command | What it does |
-|---------|--------------|
-| `apm install <pkg>` | Add package to project |
-| `apm compile` | Generate agent context files |
-| `apm init` | Create new APM project |
-| `apm run <prompt>` | Execute a workflow |
-| `apm deps list` | Show installed packages |
+**Done.** Your instructions are compiled into AGENTS.md and CLAUDE.md — open your project in VS Code or Claude and your agents are ready.
 
 ## Install From Anywhere
 
 ```bash
-# For packages hosted on GitHub 
-apm install owner/repo
-
-# Paths or Single file are also OK (Virtual Package)
-apm install github/awesome-copilot/prompts/code-review.prompt.md
-
-# For packages in GitHub Enterprise with Data Residency 
-apm install ghe.company.com/owner/repo
-
-# For packages Azure DevOps
-apm install dev.azure.com/org/project/repo
+apm install owner/repo                                              # GitHub
+apm install github/awesome-copilot/prompts/code-review.prompt.md   # Single file
+apm install ghe.company.com/owner/repo                             # GitHub Enterprise
+apm install dev.azure.com/org/project/repo                         # Azure DevOps
 ```
 
-## Create Your Own Package
+## Create & Share Packages
 
 ```bash
 apm init my-standards && cd my-standards
 ```
 
-This creates:
-
 ```
 my-standards/
 ├── apm.yml              # Package manifest
-├── SKILL.md             # Package meta-guide for AI discovery
 └── .apm/
     ├── instructions/    # Guardrails (.instructions.md)
-    ├── prompts/         # Workflows (.prompt.md)  
+    ├── prompts/         # Slash commands (.prompt.md)
     └── agents/          # Personas (.agent.md)
 ```
 
-Example guardrail:
+Add a guardrail and publish:
 
 ```bash
 cat > .apm/instructions/python.instructions.md << 'EOF'
@@ -135,42 +128,28 @@ applyTo: "**/*.py"
 - Follow PEP 8 style guidelines
 EOF
 
-# Push and share
 git add . && git commit -m "Initial standards" && git push
 ```
 
-Anyone can now run: `apm install you/my-standards`
+Anyone can now `apm install you/my-standards`.
 
-## Installation Options
+## All Commands
 
-```bash
-# Quick install (recommended)
-curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+| Command | What it does |
+|---------|--------------|
+| `apm install <pkg>` | Add a package and integrate its primitives |
+| `apm compile` | Compile instructions into AGENTS.md / CLAUDE.md |
+| `apm init [name]` | Scaffold a new APM project or package |
+| `apm run <prompt>` | Execute a prompt workflow via AI runtime |
+| `apm deps list` | Show installed packages and versions |
+| `apm compile --target` | Target a specific agent (`vscode`, `claude`, `all`) |
 
-# Homebrew
-brew tap danielmeppiel/apm-cli && brew install apm-cli
+## Configuration
 
-# pip
-pip install apm-cli
-```
+For private repos or Azure DevOps, set a token:
 
-## Target Specific Agents
-
-```bash
-apm compile                    # Auto-detects from .github/ and .claude/ folders
-apm compile --target vscode    # AGENTS.md + .github/ only
-apm compile --target claude    # CLAUDE.md + .claude/ only
-apm compile --target all       # Force all formats
-```
-
-> **Note:** `apm compile` generates instruction files (AGENTS.md, CLAUDE.md). Prompts, agents, and skills are integrated by `apm install` into `.github/` and `.claude/` folders.
-
-## Advanced Configuration
-
-For private packages, Azure DevOps, or running prompts via AI runtimes:
-
-| Token | Purpose |
-|-------|---------|
+| Token | When you need it |
+|-------|-----------------|
 | `GITHUB_APM_PAT` | Private GitHub packages |
 | `ADO_APM_PAT` | Azure DevOps packages |
 | `GITHUB_COPILOT_PAT` | Running prompts via `apm run` |
@@ -181,44 +160,30 @@ For private packages, Azure DevOps, or running prompts via AI runtimes:
 
 ## Community Packages
 
-[![Install with APM](https://img.shields.io/badge/📦_Install_with-APM-blue?style=flat-square)](https://github.com/danielmeppiel/apm#community-packages)
+APM installs from any GitHub or Azure DevOps repo — no special packaging required. Point at a prompt file, a skill, or a full package. These are some curated packages to get you started:
 
 | Package | What you get |
 |---------|-------------|
-| [danielmeppiel/compliance-rules](https://github.com/danielmeppiel/compliance-rules) | `/gdpr-assessment`, `/security-audit` + compliance rules |
+| [danielmeppiel/compliance-rules](https://github.com/danielmeppiel/compliance-rules) | `/gdpr-assessment`, `/security-audit` + compliance guardrails |
 | [danielmeppiel/design-guidelines](https://github.com/danielmeppiel/design-guidelines) | `/accessibility-audit`, `/design-review` + UI standards |
 | [DevExpGbb/platform-mode](https://github.com/DevExpGbb/platform-mode) | Platform engineering prompts & agents |
+| [github/awesome-copilot](https://github.com/github/awesome-copilot) | Community prompts, agents & instructions for Copilot |
+| [anthropics/courses](https://github.com/anthropics/courses) | Anthropic's official skills & prompt library |
 | [Add yours →](https://github.com/danielmeppiel/apm/discussions/new) | |
 
 ---
 
 ## Documentation
 
-### Getting Started
-| Guide | Description |
-|-------|-------------|
-| [Quick Start](docs/getting-started.md) | Complete setup, tokens, first project |
-| [Core Concepts](docs/concepts.md) | How APM works, the primitives model |
-| [Examples](docs/examples.md) | Real-world patterns and use cases |
-
-### Reference
-| Guide | Description |
-|-------|-------------|
-| [CLI Reference](docs/cli-reference.md) | All commands and options |
-| [Compilation Engine](docs/compilation.md) | Context optimization algorithm |
-| [Skills](docs/skills.md) | Native [agentskills.io](https://agentskills.io) support |
-| [Integrations](docs/integrations.md) | VSCode, Spec-kit, MCP servers |
-
-### Advanced
-| Guide | Description |
-|-------|-------------|
-| [Dependencies](docs/dependencies.md) | Package management deep-dive |
-| [Primitives](docs/primitives.md) | Building advanced workflows |
-| [Contributing](CONTRIBUTING.md) | Join the ecosystem |
+| | |
+|---|---|
+| **Get Started** | [Quick Start](docs/getting-started.md) · [Core Concepts](docs/concepts.md) · [Examples](docs/examples.md) |
+| **Reference** | [CLI Reference](docs/cli-reference.md) · [Compilation Engine](docs/compilation.md) · [Skills](docs/skills.md) · [Integrations](docs/integrations.md) |
+| **Advanced** | [Dependencies](docs/dependencies.md) · [Primitives](docs/primitives.md) · [Contributing](CONTRIBUTING.md) |
 
 ---
 
-**Open Standards:** [AGENTS.md](https://agents.md) · [Agent Skills](https://agentskills.io) · [MCP](https://modelcontextprotocol.io)
+**Built on open standards:** [AGENTS.md](https://agents.md) · [Agent Skills](https://agentskills.io) · [MCP](https://modelcontextprotocol.io)
 
-**Learn AI-Native Development** → [Awesome AI Native](https://danielmeppiel.github.io/awesome-ai-native)  
+**Learn AI-Native Development** → [Awesome AI Native](https://danielmeppiel.github.io/awesome-ai-native)
 A practical learning path for AI-Native Development, leveraging APM along the way.

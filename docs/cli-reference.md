@@ -97,7 +97,6 @@ apm init my-project --yes
 
 **Creates:**
 - `apm.yml` - Minimal project configuration with empty dependencies and scripts sections
-- `SKILL.md` - Package meta-guide for AI discovery (describes what the package does)
 
 **Auto-detected fields:**
 - `name` - From project directory name

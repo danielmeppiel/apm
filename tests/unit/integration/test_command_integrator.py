@@ -2,9 +2,9 @@
 
 Tests cover:
 - Command file discovery
-- Command integration during install
-- Command cleanup during uninstall (sync_integration)
-- Selective removal of commands for specific packages
+- Command integration during install (no metadata injection)
+- Command cleanup during uninstall (nuke-and-regenerate via sync_integration)
+- Removal of all APM command files
 """
 
 import tempfile
@@ -14,27 +14,13 @@ from unittest.mock import MagicMock
 from dataclasses import dataclass
 
 import pytest
+import frontmatter
 
 from apm_cli.integration.command_integrator import CommandIntegrator
 
 
-@dataclass
-class MockDependencyReference:
-    """Mock DependencyReference for testing."""
-    repo_url: str
-    host: str = "github.com"
-    virtual_path: str = None
-    is_virtual: bool = False
-    
-    def get_unique_key(self) -> str:
-        """Get unique key matching DependencyReference behavior."""
-        if self.is_virtual and self.virtual_path:
-            return f"{self.repo_url}/{self.virtual_path}"
-        return self.repo_url
-
-
 class TestCommandIntegratorSyncIntegration:
-    """Tests for sync_integration method."""
+    """Tests for sync_integration method (nuke-and-regenerate)."""
 
     @pytest.fixture
     def temp_project(self):
@@ -49,101 +35,40 @@ class TestCommandIntegratorSyncIntegration:
         yield temp_path
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def test_sync_removes_commands_from_uninstalled_packages(self, temp_project):
-        """Test that sync_integration removes commands from uninstalled packages."""
+    def test_sync_removes_all_apm_commands(self, temp_project):
+        """Test that sync_integration removes all *-apm.md files."""
         commands_dir = temp_project / ".claude" / "commands"
         
         # Create command files for two packages
         pkg1_command = commands_dir / "audit-apm.md"
-        pkg1_command.write_text("""---
-apm:
-  source_dependency: danielmeppiel/compliance-rules
-  version: 1.0.0
----
-# Audit Command
-""")
+        pkg1_command.write_text("# Audit Command\n")
         
         pkg2_command = commands_dir / "review-apm.md"
-        pkg2_command.write_text("""---
-apm:
-  source_dependency: danielmeppiel/design-guidelines
-  version: 1.0.0
----
-# Review Command
-""")
-        
-        # Mock APMPackage with only design-guidelines remaining
-        mock_package = MagicMock()
-        mock_package.dependencies = {
-            'apm': [MockDependencyReference(repo_url='danielmeppiel/design-guidelines')]
-        }
+        pkg2_command.write_text("# Review Command\n")
         
         integrator = CommandIntegrator()
-        result = integrator.sync_integration(mock_package, temp_project)
+        result = integrator.sync_integration(None, temp_project)
         
-        # compliance-rules command should be removed
-        assert result['files_removed'] == 1
+        assert result['files_removed'] == 2
         assert not pkg1_command.exists()
-        
-        # design-guidelines command should remain
-        assert pkg2_command.exists()
-
-    def test_sync_keeps_commands_for_installed_packages(self, temp_project):
-        """Test that sync_integration keeps commands for still-installed packages."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
-        # Create command for a package
-        command = commands_dir / "audit-apm.md"
-        command.write_text("""---
-apm:
-  source_dependency: danielmeppiel/compliance-rules
-  version: 1.0.0
----
-# Audit Command
-""")
-        
-        # Mock APMPackage with the package still installed
-        mock_package = MagicMock()
-        mock_package.dependencies = {
-            'apm': [MockDependencyReference(repo_url='danielmeppiel/compliance-rules')]
-        }
-        
-        integrator = CommandIntegrator()
-        result = integrator.sync_integration(mock_package, temp_project)
-        
-        # Command should remain
-        assert result['files_removed'] == 0
-        assert command.exists()
+        assert not pkg2_command.exists()
 
     def test_sync_handles_empty_dependencies(self, temp_project):
-        """Test sync with empty dependencies removes all commands."""
+        """Test sync removes all apm commands regardless of dependencies."""
         commands_dir = temp_project / ".claude" / "commands"
         
-        # Create command files
         command1 = commands_dir / "cmd1-apm.md"
-        command1.write_text("""---
-apm:
-  source_dependency: org/pkg1
----
-# Command 1
-""")
+        command1.write_text("# Command 1\n")
         
         command2 = commands_dir / "cmd2-apm.md"
-        command2.write_text("""---
-apm:
-  source_dependency: org/pkg2
----
-# Command 2
-""")
+        command2.write_text("# Command 2\n")
         
-        # Mock APMPackage with no dependencies
         mock_package = MagicMock()
         mock_package.dependencies = {'apm': []}
         
         integrator = CommandIntegrator()
         result = integrator.sync_integration(mock_package, temp_project)
         
-        # All commands should be removed
         assert result['files_removed'] == 2
         assert not command1.exists()
         assert not command2.exists()
@@ -154,148 +79,39 @@ apm:
         
         # Create a non-APM command file (user-created)
         user_command = commands_dir / "my-custom-command.md"
-        user_command.write_text("""# My Custom Command
-This is a user-created command that should not be touched.
-""")
-        
-        # Mock APMPackage with no dependencies
-        mock_package = MagicMock()
-        mock_package.dependencies = {'apm': []}
+        user_command.write_text("# My Custom Command\n")
         
         integrator = CommandIntegrator()
-        result = integrator.sync_integration(mock_package, temp_project)
+        result = integrator.sync_integration(None, temp_project)
         
-        # User command should not be touched
         assert result['files_removed'] == 0
         assert user_command.exists()
 
-    def test_sync_handles_string_dependencies(self, temp_project):
-        """Test that sync_integration handles string-type dependencies."""
-        commands_dir = temp_project / ".claude" / "commands"
+    def test_sync_handles_nonexistent_commands_dir(self):
+        """Test sync handles missing .claude/commands directory."""
+        temp_dir = tempfile.mkdtemp()
+        temp_path = Path(temp_dir)
         
-        command = commands_dir / "cmd-apm.md"
-        command.write_text("""---
-apm:
-  source_dependency: org/package
----
-# Command
-""")
-        
-        # Mock APMPackage with string dependencies (legacy format)
-        mock_package = MagicMock()
-        mock_package.dependencies = {
-            'apm': ['org/package']  # String, not DependencyReference
-        }
-        
-        integrator = CommandIntegrator()
-        result = integrator.sync_integration(mock_package, temp_project)
-        
-        # Command should remain (dependency still installed)
-        assert result['files_removed'] == 0
-        assert command.exists()
+        try:
+            integrator = CommandIntegrator()
+            result = integrator.sync_integration(None, temp_path)
+            assert result['files_removed'] == 0
+            assert result['errors'] == 0
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def test_sync_keeps_virtual_package_commands(self, temp_project):
-        """Test that sync_integration keeps commands from installed virtual packages."""
+    def test_sync_apm_package_param_is_unused(self, temp_project):
+        """Test that sync works regardless of what apm_package is passed."""
         commands_dir = temp_project / ".claude" / "commands"
         
-        # Create a command from a virtual package (full path in source_dependency)
-        command = commands_dir / "breakdown-plan-apm.md"
-        command.write_text("""---
-apm:
-  source_dependency: github/awesome-copilot/prompts/breakdown-plan.prompt.md
----
-# Breakdown Plan Command
-""")
-        
-        # Mock APMPackage with virtual package installed
-        mock_package = MagicMock()
-        mock_package.dependencies = {
-            'apm': [MockDependencyReference(
-                repo_url='github/awesome-copilot',
-                virtual_path='prompts/breakdown-plan.prompt.md',
-                is_virtual=True
-            )]
-        }
+        cmd = commands_dir / "test-apm.md"
+        cmd.write_text("# Test\n")
         
         integrator = CommandIntegrator()
-        result = integrator.sync_integration(mock_package, temp_project)
         
-        # Virtual package is installed, command should remain
-        assert result['files_removed'] == 0
-        assert command.exists()
-
-    def test_sync_removes_uninstalled_virtual_package_commands(self, temp_project):
-        """Test that sync_integration removes commands from uninstalled virtual packages."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
-        # Create a command from a virtual package
-        command = commands_dir / "breakdown-plan-apm.md"
-        command.write_text("""---
-apm:
-  source_dependency: github/awesome-copilot/prompts/breakdown-plan.prompt.md
----
-# Breakdown Plan Command
-""")
-        
-        # Mock APMPackage with a DIFFERENT virtual package installed
-        mock_package = MagicMock()
-        mock_package.dependencies = {
-            'apm': [MockDependencyReference(
-                repo_url='github/awesome-copilot',
-                virtual_path='prompts/other-prompt.prompt.md',
-                is_virtual=True
-            )]
-        }
-        
-        integrator = CommandIntegrator()
-        result = integrator.sync_integration(mock_package, temp_project)
-        
-        # Virtual package was uninstalled, command should be removed
+        # Works with None
+        result = integrator.sync_integration(None, temp_project)
         assert result['files_removed'] == 1
-        assert not command.exists()
-
-    def test_sync_mixed_regular_and_virtual_packages(self, temp_project):
-        """Test sync with mix of regular and virtual packages."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
-        # Regular package command
-        regular_cmd = commands_dir / "audit-apm.md"
-        regular_cmd.write_text("""---
-apm:
-  source_dependency: danielmeppiel/compliance-rules
----
-# Audit
-""")
-        
-        # Virtual package command
-        virtual_cmd = commands_dir / "breakdown-apm.md"
-        virtual_cmd.write_text("""---
-apm:
-  source_dependency: github/awesome-copilot/prompts/breakdown.prompt.md
----
-# Breakdown
-""")
-        
-        # Mock APMPackage with both installed
-        mock_package = MagicMock()
-        mock_package.dependencies = {
-            'apm': [
-                MockDependencyReference(repo_url='danielmeppiel/compliance-rules'),
-                MockDependencyReference(
-                    repo_url='github/awesome-copilot',
-                    virtual_path='prompts/breakdown.prompt.md',
-                    is_virtual=True
-                )
-            ]
-        }
-        
-        integrator = CommandIntegrator()
-        result = integrator.sync_integration(mock_package, temp_project)
-        
-        # Both should remain
-        assert result['files_removed'] == 0
-        assert regular_cmd.exists()
-        assert virtual_cmd.exists()
 
 
 class TestRemovePackageCommands:
@@ -313,52 +129,140 @@ class TestRemovePackageCommands:
         yield temp_path
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def test_removes_only_specified_package_commands(self, temp_project):
-        """Test that remove_package_commands only removes the specified package's commands."""
+    def test_removes_all_apm_commands(self, temp_project):
+        """Test that remove_package_commands removes all *-apm.md files."""
         commands_dir = temp_project / ".claude" / "commands"
         
-        # Create commands from different packages
-        pkg1_cmd1 = commands_dir / "audit-apm.md"
-        pkg1_cmd1.write_text("""---
-apm:
-  source_dependency: danielmeppiel/compliance-rules
----
-# Audit
-""")
+        cmd1 = commands_dir / "audit-apm.md"
+        cmd1.write_text("# Audit\n")
         
-        pkg1_cmd2 = commands_dir / "review-apm.md"
-        pkg1_cmd2.write_text("""---
-apm:
-  source_dependency: danielmeppiel/compliance-rules
----
-# Review
-""")
+        cmd2 = commands_dir / "review-apm.md"
+        cmd2.write_text("# Review\n")
         
-        pkg2_cmd = commands_dir / "design-apm.md"
-        pkg2_cmd.write_text("""---
-apm:
-  source_dependency: danielmeppiel/design-guidelines
----
-# Design
-""")
+        cmd3 = commands_dir / "design-apm.md"
+        cmd3.write_text("# Design\n")
         
         integrator = CommandIntegrator()
-        removed = integrator.remove_package_commands("danielmeppiel/compliance-rules", temp_project)
+        removed = integrator.remove_package_commands("any/package", temp_project)
         
-        # Only compliance-rules commands should be removed
-        assert removed == 2
-        assert not pkg1_cmd1.exists()
-        assert not pkg1_cmd2.exists()
-        
-        # design-guidelines command should remain
-        assert pkg2_cmd.exists()
+        assert removed == 3
+        assert not cmd1.exists()
+        assert not cmd2.exists()
+        assert not cmd3.exists()
 
     def test_returns_zero_when_no_commands_dir(self, temp_project):
         """Test that remove_package_commands returns 0 when no commands directory exists."""
-        # Remove the commands directory
         shutil.rmtree(temp_project / ".claude" / "commands")
         
         integrator = CommandIntegrator()
         removed = integrator.remove_package_commands("any/package", temp_project)
         
         assert removed == 0
+
+    def test_preserves_non_apm_files(self, temp_project):
+        """Test that non-APM files are preserved."""
+        commands_dir = temp_project / ".claude" / "commands"
+        
+        user_cmd = commands_dir / "my-command.md"
+        user_cmd.write_text("# User command\n")
+        
+        apm_cmd = commands_dir / "test-apm.md"
+        apm_cmd.write_text("# APM command\n")
+        
+        integrator = CommandIntegrator()
+        removed = integrator.remove_package_commands("any/package", temp_project)
+        
+        assert removed == 1
+        assert not apm_cmd.exists()
+        assert user_cmd.exists()
+
+
+class TestIntegrateCommandNoMetadata:
+    """Tests that integrate_command does NOT inject APM metadata."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Create temporary project with source and target dirs."""
+        temp_dir = tempfile.mkdtemp()
+        temp_path = Path(temp_dir)
+        
+        (temp_path / "source").mkdir()
+        (temp_path / ".claude" / "commands").mkdir(parents=True)
+        
+        yield temp_path
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_no_apm_metadata_in_output(self, temp_project):
+        """Test that integrated command files contain no APM metadata block."""
+        source = temp_project / "source" / "audit.prompt.md"
+        source.write_text("""---
+description: Run audit checks
+---
+# Audit Command
+Run compliance audit.
+""")
+        
+        target = temp_project / ".claude" / "commands" / "audit-apm.md"
+        
+        mock_info = MagicMock()
+        mock_info.package.name = "test/pkg"
+        mock_info.package.version = "1.0.0"
+        mock_info.package.source = "https://github.com/test/pkg"
+        mock_info.resolved_reference = None
+        mock_info.install_path = temp_project / "source"
+        mock_info.installed_at = "2024-01-01"
+        mock_info.get_canonical_dependency_string.return_value = "test/pkg"
+        
+        integrator = CommandIntegrator()
+        integrator.integrate_command(source, target, mock_info, source)
+        
+        # Verify no APM metadata
+        post = frontmatter.load(target)
+        assert 'apm' not in post.metadata
+        
+        # Verify legitimate metadata IS preserved
+        assert post.metadata.get('description') == 'Run audit checks'
+
+    def test_content_preserved_verbatim(self, temp_project):
+        """Test that command content is preserved without modification."""
+        content = "# My Command\nDo something useful.\n\n## Steps\n1. First\n2. Second"
+        source = temp_project / "source" / "test.prompt.md"
+        source.write_text(f"---\ndescription: Test\n---\n{content}\n")
+        
+        target = temp_project / ".claude" / "commands" / "test-apm.md"
+        
+        mock_info = MagicMock()
+        mock_info.resolved_reference = None
+        
+        integrator = CommandIntegrator()
+        integrator.integrate_command(source, target, mock_info, source)
+        
+        post = frontmatter.load(target)
+        assert content in post.content
+
+    def test_claude_metadata_mapping(self, temp_project):
+        """Test that Claude-specific frontmatter fields are mapped correctly."""
+        source = temp_project / "source" / "cmd.prompt.md"
+        source.write_text("""---
+description: A command
+allowed-tools: ["bash", "edit"]
+model: claude-sonnet
+argument-hint: "file path"
+---
+# Command
+""")
+        
+        target = temp_project / ".claude" / "commands" / "cmd-apm.md"
+        
+        mock_info = MagicMock()
+        mock_info.resolved_reference = None
+        
+        integrator = CommandIntegrator()
+        integrator.integrate_command(source, target, mock_info, source)
+        
+        post = frontmatter.load(target)
+        assert post.metadata['description'] == 'A command'
+        assert post.metadata['allowed-tools'] == ['bash', 'edit']
+        assert post.metadata['model'] == 'claude-sonnet'
+        assert post.metadata['argument-hint'] == 'file path'
+        assert 'apm' not in post.metadata

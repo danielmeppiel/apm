@@ -64,214 +64,148 @@ def create_mock_apm_package(dependencies: list) -> APMPackage:
 
 
 class TestAgentIntegratorOrphanDetection:
-    """Test orphan detection in AgentIntegrator with virtual packages."""
+    """Test nuke-and-regenerate sync in AgentIntegrator.
     
-    def test_orphan_detection_regular_package(self):
-        """Regular package orphan detection (baseline)."""
+    AgentIntegrator now uses nuke approach: removes ALL *-apm.agent.md
+    and *-apm.chatmode.md files. The caller re-integrates from installed packages.
+    """
+    
+    def test_sync_removes_all_apm_agent_files(self):
+        """All *-apm.agent.md files are removed regardless of install state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             agents_dir = project_root / ".github" / "agents"
             
-            # Create an integrated agent from owner/repo
             create_test_integrated_file(
                 agents_dir / "test-apm.agent.md",
                 source_repo="owner/repo",
                 source_dependency="owner/repo"
             )
             
-            # Mock package with owner/repo installed
+            # Even with the package installed, nuke removes all
             apm_package = create_mock_apm_package(["owner/repo"])
             
             integrator = AgentIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Should NOT be removed (package is installed)
-            assert result['files_removed'] == 0
-            assert (agents_dir / "test-apm.agent.md").exists()
-    
-    def test_orphan_detection_removes_uninstalled_package(self):
-        """Uninstalled package should be detected as orphan."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project_root = Path(tmpdir)
-            agents_dir = project_root / ".github" / "agents"
-            
-            # Create an integrated agent from owner/repo
-            create_test_integrated_file(
-                agents_dir / "test-apm.agent.md",
-                source_repo="owner/repo",
-                source_dependency="owner/repo"
-            )
-            
-            # Mock package with different package installed
-            apm_package = create_mock_apm_package(["other/package"])
-            
-            integrator = AgentIntegrator()
-            result = integrator.sync_integration(apm_package, project_root)
-            
-            # Should be removed (package not installed)
             assert result['files_removed'] == 1
             assert not (agents_dir / "test-apm.agent.md").exists()
     
-    def test_orphan_detection_virtual_package_new_format(self):
-        """Virtual package with new format source_dependency should be matched correctly."""
+    def test_sync_removes_multiple_apm_files(self):
+        """Multiple -apm files from different packages are all removed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             agents_dir = project_root / ".github" / "agents"
+            agents_dir.mkdir(parents=True)
             
-            # Create agent from virtual collection
-            create_test_integrated_file(
-                agents_dir / "azure-apm.agent.md",
-                source_repo="github/awesome-copilot",
-                source_dependency="github/awesome-copilot/collections/azure-cloud-development"
-            )
+            (agents_dir / "agent-a-apm.agent.md").write_text("# Agent A")
+            (agents_dir / "agent-b-apm.agent.md").write_text("# Agent B")
+            (agents_dir / "agent-c-apm.agent.md").write_text("# Agent C")
             
-            # Mock package with the virtual collection installed
-            apm_package = create_mock_apm_package([
-                "github/awesome-copilot/collections/azure-cloud-development"
-            ])
-            
-            integrator = AgentIntegrator()
-            result = integrator.sync_integration(apm_package, project_root)
-            
-            # Should NOT be removed (exact virtual package is installed)
-            assert result['files_removed'] == 0
-            assert (agents_dir / "azure-apm.agent.md").exists()
-    
-    def test_orphan_detection_virtual_package_removed(self):
-        """When a virtual package is removed, its agents should be orphaned."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project_root = Path(tmpdir)
-            agents_dir = project_root / ".github" / "agents"
-            
-            # Create agent from virtual collection
-            create_test_integrated_file(
-                agents_dir / "azure-apm.agent.md",
-                source_repo="github/awesome-copilot",
-                source_dependency="github/awesome-copilot/collections/azure-cloud-development"
-            )
-            
-            # Mock package with a DIFFERENT virtual collection installed
-            apm_package = create_mock_apm_package([
-                "github/awesome-copilot/collections/different-collection"
-            ])
-            
-            integrator = AgentIntegrator()
-            result = integrator.sync_integration(apm_package, project_root)
-            
-            # Should be removed (different virtual package from same repo)
-            assert result['files_removed'] == 1
-            assert not (agents_dir / "azure-apm.agent.md").exists()
-    
-    def test_orphan_detection_old_format_fallback(self):
-        """Old format without source_dependency falls back to repo URL matching."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project_root = Path(tmpdir)
-            agents_dir = project_root / ".github" / "agents"
-            
-            # Create agent using old format (no source_dependency)
-            create_test_integrated_file(
-                agents_dir / "test-apm.agent.md",
-                source_repo="owner/repo",
-                source_dependency=None  # Old format
-            )
-            
-            # Mock package with owner/repo installed
-            apm_package = create_mock_apm_package(["owner/repo"])
-            
-            integrator = AgentIntegrator()
-            result = integrator.sync_integration(apm_package, project_root)
-            
-            # Should NOT be removed (backwards compatibility)
-            assert result['files_removed'] == 0
-            assert (agents_dir / "test-apm.agent.md").exists()
-    
-    def test_orphan_detection_chatmode_files(self):
-        """Legacy .chatmode.md files should also be cleaned up."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project_root = Path(tmpdir)
-            agents_dir = project_root / ".github" / "agents"
-            
-            # Create a chatmode file
-            create_test_integrated_file(
-                agents_dir / "test-apm.chatmode.md",
-                source_repo="owner/repo",
-                source_dependency="owner/repo"
-            )
-            
-            # Mock package with nothing installed
             apm_package = create_mock_apm_package([])
             
             integrator = AgentIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Should be removed
+            assert result['files_removed'] == 3
+    
+    def test_sync_preserves_non_apm_files(self):
+        """Files without -apm suffix are preserved."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            agents_dir = project_root / ".github" / "agents"
+            agents_dir.mkdir(parents=True)
+            
+            (agents_dir / "my-custom.agent.md").write_text("# Custom")
+            (agents_dir / "test-apm.agent.md").write_text("# APM managed")
+            
+            apm_package = create_mock_apm_package([])
+            
+            integrator = AgentIntegrator()
+            result = integrator.sync_integration(apm_package, project_root)
+            
+            assert result['files_removed'] == 1
+            assert (agents_dir / "my-custom.agent.md").exists()
+            assert not (agents_dir / "test-apm.agent.md").exists()
+    
+    def test_sync_removes_chatmode_files(self):
+        """Legacy .chatmode.md files are also removed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            agents_dir = project_root / ".github" / "agents"
+            agents_dir.mkdir(parents=True)
+            
+            (agents_dir / "test-apm.chatmode.md").write_text("# Chatmode")
+            
+            apm_package = create_mock_apm_package([])
+            
+            integrator = AgentIntegrator()
+            result = integrator.sync_integration(apm_package, project_root)
+            
             assert result['files_removed'] == 1
             assert not (agents_dir / "test-apm.chatmode.md").exists()
 
 
 class TestPromptIntegratorOrphanDetection:
-    """Test orphan detection in PromptIntegrator with virtual packages."""
+    """Test nuke-and-regenerate sync in PromptIntegrator.
     
-    def test_orphan_detection_regular_package(self):
-        """Regular package orphan detection (baseline)."""
+    PromptIntegrator now uses nuke approach: removes ALL *-apm.prompt.md files.
+    The caller re-integrates from currently installed packages.
+    """
+    
+    def test_sync_removes_all_apm_files(self):
+        """All *-apm.prompt.md files are removed regardless of metadata."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             prompts_dir = project_root / ".github" / "prompts"
             
-            # Create an integrated prompt from owner/repo
             create_test_integrated_file(
                 prompts_dir / "test-apm.prompt.md",
                 source_repo="owner/repo",
                 source_dependency="owner/repo"
             )
             
-            # Mock package with owner/repo installed
             apm_package = create_mock_apm_package(["owner/repo"])
             
             integrator = PromptIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Should NOT be removed (package is installed)
-            assert result['files_removed'] == 0
-            assert (prompts_dir / "test-apm.prompt.md").exists()
+            # Nuke removes ALL apm files
+            assert result['files_removed'] == 1
+            assert not (prompts_dir / "test-apm.prompt.md").exists()
     
-    def test_orphan_detection_removes_uninstalled_package(self):
-        """Uninstalled package should be detected as orphan."""
+    def test_sync_removes_uninstalled_package(self):
+        """Uninstalled package files are removed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             prompts_dir = project_root / ".github" / "prompts"
             
-            # Create an integrated prompt from owner/repo
             create_test_integrated_file(
                 prompts_dir / "test-apm.prompt.md",
                 source_repo="owner/repo",
                 source_dependency="owner/repo"
             )
             
-            # Mock package with different package installed
             apm_package = create_mock_apm_package(["other/package"])
             
             integrator = PromptIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Should be removed (package not installed)
             assert result['files_removed'] == 1
             assert not (prompts_dir / "test-apm.prompt.md").exists()
     
-    def test_orphan_detection_virtual_package_new_format(self):
-        """Virtual package with new format source_dependency should be matched correctly."""
+    def test_sync_removes_virtual_package_files(self):
+        """Virtual package files are also removed by nuke approach."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             prompts_dir = project_root / ".github" / "prompts"
             
-            # Create prompt from virtual file
             create_test_integrated_file(
                 prompts_dir / "code-review-apm.prompt.md",
                 source_repo="github/awesome-copilot",
                 source_dependency="github/awesome-copilot/prompts/code-review.prompt.md"
             )
             
-            # Mock package with the virtual file installed
             apm_package = create_mock_apm_package([
                 "github/awesome-copilot/prompts/code-review.prompt.md"
             ])
@@ -279,64 +213,41 @@ class TestPromptIntegratorOrphanDetection:
             integrator = PromptIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Should NOT be removed (exact virtual package is installed)
-            assert result['files_removed'] == 0
-            assert (prompts_dir / "code-review-apm.prompt.md").exists()
-    
-    def test_orphan_detection_virtual_package_removed(self):
-        """When a virtual package is removed, its prompts should be orphaned."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project_root = Path(tmpdir)
-            prompts_dir = project_root / ".github" / "prompts"
-            
-            # Create prompt from virtual file
-            create_test_integrated_file(
-                prompts_dir / "code-review-apm.prompt.md",
-                source_repo="github/awesome-copilot",
-                source_dependency="github/awesome-copilot/prompts/code-review.prompt.md"
-            )
-            
-            # Mock package with a DIFFERENT virtual file installed
-            apm_package = create_mock_apm_package([
-                "github/awesome-copilot/prompts/other-file.prompt.md"
-            ])
-            
-            integrator = PromptIntegrator()
-            result = integrator.sync_integration(apm_package, project_root)
-            
-            # Should be removed (different virtual package from same repo)
+            # Nuke removes everything
             assert result['files_removed'] == 1
             assert not (prompts_dir / "code-review-apm.prompt.md").exists()
     
-    def test_orphan_detection_old_format_fallback(self):
-        """Old format without source_dependency falls back to repo URL matching."""
+    def test_sync_preserves_non_apm_suffix_files(self):
+        """Files without -apm suffix are not removed."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             prompts_dir = project_root / ".github" / "prompts"
+            prompts_dir.mkdir(parents=True, exist_ok=True)
             
-            # Create prompt using old format (no source_dependency)
+            # Non-APM file
+            (prompts_dir / "custom.prompt.md").write_text("# Custom")
+            # APM file
             create_test_integrated_file(
                 prompts_dir / "test-apm.prompt.md",
                 source_repo="owner/repo",
-                source_dependency=None  # Old format
+                source_dependency="owner/repo"
             )
             
-            # Mock package with owner/repo installed
             apm_package = create_mock_apm_package(["owner/repo"])
             
             integrator = PromptIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Should NOT be removed (backwards compatibility)
-            assert result['files_removed'] == 0
-            assert (prompts_dir / "test-apm.prompt.md").exists()
+            assert result['files_removed'] == 1
+            assert not (prompts_dir / "test-apm.prompt.md").exists()
+            assert (prompts_dir / "custom.prompt.md").exists()
 
 
 class TestMixedScenarios:
     """Test complex scenarios with multiple packages and virtual packages."""
     
     def test_multiple_virtual_packages_from_same_repo(self):
-        """Multiple virtual packages from same repo handled correctly."""
+        """Multiple virtual packages from same repo — nuke removes all."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             agents_dir = project_root / ".github" / "agents"
@@ -353,7 +264,6 @@ class TestMixedScenarios:
                 source_dependency="github/awesome-copilot/collections/aws"
             )
             
-            # Mock package with only azure collection installed
             apm_package = create_mock_apm_package([
                 "github/awesome-copilot/collections/azure"
             ])
@@ -361,13 +271,13 @@ class TestMixedScenarios:
             integrator = AgentIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Only aws should be removed
-            assert result['files_removed'] == 1
-            assert (agents_dir / "azure-apm.agent.md").exists()
+            # Nuke removes ALL -apm files (caller re-integrates installed ones)
+            assert result['files_removed'] == 2
+            assert not (agents_dir / "azure-apm.agent.md").exists()
             assert not (agents_dir / "aws-apm.agent.md").exists()
     
     def test_regular_and_virtual_packages_mixed(self):
-        """Mix of regular and virtual packages handled correctly."""
+        """Mix of regular and virtual packages handled correctly by nuke approach."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             prompts_dir = project_root / ".github" / "prompts"
@@ -394,7 +304,7 @@ class TestMixedScenarios:
             integrator = PromptIntegrator()
             result = integrator.sync_integration(apm_package, project_root)
             
-            # Neither should be removed
-            assert result['files_removed'] == 0
-            assert (prompts_dir / "regular-apm.prompt.md").exists()
-            assert (prompts_dir / "virtual-apm.prompt.md").exists()
+            # Nuke removes ALL apm files (caller re-integrates)
+            assert result['files_removed'] == 2
+            assert not (prompts_dir / "regular-apm.prompt.md").exists()
+            assert not (prompts_dir / "virtual-apm.prompt.md").exists()

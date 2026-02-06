@@ -61,41 +61,43 @@ class TestPromptIntegrator:
         assert len(prompts) == 1
         assert prompts[0].name == "workflow.prompt.md"
     
-    def test_copy_prompt_with_metadata(self):
-        """Test copying prompt file with metadata in frontmatter."""
+    def test_copy_prompt_verbatim(self):
+        """Test copying prompt file verbatim without metadata injection."""
         source = self.project_root / "source.prompt.md"
         target = self.project_root / "target.prompt.md"
         
         source_content = "# Test Prompt\n\nSome prompt content."
         source.write_text(source_content)
         
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",
-            package_path=Path("/fake/path"),
-            source="github.com/test/repo"
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at="2024-11-13T10:00:00"
-        )
-        
-        self.integrator.copy_prompt_with_metadata(source, target, package_info, source)
+        self.integrator.copy_prompt(source, target)
         
         target_content = target.read_text()
-        assert "---" in target_content  # YAML frontmatter
-        assert "apm:" in target_content
-        assert "version: 1.0.0" in target_content
-        assert "commit: abc123" in target_content
-        assert "Some prompt content" in target_content
+        assert target_content == source_content
+        # No metadata injected
+        assert "apm:" not in target_content
+        assert "version:" not in target_content
+    
+    def test_copy_prompt_preserves_existing_frontmatter(self):
+        """Test that existing frontmatter in source is preserved verbatim."""
+        source = self.project_root / "source.prompt.md"
+        target = self.project_root / "target.prompt.md"
+        
+        source_content = """---
+title: My Prompt
+description: A test prompt
+---
+
+# Test Prompt
+
+Some prompt content."""
+        source.write_text(source_content)
+        
+        self.integrator.copy_prompt(source, target)
+        
+        target_content = target.read_text()
+        assert target_content == source_content
+        # No APM metadata added
+        assert "apm:" not in target_content
     
     def test_get_target_filename(self):
         """Test target filename generation with -apm suffix (intent-first naming)."""
@@ -105,8 +107,6 @@ class TestPromptIntegrator:
         target = self.integrator.get_target_filename(source, package_name)
         # Intent-first naming: -apm suffix before extension
         assert target == "accessibility-audit-apm.prompt.md"
-    
-
     
     def test_integrate_package_prompts_creates_directory(self):
         """Test that integration creates .github/prompts/ if missing."""
@@ -140,26 +140,17 @@ class TestPromptIntegrator:
         assert result.files_integrated == 1
         assert (self.project_root / ".github" / "prompts").exists()
     
-    def test_integrate_package_prompts_skips_unchanged_files(self):
-        """Test that integration skips files with same version and commit."""
+    def test_integrate_always_overwrites_existing_files(self):
+        """Test that integration always overwrites existing files."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
-        (package_dir / "test.prompt.md").write_text("# Test")
+        (package_dir / "test.prompt.md").write_text("# New Content")
         
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
         
-        # Pre-create the target file with matching header
-        existing_content = """<!-- 
-Source: test-pkg (github.com/test/repo)
-Version: 1.0.0
-Commit: abc123
-Original: test.prompt.md
-Installed: 2024-01-01T00:00:00
--->
-
-# Existing"""
-        (github_prompts / "test-apm.prompt.md").write_text(existing_content)
+        # Pre-create the target file with old content
+        (github_prompts / "test-apm.prompt.md").write_text("# Old Content")
         
         package = APMPackage(
             name="test-pkg",
@@ -182,9 +173,15 @@ Installed: 2024-01-01T00:00:00
         
         result = self.integrator.integrate_package_prompts(package_info, self.project_root)
         
-        assert result.files_integrated == 0
+        # Always counts as integrated (overwrite)
+        assert result.files_integrated == 1
         assert result.files_updated == 0
-        assert result.files_skipped == 1
+        assert result.files_skipped == 0
+        
+        # Verify content was overwritten
+        content = (github_prompts / "test-apm.prompt.md").read_text()
+        assert "# New Content" in content
+        assert "# Old Content" not in content
     
     def test_update_gitignore_adds_pattern(self):
         """Test that gitignore is updated with integrated prompts pattern."""
@@ -206,171 +203,12 @@ Installed: 2024-01-01T00:00:00
         
         assert updated == False
     
-    # ========== Header-based Versioning Tests ==========
-    
-    def test_parse_header_metadata_valid(self):
-        """Test parsing metadata from a valid header."""
-        header_content = """<!-- 
-Source: design-guidelines (danielmeppiel/design-guidelines)
-Version: 1.0.0
-Commit: abc123def456
-Original: design-review.prompt.md
-Installed: 2024-11-13T10:30:00Z
--->
-
-# Prompt content here"""
-        
-        test_file = self.project_root / "test.prompt.md"
-        test_file.write_text(header_content)
-        
-        metadata = self.integrator._parse_header_metadata(test_file)
-        
-        assert metadata['Source'] == 'design-guidelines (danielmeppiel/design-guidelines)'
-        assert metadata['Version'] == '1.0.0'
-        assert metadata['Commit'] == 'abc123def456'
-        assert metadata['Original'] == 'design-review.prompt.md'
-        assert metadata['Installed'] == '2024-11-13T10:30:00Z'
-    
-    def test_parse_header_metadata_no_header(self):
-        """Test parsing file without header returns empty dict."""
-        test_file = self.project_root / "test.prompt.md"
-        test_file.write_text("# Just content, no header")
-        
-        metadata = self.integrator._parse_header_metadata(test_file)
-        
-        assert metadata == {}
-    
-    def test_parse_header_metadata_malformed(self):
-        """Test parsing malformed header returns empty dict."""
-        test_file = self.project_root / "test.prompt.md"
-        test_file.write_text("<!-- Incomplete header\nNo closing tag")
-        
-        metadata = self.integrator._parse_header_metadata(test_file)
-        
-        assert metadata == {}
-    
-    def test_should_update_prompt_new_version(self):
-        """Test that prompt should be updated when version changes."""
-        existing_header = {
-            'Version': '1.0.0',
-            'Commit': 'abc123'
-        }
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="2.0.0",  # Version changed
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
-        
-        assert should_update == True
-        assert was_modified == False
-    
-    def test_should_update_prompt_new_commit(self):
-        """Test that prompt should be updated when commit changes."""
-        existing_header = {
-            'Version': '1.0.0',
-            'Commit': 'abc123'
-        }
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="def456",  # Commit changed
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
-        
-        assert should_update == True
-        assert was_modified == False
-    
-    def test_should_update_prompt_no_change(self):
-        """Test that prompt should not be updated when version and commit match."""
-        existing_header = {
-            'Version': '1.0.0',
-            'Commit': 'abc123'
-        }
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",  # Same version
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",  # Same commit
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
-        
-        assert should_update == False
-        assert was_modified == False
-    
-    def test_should_update_prompt_no_header(self):
-        """Test that prompt should be updated when no valid header exists."""
-        existing_header = {}
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_prompt(existing_header, package_info)
-        
-        assert should_update == True
-        assert was_modified == False
-    
-    def test_integrate_first_time_creates_with_header(self):
-        """Test that first-time integration creates files with proper headers."""
+    def test_integrate_copies_verbatim_no_metadata(self):
+        """Test that integration copies files verbatim without metadata."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
-        (package_dir / "test.prompt.md").write_text("# Test Content")
+        source_content = "# Test Content\n\nSome content here."
+        (package_dir / "test.prompt.md").write_text(source_content)
         
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
@@ -400,171 +238,27 @@ Installed: 2024-11-13T10:30:00Z
         assert result.files_updated == 0
         assert result.files_skipped == 0
         
-        # Verify frontmatter metadata was added
+        # Verify file is copied verbatim - no metadata
         target_file = github_prompts / "test-apm.prompt.md"
         content = target_file.read_text()
-        assert content.startswith('---')  # YAML frontmatter
-        assert 'apm:' in content
-        assert 'version: 1.0.0' in content
-        assert 'commit: abc123' in content
-        assert '# Test Content' in content
+        assert content == source_content
+        assert 'apm:' not in content
+        assert '---' not in content
     
-    def test_integrate_with_new_version_updates_file(self):
-        """Test that integration with new version updates existing file."""
+    def test_integrate_multiple_files(self):
+        """Test integration with multiple prompt files."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
-        (package_dir / "test.prompt.md").write_text("# Updated Content")
+        
+        (package_dir / "file1.prompt.md").write_text("# File 1")
+        (package_dir / "file2.prompt.md").write_text("# File 2")
+        (package_dir / "file3.prompt.md").write_text("# File 3")
         
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
         
-        # Pre-create file with old version in YAML frontmatter
-        old_content = """---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 1.0.0
-  commit: abc123
-  original_path: test.prompt.md
-  installed_at: '2024-11-13T10:00:00'
-  content_hash: abc123
----
-
-# Old Content"""
-        (github_prompts / "test-apm.prompt.md").write_text(old_content)
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="2.0.0",  # New version
-            package_path=package_dir,
-            source="github.com/test/repo"
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=package_dir,
-            resolved_reference=resolved_ref,
-            installed_at="2024-11-13T11:00:00"
-        )
-        
-        result = self.integrator.integrate_package_prompts(package_info, self.project_root)
-        
-        assert result.files_integrated == 0
-        assert result.files_updated == 1
-        assert result.files_skipped == 0
-        
-        # Verify content was updated with new YAML frontmatter
-        target_file = github_prompts / "test-apm.prompt.md"
-        content = target_file.read_text()
-        assert 'version: 2.0.0' in content
-        assert '# Updated Content' in content
-        assert '# Old Content' not in content
-    
-    def test_integrate_with_new_commit_updates_file(self):
-        """Test that integration with new commit hash updates existing file."""
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        (package_dir / "test.prompt.md").write_text("# Updated Content")
-        
-        github_prompts = self.project_root / ".github" / "prompts"
-        github_prompts.mkdir(parents=True)
-        
-        # Pre-create file with old commit in YAML frontmatter
-        old_content = """---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 1.0.0
-  commit: abc123
-  original_path: test.prompt.md
-  installed_at: '2024-11-13T10:00:00'
-  content_hash: abc123
----
-
-# Old Content"""
-        (github_prompts / "test-apm.prompt.md").write_text(old_content)
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",
-            package_path=package_dir,
-            source="github.com/test/repo"
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="def456",  # New commit
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=package_dir,
-            resolved_reference=resolved_ref,
-            installed_at="2024-11-13T11:00:00"
-        )
-        
-        result = self.integrator.integrate_package_prompts(package_info, self.project_root)
-        
-        assert result.files_integrated == 0
-        assert result.files_updated == 1
-        assert result.files_skipped == 0
-        
-        # Verify commit was updated in YAML frontmatter
-        target_file = github_prompts / "test-apm.prompt.md"
-        content = target_file.read_text()
-        assert 'commit: def456' in content
-        assert '# Updated Content' in content
-    
-    def test_integrate_mixed_operations(self):
-        """Test integration with mix of new, updated, and skipped files."""
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        
-        # Create 3 prompt files in package
-        (package_dir / "new.prompt.md").write_text("# New File")
-        (package_dir / "update.prompt.md").write_text("# Updated File")
-        (package_dir / "skip.prompt.md").write_text("# Unchanged File")
-        
-        github_prompts = self.project_root / ".github" / "prompts"
-        github_prompts.mkdir(parents=True)
-        
-        # Pre-create file to be updated (old version) in YAML frontmatter
-        update_old = """---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 1.0.0
-  commit: abc123
-  original_path: update.prompt.md
-  installed_at: '2024-11-13T10:00:00'
-  content_hash: abc123
----
-
-# Old Content"""
-        (github_prompts / "update-apm.prompt.md").write_text(update_old)
-        
-        # Pre-create file to be skipped (same version) - need correct hash
-        import hashlib
-        skip_content = "# Unchanged File"
-        skip_hash = hashlib.sha256(skip_content.encode()).hexdigest()
-        skip_same = f"""---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 2.0.0
-  commit: def456
-  original_path: skip.prompt.md
-  installed_at: '2024-11-13T10:00:00'
-  content_hash: {skip_hash}
----
-
-{skip_content}"""
-        (github_prompts / "skip-apm.prompt.md").write_text(skip_same)
+        # Pre-create one existing file to test overwrite
+        (github_prompts / "file2-apm.prompt.md").write_text("# Old File 2")
         
         package = APMPackage(
             name="test-pkg",
@@ -587,89 +281,73 @@ apm:
         
         result = self.integrator.integrate_package_prompts(package_info, self.project_root)
         
-        assert result.files_integrated == 1  # new.prompt.md
-        assert result.files_updated == 1      # update.prompt.md
-        assert result.files_skipped == 1      # skip.prompt.md
+        # All 3 files are integrated (always overwrite)
+        assert result.files_integrated == 3
+        assert result.files_updated == 0
+        assert result.files_skipped == 0
         
-        # Verify new file exists
-        assert (github_prompts / "new-apm.prompt.md").exists()
-        
-        # Verify updated file has new version in YAML frontmatter
-        update_content = (github_prompts / "update-apm.prompt.md").read_text()
-        assert 'version: 2.0.0' in update_content
-        
-        # Verify skipped file is unchanged
-        skip_content = (github_prompts / "skip-apm.prompt.md").read_text()
-        assert skip_content == skip_same
+        # Verify all files exist with correct content
+        assert (github_prompts / "file1-apm.prompt.md").exists()
+        assert (github_prompts / "file2-apm.prompt.md").read_text() == "# File 2"
+        assert (github_prompts / "file3-apm.prompt.md").exists()
     
-    # ========== Sync Integration Tests (Cleanup) ==========
+    # ========== Sync Integration Tests (Nuke-and-Regenerate) ==========
     
-    def test_sync_integration_removes_orphaned_prompts(self):
-        """Test that sync removes prompts from uninstalled packages."""
+    def test_sync_integration_removes_all_apm_files(self):
+        """Test that sync removes all *-apm.prompt.md files."""
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
         
-        # Create integrated prompts from two packages
-        prompt1 = """<!-- 
-Source: design-guidelines (danielmeppiel/design-guidelines)
-Version: 1.0.0
-Commit: abc123
-Original: design-review.prompt.md
-Installed: 2024-11-13T10:00:00
--->
-
-# Design Review"""
-        (github_prompts / "design-review-apm.prompt.md").write_text(prompt1)
-        
-        prompt2 = """<!-- 
-Source: compliance-rules (danielmeppiel/compliance-rules)
-Version: 1.0.0
-Commit: def456
-Original: compliance-audit.prompt.md
-Installed: 2024-11-13T10:00:00
--->
-
-# Compliance Audit"""
-        (github_prompts / "compliance-audit-apm.prompt.md").write_text(prompt2)
-        
-        # Create APM package with only one dependency (design-guidelines uninstalled)
-        from apm_cli.models.apm_package import DependencyReference
+        # Create multiple APM-managed prompt files
+        (github_prompts / "design-review-apm.prompt.md").write_text("# Design Review")
+        (github_prompts / "compliance-audit-apm.prompt.md").write_text("# Compliance Audit")
         
         apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = [
-            DependencyReference(
-                repo_url="danielmeppiel/compliance-rules",
-                reference="main"
-            )
-        ]
         
-        # Run sync
-        self.integrator.sync_integration(apm_package, self.project_root)
+        result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # Verify orphaned prompt removed, existing prompt preserved
+        assert result['files_removed'] == 2
         assert not (github_prompts / "design-review-apm.prompt.md").exists()
-        assert (github_prompts / "compliance-audit-apm.prompt.md").exists()
+        assert not (github_prompts / "compliance-audit-apm.prompt.md").exists()
     
-    def test_sync_integration_preserves_installed_prompts(self):
-        """Test that sync doesn't remove prompts from installed packages."""
+    def test_sync_integration_preserves_non_apm_files(self):
+        """Test that sync does not remove files without -apm suffix."""
         github_prompts = self.project_root / ".github" / "prompts"
         github_prompts.mkdir(parents=True)
         
-        # Create integrated prompt
-        prompt1 = """<!-- 
-Source: design-guidelines (danielmeppiel/design-guidelines)
-Version: 1.0.0
-Commit: abc123
-Original: design-review.prompt.md
-Installed: 2024-11-13T10:00:00
--->
-
-# Design Review"""
-        (github_prompts / "design-review-apm.prompt.md").write_text(prompt1)
+        # Create both APM and non-APM files
+        (github_prompts / "test-apm.prompt.md").write_text("# APM prompt")
+        (github_prompts / "my-custom.prompt.md").write_text("# Custom prompt")
+        (github_prompts / "readme.md").write_text("# Readme")
         
-        # Create APM package with the dependency still installed
+        apm_package = Mock()
+        
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        assert result['files_removed'] == 1
+        assert not (github_prompts / "test-apm.prompt.md").exists()
+        assert (github_prompts / "my-custom.prompt.md").exists()
+        assert (github_prompts / "readme.md").exists()
+    
+    def test_sync_integration_handles_missing_prompts_dir(self):
+        """Test that sync gracefully handles missing .github/prompts/ directory."""
+        apm_package = Mock()
+        
+        # Should not raise exception
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        
+        assert result['files_removed'] == 0
+        assert result['errors'] == 0
+    
+    def test_sync_integration_ignores_apm_package_param(self):
+        """Test that sync removes all APM files regardless of installed packages."""
+        github_prompts = self.project_root / ".github" / "prompts"
+        github_prompts.mkdir(parents=True)
+        
+        (github_prompts / "design-review-apm.prompt.md").write_text("# Design Review")
+        
+        # Even with matching dependencies, sync removes everything
         from apm_cli.models.apm_package import DependencyReference
-        
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = [
             DependencyReference(
@@ -678,45 +356,10 @@ Installed: 2024-11-13T10:00:00
             )
         ]
         
-        # Run sync
-        self.integrator.sync_integration(apm_package, self.project_root)
+        result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # Verify prompt still exists
-        assert (github_prompts / "design-review-apm.prompt.md").exists()
-    
-    def test_sync_integration_handles_missing_prompts_dir(self):
-        """Test that sync gracefully handles missing .github/prompts/ directory."""
-        from apm_cli.models.apm_package import DependencyReference
-        
-        apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = [
-            DependencyReference(
-                repo_url="danielmeppiel/test",
-                reference="main"
-            )
-        ]
-        
-        # Should not raise exception
-        self.integrator.sync_integration(apm_package, self.project_root)
-    
-    def test_sync_integration_handles_files_without_metadata(self):
-        """Test that sync preserves files without valid metadata headers (user's custom files)."""
-        github_prompts = self.project_root / ".github" / "prompts"
-        github_prompts.mkdir(parents=True)
-        
-        # Create file without proper header - could be user's custom prompt
-        (github_prompts / "custom-apm.prompt.md").write_text("# Custom prompt without header")
-        
-        from apm_cli.models.apm_package import DependencyReference
-        
-        apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = []
-        
-        # Should not raise exception
-        self.integrator.sync_integration(apm_package, self.project_root)
-        
-        # File without header should be preserved (not removed) - it's a user's file
-        assert (github_prompts / "custom-apm.prompt.md").exists()
+        assert result['files_removed'] == 1
+        assert not (github_prompts / "design-review-apm.prompt.md").exists()
 
 
 class TestPromptSuffixPattern:
