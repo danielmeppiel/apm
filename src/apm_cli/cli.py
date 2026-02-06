@@ -355,16 +355,12 @@ def init(ctx, project_name, yes):
             if console:
                 files_data = [
                     ("✨", "apm.yml", "Project configuration"),
-                    ("📖", "SKILL.md", "Package meta-guide for AI discovery"),
                 ]
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
         except (ImportError, NameError):
             _rich_info("Created:")
             _rich_echo("  ✨ apm.yml - Project configuration", style="muted")
-            _rich_echo(
-                "  📖 SKILL.md - Package meta-guide for AI discovery", style="muted"
-            )
 
         _rich_blank_line()
 
@@ -1157,70 +1153,89 @@ def uninstall(ctx, packages, dry_run):
                 else:
                     _rich_warning(f"Package {package} not found in apm_modules/")
 
-        # Sync prompt integration to remove orphaned prompts
+        # Sync integrations: nuke all -apm files and re-integrate from remaining packages
         prompts_cleaned = 0
         prompts_failed = 0
-        if Path(".github/prompts").exists():
-            try:
-                from apm_cli.models.apm_package import APMPackage
-                from apm_cli.integration.prompt_integrator import PromptIntegrator
-
-                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
-                integrator = PromptIntegrator()
-                cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                prompts_cleaned = cleanup_result.get("files_removed", 0)
-                prompts_failed = cleanup_result.get("errors", 0)
-            except Exception as e:
-                prompts_failed += 1
-
-        # Sync agent integration to remove orphaned agents
         agents_cleaned = 0
         agents_failed = 0
-        if Path(".github/agents").exists():
-            try:
-                from apm_cli.models.apm_package import APMPackage
-                from apm_cli.integration.agent_integrator import AgentIntegrator
-
-                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
-                integrator = AgentIntegrator()
-                cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                agents_cleaned = cleanup_result.get("files_removed", 0)
-                agents_failed = cleanup_result.get("errors", 0)
-            except Exception as e:
-                agents_failed += 1
-
-        # Sync skill integration to remove orphaned skills
-        # T12: Check both .github/skills/ and .claude/skills/ locations
-        skills_cleaned = 0
-        skills_failed = 0
-        if Path(".github/skills").exists() or Path(".claude/skills").exists():
-            try:
-                from apm_cli.models.apm_package import APMPackage
-                from apm_cli.integration.skill_integrator import SkillIntegrator
-
-                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
-                integrator = SkillIntegrator()
-                cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                skills_cleaned = cleanup_result.get("files_removed", 0)
-                skills_failed = cleanup_result.get("errors", 0)
-            except Exception as e:
-                skills_failed += 1
-
-        # Sync command integration to remove orphaned Claude commands
         commands_cleaned = 0
         commands_failed = 0
-        if Path(".claude/commands").exists():
-            try:
-                from apm_cli.models.apm_package import APMPackage
-                from apm_cli.integration.command_integrator import CommandIntegrator
+        skills_cleaned = 0
+        skills_failed = 0
 
-                apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+        try:
+            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_package
+            from apm_cli.integration.prompt_integrator import PromptIntegrator
+            from apm_cli.integration.agent_integrator import AgentIntegrator
+            from apm_cli.integration.skill_integrator import SkillIntegrator
+            from apm_cli.integration.command_integrator import CommandIntegrator
+
+            apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+            project_root = Path(".")
+
+            # Phase 1: Nuke all -apm integrated files
+            if Path(".github/prompts").exists():
+                integrator = PromptIntegrator()
+                result = integrator.sync_integration(apm_package, project_root)
+                prompts_cleaned = result.get("files_removed", 0)
+
+            if Path(".github/agents").exists():
+                integrator = AgentIntegrator()
+                result = integrator.sync_integration(apm_package, project_root)
+                agents_cleaned = result.get("files_removed", 0)
+
+            if Path(".github/skills").exists() or Path(".claude/skills").exists():
+                integrator = SkillIntegrator()
+                result = integrator.sync_integration(apm_package, project_root)
+                skills_cleaned = result.get("files_removed", 0)
+
+            if Path(".claude/commands").exists():
                 integrator = CommandIntegrator()
-                cleanup_result = integrator.sync_integration(apm_package, Path("."))
-                commands_cleaned = cleanup_result.get("files_removed", 0)
-                commands_failed = cleanup_result.get("errors", 0)
-            except Exception as e:
-                commands_failed += 1
+                result = integrator.sync_integration(apm_package, project_root)
+                commands_cleaned = result.get("files_removed", 0)
+
+            # Phase 2: Re-integrate from remaining installed packages in apm_modules/
+            prompt_integrator = PromptIntegrator()
+            agent_integrator = AgentIntegrator()
+            skill_integrator = SkillIntegrator()
+            command_integrator = CommandIntegrator()
+
+            for dep in apm_package.get_apm_dependencies():
+                dep_ref = dep if hasattr(dep, 'repo_url') else None
+                if not dep_ref:
+                    continue
+                # Build install path
+                install_path = Path("apm_modules") / dep_ref.repo_url
+                if dep_ref.is_virtual and dep_ref.virtual_path:
+                    install_path = Path("apm_modules") / dep_ref.repo_url / dep_ref.virtual_path
+                if not install_path.exists():
+                    continue
+
+                # Build minimal PackageInfo for re-integration
+                result = validate_package(install_path)
+                pkg = result.package if result and result.package else None
+                if not pkg:
+                    continue
+                pkg_info = PackageInfo(
+                    package=pkg,
+                    install_path=install_path,
+                    dependency_ref=dep_ref,
+                    package_type=result.package_type if result else None,
+                )
+
+                try:
+                    if prompt_integrator.should_integrate(project_root):
+                        prompt_integrator.integrate_package_prompts(pkg_info, project_root)
+                    if agent_integrator.should_integrate(project_root):
+                        agent_integrator.integrate_package_agents(pkg_info, project_root)
+                    skill_integrator.integrate_package_skill(pkg_info, project_root)
+                    if command_integrator.should_integrate(project_root):
+                        command_integrator.integrate_package_commands(pkg_info, project_root)
+                except Exception:
+                    pass  # Best effort re-integration
+
+        except Exception as e:
+            prompts_failed += 1
 
         # Show cleanup feedback
         if prompts_cleaned > 0:
@@ -4141,7 +4156,7 @@ def _get_default_config(project_name):
 
 
 def _create_minimal_apm_yml(config):
-    """Create minimal apm.yml file and SKILL.md with auto-detected metadata."""
+    """Create minimal apm.yml file with auto-detected metadata."""
     yaml = _lazy_yaml()
 
     # Create minimal apm.yml structure
@@ -4157,36 +4172,6 @@ def _create_minimal_apm_yml(config):
     # Write apm.yml
     with open("apm.yml", "w") as f:
         yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)
-
-    # Create SKILL.md (package meta-guide for AI discovery)
-    skill_content = f"""---
-name: {config["name"]}
-description: {config["description"]}
----
-
-# {config["name"]}
-
-{config["description"]}
-
-## What This Package Does
-
-Describe what this package provides and how AI agents should use it.
-
-## Getting Started
-
-```bash
-apm install your-org/{config["name"]}
-apm compile
-```
-
-## Available Primitives
-
-- **Instructions**: Guardrails and standards in `.apm/instructions/`
-- **Prompts**: Executable workflows in `.apm/prompts/`
-- **Agents**: Specialized personas in `.apm/agents/`
-"""
-    with open("SKILL.md", "w") as f:
-        f.write(skill_content)
 
 
 def main():

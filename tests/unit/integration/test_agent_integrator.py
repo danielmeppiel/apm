@@ -97,41 +97,18 @@ class TestAgentIntegrator:
         extensions = {tuple(p.name.split('.')[-2:]) for p in agents}
         assert extensions == {('agent', 'md'), ('chatmode', 'md')}
     
-    def test_copy_agent_with_metadata(self):
-        """Test copying agent file with metadata in frontmatter."""
+    def test_copy_agent_verbatim(self):
+        """Test copying agent file verbatim (no metadata injection)."""
         source = self.project_root / "source.agent.md"
         target = self.project_root / "target.agent.md"
         
         source_content = "# Security Agent\n\nSome agent content."
         source.write_text(source_content)
         
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",
-            package_path=Path("/fake/path"),
-            source="github.com/test/repo"
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at="2024-11-13T10:00:00"
-        )
-        
-        self.integrator.copy_agent_with_metadata(source, target, package_info, source)
+        self.integrator.copy_agent(source, target)
         
         target_content = target.read_text()
-        assert "---" in target_content  # YAML frontmatter
-        assert "apm:" in target_content
-        assert "version: 1.0.0" in target_content
-        assert "commit: abc123" in target_content
-        assert "Some agent content" in target_content
+        assert target_content == source_content
     
     def test_get_target_filename_agent_format(self):
         """Test target filename generation with -apm suffix for .agent.md."""
@@ -185,8 +162,8 @@ class TestAgentIntegrator:
         assert result.files_integrated == 1
         assert (self.project_root / ".github" / "agents").exists()
     
-    def test_integrate_package_agents_skips_unchanged_files(self):
-        """Test that integration skips files with same version and commit."""
+    def test_integrate_package_agents_always_overwrites(self):
+        """Test that integration always overwrites existing files."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "security.agent.md").write_text("# Security Agent")
@@ -194,20 +171,8 @@ class TestAgentIntegrator:
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        # Pre-create the target file with matching frontmatter
-        existing_content = """---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 1.0.0
-  commit: abc123
-  original_path: security.agent.md
-  installed_at: '2024-01-01T00:00:00'
-  content_hash: da39a3ee5e6b4b0d3255bfef95601890afd80709
----
-
-# Existing"""
-        (github_agents / "security-apm.agent.md").write_text(existing_content)
+        # Pre-create the target file with old content
+        (github_agents / "security-apm.agent.md").write_text("# Old Content")
         
         package = APMPackage(
             name="test-pkg",
@@ -230,9 +195,12 @@ apm:
         
         result = self.integrator.integrate_package_agents(package_info, self.project_root)
         
-        assert result.files_integrated == 0
+        assert result.files_integrated == 1
         assert result.files_updated == 0
-        assert result.files_skipped == 1
+        assert result.files_skipped == 0
+        # Verify content was overwritten
+        content = (github_agents / "security-apm.agent.md").read_text()
+        assert content == "# Security Agent"
     
     def test_update_gitignore_adds_patterns(self):
         """Test that gitignore is updated with integrated agents patterns."""
@@ -255,169 +223,26 @@ apm:
         
         assert updated == False
     
-    # ========== Header-based Versioning Tests ==========
+    # ========== Verbatim Copy Tests ==========
     
-    def test_parse_header_metadata_valid(self):
-        """Test parsing metadata from valid YAML frontmatter."""
-        header_content = """---
-apm:
-  source: security-standards
-  source_repo: danielmeppiel/security-standards
-  version: 1.0.0
-  commit: abc123def456
-  original_path: security.agent.md
-  installed_at: '2024-11-13T10:30:00Z'
+    def test_copy_agent_preserves_frontmatter(self):
+        """Test that copy_agent preserves existing YAML frontmatter as-is."""
+        source = self.project_root / "source.agent.md"
+        target = self.project_root / "target.agent.md"
+        
+        source_content = """---
+description: My agent
+tools: []
 ---
 
 # Agent content here"""
+        source.write_text(source_content)
         
-        test_file = self.project_root / "test.agent.md"
-        test_file.write_text(header_content)
+        self.integrator.copy_agent(source, target)
         
-        metadata = self.integrator._parse_header_metadata(test_file)
-        
-        assert metadata['Source'] == 'security-standards (danielmeppiel/security-standards)'
-        assert metadata['Version'] == '1.0.0'
-        assert metadata['Commit'] == 'abc123def456'
-        assert metadata['Original'] == 'security.agent.md'
-        assert metadata['Installed'] == '2024-11-13T10:30:00Z'
+        assert target.read_text() == source_content
     
-    def test_parse_header_metadata_no_header(self):
-        """Test parsing file without header returns empty dict."""
-        test_file = self.project_root / "test.agent.md"
-        test_file.write_text("# Just content, no header")
-        
-        metadata = self.integrator._parse_header_metadata(test_file)
-        
-        assert metadata == {}
-    
-    def test_parse_header_metadata_malformed(self):
-        """Test parsing malformed header returns empty dict."""
-        test_file = self.project_root / "test.agent.md"
-        test_file.write_text("<!-- Incomplete header\nNo closing tag")
-        
-        metadata = self.integrator._parse_header_metadata(test_file)
-        
-        assert metadata == {}
-    
-    def test_should_update_agent_new_version(self):
-        """Test that agent should be updated when version changes."""
-        existing_header = {
-            'Version': '1.0.0',
-            'Commit': 'abc123'
-        }
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="2.0.0",  # Version changed
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_agent(existing_header, package_info)
-        
-        assert should_update == True
-        assert was_modified == False
-    
-    def test_should_update_agent_new_commit(self):
-        """Test that agent should be updated when commit changes."""
-        existing_header = {
-            'Version': '1.0.0',
-            'Commit': 'abc123'
-        }
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="def456",  # Commit changed
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_agent(existing_header, package_info)
-        
-        assert should_update == True
-        assert was_modified == False
-    
-    def test_should_update_agent_no_change(self):
-        """Test that agent should not be updated when version and commit match."""
-        existing_header = {
-            'Version': '1.0.0',
-            'Commit': 'abc123'
-        }
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",  # Same version
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",  # Same commit
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_agent(existing_header, package_info)
-        
-        assert should_update == False
-        assert was_modified == False
-    
-    def test_should_update_agent_no_header(self):
-        """Test that agent should be updated when no valid header exists."""
-        existing_header = {}
-        
-        package = APMPackage(
-            name="test-pkg",
-            version="1.0.0",
-            package_path=Path("/fake/path")
-        )
-        resolved_ref = ResolvedReference(
-            original_ref="main",
-            ref_type=GitReferenceType.BRANCH,
-            resolved_commit="abc123",
-            ref_name="main"
-        )
-        package_info = PackageInfo(
-            package=package,
-            install_path=Path("/fake/install"),
-            resolved_reference=resolved_ref,
-            installed_at=datetime.now().isoformat()
-        )
-        
-        should_update, was_modified = self.integrator._should_update_agent(existing_header, package_info)
-        
-        assert should_update == True
-        assert was_modified == False
-    
-    def test_integrate_first_time_creates_with_header(self):
+    def test_integrate_first_time_copies_verbatim(self):
         """Test that first-time integration creates files with proper frontmatter metadata."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
@@ -451,17 +276,14 @@ apm:
         assert result.files_updated == 0
         assert result.files_skipped == 0
         
-        # Verify frontmatter was added
+        # Verify verbatim copy — no frontmatter injected
         target_file = github_agents / "security-apm.agent.md"
         content = target_file.read_text()
-        assert content.startswith('---')  # YAML frontmatter
-        assert 'apm:' in content
-        assert 'version: 1.0.0' in content
-        assert 'commit: abc123' in content
-        assert '# Security Agent Content' in content
+        assert content == "# Security Agent Content"
+        assert 'apm:' not in content
     
-    def test_integrate_with_new_version_updates_file(self):
-        """Test that integration with new version updates existing file."""
+    def test_integrate_overwrites_existing_file(self):
+        """Test that integration always overwrites existing files."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         (package_dir / "security.agent.md").write_text("# Updated Agent Content")
@@ -469,20 +291,8 @@ apm:
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        # Pre-create file with old version in frontmatter
-        old_content = """---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 1.0.0
-  commit: abc123
-  original_path: security.agent.md
-  installed_at: '2024-11-13T10:00:00'
-  content_hash: da39a3ee5e6b4b0d3255bfef95601890afd80709
----
-
-# Old Content"""
-        (github_agents / "security-apm.agent.md").write_text(old_content)
+        # Pre-create file with old content
+        (github_agents / "security-apm.agent.md").write_text("# Old Content")
         
         package = APMPackage(
             name="test-pkg",
@@ -505,62 +315,31 @@ apm:
         
         result = self.integrator.integrate_package_agents(package_info, self.project_root)
         
-        assert result.files_integrated == 0
-        assert result.files_updated == 1
+        assert result.files_integrated == 1
+        assert result.files_updated == 0
         assert result.files_skipped == 0
         
-        # Verify content was updated with new frontmatter
+        # Verify content was overwritten verbatim
         target_file = github_agents / "security-apm.agent.md"
         content = target_file.read_text()
-        assert 'version: 2.0.0' in content
-        assert '# Updated Agent Content' in content
-        assert '# Old Content' not in content
+        assert content == "# Updated Agent Content"
     
-    def test_integrate_mixed_operations(self):
-        """Test integration with mix of new, updated, and skipped files."""
+    def test_integrate_all_files_always_copied(self):
+        """Test integration copies all agent files regardless of existing state."""
         package_dir = self.project_root / "package"
         package_dir.mkdir()
         
         # Create 3 agent files in package
         (package_dir / "new.agent.md").write_text("# New Agent")
-        (package_dir / "update.agent.md").write_text("# Updated Agent")
-        (package_dir / "skip.agent.md").write_text("# Unchanged Agent")
+        (package_dir / "existing.agent.md").write_text("# Updated Agent")
+        (package_dir / "another.agent.md").write_text("# Another Agent")
         
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        # Pre-create file to be updated (old version) in YAML frontmatter format
-        update_old = """---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 1.0.0
-  commit: abc123
-  original_path: update.agent.md
-  installed_at: '2024-11-13T10:00:00'
-  content_hash: abc123
----
-
-# Old Content"""
-        (github_agents / "update-apm.agent.md").write_text(update_old)
-        
-        # Pre-create file to be skipped (same version) - need to calculate correct hash
-        import hashlib
-        skip_content = "# Unchanged Agent"
-        skip_hash = hashlib.sha256(skip_content.encode()).hexdigest()
-        skip_same = f"""---
-apm:
-  source: test-pkg
-  source_repo: github.com/test/repo
-  version: 2.0.0
-  commit: def456
-  original_path: skip.agent.md
-  installed_at: '2024-11-13T10:00:00'
-  content_hash: {skip_hash}
----
-
-{skip_content}"""
-        (github_agents / "skip-apm.agent.md").write_text(skip_same)
+        # Pre-create some target files
+        (github_agents / "existing-apm.agent.md").write_text("# Old Content")
+        (github_agents / "another-apm.agent.md").write_text("# Old Another")
         
         package = APMPackage(
             name="test-pkg",
@@ -583,173 +362,88 @@ apm:
         
         result = self.integrator.integrate_package_agents(package_info, self.project_root)
         
-        assert result.files_integrated == 1  # new.agent.md
-        assert result.files_updated == 1      # update.agent.md (version/commit match but content hash differs)
-        assert result.files_skipped == 1      # skip.agent.md
+        assert result.files_integrated == 3  # All files always copied
+        assert result.files_updated == 0
+        assert result.files_skipped == 0
         
-        # Verify new file exists
-        assert (github_agents / "new-apm.agent.md").exists()
-        
-        # Verify updated file has new version (YAML format)
-        update_content = (github_agents / "update-apm.agent.md").read_text()
-        assert 'version: 2.0.0' in update_content
-        
-        # Verify skipped file is unchanged
-        skip_content = (github_agents / "skip-apm.agent.md").read_text()
-        assert skip_content == skip_same
+        # Verify all files exist with verbatim content
+        assert (github_agents / "new-apm.agent.md").read_text() == "# New Agent"
+        assert (github_agents / "existing-apm.agent.md").read_text() == "# Updated Agent"
+        assert (github_agents / "another-apm.agent.md").read_text() == "# Another Agent"
     
-    # ========== Sync Integration Tests (Cleanup) ==========
+    # ========== Sync Integration Tests (Nuke & Regenerate) ==========
     
-    def test_sync_integration_removes_orphaned_agents(self):
-        """Test that sync removes agents from uninstalled packages."""
+    def test_sync_integration_removes_all_apm_agents(self):
+        """Test that sync removes all APM-managed agent files."""
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        # Create integrated agents from two packages in YAML frontmatter format
-        agent1 = """---
-apm:
-  source: security-standards
-  source_repo: danielmeppiel/security-standards
-  version: 1.0.0
-  commit: abc123
-  original_path: security.agent.md
-  installed_at: '2024-11-13T10:00:00'
----
-
-# Security Agent"""
-        (github_agents / "security-apm.agent.md").write_text(agent1)
-        
-        agent2 = """---
-apm:
-  source: compliance-rules
-  source_repo: danielmeppiel/compliance-rules
-  version: 1.0.0
-  commit: def456
-  original_path: compliance.agent.md
-  installed_at: '2024-11-13T10:00:00'
----
-
-# Compliance Agent"""
-        (github_agents / "compliance-apm.agent.md").write_text(agent2)
-        
-        # Create APM package with only one dependency (security-standards uninstalled)
-        from apm_cli.models.apm_package import DependencyReference
+        # Create APM-managed agent files
+        (github_agents / "security-apm.agent.md").write_text("# Security Agent")
+        (github_agents / "compliance-apm.agent.md").write_text("# Compliance Agent")
         
         apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = [
-            DependencyReference(
-                repo_url="danielmeppiel/compliance-rules",
-                reference="main"
-            )
-        ]
         
-        # Run sync
         result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # Verify orphaned agent removed, existing agent preserved
-        assert result['files_removed'] == 1
+        assert result['files_removed'] == 2
         assert not (github_agents / "security-apm.agent.md").exists()
-        assert (github_agents / "compliance-apm.agent.md").exists()
+        assert not (github_agents / "compliance-apm.agent.md").exists()
     
-    def test_sync_integration_removes_orphaned_chatmodes(self):
-        """Test that sync removes legacy chatmode files from uninstalled packages."""
+    def test_sync_integration_removes_apm_chatmodes(self):
+        """Test that sync removes APM-managed chatmode files."""
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        # Create integrated legacy chatmode in YAML frontmatter format
-        chatmode1 = """---
-apm:
-  source: old-package
-  source_repo: danielmeppiel/old-package
-  version: 1.0.0
-  commit: abc123
-  original_path: default.chatmode.md
-  installed_at: '2024-11-13T10:00:00'
----
-
-# Default Chatmode"""
-        (github_agents / "default-apm.chatmode.md").write_text(chatmode1)
+        (github_agents / "default-apm.chatmode.md").write_text("# Default Chatmode")
         
-        # Create APM package with no dependencies
         apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = []
         
-        # Run sync
         result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # Verify orphaned chatmode removed
         assert result['files_removed'] == 1
         assert not (github_agents / "default-apm.chatmode.md").exists()
     
-    def test_sync_integration_preserves_installed_agents(self):
-        """Test that sync doesn't remove agents from installed packages."""
+    def test_sync_integration_preserves_non_apm_files(self):
+        """Test that sync does not remove non-APM files."""
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        # Create integrated agent in YAML frontmatter format
-        agent1 = """---
-apm:
-  source: security-standards
-  source_repo: danielmeppiel/security-standards
-  version: 1.0.0
-  commit: abc123
-  original_path: security.agent.md
-  installed_at: '2024-11-13T10:00:00'
----
-
-# Security Agent"""
-        (github_agents / "security-apm.agent.md").write_text(agent1)
-        
-        # Create APM package with the dependency still installed
-        from apm_cli.models.apm_package import DependencyReference
+        # Create APM and non-APM files
+        (github_agents / "security-apm.agent.md").write_text("# APM Agent")
+        (github_agents / "custom.agent.md").write_text("# Custom Agent")
+        (github_agents / "my-agent.agent.md").write_text("# My Agent")
         
         apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = [
-            DependencyReference(
-                repo_url="danielmeppiel/security-standards",
-                reference="main"
-            )
-        ]
         
-        # Run sync
-        self.integrator.sync_integration(apm_package, self.project_root)
+        result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # Verify agent still exists
-        assert (github_agents / "security-apm.agent.md").exists()
+        assert result['files_removed'] == 1
+        assert (github_agents / "custom.agent.md").exists()
+        assert (github_agents / "my-agent.agent.md").exists()
     
     def test_sync_integration_handles_missing_agents_dir(self):
         """Test that sync gracefully handles missing .github/agents/ directory."""
-        from apm_cli.models.apm_package import DependencyReference
-        
         apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = [
-            DependencyReference(
-                repo_url="danielmeppiel/test",
-                reference="main"
-            )
-        ]
         
         # Should not raise exception
-        self.integrator.sync_integration(apm_package, self.project_root)
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+        assert result['files_removed'] == 0
     
-    def test_sync_integration_handles_files_without_metadata(self):
-        """Test that sync preserves files without valid metadata headers (user's custom files)."""
+    def test_sync_integration_removes_apm_files_regardless_of_content(self):
+        """Test that sync removes all *-apm files, regardless of content."""
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        # Create file without proper header - could be user's custom agent
+        # APM-managed file with no frontmatter — still removed by pattern
         (github_agents / "custom-apm.agent.md").write_text("# Custom agent without header")
         
-        from apm_cli.models.apm_package import DependencyReference
-        
         apm_package = Mock()
-        apm_package.get_apm_dependencies.return_value = []
         
-        # Should not raise exception
-        self.integrator.sync_integration(apm_package, self.project_root)
+        result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # File without header should be preserved (not removed) - it's a user's file
-        assert (github_agents / "custom-apm.agent.md").exists()
+        assert result['files_removed'] == 1
+        assert not (github_agents / "custom-apm.agent.md").exists()
 
     # ========== Skill Separation Regression Tests (T5) ==========
     # ARCHITECTURE DECISION: Skills are NOT Agents

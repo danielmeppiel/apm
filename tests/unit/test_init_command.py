@@ -248,88 +248,13 @@ class TestInitCommand:
                 # Should auto-detect description
                 assert "APM project" in config["description"]
 
-    def test_init_creates_skill_md(self):
-        """Test that init creates SKILL.md alongside apm.yml."""
+    def test_init_does_not_create_skill_md(self):
+        """Test that init does not create SKILL.md (only apm.yml)."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
 
             result = self.runner.invoke(cli, ["init", "--yes"])
 
             assert result.exit_code == 0
-            assert Path("SKILL.md").exists()
-
-    def test_init_skill_md_contains_frontmatter(self):
-        """Test that SKILL.md contains proper YAML frontmatter."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
-            result = self.runner.invoke(cli, ["init", "--yes"])
-
-            assert result.exit_code == 0
-            
-            skill_content = Path("SKILL.md").read_text()
-            # Check frontmatter structure
-            assert skill_content.startswith("---")
-            assert "name:" in skill_content
-            assert "description:" in skill_content
-            # Frontmatter should be closed
-            assert skill_content.count("---") >= 2
-
-    def test_init_skill_md_reflects_project_name(self):
-        """Test that SKILL.md reflects the project name and description."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
-            result = self.runner.invoke(cli, ["init", "my-awesome-package", "--yes"])
-
-            assert result.exit_code == 0
-            
-            project_path = Path(tmp_dir) / "my-awesome-package"
-            skill_content = (project_path / "SKILL.md").read_text()
-            
-            # Check project name appears in frontmatter and title
-            assert "name: my-awesome-package" in skill_content
-            assert "# my-awesome-package" in skill_content
-            # Check install command uses project name
-            assert "apm install your-org/my-awesome-package" in skill_content
-
-    def test_init_skill_md_has_expected_sections(self):
-        """Test that SKILL.md contains expected content sections."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
-            result = self.runner.invoke(cli, ["init", "--yes"])
-
-            assert result.exit_code == 0
-            
-            skill_content = Path("SKILL.md").read_text()
-            
-            # Check for expected sections
-            assert "## What This Package Does" in skill_content
-            assert "## Getting Started" in skill_content
-            assert "## Available Primitives" in skill_content
-            # Check primitive types are listed
-            assert "Instructions" in skill_content
-            assert "Prompts" in skill_content
-            assert "Agents" in skill_content
-
-    def test_init_interactive_creates_skill_md_with_custom_values(self):
-        """Test that interactive mode creates SKILL.md with user-provided values."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
-            # Simulate user input
-            user_input = "custom-project\n1.0.0\nMy custom description\nTest Author\ny\n"
-
-            result = self.runner.invoke(cli, ["init"], input=user_input)
-
-            assert result.exit_code == 0
-            assert Path("SKILL.md").exists()
-            
-            skill_content = Path("SKILL.md").read_text()
-            
-            # Check custom values appear
-            assert "name: custom-project" in skill_content
-            assert "description: My custom description" in skill_content
-            assert "# custom-project" in skill_content
-            assert "My custom description" in skill_content
+            assert Path("apm.yml").exists()
+            assert not Path("SKILL.md").exists()

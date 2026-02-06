@@ -148,19 +148,18 @@ APM automatically integrates prompts and agents from installed packages into VSC
 apm install danielmeppiel/design-guidelines
 
 # Prompts are automatically integrated to:
-# .github/prompts/*-apm.prompt.md (with package metadata header)
+# .github/prompts/*-apm.prompt.md (verbatim copy with -apm suffix)
 
 # Agents are automatically integrated to:
-# .github/agents/*-apm.agent.md (with package metadata header)
+# .github/agents/*-apm.agent.md (verbatim copy)
 ```
 
 **How Auto-Integration Works**:
 - **Zero-Config**: Always enabled, works automatically with no configuration needed
 - **Auto-Cleanup**: Removes integrated prompts when you uninstall packages
-- **Smart Updates**: Tracks package version/commit; updates only when package changes
-- **Metadata Headers**: Integrated prompts include source, version, and commit information
+- **Always Overwrite**: Prompt and agent files are always copied fresh — no version comparison
 - **GitIgnore Protection**: Automatically adds pattern to `.gitignore` for integrated prompts
-- **User-Safe**: Preserves any custom `*-apm.prompt.md` files without APM metadata headers
+- **Link Resolution**: Context links are resolved during integration
 
 **Integration Flow**:
 1. Run `apm install` to fetch APM packages
@@ -168,10 +167,9 @@ apm install danielmeppiel/design-guidelines
 3. Discovers `.prompt.md` and `.agent.md` files in each package
 4. Copies prompts to `.github/prompts/` with `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
 5. Copies agents to `.github/agents/` with `-apm` suffix (e.g., `security-apm.agent.md`)
-6. Adds metadata headers for version tracking
-7. Updates `.gitignore` to exclude integrated prompts and agents
-8. VSCode automatically loads all prompts and agents for your coding agents
-9. Run `apm uninstall` to automatically remove integrated prompts and agents
+6. Updates `.gitignore` to exclude integrated prompts and agents
+7. VSCode automatically loads all prompts and agents for your coding agents
+8. Run `apm uninstall` to automatically remove integrated prompts and agents
 
 **Intent-First Discovery**:
 The `-apm` suffix pattern enables natural autocomplete in VSCode:
@@ -244,7 +242,7 @@ apm install danielmeppiel/design-guidelines
 **How it works:**
 1. `apm install` detects `.prompt.md` files in the package
 2. Converts each to Claude command format in `.claude/commands/`
-3. Adds `-apm` suffix and metadata header for tracking
+3. Adds `-apm` suffix for tracking
 4. Updates `.gitignore` to exclude generated commands
 5. `apm uninstall` automatically removes the package's commands
 

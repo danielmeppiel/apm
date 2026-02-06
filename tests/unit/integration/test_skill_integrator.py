@@ -956,22 +956,10 @@ metadata:
         like ComposioHQ/awesome-claude-skills/mcp-builder.
         """
         # Simulate an installed skill from a subdirectory package
-        # Skill name uses the folder name directly: mcp-builder
         skill_name = "mcp-builder"
         skill_dir = self.project_root / ".github" / "skills" / skill_name
         skill_dir.mkdir(parents=True)
-        
-        # Create SKILL.md with APM metadata (matching _generate_skill_file's nested format)
-        skill_content = """---
-name: mcp-builder
-description: MCP Builder Skill
-metadata:
-  apm_package: ComposioHQ/awesome-claude-skills/mcp-builder
-  apm_version: '1.0.0'
----
-# MCP Builder Skill
-"""
-        (skill_dir / "SKILL.md").write_text(skill_content)
+        (skill_dir / "SKILL.md").write_text("---\nname: mcp-builder\n---\n# MCP Builder Skill\n")
         
         # Now simulate that this package was uninstalled (not in dependencies)
         apm_package = Mock()
@@ -986,22 +974,10 @@ metadata:
     def test_sync_integration_keeps_installed_subdirectory_skill(self):
         """Test that sync keeps skills for still-installed subdirectory packages."""
         # Simulate an installed skill from a subdirectory package
-        # Skill name uses the folder name directly: mcp-builder
         skill_name = "mcp-builder"
         skill_dir = self.project_root / ".github" / "skills" / skill_name
         skill_dir.mkdir(parents=True)
-        
-        # Create SKILL.md with APM metadata (matching _generate_skill_file's nested format)
-        skill_content = """---
-name: mcp-builder
-description: MCP Builder Skill
-metadata:
-  apm_package: ComposioHQ/awesome-claude-skills/mcp-builder
-  apm_version: '1.0.0'
----
-# MCP Builder Skill
-"""
-        (skill_dir / "SKILL.md").write_text(skill_content)
+        (skill_dir / "SKILL.md").write_text("---\nname: mcp-builder\n---\n# MCP Builder Skill\n")
         
         # Simulate that this package is still installed
         dep_ref = DependencyReference.parse("ComposioHQ/awesome-claude-skills/mcp-builder")
@@ -1578,8 +1554,7 @@ Use when building MCP servers or tools.
         # Read copied content
         copied_content = target_skill_md.read_text()
         
-        # The body content should be preserved exactly
-        # (frontmatter will have APM metadata added)
+        # The content should be preserved exactly (verbatim copy, no mutation)
         assert "# MCP Builder" in copied_content
         assert "This skill helps you build **Model Context Protocol** servers." in copied_content
         assert "- TypeScript support" in copied_content
@@ -1883,13 +1858,12 @@ Use when building MCP servers or tools.
     
     # ========== Test T6: APM metadata is added for orphan detection ==========
     
-    def test_copy_skill_adds_apm_metadata(self):
-        """Test that APM tracking metadata is added to copied SKILL.md."""
-        import frontmatter
-        
+    def test_copy_skill_preserves_source_integrity(self):
+        """Test that copied SKILL.md is identical to source (no metadata injection)."""
         skill_source = self.apm_modules / "owner" / "my-skill"
         skill_source.mkdir(parents=True)
-        (skill_source / "SKILL.md").write_text("---\nname: my-skill\ndescription: Test\n---\n# My Skill")
+        original_content = "---\nname: my-skill\ndescription: Test\n---\n# My Skill"
+        (skill_source / "SKILL.md").write_text(original_content)
         
         package_info = self._create_package_info(
             name="my-skill",
@@ -1903,18 +1877,9 @@ Use when building MCP servers or tools.
         
         assert github_path is not None
         
-        # Parse the copied SKILL.md
-        post = frontmatter.load(github_path / "SKILL.md")
-        
-        # Verify APM metadata is present
-        assert 'metadata' in post.metadata
-        apm_metadata = post.metadata['metadata']
-        assert 'apm_package' in apm_metadata
-        assert 'apm_version' in apm_metadata
-        assert apm_metadata['apm_version'] == '2.5.0'
-        assert 'apm_commit' in apm_metadata
-        assert apm_metadata['apm_commit'] == 'xyz789'
-        assert 'apm_installed_at' in apm_metadata
+        # Copied SKILL.md must be identical to the source
+        copied_content = (github_path / "SKILL.md").read_text()
+        assert copied_content == original_content
 
 
 class TestNativeSkillIntegration:
@@ -2412,28 +2377,14 @@ Detailed instructions here.
     
     def test_sync_removes_orphans_from_both_locations(self):
         """Test that sync_integration removes orphaned skills from both locations."""
-        # Create skill directories in both locations
+        # Create skill directories in both locations (no metadata needed)
         github_skill = self.project_root / ".github" / "skills" / "orphan-skill"
         github_skill.mkdir(parents=True)
-        (github_skill / "SKILL.md").write_text("""---
-name: orphan-skill
-metadata:
-  apm_package: owner/orphan-skill
-  apm_version: '1.0.0'
----
-# Orphan Skill
-""")
+        (github_skill / "SKILL.md").write_text("# Orphan Skill\n")
         
         claude_skill = self.project_root / ".claude" / "skills" / "orphan-skill"
         claude_skill.mkdir(parents=True)
-        (claude_skill / "SKILL.md").write_text("""---
-name: orphan-skill
-metadata:
-  apm_package: owner/orphan-skill
-  apm_version: '1.0.0'
----
-# Orphan Skill
-""")
+        (claude_skill / "SKILL.md").write_text("# Orphan Skill\n")
         
         # Mock apm_package with no dependencies (orphan)
         apm_package = Mock()
@@ -2448,34 +2399,20 @@ metadata:
     
     def test_sync_keeps_installed_skills_in_both_locations(self):
         """Test that sync_integration keeps installed skills in both locations."""
-        # Create skill directories in both locations
+        # Create skill directories in both locations (no metadata needed)
         skill_name = "installed-skill"
-        canonical_ref = "owner/installed-skill"
         
         github_skill = self.project_root / ".github" / "skills" / skill_name
         github_skill.mkdir(parents=True)
-        (github_skill / "SKILL.md").write_text(f"""---
-name: {skill_name}
-metadata:
-  apm_package: {canonical_ref}
-  apm_version: '1.0.0'
----
-# Installed Skill
-""")
+        (github_skill / "SKILL.md").write_text("# Installed Skill\n")
         
         claude_skill = self.project_root / ".claude" / "skills" / skill_name
         claude_skill.mkdir(parents=True)
-        (claude_skill / "SKILL.md").write_text(f"""---
-name: {skill_name}
-metadata:
-  apm_package: {canonical_ref}
-  apm_version: '1.0.0'
----
-# Installed Skill
-""")
+        (claude_skill / "SKILL.md").write_text("# Installed Skill\n")
         
         # Mock apm_package with this dependency installed
-        dep_ref = DependencyReference.parse(canonical_ref)
+        # "owner/installed-skill" → skill dir name "installed-skill"
+        dep_ref = DependencyReference.parse("owner/installed-skill")
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = [dep_ref]
         
@@ -2493,13 +2430,7 @@ metadata:
         # Only .github/ exists, not .claude/
         github_skill = self.project_root / ".github" / "skills" / "orphan-skill"
         github_skill.mkdir(parents=True)
-        (github_skill / "SKILL.md").write_text("""---
-name: orphan-skill
-metadata:
-  apm_package: owner/orphan-skill
----
-# Orphan Skill
-""")
+        (github_skill / "SKILL.md").write_text("# Orphan Skill\n")
         
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = []
@@ -2513,16 +2444,15 @@ metadata:
     
     # ========== Test: APM metadata added to both copies ==========
     
-    def test_apm_metadata_added_to_both_copies(self):
-        """Test that APM metadata is added to SKILL.md in both locations."""
-        import frontmatter
-        
+    def test_native_skill_copied_verbatim_to_both_locations(self):
+        """Test that native SKILL.md is copied verbatim (no metadata injection) to both locations."""
         # Create .claude/ directory
         (self.project_root / ".claude").mkdir()
         
         skill_source = self.apm_modules / "owner" / "my-skill"
         skill_source.mkdir(parents=True)
-        (skill_source / "SKILL.md").write_text("---\nname: my-skill\ndescription: Test\n---\n# My Skill")
+        original_content = "---\nname: my-skill\ndescription: Test\n---\n# My Skill"
+        (skill_source / "SKILL.md").write_text(original_content)
         
         package_info = self._create_package_info(
             name="my-skill",
@@ -2534,70 +2464,52 @@ metadata:
         
         self.integrator.integrate_package_skill(package_info, self.project_root)
         
-        # Check .github/skills/
-        github_post = frontmatter.load(self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md")
-        assert 'metadata' in github_post.metadata
-        assert github_post.metadata['metadata']['apm_version'] == '2.0.0'
-        assert github_post.metadata['metadata']['apm_commit'] == 'xyz789'
+        # Both copies must be identical to the source
+        github_content = (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").read_text()
+        assert github_content == original_content
         
-        # Check .claude/skills/
-        claude_post = frontmatter.load(self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md")
-        assert 'metadata' in claude_post.metadata
-        assert claude_post.metadata['metadata']['apm_version'] == '2.0.0'
-        assert claude_post.metadata['metadata']['apm_commit'] == 'xyz789'
+        claude_content = (self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md").read_text()
+        assert claude_content == original_content
 
     # ========== T12: Additional orphan cleanup tests ==========
     
-    def test_sync_preserves_user_created_skills_without_apm_metadata(self):
-        """Test that sync does NOT remove user-created skills without APM metadata.
+    def test_sync_removes_all_unknown_skill_dirs(self):
+        """Test that sync removes ALL skill directories not matching installed packages.
         
-        User-created skill directories (without apm_package in metadata) should
-        never be removed during sync. This prevents data loss of manually created skills.
+        Uses npm-style approach: .github/skills/ is fully APM-managed.
+        Any directory not matching an installed package name is removed.
         """
-        # Create a user-created skill in .github/skills/ (no APM metadata)
-        user_skill = self.project_root / ".github" / "skills" / "user-created-skill"
-        user_skill.mkdir(parents=True)
-        (user_skill / "SKILL.md").write_text("""---
-name: user-created-skill
-description: A skill I created manually
----
-# My Custom Skill
-
-This is a skill I created by hand, not via APM.
-""")
+        # Create a skill dir not matching any installed package
+        unknown_skill = self.project_root / ".github" / "skills" / "unknown-skill"
+        unknown_skill.mkdir(parents=True)
+        (unknown_skill / "SKILL.md").write_text("---\nname: unknown\n---\n# Custom Skill\n")
         
-        # Create a user-created skill in .claude/skills/ (no APM metadata)
+        # Create another with no SKILL.md
         (self.project_root / ".claude").mkdir()
-        claude_user_skill = self.project_root / ".claude" / "skills" / "my-workflow"
-        claude_user_skill.mkdir(parents=True)
-        (claude_user_skill / "SKILL.md").write_text("""---
-name: my-workflow
-description: Custom workflow
----
-# Workflow
-""")
+        claude_unknown = self.project_root / ".claude" / "skills" / "my-workflow"
+        claude_unknown.mkdir(parents=True)
+        (claude_unknown / "SKILL.md").write_text("---\nname: my-workflow\n---\n# Workflow\n")
         
-        # Run sync with no dependencies (simulates `apm prune`)
+        # Run sync with no dependencies
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = []
         
         result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # User skills should NOT be removed (no apm_package metadata)
-        assert result['files_removed'] == 0
-        assert user_skill.exists()
-        assert claude_user_skill.exists()
+        # All unknown dirs should be removed (npm-style)
+        assert result['files_removed'] == 2
+        assert not unknown_skill.exists()
+        assert not claude_unknown.exists()
     
-    def test_sync_skips_skill_dirs_without_skill_md(self):
-        """Test that sync gracefully handles skill directories without SKILL.md.
+    def test_sync_removes_skill_dirs_without_skill_md(self):
+        """Test that sync removes orphaned skill directories even without SKILL.md.
         
-        Skill directories without a SKILL.md file should be skipped, not removed.
-        This can happen with corrupted installs or partial cleanups.
+        Uses npm-style approach: any directory not matching an installed package
+        name is removed, regardless of its contents.
         """
         # Create a skill directory without SKILL.md
         empty_skill = self.project_root / ".github" / "skills" / "empty-skill"
         empty_skill.mkdir(parents=True)
-        # Just add some other file
         (empty_skill / "README.md").write_text("# Some file")
         
         apm_package = Mock()
@@ -2605,16 +2517,15 @@ description: Custom workflow
         
         result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # Should not be removed (no SKILL.md to check metadata)
-        assert result['files_removed'] == 0
-        assert empty_skill.exists()
+        # Should be removed (not in installed set)
+        assert result['files_removed'] == 1
+        assert not empty_skill.exists()
     
-    def test_sync_handles_malformed_skill_md_gracefully(self):
-        """Test that sync handles SKILL.md with malformed frontmatter gracefully.
+    def test_sync_removes_malformed_skill_dirs(self):
+        """Test that sync removes orphaned skill directories with malformed SKILL.md.
         
-        If a SKILL.md has invalid YAML frontmatter, it is treated as a user-created
-        skill (no APM metadata found) and is NOT removed. This is the safe behavior
-        to prevent accidental data loss.
+        Uses npm-style approach: directory name matching, not SKILL.md content.
+        Malformed SKILL.md has no effect on orphan detection.
         """
         # Create a skill with malformed frontmatter
         malformed_skill = self.project_root / ".github" / "skills" / "malformed"
@@ -2631,29 +2542,19 @@ invalid yaml: [this is broken
         
         result = self.integrator.sync_integration(apm_package, self.project_root)
         
-        # Skill should NOT be removed (treated as no APM metadata = user-created)
-        assert result['files_removed'] == 0
-        assert malformed_skill.exists()
+        # Should be removed (not in installed set)
+        assert result['files_removed'] == 1
+        assert not malformed_skill.exists()
     
     def test_sync_removes_orphans_only_from_github_when_no_claude(self):
-        """Test cleanup works correctly when .claude/ directory doesn't exist.
-        
-        When .claude/ doesn't exist, only .github/skills/ should be cleaned.
-        """
+        """Test cleanup works correctly when .claude/ directory doesn't exist."""
         # Ensure .claude/ does NOT exist
         assert not (self.project_root / ".claude").exists()
         
-        # Create an APM-managed orphan skill in .github/skills/
+        # Create an orphan skill in .github/skills/
         orphan_skill = self.project_root / ".github" / "skills" / "orphan"
         orphan_skill.mkdir(parents=True)
-        (orphan_skill / "SKILL.md").write_text("""---
-name: orphan
-metadata:
-  apm_package: owner/orphan-pkg
-  apm_version: '1.0.0'
----
-# Orphan Skill
-""")
+        (orphan_skill / "SKILL.md").write_text("# Orphan Skill\n")
         
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = []
@@ -2665,35 +2566,19 @@ metadata:
         assert not orphan_skill.exists()
     
     def test_sync_aggregates_stats_from_both_locations(self):
-        """Test that sync correctly aggregates removal stats from both locations.
-        
-        When orphans exist in both .github/skills/ and .claude/skills/,
-        the stats should reflect total removals from both locations.
-        """
+        """Test that sync correctly aggregates removal stats from both locations."""
         # Create .claude/ directory
         (self.project_root / ".claude").mkdir()
         
         # Create orphan in .github/skills/
         github_orphan = self.project_root / ".github" / "skills" / "orphan-a"
         github_orphan.mkdir(parents=True)
-        (github_orphan / "SKILL.md").write_text("""---
-name: orphan-a
-metadata:
-  apm_package: owner/orphan-a
----
-# Orphan A
-""")
+        (github_orphan / "SKILL.md").write_text("# Orphan A\n")
         
         # Create different orphan in .claude/skills/
         claude_orphan = self.project_root / ".claude" / "skills" / "orphan-b"
         claude_orphan.mkdir(parents=True)
-        (claude_orphan / "SKILL.md").write_text("""---
-name: orphan-b
-metadata:
-  apm_package: owner/orphan-b
----
-# Orphan B
-""")
+        (claude_orphan / "SKILL.md").write_text("# Orphan B\n")
         
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = []
