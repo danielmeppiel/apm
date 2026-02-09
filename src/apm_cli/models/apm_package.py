@@ -797,6 +797,16 @@ class APMPackage:
     def has_apm_dependencies(self) -> bool:
         """Check if this package has APM dependencies."""
         return bool(self.get_apm_dependencies())
+    
+    def get_plugins(self) -> List[Dict[str, str]]:
+        """Get list of installed plugins.
+        
+        Returns:
+            List of plugin entries with name, source, and version.
+        """
+        # Plugins are stored separately in apm.yml, not in dependencies
+        # They will be loaded during APM processing
+        return []  # Placeholder - plugins stored in apm.yml root level
 
 
 @dataclass
