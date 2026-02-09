@@ -610,7 +610,7 @@ class GitHubPackageDownloader:
         Supports:
         - Virtual files: owner/repo/path/file.prompt.md
         - Collections: owner/repo/collections/name (checks for .collection.yml)
-        - Subdirectory packages: owner/repo/path/subdir (checks for apm.yml or SKILL.md)
+        - Subdirectory packages: owner/repo/path/subdir (checks for apm.yml, SKILL.md, or plugin.json)
         
         Args:
             dep_ref: Parsed dependency reference for virtual package
@@ -641,7 +641,7 @@ class GitHubPackageDownloader:
             except RuntimeError:
                 return False
         
-        # For subdirectory packages, check for apm.yml or SKILL.md
+        # For subdirectory packages, check for apm.yml, SKILL.md, or plugin.json
         if dep_ref.is_virtual_subdirectory():
             # Try apm.yml first
             try:
@@ -657,7 +657,20 @@ class GitHubPackageDownloader:
             except RuntimeError:
                 pass
             
-            return False
+            # Try plugin.json at various marketplace locations
+            # This allows for new plugin formats to be added easily (e.g., .codex, .assistant, etc.)
+            plugin_locations = [
+                f"{dep_ref.virtual_path}/plugin.json",                                    # Root
+                f"{dep_ref.virtual_path}/.github/plugin/plugin.json",                     # GitHub Copilot format
+                f"{dep_ref.virtual_path}/.claude-plugin/plugin.json",                     # Claude format
+            ]
+            
+            for plugin_path in plugin_locations:
+                try:
+                    self.download_raw_file(dep_ref, plugin_path, ref)
+                    return True
+                except RuntimeError:
+                    continue
         
         # Fallback: try to download the file directly
         try:

@@ -88,6 +88,7 @@ def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveColle
     Priority Order:
     1. Local .apm/ (highest priority - always wins)
     2. Dependencies in declaration order (first declared wins)
+    3. Plugins (lowest priority)
     
     Args:
         base_dir (str): Base directory to search in. Defaults to current directory.
@@ -105,6 +106,9 @@ def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveColle
     
     # Phase 2: Dependency primitives (lower priority, with conflict detection)
     scan_dependency_primitives(base_dir, collection)
+    
+    # Phase 3: Plugin primitives (lowest priority)
+    scan_plugin_primitives(base_dir, collection)
     
     return collection
 
@@ -275,6 +279,88 @@ def scan_directory_with_source(directory: Path, collection: PrimitiveCollection,
     
     # Also check for SKILL.md in the dependency root
     _discover_skill_in_directory(directory, collection, source)
+
+
+def scan_plugin_primitives(base_dir: str, collection: PrimitiveCollection) -> None:
+    """Scan apm_modules/ directory for plugins with primitives (agents, skills, instructions).
+    
+    This function discovers primitives from installed plugins in the apm_modules/ directory.
+    Plugins are identified by the presence of a plugin.json file. Plugins have the lowest 
+    priority in the primitive resolution order.
+    
+    Plugin structure: apm_modules/{owner}/{repo}/plugins/
+    
+    Args:
+        base_dir (str): Base directory to search in.
+        collection (PrimitiveCollection): Collection to add primitives to.
+    """
+    apm_modules_path = Path(base_dir) / "apm_modules"
+    if not apm_modules_path.exists():
+        return
+    
+    # Iterate through all directories in apm_modules/{owner}/{repo}/ structure
+    for owner_dir in apm_modules_path.iterdir():
+        if not owner_dir.is_dir():
+            continue
+        
+        for repo_dir in owner_dir.iterdir():
+            if not repo_dir.is_dir():
+                continue
+            
+            # Check if this is a plugin (has plugin.json in any supported location)
+            from ..utils.helpers import find_plugin_json
+            active_plugin_json = find_plugin_json(repo_dir)
+            
+            if active_plugin_json is None:
+                continue
+            
+            # Get plugin ID from plugin.json
+            try:
+                import json
+                with open(active_plugin_json) as f:
+                    plugin_data = json.load(f)
+                    plugin_id = plugin_data.get("id", repo_dir.name)
+            except (json.JSONDecodeError, OSError):
+                plugin_id = repo_dir.name
+            
+            source = f"plugin:{plugin_id}"
+            
+            # Plugin primitives are always at the repository root
+            # (not in the folder containing plugin.json)
+            base_dir = repo_dir
+            
+            # Scan agents/ (including subdirectories)
+            agents_dir = base_dir / "agents"
+            if agents_dir.exists():
+                for agent_file in agents_dir.rglob("*.agent.md"):
+                    if _is_readable(agent_file):
+                        try:
+                            primitive = parse_primitive_file(agent_file, source=source)
+                            collection.add_primitive(primitive)
+                        except Exception as e:
+                            print(f"Warning: Failed to parse plugin agent {agent_file}: {e}")
+            
+            # Scan skills/ subdirectories
+            # Each subdirectory in skills/ must contain a SKILL.md
+            skills_dir = base_dir / "skills"
+            if skills_dir.exists():
+                for skill_subdir in skills_dir.iterdir():
+                    if skill_subdir.is_dir():
+                        _discover_skill_in_directory(skill_subdir, collection, source)
+            
+            # Scan instructions/ (including subdirectories)
+            instructions_dir = base_dir / "instructions"
+            if instructions_dir.exists():
+                for inst_file in instructions_dir.rglob("*.instructions.md"):
+                    if _is_readable(inst_file):
+                        try:
+                            primitive = parse_primitive_file(inst_file, source=source)
+                            collection.add_primitive(primitive)
+                        except Exception as e:
+                            print(f"Warning: Failed to parse plugin instruction {inst_file}: {e}")
+            
+            # Also check for SKILL.md in the root directory
+            _discover_skill_in_directory(base_dir, collection, source)
 
 
 def _discover_local_skill(base_dir: str, collection: PrimitiveCollection) -> None:
