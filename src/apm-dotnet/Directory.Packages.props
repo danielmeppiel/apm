@@ -1,0 +1,22 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Apm.Cli -->
+    <PackageVersion Include="LibGit2Sharp" Version="0.31.0" />
+    <PackageVersion Include="Spectre.Console" Version="0.54.0" />
+    <PackageVersion Include="Spectre.Console.Cli" Version="0.53.1" />
+    <PackageVersion Include="Tomlyn" Version="0.20.0" />
+    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
+
+    <!-- Apm.Cli.Tests -->
+    <PackageVersion Include="AwesomeAssertions" Version="9.3.0" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="FakeItEasy" Version="9.0.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+</Project>
