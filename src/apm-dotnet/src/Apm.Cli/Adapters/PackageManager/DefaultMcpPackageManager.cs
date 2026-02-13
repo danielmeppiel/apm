@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Apm.Cli.Adapters.Client;
 using Apm.Cli.Core;
 
@@ -32,10 +33,9 @@ public class DefaultMcpPackageManager : IPackageManagerAdapter
         {
             var adapter = CreateClientAdapter();
             var config = adapter.GetCurrentConfig();
+            var servers = GetServersSection(config);
 
-            if (config.TryGetValue("servers", out var serversObj) &&
-                serversObj is Dictionary<string, object?> servers &&
-                servers.ContainsKey(packageName))
+            if (servers is not null && servers.ContainsKey(packageName))
             {
                 servers.Remove(packageName);
                 var result = adapter.UpdateConfig(config);
@@ -60,14 +60,9 @@ public class DefaultMcpPackageManager : IPackageManagerAdapter
         {
             var adapter = CreateClientAdapter();
             var config = adapter.GetCurrentConfig();
+            var servers = GetServersSection(config);
 
-            if (config.TryGetValue("servers", out var serversObj) &&
-                serversObj is Dictionary<string, object?> servers)
-            {
-                return servers.Keys.ToList();
-            }
-
-            return [];
+            return servers?.Select(kvp => kvp.Key).ToList() ?? [];
         }
         catch (Exception ex)
         {
@@ -81,6 +76,24 @@ public class DefaultMcpPackageManager : IPackageManagerAdapter
         // Placeholder: registry search integration would go here
         Console.WriteLine("Warning: Package search not yet implemented in .NET port");
         return [];
+    }
+
+    /// <summary>
+    /// Extract the servers section from config, handling both Dictionary and JsonObject values.
+    /// GetCurrentConfig() returns JsonNode values from JSON parsing, so we handle both types.
+    /// </summary>
+    private static JsonObject? GetServersSection(Dictionary<string, object?> config)
+    {
+        if (!config.TryGetValue("servers", out var serversObj) || serversObj is null)
+            return null;
+
+        if (serversObj is JsonObject jsonObj)
+            return jsonObj;
+
+        if (serversObj is JsonNode jsonNode)
+            return jsonNode.AsObject();
+
+        return null;
     }
 
     private static IClientAdapter CreateClientAdapter()

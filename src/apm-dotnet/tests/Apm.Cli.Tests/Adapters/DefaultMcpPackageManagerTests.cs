@@ -11,12 +11,6 @@ namespace Apm.Cli.Tests.Adapters;
 /// <summary>
 /// Port of Python test_package_manager.py tests for DefaultMcpPackageManager.
 /// Uses temp config directory to control Configuration.GetDefaultClient().
-/// 
-/// NOTE: The .NET DefaultMcpPackageManager has a type mismatch bug:
-/// GetCurrentConfig() returns JsonNode values but Uninstall/ListInstalled
-/// check for Dictionary&lt;string, object?&gt;. This means ListInstalled always
-/// returns empty and Uninstall always returns false for packages read from
-/// JSON config. Tests document the current actual behavior.
 /// </summary>
 [Collection("CwdTests")]
 public class DefaultMcpPackageManagerTests : IDisposable
@@ -79,26 +73,28 @@ public class DefaultMcpPackageManagerTests : IDisposable
     }
 
     [Fact]
-    public void ListInstalled_WithServers_ReturnsEmpty_DueToTypeMismatch()
+    public void ListInstalled_WithServers_ReturnsServerNames()
     {
-        // BUG: GetCurrentConfig returns JsonNode values but ListInstalled checks
-        // for Dictionary<string, object?>. This documents the current behavior.
         var pm = new DefaultMcpPackageManager();
         var packages = pm.ListInstalled();
 
-        // Should return ["server1", "server2"] once the type mismatch is fixed
-        packages.Should().BeEmpty();
+        packages.Should().HaveCount(2);
+        packages.Should().Contain("server1");
+        packages.Should().Contain("server2");
     }
 
     [Fact]
-    public void Uninstall_ReturnsFalse_DueToTypeMismatch()
+    public void Uninstall_ExistingServer_ReturnsTrue()
     {
-        // BUG: Same type mismatch as ListInstalled.
         var pm = new DefaultMcpPackageManager();
         var result = pm.Uninstall("server1");
 
-        // Should return true once the type mismatch is fixed
-        result.Should().BeFalse();
+        result.Should().BeTrue();
+
+        // Verify it was removed from config
+        var remaining = pm.ListInstalled();
+        remaining.Should().NotContain("server1");
+        remaining.Should().Contain("server2");
     }
 
     [Fact]
@@ -113,7 +109,6 @@ public class DefaultMcpPackageManagerTests : IDisposable
     [Fact]
     public void Search_ReturnsEmptyList()
     {
-        // .NET search is a placeholder that returns empty
         var pm = new DefaultMcpPackageManager();
         var results = pm.Search("test");
 
@@ -123,7 +118,6 @@ public class DefaultMcpPackageManagerTests : IDisposable
     [Fact]
     public void Install_WithEmptyConfig_ReturnsFalse_StubNotImplemented()
     {
-        // ConfigureMcpServer is a stub returning false in .NET
         File.WriteAllText(_configPath, """{"servers":{}}""");
         var pm = new DefaultMcpPackageManager();
         var result = pm.Install("test-package");
