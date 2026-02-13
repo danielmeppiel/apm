@@ -545,7 +545,19 @@ apm run debug --param service=api
 
 # Run specific scripts with parameters
 apm run llm --param service=api --param environment=prod
+
+# Auto-install and run a virtual package (zero-config)
+apm run owner/repo/prompts/code-review.prompt.md
+apm run owner/repo/review  # .prompt.md is added automatically
 ```
+
+**Auto-Install Virtual Packages:**
+
+When running a virtual package reference (e.g., `owner/repo/path/file.prompt.md`), APM will automatically download and install the package if it's not already available locally. This enables zero-config usage — no `apm init` or `apm install` required. APM will:
+1. Create a minimal `apm.yml` if none exists
+2. Download the package from GitHub
+3. Add it to `apm.yml` dependencies
+4. Execute the prompt
 
 **Return Codes:**
 - `0` - Success
@@ -607,10 +619,14 @@ apm compile [OPTIONS]
 **Options:**
 - `-o, --output TEXT` - Output file path (default: AGENTS.md)
 - `-t, --target TEXT` - Target agent format: `vscode`, `claude`, or `all`. Auto-detects if not specified.
+- `--single-agents` - Force single-file compilation (legacy mode)
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Generate content without writing file
+- `-v, --verbose` - Show detailed source attribution and optimizer analysis
+- `--local-only` - Ignore dependencies, compile only local primitives
 - `--no-links` - Skip markdown link resolution
 - `--with-constitution/--no-constitution` - Include Spec Kit `memory/constitution.md` verbatim at top inside a delimited block (default: `--with-constitution`). When disabled, any existing block is preserved but not regenerated.
+- `--clean` - Remove orphaned AGENTS.md files that are no longer generated
 - `--watch` - Auto-regenerate on changes (file system monitoring)
 - `--validate` - Validate context without compiling
 
