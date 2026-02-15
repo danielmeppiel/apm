@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "id": "awesome-copilot",
+      "name": "Awesome Copilot Rules",
+      "description": "Best practices and coding standards for GitHub Copilot",
+      "repository": "github/awesome-copilot",
+      "version": "1.0.0",
+      "author": "GitHub",
+      "tags": ["best-practices", "coding-standards", "copilot"],
+      "downloads": 0,
+      "stars": 0
+    }
+  ]
+}

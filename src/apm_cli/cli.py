@@ -17,6 +17,7 @@ list = builtins.list
 dict = builtins.dict
 
 from apm_cli.commands.deps import deps
+from apm_cli.commands.plugin import plugin
 from apm_cli.compilation import AgentsCompiler, CompilationConfig
 from apm_cli.primitives.discovery import discover_primitives
 from apm_cli.utils.console import (
@@ -283,6 +284,7 @@ def cli(ctx):
 
 # Register command groups
 cli.add_command(deps)
+cli.add_command(plugin)
 
 
 @cli.command(help="🚀 Initialize a new APM project")
@@ -643,6 +645,12 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
         # Get APM and MCP dependencies
         apm_deps = apm_package.get_apm_dependencies()
         mcp_deps = apm_package.get_mcp_dependencies()
+        
+        # Load and merge plugin dependencies
+        plugin_deps = _load_plugins_from_apm_yml()
+        if plugin_deps:
+            apm_deps.extend(plugin_deps)
+            _rich_info(f"Found {len(plugin_deps)} plugin(s) to install")
 
         # Determine what to install based on --only flag
         should_install_apm = only != "mcp"
@@ -1164,7 +1172,7 @@ def uninstall(ctx, packages, dry_run):
         skills_failed = 0
 
         try:
-            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_package
+            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
             from apm_cli.integration.prompt_integrator import PromptIntegrator
             from apm_cli.integration.agent_integrator import AgentIntegrator
             from apm_cli.integration.skill_integrator import SkillIntegrator
@@ -1212,7 +1220,7 @@ def uninstall(ctx, packages, dry_run):
                     continue
 
                 # Build minimal PackageInfo for re-integration
-                result = validate_package(install_path)
+                result = validate_apm_package(install_path)
                 pkg = result.package if result and result.package else None
                 if not pkg:
                     continue
@@ -4172,6 +4180,53 @@ def _create_minimal_apm_yml(config):
     # Write apm.yml
     with open("apm.yml", "w") as f:
         yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)
+
+
+def _load_plugins_from_apm_yml() -> "builtins.list[DependencyReference]":
+    """Load plugins from apm.yml and convert them to DependencyReference objects.
+    
+    Returns:
+        List of DependencyReference objects for plugins
+    """
+    apm_yml_path = Path("apm.yml")
+    if not apm_yml_path.exists():
+        return []
+    
+    try:
+        yaml = _lazy_yaml()
+        with open(apm_yml_path, "r") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception:
+        return []
+    
+    plugins = data.get("plugins", [])
+    if not isinstance(plugins, builtins.list):
+        return []
+    
+    plugin_deps = []
+    for plugin in plugins:
+        if not isinstance(plugin, dict):
+            continue
+        
+        plugin_name = plugin.get("name")
+        plugin_source = plugin.get("source")
+        plugin_version = plugin.get("version", "latest")
+        
+        if not plugin_name or not plugin_source:
+            continue
+        
+        # Convert plugin entry to a virtual DependencyReference
+        # Plugins are typically stored as "owner/repo" or full URLs
+        try:
+            # Create a dependency reference for the plugin
+            dep_str = f"{plugin_source}#{plugin_version}" if plugin_version != "latest" else plugin_source
+            dep_ref = DependencyReference.parse(dep_str)
+            plugin_deps.append(dep_ref)
+        except Exception:
+            # Skip invalid plugin entries
+            continue
+    
+    return plugin_deps
 
 
 def main():

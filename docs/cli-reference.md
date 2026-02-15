@@ -326,6 +326,210 @@ If the automatic update fails, you can always update manually:
 curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
 ```
 
+### `apm plugin` - 🔌 Manage plugins from marketplaces
+
+Install and manage plugins from Claude Code, GitHub, and custom marketplaces.
+
+```bash
+apm plugin COMMAND [OPTIONS]
+```
+
+#### `apm plugin install` - 📦 Install a plugin from marketplace
+
+Track a plugin from Claude Code, GitHub, or custom marketplaces in your project's `apm.yml` configuration.
+
+```bash
+apm plugin install PLUGIN_SPEC
+```
+
+**Arguments:**
+- `PLUGIN_SPEC` - Plugin specification in format `plugin-id@marketplace-name`
+
+**Examples:**
+```bash
+# Install from Claude official marketplace
+apm plugin install commit-commands@claude
+
+# Install from awesome-copilot marketplace
+apm plugin install my-plugin@awesome-copilot
+
+# Install from GitHub repository
+apm plugin install my-plugin@owner/repo
+
+# Install from custom marketplace URL (e.g. Azure DevOps, Github Enterprise)
+apm plugin install my-plugin@https://github.com/owner/plugins
+```
+
+**Behavior:**
+1. Resolves the marketplace source
+2. Fetches the marketplace manifest
+3. Finds plugin in the manifest
+4. Tracks plugin in `apm.yml` under `plugins:` section
+
+**Next step:**
+After tracking a plugin, run `apm install` to download and integrate the plugin primitives into your project. Plugin components will be installed to `apm_modules/` and automatically integrated during compilation.
+
+**Supported Sources:**
+- Claude Code marketplace - `claude` identifier
+- GitHub repositories - `owner/repo` format (default)
+- Azure DevOps repositories - Full URL format `https://dev.azure.com/org/project/_git/repo`
+- GitHub Enterprise - Full URL format `https://github.company.com/org/repo`
+- Custom marketplace URLs - Any valid Git repository URL
+- Custom marketplaces - Full HTTP(S) URLs
+
+**Repository Format Rules:**
+- Simple format (e.g., `owner/repo`) → GitHub by default
+- Full URL → Auto-detected platform (Azure DevOps, GitHub Enterprise, etc.)
+
+**Authentication:**
+- **GitHub**: Uses `GITHUB_APM_PAT` or `GITHUB_TOKEN`
+- **Azure DevOps**: Uses `ADO_APM_PAT` token (required for private repos)
+
+#### `apm plugin search` - 🔍 Search for plugins in the marketplace
+
+Search for plugins by query or tags.
+
+```bash
+apm plugin search [QUERY] [OPTIONS]
+```
+
+**Arguments:**
+- `QUERY` - Optional search query (searches in name and description)
+
+**Options:**
+- `-t, --tag TAG` - Filter by tag (can be used multiple times)
+
+**Examples:**
+```bash
+# Search all plugins
+apm plugin search
+
+# Search for specific term
+apm plugin search copilot
+
+# Filter by tag
+apm plugin search --tag best-practices
+
+# Search with multiple tags
+apm plugin search --tag copilot --tag coding-standards
+```
+
+**Output:**
+Shows a Rich table with:
+- ID - Plugin identifier
+- Name - Human-readable name
+- Description - Short description (truncated)
+- Author - Plugin author
+- Tags - Plugin tags (first 3 shown)
+
+**Behavior:**
+- Fetches plugin registry catalog
+- Filters by query and tags
+- Displays matching plugins in a table
+- Suggests installation and info commands
+
+#### `apm plugin info` - ℹ️ Show plugin information
+
+Display detailed information about a plugin from the marketplace.
+
+```bash
+apm plugin info PLUGIN_ID
+```
+
+**Arguments:**
+- `PLUGIN_ID` - Plugin identifier
+
+**Examples:**
+```bash
+# Show plugin details
+apm plugin info awesome-copilot
+
+# Check info for compliance plugin
+apm plugin info compliance-rules
+```
+
+**Output:**
+Shows a Rich panel with:
+- Name and ID
+- Version
+- Author
+- Repository URL
+- Description
+- Tags
+- Installation status
+- Download count (if available)
+- Star count (if available)
+
+**Behavior:**
+- Fetches plugin information from marketplace
+- Checks local installation status
+- Displays formatted information panel
+- Suggests installation command if not installed
+
+#### `apm plugin installed` - 📋 List installed plugins
+
+List all plugins installed in the current project.
+
+```bash
+apm plugin installed
+```
+
+**Examples:**
+```bash
+# List installed plugins
+apm plugin installed
+```
+
+**Output:**
+Shows a Rich table with:
+- ID - Plugin identifier
+- Name - Plugin name
+- Version - Installed version
+- Components - Number of agents, skills, and commands
+
+**Behavior:**
+- Scans `apm_modules/` directory
+- Lists all valid plugin installations
+- Shows component counts
+- Suggests marketplace search if no plugins installed
+
+#### `apm plugin list` - 📋 List plugins from a marketplace
+
+Browse available plugins in a marketplace (legacy command).
+
+```bash
+apm plugin list [MARKETPLACE] [OPTIONS]
+```
+
+**Arguments:**
+- `MARKETPLACE` - Marketplace name or URL (default: `claude`)
+
+**Examples:**
+```bash
+# List plugins from Claude official marketplace
+apm plugin list claude
+
+# List plugins from a GitHub repository
+apm plugin list owner/repo
+
+# List plugins from custom marketplace
+apm plugin list https://github.com/owner/plugins
+```
+
+**Output:**
+Shows a Rich table with:
+- Plugin ID - Unique identifier
+- Name - Human-readable name
+- Description - Short description (truncated to 50 chars)
+- Version - Version number
+
+**Behavior:**
+- Fetches marketplace manifest
+- Displays all available plugins
+- Suggests installation command for each plugin
+
+**Note:** For the plugin registry, use `apm plugin search` instead.
+
 ### `apm deps` - 🔗 Manage APM package dependencies
 
 Manage APM package dependencies with installation status, tree visualization, and package information.
