@@ -430,7 +430,7 @@ class TestErrorHandling:
             )
 
             with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
-                mock_get.side_effect = __import__('requests').exceptions.HTTPError(response=mock_response_403)
+                mock_get.return_value = mock_response_403
                 
                 with pytest.raises(RuntimeError, match="Authentication failed"):
                     downloader.download_raw_file(dep_ref, 'sub/path/file.md', 'main')

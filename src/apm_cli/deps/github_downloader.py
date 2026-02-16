@@ -608,7 +608,7 @@ class GitHubPackageDownloader:
                 error_msg = f"Authentication failed for {dep_ref.repo_url}. "
                 if not self.github_token:
                     error_msg += "This might be a private repository. Please set GITHUB_APM_PAT or GITHUB_TOKEN."
-                elif not host.endswith(".ghe.com"):
+                elif self.github_token and not host.endswith(".ghe.com"):
                     error_msg += (
                         "Both authenticated and unauthenticated access were attempted. "
                         "The repository may be private, or your token may lack SSO/SAML authorization for this organization."
