@@ -430,7 +430,6 @@ class TestErrorHandling:
             )
 
             with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
-                mock_get.return_value = mock_response_403
                 mock_get.side_effect = __import__('requests').exceptions.HTTPError(response=mock_response_403)
                 
                 with pytest.raises(RuntimeError, match="Authentication failed"):
@@ -466,7 +465,42 @@ class TestErrorHandling:
                 assert mock_get.call_count == 2
                 second_call_headers = mock_get.call_args_list[1][1].get('headers', {})
                 assert 'Authorization' not in second_call_headers
-    
+
+    def test_download_raw_file_saml_fallback_retries_and_still_fails(self):
+        """Test that when both authenticated and unauthenticated attempts fail, an error is raised."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'saml-blocked-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('microsoft/private-repo/sub/dir')
+
+            mock_response_401_first = Mock()
+            mock_response_401_first.status_code = 401
+            mock_response_401_first.raise_for_status = Mock(
+                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401_first)
+            )
+
+            mock_response_401_second = Mock()
+            mock_response_401_second.status_code = 401
+            mock_response_401_second.raise_for_status = Mock(
+                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401_second)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.side_effect = [mock_response_401_first, mock_response_401_second]
+
+                with pytest.raises(RuntimeError, match="Authentication failed"):
+                    downloader.download_raw_file(dep_ref, 'sub/dir/SKILL.md', 'main')
+
+                # Both attempts should have been made
+                assert mock_get.call_count == 2
+
+                # First call should include auth header
+                first_call_headers = mock_get.call_args_list[0][1].get('headers', {})
+                assert 'Authorization' in first_call_headers
+
+                # Second (retry) call should NOT include auth header
+                second_call_headers = mock_get.call_args_list[1][1].get('headers', {})
+                assert 'Authorization' not in second_call_headers
+
     def test_repository_not_found_handling(self):
         """Test handling of repository not found errors."""
         # Would require mocking 404 errors
