@@ -28,10 +28,16 @@ on:
         default: true
         type: boolean
 
+# Restrict default GITHUB_TOKEN permissions for all jobs (principle of least privilege)
+permissions:
+  contents: read
+
 jobs:
   # Always run tests first with matrix strategy
   test:
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -123,7 +129,7 @@ jobs:
     
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write  # Required for release uploads
+      contents: read  # Checkout code; upload-artifact uses separate Actions API
     
     steps:
       - name: Checkout code
@@ -437,7 +443,8 @@ jobs:
       name: pypi
       url: https://pypi.org/p/apm-cli
     permissions:
-      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+      contents: read    # Required for actions/checkout
+      id-token: write   # IMPORTANT: this permission is mandatory for trusted publishing
     
     steps:
       - name: Checkout code
@@ -470,6 +477,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, build, integration-tests, release-validation, create-release, publish-pypi]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
+    permissions:
+      contents: read
     
     steps:
       - name: Extract SHA256 checksums from GitHub release
