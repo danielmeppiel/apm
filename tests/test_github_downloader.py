@@ -385,6 +385,88 @@ class TestErrorHandling:
         # Would require mocking authentication failures
         pass
     
+    def test_download_raw_file_saml_fallback_retries_without_token(self):
+        """Test that download_raw_file retries without token on 401/403 (SAML/SSO)."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'saml-blocked-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('microsoft/some-public-repo/sub/dir')
+
+            # First call (with token) returns 401, second call (without token) returns 200
+            mock_response_401 = Mock()
+            mock_response_401.status_code = 401
+            mock_response_401.raise_for_status = Mock(
+                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401)
+            )
+
+            mock_response_200 = Mock()
+            mock_response_200.status_code = 200
+            mock_response_200.content = b'# SKILL.md content'
+            mock_response_200.raise_for_status = Mock()
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.side_effect = [mock_response_401, mock_response_200]
+                
+                result = downloader.download_raw_file(dep_ref, 'sub/dir/SKILL.md', 'main')
+                assert result == b'# SKILL.md content'
+                
+                # First call should include auth header
+                first_call_headers = mock_get.call_args_list[0][1].get('headers', {})
+                assert 'Authorization' in first_call_headers
+                
+                # Second (retry) call should NOT include auth header
+                second_call_headers = mock_get.call_args_list[1][1].get('headers', {})
+                assert 'Authorization' not in second_call_headers
+
+    def test_download_raw_file_saml_fallback_not_used_for_ghe_cloud_dr(self):
+        """Test that SAML fallback does NOT apply to *.ghe.com (no public repos)."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'ghe-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('company.ghe.com/owner/repo/sub/path')
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            mock_response_403.raise_for_status = Mock(
+                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_403)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_response_403
+                mock_get.side_effect = __import__('requests').exceptions.HTTPError(response=mock_response_403)
+                
+                with pytest.raises(RuntimeError, match="Authentication failed"):
+                    downloader.download_raw_file(dep_ref, 'sub/path/file.md', 'main')
+                
+                # Should only have been called once — no retry for *.ghe.com
+                assert mock_get.call_count == 1
+
+    def test_download_raw_file_saml_fallback_applies_to_ghes(self):
+        """Test that SAML fallback DOES apply to GHES custom domains (can have public repos)."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'ghes-token', 'GITHUB_HOST': 'github.mycompany.com'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('github.mycompany.com/owner/repo/sub/path')
+
+            mock_response_401 = Mock()
+            mock_response_401.status_code = 401
+            mock_response_401.raise_for_status = Mock(
+                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401)
+            )
+
+            mock_response_200 = Mock()
+            mock_response_200.status_code = 200
+            mock_response_200.content = b'# Public GHES content'
+            mock_response_200.raise_for_status = Mock()
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.side_effect = [mock_response_401, mock_response_200]
+                
+                result = downloader.download_raw_file(dep_ref, 'sub/path/SKILL.md', 'main')
+                assert result == b'# Public GHES content'
+                
+                # Should have retried without auth
+                assert mock_get.call_count == 2
+                second_call_headers = mock_get.call_args_list[1][1].get('headers', {})
+                assert 'Authorization' not in second_call_headers
+    
     def test_repository_not_found_handling(self):
         """Test handling of repository not found errors."""
         # Would require mocking 404 errors

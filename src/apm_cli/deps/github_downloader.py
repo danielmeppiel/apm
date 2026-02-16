@@ -593,6 +593,18 @@ class GitHubPackageDownloader:
                         f"(tried refs: {ref}, {fallback_ref})"
                     )
             elif e.response.status_code == 401 or e.response.status_code == 403:
+                # Token may lack SSO/SAML authorization for this org.
+                # Retry without auth — the repo might be public.
+                # Applies to github.com and GHES (custom domains can have public repos).
+                # Excluded: *.ghe.com (Enterprise Cloud Data Residency has no public repos).
+                if self.github_token and not host.endswith(".ghe.com"):
+                    try:
+                        unauth_headers = {'Accept': 'application/vnd.github.v3.raw'}
+                        response = requests.get(api_url, headers=unauth_headers, timeout=30)
+                        response.raise_for_status()
+                        return response.content
+                    except requests.exceptions.HTTPError:
+                        pass  # Fall through to the original error
                 error_msg = f"Authentication failed for {dep_ref.repo_url}. "
                 if not self.github_token:
                     error_msg += "This might be a private repository. Please set GITHUB_APM_PAT or GITHUB_TOKEN."
