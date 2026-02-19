@@ -305,7 +305,10 @@ class DependencyReference:
         """
         if not dependency_str.strip():
             raise ValueError("Empty dependency string")
-        
+
+        # Decode percent-encoded characters (e.g., %20 for spaces in ADO project names)
+        dependency_str = urllib.parse.unquote(dependency_str)
+
         # Check for control characters (newlines, tabs, etc.)
         if any(ord(c) < 32 for c in dependency_str):
             raise ValueError("Dependency string contains invalid control characters")
@@ -557,12 +560,16 @@ class DependencyReference:
                         raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
                 
                 # Security: validate characters to prevent injection
+                # ADO project names may contain spaces
+                allowed_pattern = r'^[a-zA-Z0-9._\- ]+$' if is_ado_host else r'^[a-zA-Z0-9._-]+$'
                 for part in uparts:
-                    if not re.match(r'^[a-zA-Z0-9._-]+$', part.rstrip('.git')):
+                    if not re.match(allowed_pattern, part.rstrip('.git')):
                         raise ValueError(f"Invalid repository path component: {part}")
 
                 # Safely construct URL using detected host
-                github_url = urllib.parse.urljoin(f"https://{host}/", user_repo)
+                # Quote path components to handle spaces in ADO project names
+                quoted_repo = '/'.join(urllib.parse.quote(p, safe='') for p in uparts)
+                github_url = urllib.parse.urljoin(f"https://{host}/", quoted_repo)
                 parsed_url = urllib.parse.urlparse(github_url)
 
             # SECURITY: Validate that this is actually a supported Git host URL.
@@ -581,28 +588,31 @@ class DependencyReference:
                 path = path[:-4]
             
             # Handle _git in parsed path for ADO URLs
-            path_parts = path.split("/")
+            # Decode percent-encoded path components (e.g., spaces in ADO project names)
+            path_parts = [urllib.parse.unquote(p) for p in path.split("/")]
             if '_git' in path_parts:
                 git_idx = path_parts.index('_git')
                 path_parts = path_parts[:git_idx] + path_parts[git_idx+1:]
-            
+
             # Validate path format based on host type
             is_ado_host = is_azure_devops_hostname(hostname)
             expected_parts = 3 if is_ado_host else 2
-            
+
             if len(path_parts) != expected_parts:
                 if is_ado_host:
                     raise ValueError(f"Invalid Azure DevOps repository path: expected 'org/project/repo', got '{path}'")
                 else:
                     raise ValueError(f"Invalid repository path: expected 'user/repo', got '{path}'")
-            
+
             # Validate all path parts contain only allowed characters
+            # ADO project names may contain spaces
+            allowed_pattern = r'^[a-zA-Z0-9._\- ]+$' if is_ado_host else r'^[a-zA-Z0-9._-]+$'
             for i, part in enumerate(path_parts):
                 if not part:
                     raise ValueError(f"Invalid repository format: path component {i+1} cannot be empty")
-                if not re.match(r'^[a-zA-Z0-9._-]+$', part):
+                if not re.match(allowed_pattern, part):
                     raise ValueError(f"Invalid repository path component: {part}")
-            
+
             repo_url = "/".join(path_parts)
             
             # If host not set via SSH or parsed parts, default to default_host()
@@ -613,8 +623,8 @@ class DependencyReference:
         # Validate repo format based on host type
         is_ado_final = host and is_azure_devops_hostname(host)
         if is_ado_final:
-            # ADO format: org/project/repo (3 segments)
-            if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', repo_url):
+            # ADO format: org/project/repo (3 segments, project may contain spaces)
+            if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._\- ]+/[a-zA-Z0-9._-]+$', repo_url):
                 raise ValueError(f"Invalid Azure DevOps repository format: {repo_url}. Expected 'org/project/repo'")
             # Extract ADO-specific fields
             ado_parts = repo_url.split('/')
@@ -655,7 +665,8 @@ class DependencyReference:
         
         if self.is_azure_devops():
             # ADO format: https://dev.azure.com/org/project/_git/repo
-            return f"https://{host}/{self.ado_organization}/{self.ado_project}/_git/{self.ado_repo}"
+            project = urllib.parse.quote(self.ado_project, safe='')
+            return f"https://{host}/{self.ado_organization}/{project}/_git/{self.ado_repo}"
         else:
             # GitHub format: https://github.com/owner/repo
             return f"https://{host}/{self.repo_url}"

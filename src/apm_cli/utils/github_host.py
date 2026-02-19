@@ -153,10 +153,11 @@ def build_ado_https_clone_url(org: str, project: str, repo: str, token: Optional
     Returns:
         str: HTTPS clone URL for Azure DevOps
     """
+    quoted_project = urllib.parse.quote(project, safe='')
     if token:
         # ADO uses PAT as password with empty username
-        return f"https://{token}@{host}/{org}/{project}/_git/{repo}"
-    return f"https://{host}/{org}/{project}/_git/{repo}"
+        return f"https://{token}@{host}/{org}/{quoted_project}/_git/{repo}"
+    return f"https://{host}/{org}/{quoted_project}/_git/{repo}"
 
 
 def build_ado_ssh_url(org: str, project: str, repo: str, host: str = "ssh.dev.azure.com") -> str:
@@ -177,12 +178,13 @@ def build_ado_ssh_url(org: str, project: str, repo: str, host: str = "ssh.dev.az
     Returns:
         str: SSH clone URL for Azure DevOps
     """
+    quoted_project = urllib.parse.quote(project, safe='')
     if host == "ssh.dev.azure.com":
         # Cloud format
-        return f"git@ssh.dev.azure.com:v3/{org}/{project}/{repo}"
+        return f"git@ssh.dev.azure.com:v3/{org}/{quoted_project}/{repo}"
     else:
         # Server format (user@host is optional, but commonly 'git@host')
-        return f"ssh://git@{host}/{org}/{project}/_git/{repo}"
+        return f"ssh://git@{host}/{org}/{quoted_project}/_git/{repo}"
 
 
 def build_ado_api_url(org: str, project: str, repo: str, path: str, ref: str = "main", host: str = "dev.azure.com") -> str:
@@ -202,8 +204,9 @@ def build_ado_api_url(org: str, project: str, repo: str, path: str, ref: str = "
         str: API URL for retrieving file contents
     """
     encoded_path = urllib.parse.quote(path, safe='')
+    quoted_project = urllib.parse.quote(project, safe='')
     return (
-        f"https://{host}/{org}/{project}/_apis/git/repositories/{repo}/items"
+        f"https://{host}/{org}/{quoted_project}/_apis/git/repositories/{repo}/items"
         f"?path={encoded_path}&versionDescriptor.version={ref}&api-version=7.0"
     )
 
