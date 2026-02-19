@@ -11,13 +11,28 @@ import re
 import requests
 
 
-def _remove_readonly(func, path, _excinfo):
+def _remove_readonly(func, path, excinfo):
     """Error handler for shutil.rmtree on Windows.
 
     Git marks pack files and objects as read-only.  On Windows this causes
     ``shutil.rmtree`` to raise ``[WinError 5] Access is denied``.  Clearing
     the read-only flag before retrying the removal resolves the issue.
+
+    Also handles ``[WinError 32]`` (file in use) by closing stale handles
+    from GitPython via ``gc.collect()`` before retrying.
     """
+    exc_value = excinfo[1] if excinfo else None
+    if exc_value and getattr(exc_value, 'winerror', None) == 32:
+        # WinError 32: file in use — nudge GitPython to release handles
+        import gc
+        gc.collect()
+        import time
+        time.sleep(0.1)
+        try:
+            func(path)
+            return
+        except Exception:
+            pass
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
@@ -426,10 +441,15 @@ class GitHubPackageDownloader:
                             raise RuntimeError(f"Failed to clone repository {dep_ref.repo_url}: {sanitized_error}")
                     
         finally:
+            # Close repo handles before cleanup to avoid WinError 32 on Windows
+            try:
+                repo.close()  # type: ignore[possibly-undefined]
+            except Exception:
+                pass
             # Clean up temporary directory
             if temp_dir and temp_dir.exists():
                 shutil.rmtree(temp_dir, onerror=_remove_readonly)
-        
+
         return ResolvedReference(
             original_ref=repo_ref,
             ref_type=ref_type,
