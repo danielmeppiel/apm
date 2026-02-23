@@ -222,6 +222,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 
 APM also integrates with Claude Code when `.claude/` directory exists:
 
+- **Agents**: `.agent.md` and `.chatmode.md` files → `.claude/agents/*-apm.md`
 - **Commands**: `.prompt.md` files → `.claude/commands/*-apm.md`
 
 **Skill Integration:**
@@ -235,6 +236,7 @@ Skills are copied directly to target directories:
 ```
 ✓ microsoft/apm-sample-package
   ├─ 3 prompts integrated → .github/prompts/
+  ├─ 1 agents integrated → .claude/agents/
   └─ 3 commands integrated → .claude/commands/
 ```
 
