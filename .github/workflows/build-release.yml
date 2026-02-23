@@ -11,12 +11,6 @@ on:
       - 'docs/**'
       - '.gitignore'
       - 'LICENSE'
-  pull_request: 
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
   schedule:
     # Run daily at 04:00 UTC (6 AM CEST)
     - cron: '0 4 * * *'
@@ -99,8 +93,8 @@ jobs:
 
     - name: Run smoke tests
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}    # Models access
-        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}     # APM module access
+        GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
   # Build binaries

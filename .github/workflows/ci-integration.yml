@@ -1,0 +1,339 @@
+# Integration tests for PRs (including forks).
+# Uses pull_request_target to access secrets, gated by the integration-tests environment.
+# Security: workflow code comes from main (not the PR), only source code is checked out from PR HEAD.
+name: Integration Tests (PR)
+
+env:
+  PYTHON_VERSION: '3.12'
+
+on:
+  pull_request_target:
+    branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+
+jobs:
+  # Single approval gate — maintainer reviews PR code, then approves this environment.
+  # All downstream jobs chain off this, so approval happens once.
+  approve:
+    runs-on: ubuntu-latest
+    environment: integration-tests
+    steps:
+      - run: echo "Integration tests approved for PR #${{ github.event.pull_request.number }}"
+
+  smoke-test:
+    needs: [approve]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            platform: linux
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+          - os: macos-15-intel
+            arch: x86_64
+            platform: darwin
+          - os: macos-latest
+            arch: arm64
+            platform: darwin
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Setup build environment (macOS-15 Intel)
+      if: matrix.os == 'macos-15-intel'
+      run: |
+        # Install Xcode Command Line Tools
+        sudo xcode-select --install 2>/dev/null || true
+        # Wait for installation to complete
+        until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Cache uv environments
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/uv
+          ~/.local/share/uv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+
+    - name: Install dependencies
+      run: uv sync --extra dev
+
+    - name: Run smoke tests
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+      run: uv run pytest tests/integration/test_runtime_smoke.py -v
+
+  build:
+    name: Build APM Binary
+    needs: [approve]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x86_64
+            binary_name: apm-linux-x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            binary_name: apm-linux-arm64
+          - os: macos-15-intel
+            platform: darwin
+            arch: x86_64
+            binary_name: apm-darwin-x86_64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            binary_name: apm-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install UPX (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx-ucl
+
+      - name: Install UPX and XCode (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          # Install Xcode Command Line Tools
+          sudo xcode-select --install 2>/dev/null || true
+          # Wait for installation to complete
+          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+          brew install upx
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: |
+          uv sync --extra dev --extra build
+
+      - name: Build binary
+        run: |
+          chmod +x scripts/build-binary.sh
+          uv run ./scripts/build-binary.sh
+
+      - name: Upload binary as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary_name }}
+          path: |
+            ./dist/${{ matrix.binary_name }}
+            ./dist/${{ matrix.binary_name }}.sha256
+            ./scripts/test-release-validation.sh
+            ./scripts/github-token-helper.sh
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error
+
+  integration-tests:
+    name: Integration Tests
+    needs: [smoke-test, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            platform: linux
+            binary_name: apm-linux-x86_64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+            binary_name: apm-linux-arm64
+          - os: macos-15-intel
+            arch: x86_64
+            platform: darwin
+            binary_name: apm-darwin-x86_64
+          - os: macos-latest
+            arch: arm64
+            platform: darwin
+            binary_name: apm-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      models: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Download APM binary from build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.binary_name }}
+          path: ./
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup build environment (macOS-15-intel)
+        if: matrix.os == 'macos-15-intel'
+        run: |
+          # Install Xcode Command Line Tools
+          sudo xcode-select --install 2>/dev/null || true
+          # Wait for installation to complete
+          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install test dependencies
+        run: uv sync --extra dev
+
+      - name: Run integration tests
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          chmod +x scripts/test-integration.sh
+          uv run ./scripts/test-integration.sh
+        timeout-minutes: 20
+
+  release-validation:
+    name: Release Validation
+    needs: [smoke-test, build, integration-tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            platform: linux
+            binary_name: apm-linux-x86_64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+            binary_name: apm-linux-arm64
+          - os: macos-15-intel
+            arch: x86_64
+            platform: darwin
+            binary_name: apm-darwin-x86_64
+          - os: macos-latest
+            arch: arm64
+            platform: darwin
+            binary_name: apm-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      models: read
+
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup build environment (macOS-15-intel)
+        if: matrix.os == 'macos-15-intel'
+        run: |
+          # Install Xcode Command Line Tools
+          sudo xcode-select --install 2>/dev/null || true
+          # Wait for installation to complete
+          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+
+      - name: Download APM binary from build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.binary_name }}
+          path: /tmp/apm-isolated-test/
+
+      - name: Make binary executable and verify isolation
+        run: |
+          cd /tmp/apm-isolated-test
+
+          # Debug: List the downloaded structure
+          echo "Downloaded structure:"
+          find . -name "apm" -type f
+          ls -la ./dist/
+
+          # Make the binary executable
+          chmod +x ./dist/${{ matrix.binary_name }}/apm
+
+      - name: Create APM symlink for testing
+        run: |
+          cd /tmp/apm-isolated-test
+          ln -s "$(pwd)/dist/${{ matrix.binary_name }}/apm" "$(pwd)/apm"
+          echo "/tmp/apm-isolated-test" >> $GITHUB_PATH
+
+      - name: Run release validation tests
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          cd /tmp/apm-isolated-test
+          chmod +x scripts/test-release-validation.sh
+          ./scripts/test-release-validation.sh
+        timeout-minutes: 20

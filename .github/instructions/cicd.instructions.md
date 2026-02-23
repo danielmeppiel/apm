@@ -1,9 +1,20 @@
 ---
-applyTo: ".github/workflows/build-release.yml"
+applyTo: ".github/workflows/**"
 description: "CI/CD Pipeline configuration for PyInstaller binary packaging and release workflow"
 ---
 
 # CI/CD Pipeline Instructions
+
+## Workflow Architecture (Fork-safe)
+Three workflows split by trigger and secret requirements:
+
+1. **`ci.yml`** — `pull_request` trigger (all PRs, including forks)
+   - Unit tests + build. No secrets needed. Gives fast feedback.
+2. **`ci-integration.yml`** — `pull_request_target` trigger (environment-gated)
+   - Smoke tests, integration tests, release validation. Requires `integration-tests` environment approval.
+   - Security: workflow code comes from main, only source checkout uses PR HEAD sha.
+3. **`build-release.yml`** — `push` to main, tags, schedule, `workflow_dispatch`
+   - Full pipeline for post-merge / release. Secrets always available.
 
 ## PyInstaller Binary Packaging
 - **CRITICAL**: Uses `--onedir` mode (NOT `--onefile`) for faster CLI startup performance
@@ -22,9 +33,16 @@ description: "CI/CD Pipeline configuration for PyInstaller binary packaging and 
 3. **Path Resolution**: Use symlinks and PATH manipulation for isolated binary testing
 
 ## Release Flow Dependencies
-- **Sequential Jobs**: test → build → integration-tests → release-validation → create-release → publish-pypi → update-homebrew
+- **PR workflow**: ci.yml (test → build) + ci-integration.yml (approve → smoke-test + build → integration-tests → release-validation)
+- **Push/Release workflow**: test → build → integration-tests → release-validation → create-release → publish-pypi → update-homebrew
 - **Tag Triggers**: Only `v*.*.*` tags trigger full release pipeline
 - **Artifact Retention**: 30 days for debugging failed releases
+
+## Fork PR Security Model
+- Fork PRs get unit tests + build via `ci.yml` (no secrets)
+- Integration tests require maintainer approval via `integration-tests` environment
+- `pull_request_target` ensures workflow code comes from main (not the fork)
+- Only source code is checked out from PR HEAD after approval
 
 ## Key Environment Variables
 - `PYTHON_VERSION: '3.12'` - Standardized across all jobs
