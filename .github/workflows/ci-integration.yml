@@ -1,36 +1,43 @@
 # Integration tests for PRs (including forks).
-# Uses pull_request_target to access secrets, gated by the integration-tests environment.
-# Security: workflow code comes from main (not the PR), only source code is checked out from PR HEAD.
+# Uses workflow_run to safely access secrets without checking out untrusted PR code.
+# Security model:
+#   - ci.yml builds the PR's code in an unprivileged context and uploads binary artifacts
+#   - This workflow downloads those artifacts and runs tests from the DEFAULT BRANCH (main)
+#   - PR code is never checked out in a privileged context
+#   - Environment approval gate ensures a maintainer reviews the PR before tests run
 name: Integration Tests (PR)
 
 env:
   PYTHON_VERSION: '3.12'
 
 on:
-  pull_request_target:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: read
+  actions: read
+  statuses: write
 
 jobs:
   # Single approval gate — maintainer reviews PR code, then approves this environment.
   # All downstream jobs chain off this, so approval happens once.
   approve:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     environment: integration-tests
     steps:
-      - run: echo "Integration tests approved for PR #${{ github.event.pull_request.number }}"
+      - run: echo "Integration tests approved for ${{ github.event.workflow_run.head_branch }}"
 
   smoke-test:
     needs: [approve]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -49,9 +56,8 @@ jobs:
             platform: darwin
 
     steps:
+    # Checkout default branch (main) — never PR code
     - uses: actions/checkout@v4
-      with:
-        ref: ${{ github.event.pull_request.head.sha }}
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -95,90 +101,9 @@ jobs:
         GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
-  build:
-    name: Build APM Binary
-    needs: [approve]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            platform: linux
-            arch: x86_64
-            binary_name: apm-linux-x86_64
-          - os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-            binary_name: apm-linux-arm64
-          - os: macos-15-intel
-            platform: darwin
-            arch: x86_64
-            binary_name: apm-darwin-x86_64
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
-            binary_name: apm-darwin-arm64
-
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install UPX (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y upx-ucl
-
-      - name: Install UPX and XCode (macOS)
-        if: matrix.platform == 'darwin'
-        run: |
-          # Install Xcode Command Line Tools
-          sudo xcode-select --install 2>/dev/null || true
-          # Wait for installation to complete
-          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
-          brew install upx
-
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Install Python dependencies
-        run: |
-          uv sync --extra dev --extra build
-
-      - name: Build binary
-        run: |
-          chmod +x scripts/build-binary.sh
-          uv run ./scripts/build-binary.sh
-
-      - name: Upload binary as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.binary_name }}
-          path: |
-            ./dist/${{ matrix.binary_name }}
-            ./dist/${{ matrix.binary_name }}.sha256
-            ./scripts/test-release-validation.sh
-            ./scripts/github-token-helper.sh
-          include-hidden-files: true
-          retention-days: 30
-          if-no-files-found: error
-
   integration-tests:
     name: Integration Tests
-    needs: [smoke-test, build]
+    needs: [smoke-test]
     strategy:
       fail-fast: false
       matrix:
@@ -203,19 +128,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+      actions: read
       models: read
 
     steps:
+      # Checkout default branch (main) for test scripts — never PR code
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Download APM binary from build artifacts
+      # Download binary artifact built from PR code by ci.yml
+      - name: Download APM binary from CI workflow
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.binary_name }}
-          path: ./
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -256,7 +183,7 @@ jobs:
 
   release-validation:
     name: Release Validation
-    needs: [smoke-test, build, integration-tests]
+    needs: [integration-tests]
     strategy:
       fail-fast: false
       matrix:
@@ -281,9 +208,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+      actions: read
       models: read
 
     steps:
+      # Checkout default branch for test scripts — never PR code
+      - name: Checkout test scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          path: repo
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -302,22 +237,23 @@ jobs:
           # Wait for installation to complete
           until xcode-select -p >/dev/null 2>&1; do sleep 5; done
 
-      - name: Download APM binary from build artifacts
+      # Download binary artifact to isolated test directory
+      - name: Download APM binary from CI workflow
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.binary_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: /tmp/apm-isolated-test/
 
       - name: Make binary executable and verify isolation
         run: |
           cd /tmp/apm-isolated-test
 
-          # Debug: List the downloaded structure
           echo "Downloaded structure:"
           find . -name "apm" -type f
           ls -la ./dist/
 
-          # Make the binary executable
           chmod +x ./dist/${{ matrix.binary_name }}/apm
 
       - name: Create APM symlink for testing
@@ -325,6 +261,11 @@ jobs:
           cd /tmp/apm-isolated-test
           ln -s "$(pwd)/dist/${{ matrix.binary_name }}/apm" "$(pwd)/apm"
           echo "/tmp/apm-isolated-test" >> $GITHUB_PATH
+
+      - name: Prepare test scripts from default branch
+        run: |
+          # Copy test scripts from main branch checkout into isolated test dir
+          cp -r repo/scripts /tmp/apm-isolated-test/scripts
 
       - name: Run release validation tests
         env:
@@ -337,3 +278,29 @@ jobs:
           chmod +x scripts/test-release-validation.sh
           ./scripts/test-release-validation.sh
         timeout-minutes: 20
+
+  # Report integration test results back to the PR as a commit status
+  report-status:
+    needs: [smoke-test, integration-tests, release-validation]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Report status to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const success = '${{ needs.release-validation.result }}' === 'success'
+              && '${{ needs.integration-tests.result }}' === 'success'
+              && '${{ needs.smoke-test.result }}' === 'success';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.workflow_run.head_sha,
+              state: success ? 'success' : 'failure',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              context: 'Integration Tests (PR)',
+              description: success ? 'All integration tests passed' : 'Integration tests failed'
+            });
+

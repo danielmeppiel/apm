@@ -10,9 +10,12 @@ Three workflows split by trigger and secret requirements:
 
 1. **`ci.yml`** — `pull_request` trigger (all PRs, including forks)
    - Unit tests + build. No secrets needed. Gives fast feedback.
-2. **`ci-integration.yml`** — `pull_request_target` trigger (environment-gated)
+   - Uploads binary artifacts for downstream integration testing.
+2. **`ci-integration.yml`** — `workflow_run` trigger (after CI completes, environment-gated)
    - Smoke tests, integration tests, release validation. Requires `integration-tests` environment approval.
-   - Security: workflow code comes from main, only source checkout uses PR HEAD sha.
+   - Security: uses `workflow_run` (not `pull_request_target`) — PR code is NEVER checked out.
+   - Downloads binary artifacts from ci.yml, runs test scripts from default branch (main).
+   - Reports results back to PR via commit status API.
 3. **`build-release.yml`** — `push` to main, tags, schedule, `workflow_dispatch`
    - Full pipeline for post-merge / release. Secrets always available.
 
@@ -33,16 +36,18 @@ Three workflows split by trigger and secret requirements:
 3. **Path Resolution**: Use symlinks and PATH manipulation for isolated binary testing
 
 ## Release Flow Dependencies
-- **PR workflow**: ci.yml (test → build) + ci-integration.yml (approve → smoke-test + build → integration-tests → release-validation)
+- **PR workflow**: ci.yml (test → build) then ci-integration.yml via workflow_run (approve → smoke-test → integration-tests → release-validation → report-status)
 - **Push/Release workflow**: test → build → integration-tests → release-validation → create-release → publish-pypi → update-homebrew
 - **Tag Triggers**: Only `v*.*.*` tags trigger full release pipeline
 - **Artifact Retention**: 30 days for debugging failed releases
+- **Cross-workflow artifacts**: ci-integration.yml downloads artifacts from ci.yml using `run-id` and `github-token`
 
 ## Fork PR Security Model
-- Fork PRs get unit tests + build via `ci.yml` (no secrets)
-- Integration tests require maintainer approval via `integration-tests` environment
-- `pull_request_target` ensures workflow code comes from main (not the fork)
-- Only source code is checked out from PR HEAD after approval
+- Fork PRs get unit tests + build via `ci.yml` (no secrets, runs PR code safely)
+- `ci-integration.yml` triggers via `workflow_run` after CI completes — NEVER checks out PR code
+- Binary artifacts from ci.yml are tested using test scripts from the default branch (main)
+- Environment approval gate (`integration-tests`) ensures maintainer reviews PR before integration tests run
+- Commit status is reported back to the PR SHA so results appear on the PR
 
 ## Key Environment Variables
 - `PYTHON_VERSION: '3.12'` - Standardized across all jobs
