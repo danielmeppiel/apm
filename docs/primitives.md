@@ -75,6 +75,7 @@ The APM CLI supports four types of primitives:
 - **Instructions** (`.instructions.md`) - Provide coding standards and guidelines for specific file types
 - **Skills** (`SKILL.md`) - Package meta-guides that help AI agents understand what a package does
 - **Context** (`.context.md`, `.memory.md`) - Supply background information and project context
+- **Hooks** (`.json` in `.apm/hooks/` or `hooks/`) - Define lifecycle event handlers with script references
 
 > **Note**: Both `.agent.md` (new format) and `.chatmode.md` (legacy format) are fully supported. VSCode provides Quick Fix actions to help migrate from `.chatmode.md` to `.agent.md`.
 
@@ -95,8 +96,12 @@ APM discovers primitives in these locations:
 │   └── *.instructions.md
 ├── context/            # Project context files
 │   └── *.context.md
-└── memory/             # Team info, contacts, etc.
-    └── *.memory.md
+├── memory/             # Team info, contacts, etc.
+│   └── *.memory.md
+└── hooks/              # Lifecycle event handlers
+    ├── *.json          # Hook definitions (JSON)
+    └── scripts/        # Referenced scripts
+        └── *.sh, *.py
 
 # VSCode-compatible structure  
 .github/

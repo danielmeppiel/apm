@@ -152,6 +152,9 @@ apm install danielmeppiel/design-guidelines
 
 # Agents are automatically integrated to:
 # .github/agents/*-apm.agent.md (verbatim copy)
+
+# Hooks are automatically integrated to:
+# .github/hooks/*-apm.json (hook definitions with rewritten script paths)
 ```
 
 **How Auto-Integration Works**:
@@ -163,13 +166,14 @@ apm install danielmeppiel/design-guidelines
 
 **Integration Flow**:
 1. Run `apm install` to fetch APM packages
-2. APM automatically creates `.github/prompts/` and `.github/agents/` directories if needed
-3. Discovers `.prompt.md` and `.agent.md` files in each package
+2. APM automatically creates `.github/prompts/`, `.github/agents/`, and `.github/hooks/` directories if needed
+3. Discovers `.prompt.md`, `.agent.md`, and hook `.json` files in each package
 4. Copies prompts to `.github/prompts/` with `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
 5. Copies agents to `.github/agents/` with `-apm` suffix (e.g., `security-apm.agent.md`)
-6. Updates `.gitignore` to exclude integrated prompts and agents
-7. VSCode automatically loads all prompts and agents for your coding agents
-8. Run `apm uninstall` to automatically remove integrated prompts and agents
+6. Copies hooks to `.github/hooks/` with `-apm` suffix (e.g., `hookify-hooks-apm.json`) and copies referenced scripts
+7. Updates `.gitignore` to exclude integrated prompts, agents, and hooks
+8. VSCode automatically loads all prompts, agents, and hooks for your coding agents
+9. Run `apm uninstall` to automatically remove integrated primitives
 
 **Intent-First Discovery**:
 The `-apm` suffix pattern enables natural autocomplete in VSCode:
@@ -225,6 +229,7 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 |----------|---------||
 | `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
 | `.github/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
+| `.claude/settings.json` (hooks key) | Hooks from installed packages (merged into settings) |
 
 ### Automatic Command Integration
 
@@ -267,6 +272,31 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 3. If no `SKILL.md` but package has `.apm/` primitives: auto-generates `SKILL.md` in `.github/skills/{folder-name}/`
 4. Updates `.gitignore` to exclude generated skills
 5. `apm uninstall` removes the skill folder
+
+### Automatic Hook Integration
+
+APM automatically integrates hooks from installed packages. Hooks define lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`) supported by both VSCode Copilot and Claude Code.
+
+```bash
+# Install a package with hooks
+apm install anthropics/claude-plugins-official/plugins/hookify
+
+# VSCode result (.github/hooks/):
+# .github/hooks/hookify-hooks-apm.json       → Hook definitions
+# .github/hooks/scripts/hookify/hooks/*.py   → Referenced scripts
+
+# Claude result (.claude/settings.json):
+# Hooks merged into .claude/settings.json hooks key
+# Scripts copied to .claude/hooks/hookify/
+```
+
+**How hook integration works:**
+1. `apm install` discovers hook JSON files in `.apm/hooks/` or `hooks/` directories
+2. For VSCode: copies hook JSON to `.github/hooks/` with `-apm` suffix and rewrites script paths
+3. For Claude: merges hook definitions into `.claude/settings.json` under the `hooks` key
+4. Copies referenced scripts to the target location
+5. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
+6. `apm uninstall` removes hook files and cleans up merged settings
 
 ### Target-Specific Compilation
 
