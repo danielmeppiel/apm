@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from urllib.parse import urlparse
 
+import requests as requests_lib
 from apm_cli.deps.github_downloader import GitHubPackageDownloader
 from apm_cli.models.apm_package import (
     DependencyReference, 
@@ -395,7 +396,7 @@ class TestErrorHandling:
             mock_response_401 = Mock()
             mock_response_401.status_code = 401
             mock_response_401.raise_for_status = Mock(
-                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401)
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401)
             )
 
             mock_response_200 = Mock()
@@ -426,7 +427,7 @@ class TestErrorHandling:
             mock_response_403 = Mock()
             mock_response_403.status_code = 403
             mock_response_403.raise_for_status = Mock(
-                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_403)
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_403)
             )
 
             with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
@@ -447,7 +448,7 @@ class TestErrorHandling:
             mock_response_401 = Mock()
             mock_response_401.status_code = 401
             mock_response_401.raise_for_status = Mock(
-                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401)
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401)
             )
 
             mock_response_200 = Mock()
@@ -475,13 +476,13 @@ class TestErrorHandling:
             mock_response_401_first = Mock()
             mock_response_401_first.status_code = 401
             mock_response_401_first.raise_for_status = Mock(
-                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401_first)
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401_first)
             )
 
             mock_response_401_second = Mock()
             mock_response_401_second.status_code = 401
             mock_response_401_second.raise_for_status = Mock(
-                side_effect=__import__('requests').exceptions.HTTPError(response=mock_response_401_second)
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401_second)
             )
 
             with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
