@@ -2,6 +2,7 @@
 
 from .prompt_integrator import PromptIntegrator
 from .agent_integrator import AgentIntegrator
+from .hook_integrator import HookIntegrator
 from .skill_integrator import (
     SkillIntegrator,
     validate_skill_name,
@@ -17,6 +18,7 @@ from .skill_transformer import SkillTransformer
 __all__ = [
     'PromptIntegrator',
     'AgentIntegrator',
+    'HookIntegrator',
     'SkillIntegrator',
     'SkillTransformer',
     'validate_skill_name',

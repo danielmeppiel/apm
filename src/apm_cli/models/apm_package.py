@@ -874,7 +874,7 @@ class PackageInfo:
             return False
         
         # Check for any primitive files in subdirectories
-        for primitive_type in ['instructions', 'chatmodes', 'contexts', 'prompts']:
+        for primitive_type in ['instructions', 'chatmodes', 'contexts', 'prompts', 'hooks']:
             primitive_dir = apm_dir / primitive_type
             if primitive_dir.exists() and any(primitive_dir.iterdir()):
                 return True

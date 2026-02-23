@@ -89,6 +89,13 @@ class PackageValidator:
                     # Validate each primitive file
                     for md_file in md_files:
                         self._validate_primitive_file(md_file, result)
+
+        # Check for hooks (JSON files, not markdown)
+        hooks_dir = apm_dir / "hooks"
+        if hooks_dir.exists() and hooks_dir.is_dir():
+            json_files = list(hooks_dir.glob("*.json"))
+            if json_files:
+                has_primitives = True
         
         if not has_primitives:
             result.add_warning("No primitive files found in .apm/ directory")
@@ -209,6 +216,10 @@ class PackageValidator:
                 primitive_dir = apm_dir / primitive_type
                 if primitive_dir.exists():
                     primitive_count += len(list(primitive_dir.glob("*.md")))
+            # Count hook files
+            hooks_dir = apm_dir / "hooks"
+            if hooks_dir.exists():
+                primitive_count += len(list(hooks_dir.glob("*.json")))
             
             if primitive_count > 0:
                 summary += f" ({primitive_count} primitives)"
