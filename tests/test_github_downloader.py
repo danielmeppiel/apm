@@ -467,6 +467,38 @@ class TestAzureDevOpsSupport:
             # Should build ADO SSH URL (git@ssh.dev.azure.com:v3/org/project/repo)
             assert url.startswith('git@ssh.dev.azure.com:')
     
+    def test_build_ado_urls_with_spaces_in_project(self):
+        """Test that URL builders properly encode spaces in ADO project names."""
+        from apm_cli.utils.github_host import (
+            build_ado_https_clone_url,
+            build_ado_ssh_url,
+            build_ado_api_url,
+        )
+
+        # HTTPS clone URL with token
+        url = build_ado_https_clone_url("myorg", "My Project", "myrepo", token="tok")
+        assert "My%20Project" in url
+        assert "My Project" not in url
+        assert url == "https://tok@dev.azure.com/myorg/My%20Project/_git/myrepo"
+
+        # HTTPS clone URL without token
+        url = build_ado_https_clone_url("myorg", "My Project", "myrepo")
+        assert url == "https://dev.azure.com/myorg/My%20Project/_git/myrepo"
+
+        # SSH cloud URL
+        url = build_ado_ssh_url("myorg", "My Project", "myrepo")
+        assert "My%20Project" in url
+        assert url == "git@ssh.dev.azure.com:v3/myorg/My%20Project/myrepo"
+
+        # SSH server URL
+        url = build_ado_ssh_url("myorg", "My Project", "myrepo", host="ado.company.com")
+        assert "My%20Project" in url
+
+        # API URL
+        url = build_ado_api_url("myorg", "My Project", "myrepo", "path/file.md")
+        assert "My%20Project" in url
+        assert "My Project" not in url
+
     def test_build_repo_url_github_not_affected_by_ado_token(self):
         """Test that GitHub URL building uses GitHub token, not ADO token."""
         with patch.dict(os.environ, {
