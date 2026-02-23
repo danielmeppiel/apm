@@ -177,8 +177,11 @@ jobs:
           if-no-files-found: error
 
   # Integration tests with full source code access
+  # Skip on push-to-main: already validated by ci-integration.yml during the PR.
+  # Run on tags (release gate), schedule (regression), and dispatch (manual).
   integration-tests:
     name: Integration Tests
+    if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: [test, build]
     strategy:
       matrix:
@@ -255,6 +258,7 @@ jobs:
 # Release validation tests - Final pre-release validation of shipped binary
   release-validation:
     name: Release Validation
+    if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: [test, build, integration-tests]
     strategy:
       matrix:
