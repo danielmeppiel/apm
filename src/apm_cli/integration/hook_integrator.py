@@ -160,8 +160,9 @@ class HookIntegrator:
                 scripts_to_copy.append((source_file, target_rel))
                 new_command = new_command.replace(full_var, target_rel)
 
-        # Handle relative ./path references
-        rel_pattern = r'(?<!\$\{CLAUDE_PLUGIN_ROOT\})(\./[^\s]+)'
+        # Handle relative ./path references (safe to run after ${CLAUDE_PLUGIN_ROOT}
+        # substitution since replacements produce paths like ".github/..." not "./...")
+        rel_pattern = r'(\./[^\s]+)'
         for match in re.finditer(rel_pattern, new_command):
             rel_ref = match.group(1)
             rel_path = rel_ref[2:]  # Strip ./
