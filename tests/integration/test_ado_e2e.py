@@ -8,6 +8,7 @@ Skip these tests if ADO_APM_PAT is not available.
 """
 
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -24,11 +25,13 @@ pytestmark = pytest.mark.skipif(
 
 def run_apm_command(cmd: str, cwd: Path, timeout: int = 60) -> subprocess.CompletedProcess:
     """Run an APM CLI command and return the result."""
-    # Use the development version of APM
-    apm_path = Path(__file__).parent.parent.parent / ".venv" / "bin" / "apm"
-    if not apm_path.exists():
-        # Fallback to system apm
-        apm_path = "apm"
+    # Prefer binary on PATH (CI uses the PR artifact there)
+    apm_on_path = shutil.which("apm")
+    if apm_on_path:
+        apm_path = apm_on_path
+    else:
+        # Fallback to local dev venv
+        apm_path = Path(__file__).parent.parent.parent / ".venv" / "bin" / "apm"
     
     full_cmd = f"{apm_path} {cmd}"
     result = subprocess.run(
