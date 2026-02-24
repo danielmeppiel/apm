@@ -61,14 +61,27 @@ def list_packages():
                     # Build the expected installed package name
                     repo_parts = dep.repo_url.split('/')
                     if dep.is_virtual:
-                        # Virtual package: include full path based on platform
-                        package_name = dep.get_virtual_package_name()
-                        if dep.is_azure_devops() and len(repo_parts) >= 3:
-                            # ADO structure: org/project/virtual-pkg-name
-                            declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
-                        elif len(repo_parts) >= 2:
-                            # GitHub structure: owner/virtual-pkg-name
-                            declared_deps.add(f"{repo_parts[0]}/{package_name}")
+                        if dep.is_virtual_subdirectory() and dep.virtual_path:
+                            # Virtual subdirectory packages keep natural path structure.
+                            # GitHub: owner/repo/subdir
+                            # ADO: org/project/repo/subdir
+                            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                                declared_deps.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
+                                )
+                            elif len(repo_parts) >= 2:
+                                declared_deps.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
+                                )
+                        else:
+                            # Virtual file/collection packages are flattened.
+                            package_name = dep.get_virtual_package_name()
+                            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                                # ADO structure: org/project/virtual-pkg-name
+                                declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+                            elif len(repo_parts) >= 2:
+                                # GitHub structure: owner/virtual-pkg-name
+                                declared_deps.add(f"{repo_parts[0]}/{package_name}")
                     else:
                         # Regular package: use full repo_url path
                         if dep.is_azure_devops() and len(repo_parts) >= 3:
