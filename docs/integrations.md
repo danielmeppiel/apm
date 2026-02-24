@@ -224,7 +224,7 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 | Location | Purpose |
 |----------|---------||
 | `.claude/agents/*-apm.md` | Sub-agents from installed packages (from `.agent.md` files) |
-| `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
+| `.claude/commands/*-apm.md` | Slash commands from installed packages (from `.prompt.md` files) |
 | `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
 
 ### Automatic Agent Integration

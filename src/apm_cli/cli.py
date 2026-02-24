@@ -1377,7 +1377,8 @@ def uninstall(ctx, packages, dry_run):
                         prompt_integrator.integrate_package_prompts(pkg_info, project_root)
                     if agent_integrator.should_integrate(project_root):
                         agent_integrator.integrate_package_agents(pkg_info, project_root)
-                        agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
+                        if Path(".claude").exists():
+                            agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
                     skill_integrator.integrate_package_skill(pkg_info, project_root)
                     if command_integrator.should_integrate(project_root):
                         command_integrator.integrate_package_commands(pkg_info, project_root)

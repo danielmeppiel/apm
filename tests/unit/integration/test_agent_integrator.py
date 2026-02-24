@@ -588,7 +588,7 @@ class TestAgentSuffixPattern:
 
 class TestClaudeAgentIntegration:
     """Tests for Claude agent integration (.claude/agents/)."""
-    
+
     def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
