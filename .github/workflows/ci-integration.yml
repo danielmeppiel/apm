@@ -44,30 +44,15 @@ jobs:
     steps:
       - run: echo "Internal PR auto-approved for ${{ github.event.workflow_run.head_branch }}"
 
+  # Linux-only for fast PR feedback. Full platform smoke tests run post-merge.
   smoke-test:
     needs: [approve-fork, approve-internal]
     # Run if either approval job succeeded (the other will be skipped)
     if: always() && (needs.approve-fork.result == 'success' || needs.approve-internal.result == 'success')
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            arch: x86_64
-            platform: linux
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            platform: linux
-          - os: macos-15-intel
-            arch: x86_64
-            platform: darwin
-          - os: macos-latest
-            arch: arm64
-            platform: darwin
 
     steps:
     # Checkout default branch (main) — never PR code
@@ -82,14 +67,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-
-    - name: Setup build environment (macOS-15 Intel)
-      if: matrix.os == 'macos-15-intel'
-      run: |
-        # Install Xcode Command Line Tools
-        sudo xcode-select --install 2>/dev/null || true
-        # Wait for installation to complete
-        until xcode-select -p >/dev/null 2>&1; do sleep 5; done
 
     - name: Install uv
       run: |
@@ -115,31 +92,11 @@ jobs:
         GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
+  # Linux-only — downloads the single Linux binary artifact from ci.yml.
   integration-tests:
     name: Integration Tests
     needs: [smoke-test]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            arch: x86_64
-            platform: linux
-            binary_name: apm-linux-x86_64
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            platform: linux
-            binary_name: apm-linux-arm64
-          - os: macos-15-intel
-            arch: x86_64
-            platform: darwin
-            binary_name: apm-darwin-x86_64
-          - os: macos-latest
-            arch: arm64
-            platform: darwin
-            binary_name: apm-darwin-arm64
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read
@@ -154,7 +111,7 @@ jobs:
       - name: Download APM binary from CI workflow
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.binary_name }}
+          name: apm-linux-x86_64
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -167,14 +124,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Setup build environment (macOS-15-intel)
-        if: matrix.os == 'macos-15-intel'
-        run: |
-          # Install Xcode Command Line Tools
-          sudo xcode-select --install 2>/dev/null || true
-          # Wait for installation to complete
-          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
 
       - name: Install uv
         run: |
@@ -195,31 +144,11 @@ jobs:
           uv run ./scripts/test-integration.sh
         timeout-minutes: 20
 
+  # Linux-only — validates the Linux binary in isolation. Full platform validation runs post-merge.
   release-validation:
     name: Release Validation
     needs: [integration-tests]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            arch: x86_64
-            platform: linux
-            binary_name: apm-linux-x86_64
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            platform: linux
-            binary_name: apm-linux-arm64
-          - os: macos-15-intel
-            arch: x86_64
-            platform: darwin
-            binary_name: apm-darwin-x86_64
-          - os: macos-latest
-            arch: arm64
-            platform: darwin
-            binary_name: apm-darwin-arm64
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read
@@ -243,19 +172,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Setup build environment (macOS-15-intel)
-        if: matrix.os == 'macos-15-intel'
-        run: |
-          # Install Xcode Command Line Tools
-          sudo xcode-select --install 2>/dev/null || true
-          # Wait for installation to complete
-          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
-
       # Download binary artifact to isolated test directory
       - name: Download APM binary from CI workflow
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.binary_name }}
+          name: apm-linux-x86_64
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: /tmp/apm-isolated-test/
@@ -268,12 +189,12 @@ jobs:
           find . -name "apm" -type f
           ls -la ./dist/
 
-          chmod +x ./dist/${{ matrix.binary_name }}/apm
+          chmod +x ./dist/apm-linux-x86_64/apm
 
       - name: Create APM symlink for testing
         run: |
           cd /tmp/apm-isolated-test
-          ln -s "$(pwd)/dist/${{ matrix.binary_name }}/apm" "$(pwd)/apm"
+          ln -s "$(pwd)/dist/apm-linux-x86_64/apm" "$(pwd)/apm"
           echo "/tmp/apm-isolated-test" >> $GITHUB_PATH
 
       - name: Prepare test scripts from default branch
