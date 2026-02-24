@@ -2660,6 +2660,8 @@ class TestSubSkillPromotion:
 
         # Parent skill exists
         assert (self.project_root / ".github" / "skills" / "modernisation" / "SKILL.md").exists()
+        # .apm/ excluded from parent copy to avoid redundant storage
+        assert not (self.project_root / ".github" / "skills" / "modernisation" / ".apm").exists()
         # Sub-skill promoted to top level
         assert (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").exists()
         content = (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").read_text()
@@ -2691,7 +2693,7 @@ class TestSubSkillPromotion:
         assert not (self.project_root / ".github" / "skills" / "no-skill-md").exists()
 
     def test_sub_skill_name_collision_overwrites_with_warning(self):
-        """If a promoted sub-skill name clashes with an existing skill, it overwrites it."""
+        """If a promoted sub-skill name clashes with an existing skill, it overwrites and warns."""
         # Pre-existing skill at top level
         existing = self.project_root / ".github" / "skills" / "azure-naming"
         existing.mkdir(parents=True)
@@ -2702,8 +2704,13 @@ class TestSubSkillPromotion:
         )
         pkg_info = self._create_package_info(name="modernisation", install_path=package_dir)
 
-        with patch("apm_cli.cli._rich_warning"):
+        with patch("apm_cli.cli._rich_warning") as mock_warning:
             self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Warning should have been emitted about the collision
+        mock_warning.assert_called_once()
+        assert "azure-naming" in mock_warning.call_args[0][0]
+        assert "modernisation" in mock_warning.call_args[0][0]
 
         # Should be overwritten with sub-skill content
         content = (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").read_text()
@@ -2722,6 +2729,25 @@ class TestSubSkillPromotion:
 
         assert (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").exists()
         assert (self.project_root / ".claude" / "skills" / "azure-naming" / "SKILL.md").exists()
+
+    def test_sub_skill_name_normalization(self):
+        """Sub-skills with invalid names should be normalized before promotion."""
+        package_dir = self.project_root / "my-package"
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text("---\nname: my-package\n---\n# Parent")
+        skills_dir = package_dir / ".apm" / "skills"
+        skills_dir.mkdir(parents=True)
+        # Create sub-skill with invalid name (uppercase + underscores)
+        bad_name_dir = skills_dir / "My_Azure_Skill"
+        bad_name_dir.mkdir()
+        (bad_name_dir / "SKILL.md").write_text("---\nname: My_Azure_Skill\n---\n# Bad name")
+
+        pkg_info = self._create_package_info(name="my-package", install_path=package_dir)
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Should be normalized to lowercase-hyphenated
+        assert not (self.project_root / ".github" / "skills" / "My_Azure_Skill").exists()
+        assert (self.project_root / ".github" / "skills" / "my-azure-skill" / "SKILL.md").exists()
 
     def test_package_without_sub_skills_unchanged(self):
         """Packages without .apm/skills/ subdirectory should work as before."""
