@@ -546,7 +546,7 @@ class GitHubPackageDownloader:
         if host == "github.com":
             # GitHub.com: https://api.github.com/repos/owner/repo/contents/path
             api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
-        elif host.endswith(".ghe.com"):
+        elif host.lower().endswith(".ghe.com"):
             # GitHub Enterprise Cloud Data Residency: https://api.{subdomain}.ghe.com/repos/owner/repo/contents/path
             api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         else:
@@ -578,7 +578,7 @@ class GitHubPackageDownloader:
                 # Build fallback API URL
                 if host == "github.com":
                     fallback_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
-                elif host.endswith(".ghe.com"):
+                elif host.lower().endswith(".ghe.com"):
                     fallback_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
                 else:
                     fallback_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
@@ -593,9 +593,26 @@ class GitHubPackageDownloader:
                         f"(tried refs: {ref}, {fallback_ref})"
                     )
             elif e.response.status_code == 401 or e.response.status_code == 403:
-                error_msg = f"Authentication failed for {dep_ref.repo_url}. "
+                # Token may lack SSO/SAML authorization for this org.
+                # Retry without auth — the repo might be public.
+                # Applies to github.com and GHES (custom domains can have public repos).
+                # Excluded: *.ghe.com (Enterprise Cloud Data Residency has no public repos).
+                if self.github_token and not host.lower().endswith(".ghe.com"):
+                    try:
+                        unauth_headers = {'Accept': 'application/vnd.github.v3.raw'}
+                        response = requests.get(api_url, headers=unauth_headers, timeout=30)
+                        response.raise_for_status()
+                        return response.content
+                    except requests.exceptions.HTTPError:
+                        pass  # Fall through to the original error
+                error_msg = f"Authentication failed for {dep_ref.repo_url} (file: {file_path}, ref: {ref}). "
                 if not self.github_token:
                     error_msg += "This might be a private repository. Please set GITHUB_APM_PAT or GITHUB_TOKEN."
+                elif self.github_token and not host.lower().endswith(".ghe.com"):
+                    error_msg += (
+                        "Both authenticated and unauthenticated access were attempted. "
+                        "The repository may be private, or your token may lack SSO/SAML authorization for this organization."
+                    )
                 else:
                     error_msg += "Please check your GitHub token permissions."
                 raise RuntimeError(error_msg)
