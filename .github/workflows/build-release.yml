@@ -11,12 +11,6 @@ on:
       - 'docs/**'
       - '.gitignore'
       - 'LICENSE'
-  pull_request: 
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
   schedule:
     # Run daily at 04:00 UTC (6 AM CEST)
     - cron: '0 4 * * *'
@@ -28,10 +22,16 @@ on:
         default: true
         type: boolean
 
+# Restrict default GITHUB_TOKEN permissions for all jobs (principle of least privilege)
+permissions:
+  contents: read
+
 jobs:
   # Always run tests first with matrix strategy
   test:
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -93,8 +93,8 @@ jobs:
 
     - name: Run smoke tests
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}    # Models access
-        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}     # APM module access
+        GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
   # Build binaries
@@ -123,7 +123,7 @@ jobs:
     
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write  # Required for release uploads
+      contents: read  # Checkout code; upload-artifact uses separate Actions API
     
     steps:
       - name: Checkout code
@@ -177,8 +177,11 @@ jobs:
           if-no-files-found: error
 
   # Integration tests with full source code access
+  # Skip on push-to-main: already validated by ci-integration.yml during the PR.
+  # Run on tags (release gate), schedule (regression), and dispatch (manual).
   integration-tests:
     name: Integration Tests
+    if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: [test, build]
     strategy:
       matrix:
@@ -255,6 +258,7 @@ jobs:
 # Release validation tests - Final pre-release validation of shipped binary
   release-validation:
     name: Release Validation
+    if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: [test, build, integration-tests]
     strategy:
       matrix:
@@ -437,7 +441,8 @@ jobs:
       name: pypi
       url: https://pypi.org/p/apm-cli
     permissions:
-      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+      contents: read    # Required for actions/checkout
+      id-token: write   # IMPORTANT: this permission is mandatory for trusted publishing
     
     steps:
       - name: Checkout code
@@ -470,6 +475,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, build, integration-tests, release-validation, create-release, publish-pypi]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
+    permissions:
+      contents: read
     
     steps:
       - name: Extract SHA256 checksums from GitHub release

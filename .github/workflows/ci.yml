@@ -1,0 +1,158 @@
+name: CI
+
+env:
+  PYTHON_VERSION: '3.12'
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            platform: linux
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+          - os: macos-15-intel
+            arch: x86_64
+            platform: darwin
+          - os: macos-latest
+            arch: arm64
+            platform: darwin
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Setup build environment (macOS-15 Intel)
+      if: matrix.os == 'macos-15-intel'
+      run: |
+        # Install Xcode Command Line Tools
+        sudo xcode-select --install 2>/dev/null || true
+        # Wait for installation to complete
+        until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Cache uv environments
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/uv
+          ~/.local/share/uv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+
+    - name: Install dependencies
+      run: uv sync --extra dev
+
+    - name: Test with pytest
+      run: uv run pytest tests/unit tests/test_console.py
+
+  build:
+    name: Build APM Binary
+    needs: [test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x86_64
+            binary_name: apm-linux-x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            binary_name: apm-linux-arm64
+          - os: macos-15-intel
+            platform: darwin
+            arch: x86_64
+            binary_name: apm-darwin-x86_64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            binary_name: apm-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install UPX (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx-ucl
+
+      - name: Install UPX and XCode (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          # Install Xcode Command Line Tools
+          sudo xcode-select --install 2>/dev/null || true
+          # Wait for installation to complete
+          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+          brew install upx
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: |
+          uv sync --extra dev --extra build
+
+      - name: Build binary
+        run: |
+          chmod +x scripts/build-binary.sh
+          uv run ./scripts/build-binary.sh
+
+      - name: Upload binary as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary_name }}
+          path: |
+            ./dist/${{ matrix.binary_name }}
+            ./dist/${{ matrix.binary_name }}.sha256
+            ./scripts/test-release-validation.sh
+            ./scripts/github-token-helper.sh
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error

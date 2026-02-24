@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.7.3] - 2025-02-15
+
+### Added
+
+- **SUPPORT.md**: Added Microsoft repo-template support file directing users to GitHub Issues and Discussions for community support
+
+### Changed
+
+- **README Rewording**: Clarified APM as "an open-source, community-driven dependency manager" to set correct expectations under Microsoft GitHub org
+- **Microsoft Open Source Compliance**: Updated LICENSE, SECURITY.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md, and added Trademark Notice to README
+- **Source Integrity**: Fixed source integrity for all integrators and restructured README
+
+### Fixed
+
+- **Install Script**: Use `grep -o` for single-line JSON extraction in install.sh
+- **CI**: Fixed integration test script to handle existing venv from CI workflow
+
+### Security
+
+- Bumped `azure-core` 1.35.1 → 1.38.0, `aiohttp` 3.12.15 → 3.13.3, `pip` 25.2 → 26.0, `urllib3` 2.5.0 → 2.6.3
+
 ## [0.7.2] - 2025-01-23
 
 ### Added

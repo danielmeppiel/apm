@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from urllib.parse import urlparse
 
+import requests as requests_lib
 from apm_cli.deps.github_downloader import GitHubPackageDownloader
 from apm_cli.models.apm_package import (
     DependencyReference, 
@@ -385,6 +386,122 @@ class TestErrorHandling:
         # Would require mocking authentication failures
         pass
     
+    def test_download_raw_file_saml_fallback_retries_without_token(self):
+        """Test that download_raw_file retries without token on 401/403 (SAML/SSO)."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'saml-blocked-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('microsoft/some-public-repo/sub/dir')
+
+            # First call (with token) returns 401, second call (without token) returns 200
+            mock_response_401 = Mock()
+            mock_response_401.status_code = 401
+            mock_response_401.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401)
+            )
+
+            mock_response_200 = Mock()
+            mock_response_200.status_code = 200
+            mock_response_200.content = b'# SKILL.md content'
+            mock_response_200.raise_for_status = Mock()
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.side_effect = [mock_response_401, mock_response_200]
+                
+                result = downloader.download_raw_file(dep_ref, 'sub/dir/SKILL.md', 'main')
+                assert result == b'# SKILL.md content'
+                
+                # First call should include auth header
+                first_call_headers = mock_get.call_args_list[0][1].get('headers', {})
+                assert 'Authorization' in first_call_headers
+                
+                # Second (retry) call should NOT include auth header
+                second_call_headers = mock_get.call_args_list[1][1].get('headers', {})
+                assert 'Authorization' not in second_call_headers
+
+    def test_download_raw_file_saml_fallback_not_used_for_ghe_cloud_dr(self):
+        """Test that SAML fallback does NOT apply to *.ghe.com (no public repos)."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'ghe-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('company.ghe.com/owner/repo/sub/path')
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            mock_response_403.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_403)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_response_403
+                
+                with pytest.raises(RuntimeError, match="Authentication failed"):
+                    downloader.download_raw_file(dep_ref, 'sub/path/file.md', 'main')
+                
+                # Should only have been called once — no retry for *.ghe.com
+                assert mock_get.call_count == 1
+
+    def test_download_raw_file_saml_fallback_applies_to_ghes(self):
+        """Test that SAML fallback DOES apply to GHES custom domains (can have public repos)."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'ghes-token', 'GITHUB_HOST': 'github.mycompany.com'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('github.mycompany.com/owner/repo/sub/path')
+
+            mock_response_401 = Mock()
+            mock_response_401.status_code = 401
+            mock_response_401.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401)
+            )
+
+            mock_response_200 = Mock()
+            mock_response_200.status_code = 200
+            mock_response_200.content = b'# Public GHES content'
+            mock_response_200.raise_for_status = Mock()
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.side_effect = [mock_response_401, mock_response_200]
+                
+                result = downloader.download_raw_file(dep_ref, 'sub/path/SKILL.md', 'main')
+                assert result == b'# Public GHES content'
+                
+                # Should have retried without auth
+                assert mock_get.call_count == 2
+                second_call_headers = mock_get.call_args_list[1][1].get('headers', {})
+                assert 'Authorization' not in second_call_headers
+
+    def test_download_raw_file_saml_fallback_retries_and_still_fails(self):
+        """Test that when both authenticated and unauthenticated attempts fail, an error is raised."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'saml-blocked-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('microsoft/private-repo/sub/dir')
+
+            mock_response_401_first = Mock()
+            mock_response_401_first.status_code = 401
+            mock_response_401_first.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401_first)
+            )
+
+            mock_response_401_second = Mock()
+            mock_response_401_second.status_code = 401
+            mock_response_401_second.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401_second)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.side_effect = [mock_response_401_first, mock_response_401_second]
+
+                with pytest.raises(RuntimeError, match="Authentication failed"):
+                    downloader.download_raw_file(dep_ref, 'sub/dir/SKILL.md', 'main')
+
+                # Both attempts should have been made
+                assert mock_get.call_count == 2
+
+                # First call should include auth header
+                first_call_headers = mock_get.call_args_list[0][1].get('headers', {})
+                assert 'Authorization' in first_call_headers
+
+                # Second (retry) call should NOT include auth header
+                second_call_headers = mock_get.call_args_list[1][1].get('headers', {})
+                assert 'Authorization' not in second_call_headers
+
     def test_repository_not_found_handling(self):
         """Test handling of repository not found errors."""
         # Would require mocking 404 errors
@@ -467,6 +584,38 @@ class TestAzureDevOpsSupport:
             # Should build ADO SSH URL (git@ssh.dev.azure.com:v3/org/project/repo)
             assert url.startswith('git@ssh.dev.azure.com:')
     
+    def test_build_ado_urls_with_spaces_in_project(self):
+        """Test that URL builders properly encode spaces in ADO project names."""
+        from apm_cli.utils.github_host import (
+            build_ado_https_clone_url,
+            build_ado_ssh_url,
+            build_ado_api_url,
+        )
+
+        # HTTPS clone URL with token
+        url = build_ado_https_clone_url("myorg", "My Project", "myrepo", token="tok")
+        assert "My%20Project" in url
+        assert "My Project" not in url
+        assert url == "https://tok@dev.azure.com/myorg/My%20Project/_git/myrepo"
+
+        # HTTPS clone URL without token
+        url = build_ado_https_clone_url("myorg", "My Project", "myrepo")
+        assert url == "https://dev.azure.com/myorg/My%20Project/_git/myrepo"
+
+        # SSH cloud URL
+        url = build_ado_ssh_url("myorg", "My Project", "myrepo")
+        assert "My%20Project" in url
+        assert url == "git@ssh.dev.azure.com:v3/myorg/My%20Project/myrepo"
+
+        # SSH server URL
+        url = build_ado_ssh_url("myorg", "My Project", "myrepo", host="ado.company.com")
+        assert "My%20Project" in url
+
+        # API URL
+        url = build_ado_api_url("myorg", "My Project", "myrepo", "path/file.md")
+        assert "My%20Project" in url
+        assert "My Project" not in url
+
     def test_build_repo_url_github_not_affected_by_ado_token(self):
         """Test that GitHub URL building uses GitHub token, not ADO token."""
         with patch.dict(os.environ, {
