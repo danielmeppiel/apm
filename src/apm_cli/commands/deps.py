@@ -52,7 +52,7 @@ def list_packages():
         # Load project dependencies to check for orphaned packages
         # GitHub: owner/repo or owner/virtual-pkg-name (2 levels)
         # Azure DevOps: org/project/repo or org/project/virtual-pkg-name (3 levels)
-        declared_deps = set()
+        declared_sources = {}  # dep_path → 'github' | 'azure-devops'
         try:
             apm_yml_path = project_root / "apm.yml"
             if apm_yml_path.exists():
@@ -60,36 +60,37 @@ def list_packages():
                 for dep in project_package.get_apm_dependencies():
                     # Build the expected installed package name
                     repo_parts = dep.repo_url.split('/')
+                    source = 'azure-devops' if dep.is_azure_devops() else 'github'
                     if dep.is_virtual:
                         if dep.is_virtual_subdirectory() and dep.virtual_path:
                             # Virtual subdirectory packages keep natural path structure.
                             # GitHub: owner/repo/subdir
                             # ADO: org/project/repo/subdir
                             if dep.is_azure_devops() and len(repo_parts) >= 3:
-                                declared_deps.add(
+                                declared_sources[
                                     f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
-                                )
+                                ] = source
                             elif len(repo_parts) >= 2:
-                                declared_deps.add(
+                                declared_sources[
                                     f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
-                                )
+                                ] = source
                         else:
                             # Virtual file/collection packages are flattened.
                             package_name = dep.get_virtual_package_name()
                             if dep.is_azure_devops() and len(repo_parts) >= 3:
                                 # ADO structure: org/project/virtual-pkg-name
-                                declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+                                declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"] = source
                             elif len(repo_parts) >= 2:
                                 # GitHub structure: owner/virtual-pkg-name
-                                declared_deps.add(f"{repo_parts[0]}/{package_name}")
+                                declared_sources[f"{repo_parts[0]}/{package_name}"] = source
                     else:
                         # Regular package: use full repo_url path
                         if dep.is_azure_devops() and len(repo_parts) >= 3:
                             # ADO structure: org/project/repo
-                            declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}")
+                            declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"] = source
                         elif len(repo_parts) >= 2:
                             # GitHub structure: owner/repo
-                            declared_deps.add(f"{repo_parts[0]}/{repo_parts[1]}")
+                            declared_sources[f"{repo_parts[0]}/{repo_parts[1]}"] = source
         except Exception:
             pass  # Continue without orphan detection if apm.yml parsing fails
         
@@ -112,14 +113,14 @@ def list_packages():
                 package = APMPackage.from_apm_yml(apm_yml_path)
                 context_count, workflow_count = _count_package_files(candidate)
                 
-                is_orphaned = org_repo_name not in declared_deps
+                is_orphaned = org_repo_name not in declared_sources
                 if is_orphaned:
                     orphaned_packages.append(org_repo_name)
                 
                 installed_packages.append({
                     'name': org_repo_name,
                     'version': package.version or 'unknown', 
-                    'source': 'orphaned' if is_orphaned else 'github',
+                    'source': 'orphaned' if is_orphaned else declared_sources.get(org_repo_name, 'github'),
                     'context': context_count,
                     'workflows': workflow_count,
                     'path': str(candidate),
