@@ -225,6 +225,43 @@ class TestDependencyReference:
         assert dep.is_virtual == False
         assert dep.repo_url == "myorg/myproject/myrepo"
     
+    def test_parse_azure_devops_project_with_spaces(self):
+        """Test that ADO project names with spaces are correctly parsed.
+        
+        Azure DevOps project names can contain spaces (e.g., 'My Project').
+        Users may specify them with %20 encoding or literal spaces (shell-quoted).
+        """
+        # Percent-encoded space in project name with _git segment
+        dep = DependencyReference.parse("dev.azure.com/myorg/My%20Project/_git/myrepo")
+        assert dep.host == "dev.azure.com"
+        assert dep.ado_organization == "myorg"
+        assert dep.ado_project == "My Project"
+        assert dep.ado_repo == "myrepo"
+        assert dep.is_azure_devops() == True
+        assert dep.repo_url == "myorg/My Project/myrepo"
+
+        # Literal space in project name (simplified format without _git)
+        dep = DependencyReference.parse("dev.azure.com/myorg/My Project/myrepo")
+        assert dep.host == "dev.azure.com"
+        assert dep.ado_organization == "myorg"
+        assert dep.ado_project == "My Project"
+        assert dep.ado_repo == "myrepo"
+        assert dep.is_azure_devops() == True
+
+        # Percent-encoded space in simplified format
+        dep = DependencyReference.parse("dev.azure.com/org/America%20Oh%20Yeah/repo")
+        assert dep.ado_project == "America Oh Yeah"
+        assert dep.ado_repo == "repo"
+
+        # to_github_url() should produce a properly percent-encoded URL
+        dep = DependencyReference.parse("dev.azure.com/myorg/My%20Project/_git/myrepo")
+        url = dep.to_github_url()
+        assert url == "https://dev.azure.com/myorg/My%20Project/_git/myrepo"
+
+        # Spaces should NOT be allowed in GitHub owner/repo names
+        with pytest.raises(ValueError):
+            DependencyReference.parse("github.com/my%20owner/repo")
+
     def test_parse_virtual_package_with_malicious_host(self):
         """Test that virtual packages with malicious hosts are rejected."""
         malicious_virtual_formats = [
