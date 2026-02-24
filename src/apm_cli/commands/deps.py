@@ -94,65 +94,39 @@ def list_packages():
             pass  # Continue without orphan detection if apm.yml parsing fails
         
         # Scan for installed packages in org-namespaced structure
-        # GitHub: apm_modules/owner/repo (2 levels)
-        # Azure DevOps: apm_modules/org/project/repo (3 levels)
+        # Walks the tree to find directories containing apm.yml,
+        # handling GitHub (2-level), ADO (3-level), and subdirectory (4+ level) packages.
         installed_packages = []
         orphaned_packages = []
-        for level1_dir in apm_modules_path.iterdir():
-            if level1_dir.is_dir() and not level1_dir.name.startswith('.'):
-                for level2_dir in level1_dir.iterdir():
-                    if level2_dir.is_dir() and not level2_dir.name.startswith('.'):
-                        # Check if level2 has apm.yml (GitHub 2-level structure)
-                        apm_yml_path = level2_dir / "apm.yml"
-                        if apm_yml_path.exists():
-                            try:
-                                # GitHub 2-level: org/repo format
-                                org_repo_name = f"{level1_dir.name}/{level2_dir.name}"
-                                package = APMPackage.from_apm_yml(apm_yml_path)
-                                context_count, workflow_count = _count_package_files(level2_dir)
-                                
-                                is_orphaned = org_repo_name not in declared_deps
-                                if is_orphaned:
-                                    orphaned_packages.append(org_repo_name)
-                                
-                                installed_packages.append({
-                                    'name': org_repo_name,
-                                    'version': package.version or 'unknown', 
-                                    'source': 'orphaned' if is_orphaned else 'github',
-                                    'context': context_count,
-                                    'workflows': workflow_count,
-                                    'path': str(level2_dir),
-                                    'is_orphaned': is_orphaned
-                                })
-                            except Exception as e:
-                                click.echo(f"⚠️ Warning: Failed to read package {level1_dir.name}/{level2_dir.name}: {e}")
-                        else:
-                            # Check for ADO 3-level structure: org/project/repo
-                            for level3_dir in level2_dir.iterdir():
-                                if level3_dir.is_dir() and not level3_dir.name.startswith('.'):
-                                    apm_yml_path = level3_dir / "apm.yml"
-                                    if apm_yml_path.exists():
-                                        try:
-                                            # ADO 3-level: org/project/repo format
-                                            org_repo_name = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
-                                            package = APMPackage.from_apm_yml(apm_yml_path)
-                                            context_count, workflow_count = _count_package_files(level3_dir)
-                                            
-                                            is_orphaned = org_repo_name not in declared_deps
-                                            if is_orphaned:
-                                                orphaned_packages.append(org_repo_name)
-                                            
-                                            installed_packages.append({
-                                                'name': org_repo_name,
-                                                'version': package.version or 'unknown', 
-                                                'source': 'orphaned' if is_orphaned else 'azure-devops',
-                                                'context': context_count,
-                                                'workflows': workflow_count,
-                                                'path': str(level3_dir),
-                                                'is_orphaned': is_orphaned
-                                            })
-                                        except Exception as e:
-                                            click.echo(f"⚠️ Warning: Failed to read package {level1_dir.name}/{level2_dir.name}/{level3_dir.name}: {e}")
+        for candidate in apm_modules_path.rglob("*"):
+            if not candidate.is_dir() or candidate.name.startswith('.'):
+                continue
+            apm_yml_path = candidate / "apm.yml"
+            if not apm_yml_path.exists():
+                continue
+            rel_parts = candidate.relative_to(apm_modules_path).parts
+            if len(rel_parts) < 2:
+                continue
+            org_repo_name = "/".join(rel_parts)
+            try:
+                package = APMPackage.from_apm_yml(apm_yml_path)
+                context_count, workflow_count = _count_package_files(candidate)
+                
+                is_orphaned = org_repo_name not in declared_deps
+                if is_orphaned:
+                    orphaned_packages.append(org_repo_name)
+                
+                installed_packages.append({
+                    'name': org_repo_name,
+                    'version': package.version or 'unknown', 
+                    'source': 'orphaned' if is_orphaned else 'github',
+                    'context': context_count,
+                    'workflows': workflow_count,
+                    'path': str(candidate),
+                    'is_orphaned': is_orphaned
+                })
+            except Exception as e:
+                click.echo(f"⚠️ Warning: Failed to read package {org_repo_name}: {e}")
         
         if not installed_packages:
             if has_rich:
