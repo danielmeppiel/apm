@@ -105,7 +105,9 @@ def _find_installed_subdirectory_packages(apm_modules_dir):
         if not ((candidate / "apm.yml").exists() or (candidate / ".apm").exists()):
             continue
         rel_parts = candidate.relative_to(apm_modules_dir).parts
-        if len(rel_parts) >= 3:
+        # Only include paths deeper than the standard 3-level ADO structure
+        # (org/project/repo). Virtual subdirectory packages start at 4+ parts.
+        if len(rel_parts) >= 4:
             installed_subdirs.append("/".join(rel_parts))
 
     return installed_subdirs
@@ -472,12 +474,15 @@ def test_virtual_subdirectory_not_flagged_as_orphan(tmp_path):
     subdir_pkg.mkdir(parents=True)
     (subdir_pkg / "apm.yml").write_text("name: azure-naming\nversion: 1.0.0")
 
-    orphaned_packages, expected_installed = _find_orphaned_packages(project_dir)
-    # Include 4-level detection for this test shape
-    installed_subdirs = _find_installed_subdirectory_packages(project_dir / "apm_modules")
-    for pkg in installed_subdirs:
-        if pkg not in expected_installed and pkg not in orphaned_packages:
-            orphaned_packages.append(pkg)
+    # Build expected set from declared dependencies
+    package = APMPackage.from_apm_yml(project_dir / "apm.yml")
+    expected_installed = _build_expected_installed_packages(package.get_apm_dependencies())
+
+    # Compute a unified view of all installed packages (2-3 level + 4+ level)
+    installed_pkgs = set(_find_installed_packages(project_dir / "apm_modules"))
+    installed_pkgs.update(_find_installed_subdirectory_packages(project_dir / "apm_modules"))
+
+    orphaned_packages = [pkg for pkg in installed_pkgs if pkg not in expected_installed]
 
     assert "owner/repo/skills/azure-naming" in expected_installed
     assert "owner/repo/skills/azure-naming" not in orphaned_packages
