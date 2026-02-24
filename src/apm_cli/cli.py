@@ -762,57 +762,51 @@ def prune(ctx, dry_run):
             for dep in declared_deps:
                 repo_parts = dep.repo_url.split("/")
                 if dep.is_virtual:
-                    # Virtual package: include full path based on platform
-                    package_name = dep.get_virtual_package_name()
-                    if dep.is_azure_devops() and len(repo_parts) >= 3:
-                        # ADO structure: org/project/virtual-pkg-name
-                        expected_installed.add(
-                            f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
-                        )
-                    elif len(repo_parts) >= 2:
-                        # GitHub structure: owner/virtual-pkg-name
-                        expected_installed.add(f"{repo_parts[0]}/{package_name}")
+                    if dep.is_virtual_subdirectory() and dep.virtual_path:
+                        # Virtual subdirectory packages keep natural path structure.
+                        if dep.is_azure_devops() and len(repo_parts) >= 3:
+                            expected_installed.add(
+                                f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
+                            )
+                        elif len(repo_parts) >= 2:
+                            expected_installed.add(
+                                f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
+                            )
+                    else:
+                        # Virtual file/collection packages are flattened.
+                        package_name = dep.get_virtual_package_name()
+                        if dep.is_azure_devops() and len(repo_parts) >= 3:
+                            expected_installed.add(
+                                f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
+                            )
+                        elif len(repo_parts) >= 2:
+                            expected_installed.add(f"{repo_parts[0]}/{package_name}")
                 else:
                     # Regular package: use full repo_url path
                     if dep.is_azure_devops() and len(repo_parts) >= 3:
-                        # ADO structure: org/project/repo
                         expected_installed.add(
                             f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"
                         )
                     elif len(repo_parts) >= 2:
-                        # GitHub structure: owner/repo
                         expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
 
         # Find installed packages in apm_modules/ (now org-namespaced)
-        # GitHub: apm_modules/owner/repo (2 levels)
-        # Azure DevOps: apm_modules/org/project/repo (3 levels)
+        # Walks the tree to find directories containing apm.yml or .apm,
+        # handling GitHub (2-level), ADO (3-level), and subdirectory (4+ level) packages.
         installed_packages = {}  # {"path": "display_name"}
         if apm_modules_dir.exists():
-            for level1_dir in apm_modules_dir.iterdir():
-                if level1_dir.is_dir() and not level1_dir.name.startswith("."):
-                    for level2_dir in level1_dir.iterdir():
-                        if level2_dir.is_dir() and not level2_dir.name.startswith("."):
-                            # Check if level2 has apm.yml (GitHub 2-level structure)
-                            if (level2_dir / "apm.yml").exists() or (
-                                level2_dir / ".apm"
-                            ).exists():
-                                path_key = f"{level1_dir.name}/{level2_dir.name}"
-                                installed_packages[path_key] = path_key
-                            else:
-                                # Check for ADO 3-level structure
-                                for level3_dir in level2_dir.iterdir():
-                                    if (
-                                        level3_dir.is_dir()
-                                        and not level3_dir.name.startswith(".")
-                                    ):
-                                        if (level3_dir / "apm.yml").exists() or (
-                                            level3_dir / ".apm"
-                                        ).exists():
-                                            path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
-                                            installed_packages[path_key] = path_key
+            for candidate in apm_modules_dir.rglob("*"):
+                if not candidate.is_dir() or candidate.name.startswith("."):
+                    continue
+                if not ((candidate / "apm.yml").exists() or (candidate / ".apm").exists()):
+                    continue
+                rel_parts = candidate.relative_to(apm_modules_dir).parts
+                if len(rel_parts) >= 2:
+                    path_key = "/".join(rel_parts)
+                    installed_packages[path_key] = path_key
 
         # Find orphaned packages (installed but not declared)
         orphaned_packages = {}

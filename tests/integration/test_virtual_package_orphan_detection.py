@@ -31,13 +31,21 @@ def _build_expected_installed_packages(declared_deps):
     for dep in declared_deps:
         repo_parts = dep.repo_url.split('/')
         if dep.is_virtual:
-            package_name = dep.get_virtual_package_name()
-            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                # ADO structure: org/project/virtual-pkg-name
-                expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
-            elif len(repo_parts) >= 2:
-                # GitHub structure: owner/virtual-pkg-name
-                expected_installed.add(f"{repo_parts[0]}/{package_name}")
+            if dep.is_virtual_subdirectory() and dep.virtual_path:
+                if dep.is_azure_devops() and len(repo_parts) >= 3:
+                    # ADO structure: org/project/repo/subdir
+                    expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}")
+                elif len(repo_parts) >= 2:
+                    # GitHub structure: owner/repo/subdir
+                    expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}")
+            else:
+                package_name = dep.get_virtual_package_name()
+                if dep.is_azure_devops() and len(repo_parts) >= 3:
+                    # ADO structure: org/project/virtual-pkg-name
+                    expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}/{package_name}")
+                elif len(repo_parts) >= 2:
+                    # GitHub structure: owner/virtual-pkg-name
+                    expected_installed.add(f"{repo_parts[0]}/{package_name}")
         else:
             if dep.is_azure_devops() and len(repo_parts) >= 3:
                 # ADO structure: org/project/repo
@@ -79,6 +87,30 @@ def _find_installed_packages(apm_modules_dir):
                                     path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
                                     installed_packages.append(path_key)
     return installed_packages
+
+
+def _find_installed_subdirectory_packages(apm_modules_dir):
+    """Find installed virtual subdirectory packages at any nested depth.
+
+    Returns relative paths for package roots that contain apm.yml or .apm
+    and are nested 3+ levels under apm_modules (owner/repo/subdir...).
+    """
+    installed_subdirs = []
+    if not apm_modules_dir.exists():
+        return installed_subdirs
+
+    for candidate in apm_modules_dir.rglob("*"):
+        if not candidate.is_dir() or candidate.name.startswith("."):
+            continue
+        if not ((candidate / "apm.yml").exists() or (candidate / ".apm").exists()):
+            continue
+        rel_parts = candidate.relative_to(apm_modules_dir).parts
+        # Only include paths deeper than the standard 3-level ADO structure
+        # (org/project/repo). Virtual subdirectory packages start at 4+ parts.
+        if len(rel_parts) >= 4:
+            installed_subdirs.append("/".join(rel_parts))
+
+    return installed_subdirs
 
 
 def _find_orphaned_packages(project_dir):
@@ -416,3 +448,66 @@ def test_get_dependency_declaration_order_mixed_github_and_ado(tmp_path):
     assert dep_order[1] == "github/awesome-copilot-code-review"  # GitHub virtual: owner/virtual-pkg-name
     assert dep_order[2] == "company/project/repo"  # ADO regular: org/project/repo
     assert dep_order[3] == "company/my-azurecollection/copilot-instructions-csharp-ddd"  # ADO virtual: org/project/virtual-pkg-name
+
+
+@pytest.mark.integration
+def test_virtual_subdirectory_not_flagged_as_orphan(tmp_path):
+    """Test that installed virtual subdirectory package is not flagged as orphaned."""
+    project_dir = tmp_path / "test-project"
+    project_dir.mkdir()
+
+    apm_yml_content = {
+        "name": "test-project",
+        "version": "1.0.0",
+        "dependencies": {
+            "apm": [
+                "owner/repo/skills/azure-naming"
+            ]
+        }
+    }
+
+    with open(project_dir / "apm.yml", "w") as f:
+        yaml.dump(apm_yml_content, f)
+
+    # Simulate installed virtual subdirectory package at natural path: owner/repo/skills/azure-naming
+    subdir_pkg = project_dir / "apm_modules" / "owner" / "repo" / "skills" / "azure-naming"
+    subdir_pkg.mkdir(parents=True)
+    (subdir_pkg / "apm.yml").write_text("name: azure-naming\nversion: 1.0.0")
+
+    # Build expected set from declared dependencies
+    package = APMPackage.from_apm_yml(project_dir / "apm.yml")
+    expected_installed = _build_expected_installed_packages(package.get_apm_dependencies())
+
+    # Compute a unified view of all installed packages (2-3 level + 4+ level)
+    installed_pkgs = set(_find_installed_packages(project_dir / "apm_modules"))
+    installed_pkgs.update(_find_installed_subdirectory_packages(project_dir / "apm_modules"))
+
+    orphaned_packages = [pkg for pkg in installed_pkgs if pkg not in expected_installed]
+
+    assert "owner/repo/skills/azure-naming" in expected_installed
+    assert "owner/repo/skills/azure-naming" not in orphaned_packages
+
+
+@pytest.mark.integration
+def test_get_dependency_declaration_order_virtual_subdirectory(tmp_path):
+    """Test declaration order path for GitHub virtual subdirectory dependency."""
+    project_dir = tmp_path / "test-project"
+    project_dir.mkdir()
+
+    apm_yml_content = {
+        "name": "test-project",
+        "version": "1.0.0",
+        "dependencies": {
+            "apm": [
+                "owner/repo/skills/azure-naming"
+            ]
+        }
+    }
+
+    with open(project_dir / "apm.yml", "w") as f:
+        yaml.dump(apm_yml_content, f)
+
+    dep_order = get_dependency_declaration_order(str(project_dir))
+
+    assert len(dep_order) == 1
+    assert dep_order[0] == "owner/repo/skills/azure-naming"
