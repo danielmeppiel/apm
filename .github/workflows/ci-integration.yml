@@ -4,7 +4,8 @@
 #   - ci.yml builds the PR's code in an unprivileged context and uploads binary artifacts
 #   - This workflow downloads those artifacts and runs tests from the DEFAULT BRANCH (main)
 #   - PR code is never checked out in a privileged context
-#   - Environment approval gate ensures a maintainer reviews the PR before tests run
+#   - Fork PRs require manual environment approval before tests run (security gate)
+#   - Internal PRs (same repo) skip the approval gate — contributors already have write access
 name: Integration Tests (PR)
 
 env:
@@ -21,19 +22,32 @@ permissions:
   statuses: write
 
 jobs:
-  # Single approval gate — maintainer reviews PR code, then approves this environment.
-  # All downstream jobs chain off this, so approval happens once.
-  approve:
+  # Fork PRs: require manual approval via environment protection rules.
+  # A maintainer must review the fork's code before secrets are exposed to its artifacts.
+  approve-fork:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name != github.repository
     runs-on: ubuntu-latest
     environment: integration-tests
     steps:
-      - run: echo "Integration tests approved for ${{ github.event.workflow_run.head_branch }}"
+      - run: echo "Fork PR approved for ${{ github.event.workflow_run.head_branch }} from ${{ github.event.workflow_run.head_repository.full_name }}"
+
+  # Internal PRs: skip approval gate — contributors already have write access to the repo.
+  approve-internal:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Internal PR auto-approved for ${{ github.event.workflow_run.head_branch }}"
 
   smoke-test:
-    needs: [approve]
+    needs: [approve-fork, approve-internal]
+    # Run if either approval job succeeded (the other will be skipped)
+    if: always() && (needs.approve-fork.result == 'success' || needs.approve-internal.result == 'success')
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
