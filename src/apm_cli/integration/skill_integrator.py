@@ -739,6 +739,40 @@ class SkillIntegrator:
         
         return files_copied
     
+    @staticmethod
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True) -> None:
+        """Promote sub-skills from .apm/skills/ to top-level skill entries.
+
+        Args:
+            sub_skills_dir: Path to the .apm/skills/ directory in the source package.
+            target_skills_root: Root skills directory (e.g. .github/skills/ or .claude/skills/).
+            parent_name: Name of the parent skill (used in warning messages).
+            warn: Whether to emit a warning on name collisions.
+        """
+        if not sub_skills_dir.is_dir():
+            return
+        for sub_skill_path in sub_skills_dir.iterdir():
+            if not sub_skill_path.is_dir():
+                continue
+            if not (sub_skill_path / "SKILL.md").exists():
+                continue
+            raw_sub_name = sub_skill_path.name
+            is_valid, _ = validate_skill_name(raw_sub_name)
+            sub_name = raw_sub_name if is_valid else normalize_skill_name(raw_sub_name)
+            target = target_skills_root / sub_name
+            if target.exists():
+                if warn:
+                    try:
+                        from apm_cli.cli import _rich_warning
+                        _rich_warning(
+                            f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill at {target_skills_root.name}/{sub_name}/"
+                        )
+                    except ImportError:
+                        pass
+                shutil.rmtree(target)
+            target.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(sub_skill_path, target, dirs_exist_ok=True)
+
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path
     ) -> SkillIntegrationResult:
@@ -811,9 +845,18 @@ class SkillIntegrator:
             shutil.rmtree(github_skill_dir)
         
         github_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(package_path, github_skill_dir)
+        shutil.copytree(package_path, github_skill_dir,
+                        ignore=shutil.ignore_patterns('.apm'))
         
         files_copied = sum(1 for _ in github_skill_dir.rglob('*') if _.is_file())
+        
+        # === Promote sub-skills to top-level entries ===
+        # Packages may contain sub-skills in .apm/skills/*/ subdirectories.
+        # Copilot only discovers .github/skills/<name>/SKILL.md (direct children),
+        # so we promote each sub-skill to an independent top-level entry.
+        sub_skills_dir = package_path / ".apm" / "skills"
+        github_skills_root = project_root / ".github" / "skills"
+        self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True)
         
         # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
         claude_dir = project_root / ".claude"
@@ -824,7 +867,12 @@ class SkillIntegrator:
                 shutil.rmtree(claude_skill_dir)
             
             claude_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(package_path, claude_skill_dir)
+            shutil.copytree(package_path, claude_skill_dir,
+                            ignore=shutil.ignore_patterns('.apm'))
+            
+            # Promote sub-skills for Claude too
+            claude_skills_root = claude_dir / "skills"
+            self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False)
         
         return SkillIntegrationResult(
             skill_created=skill_created,
@@ -1031,6 +1079,16 @@ class SkillIntegrator:
             is_valid, _ = validate_skill_name(raw_name)
             skill_name = raw_name if is_valid else normalize_skill_name(raw_name)
             installed_skill_names.add(skill_name)
+            
+            # Also include promoted sub-skills from installed packages
+            install_path = dep.get_install_path(project_root / "apm_modules")
+            sub_skills_dir = install_path / ".apm" / "skills"
+            if sub_skills_dir.is_dir():
+                for sub_skill_path in sub_skills_dir.iterdir():
+                    if sub_skill_path.is_dir() and (sub_skill_path / "SKILL.md").exists():
+                        raw_sub = sub_skill_path.name
+                        is_valid, _ = validate_skill_name(raw_sub)
+                        installed_skill_names.add(raw_sub if is_valid else normalize_skill_name(raw_sub))
         
         # Clean .github/skills/ (primary)
         github_skills_dir = project_root / ".github" / "skills"
