@@ -270,16 +270,20 @@ apm uninstall microsoft/apm-sample-package --dry-run
 |------|----------|
 | Package entry | `apm.yml` dependencies section |
 | Package folder | `apm_modules/owner/repo/` |
+| Transitive deps | `apm_modules/` (orphaned transitive dependencies) |
 | Integrated prompts | `.github/prompts/*-apm.prompt.md` |
 | Integrated agents | `.github/agents/*-apm.agent.md` |
 | Integrated chatmodes | `.github/agents/*-apm.chatmode.md` |
 | Claude commands | `.claude/commands/*-apm.md` |
 | Skill folders | `.github/skills/{folder-name}/` |
+| Lockfile entries | `apm.lock` (removed packages + orphaned transitives) |
 
 **Behavior:**
 - Removes package from `apm.yml` dependencies
 - Deletes package folder from `apm_modules/`
+- Removes orphaned transitive dependencies (npm-style pruning via `apm.lock`)
 - Removes all integrated files with `-apm` suffix that originated from the package
+- Updates `apm.lock` (or deletes it if no dependencies remain)
 - Cleans up empty parent directories
 - Safe operation: only removes APM-managed files (identified by `-apm` suffix)
 
@@ -336,7 +340,7 @@ apm deps COMMAND [OPTIONS]
 
 #### `apm deps list` - 📋 List installed APM dependencies
 
-Show all installed APM dependencies in a Rich table format with context files and agent workflows.
+Show all installed APM dependencies in a Rich table format with per-primitive counts.
 
 ```bash
 apm deps list
@@ -350,24 +354,22 @@ apm deps list
 
 **Sample Output:**
 ```
-┌─────────────────────┬─────────┬──────────────┬─────────────┬─────────────┐
-│ Package             │ Version │ Source       │ Context     │ Workflows   │
-├─────────────────────┼─────────┼──────────────┼─────────────┼─────────────┤
-│ compliance-rules    │ 1.0.0   │ main         │ 2 files     │ 3 wf        │
-│ design-guidelines   │ 1.0.0   │ main         │ 1 files     │ 3 wf        │
-└─────────────────────┴─────────┴──────────────┴─────────────┴─────────────┘
+┌─────────────────────┬─────────┬──────────┬─────────┬──────────────┬────────┬────────┐
+│ Package             │ Version │ Source   │ Prompts │ Instructions │ Agents │ Skills │
+├─────────────────────┼─────────┼──────────┼─────────┼──────────────┼────────┼────────┤
+│ compliance-rules    │ 1.0.0   │ github   │    2    │      1       │   -    │   1    │
+│ design-guidelines   │ 1.0.0   │ github   │    -    │      1       │   1    │   -    │
+└─────────────────────┴─────────┴──────────┴─────────┴──────────────┴────────┴────────┘
 ```
 
 **Output includes:**
 - Package name and version
-- Source repository/branch information
-- Number of context files (instructions, chatmodes, contexts)
-- Number of agent workflows (prompts)
-- Installation path and status
+- Source information
+- Per-primitive counts (prompts, instructions, agents, skills)
 
 #### `apm deps tree` - 🌳 Show dependency tree structure
 
-Display dependencies in hierarchical tree format showing context and agent workflows.
+Display dependencies in hierarchical tree format with primitive counts.
 
 ```bash
 apm deps tree  

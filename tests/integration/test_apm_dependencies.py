@@ -181,7 +181,7 @@ class TestAPMDependenciesIntegration:
         
         # Verify virtual subdirectory package
         assert virtual_pkg_dir.exists()
-        assert (virtual_pkg_dir / 'apm.yml').exists() or (virtual_pkg_dir / 'SKILL.md').exists()
+        assert (virtual_pkg_dir / 'SKILL.md').exists() or (virtual_pkg_dir / 'apm.yml').exists()
         
         # Verify no conflicts (both should install successfully)
         assert result_full.package is not None

@@ -264,9 +264,8 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 **How skill integration works:**
 1. `apm install` checks if the package contains a `SKILL.md` file
 2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/`
-3. If no `SKILL.md` but package has `.apm/` primitives: auto-generates `SKILL.md` in `.github/skills/{folder-name}/`
-4. Updates `.gitignore` to exclude generated skills
-5. `apm uninstall` removes the skill folder
+3. Updates `.gitignore` to exclude integrated skills
+4. `apm uninstall` removes the skill folder
 
 ### Target-Specific Compilation
 

@@ -194,6 +194,13 @@ class AgentIntegrator:
         agents_dir = project_root / ".github" / "agents"
         agents_dir.mkdir(parents=True, exist_ok=True)
         
+        # Also target .claude/agents/ when .claude/ folder exists (dual-target)
+        claude_agents_dir = None
+        claude_dir = project_root / ".claude"
+        if claude_dir.exists() and claude_dir.is_dir():
+            claude_agents_dir = claude_dir / "agents"
+            claude_agents_dir.mkdir(parents=True, exist_ok=True)
+        
         # Process each agent file — always overwrite
         files_integrated = 0
         target_paths = []
@@ -207,6 +214,11 @@ class AgentIntegrator:
             total_links_resolved += links_resolved
             files_integrated += 1
             target_paths.append(target_path)
+            
+            # Copy to .claude/agents/ as well
+            if claude_agents_dir:
+                claude_target = claude_agents_dir / target_filename
+                self.copy_agent(source_file, claude_target)
         
         return IntegrationResult(
             files_integrated=files_integrated,
@@ -229,17 +241,19 @@ class AgentIntegrator:
         """
         stats = {'files_removed': 0, 'errors': 0}
         
-        agents_dir = project_root / ".github" / "agents"
-        if not agents_dir.exists():
-            return stats
-        
-        for pattern in ["*-apm.agent.md", "*-apm.chatmode.md"]:
-            for agent_file in agents_dir.glob(pattern):
-                try:
-                    agent_file.unlink()
-                    stats['files_removed'] += 1
-                except Exception:
-                    stats['errors'] += 1
+        for agents_dir in [
+            project_root / ".github" / "agents",
+            project_root / ".claude" / "agents",
+        ]:
+            if not agents_dir.exists():
+                continue
+            for pattern in ["*-apm.agent.md", "*-apm.chatmode.md"]:
+                for agent_file in agents_dir.glob(pattern):
+                    try:
+                        agent_file.unlink()
+                        stats['files_removed'] += 1
+                    except Exception:
+                        stats['errors'] += 1
         
         return stats
     
@@ -254,10 +268,12 @@ class AgentIntegrator:
         """
         gitignore_path = project_root / ".gitignore"
         
-        # Define patterns for both new and legacy formats
+        # Define patterns for both new and legacy formats, plus .claude/ variants
         patterns = [
             ".github/agents/*-apm.agent.md",
-            ".github/agents/*-apm.chatmode.md"
+            ".github/agents/*-apm.chatmode.md",
+            ".claude/agents/*-apm.agent.md",
+            ".claude/agents/*-apm.chatmode.md",
         ]
         
         # Read current content

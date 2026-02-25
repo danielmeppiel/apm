@@ -1054,6 +1054,13 @@ author: {dep_ref.repo_url.split('/')[0]}
                 else:
                     shutil.copy2(src, dst)
             
+            # Capture commit SHA before temp dir is destroyed
+            try:
+                repo = Repo(temp_clone_path)
+                resolved_commit = repo.head.commit.hexsha
+            except Exception:
+                resolved_commit = "unknown"
+            
             # Update progress - validating
             if progress_obj and progress_task_id is not None:
                 progress_obj.update(progress_task_id, completed=90, total=100)
@@ -1066,10 +1073,10 @@ author: {dep_ref.repo_url.split('/')[0]}
         
         # Get the resolved reference for metadata
         resolved_ref = ResolvedReference(
-            original_ref=ref or "default",  # Use "default" if no ref was specified
+            original_ref=ref or "default",
             ref_name=ref or "default",
             ref_type=GitReferenceType.BRANCH,
-            resolved_commit="unknown"  # We don't have commit info from shallow clone
+            resolved_commit=resolved_commit
         )
         
         # Update progress - complete
