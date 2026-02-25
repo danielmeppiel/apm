@@ -96,6 +96,7 @@ jobs:
   integration-tests:
     name: Integration Tests
     needs: [smoke-test]
+    if: needs.smoke-test.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -148,6 +149,7 @@ jobs:
   release-validation:
     name: Release Validation
     needs: [integration-tests]
+    if: needs.integration-tests.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
