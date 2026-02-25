@@ -22,6 +22,7 @@ AI coding agents need context to be useful: what standards to follow, what promp
 ```yaml
 # apm.yml — ships with your project, like package.json
 name: your project
+version: 1.0.0
 dependencies:
   apm:
     # Skills from any repository
