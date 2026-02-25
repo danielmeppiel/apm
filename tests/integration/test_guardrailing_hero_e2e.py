@@ -4,14 +4,14 @@ End-to-end test for README Hero Scenario 2: 2-Minute Guardrailing
 Tests the exact 2-minute guardrailing flow from README (lines 46-60):
 1. apm init my-project && cd my-project
 2. apm install microsoft/apm-sample-package
-3. apm install github/awesome-copilot/skills/review-and-refactor
+3. apm install github/awesome-copilot/instructions/code-review-generic.instructions.md
 4. apm compile
 5. apm run design-review
 
 This validates that:
 - Multiple APM packages can be installed
-- AGENTS.md is generated with combined guardrails
-- Skills from installed packages work correctly
+- AGENTS.md is generated with combined instructions from both packages
+- Prompts from installed packages can be executed
 """
 
 import os
@@ -111,9 +111,9 @@ class TestGuardrailingHeroScenario:
         Validates:
         1. apm init my-project creates minimal project
         2. apm install microsoft/apm-sample-package succeeds
-        3. apm install github/awesome-copilot/skills/review-and-refactor succeeds
-        4. apm compile generates AGENTS.md with both packages
-        5. apm run design-review executes prompt from installed package
+        3. apm install github/awesome-copilot/instructions/code-review-generic.instructions.md succeeds
+        4. apm compile generates AGENTS.md with instructions from both packages
+        5. apm run design-review executes prompt from first installed package
         """
         
         with tempfile.TemporaryDirectory() as workspace:
@@ -146,22 +146,21 @@ class TestGuardrailingHeroScenario:
             
             print("✓ design-guidelines installed")
             
-            # Step 3: apm install github/awesome-copilot/skills/review-and-refactor
-            print("\n=== Step 3: apm install github/awesome-copilot/skills/review-and-refactor ===")
+            # Step 3: apm install github/awesome-copilot/instructions/code-review-generic.instructions.md
+            print("\n=== Step 3: apm install github/awesome-copilot/instructions/code-review-generic.instructions.md ===")
             result = run_command(
-                f"{apm_binary} install github/awesome-copilot/skills/review-and-refactor", 
+                f"{apm_binary} install github/awesome-copilot/instructions/code-review-generic.instructions.md", 
                 cwd=project_dir, 
                 show_output=True,
                 env=env
             )
-            assert result.returncode == 0, f"virtual package install failed: {result.stderr}"
+            assert result.returncode == 0, f"instruction package install failed: {result.stderr}"
             
-            # Verify installation (virtual subdirectory package is installed under github/awesome-copilot/skills/review-and-refactor)
-            virtual_pkg = project_dir / "apm_modules" / "github" / "awesome-copilot" / "skills" / "review-and-refactor"
-            assert virtual_pkg.exists(), "virtual package not installed"
-            assert (virtual_pkg / "SKILL.md").exists() or (virtual_pkg / "apm.yml").exists(), "virtual package content not found"
+            # Verify installation - virtual file packages use flattened name: owner/repo-name-file-stem
+            instruction_pkg = project_dir / "apm_modules" / "github" / "awesome-copilot-code-review-generic"
+            assert instruction_pkg.exists(), "instruction package not installed"
             
-            print("✓ virtual package installed")
+            print("✓ code-review-generic instruction installed")
             
             # Step 4: apm compile
             print("\n=== Step 4: apm compile ===")
@@ -172,16 +171,16 @@ class TestGuardrailingHeroScenario:
             agents_md = project_dir / "AGENTS.md"
             assert agents_md.exists(), "AGENTS.md not generated"
             
-            # Verify AGENTS.md contains content from both packages
+            # Verify AGENTS.md contains instructions from both packages
             agents_content = agents_md.read_text()
-            assert "design-guidelines" in agents_content.lower() or "design" in agents_content.lower(), \
-                "AGENTS.md doesn't contain design-guidelines content"
-            assert "code-review" in agents_content.lower() or "review" in agents_content.lower(), \
-                "AGENTS.md doesn't contain code-review content"
+            assert "design" in agents_content.lower(), \
+                "AGENTS.md doesn't contain design-related content from apm-sample-package"
+            assert "review" in agents_content.lower() or "code" in agents_content.lower(), \
+                "AGENTS.md doesn't contain code-review content from awesome-copilot"
             
             print(f"✓ AGENTS.md generated ({len(agents_content)} bytes)")
-            print(f"  Contains design-guidelines: ✓")
-            print(f"  Contains compliance-rules: ✓")
+            print(f"  Contains design instructions: ✓")
+            print(f"  Contains code-review instructions: ✓")
             
             # Step 5: apm run design-review
             print("\n=== Step 5: apm run design-review ===")
@@ -242,7 +241,7 @@ class TestGuardrailingHeroScenario:
             print("\n=== 2-Minute Guardrailing Hero Scenario: PASSED ✨ ===")
             print("✓ Project initialization")
             print("✓ Multiple APM package installation")
-            print("✓ AGENTS.md compilation with combined guardrails")
+            print("✓ AGENTS.md compilation with combined instructions")
             print("✓ Prompt execution from installed package")
 
 

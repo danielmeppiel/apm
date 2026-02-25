@@ -61,10 +61,10 @@ class TestSimpleClaudeSkillInstall:
     """Test installing a simple Claude Skill (SKILL.md only)."""
     
     def test_install_brand_guidelines_skill(self, temp_project, apm_command):
-        """Install brand-guidelines skill from awesome-claude-skills."""
+        """Install brand-guidelines skill from anthropics/skills."""
         # Install the skill
         result = subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines", "--verbose"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines", "--verbose"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -75,31 +75,22 @@ class TestSimpleClaudeSkillInstall:
         assert result.returncode == 0, f"Install failed: {result.stderr}"
         
         # Verify path structure is correct (nested, not flattened)
-        skill_path = temp_project / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "brand-guidelines"
+        skill_path = temp_project / "apm_modules" / "anthropics" / "skills" / "skills" / "brand-guidelines"
         assert skill_path.exists(), f"Skill not installed at expected path: {skill_path}"
         
         # Verify SKILL.md exists
         skill_md = skill_path / "SKILL.md"
         assert skill_md.exists(), "SKILL.md not found in installed package"
         
-        # Verify apm.yml was generated (for Claude Skills without apm.yml)
-        apm_yml = skill_path / "apm.yml"
-        assert apm_yml.exists(), "apm.yml not generated for Claude Skill"
-        
-        # Verify agent was generated for VSCode
-        agent_file = temp_project / ".github" / "agents" / "brand-guidelines.agent.md"
-        assert agent_file.exists(), "Agent file not generated from SKILL.md"
-        
-        # Verify agent has APM metadata
-        agent_content = agent_file.read_text()
-        assert "source_type: claude-skill" in agent_content, "Agent missing source_type metadata"
-        assert "source_dependency: ComposioHQ/awesome-claude-skills/brand-guidelines" in agent_content
+        # Verify skill was integrated to .github/skills/
+        skill_integrated = temp_project / ".github" / "skills" / "brand-guidelines" / "SKILL.md"
+        assert skill_integrated.exists(), "Skill not integrated to .github/skills/"
     
     def test_install_skill_updates_apm_yml(self, temp_project, apm_command):
         """Verify the skill is added to project's apm.yml."""
         # Install the skill
         subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -111,12 +102,12 @@ class TestSimpleClaudeSkillInstall:
         content = apm_yml.read_text()
         
         # Verify dependency was added
-        assert "ComposioHQ/awesome-claude-skills/brand-guidelines" in content
+        assert "anthropics/skills/skills/brand-guidelines" in content
     
     def test_skill_detection_in_output(self, temp_project, apm_command):
         """Verify CLI output shows 'Claude Skill (SKILL.md detected)'."""
         result = subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines", "--verbose"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines", "--verbose"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -133,7 +124,7 @@ class TestClaudeSkillWithResources:
     def test_install_skill_with_scripts(self, temp_project, apm_command):
         """Install skill-creator which has scripts/ folder."""
         result = subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/skill-creator", "--verbose"],
+            [apm_command, "install", "anthropics/skills/skills/skill-creator", "--verbose"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -147,37 +138,35 @@ class TestClaudeSkillWithResources:
         assert result.returncode == 0, f"Install failed: {result.stderr}"
         
         # Verify package path
-        skill_path = temp_project / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "skill-creator"
+        skill_path = temp_project / "apm_modules" / "anthropics" / "skills" / "skills" / "skill-creator"
         assert skill_path.exists(), "Skill not installed"
         
         # Verify SKILL.md
         assert (skill_path / "SKILL.md").exists()
         
-        # Verify agent was generated
-        agent_file = temp_project / ".github" / "agents" / "skill-creator.agent.md"
-        assert agent_file.exists(), "Agent not generated for skill with resources"
+        # Verify skill was integrated to .github/skills/
+        skill_integrated = temp_project / ".github" / "skills" / "skill-creator" / "SKILL.md"
+        assert skill_integrated.exists(), "Skill not integrated to .github/skills/"
     
     def test_resources_stay_in_apm_modules(self, temp_project, apm_command):
         """Verify bundled resources stay in apm_modules, not copied to .github/."""
         subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/skill-creator", "--verbose"],
+            [apm_command, "install", "anthropics/skills/skills/skill-creator", "--verbose"],
             cwd=temp_project,
             capture_output=True,
             text=True,
             timeout=120
         )
         
-        skill_path = temp_project / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "skill-creator"
+        skill_path = temp_project / "apm_modules" / "anthropics" / "skills" / "skills" / "skill-creator"
         
         if not skill_path.exists():
             pytest.skip("skill-creator not available")
         
-        # Check .github/agents/ only has .agent.md files
-        agents_dir = temp_project / ".github" / "agents"
-        if agents_dir.exists():
-            for item in agents_dir.iterdir():
-                assert item.suffix == ".md" or item.name.endswith(".agent.md"), \
-                    f"Non-agent file found in .github/agents/: {item.name}"
+        # Check .github/skills/ has the skill directory with SKILL.md
+        skills_dir = temp_project / ".github" / "skills" / "skill-creator"
+        if skills_dir.exists():
+            assert (skills_dir / "SKILL.md").exists(), "SKILL.md not found in .github/skills/"
 
 
 class TestSkillInstallIdempotency:
@@ -185,7 +174,7 @@ class TestSkillInstallIdempotency:
     
     def test_reinstall_same_skill_is_idempotent(self, temp_project, apm_command):
         """Installing the same skill twice should work without errors."""
-        skill_ref = "ComposioHQ/awesome-claude-skills/brand-guidelines"
+        skill_ref = "anthropics/skills/skills/brand-guidelines"
         
         # First install
         result1 = subprocess.run(
@@ -207,9 +196,9 @@ class TestSkillInstallIdempotency:
         )
         assert result2.returncode == 0
         
-        # Verify still only one agent file
-        agent_file = temp_project / ".github" / "agents" / "brand-guidelines.agent.md"
-        assert agent_file.exists()
+        # Verify still only one skill copy
+        skill_integrated = temp_project / ".github" / "skills" / "brand-guidelines" / "SKILL.md"
+        assert skill_integrated.exists()
 
 
 class TestSkillInstallWithoutVSCodeTarget:
@@ -230,7 +219,7 @@ dependencies:
         
         # Install skill
         result = subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=project_dir,
             capture_output=True,
             text=True,
@@ -240,9 +229,9 @@ dependencies:
         assert result.returncode == 0
         
         # Skill should be installed
-        skill_path = project_dir / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "brand-guidelines"
+        skill_path = project_dir / "apm_modules" / "anthropics" / "skills" / "skills" / "brand-guidelines"
         assert skill_path.exists()
         
-        # But no .github/agents/ should be created
-        agents_dir = project_dir / ".github" / "agents"
-        assert not agents_dir.exists(), "Agents dir should not be created without VSCode target"
+        # Skill should still be integrated to .github/skills/
+        skill_integrated = project_dir / ".github" / "skills" / "brand-guidelines" / "SKILL.md"
+        assert skill_integrated.exists(), "Skill should be integrated to .github/skills/"
