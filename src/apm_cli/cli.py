@@ -130,7 +130,11 @@ def _lazy_confirm():
 
 
 def _check_orphaned_packages():
-    """Check for packages in apm_modules/ that are not declared in apm.yml.
+    """Check for packages in apm_modules/ that are not declared in apm.yml or apm.lock.
+
+    Considers both direct dependencies (from apm.yml) and transitive dependencies
+    (from apm.lock) as expected packages, so transitive deps are not falsely
+    flagged as orphaned.
 
     Returns:
         List[str]: List of orphaned package names in org/repo or org/project/repo format
@@ -164,6 +168,14 @@ def _check_orphaned_packages():
                 except ValueError:
                     # If path is not relative to apm_modules_dir, use as-is
                     expected_installed.add(str(install_path))
+
+            # Also include transitive dependencies from apm.lock
+            try:
+                from apm_cli.deps.lockfile import get_lockfile_installed_paths
+                lockfile_paths = get_lockfile_installed_paths(Path.cwd())
+                expected_installed.update(lockfile_paths)
+            except Exception:
+                pass  # If lockfile can't be read, proceed with direct deps only
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -194,7 +206,7 @@ def _check_orphaned_packages():
                                         path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
                                         installed_packages.append(path_key)
 
-        # Find orphaned packages (installed but not declared)
+        # Find orphaned packages (installed but not declared or locked)
         orphaned_packages = []
         for org_repo_name in installed_packages:
             if org_repo_name not in expected_installed:
@@ -789,6 +801,14 @@ def prune(ctx, dry_run):
                         )
                     elif len(repo_parts) >= 2:
                         expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
+
+            # Also include transitive dependencies from apm.lock
+            try:
+                from apm_cli.deps.lockfile import get_lockfile_installed_paths
+                lockfile_paths = get_lockfile_installed_paths(Path.cwd())
+                expected_installed.update(lockfile_paths)
+            except Exception:
+                pass  # If lockfile can't be read, proceed with direct deps only
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
