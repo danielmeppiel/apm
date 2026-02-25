@@ -10,7 +10,7 @@ scripts:
 
 dependencies:
   apm:
-    - danielmeppiel/design-guidelines  # Accessibility rules + UI review workflows
+    - microsoft/apm-sample-package  # Design standards, prompts, and skills
   mcp:
     - microsoft/azure-devops-mcp
 

@@ -1,4 +1,4 @@
-"""Dependencies management package for APM-CLI."""
+"""Dependencies management package for APM."""
 
 from .apm_resolver import APMDependencyResolver
 from .dependency_graph import (

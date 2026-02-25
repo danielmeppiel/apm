@@ -1,4 +1,4 @@
-"""Core operations for APM-CLI."""
+"""Core operations for APM."""
 
 from ..factory import ClientFactory, PackageManagerFactory
 from .safe_installer import SafeMCPInstaller

@@ -17,10 +17,10 @@ APM supports multiple dependency types:
 
 | Type | Detection | Example |
 |------|-----------|---------|
-| **APM Package** | Has `apm.yml` | `danielmeppiel/compliance-rules` |
+| **APM Package** | Has `apm.yml` | `microsoft/apm-sample-package` |
 | **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` |
 | **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
-| **Virtual File Package** | Single file path | `github/awesome-copilot/prompts/code-review.prompt.md` |
+| **Virtual Subdirectory Package** | Folder path in repo | `github/awesome-copilot/skills/review-and-refactor` |
 | **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` |
 
 **Virtual Subdirectory Packages** are skill folders from monorepos - they download an entire folder and may contain a SKILL.md plus resources.
@@ -57,7 +57,7 @@ Skill folders use the **source folder name directly** (not flattened paths):
 .github/skills/
 ├── brand-guidelines/      # From ComposioHQ/awesome-claude-skills/brand-guidelines
 ├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
-└── compliance-rules/      # From danielmeppiel/compliance-rules
+└── apm-sample-package/     # From microsoft/apm-sample-package
 ```
 
 → See [Skills Guide](skills.md) for complete documentation.
@@ -73,8 +73,8 @@ name: my-project
 version: 1.0.0
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules  # GDPR, legal review workflows
-    - danielmeppiel/design-guidelines # Accessibility, UI standards
+    - microsoft/apm-sample-package  # Design standards, prompts
+    - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
     - io.github.github/github-mcp-server
 ```
@@ -102,7 +102,7 @@ apm deps list
 apm deps tree
 
 # Get package details
-apm deps info compliance-rules
+apm deps info apm-sample-package
 ```
 
 ### 4. Use Dependencies in Compilation
@@ -152,55 +152,46 @@ If authentication fails, you'll see an error with guidance on token setup.
 
 ## Real-World Example: Corporate Website Project
 
-This example shows how APM dependencies enable powerful layered functionality by combining multiple specialized packages. The company website project uses both [danielmeppiel/compliance-rules](https://github.com/danielmeppiel/compliance-rules) and [danielmeppiel/design-guidelines](https://github.com/danielmeppiel/design-guidelines) to supercharge development workflows:
+This example shows how APM dependencies enable powerful layered functionality by combining multiple specialized packages. The company website project uses [microsoft/apm-sample-package](https://github.com/microsoft/apm-sample-package) as a full APM package and individual prompts from [github/awesome-copilot](https://github.com/github/awesome-copilot) to supercharge development workflows:
 
 ```yaml
 # company-website/apm.yml
 name: company-website
 version: 1.0.0
-description: Corporate website with compliance and design standards
+description: Corporate website with design standards and code review
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules
-    - danielmeppiel/design-guidelines
+    - microsoft/apm-sample-package
+    - github/awesome-copilot/skills/review-and-refactor
   mcp:
     - io.github.github/github-mcp-server
 
 scripts:
-  # Compliance workflows
-  audit: "codex --skip-git-repo-check compliance-audit.prompt.md"
-  gdpr-check: "codex --skip-git-repo-check gdpr-assessment.prompt.md"
-  legal-review: "codex --skip-git-repo-check legal-review.prompt.md"
-  
   # Design workflows  
   design-review: "codex --skip-git-repo-check design-review.prompt.md"
   accessibility: "codex --skip-git-repo-check accessibility-audit.prompt.md"
-  style-check: "codex --skip-git-repo-check style-guide-check.prompt.md"
 ```
 
 ### Package Contributions
 
 The combined packages provide comprehensive coverage:
 
-**[compliance-rules](https://github.com/danielmeppiel/compliance-rules) contributes:**
-- **Agent Workflows**: `compliance-audit.prompt.md`, `gdpr-assessment.prompt.md`, `legal-review.prompt.md`
-- **Context Files**: `.apm/context/legal-compliance.context.md` - Legal compliance framework and requirements
-- **Instructions**: `.apm/instructions/compliance.instructions.md` - Compliance checking guidelines
-- **Chat Modes**: `.apm/chatmodes/legal-compliance.chatmode.md` - Interactive legal consultation mode
+**[apm-sample-package](https://github.com/microsoft/apm-sample-package) contributes:**
+- **Agent Workflows**: `.apm/prompts/design-review.prompt.md`, `.apm/prompts/accessibility-audit.prompt.md`
+- **Instructions**: `.apm/instructions/design-standards.instructions.md` - Design guidelines
+- **Agents**: `.apm/agents/design-reviewer.agent.md` - Design review persona
+- **Skills**: `.apm/skills/style-checker/SKILL.md` - Style checking capability
 
-**[design-guidelines](https://github.com/danielmeppiel/design-guidelines) contributes:**
-- **Agent Workflows**: `design-review.prompt.md`, `accessibility-audit.prompt.md`, `style-guide-check.prompt.md`
-- **Context Files**: `.apm/context/design-system.context.md` - Design system specifications and standards
-- **Instructions**: `.apm/instructions/design-standards.instructions.md` - UI/UX design guidelines and best practices
+**[github/awesome-copilot](https://github.com/github/awesome-copilot) virtual packages contribute:**
+- **Prompts**: Individual prompt files installed via virtual package references
 
 ### Compounding Benefits
 
 When both packages are installed, your project gains:
-- **Legal compliance** validation for all code changes
 - **Accessibility audit** capabilities for web components
 - **Design system enforcement** with automated style checking
-- **GDPR assessment** workflows for data handling
-- **Rich context** about legal requirements AND design standards
+- **Code review** workflows from community prompts
+- **Rich context** about design standards
 
 ## Dependency Resolution
 
@@ -243,34 +234,31 @@ Based on the actual structure of our real-world examples:
 ```
 my-project/
 ├── apm_modules/                     # Dependency installation directory
-│   ├── compliance-rules/            # From danielmeppiel/compliance-rules
-│   │   ├── .apm/
-│   │   │   ├── instructions/
-│   │   │   │   └── compliance.instructions.md
-│   │   │   ├── context/
-│   │   │   │   └── legal-compliance.context.md
-│   │   │   └── chatmodes/
-│   │   │       └── legal-compliance.chatmode.md
-│   │   ├── compliance-audit.prompt.md         # Agent workflows in root
-│   │   ├── gdpr-assessment.prompt.md
-│   │   ├── legal-review.prompt.md
-│   │   └── apm.yml
-│   └── design-guidelines/           # From danielmeppiel/design-guidelines
-│       ├── .apm/
-│       │   ├── instructions/
-│       │   │   └── design-standards.instructions.md
-│       │   └── context/
-│       │       └── design-system.context.md
-│       ├── accessibility-audit.prompt.md      # Agent workflows in root
-│       ├── design-review.prompt.md
-│       ├── style-guide-check.prompt.md
-│       └── apm.yml
+│   ├── microsoft/
+│   │   └── apm-sample-package/      # From microsoft/apm-sample-package
+│   │       ├── .apm/
+│   │       │   ├── instructions/
+│   │       │   │   └── design-standards.instructions.md
+│   │       │   ├── prompts/
+│   │       │   │   ├── design-review.prompt.md
+│   │       │   │   └── accessibility-audit.prompt.md
+│   │       │   ├── agents/
+│   │       │   │   └── design-reviewer.agent.md
+│   │       │   └── skills/
+│   │       │       └── style-checker/SKILL.md
+│   │       └── apm.yml
+│   └── github/
+│       └── awesome-copilot/              # Virtual subdirectory from github/awesome-copilot
+│           └── skills/
+│               └── review-and-refactor/
+│                   ├── SKILL.md
+│                   └── apm.yml
 ├── .apm/                            # Local context (highest priority)
 ├── apm.yml                          # Project configuration
 └── .gitignore                       # Manually add apm_modules/ to ignore
 ```
 
-**Note**: These repositories store agent workflows (`.prompt.md` files) in the root directory, while context files, instructions, and chat modes are organized under `.apm/` subdirectories.
+**Note**: Full APM packages store primitives under `.apm/` subdirectories. Virtual file packages extract individual files from monorepos like `github/awesome-copilot`.
 
 ## Advanced Scenarios
 
@@ -281,8 +269,8 @@ Specify specific branches, tags, or commits for dependency versions:
 ```yaml
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules#v2.1.0    # Specific tag
-    - danielmeppiel/design-guidelines#main     # Specific branch  
+    - github/awesome-copilot/skills/review-and-refactor#v2.1.0    # Specific tag
+    - microsoft/apm-sample-package#main     # Specific branch  
     - company/internal-standards#abc123        # Specific commit
 ```
 
@@ -293,7 +281,7 @@ dependencies:
 apm deps update
 
 # Update specific dependency  
-apm deps update compliance-rules
+apm deps update apm-sample-package
 
 # Install with updates (equivalent to update)
 apm install --update
@@ -312,19 +300,19 @@ lockfile_version: "1.0"
 generated_at: "2026-01-22T10:30:00Z"
 apm_version: "0.8.0"
 dependencies:
-  danielmeppiel/compliance-rules:
-    repo_url: "https://github.com/danielmeppiel/compliance-rules"
+  microsoft/apm-sample-package:
+    repo_url: "https://github.com/microsoft/apm-sample-package"
     resolved_commit: "abc123def456"
     resolved_ref: "main"
     version: "1.0.0"
     depth: 1
-  danielmeppiel/validation-patterns:
-    repo_url: "https://github.com/danielmeppiel/validation-patterns"
+  acme/validation-patterns:
+    repo_url: "https://github.com/acme/validation-patterns"
     resolved_commit: "789xyz012"
     resolved_ref: "main"
     version: "1.2.0"
     depth: 2
-    resolved_by: "danielmeppiel/compliance-rules"
+    resolved_by: "microsoft/apm-sample-package"
 ```
 
 ### How It Works
@@ -358,7 +346,7 @@ apm install --update
 APM fully resolves transitive dependencies. If package A depends on B, and B depends on C:
 
 ```
-apm install danielmeppiel/package-a
+apm install acme/package-a
 ```
 
 Result:

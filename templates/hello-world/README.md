@@ -74,4 +74,4 @@ apm compile --chatmode backend-engineer
 
 This project was created with APM - The package manager for AI-Native Development.
 
-Learn more at: https://github.com/danielmeppiel/apm-cli
+Learn more at: https://github.com/microsoft/apm

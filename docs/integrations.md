@@ -145,7 +145,7 @@ APM automatically integrates prompts and agents from installed packages into VSC
 
 ```bash
 # Install APM packages - integration happens automatically when .github/ exists
-apm install danielmeppiel/design-guidelines
+apm install microsoft/apm-sample-package
 
 # Prompts are automatically integrated to:
 # .github/prompts/*-apm.prompt.md (verbatim copy with -apm suffix)
@@ -184,7 +184,7 @@ The `-apm` suffix pattern enables natural autocomplete in VSCode:
 **Example**: 
 ```bash
 # Install package with auto-integration
-apm install danielmeppiel/design-guidelines
+apm install microsoft/apm-sample-package
 
 # Result in VSCode:
 # Prompts:
@@ -237,7 +237,7 @@ APM automatically converts `.prompt.md` files from installed packages into Claud
 
 ```bash
 # Install a package with prompts
-apm install danielmeppiel/design-guidelines
+apm install microsoft/apm-sample-package
 
 # Result:
 # .claude/commands/accessibility-audit-apm.md   → /accessibility-audit
@@ -322,7 +322,7 @@ apm compile --target vscode
 Generated commands follow Claude's native structure:
 
 ```markdown
-<!-- APM Managed: danielmeppiel/design-guidelines@abc123 -->
+<!-- APM Managed: microsoft/apm-sample-package@abc123 -->
 # Design Review
 
 Review the current design for accessibility and UI standards.
@@ -335,8 +335,8 @@ Review the current design for accessibility and UI standards.
 
 ```bash
 # 1. Install packages (integrates commands and skills automatically)
-apm install danielmeppiel/compliance-rules
-apm install github/awesome-copilot/prompts/code-review.prompt.md
+apm install microsoft/apm-sample-package
+apm install github/awesome-copilot/skills/review-and-refactor
 
 # 2. Compile instructions for Claude
 apm compile --target claude
@@ -360,7 +360,7 @@ APM maintains synchronization between packages and Claude commands:
 - **Install**: Adds commands for new packages
 - **Uninstall**: Removes only that package's commands  
 - **Update**: Refreshes commands when package version changes
-- **Virtual Packages**: Individual files (e.g., `github/awesome-copilot/prompts/code-review.prompt.md`) are tracked and removed correctly
+- **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked and removed correctly
 
 ## Development Tool Integrations
 
@@ -405,7 +405,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup APM
-        run: curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+        run: curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
       - name: Code Review
         run: |
           apm compile
@@ -425,7 +425,7 @@ Containerize APM workflows for consistent environments:
 FROM python:3.12-slim
 
 # Install APM
-RUN curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+RUN curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 
 # Install runtimes
 RUN apm runtime setup copilot
@@ -442,7 +442,7 @@ ENTRYPOINT ["apm"]
 
 ```bash
 # Use in CI/CD
-docker run --rm -v $(pwd):/workspace apm-cli run code-review
+docker run --rm -v $(pwd):/workspace apm run code-review
 ```
 
 ### IDE Integration
@@ -455,7 +455,7 @@ Any IDE with GitHub Copilot support (JetBrains, Visual Studio, etc.) works with 
 
 ```bash
 # Install APM packages
-apm install danielmeppiel/design-guidelines
+apm install microsoft/apm-sample-package
 
 # GitHub Copilot automatically picks up:
 # .github/prompts/*-apm.prompt.md (integrated prompts)

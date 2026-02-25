@@ -177,9 +177,9 @@ test_hero_zero_config() {
     # Runtime setup is already done in test_runtime_setup()
     # Just test the virtual package run
     
-    echo "Running: $BINARY_PATH run github/awesome-copilot/prompts/architecture-blueprint-generator (with 15s timeout)"
+    echo "Running: $BINARY_PATH run github/awesome-copilot/skills/architecture-blueprint-generator (with 15s timeout)"
     echo "--- Command Output Start ---"
-    run_with_timeout 15 "$BINARY_PATH run github/awesome-copilot/prompts/architecture-blueprint-generator"
+    run_with_timeout 15 "$BINARY_PATH run github/awesome-copilot/skills/architecture-blueprint-generator"
     local exit_code=$?
     echo "--- Command Output End ---"
     echo "Exit code: $exit_code"
@@ -197,7 +197,7 @@ test_hero_zero_config() {
     fi
     
     # Verify package was actually installed
-    if [[ ! -d "apm_modules/github/awesome-copilot-architecture-blueprint-generator" ]]; then
+    if [[ ! -d "apm_modules/github/awesome-copilot/skills/architecture-blueprint-generator" ]]; then
         log_error "Package was not installed by auto-install"
         cd ..
         return 1
@@ -207,7 +207,7 @@ test_hero_zero_config() {
     
     # Test second run (should use cached package, no re-download)
     echo "Testing second run (should use cache)..."
-    run_with_timeout 10 "$BINARY_PATH run github/awesome-copilot/prompts/architecture-blueprint-generator" | head -20
+    run_with_timeout 10 "$BINARY_PATH run github/awesome-copilot/skills/architecture-blueprint-generator" | head -20
     local second_exit_code=${PIPESTATUS[0]}
     
     if [[ $second_exit_code -eq 124 || $second_exit_code -eq 0 ]]; then
@@ -245,37 +245,37 @@ test_hero_guardrailing() {
     
     cd my-project
     
-    # Step 2: apm install danielmeppiel/design-guidelines
-    echo "Running: $BINARY_PATH install danielmeppiel/design-guidelines"
+    # Step 2: apm install microsoft/apm-sample-package
+    echo "Running: $BINARY_PATH install microsoft/apm-sample-package"
     echo "--- Command Output Start ---"
-    APM_E2E_TESTS="${APM_E2E_TESTS:-}" "$BINARY_PATH" install danielmeppiel/design-guidelines 2>&1
+    APM_E2E_TESTS="${APM_E2E_TESTS:-}" "$BINARY_PATH" install microsoft/apm-sample-package 2>&1
     exit_code=$?
     echo "--- Command Output End ---"
     echo "Exit code: $exit_code"
     
     if [[ $exit_code -ne 0 ]]; then
-        log_error "apm install danielmeppiel/design-guidelines failed"
+        log_error "apm install microsoft/apm-sample-package failed"
         cd ..
         return 1
     fi
     
     log_success "design-guidelines installed"
     
-    # Step 3: apm install danielmeppiel/compliance-rules
-    echo "Running: $BINARY_PATH install danielmeppiel/compliance-rules"
+    # Step 3: apm install github/awesome-copilot/skills/review-and-refactor
+    echo "Running: $BINARY_PATH install github/awesome-copilot/skills/review-and-refactor"
     echo "--- Command Output Start ---"
-    APM_E2E_TESTS="${APM_E2E_TESTS:-}" "$BINARY_PATH" install danielmeppiel/compliance-rules 2>&1
+    APM_E2E_TESTS="${APM_E2E_TESTS:-}" "$BINARY_PATH" install github/awesome-copilot/skills/review-and-refactor 2>&1
     exit_code=$?
     echo "--- Command Output End ---"
     echo "Exit code: $exit_code"
     
     if [[ $exit_code -ne 0 ]]; then
-        log_error "apm install danielmeppiel/compliance-rules failed"
+        log_error "apm install github/awesome-copilot/skills/review-and-refactor failed"
         cd ..
         return 1
     fi
     
-    log_success "compliance-rules installed"
+    log_success "virtual package installed"
     
     # Step 4: apm compile
     echo "Running: $BINARY_PATH compile"

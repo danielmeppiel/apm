@@ -3,15 +3,15 @@ End-to-end test for README Hero Scenario 2: 2-Minute Guardrailing
 
 Tests the exact 2-minute guardrailing flow from README (lines 46-60):
 1. apm init my-project && cd my-project
-2. apm install danielmeppiel/design-guidelines
-3. apm install danielmeppiel/compliance-rules
+2. apm install microsoft/apm-sample-package
+3. apm install github/awesome-copilot/skills/review-and-refactor
 4. apm compile
 5. apm run design-review
 
 This validates that:
 - Multiple APM packages can be installed
 - AGENTS.md is generated with combined guardrails
-- Prompts from installed packages work correctly
+- Skills from installed packages work correctly
 """
 
 import os
@@ -110,8 +110,8 @@ class TestGuardrailingHeroScenario:
         
         Validates:
         1. apm init my-project creates minimal project
-        2. apm install danielmeppiel/design-guidelines succeeds
-        3. apm install danielmeppiel/compliance-rules succeeds
+        2. apm install microsoft/apm-sample-package succeeds
+        3. apm install github/awesome-copilot/skills/review-and-refactor succeeds
         4. apm compile generates AGENTS.md with both packages
         5. apm run design-review executes prompt from installed package
         """
@@ -128,11 +128,11 @@ class TestGuardrailingHeroScenario:
             
             print("✓ Project initialized")
             
-            # Step 2: apm install danielmeppiel/design-guidelines
-            print("\n=== Step 2: apm install danielmeppiel/design-guidelines ===")
+            # Step 2: apm install microsoft/apm-sample-package
+            print("\n=== Step 2: apm install microsoft/apm-sample-package ===")
             env = os.environ.copy()
             result = run_command(
-                f"{apm_binary} install danielmeppiel/design-guidelines", 
+                f"{apm_binary} install microsoft/apm-sample-package", 
                 cwd=project_dir, 
                 show_output=True,
                 env=env
@@ -140,28 +140,28 @@ class TestGuardrailingHeroScenario:
             assert result.returncode == 0, f"design-guidelines install failed: {result.stderr}"
             
             # Verify installation
-            design_pkg = project_dir / "apm_modules" / "danielmeppiel" / "design-guidelines"
+            design_pkg = project_dir / "apm_modules" / "microsoft" / "apm-sample-package"
             assert design_pkg.exists(), "design-guidelines package not installed"
             assert (design_pkg / "apm.yml").exists(), "design-guidelines apm.yml not found"
             
             print("✓ design-guidelines installed")
             
-            # Step 3: apm install danielmeppiel/compliance-rules
-            print("\n=== Step 3: apm install danielmeppiel/compliance-rules ===")
+            # Step 3: apm install github/awesome-copilot/skills/review-and-refactor
+            print("\n=== Step 3: apm install github/awesome-copilot/skills/review-and-refactor ===")
             result = run_command(
-                f"{apm_binary} install danielmeppiel/compliance-rules", 
+                f"{apm_binary} install github/awesome-copilot/skills/review-and-refactor", 
                 cwd=project_dir, 
                 show_output=True,
                 env=env
             )
-            assert result.returncode == 0, f"compliance-rules install failed: {result.stderr}"
+            assert result.returncode == 0, f"virtual package install failed: {result.stderr}"
             
-            # Verify installation
-            compliance_pkg = project_dir / "apm_modules" / "danielmeppiel" / "compliance-rules"
-            assert compliance_pkg.exists(), "compliance-rules package not installed"
-            assert (compliance_pkg / "apm.yml").exists(), "compliance-rules apm.yml not found"
+            # Verify installation (virtual subdirectory package is installed under github/awesome-copilot/skills/review-and-refactor)
+            virtual_pkg = project_dir / "apm_modules" / "github" / "awesome-copilot" / "skills" / "review-and-refactor"
+            assert virtual_pkg.exists(), "virtual package not installed"
+            assert (virtual_pkg / "SKILL.md").exists() or (virtual_pkg / "apm.yml").exists(), "virtual package content not found"
             
-            print("✓ compliance-rules installed")
+            print("✓ virtual package installed")
             
             # Step 4: apm compile
             print("\n=== Step 4: apm compile ===")
@@ -176,8 +176,8 @@ class TestGuardrailingHeroScenario:
             agents_content = agents_md.read_text()
             assert "design-guidelines" in agents_content.lower() or "design" in agents_content.lower(), \
                 "AGENTS.md doesn't contain design-guidelines content"
-            assert "compliance" in agents_content.lower() or "gdpr" in agents_content.lower(), \
-                "AGENTS.md doesn't contain compliance-rules content"
+            assert "code-review" in agents_content.lower() or "review" in agents_content.lower(), \
+                "AGENTS.md doesn't contain code-review content"
             
             print(f"✓ AGENTS.md generated ({len(agents_content)} bytes)")
             print(f"  Contains design-guidelines: ✓")

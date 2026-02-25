@@ -4,10 +4,10 @@
 
 For better guidance, consider using our specialized templates:
 
-- **🚀 New Feature**: [Create Feature PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=feature.md)
-- **🐛 Bug Fix**: [Create Bug Fix PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=bugfix.md)  
-- **📖 Documentation**: [Create Docs PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=documentation.md)
-- **🔧 Maintenance**: [Create Maintenance PR](https://github.com/danielmeppiel/apm/compare/main...HEAD?template=maintenance.md)
+- **🚀 New Feature**: [Create Feature PR](https://github.com/microsoft/apm/compare/main...HEAD?template=feature.md)
+- **🐛 Bug Fix**: [Create Bug Fix PR](https://github.com/microsoft/apm/compare/main...HEAD?template=bugfix.md)  
+- **📖 Documentation**: [Create Docs PR](https://github.com/microsoft/apm/compare/main...HEAD?template=documentation.md)
+- **🔧 Maintenance**: [Create Maintenance PR](https://github.com/microsoft/apm/compare/main...HEAD?template=maintenance.md)
 
 ## Description
 

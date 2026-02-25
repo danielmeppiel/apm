@@ -276,18 +276,18 @@ class TestDependencyReference:
     
     def test_parse_virtual_file_package(self):
         """Test parsing virtual file package (individual file)."""
-        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md")
-        assert dep.repo_url == "github/awesome-copilot"
+        dep = DependencyReference.parse("owner/test-repo/prompts/code-review.prompt.md")
+        assert dep.repo_url == "owner/test-repo"
         assert dep.is_virtual is True
         assert dep.virtual_path == "prompts/code-review.prompt.md"
         assert dep.is_virtual_file() is True
         assert dep.is_virtual_collection() is False
-        assert dep.get_virtual_package_name() == "awesome-copilot-code-review"
+        assert dep.get_virtual_package_name() == "test-repo-code-review"
     
     def test_parse_virtual_file_with_reference(self):
         """Test parsing virtual file package with git reference."""
-        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md#v1.0.0")
-        assert dep.repo_url == "github/awesome-copilot"
+        dep = DependencyReference.parse("owner/test-repo/prompts/code-review.prompt.md#v1.0.0")
+        assert dep.repo_url == "owner/test-repo"
         assert dep.is_virtual is True
         assert dep.virtual_path == "prompts/code-review.prompt.md"
         assert dep.reference == "v1.0.0"
@@ -305,18 +305,18 @@ class TestDependencyReference:
     
     def test_parse_virtual_collection(self):
         """Test parsing virtual collection package."""
-        dep = DependencyReference.parse("github/awesome-copilot/collections/project-planning")
-        assert dep.repo_url == "github/awesome-copilot"
+        dep = DependencyReference.parse("owner/test-repo/collections/project-planning")
+        assert dep.repo_url == "owner/test-repo"
         assert dep.is_virtual is True
         assert dep.virtual_path == "collections/project-planning"
         assert dep.is_virtual_file() is False
         assert dep.is_virtual_collection() is True
-        assert dep.get_virtual_package_name() == "awesome-copilot-project-planning"
+        assert dep.get_virtual_package_name() == "test-repo-project-planning"
     
     def test_parse_virtual_collection_with_reference(self):
         """Test parsing virtual collection with git reference."""
-        dep = DependencyReference.parse("github/awesome-copilot/collections/testing#main")
-        assert dep.repo_url == "github/awesome-copilot"
+        dep = DependencyReference.parse("owner/test-repo/collections/testing#main")
+        assert dep.repo_url == "owner/test-repo"
         assert dep.is_virtual is True
         assert dep.virtual_path == "collections/testing"
         assert dep.reference == "main"
@@ -340,14 +340,14 @@ class TestDependencyReference:
         
         Note: After PR #33, host is explicit in string representation.
         """
-        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md#v1.0.0")
+        dep = DependencyReference.parse("owner/test-repo/prompts/code-review.prompt.md#v1.0.0")
         # Check that key components are present (host may be explicit now)
-        assert "github/awesome-copilot" in str(dep)
+        assert "owner/test-repo" in str(dep)
         assert "prompts/code-review.prompt.md" in str(dep)
         assert "#v1.0.0" in str(dep)
         
-        dep_with_alias = DependencyReference.parse("github/awesome-copilot/prompts/test.prompt.md@myalias")
-        assert "github/awesome-copilot" in str(dep_with_alias)
+        dep_with_alias = DependencyReference.parse("owner/test-repo/prompts/test.prompt.md@myalias")
+        assert "owner/test-repo" in str(dep_with_alias)
         assert "prompts/test.prompt.md" in str(dep_with_alias)
         assert "@myalias" in str(dep_with_alias)
     
