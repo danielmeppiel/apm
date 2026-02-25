@@ -2,7 +2,7 @@
 End-to-end tests for auto-install feature (README Hero Scenario).
 
 Tests the exact zero-config flow from the README:
-    apm run github/awesome-copilot/prompts/architecture-blueprint-generator
+    apm run github/awesome-copilot/skills/architecture-blueprint-generator
 
 This validates that users can run virtual packages without manual installation.
 
@@ -75,7 +75,7 @@ author: test
         """Test auto-install on first run with virtual package reference.
         
         This is the exact README hero scenario:
-            apm run github/awesome-copilot/prompts/architecture-blueprint-generator
+            apm run github/awesome-copilot/skills/architecture-blueprint-generator
         
         Expected behavior:
         1. Package doesn't exist locally
@@ -97,7 +97,7 @@ author: test
             [
                 "apm",
                 "run",
-                "github/awesome-copilot/prompts/architecture-blueprint-generator"
+                "github/awesome-copilot/skills/architecture-blueprint-generator"
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -143,16 +143,12 @@ author: test
         assert execution_started, "Should have started execution (✨ Package installed and ready to run)"
         
         # Verify package was installed
-        package_path = apm_modules / "github" / "awesome-copilot-architecture-blueprint-generator"
+        package_path = apm_modules / "github" / "awesome-copilot" / "skills" / "architecture-blueprint-generator"
         assert package_path.exists(), f"Package should be installed at {package_path}"
         
-        # Verify apm.yml was created in the virtual package
-        apm_yml = package_path / "apm.yml"
-        assert apm_yml.exists(), "Virtual package should have apm.yml"
-        
-        # Verify the prompt file exists
-        prompt_file = package_path / ".apm" / "prompts" / "architecture-blueprint-generator.prompt.md"
-        assert prompt_file.exists(), f"Prompt file should exist at {prompt_file}"
+        # Verify SKILL.md or apm.yml exists in the virtual package
+        assert (package_path / "SKILL.md").exists() or (package_path / "apm.yml").exists(), \
+            "Virtual package should have SKILL.md or apm.yml"
         
         print(f"✅ Auto-install successful: {package_path}")
     
@@ -173,7 +169,7 @@ author: test
             [
                 "apm",
                 "run",
-                "github/awesome-copilot/prompts/architecture-blueprint-generator"
+                "github/awesome-copilot/skills/architecture-blueprint-generator"
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -195,7 +191,7 @@ author: test
             process.wait()
         
         # Verify package exists
-        package_path = Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator")
+        package_path = Path("apm_modules") / "github" / "awesome-copilot" / "skills" / "architecture-blueprint-generator"
         assert package_path.exists(), "Package should exist after first run"
         
         # Second run - should use cache with early termination
@@ -203,7 +199,7 @@ author: test
             [
                 "apm",
                 "run",
-                "github/awesome-copilot/prompts/architecture-blueprint-generator"
+                "github/awesome-copilot/skills/architecture-blueprint-generator"
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -253,7 +249,7 @@ author: test
             [
                 "apm",
                 "run",
-                "github/awesome-copilot/prompts/architecture-blueprint-generator"
+                "github/awesome-copilot/skills/architecture-blueprint-generator"
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -315,7 +311,7 @@ author: test
         """Test auto-install works with qualified path format.
         
         Tests both formats:
-        - Full: github/awesome-copilot/prompts/file.prompt.md
+        - Full: github/awesome-copilot/skills/review-and-refactor
         - Qualified: github/awesome-copilot/architecture-blueprint-generator
         """
         # Set up environment
@@ -327,7 +323,7 @@ author: test
             [
                 "apm",
                 "run",
-                "github/awesome-copilot/prompts/architecture-blueprint-generator"
+                "github/awesome-copilot/skills/architecture-blueprint-generator"
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -350,12 +346,12 @@ author: test
             process.wait()
         
         # Check that package was installed
-        package_path = Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator")
+        package_path = Path("apm_modules/github/awesome-copilot/skills/architecture-blueprint-generator")
         assert package_path.exists(), "Package should be installed"
         
-        # Check that prompt file exists
-        prompt_file = package_path / ".apm" / "prompts" / "architecture-blueprint-generator.prompt.md"
-        assert prompt_file.exists(), "Prompt file should exist"
+        # Check that SKILL.md file exists
+        skill_file = package_path / "SKILL.md"
+        assert skill_file.exists(), "SKILL.md should exist"
         
         print("✅ Auto-install works with qualified path")
 

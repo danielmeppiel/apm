@@ -17,7 +17,7 @@ APM acts as a runtime package manager, downloading and configuring LLM runtimes 
 ### Install APM and Setup Runtime
 ```bash
 # 1. Install APM
-curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 
 # 2. Setup AI runtime (downloads and configures automatically)
 apm runtime setup copilot

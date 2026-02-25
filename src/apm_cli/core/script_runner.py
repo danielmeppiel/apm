@@ -974,7 +974,7 @@ class PromptCompiler:
         apm_modules_dir = Path("apm_modules")
         if apm_modules_dir.exists():
             # Search all dependency directories for the prompt file
-            # Handle org/repo directory structure (e.g., apm_modules/danielmeppiel/compliance-rules/)
+            # Handle org/repo directory structure (e.g., apm_modules/microsoft/apm-sample-package/)
             for org_dir in apm_modules_dir.iterdir():
                 if org_dir.is_dir() and not org_dir.name.startswith("."):
                     # Iterate through repos within the org

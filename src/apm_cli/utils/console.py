@@ -170,7 +170,7 @@ def show_download_spinner(repo_name: str):
     """Show spinner during download operations.
     
     Usage:
-        with show_download_spinner("danielmeppiel/design-guidelines"):
+        with show_download_spinner("microsoft/apm-sample-package"):
             # Long-running download here
             pass
     """

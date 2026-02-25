@@ -24,16 +24,16 @@ class TestADOPathStructure:
 
     def test_github_dependency_uses_2_part_path(self):
         """Test that GitHub dependencies use owner/repo (2-part) structure."""
-        dep = DependencyReference.parse("danielmeppiel/design-guidelines")
+        dep = DependencyReference.parse("microsoft/apm-sample-package")
         
         assert dep.is_azure_devops() is False
-        assert dep.repo_url == "danielmeppiel/design-guidelines"
+        assert dep.repo_url == "microsoft/apm-sample-package"
         
         # Path parts for installation
         parts = dep.repo_url.split("/")
         assert len(parts) == 2
-        assert parts[0] == "danielmeppiel"
-        assert parts[1] == "design-guidelines"
+        assert parts[0] == "microsoft"
+        assert parts[1] == "apm-sample-package"
 
     def test_ado_dependency_uses_3_part_path(self):
         """Test that ADO dependencies use org/project/repo (3-part) structure."""
@@ -104,10 +104,10 @@ description: "Test instruction"
     def test_discovery_finds_github_2_level_deps(self, temp_project):
         """Test discovery finds primitives in GitHub 2-level structure."""
         # Create apm.yml with GitHub dependency
-        self._create_apm_yml(temp_project, ["danielmeppiel/design-guidelines"])
+        self._create_apm_yml(temp_project, ["microsoft/apm-sample-package"])
         
         # Create GitHub-style 2-level directory structure
-        dep_path = temp_project / "apm_modules" / "danielmeppiel" / "design-guidelines" / ".apm" / "instructions"
+        dep_path = temp_project / "apm_modules" / "microsoft" / "apm-sample-package" / ".apm" / "instructions"
         dep_path.mkdir(parents=True)
         self._create_instruction_file(
             dep_path / "style.instructions.md",
@@ -121,7 +121,7 @@ description: "Test instruction"
         # Should find the instruction
         assert len(collection.instructions) == 1
         assert collection.instructions[0].apply_to == "**/*.css"
-        assert "dependency:danielmeppiel/design-guidelines" in collection.instructions[0].source
+        assert "dependency:microsoft/apm-sample-package" in collection.instructions[0].source
 
     def test_discovery_finds_ado_3_level_deps(self, temp_project):
         """Test discovery finds primitives in ADO 3-level structure."""
@@ -149,12 +149,12 @@ description: "Test instruction"
         """Test discovery works with both GitHub and ADO dependencies."""
         # Create apm.yml with both types
         self._create_apm_yml(temp_project, [
-            "danielmeppiel/design-guidelines",
+            "microsoft/apm-sample-package",
             "dev.azure.com/dmeppiel-org/market-js-app/_git/compliance-rules"
         ])
         
         # Create GitHub 2-level structure
-        github_path = temp_project / "apm_modules" / "danielmeppiel" / "design-guidelines" / ".apm" / "instructions"
+        github_path = temp_project / "apm_modules" / "microsoft" / "apm-sample-package" / ".apm" / "instructions"
         github_path.mkdir(parents=True)
         self._create_instruction_file(
             github_path / "style.instructions.md",
@@ -179,14 +179,14 @@ description: "Test instruction"
         
         # Verify sources
         sources = [inst.source for inst in collection.instructions]
-        assert any("danielmeppiel/design-guidelines" in s for s in sources)
+        assert any("microsoft/apm-sample-package" in s for s in sources)
         assert any("dmeppiel-org/market-js-app/compliance-rules" in s for s in sources)
 
     def test_get_dependency_order_returns_full_ado_path(self, temp_project):
         """Test that get_dependency_declaration_order returns full 3-part ADO paths."""
         self._create_apm_yml(temp_project, [
             "dev.azure.com/org1/proj1/_git/repo1",
-            "danielmeppiel/simple-repo"
+            "acme/simple-repo"
         ])
         
         dep_order = get_dependency_declaration_order(str(temp_project))
@@ -195,7 +195,7 @@ description: "Test instruction"
         # ADO should have 3 parts
         assert dep_order[0] == "org1/proj1/repo1"
         # GitHub should have 2 parts
-        assert dep_order[1] == "danielmeppiel/simple-repo"
+        assert dep_order[1] == "acme/simple-repo"
 
 
 class TestADOCompilation:
@@ -408,7 +408,7 @@ class TestADOVirtualPackagePaths:
 
     def test_github_virtual_package_uses_2_level_path(self):
         """Verify GitHub virtual packages install to 2-level path."""
-        dep = DependencyReference.parse("github/awesome-copilot/collections/project-planning")
+        dep = DependencyReference.parse("owner/test-repo/collections/project-planning")
         
         assert dep.is_virtual is True
         assert dep.is_virtual_collection() is True
@@ -425,7 +425,7 @@ class TestADOVirtualPackagePaths:
             install_path = virtual_name
         
         # Should be 2 levels for GitHub: owner/virtual-pkg-name
-        assert install_path == "github/awesome-copilot-project-planning"
+        assert install_path == "owner/test-repo-project-planning"
 
     def test_ado_virtual_collection_uses_3_level_path(self):
         """Verify ADO virtual collections install to 3-level path."""

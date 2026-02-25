@@ -1,4 +1,4 @@
-# .danielmeppiel/release.yml
+# .microsoft/release.yml
 changelog:
   exclude:
     labels:

@@ -16,7 +16,7 @@ runner = CliRunner()
 
 def test_read_url():
     """Test the read-url command with proper temp directory cleanup."""
-    url = "https://www.danielmeppiel.dev"
+    url = "https://www.example.com"
     temp_dir = tempfile.mkdtemp()
     try:
         result = runner.invoke(app, ["read-url", url, "--output-dir", temp_dir])

@@ -203,11 +203,11 @@ class TestPromptIntegratorOrphanDetection:
             create_test_integrated_file(
                 prompts_dir / "code-review-apm.prompt.md",
                 source_repo="github/awesome-copilot",
-                source_dependency="github/awesome-copilot/prompts/code-review.prompt.md"
+                source_dependency="github/awesome-copilot/skills/review-and-refactor"
             )
             
             apm_package = create_mock_apm_package([
-                "github/awesome-copilot/prompts/code-review.prompt.md"
+                "github/awesome-copilot/skills/review-and-refactor"
             ])
             
             integrator = PromptIntegrator()
@@ -256,16 +256,16 @@ class TestMixedScenarios:
             create_test_integrated_file(
                 agents_dir / "azure-apm.agent.md",
                 source_repo="github/awesome-copilot",
-                source_dependency="github/awesome-copilot/collections/azure"
+                source_dependency="github/awesome-copilot/plugins/azure-cloud-development"
             )
             create_test_integrated_file(
                 agents_dir / "aws-apm.agent.md",
                 source_repo="github/awesome-copilot",
-                source_dependency="github/awesome-copilot/collections/aws"
+                source_dependency="github/awesome-copilot/plugins/testing-automation"
             )
             
             apm_package = create_mock_apm_package([
-                "github/awesome-copilot/collections/azure"
+                "github/awesome-copilot/plugins/azure-cloud-development"
             ])
             
             integrator = AgentIntegrator()
@@ -292,13 +292,13 @@ class TestMixedScenarios:
             create_test_integrated_file(
                 prompts_dir / "virtual-apm.prompt.md",
                 source_repo="github/awesome-copilot",
-                source_dependency="github/awesome-copilot/prompts/virtual.prompt.md"
+                source_dependency="github/awesome-copilot/skills/create-readme"
             )
             
             # Mock package with both installed
             apm_package = create_mock_apm_package([
                 "owner/regular-pkg",
-                "github/awesome-copilot/prompts/virtual.prompt.md"
+                "github/awesome-copilot/skills/create-readme"
             ])
             
             integrator = PromptIntegrator()

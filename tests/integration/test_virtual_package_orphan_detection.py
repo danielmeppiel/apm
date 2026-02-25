@@ -1,7 +1,7 @@
 """
 Integration tests for orphan detection with virtual packages.
 
-Tests that virtual packages (individual files and collections) are correctly
+Tests that virtual packages (individual files, plugins, and subdirectory packages) are correctly
 recognized and not flagged as orphaned when they are declared in apm.yml.
 
 Also tests Azure DevOps (ADO) packages which use a 3-level directory structure
@@ -132,18 +132,18 @@ def _find_orphaned_packages(project_dir):
 
 @pytest.mark.integration
 def test_virtual_collection_not_flagged_as_orphan(tmp_path):
-    """Test that installed virtual collection is not flagged as orphaned."""
+    """Test that installed virtual plugin is not flagged as orphaned."""
     # Create test project structure
     project_dir = tmp_path / "test-project"
     project_dir.mkdir()
     
-    # Create apm.yml with collection dependency
+    # Create apm.yml with plugin subdirectory dependency
     apm_yml_content = {
         "name": "test-project",
         "version": "1.0.0",
         "dependencies": {
             "apm": [
-                "github/awesome-copilot/collections/awesome-copilot"
+                "github/awesome-copilot/plugins/awesome-copilot"
             ]
         }
     }
@@ -151,31 +151,39 @@ def test_virtual_collection_not_flagged_as_orphan(tmp_path):
     with open(project_dir / "apm.yml", "w") as f:
         yaml.dump(apm_yml_content, f)
     
-    # Simulate installed virtual collection package
-    # Virtual collections are installed as: apm_modules/{org}/{repo-name}-{collection-name}/
-    collection_dir = project_dir / "apm_modules" / "github" / "awesome-copilot-awesome-copilot"
-    collection_dir.mkdir(parents=True)
+    # Simulate installed virtual subdirectory plugin package
+    # Subdirectory packages are installed at natural path: apm_modules/{org}/{repo}/{subdir}
+    plugin_dir = project_dir / "apm_modules" / "github" / "awesome-copilot" / "plugins" / "awesome-copilot"
+    plugin_dir.mkdir(parents=True)
     
-    # Create generated apm.yml in the collection
-    collection_apm = {
-        "name": "awesome-copilot-awesome-copilot",
+    # Create apm.yml in the plugin
+    plugin_apm = {
+        "name": "awesome-copilot",
         "version": "1.0.0",
-        "description": "Virtual collection package"
+        "description": "Plugin package"
     }
-    with open(collection_dir / "apm.yml", "w") as f:
-        yaml.dump(collection_apm, f)
+    with open(plugin_dir / "apm.yml", "w") as f:
+        yaml.dump(plugin_apm, f)
     
     # Add some files to make it realistic
-    (collection_dir / ".apm").mkdir()
-    (collection_dir / ".apm" / "prompts").mkdir()
-    (collection_dir / ".apm" / "prompts" / "test.prompt.md").write_text("# Test prompt")
+    (plugin_dir / ".apm").mkdir()
+    (plugin_dir / ".apm" / "skills").mkdir()
+    (plugin_dir / ".apm" / "skills" / "test").mkdir()
+    (plugin_dir / ".apm" / "skills" / "test" / "SKILL.md").write_text("# Test skill")
     
-    # Check for orphans using shared helper
-    orphaned_packages, _ = _find_orphaned_packages(project_dir)
+    # Build expected set from declared dependencies
+    package = APMPackage.from_apm_yml(project_dir / "apm.yml")
+    expected_installed = _build_expected_installed_packages(package.get_apm_dependencies())
     
-    # Assert no orphans found
+    # Compute a unified view of all installed packages (2-3 level + 4+ level)
+    installed_pkgs = set(_find_installed_packages(project_dir / "apm_modules"))
+    installed_pkgs.update(_find_installed_subdirectory_packages(project_dir / "apm_modules"))
+    
+    orphaned_packages = [pkg for pkg in installed_pkgs if pkg not in expected_installed]
+    
+    assert "github/awesome-copilot/plugins/awesome-copilot" in expected_installed
     assert len(orphaned_packages) == 0, \
-        f"Virtual collection should not be flagged as orphaned. Found: {orphaned_packages}"
+        f"Plugin should not be flagged as orphaned. Found: {orphaned_packages}"
 
 
 @pytest.mark.integration
@@ -185,13 +193,13 @@ def test_virtual_file_not_flagged_as_orphan(tmp_path):
     project_dir = tmp_path / "test-project"
     project_dir.mkdir()
     
-    # Create apm.yml with virtual file dependency
+    # Create apm.yml with virtual skill dependency
     apm_yml_content = {
         "name": "test-project",
         "version": "1.0.0",
         "dependencies": {
             "apm": [
-                "github/awesome-copilot/prompts/code-review.prompt.md"
+                "github/awesome-copilot/skills/review-and-refactor"
             ]
         }
     }
@@ -199,31 +207,36 @@ def test_virtual_file_not_flagged_as_orphan(tmp_path):
     with open(project_dir / "apm.yml", "w") as f:
         yaml.dump(apm_yml_content, f)
     
-    # Simulate installed virtual file package
-    # Virtual files are installed as: apm_modules/{org}/{repo-name}-{file-name}/
-    file_pkg_dir = project_dir / "apm_modules" / "github" / "awesome-copilot-code-review"
+    # Simulate installed virtual subdirectory skill package
+    # Subdirectory packages are installed at natural path
+    file_pkg_dir = project_dir / "apm_modules" / "github" / "awesome-copilot" / "skills" / "review-and-refactor"
     file_pkg_dir.mkdir(parents=True)
     
-    # Create generated apm.yml in the package
+    # Create apm.yml in the package
     file_pkg_apm = {
-        "name": "awesome-copilot-code-review",
+        "name": "review-and-refactor",
         "version": "1.0.0",
-        "description": "Virtual file package"
+        "description": "Virtual skill package"
     }
     with open(file_pkg_dir / "apm.yml", "w") as f:
         yaml.dump(file_pkg_apm, f)
     
-    # Add the prompt file
-    (file_pkg_dir / ".apm").mkdir()
-    (file_pkg_dir / ".apm" / "prompts").mkdir()
-    (file_pkg_dir / ".apm" / "prompts" / "code-review.prompt.md").write_text("# Code review prompt")
+    # Add the SKILL.md file
+    (file_pkg_dir / "SKILL.md").write_text("# Review and Refactor skill")
     
-    # Check for orphans using shared helper
-    orphaned_packages, _ = _find_orphaned_packages(project_dir)
+    # Build expected set from declared dependencies
+    package = APMPackage.from_apm_yml(project_dir / "apm.yml")
+    expected_installed = _build_expected_installed_packages(package.get_apm_dependencies())
     
-    # Assert no orphans found
+    # Compute a unified view of all installed packages (2-3 level + 4+ level)
+    installed_pkgs = set(_find_installed_packages(project_dir / "apm_modules"))
+    installed_pkgs.update(_find_installed_subdirectory_packages(project_dir / "apm_modules"))
+    
+    orphaned_packages = [pkg for pkg in installed_pkgs if pkg not in expected_installed]
+    
+    assert "github/awesome-copilot/skills/review-and-refactor" in expected_installed
     assert len(orphaned_packages) == 0, \
-        f"Virtual file should not be flagged as orphaned. Found: {orphaned_packages}"
+        f"Virtual skill should not be flagged as orphaned. Found: {orphaned_packages}"
 
 
 @pytest.mark.integration
@@ -239,9 +252,9 @@ def test_mixed_dependencies_orphan_detection(tmp_path):
         "version": "1.0.0",
         "dependencies": {
             "apm": [
-                "danielmeppiel/design-guidelines",  # Regular package
-                "github/awesome-copilot/collections/awesome-copilot",  # Virtual collection
-                "danielmeppiel/compliance-rules/prompts/gdpr.prompt.md"  # Virtual file
+                "microsoft/apm-sample-package",  # Regular package
+                "github/awesome-copilot/plugins/awesome-copilot",  # Virtual plugin
+                "github/awesome-copilot/skills/code-exemplars-blueprint-generator"  # Virtual skill
             ]
         }
     }
@@ -253,22 +266,29 @@ def test_mixed_dependencies_orphan_detection(tmp_path):
     apm_modules_dir = project_dir / "apm_modules"
     
     # Regular package
-    regular_dir = apm_modules_dir / "danielmeppiel" / "design-guidelines"
+    regular_dir = apm_modules_dir / "microsoft" / "apm-sample-package"
     regular_dir.mkdir(parents=True)
-    (regular_dir / "apm.yml").write_text("name: design-guidelines\nversion: 1.0.0")
+    (regular_dir / "apm.yml").write_text("name: apm-sample-package\nversion: 1.0.0")
     
-    # Virtual collection
-    collection_dir = apm_modules_dir / "github" / "awesome-copilot-awesome-copilot"
-    collection_dir.mkdir(parents=True)
-    (collection_dir / "apm.yml").write_text("name: awesome-copilot-awesome-copilot\nversion: 1.0.0")
+    # Virtual plugin subdirectory
+    plugin_dir = apm_modules_dir / "github" / "awesome-copilot" / "plugins" / "awesome-copilot"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "apm.yml").write_text("name: awesome-copilot\nversion: 1.0.0")
     
-    # Virtual file
-    file_dir = apm_modules_dir / "danielmeppiel" / "compliance-rules-gdpr"
-    file_dir.mkdir(parents=True)
-    (file_dir / "apm.yml").write_text("name: compliance-rules-gdpr\nversion: 1.0.0")
+    # Virtual skill subdirectory
+    skill_dir = apm_modules_dir / "github" / "awesome-copilot" / "skills" / "code-exemplars-blueprint-generator"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "apm.yml").write_text("name: code-exemplars-blueprint-generator\nversion: 1.0.0")
     
-    # Check for orphans using shared helper
-    orphaned_packages, expected_installed = _find_orphaned_packages(project_dir)
+    # Build expected set from declared dependencies
+    package = APMPackage.from_apm_yml(project_dir / "apm.yml")
+    expected_installed = _build_expected_installed_packages(package.get_apm_dependencies())
+    
+    # Compute a unified view of all installed packages
+    installed_pkgs = set(_find_installed_packages(project_dir / "apm_modules"))
+    installed_pkgs.update(_find_installed_subdirectory_packages(project_dir / "apm_modules"))
+    
+    orphaned_packages = [pkg for pkg in installed_pkgs if pkg not in expected_installed]
     
     # Assert no orphans found
     assert len(orphaned_packages) == 0, \
@@ -276,9 +296,9 @@ def test_mixed_dependencies_orphan_detection(tmp_path):
     
     # Verify expected counts
     assert len(expected_installed) == 3, "Should have 3 expected packages"
-    assert "danielmeppiel/design-guidelines" in expected_installed
-    assert "github/awesome-copilot-awesome-copilot" in expected_installed
-    assert "danielmeppiel/compliance-rules-gdpr" in expected_installed
+    assert "microsoft/apm-sample-package" in expected_installed
+    assert "github/awesome-copilot/plugins/awesome-copilot" in expected_installed
+    assert "github/awesome-copilot/skills/code-exemplars-blueprint-generator" in expected_installed
 
 
 @pytest.mark.integration
@@ -428,8 +448,8 @@ def test_get_dependency_declaration_order_mixed_github_and_ado(tmp_path):
         "version": "1.0.0",
         "dependencies": {
             "apm": [
-                "danielmeppiel/design-guidelines",  # GitHub regular
-                "github/awesome-copilot/prompts/code-review.prompt.md",  # GitHub virtual file
+                "microsoft/apm-sample-package",  # GitHub regular
+                "github/awesome-copilot/skills/review-and-refactor",  # GitHub virtual subdirectory
                 "dev.azure.com/company/project/repo",  # ADO regular
                 "dev.azure.com/company/my-azurecollection/copilot-instructions/collections/csharp-ddd"  # ADO virtual collection
             ]
@@ -444,8 +464,8 @@ def test_get_dependency_declaration_order_mixed_github_and_ado(tmp_path):
     
     # Verify all dependency paths are returned correctly
     assert len(dep_order) == 4
-    assert dep_order[0] == "danielmeppiel/design-guidelines"  # GitHub regular: owner/repo
-    assert dep_order[1] == "github/awesome-copilot-code-review"  # GitHub virtual: owner/virtual-pkg-name
+    assert dep_order[0] == "microsoft/apm-sample-package"  # GitHub regular: owner/repo
+    assert dep_order[1] == "github/awesome-copilot/skills/review-and-refactor"  # GitHub virtual subdirectory: owner/repo/subdir
     assert dep_order[2] == "company/project/repo"  # ADO regular: org/project/repo
     assert dep_order[3] == "company/my-azurecollection/copilot-instructions-csharp-ddd"  # ADO virtual: org/project/virtual-pkg-name
 

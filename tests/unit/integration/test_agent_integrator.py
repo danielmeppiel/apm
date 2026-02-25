@@ -113,7 +113,7 @@ class TestAgentIntegrator:
     def test_get_target_filename_agent_format(self):
         """Test target filename generation with -apm suffix for .agent.md."""
         source = Path("/package/security.agent.md")
-        package_name = "danielmeppiel/security-standards"
+        package_name = "acme/security-standards"
         
         target = self.integrator.get_target_filename(source, package_name)
         # Intent-first naming: -apm suffix before extension
@@ -122,7 +122,7 @@ class TestAgentIntegrator:
     def test_get_target_filename_chatmode_format(self):
         """Test target filename generation with -apm suffix for .chatmode.md."""
         source = Path("/package/default.chatmode.md")
-        package_name = "danielmeppiel/design-guidelines"
+        package_name = "microsoft/apm-sample-package"
         
         target = self.integrator.get_target_filename(source, package_name)
         # Preserve original extension

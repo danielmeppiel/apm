@@ -1,10 +1,10 @@
-"""Configuration management for APM-CLI."""
+"""Configuration management for APM."""
 
 import os
 import json
 
 
-CONFIG_DIR = os.path.expanduser("~/.apm-cli")
+CONFIG_DIR = os.path.expanduser("~/.apm")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 

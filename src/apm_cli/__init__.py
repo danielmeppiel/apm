@@ -1,4 +1,4 @@
-"""APM-CLI package."""
+"""APM package."""
 
 from .version import get_version
 
