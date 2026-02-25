@@ -171,19 +171,12 @@ def scan_dependency_primitives(base_dir: str, collection: PrimitiveCollection) -
     
     # Process dependencies in declaration order
     for dep_name in dependency_order:
-        # Handle org-namespaced structure
+        # Join all path parts to handle variable-length paths:
         # GitHub: "owner/repo" (2 parts)
         # Azure DevOps: "org/project/repo" (3 parts)
+        # Virtual subdirectory: "owner/repo/subdir" or deeper (3+ parts)
         parts = dep_name.split("/")
-        if len(parts) >= 3:
-            # ADO structure: apm_modules/org/project/repo
-            dep_path = apm_modules_path / parts[0] / parts[1] / parts[2]
-        elif len(parts) == 2:
-            # GitHub structure: apm_modules/owner/repo
-            dep_path = apm_modules_path / parts[0] / parts[1]
-        else:
-            # Fallback for non-namespaced dependencies
-            dep_path = apm_modules_path / dep_name
+        dep_path = apm_modules_path.joinpath(*parts)
             
         if dep_path.exists() and dep_path.is_dir():
             scan_directory_with_source(dep_path, collection, source=f"dependency:{dep_name}")
@@ -211,26 +204,40 @@ def get_dependency_declaration_order(base_dir: str) -> List[str]:
         apm_dependencies = package.get_apm_dependencies()
         
         # Extract installed paths from dependency references
-        # Virtual packages use get_virtual_package_name() for the final directory component
+        # Virtual file/collection packages use get_virtual_package_name() (flattened),
+        # while virtual subdirectory packages use natural repo/subdir paths.
         dependency_names = []
         for dep in apm_dependencies:
             if dep.alias:
                 dependency_names.append(dep.alias)
             elif dep.is_virtual:
-                # Virtual packages: construct path with virtual package name
-                # GitHub: owner/virtual-pkg-name
-                # ADO: org/project/virtual-pkg-name
                 repo_parts = dep.repo_url.split("/")
-                virtual_name = dep.get_virtual_package_name()
-                if dep.is_azure_devops() and len(repo_parts) >= 3:
-                    # ADO structure: org/project/virtual-pkg-name
-                    dependency_names.append(f"{repo_parts[0]}/{repo_parts[1]}/{virtual_name}")
-                elif len(repo_parts) >= 2:
-                    # GitHub structure: owner/virtual-pkg-name
-                    dependency_names.append(f"{repo_parts[0]}/{virtual_name}")
+
+                if dep.is_virtual_subdirectory() and dep.virtual_path:
+                    # Virtual subdirectory packages keep natural path structure.
+                    # GitHub: owner/repo/subdir
+                    # ADO: org/project/repo/subdir
+                    if dep.is_azure_devops() and len(repo_parts) >= 3:
+                        dependency_names.append(
+                            f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
+                        )
+                    elif len(repo_parts) >= 2:
+                        dependency_names.append(
+                            f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
+                        )
+                    else:
+                        dependency_names.append(dep.virtual_path)
                 else:
-                    # Fallback
-                    dependency_names.append(virtual_name)
+                    # Virtual file/collection packages are flattened by package name.
+                    # GitHub: owner/virtual-pkg-name
+                    # ADO: org/project/virtual-pkg-name
+                    virtual_name = dep.get_virtual_package_name()
+                    if dep.is_azure_devops() and len(repo_parts) >= 3:
+                        dependency_names.append(f"{repo_parts[0]}/{repo_parts[1]}/{virtual_name}")
+                    elif len(repo_parts) >= 2:
+                        dependency_names.append(f"{repo_parts[0]}/{virtual_name}")
+                    else:
+                        dependency_names.append(virtual_name)
             else:
                 # Regular packages: use full org/repo path
                 # This matches our org-namespaced directory structure
