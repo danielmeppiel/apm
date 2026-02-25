@@ -259,8 +259,8 @@ def get_dependency_declaration_order(base_dir: str) -> List[str]:
             for path in lockfile_paths:
                 if path not in direct_set:
                     dependency_names.append(path)
-        except Exception:
-            pass  # If lockfile can't be read, proceed with direct deps only
+        except ImportError:
+            pass  # Lockfile module not available
         
         return dependency_names
         

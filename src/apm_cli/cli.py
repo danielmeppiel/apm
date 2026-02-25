@@ -174,8 +174,8 @@ def _check_orphaned_packages():
                 from apm_cli.deps.lockfile import get_lockfile_installed_paths
                 lockfile_paths = get_lockfile_installed_paths(Path.cwd())
                 expected_installed.update(lockfile_paths)
-            except Exception:
-                pass  # If lockfile can't be read, proceed with direct deps only
+            except ImportError:
+                pass  # Lockfile module not available
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -807,8 +807,8 @@ def prune(ctx, dry_run):
                 from apm_cli.deps.lockfile import get_lockfile_installed_paths
                 lockfile_paths = get_lockfile_installed_paths(Path.cwd())
                 expected_installed.update(lockfile_paths)
-            except Exception:
-                pass  # If lockfile can't be read, proceed with direct deps only
+            except ImportError:
+                pass  # Lockfile module not available
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)

@@ -218,6 +218,8 @@ def get_lockfile_installed_paths(project_root: Path) -> List[str]:
     - Primitive discovery to find all dependency primitives
     - Orphan detection to avoid false positives for transitive deps
 
+    Returns an empty list if the lockfile is missing, corrupt, or unreadable.
+
     Args:
         project_root: Path to project root containing apm.lock.
 
@@ -225,27 +227,30 @@ def get_lockfile_installed_paths(project_root: Path) -> List[str]:
         List[str]: Relative installed paths (e.g., ['owner/repo']),
                    ordered by depth then repo_url (no duplicates).
     """
-    lockfile_path = get_lockfile_path(project_root)
-    lockfile = LockFile.read(lockfile_path)
-    if not lockfile:
-        return []
+    try:
+        lockfile_path = get_lockfile_path(project_root)
+        lockfile = LockFile.read(lockfile_path)
+        if not lockfile:
+            return []
 
-    apm_modules_dir = project_root / "apm_modules"
-    paths: List[str] = []
-    seen: set = set()
-    for dep in lockfile.get_all_dependencies():
-        dep_ref = DependencyReference(
-            repo_url=dep.repo_url,
-            host=dep.host,
-            virtual_path=dep.virtual_path,
-            is_virtual=dep.is_virtual,
-        )
-        install_path = dep_ref.get_install_path(apm_modules_dir)
-        try:
-            rel_path = str(install_path.relative_to(apm_modules_dir))
-        except ValueError:
-            rel_path = str(install_path)
-        if rel_path not in seen:
-            seen.add(rel_path)
-            paths.append(rel_path)
-    return paths
+        apm_modules_dir = project_root / "apm_modules"
+        paths: List[str] = []
+        seen: set = set()
+        for dep in lockfile.get_all_dependencies():
+            dep_ref = DependencyReference(
+                repo_url=dep.repo_url,
+                host=dep.host,
+                virtual_path=dep.virtual_path,
+                is_virtual=dep.is_virtual,
+            )
+            install_path = dep_ref.get_install_path(apm_modules_dir)
+            try:
+                rel_path = str(install_path.relative_to(apm_modules_dir))
+            except ValueError:
+                rel_path = str(install_path)
+            if rel_path not in seen:
+                seen.add(rel_path)
+                paths.append(rel_path)
+        return paths
+    except Exception:
+        return []
