@@ -147,7 +147,7 @@ class TestPromptDiscovery:
         this and raises an error with helpful disambiguation options.
         """
         # Setup: Create two different packages with same prompt filename
-        dep1_dir = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        dep1_dir = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         dep1_dir.mkdir(parents=True)
         dep1_prompt = dep1_dir / "code-review.prompt.md"
         dep1_prompt.write_text("---\n---\nGitHub Copilot code review")
@@ -166,7 +166,7 @@ class TestPromptDiscovery:
         
         error_msg = str(exc_info.value)
         assert "Multiple prompts found for 'code-review'" in error_msg
-        assert "github/awesome-copilot-code-review" in error_msg
+        assert "github/test-repo-code-review" in error_msg
         assert "acme/dev-tools-code-review" in error_msg
         assert "apm run" in error_msg
         assert "qualified path" in error_msg
@@ -177,7 +177,7 @@ class TestPromptDiscovery:
         local_prompt = tmp_path / "code-review.prompt.md"
         local_prompt.write_text("---\n---\nLocal code review")
         
-        dep1_dir = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        dep1_dir = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         dep1_dir.mkdir(parents=True)
         dep1_prompt = dep1_dir / "code-review.prompt.md"
         dep1_prompt.write_text("---\n---\nGitHub Copilot code review")
@@ -201,11 +201,11 @@ class TestPromptDiscovery:
         """Test discovery works with virtual package directory naming.
         
         Virtual packages use format: {repo-name}-{filename-without-extension}
-        Example: github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
-        → Directory: github/awesome-copilot-architecture-blueprint-generator/
+        Example: owner/test-repo/prompts/architecture-blueprint-generator.prompt.md
+        → Directory: github/test-repo-architecture-blueprint-generator/
         """
         # Setup: Create virtual package structure as it would be installed
-        virt_pkg_dir = tmp_path / "apm_modules" / "github" / "awesome-copilot-architecture-blueprint-generator" / ".apm" / "prompts"
+        virt_pkg_dir = tmp_path / "apm_modules" / "github" / "test-repo-architecture-blueprint-generator" / ".apm" / "prompts"
         virt_pkg_dir.mkdir(parents=True)
         prompt_file = virt_pkg_dir / "architecture-blueprint-generator.prompt.md"
         prompt_file.write_text("---\n---\nArchitecture blueprint generator")
@@ -216,20 +216,20 @@ class TestPromptDiscovery:
         
         assert result is not None
         assert result.name == "architecture-blueprint-generator.prompt.md"
-        assert "awesome-copilot-architecture-blueprint-generator" in str(result)
+        assert "test-repo-architecture-blueprint-generator" in str(result)
     
     def test_discover_multiple_virtual_packages_different_repos_same_filename(self, tmp_path):
         """Test collision between virtual packages from different repos with same filename.
         
         This is the critical collision scenario:
-        - github/awesome-copilot/prompts/code-review.prompt.md
+        - owner/test-repo/prompts/code-review.prompt.md
         - acme/dev-tools/prompts/code-review.prompt.md
         
         Both install as virtual packages with different directory names but same prompt filename.
         Now properly detects collision and provides disambiguation.
         """
         # Setup: Two virtual packages from different repos
-        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         github_pkg.mkdir(parents=True)
         github_prompt = github_pkg / "code-review.prompt.md"
         github_prompt.write_text("---\n---\nGitHub version")
@@ -248,13 +248,13 @@ class TestPromptDiscovery:
         
         error_msg = str(exc_info.value)
         assert "Multiple prompts found" in error_msg
-        assert "github/awesome-copilot-code-review" in error_msg
+        assert "github/test-repo-code-review" in error_msg
         assert "acme/dev-tools-code-review" in error_msg
     
     def test_discover_qualified_path_github(self, tmp_path):
         """Test discovery using qualified path for GitHub package."""
         # Setup: Two virtual packages with same prompt name
-        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         github_pkg.mkdir(parents=True)
         github_prompt = github_pkg / "code-review.prompt.md"
         github_prompt.write_text("---\n---\nGitHub version")
@@ -268,17 +268,17 @@ class TestPromptDiscovery:
         runner = ScriptRunner()
         
         # Use qualified path to specify which one
-        result = runner._discover_prompt_file("github/awesome-copilot-code-review/code-review")
+        result = runner._discover_prompt_file("github/test-repo-code-review/code-review")
         
         assert result is not None
         assert result.name == "code-review.prompt.md"
         assert "github" in str(result)
-        assert "awesome-copilot-code-review" in str(result)
+        assert "test-repo-code-review" in str(result)
     
     def test_discover_qualified_path_acme(self, tmp_path):
         """Test discovery using qualified path for Acme package."""
         # Setup: Two virtual packages with same prompt name
-        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         github_pkg.mkdir(parents=True)
         github_prompt = github_pkg / "code-review.prompt.md"
         github_prompt.write_text("---\n---\nGitHub version")

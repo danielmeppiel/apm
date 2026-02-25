@@ -1008,9 +1008,9 @@ def uninstall(ctx, packages, dry_run):
     and the apm_modules/ directory. It's the opposite of 'apm install <package>'.
 
     Examples:
-        apm uninstall danielmeppiel/design-guidelines    # Remove one package
-        apm uninstall org/pkg1 org/pkg2           # Remove multiple packages
-        apm uninstall danielmeppiel/pkg --dry-run        # Show what would be removed
+        apm uninstall acme/my-package                # Remove one package
+        apm uninstall org/pkg1 org/pkg2              # Remove multiple packages
+        apm uninstall acme/my-package --dry-run      # Show what would be removed
     """
     try:
         # Check if apm.yml exists
@@ -1482,8 +1482,8 @@ def _install_apm_dependencies(
         ) as progress:
             for dep_ref in deps_to_install:
                 # Determine installation directory using namespaced structure
-                # e.g., danielmeppiel/design-guidelines -> apm_modules/danielmeppiel/design-guidelines/
-                # For virtual packages: github/awesome-copilot/prompts/file.prompt.md -> apm_modules/github/awesome-copilot-file/
+                # e.g., microsoft/apm-sample-package -> apm_modules/microsoft/apm-sample-package/
+                # For virtual packages: owner/repo/prompts/file.prompt.md -> apm_modules/owner/repo-file/
                 # For subdirectory packages: owner/repo/subdir -> apm_modules/owner/repo/subdir/
                 if dep_ref.alias:
                     # If alias is provided, use it directly (assume user handles namespacing)

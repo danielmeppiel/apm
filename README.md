@@ -30,7 +30,7 @@ dependencies:
     # A full APM package with rules, skills, prompts...
     - microsoft/apm-package-sample
     # Specific agent primitives from any repository
-    - github/awesome-copilot/prompts/code-review.prompt.md
+    - github/awesome-copilot/skills/review-and-refactor
     - github/awesome-copilot/agents/api-architect.agent.md
 ```
 
@@ -98,7 +98,7 @@ apm install github/awesome-copilot/agents/api-architect.agent.md
 apm install owner/repo   
 apm install owner/repo/path                                              
 # Single file
-apm install github/awesome-copilot/prompts/code-review.prompt.md   
+apm install github/awesome-copilot/skills/review-and-refactor   
 # GitHub Enterprise Server
 apm install ghe.company.com/owner/repo    
 # Azure DevOps                      

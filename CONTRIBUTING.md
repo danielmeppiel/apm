@@ -1,6 +1,6 @@
-# Contributing to apm-cli
+# Contributing to APM
 
-Thank you for considering contributing to apm-cli! This document outlines the process for contributing to the project.
+Thank you for considering contributing to APM! This document outlines the process for contributing to the project.
 
 ## Code of Conduct
 
@@ -12,7 +12,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 
 Before submitting a bug report:
 
-1. Check the [GitHub Issues](https://github.com/username/apm-cli/issues) to see if the bug has already been reported.
+1. Check the [GitHub Issues](https://github.com/microsoft/apm/issues) to see if the bug has already been reported.
 2. Update your copy of the code to the latest version to ensure the issue hasn't been fixed.
 
 When submitting a bug report:

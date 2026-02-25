@@ -427,7 +427,7 @@ else
         echo ""
     fi
     
-    echo "2. Homebrew (macOS/Linux): brew install microsoft/apm-cli"
+    echo "2. Homebrew (macOS/Linux): brew install microsoft/apm/apm"
     echo ""
     echo "3. From source:"
     echo "   git clone https://github.com/$REPO.git"

@@ -11,8 +11,7 @@ has_pip=$(command -v pip >/dev/null 2>&1 && echo "yes" || echo "no")
 # Try to install with the best available package manager
 if [ "$has_brew" = "yes" ]; then
     echo "Installing with Homebrew..."
-    brew tap microsoft/apm-cli
-    brew install apm-cli
+    brew install microsoft/apm/apm
 elif [ "$has_uv" = "yes" ]; then
     echo "Installing with uv..."
     uv pip install apm-cli

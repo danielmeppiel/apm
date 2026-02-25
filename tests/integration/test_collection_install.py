@@ -14,18 +14,18 @@ class TestCollectionInstallation:
     
     def test_parse_collection_dependency(self):
         """Test parsing a collection dependency reference."""
-        dep_ref = DependencyReference.parse("github/awesome-copilot/collections/awesome-copilot")
+        dep_ref = DependencyReference.parse("owner/test-repo/collections/awesome-copilot")
         
         assert dep_ref.is_virtual is True
         assert dep_ref.is_virtual_collection() is True
         assert dep_ref.is_virtual_file() is False
-        assert dep_ref.repo_url == "github/awesome-copilot"
+        assert dep_ref.repo_url == "owner/test-repo"
         assert dep_ref.virtual_path == "collections/awesome-copilot"
-        assert dep_ref.get_virtual_package_name() == "awesome-copilot-awesome-copilot"
+        assert dep_ref.get_virtual_package_name() == "test-repo-awesome-copilot"
     
     def test_parse_collection_with_reference(self):
         """Test parsing a collection dependency with git reference."""
-        dep_ref = DependencyReference.parse("github/awesome-copilot/collections/project-planning#main")
+        dep_ref = DependencyReference.parse("owner/test-repo/collections/project-planning#main")
         
         assert dep_ref.is_virtual is True
         assert dep_ref.is_virtual_collection() is True
@@ -34,6 +34,7 @@ class TestCollectionInstallation:
     
     @pytest.mark.integration
     @pytest.mark.slow
+    @pytest.mark.skip(reason="github/awesome-copilot no longer has collections/ directory (deprecated in favor of plugins)")
     def test_download_small_collection(self):
         """Test downloading a small collection from awesome-copilot.
         

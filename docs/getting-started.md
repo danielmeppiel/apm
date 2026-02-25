@@ -64,7 +64,7 @@ export GITHUB_HOST=github.company.com
 #### Scenario 1: Public Modules Only (Most Users)
 ```bash
 # No tokens needed - just works!
-apm install danielmeppiel/compliance-rules
+apm install microsoft/apm-sample-package
 apm compile
 ```
 
@@ -99,10 +99,10 @@ APM installs packages from multiple sources. Use the format that matches your re
 
 | Source | Format | Example |
 |--------|--------|---------|
-| GitHub.com | `owner/repo` | `apm install danielmeppiel/compliance-rules` |
+| GitHub.com | `owner/repo` | `apm install microsoft/apm-sample-package` |
 | GitHub Enterprise | `ghe.company.com/owner/repo` | `apm install ghe.myco.com/team/standards` |
 | Azure DevOps | `dev.azure.com/org/project/repo` | `apm install dev.azure.com/myorg/proj/rules` |
-| Virtual Package | `owner/repo/path/file.prompt.md` | `apm install github/awesome-copilot/prompts/code-review.prompt.md` |
+| Virtual Package | `owner/repo/path/to/skill` | `apm install github/awesome-copilot/skills/review-and-refactor` |
 
 ### GitHub Enterprise Support
 
@@ -404,8 +404,8 @@ For reusable context from other projects, add APM dependencies:
 # Add to apm.yml
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules  # GDPR, legal workflows  
-    - danielmeppiel/design-guidelines # UI/UX standards
+    - microsoft/apm-sample-package  # Design standards, prompts
+    - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
     - io.github.github/github-mcp-server
 ```
@@ -426,7 +426,7 @@ apm deps tree
 APM supports **virtual packages** - installing individual files directly from any repository without requiring a full APM package structure. This is perfect for reusing individual workflow files or configuration from existing projects.
 
 > 💡 **Explore ready-to-use prompts and agents!**  
-> Browse [github/awesome-copilot](https://github.com/github/awesome-copilot) for a curated collection of community-contributed prompts, instructions, and agents across all major languages and frameworks. Install any file directly with APM. Also works with Awesome Copilot's collections.
+> Browse [github/awesome-copilot](https://github.com/github/awesome-copilot) for a curated collection of community-contributed skills, instructions, and agents across all major languages and frameworks. Install any subdirectory directly with APM. Also works with Awesome Copilot's plugins.
 
 **What are Virtual Packages?**
 
@@ -434,7 +434,7 @@ Instead of installing an entire package (`owner/repo`), you can install specific
 
 ```bash
 # Install individual files directly
-apm install github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+apm install github/awesome-copilot/skills/architecture-blueprint-generator
 apm install myorg/standards/instructions/code-review.instructions.md
 apm install company/templates/chatmodes/qa-assistant.chatmode.md
 ```
@@ -459,18 +459,18 @@ apm install company/templates/chatmodes/qa-assistant.chatmode.md
 Files install to `apm_modules/{owner}/{sanitized-package-name}/`:
 
 ```bash
-apm install github/awesome-copilot/prompts/code-review.prompt.md
+apm install github/awesome-copilot/skills/review-and-refactor
 ```
 
 Creates:
 ```
 apm_modules/
 └── github/
-    └── awesome-copilot-code-review/
-        ├── apm.yml
-        └── .apm/
-            └── prompts/
-                └── code-review.prompt.md
+    └── awesome-copilot/
+        └── skills/
+            └── review-and-refactor/
+                ├── apm.yml
+                └── SKILL.md
 ```
 
 **Adding to apm.yml:**
@@ -481,10 +481,10 @@ Virtual packages work in `apm.yml` just like regular packages:
 dependencies:
   apm:
     # Regular packages
-    - danielmeppiel/compliance-rules
+    - microsoft/apm-sample-package
     
     # Virtual packages - individual files
-    - github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+    - github/awesome-copilot/skills/architecture-blueprint-generator
     - myorg/engineering/instructions/testing-standards.instructions.md
 ```
 
@@ -494,7 +494,7 @@ Use `@ref` syntax for specific versions:
 
 ```bash
 # Install from specific branch
-apm install github/awesome-copilot/prompts/code-review.prompt.md@develop
+apm install github/awesome-copilot/skills/review-and-refactor@develop
 
 # Install from tag
 apm install myorg/templates/chatmodes/assistant.chatmode.md@v2.1.0
@@ -539,7 +539,7 @@ Starting with v0.5.0, installed prompts are **immediately runnable** without man
 
 ```bash
 # Install a prompt
-apm install github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+apm install github/awesome-copilot/skills/architecture-blueprint-generator
 
 # Run immediately - APM auto-discovers it!
 apm run architecture-blueprint-generator --param project_name="my-app"

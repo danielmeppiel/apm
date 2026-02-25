@@ -61,8 +61,8 @@ Skill names are validated per the [agentskills.io](https://agentskills.io/) spec
 ```
 .github/skills/
 ├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
-├── design-guidelines/     # From danielmeppiel/design-guidelines
-└── compliance-rules/      # From danielmeppiel/compliance-rules
+├── design-guidelines/     # From microsoft/apm-sample-package
+└── apm-sample-package/    # From microsoft/apm-sample-package (alternate name)
 ```
 
 ### Step 3: Primitive Integration

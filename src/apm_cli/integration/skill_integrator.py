@@ -974,7 +974,7 @@ class SkillIntegrator:
         
         # Determine target paths - write to .github/skills/{skill-name}/
         # Use the install folder name for simplicity and consistency
-        # e.g., apm_modules/danielmeppiel/design-guidelines → design-guidelines
+        # e.g., apm_modules/microsoft/apm-sample-package → apm-sample-package
         skill_name = package_path.name
         skill_dir = project_root / ".github" / "skills" / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)

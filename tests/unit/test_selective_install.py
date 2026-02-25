@@ -88,7 +88,7 @@ class TestFilterMatchingLogic:
         
         # Should NOT match design-guidelines
         assert not self._matches_filter(
-            "github.com/danielmeppiel/design-guidelines",
+            "github.com/microsoft/apm-sample-package",
             filter_list
         )
 
