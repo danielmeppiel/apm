@@ -23,7 +23,7 @@ Three workflows split by trigger and secret requirements:
 ## Platform Testing Strategy
 - **PR time**: Linux-only for speed. Catches logic bugs, dependency issues, and binary packaging problems.
 - **Post-merge**: Full 4-platform matrix catches platform-specific issues immediately on main.
-- **Rationale**: Python + PyInstaller platform issues are rare. The post-merge safety net is sufficient.
+- **Rationale**: PR-time Linux coverage gives fast feedback on logic, dependency, and packaging changes, while the post-merge full-matrix workflows quickly catch any remaining platform-specific issues.
 
 ## PyInstaller Binary Packaging
 - **CRITICAL**: Uses `--onedir` mode (NOT `--onefile`) for faster CLI startup performance
