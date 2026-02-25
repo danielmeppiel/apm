@@ -3,7 +3,7 @@
 import tempfile
 import shutil
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from datetime import datetime
 
 from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case, validate_skill_name, normalize_skill_name, copy_skill_to_target
@@ -2589,3 +2589,206 @@ invalid yaml: [this is broken
         assert result['files_removed'] == 2
         assert not github_orphan.exists()
         assert not claude_orphan.exists()
+
+
+class TestSubSkillPromotion:
+    """Test that sub-skills inside packages are promoted to top-level entries.
+
+    When a package contains .apm/skills/<sub-skill>/SKILL.md, each sub-skill
+    should be copied to .github/skills/<sub-skill>/ as an independent
+    top-level entry so Copilot can discover it.
+    """
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        install_path: Path = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        package = APMPackage(
+            name=name,
+            version="1.0.0",
+            package_path=install_path or self.project_root / "package",
+            source=f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            package_type=package_type
+        )
+
+    def _create_package_with_sub_skills(self, name="parent-skill", sub_skills=None):
+        """Create a package directory with a SKILL.md and sub-skills under .apm/skills/."""
+        package_dir = self.project_root / name
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text(f"---\nname: {name}\ndescription: Parent skill\n---\n# {name}\n")
+        if sub_skills:
+            skills_dir = package_dir / ".apm" / "skills"
+            skills_dir.mkdir(parents=True)
+            for sub_name in sub_skills:
+                sub_dir = skills_dir / sub_name
+                sub_dir.mkdir()
+                (sub_dir / "SKILL.md").write_text(
+                    f"---\nname: {sub_name}\ndescription: Sub-skill {sub_name}\n---\n# {sub_name}\n"
+                )
+        return package_dir
+
+    def test_sub_skill_promoted_to_top_level(self):
+        """Sub-skills under .apm/skills/ should be copied to .github/skills/ as top-level entries."""
+        package_dir = self._create_package_with_sub_skills(
+            "modernisation", sub_skills=["azure-naming"]
+        )
+        pkg_info = self._create_package_info(name="modernisation", install_path=package_dir)
+
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Parent skill exists
+        assert (self.project_root / ".github" / "skills" / "modernisation" / "SKILL.md").exists()
+        # .apm/ excluded from parent copy to avoid redundant storage
+        assert not (self.project_root / ".github" / "skills" / "modernisation" / ".apm").exists()
+        # Sub-skill promoted to top level
+        assert (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").exists()
+        content = (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").read_text()
+        assert "azure-naming" in content
+
+    def test_multiple_sub_skills_promoted(self):
+        """All sub-skills in the package should be promoted."""
+        package_dir = self._create_package_with_sub_skills(
+            "my-package", sub_skills=["skill-a", "skill-b", "skill-c"]
+        )
+        pkg_info = self._create_package_info(name="my-package", install_path=package_dir)
+
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        for sub in ["skill-a", "skill-b", "skill-c"]:
+            assert (self.project_root / ".github" / "skills" / sub / "SKILL.md").exists()
+
+    def test_sub_skill_without_skill_md_not_promoted(self):
+        """Directories under .apm/skills/ without SKILL.md should be ignored."""
+        package_dir = self._create_package_with_sub_skills("pkg", sub_skills=["valid-sub"])
+        # Add a directory without SKILL.md
+        (package_dir / ".apm" / "skills" / "no-skill-md").mkdir()
+        (package_dir / ".apm" / "skills" / "no-skill-md" / "README.md").write_text("# Not a skill")
+
+        pkg_info = self._create_package_info(name="pkg", install_path=package_dir)
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        assert (self.project_root / ".github" / "skills" / "valid-sub" / "SKILL.md").exists()
+        assert not (self.project_root / ".github" / "skills" / "no-skill-md").exists()
+
+    def test_sub_skill_name_collision_overwrites_with_warning(self):
+        """If a promoted sub-skill name clashes with an existing skill, it overwrites and warns."""
+        # Pre-existing skill at top level
+        existing = self.project_root / ".github" / "skills" / "azure-naming"
+        existing.mkdir(parents=True)
+        (existing / "SKILL.md").write_text("# Old content")
+
+        package_dir = self._create_package_with_sub_skills(
+            "modernisation", sub_skills=["azure-naming"]
+        )
+        pkg_info = self._create_package_info(name="modernisation", install_path=package_dir)
+
+        with patch("apm_cli.cli._rich_warning") as mock_warning:
+            self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Warning should have been emitted about the collision
+        mock_warning.assert_called_once()
+        assert "azure-naming" in mock_warning.call_args[0][0]
+        assert "modernisation" in mock_warning.call_args[0][0]
+
+        # Should be overwritten with sub-skill content
+        content = (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").read_text()
+        assert "Sub-skill azure-naming" in content
+        assert "Old content" not in content
+
+    def test_sub_skill_promoted_to_claude_skills(self):
+        """Sub-skills should also be promoted under .claude/skills/ when .claude/ exists."""
+        (self.project_root / ".claude").mkdir()
+        package_dir = self._create_package_with_sub_skills(
+            "modernisation", sub_skills=["azure-naming"]
+        )
+        pkg_info = self._create_package_info(name="modernisation", install_path=package_dir)
+
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        assert (self.project_root / ".github" / "skills" / "azure-naming" / "SKILL.md").exists()
+        assert (self.project_root / ".claude" / "skills" / "azure-naming" / "SKILL.md").exists()
+
+    def test_sub_skill_name_normalization(self):
+        """Sub-skills with invalid names should be normalized before promotion."""
+        package_dir = self.project_root / "my-package"
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text("---\nname: my-package\n---\n# Parent")
+        skills_dir = package_dir / ".apm" / "skills"
+        skills_dir.mkdir(parents=True)
+        # Create sub-skill with invalid name (uppercase + underscores)
+        bad_name_dir = skills_dir / "My_Azure_Skill"
+        bad_name_dir.mkdir()
+        (bad_name_dir / "SKILL.md").write_text("---\nname: My_Azure_Skill\n---\n# Bad name")
+
+        pkg_info = self._create_package_info(name="my-package", install_path=package_dir)
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Should be normalized to lowercase-hyphenated
+        assert not (self.project_root / ".github" / "skills" / "My_Azure_Skill").exists()
+        assert (self.project_root / ".github" / "skills" / "my-azure-skill" / "SKILL.md").exists()
+
+    def test_package_without_sub_skills_unchanged(self):
+        """Packages without .apm/skills/ subdirectory should work as before."""
+        package_dir = self.project_root / "simple-skill"
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text("---\nname: simple-skill\n---\n# Simple")
+
+        pkg_info = self._create_package_info(name="simple-skill", install_path=package_dir)
+        result = self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "simple-skill" / "SKILL.md").exists()
+        skills = list((self.project_root / ".github" / "skills").iterdir())
+        assert len(skills) == 1
+
+    def test_sync_integration_preserves_promoted_sub_skills(self):
+        """sync_integration should not orphan promoted sub-skills."""
+        # Set up installed package structure in apm_modules
+        apm_modules = self.project_root / "apm_modules"
+        owner_dir = apm_modules / "testorg" / "agent-library" / "modernisation"
+        owner_dir.mkdir(parents=True)
+        (owner_dir / "apm.yml").write_text("name: modernisation\nversion: 1.0.0\n")
+        (owner_dir / "SKILL.md").write_text("---\nname: modernisation\n---\n# Parent")
+        sub_dir = owner_dir / ".apm" / "skills" / "azure-naming"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "SKILL.md").write_text("---\nname: azure-naming\n---\n# Sub")
+
+        # Create the promoted skills in .github/skills/
+        for name in ["modernisation", "azure-naming"]:
+            d = self.project_root / ".github" / "skills" / name
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(f"# {name}")
+
+        # Mock the dependency
+        dep = DependencyReference.parse("testorg/agent-library/modernisation")
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [dep]
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        # Neither should be removed
+        assert result['files_removed'] == 0
+        assert (self.project_root / ".github" / "skills" / "modernisation").exists()
+        assert (self.project_root / ".github" / "skills" / "azure-naming").exists()
