@@ -81,20 +81,21 @@ class TestSkillInstallIntegration:
     def test_install_preserves_skill_content(self, temp_project, apm_command):
         """Integrated skill should preserve the original SKILL.md content."""
         # Install skill
-        subprocess.run(
+        result = subprocess.run(
             [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
             timeout=120
         )
+        assert result.returncode == 0, f"Install failed: {result.stderr}"
         
         # Read both files
         skill_path = temp_project / "apm_modules" / "anthropics" / "skills" / "skills" / "brand-guidelines" / "SKILL.md"
         integrated_path = temp_project / ".github" / "skills" / "brand-guidelines" / "SKILL.md"
         
-        if not skill_path.exists() or not integrated_path.exists():
-            pytest.skip("Files not created")
+        assert skill_path.exists(), "Source SKILL.md not found in apm_modules"
+        assert integrated_path.exists(), "Integrated SKILL.md not found in .github/skills/"
         
         skill_content = skill_path.read_text()
         integrated_content = integrated_path.read_text()
@@ -105,18 +106,17 @@ class TestSkillInstallIntegration:
     def test_install_creates_correct_structure(self, temp_project, apm_command):
         """Integrated skill should have SKILL.md in .github/skills/{name}/."""
         # Install skill
-        subprocess.run(
+        result = subprocess.run(
             [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
             timeout=120
         )
+        assert result.returncode == 0, f"Install failed: {result.stderr}"
         
         skill_dir = temp_project / ".github" / "skills" / "brand-guidelines"
-        
-        if not skill_dir.exists():
-            pytest.skip("Skill directory not created")
+        assert skill_dir.exists(), "Skill directory not created"
         
         # Check SKILL.md exists
         assert (skill_dir / "SKILL.md").exists(), "SKILL.md should be in skill directory"
@@ -128,32 +128,33 @@ class TestCompileSkipsSkills:
     def test_compile_does_not_modify_skills(self, temp_project, apm_command):
         """Compile should not modify skill files already integrated."""
         # Install skill (this integrates the skill)
-        subprocess.run(
+        result = subprocess.run(
             [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
             timeout=120
         )
+        assert result.returncode == 0, f"Install failed: {result.stderr}"
         
         skill_integrated = temp_project / ".github" / "skills" / "brand-guidelines" / "SKILL.md"
+        assert skill_integrated.exists(), "Skill not integrated after install"
         
-        if skill_integrated.exists():
-            # Record modification time
-            mtime_before = skill_integrated.stat().st_mtime
-            
-            # Run compile
-            subprocess.run(
-                [apm_command, "compile"],
-                cwd=temp_project,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            
-            # Skill file should not be modified by compile
-            mtime_after = skill_integrated.stat().st_mtime
-            assert mtime_before == mtime_after, "Compile should not modify skill integrated at install"
+        # Record modification time
+        mtime_before = skill_integrated.stat().st_mtime
+        
+        # Run compile
+        subprocess.run(
+            [apm_command, "compile"],
+            cwd=temp_project,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        # Skill file should not be modified by compile
+        mtime_after = skill_integrated.stat().st_mtime
+        assert mtime_before == mtime_after, "Compile should not modify skill integrated at install"
 
 
 class TestMultipleSkillsInstall:

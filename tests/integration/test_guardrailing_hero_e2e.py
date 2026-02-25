@@ -1,7 +1,7 @@
 """
-End-to-end test for README Hero Scenario 2: 2-Minute Guardrailing
+End-to-end test for a typical 2-Minute Guardrailing flow.
 
-Tests the exact 2-minute guardrailing flow from README (lines 46-60):
+Exercises a guardrailing workflow with mixed package types:
 1. apm init my-project && cd my-project
 2. apm install microsoft/apm-sample-package
 3. apm install github/awesome-copilot/instructions/code-review-generic.instructions.md
@@ -9,7 +9,7 @@ Tests the exact 2-minute guardrailing flow from README (lines 46-60):
 5. apm run design-review
 
 This validates that:
-- Multiple APM packages can be installed
+- Multiple APM packages can be installed (full package + virtual instruction)
 - AGENTS.md is generated with combined instructions from both packages
 - Prompts from installed packages can be executed
 """
@@ -159,6 +159,10 @@ class TestGuardrailingHeroScenario:
             # Verify installation - virtual file packages use flattened name: owner/repo-name-file-stem
             instruction_pkg = project_dir / "apm_modules" / "github" / "awesome-copilot-code-review-generic"
             assert instruction_pkg.exists(), "instruction package not installed"
+            
+            # Verify the instruction file was actually downloaded
+            instruction_files = list(instruction_pkg.rglob("*.instructions.md"))
+            assert len(instruction_files) > 0, "instruction file not downloaded into virtual package"
             
             print("✓ code-review-generic instruction installed")
             
