@@ -45,7 +45,7 @@ apm install
 
 **That's it.** Copilot, Claude, Cursor — every agent is configured with the right skills, prompts, and coding standards.
 
-→ [View the full example project](https://github.com/microsoft/apm-project-sample)
+→ [View the full example project](https://github.com/microsoft/apm-sample-package)
 
 ## Not Just Skills
 
