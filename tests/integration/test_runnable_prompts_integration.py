@@ -257,11 +257,11 @@ scripts:
 name: test-project
 dependencies:
   apm:
-    - github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md
+    - owner/test-repo/prompts/architecture-blueprint-generator.prompt.md
 """)
         
         # Simulate installed virtual package structure
-        virtual_pkg_dir = tmp_path / "apm_modules" / "github" / "awesome-copilot-architecture-blueprint-generator" / ".apm" / "prompts"
+        virtual_pkg_dir = tmp_path / "apm_modules" / "owner" / "test-repo-architecture-blueprint-generator" / ".apm" / "prompts"
         virtual_pkg_dir.mkdir(parents=True)
         prompt_file = virtual_pkg_dir / "architecture-blueprint-generator.prompt.md"
         prompt_file.write_text("""---

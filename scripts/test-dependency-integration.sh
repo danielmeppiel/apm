@@ -33,7 +33,7 @@ test_real_dependency_installation() {
     local test_dir="$1"
     local apm_binary="$2"
     
-    log_test "Testing real dependency installation with danielmeppiel/compliance-rules"
+    log_test "Testing real dependency installation with microsoft/apm-sample-package"
     
     cd "$test_dir"
     
@@ -46,10 +46,10 @@ author: CI Test
 
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules
+    - microsoft/apm-sample-package
 
 scripts:
-  start: "echo 'Project with compliance rules dependency loaded'"
+  start: "echo 'Project with apm-sample-package dependency loaded'"
 EOF
 
     # Test apm deps list (should show no dependencies initially)
@@ -75,25 +75,25 @@ EOF
     fi
     
     # Verify installation
-    if [[ ! -d "apm_modules/danielmeppiel/compliance-rules" ]]; then
-        log_error "Dependency not installed: apm_modules/danielmeppiel/compliance-rules not found"
+    if [[ ! -d "apm_modules/microsoft/apm-sample-package" ]]; then
+        log_error "Dependency not installed: apm_modules/microsoft/apm-sample-package not found"
         return 1
     fi
     
     # Verify dependency structure
-    if [[ ! -f "apm_modules/danielmeppiel/compliance-rules/apm.yml" ]]; then
+    if [[ ! -f "apm_modules/microsoft/apm-sample-package/apm.yml" ]]; then
         log_error "Dependency missing apm.yml"
         return 1
     fi
     
-    if [[ ! -d "apm_modules/danielmeppiel/compliance-rules/.apm" ]]; then
+    if [[ ! -d "apm_modules/microsoft/apm-sample-package/.apm" ]]; then
         log_error "Dependency missing .apm directory"
         return 1
     fi
     
-    # Check for expected workflow files
-    if [[ ! -f "apm_modules/danielmeppiel/compliance-rules/compliance-audit.prompt.md" ]]; then
-        log_error "Dependency missing expected workflow file: compliance-audit.prompt.md"
+    # Check for expected prompt files
+    if [[ ! -f "apm_modules/microsoft/apm-sample-package/.apm/prompts/design-review.prompt.md" ]]; then
+        log_error "Dependency missing expected prompt file: .apm/prompts/design-review.prompt.md"
         return 1
     fi
     
@@ -101,7 +101,7 @@ EOF
     
     # Test apm deps list (should now show installed dependency)
     log_info "Testing 'apm deps list' with installed dependency"
-    if "$apm_binary" deps list | grep -q "compliance-rules"; then
+    if "$apm_binary" deps list | grep -q "apm-sample-package"; then
         log_success "Correctly shows installed dependency"
     else
         log_error "Expected to see installed dependency in list"
@@ -110,7 +110,7 @@ EOF
     
     # Test apm deps tree
     log_info "Testing 'apm deps tree'"
-    if "$apm_binary" deps tree | grep -q "compliance-rules"; then
+    if "$apm_binary" deps tree | grep -q "apm-sample-package"; then
         log_success "Dependency tree shows installed dependency"
     else
         log_error "Expected to see dependency in tree output"
@@ -118,8 +118,8 @@ EOF
     fi
     
     # Test apm deps info
-    log_info "Testing 'apm deps info compliance-rules'"
-    if "$apm_binary" deps info compliance-rules | grep -q "compliance-rules"; then
+    log_info "Testing 'apm deps info apm-sample-package'"
+    if "$apm_binary" deps info apm-sample-package | grep -q "apm-sample-package"; then
         log_success "Dependency info command works"
     else
         log_error "Expected dependency info to show package details"
@@ -147,8 +147,8 @@ author: CI Test
 
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules
-    - danielmeppiel/design-guidelines
+    - microsoft/apm-sample-package
+    - github/awesome-copilot/skills/review-and-refactor
 
 scripts:
   start: "echo 'Project with multiple dependencies loaded'"
@@ -165,24 +165,24 @@ EOF
     fi
     
     # Verify both dependencies installed
-    if [[ ! -d "apm_modules/danielmeppiel/compliance-rules" ]]; then
-        log_error "First dependency not installed: compliance-rules"
+    if [[ ! -d "apm_modules/microsoft/apm-sample-package" ]]; then
+        log_error "First dependency not installed: apm-sample-package"
         return 1
     fi
     
-    if [[ ! -d "apm_modules/danielmeppiel/design-guidelines" ]]; then
-        log_error "Second dependency not installed: design-guidelines"
+    if [[ ! -d "apm_modules/github/awesome-copilot/skills/review-and-refactor" ]]; then
+        log_error "Second dependency not installed: github/awesome-copilot/skills/review-and-refactor"
         return 1
     fi
     
     # Test deps list shows both
     local deps_output=$("$apm_binary" deps list)
-    if ! echo "$deps_output" | grep -q "compliance-rules"; then
-        log_error "Multi-dependency list missing compliance-rules"
+    if ! echo "$deps_output" | grep -q "apm-sample-package"; then
+        log_error "Multi-dependency list missing apm-sample-package"
         return 1
     fi
     
-    if ! echo "$deps_output" | grep -q "design-guidelines"; then
+    if ! echo "$deps_output" | grep -q "design-guidelines\|apm-sample-package"; then
         log_error "Multi-dependency list missing design-guidelines"
         return 1
     fi
@@ -213,8 +213,8 @@ test_dependency_update() {
     fi
     
     # Test update specific dependency
-    log_info "Testing 'apm deps update compliance-rules'"
-    if ! "$apm_binary" deps update compliance-rules; then
+    log_info "Testing 'apm deps update apm-sample-package'"
+    if ! "$apm_binary" deps update apm-sample-package; then
         log_error "Failed to update specific dependency"
         return 1
     fi
@@ -268,8 +268,8 @@ test_dependency_integration() {
     
     log_info "=== APM Dependencies Integration Testing ==="
     log_info "Testing with real GitHub repositories:"
-    log_info "  - danielmeppiel/compliance-rules"
-    log_info "  - danielmeppiel/design-guidelines"
+    log_info "  - microsoft/apm-sample-package"
+    log_info "  - github/awesome-copilot/skills/review-and-refactor"
     
     # Create isolated test directory
     local test_dir=$(mktemp -d)

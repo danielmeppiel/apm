@@ -7,6 +7,7 @@ These tests require network access to GitHub.
 """
 
 import os
+import shutil
 import subprocess
 import pytest
 from pathlib import Path
@@ -45,6 +46,11 @@ dependencies:
 @pytest.fixture
 def apm_command():
     """Get the path to the APM CLI executable."""
+    # Prefer binary on PATH (CI uses the PR artifact there)
+    apm_on_path = shutil.which("apm")
+    if apm_on_path:
+        return apm_on_path
+    # Fallback to local dev venv
     venv_apm = Path(__file__).parent.parent.parent / ".venv" / "bin" / "apm"
     if venv_apm.exists():
         return str(venv_apm)
@@ -58,7 +64,7 @@ class TestMixedDependencyInstall:
         """Install an APM package and a Claude Skill in the same project."""
         # Install APM package first
         result1 = subprocess.run(
-            [apm_command, "install", "danielmeppiel/compliance-rules"],
+            [apm_command, "install", "microsoft/apm-sample-package"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -67,7 +73,7 @@ class TestMixedDependencyInstall:
         
         # May fail if package doesn't exist or no access
         if result1.returncode != 0:
-            pytest.skip(f"Could not install compliance-rules: {result1.stderr}")
+            pytest.skip(f"Could not install apm-sample-package: {result1.stderr}")
         
         # Install Claude Skill
         result2 = subprocess.run(
@@ -80,7 +86,7 @@ class TestMixedDependencyInstall:
         assert result2.returncode == 0, f"Skill install failed: {result2.stderr}"
         
         # Verify both are installed
-        apm_package_path = temp_project / "apm_modules" / "danielmeppiel" / "compliance-rules"
+        apm_package_path = temp_project / "apm_modules" / "microsoft" / "apm-sample-package"
         skill_path = temp_project / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "brand-guidelines"
         
         assert apm_package_path.exists(), "APM package not installed"
@@ -90,7 +96,7 @@ class TestMixedDependencyInstall:
         """Verify apm.yml lists both APM packages and Claude Skills."""
         # Install both
         subprocess.run(
-            [apm_command, "install", "danielmeppiel/compliance-rules"],
+            [apm_command, "install", "microsoft/apm-sample-package"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -111,7 +117,7 @@ class TestMixedDependencyInstall:
         # Verify the skill is in dependencies
         has_skill = "awesome-claude-skills/brand-guidelines" in content
         
-        # At least the skill should be there (compliance-rules may fail)
+        # At least the skill should be there (apm-sample-package may fail)
         assert has_skill, "Claude Skill not in apm.yml"
 
 
@@ -190,7 +196,7 @@ class TestDependencyTypeDetection:
     def test_apm_package_has_apm_yml(self, temp_project, apm_command):
         """APM packages have apm.yml at root."""
         result = subprocess.run(
-            [apm_command, "install", "danielmeppiel/compliance-rules"],
+            [apm_command, "install", "microsoft/apm-sample-package"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -198,9 +204,9 @@ class TestDependencyTypeDetection:
         )
         
         if result.returncode != 0:
-            pytest.skip("Could not install compliance-rules")
+            pytest.skip("Could not install apm-sample-package")
         
-        pkg_path = temp_project / "apm_modules" / "danielmeppiel" / "compliance-rules"
+        pkg_path = temp_project / "apm_modules" / "microsoft" / "apm-sample-package"
         assert (pkg_path / "apm.yml").exists(), "APM package missing apm.yml"
     
     def test_claude_skill_has_skill_md(self, temp_project, apm_command):

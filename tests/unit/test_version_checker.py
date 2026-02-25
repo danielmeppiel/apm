@@ -110,7 +110,7 @@ class TestGitHubVersionFetch(unittest.TestCase):
         # Verify API call
         mock_get.assert_called_once()
         call_args = mock_get.call_args
-        self.assertIn("danielmeppiel/apm", call_args[0][0])
+        self.assertIn("microsoft/apm", call_args[0][0])
 
     @patch("requests.get")
     def test_fetch_without_v_prefix(self, mock_get):

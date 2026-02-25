@@ -43,6 +43,7 @@ APM copies skills directly to `.github/skills/` (primary) and `.claude/skills/` 
 | Package Type | Behavior |
 |--------------|----------|
 | **Has existing SKILL.md** | Entire skill folder copied to `.github/skills/{skill-name}/` |
+| **Has sub-skills in `.apm/skills/`** | Each `.apm/skills/*/SKILL.md` also promoted to `.github/skills/{sub-skill-name}/` |
 | **No SKILL.md and no primitives** | No skill folder created |
 
 **Target Directories:**
@@ -60,8 +61,7 @@ Skill names are validated per the [agentskills.io](https://agentskills.io/) spec
 ```
 .github/skills/
 ├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
-├── design-guidelines/     # From danielmeppiel/design-guidelines
-└── compliance-rules/      # From danielmeppiel/compliance-rules
+└── apm-sample-package/    # From microsoft/apm-sample-package
 ```
 
 ### Step 3: Primitive Integration
@@ -225,6 +225,47 @@ Users install individual skills:
 ```bash
 apm install your-org/awesome-skills/skill-1
 apm install your-org/awesome-skills/skill-2
+```
+
+### Option 4: Multi-skill Package
+
+Bundle multiple skills inside a single APM package using `.apm/skills/`:
+
+```
+my-package/
+├── apm.yml
+├── SKILL.md              # Parent skill (package-level guide)
+└── .apm/
+    ├── instructions/
+    ├── prompts/
+    └── skills/
+        ├── skill-a/
+        │   └── SKILL.md  # Sub-skill A
+        └── skill-b/
+            └── SKILL.md  # Sub-skill B
+```
+
+On install, APM promotes each sub-skill to a top-level `.github/skills/` entry alongside the parent — see [Sub-skill Promotion](#sub-skill-promotion) below.
+
+### Sub-skill Promotion
+
+When a package contains sub-skills in `.apm/skills/*/` subdirectories, APM promotes each to a top-level entry under `.github/skills/`. This ensures Copilot can discover them independently, since it only scans direct children of `.github/skills/`.
+
+```
+# Installed package with sub-skills:
+apm_modules/org/repo/my-package/
+├── SKILL.md
+└── .apm/
+    └── skills/
+        └── azure-naming/
+            └── SKILL.md
+
+# Result after install:
+.github/skills/
+├── my-package/              # Parent skill
+│   └── SKILL.md
+└── azure-naming/            # Promoted sub-skill
+    └── SKILL.md
 ```
 
 ## Package Detection

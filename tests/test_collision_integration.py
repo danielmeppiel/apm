@@ -34,13 +34,13 @@ class TestCollisionIntegration:
         """Test that collision detection provides helpful error message.
         
         This simulates the real scenario where a user has installed:
-        - github/awesome-copilot/prompts/code-review.prompt.md
+        - owner/test-repo/prompts/code-review.prompt.md
         - acme/dev-tools/prompts/code-review.prompt.md
         
         And tries to run: apm run code-review
         """
         # Setup: Create realistic virtual package structure
-        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         github_pkg.mkdir(parents=True)
         (github_pkg / "code-review.prompt.md").write_text("---\n---\nGitHub Copilot code review")
         
@@ -59,7 +59,7 @@ class TestCollisionIntegration:
         
         # Verify error message is helpful
         assert "Multiple prompts found for 'code-review'" in error_msg
-        assert "github/awesome-copilot-code-review" in error_msg
+        assert "github/test-repo-code-review" in error_msg
         assert "acme/dev-tools-code-review" in error_msg
         assert "Please specify using qualified path" in error_msg
         assert "apm run" in error_msg
@@ -69,11 +69,11 @@ class TestCollisionIntegration:
         """Test that using qualified path resolves collision.
         
         User can disambiguate by using:
-        - apm run github/awesome-copilot-code-review/code-review
+        - apm run github/test-repo-code-review/code-review
         - apm run acme/dev-tools-code-review/code-review
         """
         # Setup
-        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         github_pkg.mkdir(parents=True)
         (github_pkg / "code-review.prompt.md").write_text("---\n---\nGitHub version")
         
@@ -85,10 +85,10 @@ class TestCollisionIntegration:
         runner = ScriptRunner()
         
         # Test GitHub qualified path
-        github_result = runner._discover_prompt_file("github/awesome-copilot-code-review/code-review")
+        github_result = runner._discover_prompt_file("github/test-repo-code-review/code-review")
         assert github_result is not None
         assert "github" in str(github_result)
-        assert "awesome-copilot-code-review" in str(github_result)
+        assert "test-repo-code-review" in str(github_result)
         
         # Test Acme qualified path
         acme_result = runner._discover_prompt_file("acme/dev-tools-code-review/code-review")
@@ -102,7 +102,7 @@ class TestCollisionIntegration:
     def test_no_collision_with_single_dependency(self, tmp_path):
         """Test that single dependency works without requiring qualified path."""
         # Setup: Only one package with the prompt
-        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         github_pkg.mkdir(parents=True)
         (github_pkg / "code-review.prompt.md").write_text("---\n---\nGitHub version")
         
@@ -119,7 +119,7 @@ class TestCollisionIntegration:
         # Setup: Local + two dependencies with same name
         (tmp_path / "code-review.prompt.md").write_text("---\n---\nLocal version")
         
-        github_pkg = tmp_path / "apm_modules" / "github" / "awesome-copilot-code-review" / ".apm" / "prompts"
+        github_pkg = tmp_path / "apm_modules" / "github" / "test-repo-code-review" / ".apm" / "prompts"
         github_pkg.mkdir(parents=True)
         (github_pkg / "code-review.prompt.md").write_text("---\n---\nGitHub version")
         

@@ -10,7 +10,7 @@ export GITHUB_APM_PAT=your_fine_grained_token_here
 # Optional: export GITHUB_TOKEN=your_models_token           # For Codex CLI with GitHub Models
 
 # 2. Install APM CLI (GitHub org members)
-curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 
 # 3. Setup runtime
 apm runtime setup copilot  
@@ -26,26 +26,26 @@ apm compile && apm run start --param name="<YourGitHubHandle>"
 
 ### Quick Install (Recommended)
 ```bash
-curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
 ### Manual Download
-Download from [GitHub Releases](https://github.com/danielmeppiel/apm/releases/latest):
+Download from [GitHub Releases](https://github.com/microsoft/apm/releases/latest):
 ```bash
 # Linux x86_64
-curl -L https://github.com/danielmeppiel/apm/releases/latest/download/apm-linux-x86_64 -o apm && chmod +x apm
+curl -L https://github.com/microsoft/apm/releases/latest/download/apm-linux-x86_64 -o apm && chmod +x apm
 
 # macOS Intel
-curl -L https://github.com/danielmeppiel/apm/releases/latest/download/apm-darwin-x86_64 -o apm && chmod +x apm
+curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-x86_64 -o apm && chmod +x apm
 
 # macOS Apple Silicon  
-curl -L https://github.com/danielmeppiel/apm/releases/latest/download/apm-darwin-arm64 -o apm && chmod +x apm
+curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-arm64 -o apm && chmod +x apm
 ```
 
 ### From Source (Developers)
 ```bash
-git clone https://github.com/danielmeppiel/apm-cli.git
-cd apm-cli && pip install -e .
+git clone https://github.com/microsoft/apm.git
+cd apm && pip install -e .
 ```
 
 ## Global Options
@@ -133,7 +133,7 @@ apm install [PACKAGES...] [OPTIONS]
 apm install
 
 # Install ONLY this package (not others in apm.yml)
-apm install danielmeppiel/design-guidelines
+apm install microsoft/apm-sample-package
 
 # Add multiple packages and install
 apm install org/pkg1 org/pkg2
@@ -171,7 +171,7 @@ apm install --exclude codex
 - **Virtual Packages**: Single files or collections installed directly from URLs
   - Single `.prompt.md` or `.agent.md` files from any GitHub repository
   - Collections from curated sources (e.g., `github/awesome-copilot`)
-  - Example: `apm install github/awesome-copilot/prompts/code-review.prompt.md`
+  - Example: `apm install github/awesome-copilot/skills/review-and-refactor`
 - **MCP Dependencies**: Model Context Protocol servers for runtime integration
 
 **Working Example with Dependencies:**
@@ -181,8 +181,8 @@ name: my-compliance-project
 version: 1.0.0
 dependencies:
   apm:
-    - danielmeppiel/compliance-rules  # GDPR, legal review workflows
-    - danielmeppiel/design-guidelines # Accessibility, UI standards
+    - microsoft/apm-sample-package  # Design standards, prompts
+    - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
     - github/github-mcp-server
 ```
@@ -233,7 +233,7 @@ Skills are copied directly to target directories:
 
 **Example Integration Output**:
 ```
-✓ danielmeppiel/design-guidelines
+✓ microsoft/apm-sample-package
   ├─ 3 prompts integrated → .github/prompts/
   └─ 3 commands integrated → .claude/commands/
 ```
@@ -258,10 +258,10 @@ apm uninstall PACKAGE [OPTIONS]
 **Examples:**
 ```bash
 # Uninstall a package
-apm uninstall danielmeppiel/design-guidelines
+apm uninstall microsoft/apm-sample-package
 
 # Preview what would be removed
-apm uninstall danielmeppiel/design-guidelines --dry-run
+apm uninstall microsoft/apm-sample-package --dry-run
 ```
 
 **What Gets Removed:**
@@ -323,7 +323,7 @@ This check is non-blocking and cached to avoid slowing down the CLI.
 **Manual Update:**
 If the automatic update fails, you can always update manually:
 ```bash
-curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
 ### `apm deps` - 🔗 Manage APM package dependencies
