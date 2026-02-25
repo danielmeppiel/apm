@@ -35,7 +35,7 @@ New to APM? Follow this learning path for the fastest way to get productive:
 
 ### Community Resources
 - **[APM Manifesto](../MANIFESTO.md)** - Our principles and philosophy for AI-Native Development
-- **[GitHub Issues](https://github.com/danielmeppiel/apm/issues)** - Bug reports and feature requests
+- **[GitHub Issues](https://github.com/microsoft/apm/issues)** - Bug reports and feature requests
 - **[AI-Native Development Guide](https://danielmeppiel.github.io/awesome-ai-native/)** - Complete framework documentation
 
 ## Architecture & Advanced Topics

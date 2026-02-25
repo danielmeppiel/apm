@@ -933,7 +933,7 @@ def update(check):
             import requests
 
             install_script_url = (
-                "https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh"
+                "https://raw.githubusercontent.com/microsoft/apm/main/install.sh"
             )
             response = requests.get(install_script_url, timeout=10)
             response.raise_for_status()
@@ -979,14 +979,14 @@ def update(check):
             _rich_error("'requests' library not available")
             _rich_info("Please update manually using:")
             click.echo(
-                "  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh"
+                "  curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
             )
             sys.exit(1)
         except Exception as e:
             _rich_error(f"Update failed: {e}")
             _rich_info("Please update manually using:")
             click.echo(
-                "  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh"
+                "  curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
             )
             sys.exit(1)
 
@@ -1008,9 +1008,9 @@ def uninstall(ctx, packages, dry_run):
     and the apm_modules/ directory. It's the opposite of 'apm install <package>'.
 
     Examples:
-        apm uninstall danielmeppiel/design-guidelines    # Remove one package
-        apm uninstall org/pkg1 org/pkg2           # Remove multiple packages
-        apm uninstall danielmeppiel/pkg --dry-run        # Show what would be removed
+        apm uninstall acme/my-package                # Remove one package
+        apm uninstall org/pkg1 org/pkg2              # Remove multiple packages
+        apm uninstall acme/my-package --dry-run      # Show what would be removed
     """
     try:
         # Check if apm.yml exists
@@ -1482,8 +1482,8 @@ def _install_apm_dependencies(
         ) as progress:
             for dep_ref in deps_to_install:
                 # Determine installation directory using namespaced structure
-                # e.g., danielmeppiel/design-guidelines -> apm_modules/danielmeppiel/design-guidelines/
-                # For virtual packages: github/awesome-copilot/prompts/file.prompt.md -> apm_modules/github/awesome-copilot-file/
+                # e.g., microsoft/apm-sample-package -> apm_modules/microsoft/apm-sample-package/
+                # For virtual packages: owner/repo/prompts/file.prompt.md -> apm_modules/owner/repo-file/
                 # For subdirectory packages: owner/repo/subdir -> apm_modules/owner/repo/subdir/
                 if dep_ref.alias:
                     # If alias is provided, use it directly (assume user handles namespacing)
@@ -2841,7 +2841,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         _rich_error("Watch mode requires the 'watchdog' library")
         _rich_info("Install it with: uv pip install watchdog")
         _rich_info(
-            "Or reinstall APM CLI: uv pip install -e . (from the apm-cli directory)"
+            "Or reinstall APM: uv pip install -e . (from the apm directory)"
         )
         sys.exit(1)
     except Exception as e:

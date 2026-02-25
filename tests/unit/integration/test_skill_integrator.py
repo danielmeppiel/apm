@@ -39,7 +39,7 @@ class TestToHyphenCase:
     
     def test_owner_repo_format(self):
         """Test owner/repo format extracts repo name."""
-        assert to_hyphen_case("danielmeppiel/design-guidelines") == "design-guidelines"
+        assert to_hyphen_case("microsoft/apm-sample-package") == "apm-sample-package"
         assert to_hyphen_case("owner/MyRepo") == "my-repo"
     
     def test_mixed_separators(self):
@@ -1392,7 +1392,7 @@ class TestNormalizeSkillName:
     def test_normalize_extracts_repo_name(self):
         """Test owner/repo format extracts repo name."""
         assert normalize_skill_name("owner/my-package") == "my-package"
-        assert normalize_skill_name("danielmeppiel/compliance-rules") == "compliance-rules"
+        assert normalize_skill_name("acme/compliance-rules") == "compliance-rules"
     
     def test_normalize_extracts_and_converts_repo_name(self):
         """Test owner/repo format with conversion needed."""
@@ -1438,7 +1438,7 @@ class TestNormalizeSkillName:
     def test_normalize_realistic_package_names(self):
         """Test normalization of realistic package names."""
         test_cases = [
-            ("danielmeppiel/design-guidelines", "design-guidelines"),
+            ("microsoft/apm-sample-package", "apm-sample-package"),
             ("ComposioHQ/awesome-claude-skills", "awesome-claude-skills"),
             ("github/awesome-copilot", "awesome-copilot"),
             ("My_Awesome_Package", "my-awesome-package"),

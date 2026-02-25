@@ -1,4 +1,4 @@
-"""MCP Registry module for APM-CLI."""
+"""MCP Registry module for APM."""
 
 from .client import SimpleRegistryClient
 from .integration import RegistryIntegration

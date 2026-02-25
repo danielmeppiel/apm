@@ -1,4 +1,4 @@
-"""Integration tests for APM-CLI."""
+"""Integration tests for APM."""
 
 import os
 import json
@@ -34,7 +34,7 @@ def safe_rmdir(path):
 
 
 class TestIntegration(unittest.TestCase):
-    """Integration test cases for APM-CLI."""
+    """Integration test cases for APM."""
     
     def setUp(self):
         """Set up test fixtures."""

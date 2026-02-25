@@ -1,4 +1,4 @@
-"""Helper utility functions for APM-CLI."""
+"""Helper utility functions for APM."""
 
 import os
 import platform
