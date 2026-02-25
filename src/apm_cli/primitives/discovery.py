@@ -185,14 +185,13 @@ def scan_dependency_primitives(base_dir: str, collection: PrimitiveCollection) -
 def get_dependency_declaration_order(base_dir: str) -> List[str]:
     """Get APM dependency installed paths in their declaration order.
     
-    Returns the actual installed paths for each dependency, combining:
+    The returned list contains the actual installed path for each dependency,
+    combining:
     1. Direct dependencies from apm.yml (highest priority, declaration order)
     2. Transitive dependencies from apm.lock (appended after direct deps)
     
     This ensures transitive dependencies are included in primitive discovery
-    and compilation, not just direct dependencies.
-    
-    Returns the actual installed paths for each dependency, which differs for:
+    and compilation, not just direct dependencies. The installed path differs for:
     - Regular packages: owner/repo (GitHub) or org/project/repo (ADO)
     - Virtual packages: owner/virtual-pkg-name (GitHub) or org/project/virtual-pkg-name (ADO)
     
