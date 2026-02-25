@@ -15,26 +15,11 @@ permissions:
   contents: read
 
 jobs:
+  # Linux-only for fast PR feedback. Full platform matrix runs post-merge in build-release.yml.
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            arch: x86_64
-            platform: linux
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            platform: linux
-          - os: macos-15-intel
-            arch: x86_64
-            platform: darwin
-          - os: macos-latest
-            arch: arm64
-            platform: darwin
 
     steps:
     - uses: actions/checkout@v4
@@ -48,14 +33,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-
-    - name: Setup build environment (macOS-15 Intel)
-      if: matrix.os == 'macos-15-intel'
-      run: |
-        # Install Xcode Command Line Tools
-        sudo xcode-select --install 2>/dev/null || true
-        # Wait for installation to complete
-        until xcode-select -p >/dev/null 2>&1; do sleep 5; done
 
     - name: Install uv
       run: |
@@ -78,31 +55,11 @@ jobs:
     - name: Test with pytest
       run: uv run pytest tests/unit tests/test_console.py
 
+  # Linux-only binary build for PR validation. Full platform builds run post-merge.
   build:
     name: Build APM Binary
     needs: [test]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            platform: linux
-            arch: x86_64
-            binary_name: apm-linux-x86_64
-          - os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-            binary_name: apm-linux-arm64
-          - os: macos-15-intel
-            platform: darwin
-            arch: x86_64
-            binary_name: apm-darwin-x86_64
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
-            binary_name: apm-darwin-arm64
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -115,20 +72,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install UPX (Linux)
-        if: matrix.platform == 'linux'
+      - name: Install UPX
         run: |
           sudo apt-get update
           sudo apt-get install -y upx-ucl
-
-      - name: Install UPX and XCode (macOS)
-        if: matrix.platform == 'darwin'
-        run: |
-          # Install Xcode Command Line Tools
-          sudo xcode-select --install 2>/dev/null || true
-          # Wait for installation to complete
-          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
-          brew install upx
 
       - name: Install uv
         run: |
@@ -147,10 +94,10 @@ jobs:
       - name: Upload binary as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary_name }}
+          name: apm-linux-x86_64
           path: |
-            ./dist/${{ matrix.binary_name }}
-            ./dist/${{ matrix.binary_name }}.sha256
+            ./dist/apm-linux-x86_64
+            ./dist/apm-linux-x86_64.sha256
             ./scripts/test-release-validation.sh
             ./scripts/github-token-helper.sh
           include-hidden-files: true
