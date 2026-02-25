@@ -432,7 +432,7 @@ else
     echo "3. From source:"
     echo "   git clone https://github.com/$REPO.git"
     echo "   cd apm && uv sync && uv run pip install -e ."
-    echo ""§
+    echo ""
     
     if [ "$PLATFORM" = "linux" ]; then
         echo -e "${BLUE}Debug information:${NC}"

@@ -93,7 +93,7 @@ class TestAPMDependenciesIntegration:
         apm_modules_dir.mkdir()
         
         # Download the dependency
-        package_dir = apm_modules_dir / 'apm-sample-package'
+        package_dir = apm_modules_dir / 'microsoft' / 'apm-sample-package'
         result = downloader.download_package(str(dependencies[0]), package_dir)
         
         # Verify installation
@@ -181,7 +181,7 @@ class TestAPMDependenciesIntegration:
         
         # Verify virtual subdirectory package
         assert virtual_pkg_dir.exists()
-        assert (virtual_pkg_dir / 'apm.yml').exists()
+        assert (virtual_pkg_dir / 'apm.yml').exists() or (virtual_pkg_dir / 'SKILL.md').exists()
         
         # Verify no conflicts (both should install successfully)
         assert result_full.package is not None

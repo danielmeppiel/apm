@@ -201,7 +201,7 @@ class TestPromptDiscovery:
         """Test discovery works with virtual package directory naming.
         
         Virtual packages use format: {repo-name}-{filename-without-extension}
-        Example: owner/test-repo/prompts/architecture-blueprint-generator.prompt.md
+        Example: github/test-repo/prompts/architecture-blueprint-generator.prompt.md
         → Directory: github/test-repo-architecture-blueprint-generator/
         """
         # Setup: Create virtual package structure as it would be installed
@@ -222,7 +222,7 @@ class TestPromptDiscovery:
         """Test collision between virtual packages from different repos with same filename.
         
         This is the critical collision scenario:
-        - owner/test-repo/prompts/code-review.prompt.md
+        - github/test-repo/prompts/code-review.prompt.md
         - acme/dev-tools/prompts/code-review.prompt.md
         
         Both install as virtual packages with different directory names but same prompt filename.

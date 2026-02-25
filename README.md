@@ -28,7 +28,7 @@ dependencies:
     - anthropics/skills/skills/frontend-design
     - microsoft/GitHub-Copilot-for-Azure/plugin/skills/azure-compliance
     # A full APM package with rules, skills, prompts...
-    - microsoft/apm-package-sample
+    - microsoft/apm-sample-package
     # Specific agent primitives from any repository
     - github/awesome-copilot/skills/review-and-refactor
     - github/awesome-copilot/agents/api-architect.agent.md
@@ -170,7 +170,7 @@ APM installs from any GitHub or Azure DevOps repo — no special packaging requi
 | Package | What you get |
 |---------|-------------|
 | [github/awesome-copilot](https://github.com/github/awesome-copilot) | Community prompts, agents & instructions for GitHub Copilot |
-| [anthropics/skills](https://github.com/anthropics/courses) | Anthropic's official skills library |
+| [anthropics/courses](https://github.com/anthropics/courses) | Anthropic's official prompt engineering courses |
 | [microsoft/GitHub-Copilot-for-Azure](https://github.com/microsoft/GitHub-Copilot-for-Azure/tree/main/plugin/skills) | Azure Skills |
 | [Add yours →](https://github.com/microsoft/apm/discussions/new) | |
 

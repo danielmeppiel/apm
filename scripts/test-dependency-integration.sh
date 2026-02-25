@@ -170,8 +170,8 @@ EOF
         return 1
     fi
     
-    if [[ ! -d "apm_modules/microsoft/apm-sample-package" ]]; then
-        log_error "Second dependency not installed: design-guidelines"
+    if [[ ! -d "apm_modules/github/awesome-copilot/skills/review-and-refactor" ]]; then
+        log_error "Second dependency not installed: github/awesome-copilot/skills/review-and-refactor"
         return 1
     fi
     
@@ -213,7 +213,7 @@ test_dependency_update() {
     fi
     
     # Test update specific dependency
-    log_info "Testing 'apm deps update compliance-rules'"
+    log_info "Testing 'apm deps update apm-sample-package'"
     if ! "$apm_binary" deps update apm-sample-package; then
         log_error "Failed to update specific dependency"
         return 1
