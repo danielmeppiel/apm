@@ -306,7 +306,7 @@ Basic instructions for E2E testing.
             env['HOME'] = temp_e2e_home
             
             # Run with real-time output streaming (using 'start' script which calls Copilot CLI)
-            cmd = f'{apm_binary} run start --param name="danielmeppiel"'
+            cmd = f'{apm_binary} run start --param name="developer"'
             print(f"Executing: {cmd}")
             
             try:
@@ -350,14 +350,14 @@ Basic instructions for E2E testing.
                 
                 # Verify output contains expected elements (using "Developer" instead of "E2E Tester")
                 output_lower = full_output.lower()
-                assert "danielmeppiel" in output_lower, \
+                assert "developer" in output_lower, \
                     f"Parameter substitution failed. Expected 'Developer', got: {full_output}"
                 assert len(full_output.strip()) > 50, \
                     f"Output seems too short, API call might have failed. Output: {full_output}"
                 
                 print(f"\n✅ Golden scenario completed successfully!")
                 print(f"Output length: {len(full_output)} characters")
-                print(f"Contains parameter: {'✓' if 'danielmeppiel' in output_lower else '❌'}")
+                print(f"Contains parameter: {'✓' if 'developer' in output_lower else '❌'}")
                 
             except subprocess.TimeoutExpired:
                 process.kill()
@@ -468,7 +468,7 @@ Instructions for Codex E2E testing.
             env['HOME'] = temp_e2e_home
             
             # Run the Codex command with proper environment (use 'debug' script which calls Codex CLI)
-            cmd = f'{apm_binary} run debug --param name="danielmeppiel"'
+            cmd = f'{apm_binary} run debug --param name="developer"'
             process = subprocess.Popen(
                 cmd,
                 shell=True,
@@ -494,7 +494,7 @@ Instructions for Codex E2E testing.
             # Verify execution (Codex CLI might have different authentication requirements)
             if return_code == 0:
                 output = full_output.lower()
-                assert "danielmeppiel" in output, "Parameter substitution failed"
+                assert "developer" in output, "Parameter substitution failed"
                 assert len(output.strip()) > 50, "Output seems too short"
                 print(f"\n✅ Codex CLI scenario completed successfully!")
                 print(f"Output length: {len(full_output)} characters")
@@ -613,7 +613,7 @@ Instructions for LLM E2E testing.
                     env['GITHUB_MODELS_KEY'] = github_token
             
             # Run the LLM command with proper environment (use 'llm' script, not 'start')
-            cmd = f'{apm_binary} run llm --param name="danielmeppiel"'
+            cmd = f'{apm_binary} run llm --param name="developer"'
             process = subprocess.Popen(
                 cmd,
                 shell=True,
@@ -636,7 +636,7 @@ Instructions for LLM E2E testing.
             # Verify execution (LLM might have different authentication requirements)
             if return_code == 0:
                 output = full_output.lower()
-                assert "danielmeppiel" in output, "Parameter substitution failed"
+                assert "developer" in output, "Parameter substitution failed"
                 assert len(output.strip()) > 50, "Output seems too short"
                 print(f"\\n=== LLM scenario output ===\\n{full_output}")
             else:

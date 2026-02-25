@@ -162,9 +162,9 @@ class DependencyReference:
         """Generate a package name for this virtual package.
         
         For virtual packages, we create a sanitized name from the path:
-        - github/awesome-copilot/prompts/code-review.prompt.md → awesome-copilot-code-review
-        - github/awesome-copilot/collections/project-planning → awesome-copilot-project-planning
-        - github/awesome-copilot/collections/project-planning.collection.yml → awesome-copilot-project-planning
+        - owner/repo/prompts/code-review.prompt.md → repo-code-review
+        - owner/repo/collections/project-planning → repo-project-planning
+        - owner/repo/collections/project-planning.collection.yml → repo-project-planning
         """
         if not self.is_virtual or not self.virtual_path:
             return self.repo_url.split('/')[-1]  # Return repo name as fallback

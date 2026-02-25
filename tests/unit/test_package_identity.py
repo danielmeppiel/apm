@@ -64,18 +64,18 @@ class TestCanonicalDependencyString:
     
     def test_virtual_file_package(self):
         """Virtual file includes full path."""
-        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md")
-        assert dep.get_canonical_dependency_string() == "github/awesome-copilot/prompts/code-review.prompt.md"
+        dep = DependencyReference.parse("owner/test-repo/prompts/code-review.prompt.md")
+        assert dep.get_canonical_dependency_string() == "owner/test-repo/prompts/code-review.prompt.md"
     
     def test_virtual_collection_package(self):
         """Virtual collection includes full path."""
-        dep = DependencyReference.parse("github/awesome-copilot/collections/azure-cloud-development")
-        assert dep.get_canonical_dependency_string() == "github/awesome-copilot/collections/azure-cloud-development"
+        dep = DependencyReference.parse("owner/test-repo/collections/azure-cloud-development")
+        assert dep.get_canonical_dependency_string() == "owner/test-repo/collections/azure-cloud-development"
     
     def test_virtual_package_with_reference(self):
         """Virtual package with reference - reference not in canonical string."""
-        dep = DependencyReference.parse("github/awesome-copilot/collections/testing#main")
-        assert dep.get_canonical_dependency_string() == "github/awesome-copilot/collections/testing"
+        dep = DependencyReference.parse("owner/test-repo/collections/testing#main")
+        assert dep.get_canonical_dependency_string() == "owner/test-repo/collections/testing"
     
     def test_ado_regular_package(self):
         """ADO package returns org/project/repo."""
@@ -112,28 +112,28 @@ class TestGetInstallPath:
     
     def test_virtual_file_package(self):
         """Virtual file: apm_modules/owner/<virtual-package-name>."""
-        dep = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md")
+        dep = DependencyReference.parse("owner/test-repo/prompts/code-review.prompt.md")
         apm_modules = Path("/project/apm_modules")
         
-        # Virtual package name: awesome-copilot-code-review
-        expected = apm_modules / "github" / "awesome-copilot-code-review"
+        # Virtual package name: test-repo-code-review
+        expected = apm_modules / "owner" / "test-repo-code-review"
         assert dep.get_install_path(apm_modules) == expected
     
     def test_virtual_collection_package(self):
         """Virtual collection: apm_modules/owner/<virtual-package-name>."""
-        dep = DependencyReference.parse("github/awesome-copilot/collections/azure-cloud-development")
+        dep = DependencyReference.parse("owner/test-repo/collections/azure-cloud-development")
         apm_modules = Path("/project/apm_modules")
         
-        # Virtual package name: awesome-copilot-azure-cloud-development
-        expected = apm_modules / "github" / "awesome-copilot-azure-cloud-development"
+        # Virtual package name: test-repo-azure-cloud-development
+        expected = apm_modules / "owner" / "test-repo-azure-cloud-development"
         assert dep.get_install_path(apm_modules) == expected
     
     def test_virtual_collection_with_reference(self):
         """Reference does not affect virtual package install path."""
-        dep = DependencyReference.parse("github/awesome-copilot/collections/testing#main")
+        dep = DependencyReference.parse("owner/test-repo/collections/testing#main")
         apm_modules = Path("/project/apm_modules")
         
-        expected = apm_modules / "github" / "awesome-copilot-testing"
+        expected = apm_modules / "owner" / "test-repo-testing"
         assert dep.get_install_path(apm_modules) == expected
     
     def test_ado_regular_package(self):
@@ -175,8 +175,8 @@ class TestInstallPathConsistency:
     def test_consistency_with_get_virtual_package_name(self):
         """Install path uses same package name as get_virtual_package_name."""
         test_cases = [
-            "github/awesome-copilot/prompts/code-review.prompt.md",
-            "github/awesome-copilot/collections/azure-cloud-development",
+            "owner/test-repo/prompts/code-review.prompt.md",
+            "owner/test-repo/collections/azure-cloud-development",
             "owner/repo/agents/security.agent.md",
             "user/pkg/instructions/coding.instructions.md",
         ]
@@ -222,18 +222,18 @@ class TestUninstallScenarios:
     
     def test_uninstall_virtual_collection_finds_correct_path(self):
         """Uninstalling virtual collection should find owner/virtual-pkg-name, not owner/repo/collections/name."""
-        dep_str = "github/awesome-copilot/collections/azure-cloud-development"
+        dep_str = "owner/test-repo/collections/azure-cloud-development"
         dep = DependencyReference.parse(dep_str)
         
         apm_modules = Path("apm_modules")
         install_path = dep.get_install_path(apm_modules)
         
-        # Should be owner/awesome-copilot-azure-cloud-development
-        # NOT github/awesome-copilot/collections/azure-cloud-development
-        assert install_path == apm_modules / "github" / "awesome-copilot-azure-cloud-development"
+        # Should be owner/test-repo-azure-cloud-development
+        # NOT owner/test-repo/collections/azure-cloud-development
+        assert install_path == apm_modules / "owner" / "test-repo-azure-cloud-development"
         
         # The wrong path (from raw path segments) would be:
-        wrong_path = apm_modules / "github" / "awesome-copilot" / "collections" / "azure-cloud-development"
+        wrong_path = apm_modules / "owner" / "test-repo" / "collections" / "azure-cloud-development"
         assert install_path != wrong_path
     
     def test_uninstall_virtual_file_finds_correct_path(self):
@@ -257,7 +257,7 @@ class TestOrphanDetectionScenarios:
         # These are the strings that would appear in apm.yml dependencies
         apm_yml_entries = [
             "owner/repo",
-            "github/awesome-copilot/collections/azure-cloud-development",
+            "owner/test-repo/collections/azure-cloud-development",
             "owner/pkg/prompts/file.prompt.md",
             "dev.azure.com/org/proj/repo/agents/test.agent.md",
         ]
@@ -291,8 +291,8 @@ class TestOrphanDetectionScenarios:
         """get_unique_key and get_canonical_dependency_string should be consistent."""
         test_cases = [
             "owner/repo",
-            "github/awesome-copilot/prompts/code-review.prompt.md",
-            "github/awesome-copilot/collections/testing",
+            "owner/test-repo/prompts/code-review.prompt.md",
+            "owner/test-repo/collections/testing",
         ]
         
         for dep_str in test_cases:

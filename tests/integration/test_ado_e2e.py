@@ -220,7 +220,7 @@ class TestADOVirtualPackage:
 class TestMixedDependencies:
     """Test mixed GitHub and ADO dependencies."""
     
-    GITHUB_PACKAGE = "danielmeppiel/design-guidelines"
+    GITHUB_PACKAGE = "microsoft/apm-sample-package"
     ADO_PACKAGE = "dev.azure.com/dmeppiel-org/market-js-app/_git/compliance-rules"
     
     def test_mixed_install(self, tmp_path):
@@ -247,7 +247,7 @@ class TestMixedDependencies:
         apm_modules = project_dir / "apm_modules"
         
         # GitHub: 2-level
-        github_path = apm_modules / "danielmeppiel" / "design-guidelines"
+        github_path = apm_modules / "microsoft" / "apm-sample-package"
         assert github_path.exists(), f"GitHub package not found: {github_path}"
         
         # ADO: 3-level

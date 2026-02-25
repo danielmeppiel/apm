@@ -18,17 +18,17 @@ class TestVirtualPackageMultiInstall:
     
     def test_unique_key_for_virtual_file_package(self):
         """Virtual file packages use repo_url + virtual_path as unique key."""
-        dep_ref = DependencyReference.parse("github/awesome-copilot/prompts/code-review.prompt.md")
+        dep_ref = DependencyReference.parse("owner/test-repo/prompts/code-review.prompt.md")
         unique_key = dep_ref.get_unique_key()
-        assert unique_key == "github/awesome-copilot/prompts/code-review.prompt.md"
+        assert unique_key == "owner/test-repo/prompts/code-review.prompt.md"
         assert dep_ref.is_virtual
-        assert dep_ref.repo_url == "github/awesome-copilot"
+        assert dep_ref.repo_url == "owner/test-repo"
         assert dep_ref.virtual_path == "prompts/code-review.prompt.md"
     
     def test_unique_key_for_different_files_from_same_repo(self):
         """Two virtual files from same repo have different unique keys."""
-        dep_ref1 = DependencyReference.parse("github/awesome-copilot/prompts/file1.prompt.md")
-        dep_ref2 = DependencyReference.parse("github/awesome-copilot/prompts/file2.prompt.md")
+        dep_ref1 = DependencyReference.parse("owner/test-repo/prompts/file1.prompt.md")
+        dep_ref2 = DependencyReference.parse("owner/test-repo/prompts/file2.prompt.md")
         
         key1 = dep_ref1.get_unique_key()
         key2 = dep_ref2.get_unique_key()
@@ -37,7 +37,7 @@ class TestVirtualPackageMultiInstall:
         assert key1 != key2
         
         # But both share the same repo_url
-        assert dep_ref1.repo_url == dep_ref2.repo_url == "github/awesome-copilot"
+        assert dep_ref1.repo_url == dep_ref2.repo_url == "owner/test-repo"
         
         # And both are virtual
         assert dep_ref1.is_virtual and dep_ref2.is_virtual
@@ -51,9 +51,9 @@ name: test-multi-virtual
 version: 1.0.0
 dependencies:
   apm:
-    - github/awesome-copilot/prompts/file1.prompt.md
-    - github/awesome-copilot/prompts/file2.prompt.md
-    - github/awesome-copilot/prompts/file3.prompt.md
+    - owner/test-repo/prompts/file1.prompt.md
+    - owner/test-repo/prompts/file2.prompt.md
+    - owner/test-repo/prompts/file3.prompt.md
 """)
         
         # Resolve dependencies
@@ -70,7 +70,7 @@ dependencies:
         # All should be virtual packages from the same repo
         for dep in deps_list:
             assert dep.is_virtual
-            assert dep.repo_url == "github/awesome-copilot"
+            assert dep.repo_url == "owner/test-repo"
         
         # Each should have a different virtual_path
         virtual_paths = {dep.virtual_path for dep in deps_list}
@@ -88,8 +88,8 @@ version: 1.0.0
 dependencies:
   apm:
     - github/design-guidelines
-    - github/awesome-copilot/prompts/file1.prompt.md
-    - github/awesome-copilot/prompts/file2.prompt.md
+    - owner/test-repo/prompts/file1.prompt.md
+    - owner/test-repo/prompts/file2.prompt.md
     - github/compliance-rules
 """)
         
@@ -118,8 +118,8 @@ dependencies:
         from src.apm_cli.models.apm_package import APMPackage
         
         # Create two virtual packages from same repo
-        dep_ref1 = DependencyReference.parse("github/awesome-copilot/prompts/file1.prompt.md")
-        dep_ref2 = DependencyReference.parse("github/awesome-copilot/prompts/file2.prompt.md")
+        dep_ref1 = DependencyReference.parse("owner/test-repo/prompts/file1.prompt.md")
+        dep_ref2 = DependencyReference.parse("owner/test-repo/prompts/file2.prompt.md")
         
         # Create placeholder packages
         pkg1 = APMPackage(name="file1", version="1.0.0")
@@ -131,16 +131,16 @@ dependencies:
         
         # Node IDs should be different even though repo_url is same
         assert node1.get_id() != node2.get_id()
-        assert node1.get_id() == "github/awesome-copilot/prompts/file1.prompt.md"
-        assert node2.get_id() == "github/awesome-copilot/prompts/file2.prompt.md"
+        assert node1.get_id() == "owner/test-repo/prompts/file1.prompt.md"
+        assert node2.get_id() == "owner/test-repo/prompts/file2.prompt.md"
     
     def test_flat_dependency_map_uses_unique_keys(self):
         """Test that FlatDependencyMap properly uses unique keys for storage."""
         from src.apm_cli.deps.dependency_graph import FlatDependencyMap
         
         # Create multiple virtual packages from same repo
-        dep_ref1 = DependencyReference.parse("github/awesome-copilot/prompts/file1.prompt.md")
-        dep_ref2 = DependencyReference.parse("github/awesome-copilot/prompts/file2.prompt.md")
+        dep_ref1 = DependencyReference.parse("owner/test-repo/prompts/file1.prompt.md")
+        dep_ref2 = DependencyReference.parse("owner/test-repo/prompts/file2.prompt.md")
         
         # Add to flat map
         flat_map = FlatDependencyMap()
@@ -165,8 +165,8 @@ dependencies:
         """Virtual packages from same repo should not be flagged as conflicts."""
         from src.apm_cli.deps.dependency_graph import FlatDependencyMap
         
-        dep_ref1 = DependencyReference.parse("github/awesome-copilot/prompts/file1.prompt.md")
-        dep_ref2 = DependencyReference.parse("github/awesome-copilot/prompts/file2.prompt.md")
+        dep_ref1 = DependencyReference.parse("owner/test-repo/prompts/file1.prompt.md")
+        dep_ref2 = DependencyReference.parse("owner/test-repo/prompts/file2.prompt.md")
         
         flat_map = FlatDependencyMap()
         flat_map.add_dependency(dep_ref1, is_conflict=False)

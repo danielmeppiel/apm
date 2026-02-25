@@ -234,10 +234,10 @@ Starting with v0.5.0, APM can automatically discover and run prompts without man
 
 ```bash
 # Install a prompt from any repository
-apm install github/awesome-copilot/prompts/code-review.prompt.md
+apm install github/awesome-copilot/skills/review-and-refactor
 
 # Run it immediately - no apm.yml configuration needed!
-apm run code-review
+apm run review-and-refactor
 ```
 
 **How it works:**
@@ -262,7 +262,7 @@ If you have multiple prompts with the same name from different sources:
 # Collision detected - APM shows all matches with guidance
 apm run code-review
 # Error: Multiple prompts found for 'code-review':
-#   - github/awesome-copilot (apm_modules/github/awesome-copilot-code-review/...)
+#   - owner/test-repo (apm_modules/owner/test-repo-code-review/...)
 #   - acme/standards (apm_modules/acme/standards/...)
 # 
 # Use qualified path:

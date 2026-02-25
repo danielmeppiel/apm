@@ -329,7 +329,7 @@ class TestPromptCompilerDependencyDiscovery:
                 os.chdir(tmpdir)
                 
                 # Create apm_modules structure with org/repo hierarchy
-                dep_dir = Path("apm_modules/danielmeppiel/design-guidelines")
+                dep_dir = Path("apm_modules/microsoft/apm-sample-package")
                 dep_dir.mkdir(parents=True)
                 
                 # Create prompt file in dependency root
@@ -373,9 +373,9 @@ class TestPromptCompilerDependencyDiscovery:
                 os.chdir(tmpdir)
                 
                 # Create multiple dependency directories with org/repo structure
-                compliance_dir = Path("apm_modules/danielmeppiel/compliance-rules")
+                compliance_dir = Path("apm_modules/acme/compliance-rules")
                 compliance_dir.mkdir(parents=True)
-                design_dir = Path("apm_modules/danielmeppiel/design-guidelines")
+                design_dir = Path("apm_modules/microsoft/apm-sample-package")
                 design_dir.mkdir(parents=True)
                 
                 # Create prompt files in both (first one found should win)
@@ -420,9 +420,9 @@ class TestPromptCompilerDependencyDiscovery:
                 os.chdir(tmpdir)
                 
                 # Create apm_modules with dependencies but no prompt files
-                compliance_dir = Path("apm_modules/danielmeppiel/compliance-rules")
+                compliance_dir = Path("apm_modules/acme/compliance-rules")
                 compliance_dir.mkdir(parents=True)
-                design_dir = Path("apm_modules/danielmeppiel/design-guidelines")
+                design_dir = Path("apm_modules/microsoft/apm-sample-package")
                 design_dir.mkdir(parents=True)
                 
                 with pytest.raises(FileNotFoundError) as exc_info:
@@ -432,8 +432,8 @@ class TestPromptCompilerDependencyDiscovery:
                 assert "Prompt file 'hello-world.prompt.md' not found" in error_msg
                 assert "Local: hello-world.prompt.md" in error_msg
                 assert "Dependencies:" in error_msg
-                assert "danielmeppiel/compliance-rules/hello-world.prompt.md" in error_msg
-                assert "danielmeppiel/design-guidelines/hello-world.prompt.md" in error_msg
+                assert "acme/compliance-rules/hello-world.prompt.md" in error_msg
+                assert "microsoft/apm-sample-package/hello-world.prompt.md" in error_msg
             finally:
                 os.chdir(original_cwd)
     
@@ -450,7 +450,7 @@ class TestPromptCompilerDependencyDiscovery:
                 local_prompt.write_text("Hello from local!")
                 
                 # Create dependency with same file
-                dep_dir = Path("apm_modules/danielmeppiel/design-guidelines")
+                dep_dir = Path("apm_modules/microsoft/apm-sample-package")
                 dep_dir.mkdir(parents=True)
                 dep_prompt = dep_dir / "hello-world.prompt.md"
                 dep_prompt.write_text("Hello from dependency!")
@@ -466,7 +466,7 @@ class TestPromptCompilerDependencyDiscovery:
     def test_compile_with_dependency_resolution(self, mock_file, mock_mkdir):
         """Test compile method uses dependency resolution correctly."""
         with patch.object(self.compiler, '_resolve_prompt_file') as mock_resolve:
-            mock_resolve.return_value = Path("apm_modules/danielmeppiel/design-guidelines/test.prompt.md")
+            mock_resolve.return_value = Path("apm_modules/microsoft/apm-sample-package/test.prompt.md")
             
             file_content = "Hello ${input:name}!"
             mock_file.return_value.read.return_value = file_content
@@ -479,7 +479,7 @@ class TestPromptCompilerDependencyDiscovery:
             # Verify file was opened with resolved path
             mock_file.assert_called()
             opened_path = mock_file.call_args_list[0][0][0]
-            assert str(opened_path) == "apm_modules/danielmeppiel/design-guidelines/test.prompt.md"
+            assert str(opened_path) == "apm_modules/microsoft/apm-sample-package/test.prompt.md"
 
 
 class TestScriptRunnerAutoInstall:
@@ -492,19 +492,19 @@ class TestScriptRunnerAutoInstall:
     def test_is_virtual_package_reference_valid_file(self):
         """Test detection of valid virtual file package references."""
         # Valid virtual file package reference
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         assert self.script_runner._is_virtual_package_reference(ref) is True
     
     def test_is_virtual_package_reference_valid_collection(self):
         """Test detection of valid virtual collection package references."""
         # Valid virtual collection package reference
-        ref = "github/awesome-copilot/collections/project-planning"
+        ref = "owner/test-repo/collections/project-planning"
         assert self.script_runner._is_virtual_package_reference(ref) is True
     
     def test_is_virtual_package_reference_regular_package(self):
         """Test detection rejects regular packages."""
         # Regular package (not virtual)
-        ref = "danielmeppiel/design-guidelines"
+        ref = "microsoft/apm-sample-package"
         assert self.script_runner._is_virtual_package_reference(ref) is False
     
     def test_is_virtual_package_reference_simple_name(self):
@@ -531,14 +531,14 @@ class TestScriptRunnerAutoInstall:
         
         # Mock package info
         mock_package = MagicMock()
-        mock_package.name = "awesome-copilot-architecture-blueprint-generator"
+        mock_package.name = "test-repo-architecture-blueprint-generator"
         mock_package.version = "1.0.0"
         mock_package_info = MagicMock()
         mock_package_info.package = mock_package
         mock_downloader.download_virtual_file_package.return_value = mock_package_info
         
         # Test auto-install
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         result = self.script_runner._auto_install_virtual_package(ref)
         
         assert result is True
@@ -556,14 +556,14 @@ class TestScriptRunnerAutoInstall:
         
         # Mock package info
         mock_package = MagicMock()
-        mock_package.name = "awesome-copilot-project-planning"
+        mock_package.name = "test-repo-project-planning"
         mock_package.version = "1.0.0"
         mock_package_info = MagicMock()
         mock_package_info.package = mock_package
         mock_downloader.download_virtual_collection_package.return_value = mock_package_info
         
         # Test auto-install
-        ref = "github/awesome-copilot/collections/project-planning"
+        ref = "owner/test-repo/collections/project-planning"
         result = self.script_runner._auto_install_virtual_package(ref)
         
         assert result is True
@@ -575,7 +575,7 @@ class TestScriptRunnerAutoInstall:
         # Package already exists
         mock_exists.return_value = True
         
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         result = self.script_runner._auto_install_virtual_package(ref)
         
         assert result is True  # Should return True (success) without downloading
@@ -594,7 +594,7 @@ class TestScriptRunnerAutoInstall:
         mock_downloader.download_virtual_file_package.side_effect = RuntimeError("Download failed")
         
         # Test auto-install
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         result = self.script_runner._auto_install_virtual_package(ref)
         
         assert result is False  # Should return False on failure
@@ -602,7 +602,7 @@ class TestScriptRunnerAutoInstall:
     def test_auto_install_virtual_package_invalid_reference(self):
         """Test auto-install rejects invalid references."""
         # Not a virtual package
-        ref = "danielmeppiel/design-guidelines"
+        ref = "microsoft/apm-sample-package"
         result = self.script_runner._auto_install_virtual_package(ref)
         
         assert result is False
@@ -617,12 +617,12 @@ class TestScriptRunnerAutoInstall:
                                              mock_runtime, mock_discover, mock_auto_install):
         """Test that run_script triggers auto-install for virtual package references."""
         mock_exists.return_value = True  # apm.yml exists
-        mock_discover.side_effect = [None, Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator/.apm/prompts/architecture-blueprint-generator.prompt.md")]
+        mock_discover.side_effect = [None, Path("apm_modules/github/test-repo-architecture-blueprint-generator/.apm/prompts/architecture-blueprint-generator.prompt.md")]
         mock_auto_install.return_value = True
         mock_runtime.return_value = "copilot"
         mock_execute.return_value = True
         
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         result = self.script_runner.run_script(ref, {})
         
         # Verify auto-install was called
@@ -644,7 +644,7 @@ class TestScriptRunnerAutoInstall:
         mock_discover.return_value = None
         mock_auto_install.return_value = False  # Auto-install failed
         
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         
         with pytest.raises(RuntimeError) as exc_info:
             self.script_runner.run_script(ref, {})
@@ -682,11 +682,11 @@ class TestScriptRunnerAutoInstall:
         """Test that run_script uses already-installed package without re-downloading."""
         mock_exists.return_value = True  # apm.yml exists
         # Package already discovered (no auto-install needed)
-        mock_discover.return_value = Path("apm_modules/github/awesome-copilot-architecture-blueprint-generator/.apm/prompts/architecture-blueprint-generator.prompt.md")
+        mock_discover.return_value = Path("apm_modules/github/test-repo-architecture-blueprint-generator/.apm/prompts/architecture-blueprint-generator.prompt.md")
         mock_runtime.return_value = "copilot"
         mock_execute.return_value = True
         
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         result = self.script_runner.run_script(ref, {})
         
         # Verify discovery found it on first try
@@ -706,7 +706,7 @@ class TestScriptRunnerAutoInstall:
         mock_discover.side_effect = [None, None]  # Not found before or after install
         mock_auto_install.return_value = True  # Install succeeded
         
-        ref = "github/awesome-copilot/prompts/architecture-blueprint-generator.prompt.md"
+        ref = "owner/test-repo/prompts/architecture-blueprint-generator.prompt.md"
         
         with pytest.raises(RuntimeError) as exc_info:
             self.script_runner.run_script(ref, {})

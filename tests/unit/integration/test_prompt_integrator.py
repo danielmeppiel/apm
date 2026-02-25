@@ -102,7 +102,7 @@ Some prompt content."""
     def test_get_target_filename(self):
         """Test target filename generation with -apm suffix (intent-first naming)."""
         source = Path("/package/accessibility-audit.prompt.md")
-        package_name = "danielmeppiel/design-guidelines"
+        package_name = "microsoft/apm-sample-package"
         
         target = self.integrator.get_target_filename(source, package_name)
         # Intent-first naming: -apm suffix before extension
@@ -351,7 +351,7 @@ Some prompt content."""
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = [
             DependencyReference(
-                repo_url="danielmeppiel/design-guidelines",
+                repo_url="microsoft/apm-sample-package",
                 reference="main"
             )
         ]
