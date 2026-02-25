@@ -1,4 +1,4 @@
-"""Workflow dependency aggregator for APM-CLI."""
+"""Workflow dependency aggregator for APM."""
 
 import os
 import glob

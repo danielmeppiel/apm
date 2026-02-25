@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def get_latest_version_from_github(
-    repo: str = "danielmeppiel/apm", timeout: int = 2
+    repo: str = "microsoft/apm", timeout: int = 2
 ) -> Optional[str]:
     """
     Fetch the latest release version from GitHub API.
@@ -117,10 +117,10 @@ def get_update_cache_path() -> Path:
     """Get path to version update cache file."""
     # Use a cache directory in user's home
     if sys.platform == "win32":
-        cache_dir = Path.home() / "AppData" / "Local" / "apm-cli" / "cache"
+        cache_dir = Path.home() / "AppData" / "Local" / "apm" / "cache"
     else:
         # Unix-like systems (macOS, Linux)
-        cache_dir = Path.home() / ".cache" / "apm-cli"
+        cache_dir = Path.home() / ".cache" / "apm"
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / "last_version_check"

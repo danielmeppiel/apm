@@ -517,7 +517,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.GH_PKG_PAT }}
-          repository: danielmeppiel/homebrew-apm
+          repository: microsoft/homebrew-apm
           event-type: formula-update
           client-payload: |
             {

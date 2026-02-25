@@ -1,9 +1,9 @@
 # APM – Agent Package Manager
 
 [![PyPI version](https://badge.fury.io/py/apm-cli.svg)](https://badge.fury.io/py/apm-cli)
-[![CI/CD Pipeline](https://github.com/danielmeppiel/apm/actions/workflows/build-release.yml/badge.svg)](https://github.com/danielmeppiel/apm/actions/workflows/build-release.yml)
+[![CI/CD Pipeline](https://github.com/microsoft/apm/actions/workflows/build-release.yml/badge.svg)](https://github.com/microsoft/apm/actions/workflows/build-release.yml)
 [![Downloads](https://img.shields.io/pypi/dm/apm-cli.svg)](https://pypi.org/project/apm-cli/)
-[![GitHub stars](https://img.shields.io/github/stars/danielmeppiel/apm.svg?style=social&label=Star)](https://github.com/danielmeppiel/apm/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/microsoft/apm.svg?style=social&label=Star)](https://github.com/microsoft/apm/stargazers)
 
 **An open-source, community-driven dependency manager for AI agents.** `apm.yml` declares the skills, prompts, instructions, and tools your project needs — so every developer gets the same agent setup. Packages can depend on packages, and APM resolves the full tree.
 
@@ -21,25 +21,30 @@ AI coding agents need context to be useful: what standards to follow, what promp
 
 ```yaml
 # apm.yml — ships with your project, like package.json
-name: corporate-website
+name: your project
 dependencies:
   apm:
-    - danielmeppiel/form-builder       # Skills: React Hook Form + Zod
-    - danielmeppiel/compliance-rules   # Guardrails: GDPR, security audits
-    - danielmeppiel/design-guidelines  # Standards: UI consistency, a11y
+    # Skills from any repository
+    - anthropics/skills/skills/frontend-design
+    - microsoft/GitHub-Copilot-for-Azure/plugin/skills/azure-compliance
+    # A full APM package with rules, skills, prompts...
+    - microsoft/apm-package-sample
+    # Specific agent primitives from any repository
+    - github/awesome-copilot/prompts/code-review.prompt.md
+    - github/awesome-copilot/agents/api-architect.agent.md
 ```
 
 New developer joins the team:
 
 ```bash
-git clone your-org/corporate-website
-cd corporate-website
-apm install && apm compile
+git clone <org/repo>
+cd <repo>
+apm install
 ```
 
-**That's it.** Copilot, Claude, Cursor — every agent is configured with the right skills, prompts, and coding standards. No wiki. No "ask Sarah which skills to install." It just works.
+**That's it.** Copilot, Claude, Cursor — every agent is configured with the right skills, prompts, and coding standards.
 
-→ [View the full example project](https://github.com/danielmeppiel/corporate-website)
+→ [View the full example project](https://github.com/microsoft/apm-project-sample)
 
 ## Not Just Skills
 
@@ -63,42 +68,41 @@ All declared in one manifest. All installed with one command — including trans
 **1. Install APM**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
 <details>
 <summary>Homebrew or pip</summary>
 
 ```bash
-brew tap danielmeppiel/apm-cli && brew install apm-cli
+brew install microsoft/apm/apm
 # or
 pip install apm-cli
 ```
 </details>
 
-**2. Add packages to your project**
+**2. Add APM packages to your project**
 
 ```bash
-apm install danielmeppiel/compliance-rules
+apm install microsoft/apm-sample-package
+apm install anthropics/skills/skills/frontend-design
+apm install github/awesome-copilot/agents/api-architect.agent.md
 ```
 
-> No `apm.yml` yet? APM creates one automatically on first install.
-
-**3. Compile your instructions**
-
-```bash
-apm compile
-```
-
-**Done.** Your instructions are compiled into AGENTS.md and CLAUDE.md — open your project in VS Code or Claude and your agents are ready.
+**Done.** Open your project in VS Code or Claude and your AI tools are ready.
 
 ## Install From Anywhere
 
 ```bash
-apm install owner/repo                                              # GitHub
-apm install github/awesome-copilot/prompts/code-review.prompt.md   # Single file
-apm install ghe.company.com/owner/repo                             # GitHub Enterprise
-apm install dev.azure.com/org/project/repo                         # Azure DevOps
+# GitHub Repo or Path
+apm install owner/repo   
+apm install owner/repo/path                                              
+# Single file
+apm install github/awesome-copilot/prompts/code-review.prompt.md   
+# GitHub Enterprise Server
+apm install ghe.company.com/owner/repo    
+# Azure DevOps                      
+apm install dev.azure.com/org/project/repo
 ```
 
 ## Create & Share Packages
@@ -113,6 +117,7 @@ my-standards/
 └── .apm/
     ├── instructions/    # Guardrails (.instructions.md)
     ├── prompts/         # Slash commands (.prompt.md)
+    ├── skills/          # Agent Skills (SKILL.md)
     └── agents/          # Personas (.agent.md)
 ```
 
@@ -158,18 +163,16 @@ For private repos or Azure DevOps, set a token:
 
 ---
 
-## Community Packages
+## APM Packages
 
 APM installs from any GitHub or Azure DevOps repo — no special packaging required. Point at a prompt file, a skill, or a full package. These are some curated packages to get you started:
 
 | Package | What you get |
 |---------|-------------|
-| [danielmeppiel/compliance-rules](https://github.com/danielmeppiel/compliance-rules) | `/gdpr-assessment`, `/security-audit` + compliance guardrails |
-| [danielmeppiel/design-guidelines](https://github.com/danielmeppiel/design-guidelines) | `/accessibility-audit`, `/design-review` + UI standards |
-| [DevExpGbb/platform-mode](https://github.com/DevExpGbb/platform-mode) | Platform engineering prompts & agents |
-| [github/awesome-copilot](https://github.com/github/awesome-copilot) | Community prompts, agents & instructions for Copilot |
-| [anthropics/courses](https://github.com/anthropics/courses) | Anthropic's official skills & prompt library |
-| [Add yours →](https://github.com/danielmeppiel/apm/discussions/new) | |
+| [github/awesome-copilot](https://github.com/github/awesome-copilot) | Community prompts, agents & instructions for GitHub Copilot |
+| [anthropics/skills](https://github.com/anthropics/courses) | Anthropic's official skills library |
+| [microsoft/GitHub-Copilot-for-Azure](https://github.com/microsoft/GitHub-Copilot-for-Azure/tree/main/plugin/skills) | Azure Skills |
+| [Add yours →](https://github.com/microsoft/apm/discussions/new) | |
 
 ---
 

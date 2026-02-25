@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Installing APM-CLI..."
+echo "Installing APM..."
 
 # Detect package managers
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
@@ -11,7 +11,7 @@ has_pip=$(command -v pip >/dev/null 2>&1 && echo "yes" || echo "no")
 # Try to install with the best available package manager
 if [ "$has_brew" = "yes" ]; then
     echo "Installing with Homebrew..."
-    brew tap danielmeppiel/apm-cli
+    brew tap microsoft/apm-cli
     brew install apm-cli
 elif [ "$has_uv" = "yes" ]; then
     echo "Installing with uv..."
@@ -28,4 +28,4 @@ else
     exit 1
 fi
 
-echo "APM-CLI installed successfully!"
+echo "APM installed successfully!"

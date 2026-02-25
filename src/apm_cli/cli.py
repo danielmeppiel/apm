@@ -933,7 +933,7 @@ def update(check):
             import requests
 
             install_script_url = (
-                "https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh"
+                "https://raw.githubusercontent.com/microsoft/apm/main/install.sh"
             )
             response = requests.get(install_script_url, timeout=10)
             response.raise_for_status()
@@ -979,14 +979,14 @@ def update(check):
             _rich_error("'requests' library not available")
             _rich_info("Please update manually using:")
             click.echo(
-                "  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh"
+                "  curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
             )
             sys.exit(1)
         except Exception as e:
             _rich_error(f"Update failed: {e}")
             _rich_info("Please update manually using:")
             click.echo(
-                "  curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh"
+                "  curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
             )
             sys.exit(1)
 
@@ -2837,7 +2837,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         _rich_error("Watch mode requires the 'watchdog' library")
         _rich_info("Install it with: uv pip install watchdog")
         _rich_info(
-            "Or reinstall APM CLI: uv pip install -e . (from the apm-cli directory)"
+            "Or reinstall APM: uv pip install -e . (from the apm directory)"
         )
         sys.exit(1)
     except Exception as e:

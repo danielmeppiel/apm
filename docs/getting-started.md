@@ -179,7 +179,7 @@ For authentication, see [Token Configuration](#token-configuration-all-optional)
 The fastest way to get APM running:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
 This script automatically:
@@ -200,11 +200,11 @@ pip install apm-cli
 
 ### Manual Installation
 
-Download the binary for your platform from [GitHub Releases](https://github.com/danielmeppiel/apm/releases/latest):
+Download the binary for your platform from [GitHub Releases](https://github.com/microsoft/apm/releases/latest):
 
 #### macOS Apple Silicon
 ```bash
-curl -L https://github.com/danielmeppiel/apm/releases/latest/download/apm-darwin-arm64.tar.gz | tar -xz
+curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-arm64.tar.gz | tar -xz
 sudo mkdir -p /usr/local/lib/apm
 sudo cp -r apm-darwin-arm64/* /usr/local/lib/apm/
 sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
@@ -212,7 +212,7 @@ sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
 
 #### macOS Intel
 ```bash
-curl -L https://github.com/danielmeppiel/apm/releases/latest/download/apm-darwin-x86_64.tar.gz | tar -xz
+curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-x86_64.tar.gz | tar -xz
 sudo mkdir -p /usr/local/lib/apm
 sudo cp -r apm-darwin-x86_64/* /usr/local/lib/apm/
 sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
@@ -220,7 +220,7 @@ sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
 
 #### Linux x86_64
 ```bash
-curl -L https://github.com/danielmeppiel/apm/releases/latest/download/apm-linux-x86_64.tar.gz | tar -xz
+curl -L https://github.com/microsoft/apm/releases/latest/download/apm-linux-x86_64.tar.gz | tar -xz
 sudo mkdir -p /usr/local/lib/apm
 sudo cp -r apm-linux-x86_64/* /usr/local/lib/apm/
 sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
@@ -231,8 +231,8 @@ sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
 For development or customization:
 
 ```bash
-git clone https://github.com/danielmeppiel/apm-cli.git
-cd apm-cli
+git clone https://github.com/microsoft/apm.git
+cd apm
 
 # Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -252,8 +252,8 @@ To build a platform-specific binary using PyInstaller:
 
 ```bash
 # Clone and setup (if not already done)
-git clone https://github.com/danielmeppiel/apm-cli.git
-cd apm-cli
+git clone https://github.com/microsoft/apm.git
+cd apm
 
 # Install uv and dependencies
 curl -LsSf https://astral.sh/uv/install.sh | sh

@@ -2,10 +2,10 @@
 set -e
 
 # APM CLI Installer Script
-# Usage: curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+# Usage: curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 # For private repositories, use with authentication:
 #   curl -sSL -H "Authorization: token $GITHUB_APM_PAT" \
-#     https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | \
+#     https://raw.githubusercontent.com/microsoft/apm/main/install.sh | \
 #     GITHUB_APM_PAT=$GITHUB_APM_PAT sh
 
 # Colors for output
@@ -16,15 +16,15 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="danielmeppiel/apm"
+REPO="microsoft/apm"
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="apm"
 
 # Banner
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║                    APM CLI Installer                        ║"
-echo "║              The NPM for AI-Native Development              ║"
+echo "║                         APM Installer                        ║"
+echo "║              The NPM for AI-Native Development               ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -114,7 +114,7 @@ try_pip_installation() {
     
     # Try to install
     if $PIP_CMD install --user apm-cli; then
-        echo -e "${GREEN}✓ APM CLI installed successfully via pip!${NC}"
+        echo -e "${GREEN}✓ APM installed successfully via pip!${NC}"
         
         # Check if apm is now available
         if command -v apm >/dev/null 2>&1; then
@@ -172,7 +172,7 @@ if [ "$PLATFORM" = "linux" ]; then
                 echo "To install APM, you need either:"
                 echo "  1. Python 3.9+ and pip: pip install --user apm-cli"
                 echo "  2. A system with glibc 2.35+ to use the prebuilt binary"
-                echo "  3. Build from source: git clone https://github.com/$REPO.git && cd apm-cli && uv sync && uv run pip install -e ."
+                echo "  3. Build from source: git clone https://github.com/$REPO.git && cd apm && uv sync && uv run pip install -e ."
                 echo ""
                 echo "To install Python 3.9+:"
                 echo "  Ubuntu/Debian: sudo apt-get update && sudo apt-get install python3 python3-pip"
@@ -222,7 +222,7 @@ if [ $CURL_EXIT_CODE -ne 0 ] || [ -z "$LATEST_RELEASE" ] || echo "$LATEST_RELEAS
         echo "Please set GITHUB_APM_PAT or GITHUB_TOKEN environment variable:"
         echo "  export GITHUB_APM_PAT=your_token_here"
         echo "  curl -sSL -H \"Authorization: token \$GITHUB_APM_PAT\" \\"
-        echo "    https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | \\"
+        echo "    https://raw.githubusercontent.com/microsoft/apm/main/install.sh | \\"
         echo "    GITHUB_APM_PAT=\$GITHUB_APM_PAT sh"
         exit 1
     fi
@@ -279,7 +279,7 @@ TMP_DIR=$(mktemp -d)
 trap "rm -rf $TMP_DIR" EXIT
 
 # Download binary
-echo -e "${YELLOW}Downloading APM CLI...${NC}"
+echo -e "${YELLOW}Downloading APM...${NC}"
 
 # Try downloading without authentication first (for public repos)
 if curl -L --fail --silent --show-error "$DOWNLOAD_URL" -o "$TMP_DIR/$DOWNLOAD_BINARY"; then
@@ -314,7 +314,7 @@ else
                     echo "For private repositories, ensure your token has the required permissions."
                     echo "You can try installing from source instead:"
                     echo "  git clone https://github.com/$REPO.git"
-                    echo "  cd apm-cli && uv sync && uv run pip install -e ."
+                    echo "  cd apm && uv sync && uv run pip install -e ."
                     exit 1
                 fi
             fi
@@ -334,12 +334,12 @@ else
                 echo "For private repositories, ensure your token has the required permissions."
                 echo "You can try installing from source instead:"
                 echo "  git clone https://github.com/$REPO.git"
-                echo "  cd apm-cli && uv sync && uv run pip install -e ."
+                echo "  cd apm && uv sync && uv run pip install -e ."
                 exit 1
             fi
         fi
     else
-        echo -e "${RED}Error: Failed to download APM CLI${NC}"
+        echo -e "${RED}Error: Failed to download APM${NC}"
         echo "URL: $DOWNLOAD_URL"
         echo "This might mean:"
         echo "  1. No binary available for your platform ($PLATFORM-$ARCH)"
@@ -350,12 +350,12 @@ else
         echo "For private repositories, set GITHUB_APM_PAT environment variable:"
         echo "  export GITHUB_APM_PAT=your_token_here"
         echo "  curl -sSL -H \"Authorization: token \$GITHUB_APM_PAT\" \\"
-        echo "    https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | \\"
+        echo "    https://raw.githubusercontent.com/microsoft/apm/main/install.sh | \\"
         echo "    GITHUB_APM_PAT=\$GITHUB_APM_PAT sh"
         echo ""
         echo "You can also try installing from source:"
         echo "  git clone https://github.com/$REPO.git"
-        echo "  cd apm-cli && uv sync && uv run pip install -e ."
+        echo "  cd apm && uv sync && uv run pip install -e ."
         exit 1
     fi
 fi
@@ -427,12 +427,12 @@ else
         echo ""
     fi
     
-    echo "2. Homebrew (macOS/Linux): brew install danielmeppiel/apm-cli"
+    echo "2. Homebrew (macOS/Linux): brew install microsoft/apm-cli"
     echo ""
     echo "3. From source:"
     echo "   git clone https://github.com/$REPO.git"
-    echo "   cd apm-cli && uv sync && uv run pip install -e ."
-    echo ""
+    echo "   cd apm && uv sync && uv run pip install -e ."
+    echo ""§
     
     if [ "$PLATFORM" = "linux" ]; then
         echo -e "${BLUE}Debug information:${NC}"
@@ -478,11 +478,11 @@ fi
 # Verify installation
 if command -v apm >/dev/null 2>&1; then
     INSTALLED_VERSION=$(apm --version 2>/dev/null || echo "unknown")
-    echo -e "${GREEN}✓ APM CLI installed successfully!${NC}"
+    echo -e "${GREEN}✓ APM installed successfully!${NC}"
     echo -e "${BLUE}Version: $INSTALLED_VERSION${NC}"
     echo -e "${BLUE}Location: $INSTALL_DIR/$BINARY_NAME -> $APM_INSTALL_DIR/$BINARY_NAME${NC}"
 else
-    echo -e "${YELLOW}⚠ APM CLI installed but not found in PATH${NC}"
+    echo -e "${YELLOW}⚠ APM installed but not found in PATH${NC}"
     echo "You may need to add $INSTALL_DIR to your PATH environment variable."
     echo "Add this line to your shell profile (.bashrc, .zshrc, etc.):"
     echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
