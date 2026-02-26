@@ -1,7 +1,7 @@
 """Unit tests for transitive dependency handling.
 
 Tests that:
-- get_lockfile_installed_paths() correctly returns paths for all locked deps
+- LockFile.installed_paths_for_project() correctly returns paths for all locked deps
 - _check_orphaned_packages() does not flag transitive deps as orphaned
 - get_dependency_declaration_order() includes transitive deps from lockfile
 """
@@ -13,7 +13,6 @@ import yaml
 from apm_cli.deps.lockfile import (
     LockFile,
     LockedDependency,
-    get_lockfile_installed_paths,
 )
 from apm_cli.primitives.discovery import get_dependency_declaration_order
 
@@ -23,7 +22,7 @@ class TestGetLockfileInstalledPaths:
 
     def test_returns_empty_when_no_lockfile(self, tmp_path):
         """Returns empty list when no apm.lock exists."""
-        assert get_lockfile_installed_paths(tmp_path) == []
+        assert LockFile.installed_paths_for_project(tmp_path) == []
 
     def test_returns_paths_for_regular_packages(self, tmp_path):
         lockfile = LockFile()
@@ -31,7 +30,7 @@ class TestGetLockfileInstalledPaths:
         lockfile.add_dependency(LockedDependency(repo_url="owner/repo-b", depth=2))
         lockfile.write(tmp_path / "apm.lock")
 
-        paths = get_lockfile_installed_paths(tmp_path)
+        paths = LockFile.installed_paths_for_project(tmp_path)
         assert "owner/repo-a" in paths
         assert "owner/repo-b" in paths
 
@@ -40,7 +39,7 @@ class TestGetLockfileInstalledPaths:
         lockfile.add_dependency(LockedDependency(repo_url="owner/repo", depth=1))
         lockfile.write(tmp_path / "apm.lock")
 
-        paths = get_lockfile_installed_paths(tmp_path)
+        paths = LockFile.installed_paths_for_project(tmp_path)
         assert paths.count("owner/repo") == 1
 
     def test_ordered_by_depth_then_repo(self, tmp_path):
@@ -50,7 +49,7 @@ class TestGetLockfileInstalledPaths:
         lockfile.add_dependency(LockedDependency(repo_url="m/mid", depth=2))
         lockfile.write(tmp_path / "apm.lock")
 
-        paths = get_lockfile_installed_paths(tmp_path)
+        paths = LockFile.installed_paths_for_project(tmp_path)
         assert paths == ["a/direct", "m/mid", "z/deep"]
 
     def test_virtual_file_package_path(self, tmp_path):
@@ -64,14 +63,14 @@ class TestGetLockfileInstalledPaths:
         ))
         lockfile.write(tmp_path / "apm.lock")
 
-        paths = get_lockfile_installed_paths(tmp_path)
+        paths = LockFile.installed_paths_for_project(tmp_path)
         # Virtual file: owner/<repo>-<stem> → owner/repo-code-review
         assert "owner/repo-code-review" in paths
 
     def test_corrupt_lockfile(self, tmp_path):
         """Corrupt lockfile should return empty list."""
         (tmp_path / "apm.lock").write_text("not: valid: yaml: [")
-        assert get_lockfile_installed_paths(tmp_path) == []
+        assert LockFile.installed_paths_for_project(tmp_path) == []
 
 
 class TestTransitiveDependencyDiscovery:

@@ -41,7 +41,7 @@ from apm_cli.utils.version_checker import check_for_updates
 try:
     from apm_cli.deps.apm_resolver import APMDependencyResolver
     from apm_cli.deps.github_downloader import GitHubPackageDownloader
-    from apm_cli.deps.lockfile import get_lockfile_installed_paths
+    from apm_cli.deps.lockfile import LockFile
     from apm_cli.models.apm_package import APMPackage, DependencyReference
     from apm_cli.integration import PromptIntegrator, AgentIntegrator
 
@@ -169,7 +169,7 @@ def _check_orphaned_packages():
                     expected_installed.add(str(install_path))
 
             # Also include transitive dependencies from apm.lock
-            lockfile_paths = get_lockfile_installed_paths(Path.cwd())
+            lockfile_paths = LockFile.installed_paths_for_project(Path.cwd())
             expected_installed.update(lockfile_paths)
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
@@ -798,7 +798,7 @@ def prune(ctx, dry_run):
                         expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
 
             # Also include transitive dependencies from apm.lock
-            lockfile_paths = get_lockfile_installed_paths(Path.cwd())
+            lockfile_paths = LockFile.installed_paths_for_project(Path.cwd())
             expected_installed.update(lockfile_paths)
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")

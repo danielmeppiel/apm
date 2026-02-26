@@ -8,7 +8,7 @@ from typing import List, Dict
 from .models import PrimitiveCollection
 from .parser import parse_primitive_file, parse_skill_file
 from ..models.apm_package import APMPackage
-from ..deps.lockfile import get_lockfile_installed_paths
+from ..deps.lockfile import LockFile
 
 
 # Common primitive patterns for local discovery (with recursive search)
@@ -252,7 +252,7 @@ def get_dependency_declaration_order(base_dir: str) -> List[str]:
         
         # Include transitive dependencies from apm.lock
         # Direct deps from apm.yml have priority; transitive deps are appended
-        lockfile_paths = get_lockfile_installed_paths(Path(base_dir))
+        lockfile_paths = LockFile.installed_paths_for_project(Path(base_dir))
         direct_set = set(dependency_names)
         for path in lockfile_paths:
             if path not in direct_set:

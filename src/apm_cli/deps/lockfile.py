@@ -238,6 +238,28 @@ class LockFile:
         """Save lock file to disk (alias for write)."""
         self.write(path)
 
+    @classmethod
+    def installed_paths_for_project(cls, project_root: Path) -> List[str]:
+        """Load apm.lock from project_root and return installed paths.
+
+        Returns an empty list if the lockfile is missing, corrupt, or
+        unreadable.
+
+        Args:
+            project_root: Path to project root containing apm.lock.
+
+        Returns:
+            List[str]: Relative installed paths (e.g., ['owner/repo']),
+                       ordered by depth then repo_url (no duplicates).
+        """
+        try:
+            lockfile = cls.read(project_root / "apm.lock")
+            if not lockfile:
+                return []
+            return lockfile.get_installed_paths(project_root / "apm_modules")
+        except (FileNotFoundError, yaml.YAMLError, ValueError, KeyError):
+            return []
+
 
 def get_lockfile_path(project_root: Path) -> Path:
     """Get the path to the lock file for a project."""
@@ -245,24 +267,5 @@ def get_lockfile_path(project_root: Path) -> Path:
 
 
 def get_lockfile_installed_paths(project_root: Path) -> List[str]:
-    """Get installed paths for all dependencies recorded in apm.lock.
-
-    Convenience wrapper that loads the lockfile and delegates to
-    LockFile.get_installed_paths(). Returns an empty list if the
-    lockfile is missing, corrupt, or unreadable.
-
-    Args:
-        project_root: Path to project root containing apm.lock.
-
-    Returns:
-        List[str]: Relative installed paths (e.g., ['owner/repo']),
-                   ordered by depth then repo_url (no duplicates).
-    """
-    try:
-        lockfile_path = get_lockfile_path(project_root)
-        lockfile = LockFile.read(lockfile_path)
-        if not lockfile:
-            return []
-        return lockfile.get_installed_paths(project_root / "apm_modules")
-    except (FileNotFoundError, yaml.YAMLError, ValueError, KeyError):
-        return []
+    """Deprecated: use LockFile.installed_paths_for_project() instead."""
+    return LockFile.installed_paths_for_project(project_root)
