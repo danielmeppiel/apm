@@ -278,78 +278,6 @@ class TestSkillIntegrator:
         
         assert len(context_files) == 2
     
-    # ========== _copy_prompts_to_references tests ==========
-    
-    def test_copy_prompts_to_references_creates_directory(self):
-        """Test that references directory is created."""
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        (package_dir / "test.prompt.md").write_text("# Test Prompt")
-        
-        skill_dir = self.project_root / "skill"
-        skill_dir.mkdir()
-        
-        primitives = {'prompts': [package_dir / "test.prompt.md"]}
-        copied = self.integrator._copy_primitives_to_skill(primitives, skill_dir)
-        
-        assert copied == 1
-        assert (skill_dir / "prompts").exists()
-        assert (skill_dir / "prompts" / "test.prompt.md").exists()
-    
-    def test_copy_primitives_copies_all_types(self):
-        """Test that all primitive types are copied to correct subdirectories."""
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        apm_instructions = package_dir / ".apm" / "instructions"
-        apm_instructions.mkdir(parents=True)
-        apm_prompts = package_dir / ".apm" / "prompts"
-        apm_prompts.mkdir(parents=True)
-        
-        (apm_instructions / "coding.instructions.md").write_text("# Coding")
-        (apm_prompts / "review.prompt.md").write_text("# Review")
-        (package_dir / "root.prompt.md").write_text("# Root")
-        
-        skill_dir = self.project_root / "skill"
-        skill_dir.mkdir()
-        
-        primitives = {
-            'instructions': [apm_instructions / "coding.instructions.md"],
-            'prompts': [apm_prompts / "review.prompt.md", package_dir / "root.prompt.md"]
-        }
-        copied = self.integrator._copy_primitives_to_skill(primitives, skill_dir)
-        
-        assert copied == 3
-        assert (skill_dir / "instructions" / "coding.instructions.md").exists()
-        assert (skill_dir / "prompts" / "review.prompt.md").exists()
-        assert (skill_dir / "prompts" / "root.prompt.md").exists()
-    
-    def test_copy_primitives_returns_zero_when_empty(self):
-        """Test returns 0 when no primitives exist."""
-        skill_dir = self.project_root / "skill"
-        skill_dir.mkdir()
-        
-        primitives = {}
-        copied = self.integrator._copy_primitives_to_skill(primitives, skill_dir)
-        
-        assert copied == 0
-    
-    def test_copy_primitives_preserves_content(self):
-        """Test that file content is preserved when copying."""
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        
-        original_content = "# Test Prompt\n\nThis is the content."
-        (package_dir / "test.prompt.md").write_text(original_content)
-        
-        skill_dir = self.project_root / "skill"
-        skill_dir.mkdir()
-        
-        primitives = {'prompts': [package_dir / "test.prompt.md"]}
-        self.integrator._copy_primitives_to_skill(primitives, skill_dir)
-        
-        copied_content = (skill_dir / "prompts" / "test.prompt.md").read_text()
-        assert copied_content == original_content
-    
     # ========== integrate_package_skill tests ==========
     
     def _create_package_info(
@@ -392,32 +320,6 @@ class TestSkillIntegrator:
             dependency_ref=dependency_ref,
             package_type=package_type
         )
-    
-    def test_integrate_package_skill_creates_skill_md(self):
-        """Test that SKILL.md is created when package has content and type=HYBRID.
-        
-        Per skill-strategy.md Decision 2: Skills are explicit, not implicit.
-        Packages with primitives only become skills if they declare type: hybrid.
-        """
-        package_dir = self.project_root / "package"
-        apm_instructions = package_dir / ".apm" / "instructions"
-        apm_instructions.mkdir(parents=True)
-        (apm_instructions / "coding.instructions.md").write_text("# Coding Guidelines")
-        
-        # Must set HYBRID type - primitives alone don't auto-become skills
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is True
-        assert result.skill_updated is False
-        assert result.skill_skipped is False
-        assert result.skill_path == skill_dir / "SKILL.md"
-        assert (skill_dir / "SKILL.md").exists()
     
     def test_integrate_package_skill_skips_when_no_content(self):
         """Test that integration is skipped when package has no primitives."""
@@ -552,233 +454,6 @@ class TestSkillIntegrator:
         skills_dir = self.project_root / ".github" / "skills"
         assert not skills_dir.exists()
 
-    def test_integrate_package_skill_creates_prompts_subdirectory(self):
-        """Test that prompts subdirectory is created with prompt files.
-        
-        Per skill-strategy.md: prompts-only packages need explicit type: hybrid to become skills.
-        """
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        (package_dir / "test.prompt.md").write_text("# Test Prompt")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is True
-        assert result.references_copied == 1
-        assert (skill_dir / "prompts").exists()
-        assert (skill_dir / "prompts" / "test.prompt.md").exists()
-    
-    def test_integrate_package_skill_yaml_frontmatter_has_required_fields(self):
-        """Test that generated SKILL.md has required YAML frontmatter fields."""
-        package_dir = self.project_root / "package"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_agents.mkdir(parents=True)
-        (apm_agents / "helper.agent.md").write_text("# Helper Agent")
-        
-        package_info = self._create_package_info(
-            name="my-package",
-            version="2.0.0",
-            commit="def456",
-            install_path=package_dir,
-            description="A test package",
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        content = (skill_dir / "SKILL.md").read_text()
-        
-        # Check YAML frontmatter structure
-        assert content.startswith("---")
-        assert "name:" in content
-        assert "description:" in content
-        assert "metadata:" in content
-        assert "apm_package:" in content
-        assert "apm_version:" in content
-        assert "apm_commit:" in content
-        assert "apm_installed_at:" in content
-        assert "apm_content_hash:" in content
-    
-    def test_integrate_package_skill_name_follows_hyphen_case(self):
-        """Test that skill name is in hyphen-case format."""
-        package_dir = self.project_root / "package"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_agents.mkdir(parents=True)
-        (apm_agents / "helper.agent.md").write_text("# Helper Agent")
-        
-        package_info = self._create_package_info(
-            name="MyAwesomePackage",
-            install_path=package_dir,
-            source="github.com/owner/MyAwesomePackage",
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        content = (skill_dir / "SKILL.md").read_text()
-        
-        # The name should be converted to hyphen-case
-        assert "name: my-awesome-package" in content
-    
-    def test_integrate_package_skill_includes_instructions_section(self):
-        """Test that SKILL.md references instructions and copies files."""
-        package_dir = self.project_root / "package"
-        apm_instructions = package_dir / ".apm" / "instructions"
-        apm_instructions.mkdir(parents=True)
-        (apm_instructions / "coding.instructions.md").write_text("Follow coding standards")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        # SKILL.md should be concise with resource table
-        content = (skill_dir / "SKILL.md").read_text()
-        assert "What's Included" in content
-        assert "instructions/" in content
-        
-        # Actual file should be in subdirectory
-        assert (skill_dir / "instructions" / "coding.instructions.md").exists()
-        copied_content = (skill_dir / "instructions" / "coding.instructions.md").read_text()
-        assert "Follow coding standards" in copied_content
-    
-    def test_integrate_package_skill_includes_agents_section(self):
-        """Test that SKILL.md references agents and copies files."""
-        package_dir = self.project_root / "package"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_agents.mkdir(parents=True)
-        (apm_agents / "reviewer.agent.md").write_text("Review code for quality")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        content = (skill_dir / "SKILL.md").read_text()
-        assert "What's Included" in content
-        assert "agents/" in content
-        
-        # Actual file should be in subdirectory
-        assert (skill_dir / "agents" / "reviewer.agent.md").exists()
-        copied_content = (skill_dir / "agents" / "reviewer.agent.md").read_text()
-        assert "Review code for quality" in copied_content
-    
-    def test_integrate_package_skill_includes_prompts_section(self):
-        """Test that SKILL.md references prompts and copies files."""
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        (package_dir / "design-review.prompt.md").write_text("# Design Review")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        content = (skill_dir / "SKILL.md").read_text()
-        assert "What's Included" in content
-        assert "prompts/" in content
-        
-        # Actual file should be in subdirectory
-        assert (skill_dir / "prompts" / "design-review.prompt.md").exists()
-    
-    def test_integrate_package_skill_updates_when_version_changes(self):
-        """Test that SKILL.md is updated when package version changes."""
-        package_dir = self.project_root / "package"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_agents.mkdir(parents=True)
-        (apm_agents / "helper.agent.md").write_text("# Helper")
-        
-        # Create package_info first to get the skill path
-        package_info = self._create_package_info(
-            version="2.0.0",
-            commit="abc123",
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        skill_path = skill_dir / "SKILL.md"
-        
-        # Create initial SKILL.md with old version
-        old_content = """---
-name: test-pkg
-description: Old description
-metadata:
-  apm_package: test-pkg@1.0.0
-  apm_version: '1.0.0'
-  apm_commit: abc123
-  apm_installed_at: '2024-01-01T00:00:00'
-  apm_content_hash: oldhash
----
-
-# Old content"""
-        skill_path.write_text(old_content)
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is False
-        assert result.skill_updated is True
-        assert result.skill_skipped is False
-        
-        new_content = skill_path.read_text()
-        assert "apm_version: '2.0.0'" in new_content or "apm_version: 2.0.0" in new_content
-    
-    def test_integrate_package_skill_updates_when_commit_changes(self):
-        """Test that SKILL.md is updated when commit hash changes."""
-        package_dir = self.project_root / "package"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_agents.mkdir(parents=True)
-        (apm_agents / "helper.agent.md").write_text("# Helper")
-        
-        # Create package_info first to get the skill path
-        package_info = self._create_package_info(
-            version="1.0.0",
-            commit="def456",  # New commit
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        skill_path = skill_dir / "SKILL.md"
-        
-        # Create initial SKILL.md with old commit
-        old_content = """---
-name: test-pkg
-description: Old description
-metadata:
-  apm_package: test-pkg@1.0.0
-  apm_version: '1.0.0'
-  apm_commit: abc123
-  apm_installed_at: '2024-01-01T00:00:00'
-  apm_content_hash: oldhash
----
-
-# Old content"""
-        skill_path.write_text(old_content)
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is False
-        assert result.skill_updated is True
-        assert result.skill_skipped is False
-    
     def test_integrate_package_skill_skips_when_unchanged(self):
         """Test that SKILL.md is skipped when version and commit unchanged."""
         package_dir = self.project_root / "package"
@@ -817,95 +492,6 @@ metadata:
         assert result.skill_updated is False
         assert result.skill_skipped is True
     
-    def test_integrate_package_skill_with_only_prompts(self):
-        """Test integration works with only prompt files.
-        
-        Per skill-strategy.md: prompts-only packages need explicit type: hybrid.
-        """
-        package_dir = self.project_root / "package"
-        package_dir.mkdir()
-        (package_dir / "review.prompt.md").write_text("# Review Prompt")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is True
-        assert result.references_copied == 1
-        assert (skill_dir / "SKILL.md").exists()
-    
-    def test_integrate_package_skill_with_only_context(self):
-        """Test integration works with only context files.
-        
-        Per skill-strategy.md: context-only packages need explicit type: hybrid.
-        """
-        package_dir = self.project_root / "package"
-        apm_context = package_dir / ".apm" / "context"
-        apm_context.mkdir(parents=True)
-        (apm_context / "project.context.md").write_text("# Project Context")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is True
-        content = (skill_dir / "SKILL.md").read_text()
-        assert "What's Included" in content
-        assert "context/" in content
-        assert (skill_dir / "context" / "project.context.md").exists()
-    
-    # ========== YAML frontmatter validation tests ==========
-    
-    def test_skill_md_description_truncated_to_1024_chars(self):
-        """Test that description is truncated to Claude Skills spec limit."""
-        package_dir = self.project_root / "package"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_agents.mkdir(parents=True)
-        (apm_agents / "helper.agent.md").write_text("# Helper")
-        
-        long_description = "A" * 2000  # Longer than 1024 limit
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            description=long_description,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        content = (skill_dir / "SKILL.md").read_text()
-        
-        # Parse the frontmatter to check description length
-        import frontmatter
-        post = frontmatter.loads(content)
-        assert len(post.metadata.get('description', '')) <= 1024
-    
-    def test_skill_md_includes_content_hash(self):
-        """Test that SKILL.md includes content hash for change detection."""
-        package_dir = self.project_root / "package"
-        apm_instructions = package_dir / ".apm" / "instructions"
-        apm_instructions.mkdir(parents=True)
-        (apm_instructions / "test.instructions.md").write_text("# Test Content")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        content = (skill_dir / "SKILL.md").read_text()
-        assert "apm_content_hash:" in content
-    
     # ========== update_gitignore_for_skills tests ==========
     
     def test_update_gitignore_adds_skill_patterns(self):
@@ -922,7 +508,7 @@ metadata:
     def test_update_gitignore_skips_if_patterns_exist(self):
         """Test that gitignore update is skipped if patterns already exist."""
         gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/skills/*-apm/\n# APM-generated skills\n")
+        gitignore.write_text(".github/skills/*-apm/\n# APM integrated skills\n")
         
         updated = self.integrator.update_gitignore_for_skills(self.project_root)
         
@@ -991,79 +577,6 @@ metadata:
         assert result['files_removed'] == 0
         assert skill_dir.exists()
     
-    # ========== Edge cases ==========
-    
-    def test_integrate_handles_frontmatter_in_source_files(self):
-        """Test that source files are copied to subdirectories (frontmatter preserved)."""
-        package_dir = self.project_root / "package"
-        apm_instructions = package_dir / ".apm" / "instructions"
-        apm_instructions.mkdir(parents=True)
-        
-        content_with_frontmatter = """---
-title: Test Instructions
-version: 1.0
----
-
-# Actual Instructions
-
-This is the content."""
-        (apm_instructions / "test.instructions.md").write_text(content_with_frontmatter)
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        # File should be copied to subdirectory
-        copied_file = skill_dir / "instructions" / "test.instructions.md"
-        assert copied_file.exists()
-        
-        copied_content = copied_file.read_text()
-        assert "# Actual Instructions" in copied_content
-        assert "This is the content." in copied_content
-    
-    def test_integrate_with_multiple_primitive_types(self):
-        """Test integration with all primitive types present."""
-        package_dir = self.project_root / "package"
-        
-        # Create all types of primitives
-        apm_instructions = package_dir / ".apm" / "instructions"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_context = package_dir / ".apm" / "context"
-        
-        apm_instructions.mkdir(parents=True)
-        apm_agents.mkdir(parents=True)
-        apm_context.mkdir(parents=True)
-        
-        (apm_instructions / "coding.instructions.md").write_text("# Coding")
-        (apm_agents / "reviewer.agent.md").write_text("# Reviewer")
-        (apm_context / "project.context.md").write_text("# Project")
-        (package_dir / "workflow.prompt.md").write_text("# Workflow")
-        
-        package_info = self._create_package_info(
-            install_path=package_dir,
-            package_type=PackageType.HYBRID
-        )
-        skill_dir = self._get_skill_path(package_info)
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is True
-        assert result.references_copied == 4  # All 4 primitives copied
-        
-        skill_content = (skill_dir / "SKILL.md").read_text()
-        assert "What's Included" in skill_content
-        
-        # All subdirectories should exist with files
-        assert (skill_dir / "instructions" / "coding.instructions.md").exists()
-        assert (skill_dir / "agents" / "reviewer.agent.md").exists()
-        assert (skill_dir / "context" / "project.context.md").exists()
-        assert (skill_dir / "prompts" / "workflow.prompt.md").exists()
-
-
 class TestSkillIntegrationResult:
     """Test SkillIntegrationResult dataclass."""
     
@@ -1776,26 +1289,6 @@ Use when building MCP servers or tools.
     
     # ========== Test T6: Package type routing ==========
     
-    def test_copy_skill_respects_instructions_type(self):
-        """Test that packages with type='instructions' are skipped."""
-        from apm_cli.models.apm_package import PackageContentType
-        
-        skill_source = self.apm_modules / "owner" / "my-skill"
-        skill_source.mkdir(parents=True)
-        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
-        
-        package_info = self._create_package_info(
-            name="my-skill",
-            install_path=skill_source,
-            pkg_type=PackageContentType.INSTRUCTIONS  # This type should skip skill install
-        )
-        
-        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
-        
-        # Should return None because type is INSTRUCTIONS - both paths should be None
-        assert github_path is None
-        assert claude_path is None
-    
     def test_copy_skill_respects_skill_type(self):
         """Test that packages with type='skill' are processed."""
         from apm_cli.models.apm_package import PackageContentType
@@ -2299,38 +1792,6 @@ Detailed instructions here.
         # .claude/ should NOT exist (we never created it)
         assert not (self.project_root / ".claude").exists()
     
-    # ========== Test: Generated skills also copy to .claude/ ==========
-    
-    def test_generated_skill_copies_to_claude_when_exists(self):
-        """Test that generated skills (from .apm/ primitives) also copy to .claude/."""
-        # Create .claude/ directory
-        (self.project_root / ".claude").mkdir()
-        
-        # Create a package with .apm/ primitives (not a native skill)
-        package_dir = self.project_root / "my-package"
-        apm_instructions = package_dir / ".apm" / "instructions"
-        apm_instructions.mkdir(parents=True)
-        (apm_instructions / "coding.instructions.md").write_text("# Coding Standards")
-        
-        package_info = self._create_package_info(
-            name="my-package",
-            install_path=package_dir
-        )
-        
-        result = self.integrator.integrate_package_skill(package_info, self.project_root)
-        
-        assert result.skill_created is True
-        
-        # Should exist in .github/skills/
-        github_skill = self.project_root / ".github" / "skills" / "my-package"
-        assert github_skill.exists()
-        assert (github_skill / "SKILL.md").exists()
-        
-        # Should ALSO exist in .claude/skills/
-        claude_skill = self.project_root / ".claude" / "skills" / "my-package"
-        assert claude_skill.exists()
-        assert (claude_skill / "SKILL.md").exists()
-    
     # ========== Test: copy_skill_to_target returns both paths ==========
     
     def test_copy_skill_to_target_returns_both_paths_when_claude_exists(self):
@@ -2792,3 +2253,153 @@ class TestSubSkillPromotion:
         assert result['files_removed'] == 0
         assert (self.project_root / ".github" / "skills" / "modernisation").exists()
         assert (self.project_root / ".github" / "skills" / "azure-naming").exists()
+
+
+class TestSubSkillPromotionForNonSkillPackages:
+    """Test that sub-skills under .apm/skills/ are promoted even when the
+    parent package is type INSTRUCTIONS (no top-level SKILL.md)."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_instructions_package(self, name="sample-package", sub_skills=None):
+        """Create a package WITHOUT SKILL.md (INSTRUCTIONS type) that ships sub-skills."""
+        package_dir = self.project_root / name
+        package_dir.mkdir()
+        (package_dir / "apm.yml").write_text(
+            f"name: {name}\nversion: 1.0.0\ndescription: test\n"
+        )
+        # Add .apm/instructions/ so it's a valid package
+        instr_dir = package_dir / ".apm" / "instructions"
+        instr_dir.mkdir(parents=True)
+        (instr_dir / "design-standards.instructions.md").write_text("# Standards\n")
+        if sub_skills:
+            skills_dir = package_dir / ".apm" / "skills"
+            skills_dir.mkdir(parents=True, exist_ok=True)
+            for sub_name in sub_skills:
+                sub_dir = skills_dir / sub_name
+                sub_dir.mkdir()
+                (sub_dir / "SKILL.md").write_text(
+                    f"---\nname: {sub_name}\ndescription: Sub-skill {sub_name}\n---\n# {sub_name}\n"
+                )
+        return package_dir
+
+    def _create_package_info(self, name, install_path):
+        package = APMPackage(
+            name=name,
+            version="1.0.0",
+            package_path=install_path,
+            source=f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            package_type=PackageType.APM_PACKAGE
+        )
+
+    def test_sub_skills_promoted_from_instructions_package(self):
+        """Sub-skills should be promoted even from INSTRUCTIONS-type packages."""
+        package_dir = self._create_instructions_package(
+            "sample-package", sub_skills=["style-checker"]
+        )
+        pkg_info = self._create_package_info("sample-package", package_dir)
+
+        result = self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Package itself should NOT become a skill (INSTRUCTIONS type)
+        assert result.skill_created is False
+        assert result.skill_skipped is True
+        # But sub-skills should be promoted
+        assert result.sub_skills_promoted == 1
+        assert (self.project_root / ".github" / "skills" / "style-checker" / "SKILL.md").exists()
+
+    def test_multiple_sub_skills_promoted_from_instructions_package(self):
+        """All sub-skills should be promoted from INSTRUCTIONS-type packages."""
+        package_dir = self._create_instructions_package(
+            "sample-package", sub_skills=["skill-a", "skill-b"]
+        )
+        pkg_info = self._create_package_info("sample-package", package_dir)
+
+        result = self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        assert result.sub_skills_promoted == 2
+        assert (self.project_root / ".github" / "skills" / "skill-a" / "SKILL.md").exists()
+        assert (self.project_root / ".github" / "skills" / "skill-b" / "SKILL.md").exists()
+
+    def test_no_sub_skills_returns_zero(self):
+        """Packages without .apm/skills/ should return sub_skills_promoted=0."""
+        package_dir = self._create_instructions_package("sample-package", sub_skills=None)
+        pkg_info = self._create_package_info("sample-package", package_dir)
+
+        result = self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        assert result.sub_skills_promoted == 0
+        assert not (self.project_root / ".github" / "skills").exists()
+
+    def test_sub_skills_promoted_to_claude_when_claude_exists(self):
+        """Sub-skills from INSTRUCTIONS packages should also go to .claude/skills/ if .claude/ exists."""
+        (self.project_root / ".claude").mkdir()
+        package_dir = self._create_instructions_package(
+            "sample-package", sub_skills=["style-checker"]
+        )
+        pkg_info = self._create_package_info("sample-package", package_dir)
+
+        result = self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        assert result.sub_skills_promoted == 1
+        assert (self.project_root / ".github" / "skills" / "style-checker" / "SKILL.md").exists()
+        assert (self.project_root / ".claude" / "skills" / "style-checker" / "SKILL.md").exists()
+
+    def test_sync_removes_orphaned_promoted_sub_skills(self):
+        """When a package is uninstalled, its promoted sub-skills should be cleaned up."""
+        # Create the promoted sub-skill as if it had been installed
+        style_checker = self.project_root / ".github" / "skills" / "style-checker"
+        style_checker.mkdir(parents=True)
+        (style_checker / "SKILL.md").write_text("# style-checker")
+
+        # Simulate an empty apm.yml (package was uninstalled)
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        assert result['files_removed'] == 1
+        assert not style_checker.exists()
+
+    def test_sync_preserves_promoted_sub_skills_when_package_installed(self):
+        """When a package is still installed, its promoted sub-skills should be preserved."""
+        # Create apm_modules with the package and its sub-skills
+        apm_modules = self.project_root / "apm_modules"
+        owner_dir = apm_modules / "microsoft" / "apm-sample-package"
+        owner_dir.mkdir(parents=True)
+        (owner_dir / "apm.yml").write_text("name: apm-sample-package\nversion: 1.0.0\n")
+        sub_dir = owner_dir / ".apm" / "skills" / "style-checker"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "SKILL.md").write_text("# style-checker")
+
+        # Create the promoted sub-skill in .github/skills/
+        style_checker = self.project_root / ".github" / "skills" / "style-checker"
+        style_checker.mkdir(parents=True)
+        (style_checker / "SKILL.md").write_text("# style-checker")
+
+        dep = DependencyReference.parse("microsoft/apm-sample-package")
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [dep]
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        assert result['files_removed'] == 0
+        assert style_checker.exists()

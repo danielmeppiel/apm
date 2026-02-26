@@ -20,6 +20,7 @@ class SkillIntegrationResult:
     skill_path: Path | None
     references_copied: int  # Now tracks total files copied to subdirectories
     links_resolved: int = 0  # Kept for backwards compatibility
+    sub_skills_promoted: int = 0  # Number of sub-skills promoted to top-level
 
 
 def to_hyphen_case(name: str) -> str:
@@ -149,12 +150,11 @@ def normalize_skill_name(name: str) -> str:
 # - Packages with only instructions → compile to AGENTS.md, NOT skills
 
 def get_effective_type(package_info) -> "PackageContentType":
-    """Get effective package content type based on explicit type or package structure.
+    """Get effective package content type based on package structure.
     
-    Priority order:
-    1. Explicit `type` field in apm.yml → use it directly
-    2. Package has SKILL.md (PackageType.CLAUDE_SKILL or HYBRID) → treat as SKILL
-    3. Otherwise → INSTRUCTIONS (compile to AGENTS.md only)
+    Determines type by:
+    1. Package has SKILL.md (PackageType.CLAUDE_SKILL or HYBRID) → SKILL
+    2. Otherwise → INSTRUCTIONS (compile to AGENTS.md only)
     
     Args:
         package_info: PackageInfo object containing package metadata
@@ -164,19 +164,13 @@ def get_effective_type(package_info) -> "PackageContentType":
     """
     from apm_cli.models.apm_package import PackageContentType, PackageType
     
-    # Priority 1: Explicit type field in apm.yml
-    pkg_type = package_info.package.type if package_info.package else None
-    if pkg_type is not None:
-        return pkg_type
-    
-    # Priority 2: Check if package has SKILL.md (via package_type field)
+    # Check if package has SKILL.md (via package_type field)
     # PackageType.CLAUDE_SKILL = has SKILL.md only
     # PackageType.HYBRID = has both apm.yml AND SKILL.md
     if package_info.package_type in (PackageType.CLAUDE_SKILL, PackageType.HYBRID):
         return PackageContentType.SKILL
     
-    # Priority 3: Default to INSTRUCTIONS for packages without SKILL.md
-    # Per skill-strategy.md: "Only .instructions.md files → NO skill, compile to AGENTS.md"
+    # Default to INSTRUCTIONS for packages without SKILL.md
     return PackageContentType.INSTRUCTIONS
 
 
@@ -330,7 +324,7 @@ def copy_skill_to_target(
 
 
 class SkillIntegrator:
-    """Handles generation of SKILL.md files for Claude Code integration.
+    """Handles integration of native SKILL.md files for Claude Code and VS Code.
     
     Claude Skills Spec:
     - SKILL.md files provide structured context for Claude Code
@@ -449,298 +443,8 @@ class SkillIntegrator:
         
         return context_files
     
-    def _parse_skill_metadata(self, file_path: Path) -> dict:
-        """Parse APM metadata from YAML frontmatter in a SKILL.md file.
-        
-        Args:
-            file_path: Path to the SKILL.md file
-            
-        Returns:
-            dict: Metadata extracted from frontmatter
-                  Empty dict if no valid metadata found
-        """
-        try:
-            post = frontmatter.load(file_path)
-            
-            # Extract APM metadata from nested 'metadata.apm_*' keys
-            metadata = post.metadata.get('metadata', {})
-            if metadata:
-                return {
-                    'Version': metadata.get('apm_version', ''),
-                    'Commit': metadata.get('apm_commit', ''),
-                    'Package': metadata.get('apm_package', ''),
-                    'ContentHash': metadata.get('apm_content_hash', '')
-                }
-            
-            return {}
-        except Exception:
-            return {}
-    
-    def _calculate_source_hash(self, package_path: Path) -> str:
-        """Calculate a hash of all source files that go into SKILL.md.
-        
-        Args:
-            package_path: Path to the package directory
-            
-        Returns:
-            str: Hexadecimal hash of combined source content
-        """
-        hasher = hashlib.sha256()
-        
-        # Collect all source files
-        all_files = []
-        all_files.extend(self.find_instruction_files(package_path))
-        all_files.extend(self.find_agent_files(package_path))
-        all_files.extend(self.find_context_files(package_path))
-        
-        # Sort for deterministic hashing
-        all_files.sort(key=str)
-        
-        for file_path in all_files:
-            try:
-                content = file_path.read_text(encoding='utf-8')
-                hasher.update(content.encode())
-            except Exception:
-                # Skip unreadable files - hash will reflect only readable content
-                pass
-        
-        return hasher.hexdigest()
-    
-    def _should_update_skill(self, existing_metadata: dict, package_info, package_path: Path) -> tuple[bool, bool]:
-        """Determine if an existing SKILL.md file should be updated.
-        
-        Args:
-            existing_metadata: Metadata from existing SKILL.md
-            package_info: PackageInfo object with new package metadata
-            package_path: Path to package for source hash calculation
-            
-        Returns:
-            tuple[bool, bool]: (should_update, was_modified)
-        """
-        if not existing_metadata:
-            return (True, False)
-        
-        # Get new version and commit
-        new_version = package_info.package.version
-        new_commit = (
-            package_info.resolved_reference.resolved_commit
-            if package_info.resolved_reference
-            else "unknown"
-        )
-        
-        # Get existing version and commit
-        existing_version = existing_metadata.get('Version', '')
-        existing_commit = existing_metadata.get('Commit', '')
-        
-        # Check content hash for modification detection
-        was_modified = False
-        stored_hash = existing_metadata.get('ContentHash', '')
-        if stored_hash:
-            current_hash = self._calculate_source_hash(package_path)
-            was_modified = (current_hash != stored_hash and current_hash != "")
-        
-        # Update if version or commit changed
-        should_update = (existing_version != new_version or existing_commit != new_commit)
-        return (should_update, was_modified)
-    
-    def _extract_content(self, file_path: Path) -> str:
-        """Extract markdown content from a file, stripping frontmatter.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            str: Markdown content without frontmatter
-        """
-        try:
-            post = frontmatter.load(file_path)
-            return post.content.strip()
-        except Exception:
-            # Fallback to raw content if frontmatter parsing fails
-            return file_path.read_text(encoding='utf-8').strip()
-    
-    def _extract_keywords(self, files: List[Path]) -> set:
-        """Extract keywords from file names for discovery hints.
-        
-        Args:
-            files: List of file paths
-            
-        Returns:
-            set: Keywords extracted from file names
-        """
-        keywords = set()
-        for f in files:
-            # "design-standards.instructions.md" → ["design", "standards"]
-            stem = f.stem.split('.')[0]  # Remove extension parts
-            words = stem.replace('-', ' ').replace('_', ' ').split()
-            keywords.update(w.lower() for w in words if len(w) > 3)
-        return keywords
-    
-    def _generate_discovery_description(self, package_info, primitives: dict) -> str:
-        """Generate description optimized for Claude skill discovery.
-        
-        Claude uses this to decide WHEN to activate the skill.
-        Must be specific about triggers and use cases.
-        
-        Args:
-            package_info: Package metadata
-            primitives: Dict of primitive type -> list of files
-            
-        Returns:
-            str: Description (max 1024 chars per Claude spec)
-        """
-        base = package_info.package.description or f"Expertise from {package_info.package.name}"
-        
-        # Extract keywords from all files for trigger hints
-        all_files = []
-        for files in primitives.values():
-            all_files.extend(files)
-        
-        keywords = self._extract_keywords(all_files)
-        
-        if keywords:
-            triggers = ", ".join(sorted(keywords)[:5])
-            hint = f" Use when working with {triggers}."
-        else:
-            hint = ""
-        
-        return (base + hint)[:1024]
-    
-    def _generate_skill_content(self, package_info, primitives: dict, skill_dir: Path) -> str:
-        """Generate concise SKILL.md body content.
-        
-        Creates a lightweight manifest that points to subdirectories.
-        Claude uses progressive disclosure to read files when needed.
-        
-        Args:
-            package_info: Package metadata
-            primitives: Dict of primitive type -> list of files
-            skill_dir: Target skill directory (for relative paths)
-            
-        Returns:
-            str: Concise markdown content (~100-150 words)
-        """
-        pkg = package_info.package
-        sections = []
-        
-        # Header
-        sections.append(f"# {pkg.name}")
-        sections.append("")
-        sections.append(pkg.description or f"Expertise from {pkg.source or pkg.name}.")
-        sections.append("")
-        
-        # Resources table
-        sections.append("## What's Included")
-        sections.append("")
-        sections.append("| Directory | Contents |")
-        sections.append("|-----------|----------|")
-        
-        type_labels = {
-            'instructions': 'Guidelines & standards',
-            'agents': 'Specialist personas',
-            'prompts': 'Executable workflows',
-            'context': 'Reference documents'
-        }
-        
-        for ptype, label in type_labels.items():
-            files = primitives.get(ptype, [])
-            if files:
-                count = len(files)
-                sections.append(f"| [{ptype}/]({ptype}/) | {count} {label.lower()} |")
-        
-        sections.append("")
-        sections.append("Read files in each directory for detailed guidance.")
-        
-        return "\n".join(sections)
-    
-    def _copy_primitives_to_skill(self, primitives: dict, skill_dir: Path) -> int:
-        """Copy all primitives to typed subdirectories in skill directory.
-        
-        Args:
-            primitives: Dict of primitive type -> list of files
-            skill_dir: Target skill directory
-            
-        Returns:
-            int: Total number of files copied
-        """
-        total_copied = 0
-        
-        for ptype, files in primitives.items():
-            if not files:
-                continue
-            
-            subdir = skill_dir / ptype
-            subdir.mkdir(parents=True, exist_ok=True)
-            
-            for src_file in files:
-                target_path = subdir / src_file.name
-                try:
-                    shutil.copy2(src_file, target_path)
-                    total_copied += 1
-                except Exception:
-                    # Skip files that can't be copied - continue with remaining files
-                    pass
-        
-        return total_copied
-    
-    def _generate_skill_file(self, package_info, primitives: dict, skill_dir: Path) -> int:
-        """Generate the SKILL.md file with proper frontmatter.
-        
-        Args:
-            package_info: PackageInfo object with package metadata
-            primitives: Dict of primitive type -> list of files
-            skill_dir: Target skill directory
-            
-        Returns:
-            int: Number of files copied to subdirectories
-        """
-        skill_path = skill_dir / "SKILL.md"
-        package_path = package_info.install_path
-        
-        # Generate skill name from package
-        repo_url = package_info.package.source or package_info.package.name
-        skill_name = to_hyphen_case(repo_url)
-        
-        # Generate discovery description
-        skill_description = self._generate_discovery_description(package_info, primitives)
-        
-        # Calculate content hash
-        content_hash = self._calculate_source_hash(package_path)
-        
-        # Copy primitives to typed subdirectories
-        files_copied = self._copy_primitives_to_skill(primitives, skill_dir)
-        
-        # Generate the concise body content
-        body_content = self._generate_skill_content(package_info, primitives, skill_dir)
-        
-        # Build frontmatter per Claude Skills Spec
-        skill_metadata = {
-            'name': skill_name,
-            'description': skill_description,
-            'metadata': {
-                'apm_package': package_info.get_canonical_dependency_string(),
-                'apm_version': package_info.package.version,
-                'apm_commit': (
-                    package_info.resolved_reference.resolved_commit
-                    if package_info.resolved_reference
-                    else "unknown"
-                ),
-                'apm_installed_at': package_info.installed_at or datetime.now().isoformat(),
-                'apm_content_hash': content_hash
-            }
-        }
-        
-        # Create the frontmatter post
-        post = frontmatter.Post(body_content, **skill_metadata)
-        
-        # Write the SKILL.md file
-        with open(skill_path, 'w', encoding='utf-8') as f:
-            f.write(frontmatter.dumps(post))
-        
-        return files_copied
-    
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True) -> None:
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True) -> int:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -748,9 +452,13 @@ class SkillIntegrator:
             target_skills_root: Root skills directory (e.g. .github/skills/ or .claude/skills/).
             parent_name: Name of the parent skill (used in warning messages).
             warn: Whether to emit a warning on name collisions.
+
+        Returns:
+            int: Number of sub-skills promoted.
         """
+        promoted = 0
         if not sub_skills_dir.is_dir():
-            return
+            return promoted
         for sub_skill_path in sub_skills_dir.iterdir():
             if not sub_skill_path.is_dir():
                 continue
@@ -772,6 +480,47 @@ class SkillIntegrator:
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
             shutil.copytree(sub_skill_path, target, dirs_exist_ok=True)
+            promoted += 1
+        return promoted
+
+    def _promote_sub_skills_standalone(
+        self, package_info, project_root: Path
+    ) -> int:
+        """Promote sub-skills from a package that is NOT itself a skill.
+
+        Packages typed as INSTRUCTIONS may still ship sub-skills under
+        ``.apm/skills/``.  This method promotes them to ``.github/skills/``
+        (and ``.claude/skills/`` when present) without creating a top-level
+        skill entry for the parent package.
+
+        Args:
+            package_info: PackageInfo object with package metadata.
+            project_root: Root directory of the project.
+
+        Returns:
+            int: Number of sub-skills promoted.
+        """
+        package_path = package_info.install_path
+        sub_skills_dir = package_path / ".apm" / "skills"
+        if not sub_skills_dir.is_dir():
+            return 0
+
+        parent_name = package_path.name
+        github_skills_root = project_root / ".github" / "skills"
+        github_skills_root.mkdir(parents=True, exist_ok=True)
+        count = self._promote_sub_skills(
+            sub_skills_dir, github_skills_root, parent_name, warn=True
+        )
+
+        # Also promote into .claude/skills/ when .claude/ exists
+        claude_dir = project_root / ".claude"
+        if claude_dir.exists() and claude_dir.is_dir():
+            claude_skills_root = claude_dir / "skills"
+            self._promote_sub_skills(
+                sub_skills_dir, claude_skills_root, parent_name, warn=False
+            )
+
+        return count
 
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path
@@ -856,7 +605,7 @@ class SkillIntegrator:
         # so we promote each sub-skill to an independent top-level entry.
         sub_skills_dir = package_path / ".apm" / "skills"
         github_skills_root = project_root / ".github" / "skills"
-        self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True)
+        sub_skills_count = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True)
         
         # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
         claude_dir = project_root / ".claude"
@@ -880,28 +629,18 @@ class SkillIntegrator:
             skill_skipped=False,
             skill_path=github_skill_md,
             references_copied=files_copied,
-            links_resolved=0
+            links_resolved=0,
+            sub_skills_promoted=sub_skills_count
         )
 
     def integrate_package_skill(self, package_info, project_root: Path) -> SkillIntegrationResult:
-        """Generate SKILL.md for a package in .github/skills/ directory.
+        """Integrate a package's skill into .github/skills/ directory.
         
-        Creates:
-        - .github/skills/{skill-name}/SKILL.md 
-        - .github/skills/{skill-name}/references/ with prompt files
+        Copies native skills (packages with SKILL.md at root) to .github/skills/
+        and optionally .claude/skills/. Also promotes any sub-skills from .apm/skills/.
         
-        This follows the Agent Skills standard (.github/skills/).
-        
-        Routing based on package type (from apm.yml):
-        - SKILL/HYBRID: Install as native skill
-        - INSTRUCTIONS/PROMPTS: Skip skill installation
-        
-        Note: Virtual FILE packages (individual files like owner/repo/path/to/file.agent.md) 
-        and COLLECTION packages do NOT generate Skills. Only full APM packages and 
-        subdirectory packages (like Claude Skills) generate Skills.
-        
-        Subdirectory packages (e.g., ComposioHQ/awesome-claude-skills/mcp-builder) ARE 
-        processed because they represent complete skill packages with their own SKILL.md.
+        Packages without SKILL.md at root are not installed as skills — only their
+        sub-skills (if any) are promoted.
         
         Args:
             package_info: PackageInfo object with package metadata
@@ -914,13 +653,19 @@ class SkillIntegrator:
         # SKILL and HYBRID → install as skill
         # INSTRUCTIONS and PROMPTS → skip skill installation
         if not should_install_skill(package_info):
+            # Even non-skill packages may ship sub-skills under .apm/skills/.
+            # Promote them so Copilot can discover them independently.
+            sub_skills_count = self._promote_sub_skills_standalone(
+                package_info, project_root
+            )
             return SkillIntegrationResult(
                 skill_created=False,
                 skill_updated=False,
                 skill_skipped=True,
                 skill_path=None,
                 references_copied=0,
-                links_resolved=0
+                links_resolved=0,
+                sub_skills_promoted=sub_skills_count
             )
         
         # Skip virtual FILE and COLLECTION packages - they're individual files, not full packages
@@ -945,111 +690,20 @@ class SkillIntegrator:
         if source_skill_md.exists():
             return self._integrate_native_skill(package_info, project_root, source_skill_md)
         
-        # Discover all primitives for APM packages without SKILL.md
-        instruction_files = self.find_instruction_files(package_path)
-        agent_files = self.find_agent_files(package_path)
-        context_files = self.find_context_files(package_path)
-        prompt_files = self.find_prompt_files(package_path)
-        
-        # Build primitives dict for new methods
-        primitives = {
-            'instructions': instruction_files,
-            'agents': agent_files,
-            'prompts': prompt_files,
-            'context': context_files
-        }
-        
-        # Filter out empty lists
-        primitives = {k: v for k, v in primitives.items() if v}
-        
-        if not primitives:
-            return SkillIntegrationResult(
-                skill_created=False,
-                skill_updated=False,
-                skill_skipped=True,
-                skill_path=None,
-                references_copied=0,
-                links_resolved=0
-            )
-        
-        # Determine target paths - write to .github/skills/{skill-name}/
-        # Use the install folder name for simplicity and consistency
-        # e.g., apm_modules/microsoft/apm-sample-package → apm-sample-package
-        skill_name = package_path.name
-        skill_dir = project_root / ".github" / "skills" / skill_name
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        
-        skill_path = skill_dir / "SKILL.md"
-        
-        # Check if SKILL.md already exists
-        skill_created = False
-        skill_updated = False
-        skill_skipped = False
-        files_copied = 0
-        
-        if skill_path.exists():
-            existing_metadata = self._parse_skill_metadata(skill_path)
-            should_update, was_modified = self._should_update_skill(
-                existing_metadata, package_info, package_path
-            )
-            
-            if should_update:
-                if was_modified:
-                    from apm_cli.cli import _rich_warning
-                    _rich_warning(
-                        f"⚠ Regenerating SKILL.md: {skill_path.relative_to(project_root)} "
-                        f"(source files have changed)"
-                    )
-                files_copied = self._generate_skill_file(package_info, primitives, skill_dir)
-                skill_updated = True
-                # T7: Also update .claude/skills/ if .claude/ exists
-                self._sync_to_claude_skills(package_info, primitives, skill_name, project_root)
-            else:
-                skill_skipped = True
-        else:
-            files_copied = self._generate_skill_file(package_info, primitives, skill_dir)
-            skill_created = True
-            # T7: Also copy to .claude/skills/ if .claude/ exists
-            self._sync_to_claude_skills(package_info, primitives, skill_name, project_root)
-        
-        return SkillIntegrationResult(
-            skill_created=skill_created,
-            skill_updated=skill_updated,
-            skill_skipped=skill_skipped,
-            skill_path=skill_path if (skill_created or skill_updated) else None,
-            references_copied=files_copied,
-            links_resolved=0  # No longer tracking link resolution
+        # No SKILL.md at root — not a skill package.
+        # Still promote any sub-skills shipped under .apm/skills/.
+        sub_skills_count = self._promote_sub_skills_standalone(
+            package_info, project_root
         )
-    
-    def _sync_to_claude_skills(
-        self, package_info, primitives: dict, skill_name: str, project_root: Path
-    ) -> Path | None:
-        """Copy generated skill to .claude/skills/ if .claude/ directory exists.
-        
-        T7: Compatibility copy for Claude Code users.
-        Only copies if .claude/ folder already exists - does NOT create it.
-        
-        Args:
-            package_info: PackageInfo object with package metadata
-            primitives: Dict of primitive type -> list of files
-            skill_name: Normalized skill name
-            project_root: Root directory of the project
-            
-        Returns:
-            Path to .claude/skills/{name}/ or None if .claude/ doesn't exist
-        """
-        claude_dir = project_root / ".claude"
-        if not claude_dir.exists() or not claude_dir.is_dir():
-            return None
-        
-        # Create .claude/skills/{skill_name}/
-        claude_skill_dir = claude_dir / "skills" / skill_name
-        claude_skill_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate the skill file (identical to .github/skills/)
-        self._generate_skill_file(package_info, primitives, claude_skill_dir)
-        
-        return claude_skill_dir
+        return SkillIntegrationResult(
+            skill_created=False,
+            skill_updated=False,
+            skill_skipped=True,
+            skill_path=None,
+            references_copied=0,
+            links_resolved=0,
+            sub_skills_promoted=sub_skills_count
+        )
     
     def sync_integration(self, apm_package, project_root: Path) -> Dict[str, int]:
         """Sync .github/skills/ and .claude/skills/ with currently installed packages.
@@ -1134,7 +788,7 @@ class SkillIntegrator:
         return {'files_removed': files_removed, 'errors': errors}
     
     def update_gitignore_for_skills(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for generated Claude skills.
+        """Update .gitignore with pattern for integrated skills.
         
         Args:
             project_root: Root directory of the project
@@ -1145,8 +799,8 @@ class SkillIntegrator:
         gitignore_path = project_root / ".gitignore"
         
         patterns = [
-            ".github/skills/*-apm/",  # APM-generated skills use -apm suffix
-            "# APM-generated skills"
+            ".github/skills/*-apm/",  # APM integrated skills use -apm suffix
+            "# APM integrated skills"
         ]
         
         # Read current content
@@ -1172,7 +826,7 @@ class SkillIntegrator:
             with open(gitignore_path, "a", encoding="utf-8") as f:
                 if current_content and current_content[-1].strip():
                     f.write("\n")
-                f.write("\n# APM generated Claude Skills\n")
+                f.write("\n# APM integrated skills\n")
                 for pattern in patterns_to_add:
                     f.write(f"{pattern}\n")
             return True
