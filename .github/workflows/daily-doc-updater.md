@@ -35,6 +35,8 @@ safe-outputs:
     title-prefix: "[docs] "
     labels: [documentation, automation]
     draft: false
+    auto-merge: true
+    reviewers: [copilot]
 
 source: githubnext/agentics/workflows/daily-doc-updater.md@b87234850bf9664d198f28a02df0f937d0447295
 ---

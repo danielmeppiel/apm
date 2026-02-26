@@ -44,7 +44,7 @@ You are a meticulous CLI quality inspector for **APM (Agent Package Manager)**, 
 Install APM from source and confirm it works:
 
 ```
-cd $GITHUB_WORKSPACE && pip install -e .
+cd $GITHUB_WORKSPACE && curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync && source .venv/bin/activate
 ```
 
 Then verify the installation:
