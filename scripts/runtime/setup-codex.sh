@@ -112,7 +112,12 @@ setup_codex() {
             exit 1
         fi
         
-        # Verify we got a valid tag
+        # Verify we got a valid tag, fallback to unauthenticated if auth failed
+        if [[ -z "$latest_tag" || "$latest_tag" == "null" ]]; then
+            log_info "Authenticated request did not return a valid tag, retrying without authentication..."
+            latest_tag=$(curl -s "$latest_release_url" | grep '"tag_name":' | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/')
+        fi
+        
         if [[ -z "$latest_tag" || "$latest_tag" == "null" ]]; then
             log_error "Failed to fetch latest release tag from GitHub API"
             log_error "No fallback available. Please check your internet connection or specify a specific version."

@@ -3,6 +3,7 @@
 import pytest
 from pathlib import Path
 from unittest.mock import patch, mock_open, MagicMock
+import os
 import tempfile
 import shutil
 
@@ -607,6 +608,31 @@ class TestScriptRunnerAutoInstall:
         
         assert result is False
     
+    @patch('apm_cli.deps.github_downloader.GitHubPackageDownloader')
+    @patch('apm_cli.core.script_runner.Path.mkdir')
+    @patch('apm_cli.core.script_runner.Path.exists')
+    def test_auto_install_virtual_package_subdirectory_success(self, mock_exists, mock_mkdir, mock_downloader_class):
+        """Test successful auto-install of virtual subdirectory (skill) package."""
+        # Setup mocks
+        mock_exists.return_value = False  # Package not already installed
+        mock_downloader = MagicMock()
+        mock_downloader_class.return_value = mock_downloader
+        
+        # Mock package info
+        mock_package = MagicMock()
+        mock_package.name = "architecture-blueprint-generator"
+        mock_package.version = "1.0.0"
+        mock_package_info = MagicMock()
+        mock_package_info.package = mock_package
+        mock_downloader.download_subdirectory_package.return_value = mock_package_info
+        
+        # Test auto-install with subdirectory reference (no .prompt.md extension)
+        ref = "github/awesome-copilot/skills/architecture-blueprint-generator"
+        result = self.script_runner._auto_install_virtual_package(ref)
+        
+        assert result is True
+        mock_downloader.download_subdirectory_package.assert_called_once()
+
     @patch('apm_cli.core.script_runner.ScriptRunner._auto_install_virtual_package')
     @patch('apm_cli.core.script_runner.ScriptRunner._discover_prompt_file')
     @patch('apm_cli.core.script_runner.ScriptRunner._detect_installed_runtime')
@@ -714,3 +740,45 @@ class TestScriptRunnerAutoInstall:
         error_msg = str(exc_info.value)
         assert "Package installed successfully but prompt not found" in error_msg
         assert "may not contain the expected prompt file" in error_msg
+
+    def test_discover_qualified_prompt_finds_skill_md(self):
+        """Test that _discover_qualified_prompt finds SKILL.md for subdirectory packages."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_dir = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                # Create subdirectory skill package structure
+                skill_dir = Path("apm_modules/github/awesome-copilot/skills/architecture-blueprint-generator")
+                skill_dir.mkdir(parents=True)
+                skill_file = skill_dir / "SKILL.md"
+                skill_file.write_text("# Architecture Blueprint Generator Skill")
+                
+                result = self.script_runner._discover_qualified_prompt(
+                    "github/awesome-copilot/skills/architecture-blueprint-generator"
+                )
+                
+                assert result is not None
+                assert result.name == "SKILL.md"
+            finally:
+                os.chdir(original_dir)
+
+    def test_discover_simple_name_finds_skill_md(self):
+        """Test that _discover_prompt_file finds SKILL.md by simple name."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_dir = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                # Create subdirectory skill package installed in apm_modules
+                skill_dir = Path("apm_modules/github/awesome-copilot/skills/architecture-blueprint-generator")
+                skill_dir.mkdir(parents=True)
+                skill_file = skill_dir / "SKILL.md"
+                skill_file.write_text("# Architecture Blueprint Generator Skill")
+                
+                result = self.script_runner._discover_prompt_file(
+                    "architecture-blueprint-generator"
+                )
+                
+                assert result is not None
+                assert result.name == "SKILL.md"
+            finally:
+                os.chdir(original_dir)
