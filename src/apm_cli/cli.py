@@ -41,6 +41,7 @@ from apm_cli.utils.version_checker import check_for_updates
 try:
     from apm_cli.deps.apm_resolver import APMDependencyResolver
     from apm_cli.deps.github_downloader import GitHubPackageDownloader
+    from apm_cli.deps.lockfile import get_lockfile_installed_paths
     from apm_cli.models.apm_package import APMPackage, DependencyReference
     from apm_cli.integration import PromptIntegrator, AgentIntegrator
 
@@ -140,8 +141,6 @@ def _check_orphaned_packages():
         List[str]: List of orphaned package names in org/repo or org/project/repo format
     """
     try:
-        from pathlib import Path
-
         # Check if apm.yml exists
         if not Path("apm.yml").exists():
             return []
@@ -170,12 +169,8 @@ def _check_orphaned_packages():
                     expected_installed.add(str(install_path))
 
             # Also include transitive dependencies from apm.lock
-            try:
-                from apm_cli.deps.lockfile import get_lockfile_installed_paths
-                lockfile_paths = get_lockfile_installed_paths(Path.cwd())
-                expected_installed.update(lockfile_paths)
-            except ImportError:
-                pass  # Lockfile module not available
+            lockfile_paths = get_lockfile_installed_paths(Path.cwd())
+            expected_installed.update(lockfile_paths)
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -803,12 +798,8 @@ def prune(ctx, dry_run):
                         expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
 
             # Also include transitive dependencies from apm.lock
-            try:
-                from apm_cli.deps.lockfile import get_lockfile_installed_paths
-                lockfile_paths = get_lockfile_installed_paths(Path.cwd())
-                expected_installed.update(lockfile_paths)
-            except ImportError:
-                pass  # Lockfile module not available
+            lockfile_paths = get_lockfile_installed_paths(Path.cwd())
+            expected_installed.update(lockfile_paths)
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)

@@ -200,6 +200,40 @@ class LockFile:
         
         return lock
 
+    def get_installed_paths(self, apm_modules_dir: Path) -> List[str]:
+        """Get relative installed paths for all dependencies in this lockfile.
+
+        Computes expected installed paths for all dependencies, including
+        transitive ones. Used by:
+        - Primitive discovery to find all dependency primitives
+        - Orphan detection to avoid false positives for transitive deps
+
+        Args:
+            apm_modules_dir: Path to the apm_modules directory.
+
+        Returns:
+            List[str]: POSIX-style relative installed paths (e.g., ['owner/repo']),
+                       ordered by depth then repo_url (no duplicates).
+        """
+        seen: set = set()
+        paths: List[str] = []
+        for dep in self.get_all_dependencies():
+            dep_ref = DependencyReference(
+                repo_url=dep.repo_url,
+                host=dep.host,
+                virtual_path=dep.virtual_path,
+                is_virtual=dep.is_virtual,
+            )
+            install_path = dep_ref.get_install_path(apm_modules_dir)
+            try:
+                rel_path = install_path.relative_to(apm_modules_dir).as_posix()
+            except ValueError:
+                rel_path = Path(install_path).as_posix()
+            if rel_path not in seen:
+                seen.add(rel_path)
+                paths.append(rel_path)
+        return paths
+
     def save(self, path: Path) -> None:
         """Save lock file to disk (alias for write)."""
         self.write(path)
@@ -213,12 +247,9 @@ def get_lockfile_path(project_root: Path) -> Path:
 def get_lockfile_installed_paths(project_root: Path) -> List[str]:
     """Get installed paths for all dependencies recorded in apm.lock.
 
-    Reads the lockfile and computes expected installed paths for all
-    dependencies, including transitive ones. Used by:
-    - Primitive discovery to find all dependency primitives
-    - Orphan detection to avoid false positives for transitive deps
-
-    Returns an empty list if the lockfile is missing, corrupt, or unreadable.
+    Convenience wrapper that loads the lockfile and delegates to
+    LockFile.get_installed_paths(). Returns an empty list if the
+    lockfile is missing, corrupt, or unreadable.
 
     Args:
         project_root: Path to project root containing apm.lock.
@@ -232,25 +263,6 @@ def get_lockfile_installed_paths(project_root: Path) -> List[str]:
         lockfile = LockFile.read(lockfile_path)
         if not lockfile:
             return []
-
-        apm_modules_dir = project_root / "apm_modules"
-        paths: List[str] = []
-        seen: set = set()
-        for dep in lockfile.get_all_dependencies():
-            dep_ref = DependencyReference(
-                repo_url=dep.repo_url,
-                host=dep.host,
-                virtual_path=dep.virtual_path,
-                is_virtual=dep.is_virtual,
-            )
-            install_path = dep_ref.get_install_path(apm_modules_dir)
-            try:
-                rel_path = str(install_path.relative_to(apm_modules_dir))
-            except ValueError:
-                rel_path = str(install_path)
-            if rel_path not in seen:
-                seen.add(rel_path)
-                paths.append(rel_path)
-        return paths
-    except Exception:
+        return lockfile.get_installed_paths(project_root / "apm_modules")
+    except (FileNotFoundError, yaml.YAMLError, ValueError, KeyError):
         return []

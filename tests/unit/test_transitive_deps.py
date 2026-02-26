@@ -6,10 +6,8 @@ Tests that:
 - get_dependency_declaration_order() includes transitive deps from lockfile
 """
 
-import tempfile
 from pathlib import Path
 
-import pytest
 import yaml
 
 from apm_cli.deps.lockfile import (
