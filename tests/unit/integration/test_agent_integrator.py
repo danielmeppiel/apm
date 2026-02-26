@@ -217,7 +217,7 @@ class TestAgentIntegrator:
     def test_update_gitignore_skips_if_exists(self):
         """Test that gitignore update is skipped if patterns exist."""
         gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/agents/*-apm.agent.md\n.github/agents/*-apm.chatmode.md\n")
+        gitignore.write_text(".github/agents/*-apm.agent.md\n.github/agents/*-apm.chatmode.md\n.claude/agents/*-apm.agent.md\n.claude/agents/*-apm.chatmode.md\n")
         
         updated = self.integrator.update_gitignore_for_integrated_agents(self.project_root)
         
