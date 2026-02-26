@@ -40,7 +40,7 @@ permissions: {}
 
 jobs:
   close-expired-entities:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     permissions:
       discussions: write
       issues: write
