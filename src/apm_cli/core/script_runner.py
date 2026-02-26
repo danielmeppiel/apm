@@ -538,8 +538,16 @@ class ScriptRunner:
         # 2. Search in dependencies and detect collisions
         apm_modules = Path("apm_modules")
         if apm_modules.exists():
-            # Collect ALL matches to detect collisions
+            # Collect ALL .prompt.md matches to detect collisions
             matches = list(apm_modules.rglob(search_name))
+
+            # Also search for SKILL.md in directories matching the name
+            # e.g., name="architecture-blueprint-generator" → find */architecture-blueprint-generator/SKILL.md
+            for skill_dir in apm_modules.rglob(name):
+                if skill_dir.is_dir():
+                    skill_file = skill_dir / "SKILL.md"
+                    if skill_file.exists():
+                        matches.append(skill_file)
 
             if len(matches) == 0:
                 return None
@@ -585,13 +593,19 @@ class ScriptRunner:
         if not owner_dir.exists():
             return None
 
-        # Search within this owner's packages
+        # For subdirectory packages (skills), check for SKILL.md first
+        # e.g., github/awesome-copilot/skills/architecture-blueprint-generator
+        # installs to apm_modules/github/awesome-copilot/skills/architecture-blueprint-generator/SKILL.md
+        if len(parts) >= 3:
+            subdir_path = apm_modules.joinpath(*parts)
+            skill_file = subdir_path / "SKILL.md"
+            if skill_file.exists():
+                return skill_file
+
+        # Search within this owner's packages for .prompt.md files
         for pkg_dir in owner_dir.iterdir():
             if not pkg_dir.is_dir():
                 continue
-
-            # Check if package name matches any part of the qualified path
-            pkg_name = pkg_dir.name
 
             # Try to find the prompt in this package
             for prompt_path in pkg_dir.rglob(prompt_name):
@@ -676,8 +690,10 @@ class ScriptRunner:
     def _is_virtual_package_reference(self, name: str) -> bool:
         """Check if a name looks like a virtual package reference.
 
-        Virtual packages have format: owner/repo/path/to/file.prompt.md
-        or: owner/repo/collections/name
+        Virtual packages have format:
+        - owner/repo/path/to/file.prompt.md (virtual file)
+        - owner/repo/collections/name (virtual collection)
+        - owner/repo/skills/name (virtual subdirectory/skill)
 
         Args:
             name: Name to check
@@ -689,48 +705,24 @@ class ScriptRunner:
         if "/" not in name:
             return False
 
-        # Import exception types upfront
-        from ..models.apm_package import (
-            DependencyReference,
-            InvalidVirtualPackageExtensionError,
-        )
+        from ..models.apm_package import DependencyReference
 
-        # Try to parse as dependency reference
         try:
             dep_ref = DependencyReference.parse(name)
             return dep_ref.is_virtual
-        except InvalidVirtualPackageExtensionError:
-            # Invalid extension error - only reject if it already has a file extension
-            # If no extension, we should retry with .prompt.md
-            has_extension = "." in name.split("/")[-1]
-            if has_extension:
-                # Path like owner/repo/path/file.txt - has wrong extension, don't retry
-                return False
-            # Path like owner/repo/path/file - no extension, fall through to retry
         except Exception:
-            # Other parsing errors - check if we should retry
-            pass
-
-        # Retry with .prompt.md if:
-        # 1. It doesn't already have a file extension
-        # 2. It might be a collection reference
-        has_extension = "." in name.split("/")[-1]
-        is_collection_path = "/collections/" in name
-
-        if not has_extension or is_collection_path:
-            # Try again with .prompt.md for paths without extensions or collections
-            try:
-                dep_ref = DependencyReference.parse(f"{name}.prompt.md")
-                return dep_ref.is_virtual
-            except Exception:
-                pass
-        return False
+            return False
 
     def _auto_install_virtual_package(self, package_ref: str) -> bool:
         """Auto-install a virtual package.
 
+        Handles three types of virtual packages:
+        - Virtual files: owner/repo/prompts/file.prompt.md
+        - Virtual collections: owner/repo/collections/name
+        - Virtual subdirectories (skills): owner/repo/skills/name
+
         Args:
-            package_ref: Virtual package reference (owner/repo/path/to/file.prompt.md)
+            package_ref: Virtual package reference
 
         Returns:
             True if installation succeeded, False otherwise
@@ -739,15 +731,8 @@ class ScriptRunner:
             from ..models.apm_package import DependencyReference
             from ..deps.github_downloader import GitHubPackageDownloader
 
-            # Normalize the reference - add .prompt.md if missing
-            normalized_ref = (
-                package_ref
-                if package_ref.endswith(".prompt.md")
-                else f"{package_ref}.prompt.md"
-            )
-
-            # Parse the reference
-            dep_ref = DependencyReference.parse(normalized_ref)
+            # Parse the reference as-is — no extension guessing
+            dep_ref = DependencyReference.parse(package_ref)
 
             if not dep_ref.is_virtual:
                 return False
@@ -756,11 +741,8 @@ class ScriptRunner:
             apm_modules = Path("apm_modules")
             apm_modules.mkdir(parents=True, exist_ok=True)
 
-            # Create target path for virtual package
-            # Format: apm_modules/owner/package-name/
-            owner = dep_ref.repo_url.split("/")[0]
-            package_name = dep_ref.get_virtual_package_name()
-            target_path = apm_modules / owner / package_name
+            # Use the canonical install path from the dependency reference
+            target_path = dep_ref.get_install_path(apm_modules)
 
             # Check if already installed
             if target_path.exists():
@@ -773,12 +755,14 @@ class ScriptRunner:
             print(f"  📥 Downloading from {dep_ref.to_github_url()}")
 
             if dep_ref.is_virtual_collection():
-                # Download collection
                 package_info = downloader.download_virtual_collection_package(
                     dep_ref, target_path
                 )
+            elif dep_ref.is_virtual_subdirectory():
+                package_info = downloader.download_subdirectory_package(
+                    dep_ref, target_path
+                )
             else:
-                # Download individual file
                 package_info = downloader.download_virtual_file_package(
                     dep_ref, target_path
                 )
@@ -788,8 +772,8 @@ class ScriptRunner:
                 f"  ✅ Installed {package_info.package.name} v{package_info.package.version}"
             )
 
-            # Update apm.yml to include this dependency (use normalized reference)
-            self._add_dependency_to_config(normalized_ref)
+            # Update apm.yml to include this dependency
+            self._add_dependency_to_config(package_ref)
 
             return True
 
