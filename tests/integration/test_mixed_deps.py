@@ -77,7 +77,7 @@ class TestMixedDependencyInstall:
         
         # Install Claude Skill
         result2 = subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -87,7 +87,7 @@ class TestMixedDependencyInstall:
         
         # Verify both are installed
         apm_package_path = temp_project / "apm_modules" / "microsoft" / "apm-sample-package"
-        skill_path = temp_project / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "brand-guidelines"
+        skill_path = temp_project / "apm_modules" / "anthropics" / "skills" / "skills" / "brand-guidelines"
         
         assert apm_package_path.exists(), "APM package not installed"
         assert skill_path.exists(), "Claude Skill not installed"
@@ -103,7 +103,7 @@ class TestMixedDependencyInstall:
             timeout=120
         )
         subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -115,7 +115,7 @@ class TestMixedDependencyInstall:
         content = apm_yml.read_text()
         
         # Verify the skill is in dependencies
-        has_skill = "awesome-claude-skills/brand-guidelines" in content
+        has_skill = "skills/brand-guidelines" in content
         
         # At least the skill should be there (apm-sample-package may fail)
         assert has_skill, "Claude Skill not in apm.yml"
@@ -128,7 +128,7 @@ class TestMixedDependencyCompile:
         """Compile should generate AGENTS.md from both package types."""
         # Install Claude Skill (most likely to succeed)
         subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -162,15 +162,15 @@ This is a test.
         agents_md = temp_project / "AGENTS.md"
         assert agents_md.exists(), "AGENTS.md not generated"
         
-        # Verify agent was created from skill
-        agent_file = temp_project / ".github" / "agents" / "brand-guidelines.agent.md"
-        assert agent_file.exists(), "Agent not created from skill"
+        # Verify skill was integrated to .github/skills/
+        skill_integrated = temp_project / ".github" / "skills" / "brand-guidelines" / "SKILL.md"
+        assert skill_integrated.exists(), "Skill not integrated to .github/skills/"
     
     def test_compile_output_mentions_sources(self, temp_project, apm_command):
         """Compile output should mention different source types."""
         # Install skill
         subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
@@ -212,30 +212,29 @@ class TestDependencyTypeDetection:
     def test_claude_skill_has_skill_md(self, temp_project, apm_command):
         """Claude Skills have SKILL.md at root."""
         subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
             timeout=120
         )
         
-        skill_path = temp_project / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "brand-guidelines"
+        skill_path = temp_project / "apm_modules" / "anthropics" / "skills" / "skills" / "brand-guidelines"
         assert (skill_path / "SKILL.md").exists(), "Claude Skill missing SKILL.md"
     
-    def test_skill_gets_generated_apm_yml(self, temp_project, apm_command):
-        """Claude Skills get an auto-generated apm.yml."""
+    def test_skill_gets_integrated_to_github_skills(self, temp_project, apm_command):
+        """Claude Skills get integrated to .github/skills/ directory."""
         subprocess.run(
-            [apm_command, "install", "ComposioHQ/awesome-claude-skills/brand-guidelines"],
+            [apm_command, "install", "anthropics/skills/skills/brand-guidelines"],
             cwd=temp_project,
             capture_output=True,
             text=True,
             timeout=120
         )
         
-        skill_path = temp_project / "apm_modules" / "ComposioHQ" / "awesome-claude-skills" / "brand-guidelines"
-        apm_yml = skill_path / "apm.yml"
+        skill_integrated = temp_project / ".github" / "skills" / "brand-guidelines" / "SKILL.md"
         
-        assert apm_yml.exists(), "Claude Skill should have generated apm.yml"
+        assert skill_integrated.exists(), "Claude Skill should be integrated to .github/skills/"
         
-        content = apm_yml.read_text()
-        assert "brand-guidelines" in content, "Generated apm.yml should have skill name"
+        content = skill_integrated.read_text()
+        assert len(content) > 0, "Integrated SKILL.md should not be empty"

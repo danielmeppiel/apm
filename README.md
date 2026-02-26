@@ -22,6 +22,7 @@ AI coding agents need context to be useful: what standards to follow, what promp
 ```yaml
 # apm.yml — ships with your project, like package.json
 name: your project
+version: 1.0.0
 dependencies:
   apm:
     # Skills from any repository
@@ -44,7 +45,7 @@ apm install
 
 **That's it.** Copilot, Claude, Cursor — every agent is configured with the right skills, prompts, and coding standards.
 
-→ [View the full example project](https://github.com/microsoft/apm-project-sample)
+→ [View the full example project](https://github.com/microsoft/apm-sample-package)
 
 ## Not Just Skills
 
