@@ -41,6 +41,7 @@ from apm_cli.utils.version_checker import check_for_updates
 try:
     from apm_cli.deps.apm_resolver import APMDependencyResolver
     from apm_cli.deps.github_downloader import GitHubPackageDownloader
+    from apm_cli.deps.lockfile import LockFile
     from apm_cli.models.apm_package import APMPackage, DependencyReference
     from apm_cli.integration import PromptIntegrator, AgentIntegrator
 
@@ -130,14 +131,16 @@ def _lazy_confirm():
 
 
 def _check_orphaned_packages():
-    """Check for packages in apm_modules/ that are not declared in apm.yml.
+    """Check for packages in apm_modules/ that are not declared in apm.yml or apm.lock.
+
+    Considers both direct dependencies (from apm.yml) and transitive dependencies
+    (from apm.lock) as expected packages, so transitive deps are not falsely
+    flagged as orphaned.
 
     Returns:
         List[str]: List of orphaned package names in org/repo or org/project/repo format
     """
     try:
-        from pathlib import Path
-
         # Check if apm.yml exists
         if not Path("apm.yml").exists():
             return []
@@ -164,6 +167,10 @@ def _check_orphaned_packages():
                 except ValueError:
                     # If path is not relative to apm_modules_dir, use as-is
                     expected_installed.add(str(install_path))
+
+            # Also include transitive dependencies from apm.lock
+            lockfile_paths = LockFile.installed_paths_for_project(Path.cwd())
+            expected_installed.update(lockfile_paths)
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -194,7 +201,7 @@ def _check_orphaned_packages():
                                         path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
                                         installed_packages.append(path_key)
 
-        # Find orphaned packages (installed but not declared)
+        # Find orphaned packages (installed but not declared or locked)
         orphaned_packages = []
         for org_repo_name in installed_packages:
             if org_repo_name not in expected_installed:
@@ -789,6 +796,10 @@ def prune(ctx, dry_run):
                         )
                     elif len(repo_parts) >= 2:
                         expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
+
+            # Also include transitive dependencies from apm.lock
+            lockfile_paths = LockFile.installed_paths_for_project(Path.cwd())
+            expected_installed.update(lockfile_paths)
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
@@ -1068,16 +1079,47 @@ def uninstall(ctx, packages, dry_run):
 
         if dry_run:
             _rich_info(f"Dry run: Would remove {len(packages_to_remove)} package(s):")
+            apm_modules_dir = Path("apm_modules")
             for pkg in packages_to_remove:
                 _rich_info(f"  - {pkg} from apm.yml")
                 # Check if package exists in apm_modules
-                package_name = pkg.split("/")[-1]
-                apm_modules_dir = Path("apm_modules")
-                if (
-                    apm_modules_dir.exists()
-                    and (apm_modules_dir / package_name).exists()
-                ):
-                    _rich_info(f"  - {package_name} from apm_modules/")
+                try:
+                    dep_ref = DependencyReference.parse(pkg)
+                    package_path = dep_ref.get_install_path(apm_modules_dir)
+                except ValueError:
+                    package_path = apm_modules_dir / pkg.split("/")[-1]
+                if apm_modules_dir.exists() and package_path.exists():
+                    _rich_info(f"  - {pkg} from apm_modules/")
+
+            # Show transitive deps that would be removed
+            from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+            lockfile_path = get_lockfile_path(Path("."))
+            lockfile = LockFile.read(lockfile_path)
+            if lockfile:
+                removed_repo_urls = builtins.set()
+                for pkg in packages_to_remove:
+                    try:
+                        ref = DependencyReference.parse(pkg)
+                        removed_repo_urls.add(ref.repo_url)
+                    except ValueError:
+                        removed_repo_urls.add(pkg)
+                # Find transitive orphans
+                queue = builtins.list(removed_repo_urls)
+                potential_orphans = builtins.set()
+                while queue:
+                    parent_url = queue.pop()
+                    for dep in lockfile.get_all_dependencies():
+                        key = dep.get_unique_key()
+                        if key in potential_orphans:
+                            continue
+                        if dep.resolved_by and dep.resolved_by == parent_url:
+                            potential_orphans.add(key)
+                            queue.append(dep.repo_url)
+                if potential_orphans:
+                    _rich_info(f"  Transitive dependencies that would be removed:")
+                    for orphan_key in sorted(potential_orphans):
+                        _rich_info(f"    - {orphan_key}")
+
             _rich_success("Dry run complete - no changes made")
             return
 
@@ -1103,6 +1145,11 @@ def uninstall(ctx, packages, dry_run):
         # Remove packages from apm_modules/
         apm_modules_dir = Path("apm_modules")
         removed_from_modules = 0
+
+        # npm-style transitive dep cleanup: use lockfile to find orphaned transitive deps
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        lockfile_path = get_lockfile_path(Path("."))
+        lockfile = LockFile.read(lockfile_path)
 
         if apm_modules_dir.exists():
             for package in packages_to_remove:
@@ -1147,15 +1194,129 @@ def uninstall(ctx, packages, dry_run):
                 else:
                     _rich_warning(f"Package {package} not found in apm_modules/")
 
+        # npm-style transitive dependency cleanup: remove orphaned transitive deps
+        # After removing the direct packages, check if they had transitive deps that
+        # are no longer needed by any remaining package.
+        if lockfile and apm_modules_dir.exists():
+            # Collect the repo_urls of removed packages
+            removed_repo_urls = builtins.set()
+            for pkg in packages_to_remove:
+                try:
+                    ref = DependencyReference.parse(pkg)
+                    removed_repo_urls.add(ref.repo_url)
+                except ValueError:
+                    removed_repo_urls.add(pkg)
+
+            # Find all transitive deps resolved_by any removed package (recursive)
+            def _find_transitive_orphans(lockfile, removed_urls):
+                """Recursively find all transitive deps that are no longer needed."""
+                orphans = builtins.set()
+                queue = builtins.list(removed_urls)
+                while queue:
+                    parent_url = queue.pop()
+                    for dep in lockfile.get_all_dependencies():
+                        key = dep.get_unique_key()
+                        if key in orphans:
+                            continue
+                        if dep.resolved_by and dep.resolved_by == parent_url:
+                            orphans.add(key)
+                            # This orphan's own transitives are also orphaned
+                            queue.append(dep.repo_url)
+                return orphans
+
+            potential_orphans = _find_transitive_orphans(lockfile, removed_repo_urls)
+
+            if potential_orphans:
+                # Check which orphans are still needed by remaining packages
+                # Re-read updated apm.yml to get remaining deps
+                remaining_deps = builtins.set()
+                try:
+                    with open(apm_yml_path, "r") as f:
+                        updated_data = yaml.safe_load(f) or {}
+                    for dep_str in updated_data.get("dependencies", {}).get("apm", []) or []:
+                        try:
+                            ref = DependencyReference.parse(dep_str)
+                            remaining_deps.add(ref.get_unique_key())
+                        except ValueError:
+                            remaining_deps.add(dep_str)
+                except Exception:
+                    pass
+
+                # Also check remaining lockfile deps that are NOT orphaned
+                for dep in lockfile.get_all_dependencies():
+                    key = dep.get_unique_key()
+                    if key not in potential_orphans and dep.repo_url not in removed_repo_urls:
+                        remaining_deps.add(key)
+
+                # Remove only true orphans (not needed by remaining deps)
+                actual_orphans = potential_orphans - remaining_deps
+                for orphan_key in actual_orphans:
+                    orphan_dep = lockfile.get_dependency(orphan_key)
+                    if not orphan_dep:
+                        continue
+                    try:
+                        orphan_ref = DependencyReference.parse(orphan_key)
+                        orphan_path = orphan_ref.get_install_path(apm_modules_dir)
+                    except ValueError:
+                        parts = orphan_key.split("/")
+                        orphan_path = apm_modules_dir.joinpath(*parts) if len(parts) >= 2 else apm_modules_dir / orphan_key
+
+                    if orphan_path.exists():
+                        try:
+                            import shutil
+                            shutil.rmtree(orphan_path)
+                            _rich_info(f"✓ Removed transitive dependency {orphan_key} from apm_modules/")
+                            removed_from_modules += 1
+
+                            # Cleanup empty parent directories
+                            parent = orphan_path.parent
+                            while parent != apm_modules_dir and parent.exists():
+                                try:
+                                    if not any(parent.iterdir()):
+                                        parent.rmdir()
+                                        parent = parent.parent
+                                    else:
+                                        break
+                                except OSError:
+                                    break
+                        except Exception as e:
+                            _rich_error(f"✗ Failed to remove transitive dep {orphan_key}: {e}")
+
+        # Update lockfile: remove entries for all removed packages (direct + transitive)
+        removed_orphan_keys = builtins.set()
+        if lockfile and apm_modules_dir.exists() and 'actual_orphans' in locals():
+            removed_orphan_keys = actual_orphans
+        if lockfile:
+            lockfile_updated = False
+            for pkg in packages_to_remove:
+                try:
+                    ref = DependencyReference.parse(pkg)
+                    key = ref.get_unique_key()
+                except ValueError:
+                    key = pkg
+                if key in lockfile.dependencies:
+                    del lockfile.dependencies[key]
+                    lockfile_updated = True
+            # Also remove orphaned transitive deps from lockfile
+            for orphan_key in removed_orphan_keys:
+                if orphan_key in lockfile.dependencies:
+                    del lockfile.dependencies[orphan_key]
+                    lockfile_updated = True
+            if lockfile_updated:
+                try:
+                    if lockfile.dependencies:
+                        lockfile.write(lockfile_path)
+                    else:
+                        # No deps left — remove lockfile
+                        lockfile_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
         # Sync integrations: nuke all -apm files and re-integrate from remaining packages
         prompts_cleaned = 0
-        prompts_failed = 0
         agents_cleaned = 0
-        agents_failed = 0
         commands_cleaned = 0
-        commands_failed = 0
         skills_cleaned = 0
-        skills_failed = 0
 
         try:
             from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_package
@@ -1228,8 +1389,8 @@ def uninstall(ctx, packages, dry_run):
                 except Exception:
                     pass  # Best effort re-integration
 
-        except Exception as e:
-            prompts_failed += 1
+        except Exception:
+            pass  # Best effort cleanup — don't report false failures
 
         # Show cleanup feedback
         if prompts_cleaned > 0:
@@ -1240,15 +1401,6 @@ def uninstall(ctx, packages, dry_run):
             _rich_info(f"✓ Cleaned up {skills_cleaned} skill(s)")
         if commands_cleaned > 0:
             _rich_info(f"✓ Cleaned up {commands_cleaned} command(s)")
-        if (
-            prompts_failed > 0
-            or agents_failed > 0
-            or skills_failed > 0
-            or commands_failed > 0
-        ):
-            _rich_warning(
-                f"⚠ Failed to clean up {prompts_failed + agents_failed + skills_failed + commands_failed} file(s)"
-            )
 
         # Final summary
         summary_lines = []
@@ -1312,6 +1464,13 @@ def _install_apm_dependencies(
     # Create downloader early so it can be used for transitive dependency resolution
     downloader = GitHubPackageDownloader()
     
+    # Track direct dependency keys so the download callback can distinguish them from transitive
+    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in apm_deps)
+
+    # Track paths already downloaded by the resolver callback to avoid re-downloading
+    # Maps dep_key -> resolved_commit (SHA or None) so the cached path can use it
+    callback_downloaded = {}
+
     # Create a download callback for transitive dependency resolution
     # This allows the resolver to fetch packages on-demand during tree building
     def download_callback(dep_ref, modules_dir):
@@ -1341,8 +1500,12 @@ def _install_apm_dependencies(
                 repo_ref = f"{repo_ref}#{dep_ref.reference}"
             
             # Silent download - no progress display for transitive deps
-            downloader.download_package(repo_ref, install_path)
-            _rich_info(f"  └─ Resolved transitive: {dep_ref.get_display_name()}")
+            result = downloader.download_package(repo_ref, install_path)
+            # Capture resolved commit SHA for lockfile
+            resolved_sha = None
+            if result and hasattr(result, 'resolved_reference') and result.resolved_reference:
+                resolved_sha = result.resolved_reference.resolved_commit
+            callback_downloaded[dep_ref.get_unique_key()] = resolved_sha
             return install_path
         except Exception as e:
             # Log but don't fail - allow resolution to continue
@@ -1452,7 +1615,9 @@ def _install_apm_dependencies(
         command_integrator = CommandIntegrator()
         total_prompts_integrated = 0
         total_agents_integrated = 0
-        total_skills_generated = 0
+        total_skills_integrated = 0
+        total_sub_skills_promoted = 0
+        total_instructions_found = 0
         total_commands_integrated = 0
         total_links_resolved = 0
 
@@ -1511,15 +1676,18 @@ def _install_apm_dependencies(
                     GitReferenceType.TAG,
                     GitReferenceType.COMMIT,
                 ]
-                skip_download = (
-                    install_path.exists() and is_cacheable and not update_refs
+                # Skip download if: already fetched by resolver callback, or cached tag/commit
+                already_resolved = dep_ref.get_unique_key() in callback_downloaded
+                skip_download = install_path.exists() and (
+                    (is_cacheable and not update_refs) or already_resolved
                 )
 
                 if skip_download:
                     display_name = (
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
                     )
-                    _rich_info(f"✓ {display_name} @{dep_ref.reference} (cached)")
+                    ref_str = f" @{dep_ref.reference}" if dep_ref.reference else ""
+                    _rich_info(f"✓ {display_name}{ref_str} (cached)")
 
                     # Still need to integrate prompts for cached packages (zero-config behavior)
                     if integrate_vscode or integrate_claude:
@@ -1528,6 +1696,7 @@ def _install_apm_dependencies(
                             from apm_cli.models.apm_package import (
                                 APMPackage,
                                 PackageInfo,
+                                PackageType,
                                 ResolvedReference,
                                 GitReferenceType,
                             )
@@ -1565,22 +1734,34 @@ def _install_apm_dependencies(
                                 dependency_ref=dep_ref,  # Store for canonical dependency string
                             )
 
+                            # Detect package_type from disk contents so
+                            # skill integration is not silently skipped
+                            skill_md_exists = (install_path / "SKILL.md").exists()
+                            apm_yml_exists = (install_path / "apm.yml").exists()
+                            if skill_md_exists and apm_yml_exists:
+                                cached_package_info.package_type = PackageType.HYBRID
+                            elif skill_md_exists:
+                                cached_package_info.package_type = PackageType.CLAUDE_SKILL
+                            elif apm_yml_exists:
+                                cached_package_info.package_type = PackageType.APM_PACKAGE
+
                             # Collect for lockfile (cached packages still need to be tracked)
                             node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
                             depth = node.depth if node else 1
                             resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
-                            # Get actual commit SHA from existing lockfile or use reference for reproducibility
-                            cached_commit = None
-                            if existing_lockfile:
-                                locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                            # Get commit SHA: callback capture > existing lockfile > explicit reference
+                            dep_key = dep_ref.get_unique_key()
+                            cached_commit = callback_downloaded.get(dep_key)
+                            if not cached_commit and existing_lockfile:
+                                locked_dep = existing_lockfile.get_dependency(dep_key)
                                 if locked_dep:
                                     cached_commit = locked_dep.resolved_commit
                             if not cached_commit:
-                                cached_commit = getattr(cached_package, 'resolved_ref', None) or dep_ref.reference or "latest"
+                                cached_commit = dep_ref.reference
                             installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
 
-                            # VSCode integration (prompts + agents)
-                            if integrate_vscode:
+                            # VSCode + Claude integration (prompts + agents)
+                            if integrate_vscode or integrate_claude:
                                 # Integrate prompts
                                 prompt_result = (
                                     prompt_integrator.integrate_package_prompts(
@@ -1628,10 +1809,27 @@ def _install_apm_dependencies(
                                     cached_package_info, project_root
                                 )
                                 if skill_result.skill_created:
-                                    total_skills_generated += 1
+                                    total_skills_integrated += 1
                                     _rich_info(
                                         f"  └─ Skill integrated → .github/skills/"
                                     )
+                                if skill_result.sub_skills_promoted > 0:
+                                    total_sub_skills_promoted += skill_result.sub_skills_promoted
+                                    _rich_info(
+                                        f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
+                                    )
+
+                            # Count instructions (compiled later via `apm compile`)
+                            instruction_count = len(
+                                skill_integrator.find_instruction_files(
+                                    cached_package_info.install_path
+                                )
+                            )
+                            if instruction_count > 0:
+                                total_instructions_found += instruction_count
+                                _rich_info(
+                                    f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
+                                )
 
                             # Claude-specific integration (commands)
                             if integrate_claude:
@@ -1732,47 +1930,46 @@ def _install_apm_dependencies(
                     # Auto-integrate prompts and agents if enabled
                     if integrate_vscode or integrate_claude:
                         try:
-                            # VSCode integration (prompts + agents)
-                            if integrate_vscode:
-                                # Integrate prompts
-                                prompt_result = (
-                                    prompt_integrator.integrate_package_prompts(
-                                        package_info, project_root
-                                    )
+                            # Integrate prompts + agents (dual-target: .github/ + .claude/)
+                            # Integrate prompts
+                            prompt_result = (
+                                prompt_integrator.integrate_package_prompts(
+                                    package_info, project_root
                                 )
-                                if prompt_result.files_integrated > 0:
-                                    total_prompts_integrated += (
-                                        prompt_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
-                                    )
-                                if prompt_result.files_updated > 0:
-                                    _rich_info(
-                                        f"  └─ {prompt_result.files_updated} prompts updated"
-                                    )
-                                # Track links resolved
-                                total_links_resolved += prompt_result.links_resolved
+                            )
+                            if prompt_result.files_integrated > 0:
+                                total_prompts_integrated += (
+                                    prompt_result.files_integrated
+                                )
+                                _rich_info(
+                                    f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
+                                )
+                            if prompt_result.files_updated > 0:
+                                _rich_info(
+                                    f"  └─ {prompt_result.files_updated} prompts updated"
+                                )
+                            # Track links resolved
+                            total_links_resolved += prompt_result.links_resolved
 
-                                # Integrate agents
-                                agent_result = (
-                                    agent_integrator.integrate_package_agents(
-                                        package_info, project_root
-                                    )
+                            # Integrate agents
+                            agent_result = (
+                                agent_integrator.integrate_package_agents(
+                                    package_info, project_root
                                 )
-                                if agent_result.files_integrated > 0:
-                                    total_agents_integrated += (
-                                        agent_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
-                                    )
-                                if agent_result.files_updated > 0:
-                                    _rich_info(
-                                        f"  └─ {agent_result.files_updated} agents updated"
-                                    )
-                                # Track links resolved
-                                total_links_resolved += agent_result.links_resolved
+                            )
+                            if agent_result.files_integrated > 0:
+                                total_agents_integrated += (
+                                    agent_result.files_integrated
+                                )
+                                _rich_info(
+                                    f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
+                                )
+                            if agent_result.files_updated > 0:
+                                _rich_info(
+                                    f"  └─ {agent_result.files_updated} agents updated"
+                                )
+                            # Track links resolved
+                            total_links_resolved += agent_result.links_resolved
 
                             # Skill integration (works for both VSCode and Claude)
                             # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
@@ -1781,10 +1978,27 @@ def _install_apm_dependencies(
                                     package_info, project_root
                                 )
                                 if skill_result.skill_created:
-                                    total_skills_generated += 1
+                                    total_skills_integrated += 1
                                     _rich_info(
                                         f"  └─ Skill integrated → .github/skills/"
                                     )
+                                if skill_result.sub_skills_promoted > 0:
+                                    total_sub_skills_promoted += skill_result.sub_skills_promoted
+                                    _rich_info(
+                                        f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
+                                    )
+
+                            # Count instructions (compiled later via `apm compile`)
+                            instruction_count = len(
+                                skill_integrator.find_instruction_files(
+                                    package_info.install_path
+                                )
+                            )
+                            if instruction_count > 0:
+                                total_instructions_found += instruction_count
+                                _rich_info(
+                                    f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
+                                )
 
                             # Claude-specific integration (commands)
                             if integrate_claude:
@@ -1835,44 +2049,39 @@ def _install_apm_dependencies(
                 _rich_warning(f"Could not generate apm.lock: {e}")
 
         # Update .gitignore for integrated prompts if any were integrated
-        if integrate_vscode and total_prompts_integrated > 0:
+        # Update .gitignore for all integrated primitives in one pass
+        gitignore_updated = False
+        if total_prompts_integrated > 0:
             try:
-                updated = prompt_integrator.update_gitignore_for_integrated_prompts(
-                    project_root
-                )
-                if updated:
-                    _rich_info(
-                        "Updated .gitignore for integrated prompts (*-apm.prompt.md)"
-                    )
-            except Exception as e:
-                _rich_warning(f"Could not update .gitignore for prompts: {e}")
+                if prompt_integrator.update_gitignore_for_integrated_prompts(project_root):
+                    gitignore_updated = True
+            except Exception:
+                pass
 
-        # Update .gitignore for integrated agents if any were integrated
-        if integrate_vscode and total_agents_integrated > 0:
+        if total_agents_integrated > 0:
             try:
-                updated = agent_integrator.update_gitignore_for_integrated_agents(
-                    project_root
-                )
-                if updated:
-                    _rich_info(
-                        "Updated .gitignore for integrated agents (*-apm.agent.md, *-apm.chatmode.md)"
-                    )
-            except Exception as e:
-                _rich_warning(f"Could not update .gitignore for agents: {e}")
+                if agent_integrator.update_gitignore_for_integrated_agents(project_root):
+                    gitignore_updated = True
+            except Exception:
+                pass
+
+        if total_skills_integrated > 0 or total_sub_skills_promoted > 0:
+            try:
+                if skill_integrator.update_gitignore_for_skills(project_root):
+                    gitignore_updated = True
+            except Exception:
+                pass
+
+        if gitignore_updated:
+            _rich_info("Updated .gitignore for integrated primitives")
 
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:
             _rich_info(f"✓ Resolved {total_links_resolved} context file links")
 
-        # Show Claude Skills stats if any were generated
-        if total_skills_generated > 0:
-            _rich_info(f"✓ Generated {total_skills_generated} Skill(s)")
-
         # Show Claude commands stats if any were integrated
         if total_commands_integrated > 0:
             _rich_info(f"✓ Integrated {total_commands_integrated} command(s)")
-
-        _rich_success(f"Installed {installed_count} APM dependencies")
 
         return installed_count, total_prompts_integrated, total_agents_integrated
 
@@ -2122,7 +2331,7 @@ def _install_mcp_dependencies(
 def _show_install_summary(
     apm_count: int, prompt_count: int, agent_count: int, mcp_count: int, apm_config
 ):
-    """Show beautiful post-install summary with next steps.
+    """Show post-install summary.
 
     Args:
         apm_count: Number of APM packages installed
@@ -2131,47 +2340,15 @@ def _show_install_summary(
         mcp_count: Number of MCP servers configured
         apm_config: The apm.yml configuration dict
     """
-    console = _get_console()
-    if not console:
-        # Fallback to basic output if Rich not available
-        _rich_success("Installation complete!")
-        return
-
-    try:
-        from rich.panel import Panel
-
-        # Build next steps - align with README Quick Start
-        lines = []
-
-        # Next steps section
-        lines.append("Next steps:")
-
-        # Show compile command if there are APM packages (context/agents to compile)
-        if apm_count > 0:
-            lines.append("  apm compile              # Generate AGENTS.md guardrails")
-
-        # Show generic run command tip
-        if prompt_count > 0 or (
-            apm_config and "scripts" in apm_config and apm_config["scripts"]
-        ):
-            lines.append("  apm run <prompt>         # Execute prompt/workflow")
-
-        lines.append("  apm list                 # Show all prompts")
-
-        content = "\n".join(lines)
-
-        panel = Panel(
-            content,
-            title="✨ Installation complete",
-            border_style="green",
-            padding=(1, 2),
-        )
-
-        console.print()
-        console.print(panel)
-    except Exception as e:
-        # Fallback to simple message if panel fails
-        _rich_success("Installation complete!")
+    parts = []
+    if apm_count > 0:
+        parts.append(f"{apm_count} APM package(s)")
+    if mcp_count > 0:
+        parts.append(f"{mcp_count} MCP server(s)")
+    if parts:
+        _rich_success(f"Installation complete: {', '.join(parts)}")
+    else:
+        _rich_success("Installation complete")
 
 
 def _update_gitignore_for_apm_modules():
