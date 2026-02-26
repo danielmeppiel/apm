@@ -200,11 +200,72 @@ class LockFile:
         
         return lock
 
+    def get_installed_paths(self, apm_modules_dir: Path) -> List[str]:
+        """Get relative installed paths for all dependencies in this lockfile.
+
+        Computes expected installed paths for all dependencies, including
+        transitive ones. Used by:
+        - Primitive discovery to find all dependency primitives
+        - Orphan detection to avoid false positives for transitive deps
+
+        Args:
+            apm_modules_dir: Path to the apm_modules directory.
+
+        Returns:
+            List[str]: POSIX-style relative installed paths (e.g., ['owner/repo']),
+                       ordered by depth then repo_url (no duplicates).
+        """
+        seen: set = set()
+        paths: List[str] = []
+        for dep in self.get_all_dependencies():
+            dep_ref = DependencyReference(
+                repo_url=dep.repo_url,
+                host=dep.host,
+                virtual_path=dep.virtual_path,
+                is_virtual=dep.is_virtual,
+            )
+            install_path = dep_ref.get_install_path(apm_modules_dir)
+            try:
+                rel_path = install_path.relative_to(apm_modules_dir).as_posix()
+            except ValueError:
+                rel_path = Path(install_path).as_posix()
+            if rel_path not in seen:
+                seen.add(rel_path)
+                paths.append(rel_path)
+        return paths
+
     def save(self, path: Path) -> None:
         """Save lock file to disk (alias for write)."""
         self.write(path)
+
+    @classmethod
+    def installed_paths_for_project(cls, project_root: Path) -> List[str]:
+        """Load apm.lock from project_root and return installed paths.
+
+        Returns an empty list if the lockfile is missing, corrupt, or
+        unreadable.
+
+        Args:
+            project_root: Path to project root containing apm.lock.
+
+        Returns:
+            List[str]: Relative installed paths (e.g., ['owner/repo']),
+                       ordered by depth then repo_url (no duplicates).
+        """
+        try:
+            lockfile = cls.read(project_root / "apm.lock")
+            if not lockfile:
+                return []
+            return lockfile.get_installed_paths(project_root / "apm_modules")
+        except (FileNotFoundError, yaml.YAMLError, ValueError, KeyError):
+            return []
 
 
 def get_lockfile_path(project_root: Path) -> Path:
     """Get the path to the lock file for a project."""
     return project_root / "apm.lock"
+
+
+def get_lockfile_installed_paths(project_root: Path) -> List[str]:
+    """Deprecated: use LockFile.installed_paths_for_project() instead."""
+    return LockFile.installed_paths_for_project(project_root)

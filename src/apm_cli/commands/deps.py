@@ -29,7 +29,9 @@ def list_packages():
         # Import Rich components with fallback
         from rich.table import Table
         from rich.console import Console
-        console = Console()
+        import shutil
+        term_width = shutil.get_terminal_size((120, 24)).columns
+        console = Console(width=max(120, term_width))
         has_rich = True
     except ImportError:
         has_rich = False
