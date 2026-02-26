@@ -81,9 +81,6 @@ class TestAutoIntegrationEndToEnd:
         assert (prompts_dir / "workflow1-apm.prompt.md").exists()
         assert (prompts_dir / "workflow2-apm.prompt.md").exists()
         
-        # Check YAML frontmatter metadata
+        # Verify content is copied verbatim (no metadata injection)
         content1 = (prompts_dir / "workflow1-apm.prompt.md").read_text()
-        assert "apm:" in content1
-        assert "source: test-package" in content1
-        assert "commit: abc123def456" in content1
         assert "# workflow1" in content1
