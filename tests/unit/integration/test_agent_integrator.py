@@ -120,13 +120,13 @@ class TestAgentIntegrator:
         assert target == "security-apm.agent.md"
     
     def test_get_target_filename_chatmode_format(self):
-        """Test target filename generation with -apm suffix for .chatmode.md."""
+        """Test target filename generation renames .chatmode.md to .agent.md."""
         source = Path("/package/default.chatmode.md")
         package_name = "microsoft/apm-sample-package"
         
         target = self.integrator.get_target_filename(source, package_name)
-        # Preserve original extension
-        assert target == "default-apm.chatmode.md"
+        # chatmode is legacy — deploy as .agent.md
+        assert target == "default-apm.agent.md"
     
 
     
@@ -212,12 +212,11 @@ class TestAgentIntegrator:
         assert updated == True
         content = gitignore.read_text()
         assert ".github/agents/*-apm.agent.md" in content
-        assert ".github/agents/*-apm.chatmode.md" in content
     
     def test_update_gitignore_skips_if_exists(self):
         """Test that gitignore update is skipped if patterns exist."""
         gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/agents/*-apm.agent.md\n.github/agents/*-apm.chatmode.md\n.claude/agents/*-apm.agent.md\n.claude/agents/*-apm.chatmode.md\n")
+        gitignore.write_text(".github/agents/*-apm.agent.md\n")
         
         updated = self.integrator.update_gitignore_for_integrated_agents(self.project_root)
         
@@ -390,19 +389,19 @@ tools: []
         assert not (github_agents / "security-apm.agent.md").exists()
         assert not (github_agents / "compliance-apm.agent.md").exists()
     
-    def test_sync_integration_removes_apm_chatmodes(self):
-        """Test that sync removes APM-managed chatmode files."""
+    def test_sync_integration_removes_renamed_chatmode_agents(self):
+        """Test that sync removes agents that were originally chatmode files (now deployed as .agent.md)."""
         github_agents = self.project_root / ".github" / "agents"
         github_agents.mkdir(parents=True)
         
-        (github_agents / "default-apm.chatmode.md").write_text("# Default Chatmode")
+        (github_agents / "default-apm.agent.md").write_text("# Default Agent (was chatmode)")
         
         apm_package = Mock()
         
         result = self.integrator.sync_integration(apm_package, self.project_root)
         
         assert result['files_removed'] == 1
-        assert not (github_agents / "default-apm.chatmode.md").exists()
+        assert not (github_agents / "default-apm.agent.md").exists()
     
     def test_sync_integration_preserves_non_apm_files(self):
         """Test that sync does not remove non-APM files."""
@@ -541,10 +540,10 @@ class TestAgentSuffixPattern:
         assert result == "security-apm.agent.md"
     
     def test_suffix_with_simple_chatmode_filename(self):
-        """Test suffix pattern with simple chatmode filename."""
+        """Test suffix pattern renames chatmode to agent format."""
         source = Path("default.chatmode.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "default-apm.chatmode.md"
+        assert result == "default-apm.agent.md"
     
     def test_suffix_with_hyphenated_filename(self):
         """Test suffix pattern with hyphenated filename."""

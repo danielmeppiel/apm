@@ -212,7 +212,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 
 - **Prompts**: `.prompt.md` files → `.github/prompts/*-apm.prompt.md`
 - **Agents**: `.agent.md` files → `.github/agents/*-apm.agent.md`
-- **Chatmodes**: `.chatmode.md` files → `.github/agents/*-apm.chatmode.md`
+- **Chatmodes**: `.chatmode.md` files → `.github/agents/*-apm.agent.md` (renamed to modern format)
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
 - **Naming**: Integrated files use `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
@@ -275,7 +275,7 @@ apm uninstall microsoft/apm-sample-package --dry-run
 | Transitive deps | `apm_modules/` (orphaned transitive dependencies) |
 | Integrated prompts | `.github/prompts/*-apm.prompt.md` |
 | Integrated agents | `.github/agents/*-apm.agent.md` |
-| Integrated chatmodes | `.github/agents/*-apm.chatmode.md` |
+| Integrated chatmodes | `.github/agents/*-apm.agent.md` |
 | Claude commands | `.claude/commands/*-apm.md` |
 | Skill folders | `.github/skills/{folder-name}/` |
 | Lockfile entries | `apm.lock` (removed packages + orphaned transitives) |

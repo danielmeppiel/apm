@@ -98,27 +98,25 @@ class AgentIntegrator:
             package_name: Name of the package (not used in simple naming)
             
         Returns:
-            str: Target filename with -apm suffix (e.g., security-apm.agent.md or security-apm.chatmode.md)
+            str: Target filename with -apm suffix (e.g., security-apm.agent.md)
         """
         # Intent-first naming: insert -apm suffix before extension
-        # Preserve original extension (.agent.md or .chatmode.md)
+        # Always deploy as .agent.md (.chatmode.md is legacy)
         # Examples:
         #   security.agent.md -> security-apm.agent.md
-        #   default.chatmode.md -> default-apm.chatmode.md
+        #   default.chatmode.md -> default-apm.agent.md
         
-        # Determine extension
+        # Determine extension — always deploy as .agent.md
+        # (.chatmode.md is legacy; VS Code now uses .agent.md)
         if source_file.name.endswith('.agent.md'):
             stem = source_file.name[:-9]  # Remove .agent.md
-            extension = '.agent.md'
         elif source_file.name.endswith('.chatmode.md'):
             stem = source_file.name[:-12]  # Remove .chatmode.md
-            extension = '.chatmode.md'
         else:
             # Fallback for unexpected naming
             stem = source_file.stem
-            extension = ''.join(source_file.suffixes)
         
-        return f"{stem}-apm{extension}"
+        return f"{stem}-apm.agent.md"
     
     def copy_agent(self, source: Path, target: Path) -> int:
         """Copy agent file verbatim, resolving context links.
@@ -323,19 +321,16 @@ class AgentIntegrator:
         """
         stats = {'files_removed': 0, 'errors': 0}
         
-        for agents_dir in [
-            project_root / ".github" / "agents",
-            project_root / ".claude" / "agents",
-        ]:
-            if not agents_dir.exists():
-                continue
-            for pattern in ["*-apm.agent.md", "*-apm.chatmode.md"]:
-                for agent_file in agents_dir.glob(pattern):
-                    try:
-                        agent_file.unlink()
-                        stats['files_removed'] += 1
-                    except Exception:
-                        stats['errors'] += 1
+        agents_dir = project_root / ".github" / "agents"
+        if not agents_dir.exists():
+            return stats
+        
+        for agent_file in agents_dir.glob("*-apm.agent.md"):
+            try:
+                agent_file.unlink()
+                stats['files_removed'] += 1
+            except Exception:
+                stats['errors'] += 1
         
         return stats
     
@@ -375,12 +370,9 @@ class AgentIntegrator:
         """
         gitignore_path = project_root / ".gitignore"
         
-        # Define patterns for both new and legacy formats, plus .claude/ variants
+        # Pattern for integrated agent files (chatmode.md renamed to agent.md on deploy)
         patterns = [
-            ".github/agents/*-apm.agent.md",
-            ".github/agents/*-apm.chatmode.md",
-            ".claude/agents/*-apm.agent.md",
-            ".claude/agents/*-apm.chatmode.md",
+            ".github/agents/*-apm.agent.md"
         ]
         
         # Read current content
