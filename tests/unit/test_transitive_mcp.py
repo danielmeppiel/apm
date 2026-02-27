@@ -57,7 +57,7 @@ class TestAPMPackageMCPParsing(unittest.TestCase):
 
     def test_parse_mixed_mcp_deps(self):
         """A mix of string and dict entries is preserved in order."""
-        inline = {"name": "inline-srv", "type": "streamable-http", "url": "https://x"}
+        inline = {"name": "inline-srv", "type": "http", "url": "https://x"}
         with tempfile.TemporaryDirectory() as tmp:
             yml = Path(tmp) / "apm.yml"
             yml.write_text(yaml.dump({

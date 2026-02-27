@@ -489,7 +489,7 @@ dependencies:
     - ghcr.io/modelcontextprotocol/postgres-server
     # Inline config (private / self-hosted servers)
     - name: my-knowledge-base
-      type: streamable-http
+      type: http
       url: https://my-kb.example.com/
 ```
 
