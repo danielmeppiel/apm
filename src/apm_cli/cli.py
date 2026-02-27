@@ -702,8 +702,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
             _rich_info("No APM dependencies found in apm.yml")
 
         # Collect transitive MCP dependencies from resolved APM packages
-        if should_install_mcp and should_install_apm:
-            transitive_mcp = _collect_transitive_mcp_deps(Path.cwd() / "apm_modules")
+        apm_modules_path = Path.cwd() / "apm_modules"
+        if should_install_mcp and apm_modules_path.exists():
+            lock_path = Path.cwd() / "apm.lock"
+            transitive_mcp = _collect_transitive_mcp_deps(apm_modules_path, lock_path)
             if transitive_mcp:
                 _rich_info(f"Collected {len(transitive_mcp)} transitive MCP dependency(ies)")
                 mcp_deps = _deduplicate_mcp_deps(mcp_deps + transitive_mcp)
@@ -2147,14 +2149,16 @@ def _install_apm_dependencies(
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
 
 
-def _collect_transitive_mcp_deps(apm_modules_dir: Path) -> list:
-    """Collect MCP dependencies from all resolved APM packages in apm_modules/.
+def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) -> list:
+    """Collect MCP dependencies from resolved APM packages listed in apm.lock.
 
-    Walks every apm.yml inside apm_modules/ and returns a flat list of their
-    MCP entries (strings or inline dicts).
+    Only scans apm.yml files for packages present in apm.lock to avoid
+    picking up stale/orphaned packages from previous installs.
+    Falls back to scanning all apm.yml files if no lock file is available.
 
     Args:
         apm_modules_dir: Path to the apm_modules directory.
+        lock_path: Path to the apm.lock file (optional).
 
     Returns:
         List of MCP dependency entries (str or dict).
@@ -2164,8 +2168,30 @@ def _collect_transitive_mcp_deps(apm_modules_dir: Path) -> list:
 
     from apm_cli.models.apm_package import APMPackage
 
+    # Build set of expected apm.yml paths from apm.lock
+    locked_paths = None
+    if lock_path and lock_path.exists():
+        try:
+            import yaml
+
+            with open(lock_path, "r", encoding="utf-8") as f:
+                lock_data = yaml.safe_load(f) or {}
+            locked_paths = builtins.set()
+            for dep in lock_data.get("dependencies", []):
+                host = dep.get("host", "github.com")
+                repo_url = dep.get("repo_url", "")
+                virtual_path = dep.get("virtual_path", "")
+                if repo_url:
+                    yml = apm_modules_dir / host / repo_url / virtual_path / "apm.yml" if virtual_path else apm_modules_dir / host / repo_url / "apm.yml"
+                    locked_paths.add(yml.resolve())
+        except Exception:
+            locked_paths = None  # Fall back to full scan
+
     collected = []
     for apm_yml_path in apm_modules_dir.rglob("apm.yml"):
+        # Skip packages not in the lock file
+        if locked_paths is not None and apm_yml_path.resolve() not in locked_paths:
+            continue
         try:
             pkg = APMPackage.from_apm_yml(apm_yml_path)
             mcp = pkg.get_mcp_dependencies()
@@ -2473,10 +2499,9 @@ def _install_inline_mcp_deps(
         verbose: Show detailed output.
 
     Returns:
-        int: Number of servers configured.
+        int: Number of servers successfully configured.
     """
-    import json
-    from pathlib import Path
+    _KNOWN_MCP_TYPES = {"sse", "http"}
 
     console = _get_console()
     configured = 0
@@ -2491,11 +2516,15 @@ def _install_inline_mcp_deps(
             _rich_warning(f"Skipping inline MCP dep with missing name or url: {dep}")
             continue
 
+        if server_type not in _KNOWN_MCP_TYPES:
+            _rich_warning(f"MCP server '{name}' has unknown type '{server_type}' (expected one of {_KNOWN_MCP_TYPES})")
+
         # Build the server config entry
         server_config = {"type": server_type, "url": url}
         if headers:
             server_config["headers"] = headers
 
+        any_success = False
         for rt in target_runtimes:
             try:
                 if rt == "vscode":
@@ -2508,15 +2537,17 @@ def _install_inline_mcp_deps(
                     if verbose:
                         _rich_warning(f"Unsupported runtime '{rt}' for inline MCP config")
                     continue
+                any_success = True
             except Exception as e:
                 _rich_error(f"Failed to configure inline MCP '{name}' for {rt}: {e}")
                 continue
 
-        if console:
-            console.print(
-                f"│  [green]✓[/green]  {name} (inline) → {', '.join([rt.title() for rt in target_runtimes])}"
-            )
-        configured += 1
+        if any_success:
+            if console:
+                console.print(
+                    f"│  [green]✓[/green]  {name} (inline) → {', '.join([rt.title() for rt in target_runtimes])}"
+                )
+            configured += 1
 
     return configured
 
@@ -2535,7 +2566,8 @@ def _write_inline_mcp_vscode(name: str, server_config: dict, verbose: bool = Fal
         try:
             with open(mcp_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, IOError) as e:
+            _rich_warning(f"Could not parse {mcp_path}, resetting: {e}")
             config = {}
 
     if "servers" not in config:
@@ -2565,7 +2597,8 @@ def _write_inline_mcp_copilot(name: str, server_config: dict, verbose: bool = Fa
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, IOError) as e:
+            _rich_warning(f"Could not parse {config_path}, resetting: {e}")
             config = {}
 
     if "mcpServers" not in config:

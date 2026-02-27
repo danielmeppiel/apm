@@ -1,11 +1,10 @@
 """Tests for transitive MCP dependency collection, deduplication, and inline installation."""
 
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import yaml
 
@@ -304,16 +303,16 @@ class TestInstallInlineMCPDeps(unittest.TestCase):
     @patch("apm_cli.cli._write_inline_mcp_vscode", side_effect=Exception("write failed"))
     @patch("apm_cli.cli._get_console", return_value=None)
     def test_continues_on_write_failure(self, _console, mock_vscode):
-        """Failure writing one dep should not prevent the next from being counted."""
+        """Failure writing one dep should not prevent the next from being attempted."""
         deps = [
             {"name": "fail", "type": "sse", "url": "https://fail"},
             {"name": "ok", "type": "sse", "url": "https://ok"},
         ]
-        # Both raise, so configured count is still 2 (the loop counts after the rt loop)
-        # Actually both will error on vscode write but the counter increments after the rt loop
+        # Both raise, so no deps are successfully configured
         count = _install_inline_mcp_deps(deps, ["vscode"])
-        # Even though writes fail, configured is still incremented (errors are logged, not raised)
-        self.assertEqual(count, 2)
+        self.assertEqual(count, 0)
+        # But both were attempted
+        self.assertEqual(mock_vscode.call_count, 2)
 
     @patch("apm_cli.cli._write_inline_mcp_copilot")
     @patch("apm_cli.cli._get_console", return_value=None)
