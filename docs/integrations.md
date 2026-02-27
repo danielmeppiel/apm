@@ -226,10 +226,29 @@ When you run `apm compile`, APM generates Claude-native files:
 When you run `apm install`, APM integrates package primitives into Claude's native structure:
 
 | Location | Purpose |
-|----------|---------||
-| `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
-| `.github/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
+|----------|---------|
+| `.claude/agents/*-apm.md` | Sub-agents from installed packages (from `.agent.md` files) |
+| `.claude/commands/*-apm.md` | Slash commands from installed packages (from `.prompt.md` files) |
+| `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
 | `.claude/settings.json` (hooks key) | Hooks from installed packages (merged into settings) |
+
+### Automatic Agent Integration
+
+APM automatically deploys agent files from installed packages into `.claude/agents/`:
+
+```bash
+# Install a package with agents
+apm install danielmeppiel/design-guidelines
+
+# Result:
+# .claude/agents/security-apm.md    → Sub-agent available for Claude Code
+```
+
+**How it works:**
+1. `apm install` detects `.agent.md` and `.chatmode.md` files in the package
+2. Copies each to `.claude/agents/` as `.md` files with `-apm` suffix
+3. Updates `.gitignore` to exclude generated agents
+4. `apm uninstall` automatically removes the package's agents
 
 ### Automatic Command Integration
 
@@ -269,9 +288,8 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 **How skill integration works:**
 1. `apm install` checks if the package contains a `SKILL.md` file
 2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/`
-3. If no `SKILL.md` but package has `.apm/` primitives: auto-generates `SKILL.md` in `.github/skills/{folder-name}/`
-4. Updates `.gitignore` to exclude generated skills
-5. `apm uninstall` removes the skill folder
+3. Updates `.gitignore` to exclude integrated skills
+4. `apm uninstall` removes the skill folder
 
 ### Automatic Hook Integration
 
@@ -334,7 +352,7 @@ Review the current design for accessibility and UI standards.
 ### Example Workflow
 
 ```bash
-# 1. Install packages (integrates commands and skills automatically)
+# 1. Install packages (integrates agents, commands, and skills automatically)
 apm install microsoft/apm-sample-package
 apm install github/awesome-copilot/skills/review-and-refactor
 
@@ -346,19 +364,20 @@ apm compile --target claude
 #    /gdpr-assessment → Runs GDPR compliance check
 
 # 4. CLAUDE.md provides project instructions automatically
-# 5. Skills in .github/skills/ are available for agents to reference
+# 5. Agents in .claude/agents/ are available as sub-agents
+# 6. Skills in .claude/skills/ are available for agents to reference
 ```
 
 ### Claude Desktop Integration
 
-Skills installed to `.github/skills/` are automatically available for AI agents. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
+Skills installed to `.claude/skills/` are automatically available for Claude Code. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
 
 ### Cleanup and Sync
 
-APM maintains synchronization between packages and Claude commands:
+APM maintains synchronization between packages and Claude primitives:
 
-- **Install**: Adds commands for new packages
-- **Uninstall**: Removes only that package's commands  
+- **Install**: Adds agents, commands, and skills for new packages
+- **Uninstall**: Removes only that package's agents and commands  
 - **Update**: Refreshes commands when package version changes
 - **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked and removed correctly
 

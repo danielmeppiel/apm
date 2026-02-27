@@ -8,6 +8,7 @@ from typing import List, Dict
 from .models import PrimitiveCollection
 from .parser import parse_primitive_file, parse_skill_file
 from ..models.apm_package import APMPackage
+from ..deps.lockfile import LockFile
 
 
 # Common primitive patterns for local discovery (with recursive search)
@@ -183,9 +184,15 @@ def scan_dependency_primitives(base_dir: str, collection: PrimitiveCollection) -
 
 
 def get_dependency_declaration_order(base_dir: str) -> List[str]:
-    """Get APM dependency installed paths in their declaration order from apm.yml.
+    """Get APM dependency installed paths in their declaration order.
     
-    Returns the actual installed paths for each dependency, which differs for:
+    The returned list contains the actual installed path for each dependency,
+    combining:
+    1. Direct dependencies from apm.yml (highest priority, declaration order)
+    2. Transitive dependencies from apm.lock (appended after direct deps)
+    
+    This ensures transitive dependencies are included in primitive discovery
+    and compilation, not just direct dependencies. The installed path differs for:
     - Regular packages: owner/repo (GitHub) or org/project/repo (ADO)
     - Virtual packages: owner/virtual-pkg-name (GitHub) or org/project/virtual-pkg-name (ADO)
     
@@ -242,6 +249,14 @@ def get_dependency_declaration_order(base_dir: str) -> List[str]:
                 # Regular packages: use full org/repo path
                 # This matches our org-namespaced directory structure
                 dependency_names.append(dep.repo_url)
+        
+        # Include transitive dependencies from apm.lock
+        # Direct deps from apm.yml have priority; transitive deps are appended
+        lockfile_paths = LockFile.installed_paths_for_project(Path(base_dir))
+        direct_set = set(dependency_names)
+        for path in lockfile_paths:
+            if path not in direct_set:
+                dependency_names.append(path)
         
         return dependency_names
         

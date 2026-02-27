@@ -129,13 +129,14 @@ class TestAgentIntegratorOrphanDetection:
             assert not (agents_dir / "test-apm.agent.md").exists()
     
     def test_sync_removes_chatmode_files(self):
-        """Legacy .chatmode.md files are also removed."""
+        """Legacy .chatmode.md files deployed as .agent.md are removed correctly."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             agents_dir = project_root / ".github" / "agents"
             agents_dir.mkdir(parents=True)
             
-            (agents_dir / "test-apm.chatmode.md").write_text("# Chatmode")
+            # Chatmodes are now deployed as .agent.md, so sync removes them via that pattern
+            (agents_dir / "test-apm.agent.md").write_text("# Agent (was chatmode)")
             
             apm_package = create_mock_apm_package([])
             
@@ -143,7 +144,7 @@ class TestAgentIntegratorOrphanDetection:
             result = integrator.sync_integration(apm_package, project_root)
             
             assert result['files_removed'] == 1
-            assert not (agents_dir / "test-apm.chatmode.md").exists()
+            assert not (agents_dir / "test-apm.agent.md").exists()
 
 
 class TestPromptIntegratorOrphanDetection:

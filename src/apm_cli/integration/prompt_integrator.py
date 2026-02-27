@@ -182,16 +182,17 @@ class PromptIntegrator:
         """
         stats = {'files_removed': 0, 'errors': 0}
         
-        prompts_dir = project_root / ".github" / "prompts"
-        if not prompts_dir.exists():
-            return stats
-        
-        for prompt_file in prompts_dir.glob("*-apm.prompt.md"):
-            try:
-                prompt_file.unlink()
-                stats['files_removed'] += 1
-            except Exception:
-                stats['errors'] += 1
+        for prompts_dir in [
+            project_root / ".github" / "prompts",
+        ]:
+            if not prompts_dir.exists():
+                continue
+            for prompt_file in prompts_dir.glob("*-apm.prompt.md"):
+                try:
+                    prompt_file.unlink()
+                    stats['files_removed'] += 1
+                except Exception:
+                    stats['errors'] += 1
         
         return stats
     
@@ -216,17 +217,24 @@ class PromptIntegrator:
             except Exception:
                 return False
         
-        # Check if pattern already exists
+        # Check if pattern needs to be added
         if any(pattern in line for line in current_content):
             return False
         
-        # Add pattern to .gitignore
+        patterns_to_add = [pattern]
+        
+        if not patterns_to_add:
+            return False
+        
+        # Add patterns to .gitignore
         try:
             with open(gitignore_path, "a", encoding="utf-8") as f:
                 # Add a blank line before our entry if file isn't empty
                 if current_content and current_content[-1].strip():
                     f.write("\n")
-                f.write(f"\n# APM integrated prompts\n{pattern}\n")
+                f.write(f"\n# APM integrated prompts\n")
+                for p in patterns_to_add:
+                    f.write(f"{p}\n")
             return True
         except Exception:
             return False

@@ -412,6 +412,116 @@ description: Test {primitive_type} for {name}
         chatmode_conflicts = collection.get_conflicts_by_type("chatmode")
         self.assertEqual(len(chatmode_conflicts), 0)  # No conflicts yet
 
+    def test_dependency_order_includes_transitive_from_lockfile(self):
+        """Test that transitive dependencies from apm.lock are included in declaration order."""
+        from apm_cli.deps.lockfile import LockFile, LockedDependency
+
+        # Create apm.yml with only one direct dependency
+        dependencies = {"apm": ["rieraj/team-cot-agent-instructions"]}
+        self._create_apm_yml(dependencies)
+
+        # Create apm.lock with transitive dependencies
+        lockfile = LockFile()
+        lockfile.add_dependency(LockedDependency(
+            repo_url="rieraj/team-cot-agent-instructions",
+            depth=1,
+        ))
+        lockfile.add_dependency(LockedDependency(
+            repo_url="rieraj/division-ime-agent-instructions",
+            depth=2,
+            resolved_by="rieraj/team-cot-agent-instructions",
+        ))
+        lockfile.add_dependency(LockedDependency(
+            repo_url="rieraj/autodesk-agent-instructions",
+            depth=3,
+            resolved_by="rieraj/division-ime-agent-instructions",
+        ))
+        lockfile.write(self.temp_dir_path / "apm.lock")
+
+        order = get_dependency_declaration_order(str(self.temp_dir_path))
+
+        # Direct dep should come first, then transitive deps from lockfile
+        self.assertIn("rieraj/team-cot-agent-instructions", order)
+        self.assertIn("rieraj/division-ime-agent-instructions", order)
+        self.assertIn("rieraj/autodesk-agent-instructions", order)
+        # Direct dep first
+        self.assertEqual(order[0], "rieraj/team-cot-agent-instructions")
+        self.assertEqual(len(order), 3)
+
+    def test_dependency_order_no_lockfile(self):
+        """Test that dependency order works without a lockfile (backward compat)."""
+        # Create apm.yml with dependencies but no lockfile
+        dependencies = {"apm": ["company/standards", "team/workflows"]}
+        self._create_apm_yml(dependencies)
+
+        order = get_dependency_declaration_order(str(self.temp_dir_path))
+        self.assertEqual(order, ["company/standards", "team/workflows"])
+
+    def test_dependency_order_lockfile_no_duplicates(self):
+        """Test that direct deps already in apm.yml are not duplicated from lockfile."""
+        from apm_cli.deps.lockfile import LockFile, LockedDependency
+
+        # Create apm.yml with all deps listed directly
+        dependencies = {"apm": [
+            "rieraj/team-cot",
+            "rieraj/division-ime",
+            "rieraj/autodesk",
+        ]}
+        self._create_apm_yml(dependencies)
+
+        # Create apm.lock that also contains all deps
+        lockfile = LockFile()
+        lockfile.add_dependency(LockedDependency(repo_url="rieraj/team-cot", depth=1))
+        lockfile.add_dependency(LockedDependency(repo_url="rieraj/division-ime", depth=1))
+        lockfile.add_dependency(LockedDependency(repo_url="rieraj/autodesk", depth=1))
+        lockfile.write(self.temp_dir_path / "apm.lock")
+
+        order = get_dependency_declaration_order(str(self.temp_dir_path))
+        # No duplicates
+        self.assertEqual(len(order), 3)
+        self.assertEqual(len(set(order)), 3)
+
+    def test_scan_dependency_primitives_with_transitive(self):
+        """Test that scan_dependency_primitives finds transitive dep primitives."""
+        from apm_cli.deps.lockfile import LockFile, LockedDependency
+
+        # Create apm.yml with only one direct dependency
+        dependencies = {"apm": ["owner/direct-dep"]}
+        self._create_apm_yml(dependencies)
+
+        # Create apm.lock with a transitive dependency
+        lockfile = LockFile()
+        lockfile.add_dependency(LockedDependency(repo_url="owner/direct-dep", depth=1))
+        lockfile.add_dependency(LockedDependency(
+            repo_url="owner/transitive-dep", depth=2,
+            resolved_by="owner/direct-dep",
+        ))
+        lockfile.write(self.temp_dir_path / "apm.lock")
+
+        # Create dependency directories with primitives
+        direct_dep_dir = self.temp_dir_path / "apm_modules" / "owner" / "direct-dep" / ".apm" / "instructions"
+        direct_dep_dir.mkdir(parents=True, exist_ok=True)
+        self._create_primitive_file(
+            direct_dep_dir / "direct.instructions.md",
+            "instruction", "direct"
+        )
+
+        transitive_dep_dir = self.temp_dir_path / "apm_modules" / "owner" / "transitive-dep" / ".apm" / "instructions"
+        transitive_dep_dir.mkdir(parents=True, exist_ok=True)
+        self._create_primitive_file(
+            transitive_dep_dir / "transitive.instructions.md",
+            "instruction", "transitive"
+        )
+
+        collection = PrimitiveCollection()
+        scan_dependency_primitives(str(self.temp_dir_path), collection)
+
+        # Both direct and transitive deps should be found
+        self.assertEqual(len(collection.instructions), 2)
+        instruction_names = {i.name for i in collection.instructions}
+        self.assertIn("direct", instruction_names)
+        self.assertIn("transitive", instruction_names)
+
 
 if __name__ == '__main__':
     unittest.main()

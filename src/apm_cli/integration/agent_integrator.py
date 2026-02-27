@@ -98,27 +98,25 @@ class AgentIntegrator:
             package_name: Name of the package (not used in simple naming)
             
         Returns:
-            str: Target filename with -apm suffix (e.g., security-apm.agent.md or security-apm.chatmode.md)
+            str: Target filename with -apm suffix (e.g., security-apm.agent.md)
         """
         # Intent-first naming: insert -apm suffix before extension
-        # Preserve original extension (.agent.md or .chatmode.md)
+        # Always deploy as .agent.md (.chatmode.md is legacy)
         # Examples:
         #   security.agent.md -> security-apm.agent.md
-        #   default.chatmode.md -> default-apm.chatmode.md
+        #   default.chatmode.md -> default-apm.agent.md
         
-        # Determine extension
+        # Determine extension — always deploy as .agent.md
+        # (.chatmode.md is legacy; VS Code now uses .agent.md)
         if source_file.name.endswith('.agent.md'):
             stem = source_file.name[:-9]  # Remove .agent.md
-            extension = '.agent.md'
         elif source_file.name.endswith('.chatmode.md'):
             stem = source_file.name[:-12]  # Remove .chatmode.md
-            extension = '.chatmode.md'
         else:
             # Fallback for unexpected naming
             stem = source_file.stem
-            extension = ''.join(source_file.suffixes)
         
-        return f"{stem}-apm{extension}"
+        return f"{stem}-apm.agent.md"
     
     def copy_agent(self, source: Path, target: Path) -> int:
         """Copy agent file verbatim, resolving context links.
@@ -194,6 +192,13 @@ class AgentIntegrator:
         agents_dir = project_root / ".github" / "agents"
         agents_dir.mkdir(parents=True, exist_ok=True)
         
+        # Also target .claude/agents/ when .claude/ folder exists (dual-target)
+        claude_agents_dir = None
+        claude_dir = project_root / ".claude"
+        if claude_dir.exists() and claude_dir.is_dir():
+            claude_agents_dir = claude_dir / "agents"
+            claude_agents_dir.mkdir(parents=True, exist_ok=True)
+        
         # Process each agent file — always overwrite
         files_integrated = 0
         target_paths = []
@@ -201,6 +206,93 @@ class AgentIntegrator:
         
         for source_file in agent_files:
             target_filename = self.get_target_filename(source_file, package_info.package.name)
+            target_path = agents_dir / target_filename
+            
+            links_resolved = self.copy_agent(source_file, target_path)
+            total_links_resolved += links_resolved
+            files_integrated += 1
+            target_paths.append(target_path)
+            
+            # Copy to .claude/agents/ as well
+            if claude_agents_dir:
+                claude_target = claude_agents_dir / target_filename
+                self.copy_agent(source_file, claude_target)
+        
+        return IntegrationResult(
+            files_integrated=files_integrated,
+            files_updated=0,
+            files_skipped=0,
+            target_paths=target_paths,
+            gitignore_updated=False,
+            links_resolved=total_links_resolved
+        )
+    
+    def get_target_filename_claude(self, source_file: Path, package_name: str) -> str:
+        """Generate target filename for Claude agents with -apm suffix.
+        
+        Claude sub-agents use plain .md files in .claude/agents/.
+        Both .agent.md and .chatmode.md sources are converted to .md.
+        
+        Args:
+            source_file: Source file path
+            package_name: Name of the package (not used in simple naming)
+            
+        Returns:
+            str: Target filename with -apm.md suffix (e.g., security-apm.md)
+        """
+        if source_file.name.endswith('.agent.md'):
+            stem = source_file.name[:-9]  # Remove .agent.md
+        elif source_file.name.endswith('.chatmode.md'):
+            stem = source_file.name[:-12]  # Remove .chatmode.md
+        else:
+            stem = source_file.stem
+        
+        return f"{stem}-apm.md"
+    
+    def integrate_package_agents_claude(self, package_info, project_root: Path) -> IntegrationResult:
+        """Integrate all agents from a package into .claude/agents/.
+        
+        Deploys agent files to Claude Code's native sub-agent directory.
+        Always overwrites existing files. Resolves context links during integration.
+        
+        Args:
+            package_info: PackageInfo object with package metadata
+            project_root: Root directory of the project
+            
+        Returns:
+            IntegrationResult: Results of the integration operation
+        """
+        # Initialize link resolver and register contexts
+        self.link_resolver = UnifiedLinkResolver(project_root)
+        try:
+            primitives = discover_primitives(package_info.install_path)
+            self.link_resolver.register_contexts(primitives)
+        except Exception:
+            self.link_resolver = None
+        
+        # Find all agent files in the package
+        agent_files = self.find_agent_files(package_info.install_path)
+        
+        if not agent_files:
+            return IntegrationResult(
+                files_integrated=0,
+                files_updated=0,
+                files_skipped=0,
+                target_paths=[],
+                gitignore_updated=False
+            )
+        
+        # Create .claude/agents/ if it doesn't exist
+        agents_dir = project_root / ".claude" / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Process each agent file — always overwrite
+        files_integrated = 0
+        target_paths = []
+        total_links_resolved = 0
+        
+        for source_file in agent_files:
+            target_filename = self.get_target_filename_claude(source_file, package_info.package.name)
             target_path = agents_dir / target_filename
             
             links_resolved = self.copy_agent(source_file, target_path)
@@ -233,13 +325,37 @@ class AgentIntegrator:
         if not agents_dir.exists():
             return stats
         
-        for pattern in ["*-apm.agent.md", "*-apm.chatmode.md"]:
-            for agent_file in agents_dir.glob(pattern):
-                try:
-                    agent_file.unlink()
-                    stats['files_removed'] += 1
-                except Exception:
-                    stats['errors'] += 1
+        for agent_file in agents_dir.glob("*-apm.agent.md"):
+            try:
+                agent_file.unlink()
+                stats['files_removed'] += 1
+            except Exception:
+                stats['errors'] += 1
+        
+        return stats
+    
+    def sync_integration_claude(self, apm_package, project_root: Path) -> Dict[str, int]:
+        """Remove all APM-managed agent files from .claude/agents/ for clean regeneration.
+        
+        Args:
+            apm_package: APMPackage with current dependencies (unused, kept for API compat)
+            project_root: Root directory of the project
+            
+        Returns:
+            Dict with 'files_removed' and 'errors' counts
+        """
+        stats = {'files_removed': 0, 'errors': 0}
+        
+        agents_dir = project_root / ".claude" / "agents"
+        if not agents_dir.exists():
+            return stats
+        
+        for agent_file in agents_dir.glob("*-apm.md"):
+            try:
+                agent_file.unlink()
+                stats['files_removed'] += 1
+            except Exception:
+                stats['errors'] += 1
         
         return stats
     
@@ -254,10 +370,9 @@ class AgentIntegrator:
         """
         gitignore_path = project_root / ".gitignore"
         
-        # Define patterns for both new and legacy formats
+        # Pattern for integrated agent files (chatmode.md renamed to agent.md on deploy)
         patterns = [
-            ".github/agents/*-apm.agent.md",
-            ".github/agents/*-apm.chatmode.md"
+            ".github/agents/*-apm.agent.md"
         ]
         
         # Read current content
@@ -285,6 +400,51 @@ class AgentIntegrator:
                 if current_content and current_content[-1].strip():
                     f.write("\n")
                 f.write("\n# APM integrated agents\n")
+                for pattern in patterns_to_add:
+                    f.write(f"{pattern}\n")
+            return True
+        except Exception:
+            return False
+    
+    def update_gitignore_for_integrated_agents_claude(self, project_root: Path) -> bool:
+        """Update .gitignore with pattern for Claude integrated agents.
+        
+        Args:
+            project_root: Root directory of the project
+            
+        Returns:
+            bool: True if .gitignore was updated, False if pattern already exists
+        """
+        gitignore_path = project_root / ".gitignore"
+        
+        patterns = [
+            ".claude/agents/*-apm.md"
+        ]
+        
+        # Read current content
+        current_content = []
+        if gitignore_path.exists():
+            try:
+                with open(gitignore_path, "r", encoding="utf-8") as f:
+                    current_content = [line.rstrip("\n\r") for line in f.readlines()]
+            except Exception:
+                return False
+        
+        # Check which patterns need to be added
+        patterns_to_add = []
+        for pattern in patterns:
+            if not any(pattern in line for line in current_content):
+                patterns_to_add.append(pattern)
+        
+        if not patterns_to_add:
+            return False
+        
+        # Add patterns to .gitignore
+        try:
+            with open(gitignore_path, "a", encoding="utf-8") as f:
+                if current_content and current_content[-1].strip():
+                    f.write("\n")
+                f.write("\n# APM integrated Claude agents\n")
                 for pattern in patterns_to_add:
                     f.write(f"{pattern}\n")
             return True

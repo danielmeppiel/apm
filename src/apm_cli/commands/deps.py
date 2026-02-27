@@ -29,7 +29,9 @@ def list_packages():
         # Import Rich components with fallback
         from rich.table import Table
         from rich.console import Console
-        console = Console()
+        import shutil
+        term_width = shutil.get_terminal_size((120, 24)).columns
+        console = Console(width=max(120, term_width))
         has_rich = True
     except ImportError:
         has_rich = False
@@ -94,25 +96,47 @@ def list_packages():
         except Exception:
             pass  # Continue without orphan detection if apm.yml parsing fails
         
+        # Also load lockfile deps to avoid false orphan flags on transitive deps
+        try:
+            from ..deps.lockfile import LockFile, get_lockfile_path
+            lockfile_path = get_lockfile_path(project_root)
+            if lockfile_path.exists():
+                lockfile = LockFile.read(lockfile_path)
+                for dep in lockfile.dependencies.values():
+                    # Lockfile keys match declared_sources format (owner/repo)
+                    dep_key = dep.get_unique_key()
+                    if dep_key and dep_key not in declared_sources:
+                        declared_sources[dep_key] = 'github'
+        except Exception:
+            pass  # Continue without lockfile if it can't be read
+        
         # Scan for installed packages in org-namespaced structure
-        # Walks the tree to find directories containing apm.yml,
+        # Walks the tree to find directories containing apm.yml or SKILL.md,
         # handling GitHub (2-level), ADO (3-level), and subdirectory (4+ level) packages.
         installed_packages = []
         orphaned_packages = []
         for candidate in apm_modules_path.rglob("*"):
             if not candidate.is_dir() or candidate.name.startswith('.'):
                 continue
-            apm_yml_path = candidate / "apm.yml"
-            if not apm_yml_path.exists():
+            has_apm_yml = (candidate / "apm.yml").exists()
+            has_skill_md = (candidate / "SKILL.md").exists()
+            if not has_apm_yml and not has_skill_md:
                 continue
             rel_parts = candidate.relative_to(apm_modules_path).parts
             if len(rel_parts) < 2:
                 continue
             org_repo_name = "/".join(rel_parts)
+            
+            # Skip sub-skills inside .apm/ directories — they belong to the parent package
+            if '.apm' in rel_parts:
+                continue
+            
             try:
-                package = APMPackage.from_apm_yml(apm_yml_path)
-                context_count, workflow_count = _count_package_files(candidate)
-                hooks_count = _count_hooks(candidate)
+                version = 'unknown'
+                if has_apm_yml:
+                    package = APMPackage.from_apm_yml(candidate / "apm.yml")
+                    version = package.version or 'unknown'
+                primitives = _count_primitives(candidate)
                 
                 is_orphaned = org_repo_name not in declared_sources
                 if is_orphaned:
@@ -120,11 +144,9 @@ def list_packages():
                 
                 installed_packages.append({
                     'name': org_repo_name,
-                    'version': package.version or 'unknown', 
+                    'version': version, 
                     'source': 'orphaned' if is_orphaned else declared_sources.get(org_repo_name, 'github'),
-                    'context': context_count,
-                    'workflows': workflow_count,
-                    'hooks': hooks_count,
+                    'primitives': primitives,
                     'path': str(candidate),
                     'is_orphaned': is_orphaned
                 })
@@ -144,18 +166,23 @@ def list_packages():
             table.add_column("Package", style="bold white")
             table.add_column("Version", style="yellow") 
             table.add_column("Source", style="blue")
-            table.add_column("Context", style="green")
-            table.add_column("Workflows", style="magenta")
-            table.add_column("Hooks", style="red")
+            table.add_column("Prompts", style="magenta", justify="center")
+            table.add_column("Instructions", style="green", justify="center")
+            table.add_column("Agents", style="cyan", justify="center")
+            table.add_column("Skills", style="yellow", justify="center")
+            table.add_column("Hooks", style="red", justify="center")
             
             for pkg in installed_packages:
+                p = pkg['primitives']
                 table.add_row(
                     pkg['name'],
                     pkg['version'],
                     pkg['source'],
-                    f"{pkg['context']} files",
-                    f"{pkg['workflows']} workflows",
-                    f"{pkg['hooks']} hooks" if pkg['hooks'] > 0 else "-"
+                    str(p.get('prompts', 0)) if p.get('prompts', 0) > 0 else "-",
+                    str(p.get('instructions', 0)) if p.get('instructions', 0) > 0 else "-",
+                    str(p.get('agents', 0)) if p.get('agents', 0) > 0 else "-",
+                    str(p.get('skills', 0)) if p.get('skills', 0) > 0 else "-",
+                    str(p.get('hooks', 0)) if p.get('hooks', 0) > 0 else "-",
                 )
             
             console.print(table)
@@ -169,20 +196,20 @@ def list_packages():
         else:
             # Fallback text table
             click.echo("📋 APM Dependencies:")
-            click.echo("┌─────────────────────┬─────────┬──────────────┬─────────────┬─────────────┬─────────┐")
-            click.echo("│ Package             │ Version │ Source       │ Context     │ Workflows   │ Hooks   │")
-            click.echo("├─────────────────────┼─────────┼──────────────┼─────────────┼─────────────┼─────────┤")
+            click.echo(f"{'Package':<30} {'Version':<10} {'Source':<12} {'Prompts':>7} {'Instr':>7} {'Agents':>7} {'Skills':>7} {'Hooks':>7}")
+            click.echo("-" * 98)
             
             for pkg in installed_packages:
-                name = pkg['name'][:19].ljust(19)
-                version = pkg['version'][:7].ljust(7)
-                source = pkg['source'][:12].ljust(12)
-                context = f"{pkg['context']} files".ljust(11)
-                workflows = f"{pkg['workflows']} wf".ljust(11)
-                hooks = (f"{pkg['hooks']} hooks" if pkg['hooks'] > 0 else "-").ljust(7)
-                click.echo(f"│ {name} │ {version} │ {source} │ {context} │ {workflows} │ {hooks} │")
-            
-            click.echo("└─────────────────────┴─────────┴──────────────┴─────────────┴─────────────┴─────────┘")
+                p = pkg['primitives']
+                name = pkg['name'][:28]
+                version = pkg['version'][:8]
+                source = pkg['source'][:10]
+                prompts = str(p.get('prompts', 0)) if p.get('prompts', 0) > 0 else "-"
+                instructions = str(p.get('instructions', 0)) if p.get('instructions', 0) > 0 else "-"
+                agents = str(p.get('agents', 0)) if p.get('agents', 0) > 0 else "-"
+                skills = str(p.get('skills', 0)) if p.get('skills', 0) > 0 else "-"
+                hooks = str(p.get('hooks', 0)) if p.get('hooks', 0) > 0 else "-"
+                click.echo(f"{name:<30} {version:<10} {source:<12} {prompts:>7} {instructions:>7} {agents:>7} {skills:>7} {hooks:>7}")
             
             # Show orphaned packages warning
             if orphaned_packages:
@@ -198,7 +225,7 @@ def list_packages():
 
 @deps.command(help="🌳 Show dependency tree structure")  
 def tree():
-    """Display dependencies in hierarchical tree format showing context and workflows."""
+    """Display dependencies in hierarchical tree format using lockfile."""
     try:
         # Import Rich components with fallback
         from rich.tree import Tree
@@ -223,98 +250,129 @@ def tree():
         except Exception:
             pass
         
-        if has_rich:
-            # Create Rich tree
-            root_tree = Tree(f"[bold cyan]{project_name}[/bold cyan] (local)")
+        # Try to load lockfile for accurate tree with depth/parent info
+        lockfile_deps = None
+        try:
+            from ..deps.lockfile import LockFile, get_lockfile_path
+            lockfile_path = get_lockfile_path(project_root)
+            if lockfile_path.exists():
+                lockfile = LockFile.read(lockfile_path)
+                if lockfile:
+                    lockfile_deps = lockfile.get_all_dependencies()
+        except Exception:
+            pass
+        
+        if lockfile_deps:
+            # Build tree from lockfile (accurate depth + parent info)
+            # Separate direct (depth=1) from transitive (depth>1)
+            direct = [d for d in lockfile_deps if d.depth <= 1]
+            transitive = [d for d in lockfile_deps if d.depth > 1]
             
-            # Check if apm_modules exists
-            if not apm_modules_path.exists():
-                root_tree.add("[dim]No dependencies installed[/dim]")
-            else:
-                # Add each dependency as a branch - handle org/repo structure
-                for org_dir in apm_modules_path.iterdir():
-                    if org_dir.is_dir() and not org_dir.name.startswith('.'):
-                        for package_dir in org_dir.iterdir():
-                            if package_dir.is_dir() and not package_dir.name.startswith('.'):
-                                try:
-                                    package_info = _get_package_display_info(package_dir)
-                                    branch = root_tree.add(f"[green]{package_info['display_name']}[/green]")
-                                    
-                                    # Add context files and workflows as sub-items
-                                    context_files = _get_detailed_context_counts(package_dir)
-                                    workflow_count = _count_workflows(package_dir)
-                                    hooks_count = _count_hooks(package_dir)
-                                    
-                                    # Show context files by type
-                                    for context_type, count in context_files.items():
-                                        if count > 0:
-                                            branch.add(f"[dim]{count} {context_type}[/dim]")
-                                    
-                                    # Show workflows
-                                    if workflow_count > 0:
-                                        branch.add(f"[bold magenta]{workflow_count} agent workflows[/bold magenta]")
-                                    
-                                    # Show hooks
-                                    if hooks_count > 0:
-                                        branch.add(f"[bold red]{hooks_count} hooks[/bold red]")
-                                    
-                                    if not any(count > 0 for count in context_files.values()) and workflow_count == 0 and hooks_count == 0:
-                                        branch.add("[dim]no context or workflows[/dim]")
-                                        
-                                except Exception as e:
-                                    branch = root_tree.add(f"[red]{org_dir.name}/{package_dir.name}[/red] [dim](error loading)[/dim]")
+            # Build parent→children map
+            children_map: Dict[str, list] = {}
+            for dep in transitive:
+                parent_key = dep.resolved_by or ""
+                if parent_key not in children_map:
+                    children_map[parent_key] = []
+                children_map[parent_key].append(dep)
             
-            console.print(root_tree)
+            def _dep_display_name(dep) -> str:
+                """Get display name for a locked dependency."""
+                key = dep.get_unique_key()
+                version = dep.version or (dep.resolved_commit[:7] if dep.resolved_commit else None) or dep.resolved_ref or "latest"
+                return f"{key}@{version}"
             
-        else:
-            # Fallback text tree
-            click.echo(f"{project_name} (local)")
+            def _add_children(parent_branch, parent_repo_url, depth=0):
+                """Recursively add transitive deps as nested children."""
+                kids = children_map.get(parent_repo_url, [])
+                for child_dep in kids:
+                    child_name = _dep_display_name(child_dep)
+                    if has_rich:
+                        child_branch = parent_branch.add(f"[dim]{child_name}[/dim]")
+                    else:
+                        child_branch = child_name
+                    if depth < 5:  # Prevent infinite recursion
+                        _add_children(child_branch, child_dep.repo_url, depth + 1)
             
-            if not apm_modules_path.exists():
-                click.echo("└── No dependencies installed")
-                return
-            
-            # Collect all packages from org/repo structure
-            package_dirs = []
-            for org_dir in apm_modules_path.iterdir():
-                if org_dir.is_dir() and not org_dir.name.startswith('.'):
-                    for package_dir in org_dir.iterdir():
-                        if package_dir.is_dir() and not package_dir.name.startswith('.'):
-                            package_dirs.append(package_dir)
-            
-            for i, package_dir in enumerate(package_dirs):
-                is_last = i == len(package_dirs) - 1
-                prefix = "└── " if is_last else "├── "
+            if has_rich:
+                root_tree = Tree(f"[bold cyan]{project_name}[/bold cyan] (local)")
                 
-                try:
-                    package_info = _get_package_display_info(package_dir)
-                    click.echo(f"{prefix}{package_info['display_name']}")
-                    
-                    # Add context files and workflows
-                    context_files = _get_detailed_context_counts(package_dir)
-                    workflow_count = _count_workflows(package_dir)
-                    hooks_count = _count_hooks(package_dir)
-                    sub_prefix = "    " if is_last else "│   "
-                    
-                    items_shown = False
-                    for context_type, count in context_files.items():
-                        if count > 0:
-                            click.echo(f"{sub_prefix}├── {count} {context_type}")
-                            items_shown = True
-                    
-                    if workflow_count > 0:
-                        click.echo(f"{sub_prefix}├── {workflow_count} agent workflows")
-                        items_shown = True
-                    
-                    if hooks_count > 0:
-                        click.echo(f"{sub_prefix}├── {hooks_count} hooks")
-                        items_shown = True
-                            
-                    if not items_shown:
-                        click.echo(f"{sub_prefix}└── no context or workflows")
+                if not direct:
+                    root_tree.add("[dim]No dependencies installed[/dim]")
+                else:
+                    for dep in direct:
+                        display = _dep_display_name(dep)
+                        # Get primitive counts if install path exists
+                        install_key = dep.get_unique_key()
+                        install_path = apm_modules_path / install_key
+                        branch = root_tree.add(f"[green]{display}[/green]")
                         
-                except Exception as e:
-                    click.echo(f"{prefix}{package_dir.name} (error loading)")
+                        if install_path.exists():
+                            primitives = _count_primitives(install_path)
+                            prim_parts = []
+                            for ptype, count in primitives.items():
+                                if count > 0:
+                                    prim_parts.append(f"{count} {ptype}")
+                            if prim_parts:
+                                branch.add(f"[dim]{', '.join(prim_parts)}[/dim]")
+                        
+                        # Add transitive deps as nested children
+                        _add_children(branch, dep.repo_url)
+                
+                console.print(root_tree)
+            else:
+                click.echo(f"{project_name} (local)")
+                
+                if not direct:
+                    click.echo("└── No dependencies installed")
+                else:
+                    for i, dep in enumerate(direct):
+                        is_last = i == len(direct) - 1
+                        prefix = "└── " if is_last else "├── "
+                        display = _dep_display_name(dep)
+                        click.echo(f"{prefix}{display}")
+                        
+                        # Show transitive deps
+                        kids = children_map.get(dep.repo_url, [])
+                        sub_prefix = "    " if is_last else "│   "
+                        for j, child in enumerate(kids):
+                            child_is_last = j == len(kids) - 1
+                            child_prefix = "└── " if child_is_last else "├── "
+                            click.echo(f"{sub_prefix}{child_prefix}{_dep_display_name(child)}")
+        else:
+            # Fallback: scan apm_modules directory (no lockfile)
+            if has_rich:
+                root_tree = Tree(f"[bold cyan]{project_name}[/bold cyan] (local)")
+                
+                if not apm_modules_path.exists():
+                    root_tree.add("[dim]No dependencies installed[/dim]")
+                else:
+                    for candidate in sorted(apm_modules_path.rglob("*")):
+                        if not candidate.is_dir() or candidate.name.startswith('.'):
+                            continue
+                        has_apm = (candidate / "apm.yml").exists()
+                        has_skill = (candidate / "SKILL.md").exists()
+                        if not has_apm and not has_skill:
+                            continue
+                        rel_parts = candidate.relative_to(apm_modules_path).parts
+                        if len(rel_parts) < 2:
+                            continue
+                        display = "/".join(rel_parts)
+                        info = _get_package_display_info(candidate)
+                        branch = root_tree.add(f"[green]{info['display_name']}[/green]")
+                        primitives = _count_primitives(candidate)
+                        prim_parts = []
+                        for ptype, count in primitives.items():
+                            if count > 0:
+                                prim_parts.append(f"{count} {ptype}")
+                        if prim_parts:
+                            branch.add(f"[dim]{', '.join(prim_parts)}[/dim]")
+                
+                console.print(root_tree)
+            else:
+                click.echo(f"{project_name} (local)")
+                if not apm_modules_path.exists():
+                    click.echo("└── No dependencies installed")
 
     except Exception as e:
         _rich_error(f"Error showing dependency tree: {e}")
@@ -512,6 +570,48 @@ def info(package: str):
 
 # Helper functions
 
+def _count_primitives(package_path: Path) -> Dict[str, int]:
+    """Count primitives by type in a package.
+    
+    Returns:
+        dict: Counts for 'prompts', 'instructions', 'agents', 'skills'
+    """
+    counts = {'prompts': 0, 'instructions': 0, 'agents': 0, 'skills': 0, 'hooks': 0}
+    
+    apm_dir = package_path / ".apm"
+    if apm_dir.exists():
+        prompts_path = apm_dir / "prompts"
+        if prompts_path.exists() and prompts_path.is_dir():
+            counts['prompts'] += len(list(prompts_path.glob("*.prompt.md")))
+        
+        instructions_path = apm_dir / "instructions"
+        if instructions_path.exists() and instructions_path.is_dir():
+            counts['instructions'] += len(list(instructions_path.glob("*.md")))
+        
+        agents_path = apm_dir / "agents"
+        if agents_path.exists() and agents_path.is_dir():
+            counts['agents'] += len(list(agents_path.glob("*.md")))
+        
+        skills_path = apm_dir / "skills"
+        if skills_path.exists() and skills_path.is_dir():
+            counts['skills'] += len([d for d in skills_path.iterdir() 
+                                     if d.is_dir() and (d / "SKILL.md").exists()])
+    
+    # Also count root-level .prompt.md files
+    counts['prompts'] += len(list(package_path.glob("*.prompt.md")))
+    
+    # Count root-level SKILL.md as a skill
+    if (package_path / "SKILL.md").exists():
+        counts['skills'] += 1
+    
+    # Count hooks (.json files in hooks/ or .apm/hooks/)
+    for hooks_dir in [package_path / "hooks", apm_dir / "hooks" if apm_dir.exists() else None]:
+        if hooks_dir and hooks_dir.exists() and hooks_dir.is_dir():
+            counts['hooks'] += len(list(hooks_dir.glob("*.json")))
+    
+    return counts
+
+
 def _count_package_files(package_path: Path) -> tuple[int, int]:
     """Count context files and workflows in a package.
     
@@ -548,15 +648,6 @@ def _count_workflows(package_path: Path) -> int:
     """Count agent workflows (.prompt.md files) in a package."""
     _, workflow_count = _count_package_files(package_path)
     return workflow_count
-
-
-def _count_hooks(package_path: Path) -> int:
-    """Count hook JSON files in a package (hooks/ or .apm/hooks/)."""
-    count = 0
-    for hooks_dir in [package_path / "hooks", package_path / ".apm" / "hooks"]:
-        if hooks_dir.exists() and hooks_dir.is_dir():
-            count += len(list(hooks_dir.glob("*.json")))
-    return count
 
 
 def _get_detailed_context_counts(package_path: Path) -> Dict[str, int]:
@@ -616,6 +707,7 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
         if apm_yml_path.exists():
             package = APMPackage.from_apm_yml(apm_yml_path)
             context_count, workflow_count = _count_package_files(package_path)
+            primitives = _count_primitives(package_path)
             return {
                 'name': package.name,
                 'version': package.version or 'unknown',
@@ -625,10 +717,11 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
                 'install_path': str(package_path.resolve()),
                 'context_files': _get_detailed_context_counts(package_path),
                 'workflows': workflow_count,
-                'hooks': _count_hooks(package_path)
+                'hooks': primitives.get('hooks', 0)
             }
         else:
             context_count, workflow_count = _count_package_files(package_path)
+            primitives = _count_primitives(package_path)
             return {
                 'name': package_path.name,
                 'version': 'unknown',
@@ -638,7 +731,7 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
                 'install_path': str(package_path.resolve()),
                 'context_files': _get_detailed_context_counts(package_path),
                 'workflows': workflow_count,
-                'hooks': _count_hooks(package_path)
+                'hooks': primitives.get('hooks', 0)
             }
     except Exception as e:
         return {
