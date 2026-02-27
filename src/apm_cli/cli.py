@@ -1160,7 +1160,7 @@ def uninstall(ctx, packages, dry_run):
         hooks_failed = 0
 
         try:
-            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_package
+            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
             from apm_cli.integration.prompt_integrator import PromptIntegrator
             from apm_cli.integration.agent_integrator import AgentIntegrator
             from apm_cli.integration.skill_integrator import SkillIntegrator
@@ -1215,7 +1215,7 @@ def uninstall(ctx, packages, dry_run):
                     continue
 
                 # Build minimal PackageInfo for re-integration
-                result = validate_package(install_path)
+                result = validate_apm_package(install_path)
                 pkg = result.package if result and result.package else None
                 if not pkg:
                     continue

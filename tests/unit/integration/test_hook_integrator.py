@@ -625,6 +625,47 @@ class TestClaudeIntegration:
         assert result.hooks_integrated == 1
         assert (temp_project / ".claude" / "settings.json").exists()
 
+    def test_integrate_hooks_with_scripts_in_hooks_subdir_claude(self, temp_project):
+        """Test Claude integration when hook JSON and scripts are both inside hooks/ subdir."""
+        pkg_dir = temp_project / "apm_modules" / "myorg" / "lint-hooks"
+        hooks_dir = pkg_dir / "hooks"
+        scripts_dir = hooks_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+
+        hook_data = {
+            "hooks": {
+                "PostToolUse": [
+                    {
+                        "matcher": {"tool_name": "write_to_file"},
+                        "hooks": [
+                            {"type": "command", "command": "./scripts/lint.sh", "timeout": 10}
+                        ]
+                    }
+                ]
+            }
+        }
+        (hooks_dir / "hooks.json").write_text(json.dumps(hook_data))
+        (scripts_dir / "lint.sh").write_text("#!/bin/bash\necho lint")
+
+        pkg_info = _make_package_info(pkg_dir, "lint-hooks")
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
+
+        assert result.hooks_integrated == 1
+        assert result.scripts_copied == 1
+
+        # Verify rewritten command in settings.json
+        settings = json.loads((temp_project / ".claude" / "settings.json").read_text())
+        cmd = settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+        assert ".claude/hooks/lint-hooks/scripts/lint.sh" in cmd
+        assert "./" not in cmd
+
+        # Verify script was copied to Claude target location
+        copied_script = temp_project / ".claude" / "hooks" / "lint-hooks" / "scripts" / "lint.sh"
+        assert copied_script.exists()
+        assert copied_script.read_text() == "#!/bin/bash\necho lint"
+
 
 # ─── Sync/cleanup tests ──────────────────────────────────────────────────────
 
@@ -851,6 +892,92 @@ class TestScriptPathRewriting:
 
         assert cmd.startswith("python3 ")
         assert cmd.endswith("hooks/check.py")
+
+    def test_rewrite_relative_path_with_hook_file_dir(self, temp_project):
+        """Test that ./path is resolved from hook_file_dir, not package root."""
+        pkg_dir = temp_project / "pkg"
+        hooks_dir = pkg_dir / "hooks"
+        scripts_dir = hooks_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "lint.sh").write_text("#!/bin/bash")
+
+        integrator = HookIntegrator()
+        # Script lives at hooks/scripts/lint.sh — only resolvable from hooks/ dir
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "./scripts/lint.sh",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+            hook_file_dir=hooks_dir,
+        )
+
+        assert "./" not in cmd
+        assert ".github/hooks/scripts/my-pkg/scripts/lint.sh" in cmd
+        assert len(scripts) == 1
+        assert scripts[0][0] == scripts_dir / "lint.sh"
+
+    def test_rewrite_relative_path_fails_without_hook_file_dir(self, temp_project):
+        """Test that ./path is NOT found when resolved from package root (no hook_file_dir)."""
+        pkg_dir = temp_project / "pkg"
+        hooks_dir = pkg_dir / "hooks"
+        scripts_dir = hooks_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "lint.sh").write_text("#!/bin/bash")
+
+        integrator = HookIntegrator()
+        # Without hook_file_dir, resolves from pkg_dir — scripts/lint.sh doesn't exist there
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "./scripts/lint.sh",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        # Script not found at pkg_dir/scripts/lint.sh, so left unchanged
+        assert cmd == "./scripts/lint.sh"
+        assert len(scripts) == 0
+
+    def test_integrate_hooks_with_scripts_in_hooks_subdir(self, temp_project):
+        """Test full integration when hook JSON and scripts are both inside hooks/ subdir."""
+        pkg_dir = temp_project / "apm_modules" / "myorg" / "lint-hooks"
+        hooks_dir = pkg_dir / "hooks"
+        scripts_dir = hooks_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+
+        hook_data = {
+            "hooks": {
+                "PostToolUse": [
+                    {
+                        "matcher": {"tool_name": "write_to_file"},
+                        "hooks": [
+                            {"type": "command", "command": "./scripts/lint.sh", "timeout": 10}
+                        ]
+                    }
+                ]
+            }
+        }
+        (hooks_dir / "hooks.json").write_text(json.dumps(hook_data))
+        (scripts_dir / "lint.sh").write_text("#!/bin/bash\necho lint")
+
+        pkg_info = _make_package_info(pkg_dir, "lint-hooks")
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks(pkg_info, temp_project)
+
+        assert result.hooks_integrated == 1
+        assert result.scripts_copied == 1
+
+        # Verify the rewritten command points to the bundled script
+        target_json = temp_project / ".github" / "hooks" / "lint-hooks-hooks-apm.json"
+        data = json.loads(target_json.read_text())
+        cmd = data["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+        assert ".github/hooks/scripts/lint-hooks/scripts/lint.sh" in cmd
+        assert "./" not in cmd
+
+        # Verify the script was actually copied
+        copied_script = temp_project / ".github" / "hooks" / "scripts" / "lint-hooks" / "scripts" / "lint.sh"
+        assert copied_script.exists()
+        assert copied_script.read_text() == "#!/bin/bash\necho lint"
 
 
 # ─── Gitignore tests ─────────────────────────────────────────────────────────

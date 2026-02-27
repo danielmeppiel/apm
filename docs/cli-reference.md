@@ -168,6 +168,8 @@ apm install --exclude codex
 - **Claude Skills**: Repositories with `SKILL.md` (auto-generates `apm.yml` upon installation)
   - Example: `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
   - Skills are transformed to `.github/agents/*.agent.md` for VSCode target
+- **Hook Packages**: Repositories with `hooks/*.json` (no `apm.yml` or `SKILL.md` required)
+  - Example: `apm install anthropics/claude-plugins-official/plugins/hookify`
 - **Virtual Packages**: Single files or collections installed directly from URLs
   - Single `.prompt.md` or `.agent.md` files from any GitHub repository
   - Collections from curated sources (e.g., `github/awesome-copilot`)

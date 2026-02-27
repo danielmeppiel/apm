@@ -112,6 +112,7 @@ def list_packages():
             try:
                 package = APMPackage.from_apm_yml(apm_yml_path)
                 context_count, workflow_count = _count_package_files(candidate)
+                hooks_count = _count_hooks(candidate)
                 
                 is_orphaned = org_repo_name not in declared_sources
                 if is_orphaned:
@@ -123,6 +124,7 @@ def list_packages():
                     'source': 'orphaned' if is_orphaned else declared_sources.get(org_repo_name, 'github'),
                     'context': context_count,
                     'workflows': workflow_count,
+                    'hooks': hooks_count,
                     'path': str(candidate),
                     'is_orphaned': is_orphaned
                 })
@@ -144,6 +146,7 @@ def list_packages():
             table.add_column("Source", style="blue")
             table.add_column("Context", style="green")
             table.add_column("Workflows", style="magenta")
+            table.add_column("Hooks", style="red")
             
             for pkg in installed_packages:
                 table.add_row(
@@ -151,7 +154,8 @@ def list_packages():
                     pkg['version'],
                     pkg['source'],
                     f"{pkg['context']} files",
-                    f"{pkg['workflows']} workflows"
+                    f"{pkg['workflows']} workflows",
+                    f"{pkg['hooks']} hooks" if pkg['hooks'] > 0 else "-"
                 )
             
             console.print(table)
@@ -165,9 +169,9 @@ def list_packages():
         else:
             # Fallback text table
             click.echo("📋 APM Dependencies:")
-            click.echo("┌─────────────────────┬─────────┬──────────────┬─────────────┬─────────────┐")
-            click.echo("│ Package             │ Version │ Source       │ Context     │ Workflows   │")
-            click.echo("├─────────────────────┼─────────┼──────────────┼─────────────┼─────────────┤")
+            click.echo("┌─────────────────────┬─────────┬──────────────┬─────────────┬─────────────┬─────────┐")
+            click.echo("│ Package             │ Version │ Source       │ Context     │ Workflows   │ Hooks   │")
+            click.echo("├─────────────────────┼─────────┼──────────────┼─────────────┼─────────────┼─────────┤")
             
             for pkg in installed_packages:
                 name = pkg['name'][:19].ljust(19)
@@ -175,9 +179,10 @@ def list_packages():
                 source = pkg['source'][:12].ljust(12)
                 context = f"{pkg['context']} files".ljust(11)
                 workflows = f"{pkg['workflows']} wf".ljust(11)
-                click.echo(f"│ {name} │ {version} │ {source} │ {context} │ {workflows} │")
+                hooks = (f"{pkg['hooks']} hooks" if pkg['hooks'] > 0 else "-").ljust(7)
+                click.echo(f"│ {name} │ {version} │ {source} │ {context} │ {workflows} │ {hooks} │")
             
-            click.echo("└─────────────────────┴─────────┴──────────────┴─────────────┴─────────────┘")
+            click.echo("└─────────────────────┴─────────┴──────────────┴─────────────┴─────────────┴─────────┘")
             
             # Show orphaned packages warning
             if orphaned_packages:
@@ -238,6 +243,7 @@ def tree():
                                     # Add context files and workflows as sub-items
                                     context_files = _get_detailed_context_counts(package_dir)
                                     workflow_count = _count_workflows(package_dir)
+                                    hooks_count = _count_hooks(package_dir)
                                     
                                     # Show context files by type
                                     for context_type, count in context_files.items():
@@ -248,7 +254,11 @@ def tree():
                                     if workflow_count > 0:
                                         branch.add(f"[bold magenta]{workflow_count} agent workflows[/bold magenta]")
                                     
-                                    if not any(count > 0 for count in context_files.values()) and workflow_count == 0:
+                                    # Show hooks
+                                    if hooks_count > 0:
+                                        branch.add(f"[bold red]{hooks_count} hooks[/bold red]")
+                                    
+                                    if not any(count > 0 for count in context_files.values()) and workflow_count == 0 and hooks_count == 0:
                                         branch.add("[dim]no context or workflows[/dim]")
                                         
                                 except Exception as e:
@@ -283,6 +293,7 @@ def tree():
                     # Add context files and workflows
                     context_files = _get_detailed_context_counts(package_dir)
                     workflow_count = _count_workflows(package_dir)
+                    hooks_count = _count_hooks(package_dir)
                     sub_prefix = "    " if is_last else "│   "
                     
                     items_shown = False
@@ -293,6 +304,10 @@ def tree():
                     
                     if workflow_count > 0:
                         click.echo(f"{sub_prefix}├── {workflow_count} agent workflows")
+                        items_shown = True
+                    
+                    if hooks_count > 0:
+                        click.echo(f"{sub_prefix}├── {hooks_count} hooks")
                         items_shown = True
                             
                     if not items_shown:
@@ -449,6 +464,11 @@ def info(package: str):
             else:
                 content_lines.append("  • No agent workflows found")
             
+            if package_info.get('hooks', 0) > 0:
+                content_lines.append("")
+                content_lines.append("[bold]Hooks:[/bold]")
+                content_lines.append(f"  • {package_info['hooks']} hook file(s)")
+            
             content = "\n".join(content_lines)
             panel = Panel(content, title=f"ℹ️ Package Info: {package}", border_style="cyan")
             console.print(panel)
@@ -479,6 +499,11 @@ def info(package: str):
                 click.echo(f"  • {package_info['workflows']} executable workflows")
             else:
                 click.echo("  • No agent workflows found")
+            
+            if package_info.get('hooks', 0) > 0:
+                click.echo("")
+                click.echo("Hooks:")
+                click.echo(f"  • {package_info['hooks']} hook file(s)")
     
     except Exception as e:
         _rich_error(f"Error reading package information: {e}")
@@ -523,6 +548,15 @@ def _count_workflows(package_path: Path) -> int:
     """Count agent workflows (.prompt.md files) in a package."""
     _, workflow_count = _count_package_files(package_path)
     return workflow_count
+
+
+def _count_hooks(package_path: Path) -> int:
+    """Count hook JSON files in a package (hooks/ or .apm/hooks/)."""
+    count = 0
+    for hooks_dir in [package_path / "hooks", package_path / ".apm" / "hooks"]:
+        if hooks_dir.exists() and hooks_dir.is_dir():
+            count += len(list(hooks_dir.glob("*.json")))
+    return count
 
 
 def _get_detailed_context_counts(package_path: Path) -> Dict[str, int]:
@@ -590,7 +624,8 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
                 'source': package.source or 'local',
                 'install_path': str(package_path.resolve()),
                 'context_files': _get_detailed_context_counts(package_path),
-                'workflows': workflow_count
+                'workflows': workflow_count,
+                'hooks': _count_hooks(package_path)
             }
         else:
             context_count, workflow_count = _count_package_files(package_path)
@@ -602,7 +637,8 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
                 'source': 'unknown',
                 'install_path': str(package_path.resolve()),
                 'context_files': _get_detailed_context_counts(package_path),
-                'workflows': workflow_count
+                'workflows': workflow_count,
+                'hooks': _count_hooks(package_path)
             }
     except Exception as e:
         return {
@@ -613,7 +649,8 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
             'source': 'unknown',
             'install_path': str(package_path.resolve()),
             'context_files': {'instructions': 0, 'chatmodes': 0, 'contexts': 0},
-            'workflows': 0
+            'workflows': 0,
+            'hooks': 0
         }
 
 

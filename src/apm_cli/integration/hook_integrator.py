@@ -19,7 +19,7 @@ Hook JSON format (shared by VSCode Copilot and Claude Code):
 
 Script path handling:
     - ${CLAUDE_PLUGIN_ROOT}/path → resolved relative to package root, rewritten for target
-    - ./path → relative path, resolved from package root, rewritten for target
+    - ./path → relative path, resolved from hook file's parent directory, rewritten for target
     - System commands (no path separators) → passed through unchanged
 """
 
@@ -124,18 +124,20 @@ class HookIntegrator:
         package_path: Path,
         package_name: str,
         target: str,
+        hook_file_dir: Optional[Path] = None,
     ) -> Tuple[str, List[Tuple[Path, str]]]:
         """Rewrite a hook command to use installed script paths.
 
         Handles:
-        - ${CLAUDE_PLUGIN_ROOT}/path references
-        - ./path relative references
+        - ${CLAUDE_PLUGIN_ROOT}/path references (resolved from package root)
+        - ./path relative references (resolved from hook file's parent directory)
 
         Args:
             command: Original command string
             package_path: Root path of the source package
             package_name: Name used for the scripts subdirectory
             target: "vscode" or "claude"
+            hook_file_dir: Directory containing the hook JSON file (for ./path resolution)
 
         Returns:
             Tuple of (rewritten_command, list of (source_file, relative_target_path))
@@ -148,7 +150,7 @@ class HookIntegrator:
         else:
             scripts_base = f".claude/hooks/{package_name}"
 
-        # Handle ${CLAUDE_PLUGIN_ROOT} references
+        # Handle ${CLAUDE_PLUGIN_ROOT} references (always relative to package root)
         plugin_root_pattern = r'\$\{CLAUDE_PLUGIN_ROOT\}(/[^\s]+)'
         for match in re.finditer(plugin_root_pattern, command):
             full_var = match.group(0)
@@ -162,12 +164,14 @@ class HookIntegrator:
 
         # Handle relative ./path references (safe to run after ${CLAUDE_PLUGIN_ROOT}
         # substitution since replacements produce paths like ".github/..." not "./...")
+        # Resolve from hook file's directory if available, else fall back to package root
+        resolve_base = hook_file_dir if hook_file_dir else package_path
         rel_pattern = r'(\./[^\s]+)'
         for match in re.finditer(rel_pattern, new_command):
             rel_ref = match.group(1)
             rel_path = rel_ref[2:]  # Strip ./
 
-            source_file = package_path / rel_path
+            source_file = resolve_base / rel_path
             if source_file.exists() and source_file.is_file():
                 target_rel = f"{scripts_base}/{rel_path}"
                 scripts_to_copy.append((source_file, target_rel))
@@ -181,6 +185,7 @@ class HookIntegrator:
         package_path: Path,
         package_name: str,
         target: str,
+        hook_file_dir: Optional[Path] = None,
     ) -> Tuple[Dict, List[Tuple[Path, str]]]:
         """Rewrite all command paths in a hooks JSON structure.
 
@@ -191,6 +196,7 @@ class HookIntegrator:
             package_path: Root path of the source package
             package_name: Name for scripts subdirectory
             target: "vscode" or "claude"
+            hook_file_dir: Directory containing the hook JSON file (for ./path resolution)
 
         Returns:
             Tuple of (rewritten_data_copy, list of (source_file, target_rel_path))
@@ -211,7 +217,8 @@ class HookIntegrator:
                         continue
                     if "command" in hook:
                         new_cmd, scripts = self._rewrite_command_for_target(
-                            hook["command"], package_path, package_name, target
+                            hook["command"], package_path, package_name, target,
+                            hook_file_dir=hook_file_dir,
                         )
                         hook["command"] = new_cmd
                         all_scripts.extend(scripts)
@@ -265,7 +272,8 @@ class HookIntegrator:
 
             # Rewrite script paths for VSCode target
             rewritten, scripts = self._rewrite_hooks_data(
-                data, package_info.install_path, package_name, "vscode"
+                data, package_info.install_path, package_name, "vscode",
+                hook_file_dir=hook_file.parent,
             )
 
             # Generate target filename: <package_name>-<stem>-apm.json
@@ -340,7 +348,8 @@ class HookIntegrator:
 
             # Rewrite script paths for Claude target
             rewritten, scripts = self._rewrite_hooks_data(
-                data, package_info.install_path, package_name, "claude"
+                data, package_info.install_path, package_name, "claude",
+                hook_file_dir=hook_file.parent,
             )
 
             # Merge hooks into settings (additive)

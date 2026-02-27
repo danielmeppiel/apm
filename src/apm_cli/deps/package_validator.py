@@ -97,6 +97,13 @@ class PackageValidator:
             if json_files:
                 has_primitives = True
         
+        # Also check hooks/ at package root (Claude-native convention)
+        hooks_root_dir = package_path / "hooks"
+        if hooks_root_dir.exists() and hooks_root_dir.is_dir():
+            json_files = list(hooks_root_dir.glob("*.json"))
+            if json_files:
+                has_primitives = True
+        
         if not has_primitives:
             result.add_warning("No primitive files found in .apm/ directory")
         
@@ -216,12 +223,20 @@ class PackageValidator:
                 primitive_dir = apm_dir / primitive_type
                 if primitive_dir.exists():
                     primitive_count += len(list(primitive_dir.glob("*.md")))
-            # Count hook files
+            # Count hook files in .apm/hooks/
             hooks_dir = apm_dir / "hooks"
             if hooks_dir.exists():
                 primitive_count += len(list(hooks_dir.glob("*.json")))
-            
-            if primitive_count > 0:
-                summary += f" ({primitive_count} primitives)"
+        
+        # Also count hook files in hooks/ (Claude-native convention)
+        hooks_root_dir = package_path / "hooks"
+        if hooks_root_dir.exists():
+            json_count = len(list(hooks_root_dir.glob("*.json")))
+            # Avoid double-counting if .apm/hooks already counted
+            if not (apm_dir.exists() and (apm_dir / "hooks").exists()):
+                primitive_count += json_count
+        
+        if primitive_count > 0:
+            summary += f" ({primitive_count} primitives)"
         
         return summary

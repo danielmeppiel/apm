@@ -275,8 +275,7 @@ APM automatically detects package types:
 | Has | Type | Detection |
 |-----|------|-----------|
 | `apm.yml` only | APM Package | Standard APM primitives |
-| `SKILL.md` only | Claude Skill | Auto-generates `apm.yml` |
-| Both files | Hybrid Package | Best of both worlds |
+| `SKILL.md` only | Claude Skill | Auto-generates `apm.yml` || `hooks/*.json` only | Hook Package | Hook handlers only || Both files | Hybrid Package | Best of both worlds |
 
 ## Target Detection
 
