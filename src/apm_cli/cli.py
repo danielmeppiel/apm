@@ -1319,7 +1319,7 @@ def uninstall(ctx, packages, dry_run):
         skills_cleaned = 0
 
         try:
-            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_package
+            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
             from apm_cli.integration.prompt_integrator import PromptIntegrator
             from apm_cli.integration.agent_integrator import AgentIntegrator
             from apm_cli.integration.skill_integrator import SkillIntegrator
@@ -1372,7 +1372,7 @@ def uninstall(ctx, packages, dry_run):
                     continue
 
                 # Build minimal PackageInfo for re-integration
-                result = validate_package(install_path)
+                result = validate_apm_package(install_path)
                 pkg = result.package if result and result.package else None
                 if not pkg:
                     continue
@@ -1942,6 +1942,10 @@ def _install_apm_dependencies(
                         if package_type == PackageType.CLAUDE_SKILL:
                             _rich_info(
                                 f"  └─ Package type: Skill (SKILL.md detected)"
+                            )
+                        elif package_type == PackageType.MARKETPLACE_PLUGIN:
+                            _rich_info(
+                                f"  └─ Package type: Marketplace Plugin (plugin.json detected)"
                             )
                         elif package_type == PackageType.HYBRID:
                             _rich_info(
