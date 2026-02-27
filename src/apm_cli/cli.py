@@ -2178,11 +2178,10 @@ def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) 
                 lock_data = yaml.safe_load(f) or {}
             locked_paths = builtins.set()
             for dep in lock_data.get("dependencies", []):
-                host = dep.get("host", "github.com")
                 repo_url = dep.get("repo_url", "")
                 virtual_path = dep.get("virtual_path", "")
                 if repo_url:
-                    yml = apm_modules_dir / host / repo_url / virtual_path / "apm.yml" if virtual_path else apm_modules_dir / host / repo_url / "apm.yml"
+                    yml = apm_modules_dir / repo_url / virtual_path / "apm.yml" if virtual_path else apm_modules_dir / repo_url / "apm.yml"
                     locked_paths.add(yml.resolve())
         except Exception:
             locked_paths = None  # Fall back to full scan

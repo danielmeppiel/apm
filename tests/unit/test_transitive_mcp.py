@@ -143,6 +143,68 @@ class TestCollectTransitiveMCPDeps(unittest.TestCase):
             result = _collect_transitive_mcp_deps(Path(tmp))
             self.assertEqual(result, [])
 
+    def test_lockfile_scopes_collection_to_locked_packages(self):
+        """Lock-file filtering should only collect MCP deps from locked packages."""
+        with tempfile.TemporaryDirectory() as tmp:
+            apm_modules = Path(tmp) / "apm_modules"
+            # Package that IS in the lock file
+            locked_dir = apm_modules / "org" / "locked-pkg"
+            locked_dir.mkdir(parents=True)
+            (locked_dir / "apm.yml").write_text(yaml.dump({
+                "name": "locked-pkg",
+                "version": "1.0.0",
+                "dependencies": {"mcp": ["ghcr.io/locked/server"]},
+            }))
+            # Package that is NOT in the lock file (orphan)
+            orphan_dir = apm_modules / "org" / "orphan-pkg"
+            orphan_dir.mkdir(parents=True)
+            (orphan_dir / "apm.yml").write_text(yaml.dump({
+                "name": "orphan-pkg",
+                "version": "1.0.0",
+                "dependencies": {"mcp": ["ghcr.io/orphan/server"]},
+            }))
+            # Write lock file referencing only the locked package
+            lock_path = Path(tmp) / "apm.lock"
+            lock_path.write_text(yaml.dump({
+                "lockfile_version": "1",
+                "dependencies": [
+                    {"repo_url": "org/locked-pkg", "host": "github.com"},
+                ],
+            }))
+            result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+            self.assertEqual(result, ["ghcr.io/locked/server"])
+
+    def test_lockfile_with_virtual_path(self):
+        """Lock-file filtering works for subdirectory (virtual_path) packages."""
+        with tempfile.TemporaryDirectory() as tmp:
+            apm_modules = Path(tmp) / "apm_modules"
+            # Subdirectory package matching lock entry
+            sub_dir = apm_modules / "org" / "monorepo" / "skills" / "azure"
+            sub_dir.mkdir(parents=True)
+            (sub_dir / "apm.yml").write_text(yaml.dump({
+                "name": "azure-skill",
+                "version": "1.0.0",
+                "dependencies": {"mcp": [{"name": "learn", "type": "http", "url": "https://learn.example.com"}]},
+            }))
+            # Another subdirectory NOT in the lock
+            other_dir = apm_modules / "org" / "monorepo" / "skills" / "other"
+            other_dir.mkdir(parents=True)
+            (other_dir / "apm.yml").write_text(yaml.dump({
+                "name": "other-skill",
+                "version": "1.0.0",
+                "dependencies": {"mcp": ["ghcr.io/other/server"]},
+            }))
+            lock_path = Path(tmp) / "apm.lock"
+            lock_path.write_text(yaml.dump({
+                "lockfile_version": "1",
+                "dependencies": [
+                    {"repo_url": "org/monorepo", "host": "github.com", "virtual_path": "skills/azure"},
+                ],
+            }))
+            result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+            self.assertEqual(len(result), 1)
+            self.assertEqual(result[0]["name"], "learn")
+
 
 # ---------------------------------------------------------------------------
 # _deduplicate_mcp_deps
