@@ -157,6 +157,7 @@ Package your prompt engineering into reusable, configurable components:
 - **Agents** (.agent.md) - AI assistant personalities
 - **Skills** (SKILL.md) - Package meta-guides for AI agents
 - **Context** (.context.md) - Project knowledge base
+- **Hooks** (.json) - Lifecycle event handlers
 
 ### Layer 3: Context Engineering
 
@@ -232,6 +233,20 @@ Optimized project knowledge for AI consumption:
 - Repository pattern for data access
 - Clean architecture with domain separation
 - Event-driven communication between services
+```
+
+### Hooks (.json)
+Lifecycle event handlers that run scripts at specific points during AI operations:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": { "tool_name": "write_file" },
+      "hooks": [{ "type": "command", "command": "./scripts/lint.sh" }]
+    }]
+  }
+}
 ```
 
 ## Universal Compatibility

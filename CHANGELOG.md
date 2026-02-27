@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.8.0] - Unreleased
+
+### Added
+
+- **Hooks Primitive**: New primitive type for lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`)
+- **Hook Integration**: `apm install` integrates hooks into VSCode (`.github/hooks/*-apm.json`) and Claude (`.claude/settings.json`)
+- **Hook Package Detection**: Standalone hook packages (containing only `hooks/*.json`) auto-detected as `HOOK_PACKAGE` type
+- **Hook Cleanup**: `apm uninstall` removes integrated hook files and cleans up `.claude/settings.json` entries
+- **Deps Hook Counts**: `apm deps list`, `apm deps tree`, and `apm deps info` display hook counts per package
+
+### Fixed
+
+- **Hook Script Path Resolution**: Relative `./` paths in hook commands resolved from hook file directory, not package root
+- **Uninstall Import**: Corrected `validate_package` → `validate_apm_package` import in uninstall command
+
 ## [0.7.3] - 2025-02-15
 
 ### Added

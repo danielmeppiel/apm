@@ -217,6 +217,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Chatmodes**: `.chatmode.md` files → `.github/agents/*-apm.agent.md` (renamed to modern format)
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
+- **Hooks**: Hook `.json` files → `.github/hooks/*-apm.json` with scripts bundled
 - **Naming**: Integrated files use `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
 - **GitIgnore**: Pattern `*-apm.prompt.md` automatically added to `.gitignore`
 
@@ -226,6 +227,7 @@ APM also integrates with Claude Code when `.claude/` directory exists:
 
 - **Agents**: `.agent.md` and `.chatmode.md` files → `.claude/agents/*-apm.md`
 - **Commands**: `.prompt.md` files → `.claude/commands/*-apm.md`
+- **Hooks**: Hook definitions merged into `.claude/settings.json` hooks key
 
 **Skill Integration:**
 
@@ -280,6 +282,8 @@ apm uninstall microsoft/apm-sample-package --dry-run
 | Integrated chatmodes | `.github/agents/*-apm.agent.md` |
 | Claude commands | `.claude/commands/*-apm.md` |
 | Skill folders | `.github/skills/{folder-name}/` |
+| Integrated hooks | `.github/hooks/*-apm.json` |
+| Claude hook settings | `.claude/settings.json` (hooks key cleaned) |
 | Lockfile entries | `apm.lock` (removed packages + orphaned transitives) |
 
 **Behavior:**
