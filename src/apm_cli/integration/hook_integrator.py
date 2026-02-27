@@ -156,7 +156,10 @@ class HookIntegrator:
             full_var = match.group(0)
             rel_path = match.group(1).lstrip('/')
 
-            source_file = package_path / rel_path
+            source_file = (package_path / rel_path).resolve()
+            # Reject path traversal outside the package directory
+            if not source_file.is_relative_to(package_path.resolve()):
+                continue
             if source_file.exists() and source_file.is_file():
                 target_rel = f"{scripts_base}/{rel_path}"
                 scripts_to_copy.append((source_file, target_rel))
@@ -171,7 +174,10 @@ class HookIntegrator:
             rel_ref = match.group(1)
             rel_path = rel_ref[2:]  # Strip ./
 
-            source_file = resolve_base / rel_path
+            source_file = (resolve_base / rel_path).resolve()
+            # Reject path traversal outside the package directory
+            if not source_file.is_relative_to(package_path.resolve()):
+                continue
             if source_file.exists() and source_file.is_file():
                 target_rel = f"{scripts_base}/{rel_path}"
                 scripts_to_copy.append((source_file, target_rel))

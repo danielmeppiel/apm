@@ -914,7 +914,7 @@ class TestScriptPathRewriting:
         assert "./" not in cmd
         assert ".github/hooks/scripts/my-pkg/scripts/lint.sh" in cmd
         assert len(scripts) == 1
-        assert scripts[0][0] == scripts_dir / "lint.sh"
+        assert scripts[0][0] == (scripts_dir / "lint.sh").resolve()
 
     def test_rewrite_relative_path_fails_without_hook_file_dir(self, temp_project):
         """Test that ./path is NOT found when resolved from package root (no hook_file_dir)."""
@@ -935,6 +935,48 @@ class TestScriptPathRewriting:
 
         # Script not found at pkg_dir/scripts/lint.sh, so left unchanged
         assert cmd == "./scripts/lint.sh"
+        assert len(scripts) == 0
+
+    def test_rewrite_rejects_plugin_root_path_traversal(self, temp_project):
+        """Test that ${CLAUDE_PLUGIN_ROOT}/../ paths are rejected (path traversal)."""
+        pkg_dir = temp_project / "pkg"
+        pkg_dir.mkdir(parents=True)
+        # Create a file outside the package directory
+        secret = temp_project / "secrets.txt"
+        secret.write_text("top-secret")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "cat ${CLAUDE_PLUGIN_ROOT}/../secrets.txt",
+            pkg_dir,
+            "evil-pkg",
+            "vscode",
+        )
+
+        # The traversal path should NOT be rewritten and no scripts copied
+        assert "${CLAUDE_PLUGIN_ROOT}/../secrets.txt" in cmd
+        assert len(scripts) == 0
+
+    def test_rewrite_rejects_relative_path_traversal(self, temp_project):
+        """Test that ./../../ paths are rejected (path traversal via relative refs)."""
+        pkg_dir = temp_project / "pkg"
+        hooks_dir = pkg_dir / "hooks"
+        hooks_dir.mkdir(parents=True)
+        # Create a file outside the package directory
+        secret = temp_project / "secrets.txt"
+        secret.write_text("top-secret")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "./../../secrets.txt",
+            pkg_dir,
+            "evil-pkg",
+            "claude",
+            hook_file_dir=hooks_dir,
+        )
+
+        # The traversal path should NOT be rewritten and no scripts copied
+        assert cmd == "./../../secrets.txt"
         assert len(scripts) == 0
 
     def test_integrate_hooks_with_scripts_in_hooks_subdir(self, temp_project):
