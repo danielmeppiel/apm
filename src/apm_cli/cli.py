@@ -701,6 +701,15 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
         elif should_install_apm and not apm_deps:
             _rich_info("No APM dependencies found in apm.yml")
 
+        # Collect transitive MCP dependencies from resolved APM packages
+        apm_modules_path = Path.cwd() / "apm_modules"
+        if should_install_mcp and apm_modules_path.exists():
+            lock_path = Path.cwd() / "apm.lock"
+            transitive_mcp = _collect_transitive_mcp_deps(apm_modules_path, lock_path)
+            if transitive_mcp:
+                _rich_info(f"Collected {len(transitive_mcp)} transitive MCP dependency(ies)")
+                mcp_deps = _deduplicate_mcp_deps(mcp_deps + transitive_mcp)
+
         # Continue with MCP installation (existing logic)
         mcp_count = 0
         if should_install_mcp and mcp_deps:
@@ -2140,13 +2149,101 @@ def _install_apm_dependencies(
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
 
 
+def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) -> list:
+    """Collect MCP dependencies from resolved APM packages listed in apm.lock.
+
+    Only scans apm.yml files for packages present in apm.lock to avoid
+    picking up stale/orphaned packages from previous installs.
+    Falls back to scanning all apm.yml files if no lock file is available.
+
+    Args:
+        apm_modules_dir: Path to the apm_modules directory.
+        lock_path: Path to the apm.lock file (optional).
+
+    Returns:
+        List of MCP dependency entries (str or dict).
+    """
+    if not apm_modules_dir.exists():
+        return []
+
+    from apm_cli.models.apm_package import APMPackage
+
+    # Build set of expected apm.yml paths from apm.lock
+    locked_paths = None
+    if lock_path and lock_path.exists():
+        try:
+            import yaml
+
+            with open(lock_path, "r", encoding="utf-8") as f:
+                lock_data = yaml.safe_load(f) or {}
+            locked_paths = builtins.set()
+            for dep in lock_data.get("dependencies", []):
+                repo_url = dep.get("repo_url", "")
+                virtual_path = dep.get("virtual_path", "")
+                if repo_url:
+                    yml = apm_modules_dir / repo_url / virtual_path / "apm.yml" if virtual_path else apm_modules_dir / repo_url / "apm.yml"
+                    locked_paths.add(yml.resolve())
+        except Exception:
+            locked_paths = None  # Fall back to full scan
+
+    collected = []
+    for apm_yml_path in apm_modules_dir.rglob("apm.yml"):
+        # Skip packages not in the lock file
+        if locked_paths is not None and apm_yml_path.resolve() not in locked_paths:
+            continue
+        try:
+            pkg = APMPackage.from_apm_yml(apm_yml_path)
+            mcp = pkg.get_mcp_dependencies()
+            if mcp:
+                collected.extend(mcp)
+        except Exception:
+            # Skip packages that fail to parse
+            continue
+    return collected
+
+
+def _deduplicate_mcp_deps(deps: list) -> list:
+    """Deduplicate a mixed list of MCP deps (strings and dicts).
+
+    Strings are deduped by value; dicts are deduped by their 'name' key.
+
+    Args:
+        deps: Mixed list of str and dict MCP entries.
+
+    Returns:
+        Deduplicated list preserving insertion order.
+    """
+    import builtins
+
+    seen_strings: builtins.set = builtins.set()
+    seen_names: builtins.set = builtins.set()
+    result = []
+    for dep in deps:
+        if isinstance(dep, str):
+            if dep not in seen_strings:
+                seen_strings.add(dep)
+                result.append(dep)
+        elif isinstance(dep, dict):
+            name = dep.get("name", "")
+            if name and name not in seen_names:
+                seen_names.add(name)
+                result.append(dep)
+            elif not name and dep not in result:
+                result.append(dep)
+    return result
+
+
 def _install_mcp_dependencies(
-    mcp_deps: List[str], runtime: str = None, exclude: str = None, verbose: bool = False
+    mcp_deps: list, runtime: str = None, exclude: str = None, verbose: bool = False
 ):
     """Install MCP dependencies using existing logic.
 
+    Supports two formats:
+      - Registry strings (e.g. "ghcr.io/github/github-mcp-server")
+      - Inline dicts (e.g. {"name": "my-server", "type": "sse", "url": "…"})
+
     Args:
-        mcp_deps: List of MCP dependency names
+        mcp_deps: List of MCP dependency entries (str or dict)
         runtime: Target specific runtime only
         exclude: Exclude specific runtime from installation
         verbose: Show detailed installation information
@@ -2157,6 +2254,10 @@ def _install_mcp_dependencies(
     if not mcp_deps:
         _rich_warning("No MCP dependencies found in apm.yml")
         return 0
+
+    # Separate registry strings from inline dict configs
+    registry_deps = [d for d in mcp_deps if isinstance(d, str)]
+    inline_deps = [d for d in mcp_deps if isinstance(d, dict)]
 
     console = _get_console()
 
@@ -2284,99 +2385,232 @@ def _install_mcp_dependencies(
 
     # Use the new registry operations module for better server detection
     configured_count = 0
-    try:
-        from apm_cli.registry.operations import MCPServerOperations
 
-        operations = MCPServerOperations()
+    # --- Registry-based deps (strings) ---
+    if registry_deps:
+        try:
+            from apm_cli.registry.operations import MCPServerOperations
 
-        # Early validation: check if all servers exist in registry (fail-fast like npm)
-        if verbose:
-            _rich_info(f"Validating {len(mcp_deps)} servers...")
-        valid_servers, invalid_servers = operations.validate_servers_exist(mcp_deps)
+            operations = MCPServerOperations()
 
-        if invalid_servers:
-            _rich_error(
-                f"Server(s) not found in registry: {', '.join(invalid_servers)}"
-            )
-            _rich_info("Run 'apm mcp search <query>' to find available servers")
-            raise RuntimeError(
-                f"Cannot install {len(invalid_servers)} missing server(s)"
-            )
-
-        if not valid_servers:
-            if console:
-                console.print("└─ [green]No servers to install[/green]")
-            else:
-                _rich_success("No servers to install")
-            return 0
-
-        # Check which valid servers actually need installation
-        servers_to_install = operations.check_servers_needing_installation(
-            target_runtimes, valid_servers
-        )
-
-        if not servers_to_install:
-            # All already configured
-            if console:
-                for dep in mcp_deps:
-                    console.print(
-                        f"│  [green]✓[/green] {dep} [dim](already configured)[/dim]"
-                    )
-                console.print("└─ [green]All servers up to date[/green]")
-            else:
-                _rich_success("All MCP servers already configured")
-            return len(mcp_deps)
-        else:
-            # Batch fetch server info once to avoid duplicate registry calls
+            # Early validation: check if all servers exist in registry (fail-fast like npm)
             if verbose:
-                _rich_info(f"Installing {len(servers_to_install)} servers...")
-            server_info_cache = operations.batch_fetch_server_info(servers_to_install)
+                _rich_info(f"Validating {len(registry_deps)} registry servers...")
+            valid_servers, invalid_servers = operations.validate_servers_exist(registry_deps)
 
-            # Collect both environment and runtime variables using cached server info
-            shared_env_vars = operations.collect_environment_variables(
-                servers_to_install, server_info_cache
-            )
-            shared_runtime_vars = operations.collect_runtime_variables(
-                servers_to_install, server_info_cache
-            )
-
-            # Install for each target runtime using cached server info and shared variables
-            for dep in servers_to_install:
-                if console:
-                    console.print(f"│  [cyan]⬇️[/cyan]  {dep}")
-                    console.print(
-                        f"│     └─ Configuring for {', '.join([rt.title() for rt in target_runtimes])}..."
-                    )
-
-                for rt in target_runtimes:
-                    if verbose:
-                        _rich_info(f"Configuring {rt}...")
-                    _install_for_runtime(
-                        rt,
-                        [dep],  # Install one at a time for better output
-                        shared_env_vars,
-                        server_info_cache,
-                        shared_runtime_vars,
-                    )
-
-                if console:
-                    console.print(
-                        f"│  [green]✓[/green]  {dep} → {', '.join([rt.title() for rt in target_runtimes])}"
-                    )
-                configured_count += 1
-
-            # Close the panel
-            if console:
-                console.print(
-                    f"└─ [green]Configured {configured_count} server{'s' if configured_count != 1 else ''}[/green]"
+            if invalid_servers:
+                _rich_error(
+                    f"Server(s) not found in registry: {', '.join(invalid_servers)}"
+                )
+                _rich_info("Run 'apm mcp search <query>' to find available servers")
+                raise RuntimeError(
+                    f"Cannot install {len(invalid_servers)} missing server(s)"
                 )
 
-        return configured_count
+            if valid_servers:
+                # Check which valid servers actually need installation
+                servers_to_install = operations.check_servers_needing_installation(
+                    target_runtimes, valid_servers
+                )
 
-    except ImportError:
-        _rich_warning("Registry operations not available")
-        _rich_error("Cannot validate MCP servers without registry operations")
-        raise RuntimeError("Registry operations module required for MCP installation")
+                if not servers_to_install:
+                    # All already configured
+                    if console:
+                        for dep in registry_deps:
+                            console.print(
+                                f"│  [green]✓[/green] {dep} [dim](already configured)[/dim]"
+                            )
+                    else:
+                        _rich_success("All registry MCP servers already configured")
+                    configured_count += len(registry_deps)
+                else:
+                    # Batch fetch server info once to avoid duplicate registry calls
+                    if verbose:
+                        _rich_info(f"Installing {len(servers_to_install)} servers...")
+                    server_info_cache = operations.batch_fetch_server_info(servers_to_install)
+
+                    # Collect both environment and runtime variables using cached server info
+                    shared_env_vars = operations.collect_environment_variables(
+                        servers_to_install, server_info_cache
+                    )
+                    shared_runtime_vars = operations.collect_runtime_variables(
+                        servers_to_install, server_info_cache
+                    )
+
+                    # Install for each target runtime using cached server info and shared variables
+                    for dep in servers_to_install:
+                        if console:
+                            console.print(f"│  [cyan]⬇️[/cyan]  {dep}")
+                            console.print(
+                                f"│     └─ Configuring for {', '.join([rt.title() for rt in target_runtimes])}..."
+                            )
+
+                        for rt in target_runtimes:
+                            if verbose:
+                                _rich_info(f"Configuring {rt}...")
+                            _install_for_runtime(
+                                rt,
+                                [dep],  # Install one at a time for better output
+                                shared_env_vars,
+                                server_info_cache,
+                                shared_runtime_vars,
+                            )
+
+                        if console:
+                            console.print(
+                                f"│  [green]✓[/green]  {dep} → {', '.join([rt.title() for rt in target_runtimes])}"
+                            )
+                        configured_count += 1
+
+        except ImportError:
+            _rich_warning("Registry operations not available")
+            _rich_error("Cannot validate MCP servers without registry operations")
+            raise RuntimeError("Registry operations module required for MCP installation")
+
+    # --- Inline dict deps (name/type/url) ---
+    if inline_deps:
+        inline_count = _install_inline_mcp_deps(inline_deps, target_runtimes, verbose)
+        configured_count += inline_count
+
+    # Close the panel
+    if console:
+        if configured_count > 0:
+            console.print(
+                f"└─ [green]Configured {configured_count} server{'s' if configured_count != 1 else ''}[/green]"
+            )
+        else:
+            console.print("└─ [green]All servers up to date[/green]")
+
+    return configured_count
+
+
+def _install_inline_mcp_deps(
+    inline_deps: list, target_runtimes: list, verbose: bool = False
+) -> int:
+    """Install inline MCP dependencies (dict configs) directly into runtime configs.
+
+    Inline deps look like: {"name": "my-server", "type": "sse", "url": "https://..."}
+    They bypass the MCP registry and are written directly.
+
+    Args:
+        inline_deps: List of dict MCP entries.
+        target_runtimes: List of target runtime names.
+        verbose: Show detailed output.
+
+    Returns:
+        int: Number of servers successfully configured.
+    """
+    _KNOWN_MCP_TYPES = {"sse", "http"}
+
+    console = _get_console()
+    configured = 0
+
+    for dep in inline_deps:
+        name = dep.get("name", "")
+        server_type = dep.get("type", "sse")
+        url = dep.get("url", "")
+        headers = dep.get("headers", {})
+
+        if not name or not url:
+            _rich_warning(f"Skipping inline MCP dep with missing name or url: {dep}")
+            continue
+
+        if server_type not in _KNOWN_MCP_TYPES:
+            _rich_warning(f"MCP server '{name}' has unknown type '{server_type}' (expected one of {_KNOWN_MCP_TYPES})")
+
+        # Build the server config entry
+        server_config = {"type": server_type, "url": url}
+        if headers:
+            server_config["headers"] = headers
+
+        any_success = False
+        for rt in target_runtimes:
+            try:
+                if rt == "vscode":
+                    _write_inline_mcp_vscode(name, server_config, verbose)
+                elif rt == "copilot":
+                    _write_inline_mcp_copilot(name, server_config, verbose)
+                elif rt == "codex":
+                    _write_inline_mcp_copilot(name, server_config, verbose)
+                else:
+                    if verbose:
+                        _rich_warning(f"Unsupported runtime '{rt}' for inline MCP config")
+                    continue
+                any_success = True
+            except Exception as e:
+                _rich_error(f"Failed to configure inline MCP '{name}' for {rt}: {e}")
+                continue
+
+        if any_success:
+            if console:
+                console.print(
+                    f"│  [green]✓[/green]  {name} (inline) → {', '.join([rt.title() for rt in target_runtimes])}"
+                )
+            configured += 1
+
+    return configured
+
+
+def _write_inline_mcp_vscode(name: str, server_config: dict, verbose: bool = False):
+    """Write an inline MCP server config to .vscode/mcp.json."""
+    import json
+    from pathlib import Path
+
+    vscode_dir = Path.cwd() / ".vscode"
+    vscode_dir.mkdir(parents=True, exist_ok=True)
+    mcp_path = vscode_dir / "mcp.json"
+
+    config = {}
+    if mcp_path.exists():
+        try:
+            with open(mcp_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            _rich_warning(f"Could not parse {mcp_path}, resetting: {e}")
+            config = {}
+
+    if "servers" not in config:
+        config["servers"] = {}
+
+    if name in config["servers"]:
+        if verbose:
+            _rich_info(f"  {name} already in .vscode/mcp.json, updating")
+
+    config["servers"][name] = server_config
+
+    with open(mcp_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+
+
+def _write_inline_mcp_copilot(name: str, server_config: dict, verbose: bool = False):
+    """Write an inline MCP server config to ~/.copilot/mcp-config.json."""
+    import json
+    from pathlib import Path
+
+    copilot_dir = Path.home() / ".copilot"
+    copilot_dir.mkdir(parents=True, exist_ok=True)
+    config_path = copilot_dir / "mcp-config.json"
+
+    config = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            _rich_warning(f"Could not parse {config_path}, resetting: {e}")
+            config = {}
+
+    if "mcpServers" not in config:
+        config["mcpServers"] = {}
+
+    if name in config["mcpServers"]:
+        if verbose:
+            _rich_info(f"  {name} already in copilot config, updating")
+
+    config["mcpServers"][name] = server_config
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
 
 
 def _show_install_summary(
