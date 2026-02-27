@@ -75,8 +75,20 @@ dependencies:
     - microsoft/apm-sample-package  # Design standards, prompts
     - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
-    - io.github.github/github-mcp-server
+    - io.github.github/github-mcp-server          # Registry reference
+    - name: my-knowledge-base                      # Inline config
+      type: streamable-http
+      url: https://my-kb.example.com/
 ```
+
+MCP dependencies support two formats:
+
+- **Registry strings** — resolve via the MCP server registry (e.g. `io.github.github/github-mcp-server`).
+- **Inline dicts** — written directly to runtime configs, bypassing the registry. Useful for private or self-hosted servers.
+
+Inline entries require `name`, `type` (`sse` or `streamable-http`), and `url`. An optional `headers` map is also supported.
+
+MCP dependencies declared by transitive APM packages are collected automatically during `apm install`.
 
 ### 2. Install Dependencies
 

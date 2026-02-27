@@ -708,7 +708,7 @@ class APMPackage:
     license: Optional[str] = None
     source: Optional[str] = None  # Source location (for dependencies)
     resolved_commit: Optional[str] = None  # Resolved commit SHA (for dependencies)
-    dependencies: Optional[Dict[str, List[Union[DependencyReference, str]]]] = None  # Mixed types for APM/MCP
+    dependencies: Optional[Dict[str, List[Union[DependencyReference, str, dict]]]] = None  # Mixed types for APM/MCP/inline
     scripts: Optional[Dict[str, str]] = None
     package_path: Optional[Path] = None  # Local path to package
     target: Optional[str] = None  # Target agent: vscode, claude, or all (applies to compile and install)
@@ -763,8 +763,8 @@ class APMPackage:
                                     raise ValueError(f"Invalid APM dependency '{dep_str}': {e}")
                         dependencies[dep_type] = parsed_deps
                     else:
-                        # Other dependencies (like MCP) remain as strings
-                        dependencies[dep_type] = [str(dep) for dep in dep_list if isinstance(dep, str)]
+                        # Other dependencies (like MCP): keep strings and dicts
+                        dependencies[dep_type] = [dep for dep in dep_list if isinstance(dep, (str, dict))]
         
         # Parse package content type
         pkg_type = None
@@ -797,13 +797,12 @@ class APMPackage:
         # Filter to only return DependencyReference objects
         return [dep for dep in self.dependencies['apm'] if isinstance(dep, DependencyReference)]
     
-    def get_mcp_dependencies(self) -> List[str]:
-        """Get list of MCP dependencies (as strings for compatibility)."""
+    def get_mcp_dependencies(self) -> List[Union[str, dict]]:
+        """Get list of MCP dependencies (strings for registry, dicts for inline configs)."""
         if not self.dependencies or 'mcp' not in self.dependencies:
             return []
-        # MCP deps are stored as strings, not DependencyReference objects
-        return [str(dep) if isinstance(dep, DependencyReference) else dep 
-                for dep in self.dependencies.get('mcp', [])]
+        return [dep for dep in self.dependencies.get('mcp', [])
+                if isinstance(dep, (str, dict))]
     
     def has_apm_dependencies(self) -> bool:
         """Check if this package has APM dependencies."""
