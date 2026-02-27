@@ -1339,6 +1339,11 @@ def uninstall(ctx, packages, dry_run):
                 result = integrator.sync_integration(apm_package, project_root)
                 agents_cleaned = result.get("files_removed", 0)
 
+            if Path(".claude/agents").exists():
+                integrator = AgentIntegrator()
+                result = integrator.sync_integration_claude(apm_package, project_root)
+                agents_cleaned += result.get("files_removed", 0)
+
             if Path(".github/skills").exists() or Path(".claude/skills").exists():
                 integrator = SkillIntegrator()
                 result = integrator.sync_integration(apm_package, project_root)
@@ -1383,6 +1388,8 @@ def uninstall(ctx, packages, dry_run):
                         prompt_integrator.integrate_package_prompts(pkg_info, project_root)
                     if agent_integrator.should_integrate(project_root):
                         agent_integrator.integrate_package_agents(pkg_info, project_root)
+                        if Path(".claude").exists():
+                            agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
                     skill_integrator.integrate_package_skill(pkg_info, project_root)
                     if command_integrator.should_integrate(project_root):
                         command_integrator.integrate_package_commands(pkg_info, project_root)
@@ -1831,8 +1838,24 @@ def _install_apm_dependencies(
                                     f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
                                 )
 
-                            # Claude-specific integration (commands)
+                            # Claude-specific integration (agents + commands)
                             if integrate_claude:
+                                # Integrate agents to .claude/agents/
+                                claude_agent_result = (
+                                    agent_integrator.integrate_package_agents_claude(
+                                        cached_package_info, project_root
+                                    )
+                                )
+                                if claude_agent_result.files_integrated > 0:
+                                    total_agents_integrated += (
+                                        claude_agent_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {claude_agent_result.files_integrated} agents integrated → .claude/agents/"
+                                    )
+                                total_links_resolved += claude_agent_result.links_resolved
+
+                                # Generate Claude commands from prompts
                                 command_result = (
                                     command_integrator.integrate_package_commands(
                                         cached_package_info, project_root
@@ -2000,8 +2023,23 @@ def _install_apm_dependencies(
                                     f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
                                 )
 
-                            # Claude-specific integration (commands)
+                            # Claude-specific integration (agents + commands)
                             if integrate_claude:
+                                # Integrate agents to .claude/agents/
+                                claude_agent_result = (
+                                    agent_integrator.integrate_package_agents_claude(
+                                        package_info, project_root
+                                    )
+                                )
+                                if claude_agent_result.files_integrated > 0:
+                                    total_agents_integrated += (
+                                        claude_agent_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {claude_agent_result.files_integrated} agents integrated → .claude/agents/"
+                                    )
+                                total_links_resolved += claude_agent_result.links_resolved
+
                                 # Generate Claude commands from prompts
                                 command_result = (
                                     command_integrator.integrate_package_commands(
@@ -2074,6 +2112,19 @@ def _install_apm_dependencies(
 
         if gitignore_updated:
             _rich_info("Updated .gitignore for integrated primitives")
+
+        # Update .gitignore for integrated Claude agents if any were integrated
+        if integrate_claude and total_agents_integrated > 0:
+            try:
+                updated = agent_integrator.update_gitignore_for_integrated_agents_claude(
+                    project_root
+                )
+                if updated:
+                    _rich_info(
+                        "Updated .gitignore for integrated Claude agents (*-apm.md)"
+                    )
+            except Exception as e:
+                _rich_warning(f"Could not update .gitignore for Claude agents: {e}")
 
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:
