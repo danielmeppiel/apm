@@ -1,5 +1,6 @@
 """Unit tests for APM package data models and validation."""
 
+import json
 import pytest
 import tempfile
 import yaml
@@ -15,6 +16,7 @@ from src.apm_cli.models.apm_package import (
     PackageInfo,
     GitReferenceType,
     PackageContentType,
+    PackageType,
     validate_apm_package,
     parse_git_reference,
 )
@@ -632,11 +634,11 @@ class TestPackageValidation:
             assert any("not a directory" in error for error in result.errors)
     
     def test_validate_missing_apm_yml(self):
-        """Test validating directory without apm.yml."""
+        """Test validating directory without apm.yml, SKILL.md, or hooks."""
         with tempfile.TemporaryDirectory() as tmpdir:
             result = validate_apm_package(Path(tmpdir))
             assert not result.is_valid
-            assert any("Missing required file: apm.yml" in error for error in result.errors)
+            assert any("Missing required file" in error for error in result.errors)
     
     def test_validate_invalid_apm_yml(self):
         """Test validating directory with invalid apm.yml."""
@@ -846,6 +848,71 @@ name: minimal-skill
             assert result.package is not None
             # Description should be auto-generated
             assert "Claude Skill: minimal-skill" in result.package.description
+
+
+class TestHookPackageValidation:
+    """Test hook-only package validation."""
+
+    def test_validate_hook_package_with_hooks_dir(self):
+        """Test validating a package with only hooks/hooks.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            hooks_dir = Path(tmpdir) / "hooks"
+            hooks_dir.mkdir()
+            hooks_json = hooks_dir / "hooks.json"
+            hooks_json.write_text(json.dumps({
+                "hooks": {
+                    "PreToolUse": [{
+                        "hooks": [{
+                            "type": "command",
+                            "command": "echo hello"
+                        }]
+                    }]
+                }
+            }))
+
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package_type == PackageType.HOOK_PACKAGE
+            assert result.package is not None
+            assert result.package.name == Path(tmpdir).name
+
+    def test_validate_hook_package_with_apm_hooks_dir(self):
+        """Test validating a package with .apm/hooks/*.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            hooks_dir = Path(tmpdir) / ".apm" / "hooks"
+            hooks_dir.mkdir(parents=True)
+            hooks_json = hooks_dir / "my-hooks.json"
+            hooks_json.write_text(json.dumps({
+                "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo bye"}]}]}
+            }))
+
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package_type == PackageType.HOOK_PACKAGE
+
+    def test_validate_hook_package_prefers_apm_yml(self):
+        """Test that apm.yml takes precedence over hooks/ for type detection."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create both apm.yml + .apm/ and hooks/
+            apm_yml = Path(tmpdir) / "apm.yml"
+            apm_yml.write_text("name: test\nversion: 1.0.0")
+            apm_dir = Path(tmpdir) / ".apm" / "instructions"
+            apm_dir.mkdir(parents=True)
+            (apm_dir / "main.md").write_text("# Instructions")
+            hooks_dir = Path(tmpdir) / "hooks"
+            hooks_dir.mkdir()
+            (hooks_dir / "hooks.json").write_text('{"hooks": {}}')
+
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package_type == PackageType.APM_PACKAGE
+
+    def test_validate_empty_dir_is_invalid(self):
+        """Test that a dir with no apm.yml, SKILL.md, or hooks is invalid."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = validate_apm_package(Path(tmpdir))
+            assert not result.is_valid
+            assert result.package_type == PackageType.INVALID
 
 
 class TestGitReferenceUtils:

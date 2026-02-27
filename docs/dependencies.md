@@ -18,8 +18,7 @@ APM supports multiple dependency types:
 | Type | Detection | Example |
 |------|-----------|---------|
 | **APM Package** | Has `apm.yml` | `microsoft/apm-sample-package` |
-| **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` |
-| **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
+| **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` || **Hook Package** | Has `hooks/*.json` (no `apm.yml` or `SKILL.md`) | `anthropics/claude-plugins-official/plugins/hookify` || **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
 | **Virtual Subdirectory Package** | Folder path in repo | `github/awesome-copilot/skills/review-and-refactor` |
 | **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` |
 

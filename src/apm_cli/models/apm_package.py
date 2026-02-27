@@ -21,10 +21,11 @@ class PackageType(Enum):
     """Types of packages that APM can install.
     
     This enum is used internally to classify packages based on their content
-    (presence of apm.yml, SKILL.md, etc.).
+    (presence of apm.yml, SKILL.md, hooks/, etc.).
     """
     APM_PACKAGE = "apm_package"      # Has apm.yml
     CLAUDE_SKILL = "claude_skill"    # Has SKILL.md, no apm.yml
+    HOOK_PACKAGE = "hook_package"    # Has hooks/hooks.json, no apm.yml or SKILL.md
     HYBRID = "hybrid"                # Has both apm.yml and SKILL.md
     INVALID = "invalid"              # Neither apm.yml nor SKILL.md
 
@@ -881,23 +882,36 @@ class PackageInfo:
     def has_primitives(self) -> bool:
         """Check if the package has any primitives."""
         apm_dir = self.get_primitives_path()
-        if not apm_dir.exists():
-            return False
+        if apm_dir.exists():
+            # Check for any primitive files in .apm/ subdirectories
+            for primitive_type in ['instructions', 'chatmodes', 'contexts', 'prompts', 'hooks']:
+                primitive_dir = apm_dir / primitive_type
+                if primitive_dir.exists() and any(primitive_dir.iterdir()):
+                    return True
         
-        # Check for any primitive files in subdirectories
-        for primitive_type in ['instructions', 'chatmodes', 'contexts', 'prompts']:
-            primitive_dir = apm_dir / primitive_type
-            if primitive_dir.exists() and any(primitive_dir.iterdir()):
-                return True
+        # Also check hooks/ at package root (Claude-native convention)
+        hooks_dir = self.install_path / "hooks"
+        if hooks_dir.exists() and any(hooks_dir.glob("*.json")):
+            return True
+        
         return False
+
+
+def _has_hook_json(package_path: Path) -> bool:
+    """Check if the package has hook JSON files in hooks/ or .apm/hooks/."""
+    for hooks_dir in [package_path / "hooks", package_path / ".apm" / "hooks"]:
+        if hooks_dir.exists() and any(hooks_dir.glob("*.json")):
+            return True
+    return False
 
 
 def validate_apm_package(package_path: Path) -> ValidationResult:
     """Validate that a directory contains a valid APM package or Claude Skill.
     
-    Supports three package types:
+    Supports four package types:
     - APM_PACKAGE: Has apm.yml and .apm/ directory
     - CLAUDE_SKILL: Has SKILL.md but no apm.yml (auto-generates apm.yml)
+    - HOOK_PACKAGE: Has hooks/*.json but no apm.yml or SKILL.md
     - HYBRID: Has both apm.yml and SKILL.md
     
     Args:
@@ -922,6 +936,7 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     skill_md_path = package_path / "SKILL.md"
     has_apm_yml = apm_yml_path.exists()
     has_skill_md = skill_md_path.exists()
+    has_hooks = _has_hook_json(package_path)
     
     # Determine package type
     if has_apm_yml and has_skill_md:
@@ -930,10 +945,16 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         result.package_type = PackageType.APM_PACKAGE
     elif has_skill_md:
         result.package_type = PackageType.CLAUDE_SKILL
+    elif has_hooks:
+        result.package_type = PackageType.HOOK_PACKAGE
     else:
         result.package_type = PackageType.INVALID
-        result.add_error("Missing required file: apm.yml or SKILL.md")
+        result.add_error("Missing required file: apm.yml, SKILL.md, or hooks/*.json")
         return result
+    
+    # Handle hook-only packages (no apm.yml or SKILL.md)
+    if result.package_type == PackageType.HOOK_PACKAGE:
+        return _validate_hook_package(package_path, result)
     
     # Handle Claude Skills (no apm.yml) - auto-generate minimal apm.yml
     if result.package_type == PackageType.CLAUDE_SKILL:
@@ -941,6 +962,34 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     
     # Standard APM package validation (has apm.yml)
     return _validate_apm_package_with_yml(package_path, apm_yml_path, result)
+
+
+def _validate_hook_package(package_path: Path, result: ValidationResult) -> ValidationResult:
+    """Validate a hook-only package and create APMPackage from its metadata.
+    
+    A hook package has hooks/*.json (or .apm/hooks/*.json) defining hook
+    handlers per the Claude Code hooks specification, but no apm.yml or SKILL.md.
+    
+    Args:
+        package_path: Path to the package directory  
+        result: ValidationResult to populate
+        
+    Returns:
+        ValidationResult: Updated validation result
+    """
+    package_name = package_path.name
+    
+    # Create APMPackage from directory name
+    package = APMPackage(
+        name=package_name,
+        version="1.0.0",
+        description=f"Hook package: {package_name}",
+        package_path=package_path,
+        type=PackageContentType.HYBRID
+    )
+    result.package = package
+    
+    return result
 
 
 def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: ValidationResult) -> ValidationResult:
@@ -1031,6 +1080,10 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
                             result.add_warning(f"Empty primitive file: {md_file.relative_to(package_path)}")
                     except Exception as e:
                         result.add_warning(f"Could not read primitive file {md_file.relative_to(package_path)}: {e}")
+    
+    # Also check for hooks (JSON files in .apm/hooks/ or hooks/)
+    if not has_primitives:
+        has_primitives = _has_hook_json(package_path)
     
     if not has_primitives:
         result.add_warning("No primitive files found in .apm/ directory")
