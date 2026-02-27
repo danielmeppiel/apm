@@ -105,7 +105,7 @@ class TestSimpleClaudeSkillInstall:
         assert "anthropics/skills/skills/brand-guidelines" in content
     
     def test_skill_detection_in_output(self, temp_project, apm_command):
-        """Verify CLI output shows 'Claude Skill (SKILL.md detected)'."""
+        """Verify CLI output shows skill integration message."""
         result = subprocess.run(
             [apm_command, "install", "anthropics/skills/skills/brand-guidelines", "--verbose"],
             cwd=temp_project,
@@ -114,8 +114,8 @@ class TestSimpleClaudeSkillInstall:
             timeout=120
         )
         
-        # Check for skill detection message
-        assert "Claude Skill" in result.stdout or "SKILL.md detected" in result.stdout
+        # Check for skill detection/integration message
+        assert "Skill integrated" in result.stdout or "Claude Skill" in result.stdout or "SKILL.md detected" in result.stdout
 
 
 class TestClaudeSkillWithResources:

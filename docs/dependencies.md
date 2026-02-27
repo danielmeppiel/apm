@@ -45,9 +45,8 @@ Skills are integrated to `.github/skills/`:
 
 | Source | Result |
 |--------|--------|
-| Package with existing `SKILL.md` | Skill folder copied to `.github/skills/{folder-name}/` |
-| APM package with `.apm/` primitives (no SKILL.md) | SKILL.md auto-generated, folder copied to `.github/skills/{folder-name}/` |
-| Package without SKILL.md or primitives | No skill folder created |
+| Package with `SKILL.md` | Skill folder copied to `.github/skills/{folder-name}/` |
+| Package without `SKILL.md` | No skill folder created |
 
 #### Skill Folder Naming
 
@@ -354,6 +353,13 @@ Result:
 - Records all three in `apm.lock` with depth information
 - `depth: 1` = direct dependency
 - `depth: 2+` = transitive dependency
+
+Uninstalling a package also removes its orphaned transitive dependencies (npm-style pruning):
+
+```bash
+apm uninstall acme/package-a
+# Also removes B and C if no other package depends on them
+```
 
 ### Cleaning Dependencies
 
