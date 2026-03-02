@@ -801,7 +801,7 @@ class APMPackage:
         """Get list of MCP dependencies (strings for registry, dicts for inline configs)."""
         if not self.dependencies or 'mcp' not in self.dependencies:
             return []
-        return [dep for dep in self.dependencies.get('mcp', [])
+        return [dep for dep in (self.dependencies.get('mcp') or [])
                 if isinstance(dep, (str, dict))]
     
     def has_apm_dependencies(self) -> bool:

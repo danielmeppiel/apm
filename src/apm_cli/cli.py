@@ -2171,20 +2171,13 @@ def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) 
     # Build set of expected apm.yml paths from apm.lock
     locked_paths = None
     if lock_path and lock_path.exists():
-        try:
-            import yaml
-
-            with open(lock_path, "r", encoding="utf-8") as f:
-                lock_data = yaml.safe_load(f) or {}
+        lockfile = LockFile.read(lock_path)
+        if lockfile is not None:
             locked_paths = builtins.set()
-            for dep in lock_data.get("dependencies", []):
-                repo_url = dep.get("repo_url", "")
-                virtual_path = dep.get("virtual_path", "")
-                if repo_url:
-                    yml = apm_modules_dir / repo_url / virtual_path / "apm.yml" if virtual_path else apm_modules_dir / repo_url / "apm.yml"
+            for dep in lockfile.get_all_dependencies():
+                if dep.repo_url:
+                    yml = apm_modules_dir / dep.repo_url / dep.virtual_path / "apm.yml" if dep.virtual_path else apm_modules_dir / dep.repo_url / "apm.yml"
                     locked_paths.add(yml.resolve())
-        except Exception:
-            locked_paths = None  # Fall back to full scan
 
     # Prefer iterating lock-derived paths directly (existing files only).
     # Fall back to full scan only when lock parsing is unavailable.
@@ -2217,8 +2210,6 @@ def _deduplicate_mcp_deps(deps: list) -> list:
     Returns:
         Deduplicated list preserving insertion order.
     """
-    import builtins
-
     seen_strings: builtins.set = builtins.set()
     seen_names: builtins.set = builtins.set()
     result = []
@@ -2488,8 +2479,9 @@ def _install_mcp_dependencies(
 
     # --- Inline dict deps (name/type/url) ---
     if inline_deps:
-        inline_count = _install_inline_mcp_deps(inline_deps, target_runtimes, verbose)
-        configured_count += inline_count
+        _rich_warning(
+            f"Skipping {len(inline_deps)} inline MCP dep(s) — inline dict installation deferred to follow-up PR"
+        )
 
     # Close the panel
     if console:
@@ -2501,144 +2493,6 @@ def _install_mcp_dependencies(
             console.print("└─ [green]All servers up to date[/green]")
 
     return configured_count
-
-
-def _install_inline_mcp_deps(
-    inline_deps: list, target_runtimes: list, verbose: bool = False
-) -> int:
-    """Install inline MCP dependencies (dict configs) directly into runtime configs.
-
-    Inline deps look like: {"name": "my-server", "type": "sse", "url": "https://..."}
-    They bypass the MCP registry and are written directly.
-
-    Args:
-        inline_deps: List of dict MCP entries.
-        target_runtimes: List of target runtime names.
-        verbose: Show detailed output.
-
-    Returns:
-        int: Number of servers successfully configured.
-    """
-    _KNOWN_MCP_TYPES = {"sse", "http"}
-
-    console = _get_console()
-    configured = 0
-
-    for dep in inline_deps:
-        name = dep.get("name", "")
-        server_type = dep.get("type", "sse")
-        url = dep.get("url", "")
-        headers = dep.get("headers", {})
-
-        if not name or not url:
-            safe_dep = {
-                "name": name or None,
-                "type": server_type or None,
-                "url_present": bool(url),
-                "has_headers": bool(headers),
-            }
-            _rich_warning(
-                "Skipping inline MCP dep with missing required fields "
-                f"(safe fields: {safe_dep})"
-            )
-            continue
-
-        if server_type not in _KNOWN_MCP_TYPES:
-            _rich_warning(f"MCP server '{name}' has unknown type '{server_type}' (expected one of {_KNOWN_MCP_TYPES})")
-
-        # Build the server config entry
-        server_config = {"type": server_type, "url": url}
-        if headers:
-            server_config["headers"] = headers
-
-        any_success = False
-        for rt in target_runtimes:
-            try:
-                if rt == "vscode":
-                    _write_inline_mcp_vscode(name, server_config, verbose)
-                elif rt == "copilot":
-                    _write_inline_mcp_copilot(name, server_config, verbose)
-                elif rt == "codex":
-                    _write_inline_mcp_copilot(name, server_config, verbose)
-                else:
-                    if verbose:
-                        _rich_warning(f"Unsupported runtime '{rt}' for inline MCP config")
-                    continue
-                any_success = True
-            except Exception as e:
-                _rich_error(f"Failed to configure inline MCP '{name}' for {rt}: {e}")
-                continue
-
-        if any_success:
-            if console:
-                console.print(
-                    f"│  [green]✓[/green]  {name} (inline) → {', '.join([rt.title() for rt in target_runtimes])}"
-                )
-            configured += 1
-
-    return configured
-
-
-def _write_inline_mcp_vscode(name: str, server_config: dict, verbose: bool = False):
-    """Write an inline MCP server config to .vscode/mcp.json."""
-    import json
-    from pathlib import Path
-
-    vscode_dir = Path.cwd() / ".vscode"
-    vscode_dir.mkdir(parents=True, exist_ok=True)
-    mcp_path = vscode_dir / "mcp.json"
-
-    config = {}
-    if mcp_path.exists():
-        try:
-            with open(mcp_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            _rich_warning(f"Could not parse {mcp_path}, resetting: {e}")
-            config = {}
-
-    if "servers" not in config:
-        config["servers"] = {}
-
-    if name in config["servers"]:
-        if verbose:
-            _rich_info(f"  {name} already in .vscode/mcp.json, updating")
-
-    config["servers"][name] = server_config
-
-    with open(mcp_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-
-
-def _write_inline_mcp_copilot(name: str, server_config: dict, verbose: bool = False):
-    """Write an inline MCP server config to ~/.copilot/mcp-config.json."""
-    import json
-    from pathlib import Path
-
-    copilot_dir = Path.home() / ".copilot"
-    copilot_dir.mkdir(parents=True, exist_ok=True)
-    config_path = copilot_dir / "mcp-config.json"
-
-    config = {}
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            _rich_warning(f"Could not parse {config_path}, resetting: {e}")
-            config = {}
-
-    if "mcpServers" not in config:
-        config["mcpServers"] = {}
-
-    if name in config["mcpServers"]:
-        if verbose:
-            _rich_info(f"  {name} already in copilot config, updating")
-
-    config["mcpServers"][name] = server_config
-
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
 
 
 def _show_install_summary(

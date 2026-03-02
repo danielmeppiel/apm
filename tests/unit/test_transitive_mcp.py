@@ -1,6 +1,5 @@
 """Tests for transitive MCP dependency collection, deduplication, and inline installation."""
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,9 +12,6 @@ from apm_cli.cli import (
     _collect_transitive_mcp_deps,
     _deduplicate_mcp_deps,
     _install_mcp_dependencies,
-    _install_inline_mcp_deps,
-    _write_inline_mcp_vscode,
-    _write_inline_mcp_copilot,
 )
 
 
@@ -80,6 +76,30 @@ class TestAPMPackageMCPParsing(unittest.TestCase):
             yml.write_text(yaml.dump({
                 "name": "pkg",
                 "version": "1.0.0",
+            }))
+            pkg = APMPackage.from_apm_yml(yml)
+            self.assertEqual(pkg.get_mcp_dependencies(), [])
+
+    def test_mcp_null_returns_empty(self):
+        """mcp: null should return empty list, not raise TypeError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            yml = Path(tmp) / "apm.yml"
+            yml.write_text(yaml.dump({
+                "name": "pkg",
+                "version": "1.0.0",
+                "dependencies": {"mcp": None},
+            }))
+            pkg = APMPackage.from_apm_yml(yml)
+            self.assertEqual(pkg.get_mcp_dependencies(), [])
+
+    def test_mcp_empty_list_returns_empty(self):
+        """mcp: [] should return empty list."""
+        with tempfile.TemporaryDirectory() as tmp:
+            yml = Path(tmp) / "apm.yml"
+            yml.write_text(yaml.dump({
+                "name": "pkg",
+                "version": "1.0.0",
+                "dependencies": {"mcp": []},
             }))
             pkg = APMPackage.from_apm_yml(yml)
             self.assertEqual(pkg.get_mcp_dependencies(), [])
@@ -284,182 +304,15 @@ class TestDeduplicateMCPDeps(unittest.TestCase):
         result = _deduplicate_mcp_deps([d, d])
         self.assertEqual(len(result), 1)
 
-
-# ---------------------------------------------------------------------------
-# _write_inline_mcp_vscode
-# ---------------------------------------------------------------------------
-class TestWriteInlineMCPVscode(unittest.TestCase):
-
-    def test_creates_file_from_scratch(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch("apm_cli.cli.Path.cwd", return_value=Path(tmp)):
-                _write_inline_mcp_vscode("test-srv", {"type": "sse", "url": "https://x"})
-
-            mcp_path = Path(tmp) / ".vscode" / "mcp.json"
-            self.assertTrue(mcp_path.exists())
-            data = json.loads(mcp_path.read_text())
-            self.assertIn("test-srv", data["servers"])
-            self.assertEqual(data["servers"]["test-srv"]["url"], "https://x")
-
-    def test_merges_into_existing_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vscode_dir = Path(tmp) / ".vscode"
-            vscode_dir.mkdir()
-            mcp_path = vscode_dir / "mcp.json"
-            mcp_path.write_text(json.dumps({"servers": {"existing": {"type": "stdio"}}}))
-
-            with patch("apm_cli.cli.Path.cwd", return_value=Path(tmp)):
-                _write_inline_mcp_vscode("new-srv", {"type": "sse", "url": "https://new"})
-
-            data = json.loads(mcp_path.read_text())
-            self.assertIn("existing", data["servers"])
-            self.assertIn("new-srv", data["servers"])
-
-    def test_overwrites_same_name(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vscode_dir = Path(tmp) / ".vscode"
-            vscode_dir.mkdir()
-            mcp_path = vscode_dir / "mcp.json"
-            mcp_path.write_text(json.dumps({"servers": {"srv": {"type": "sse", "url": "https://old"}}}))
-
-            with patch("apm_cli.cli.Path.cwd", return_value=Path(tmp)):
-                _write_inline_mcp_vscode("srv", {"type": "sse", "url": "https://new"})
-
-            data = json.loads(mcp_path.read_text())
-            self.assertEqual(data["servers"]["srv"]["url"], "https://new")
-
-
-# ---------------------------------------------------------------------------
-# _write_inline_mcp_copilot
-# ---------------------------------------------------------------------------
-class TestWriteInlineMCPCopilot(unittest.TestCase):
-
-    def test_creates_file_from_scratch(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch("apm_cli.cli.Path.home", return_value=Path(tmp)):
-                _write_inline_mcp_copilot("cp-srv", {"type": "sse", "url": "https://cp"})
-
-            config_path = Path(tmp) / ".copilot" / "mcp-config.json"
-            self.assertTrue(config_path.exists())
-            data = json.loads(config_path.read_text())
-            self.assertIn("cp-srv", data["mcpServers"])
-
-    def test_merges_into_existing_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            copilot_dir = Path(tmp) / ".copilot"
-            copilot_dir.mkdir()
-            config_path = copilot_dir / "mcp-config.json"
-            config_path.write_text(json.dumps({"mcpServers": {"old": {"type": "stdio"}}}))
-
-            with patch("apm_cli.cli.Path.home", return_value=Path(tmp)):
-                _write_inline_mcp_copilot("new", {"type": "sse", "url": "https://new"})
-
-            data = json.loads(config_path.read_text())
-            self.assertIn("old", data["mcpServers"])
-            self.assertIn("new", data["mcpServers"])
-
-
-# ---------------------------------------------------------------------------
-# _install_inline_mcp_deps
-# ---------------------------------------------------------------------------
-class TestInstallInlineMCPDeps(unittest.TestCase):
-
-    @patch("apm_cli.cli._write_inline_mcp_vscode")
-    @patch("apm_cli.cli._write_inline_mcp_copilot")
-    @patch("apm_cli.cli._get_console", return_value=None)
-    def test_installs_for_all_runtimes(self, _console, mock_copilot, mock_vscode):
-        deps = [{"name": "s1", "type": "sse", "url": "https://s1"}]
-        count = _install_inline_mcp_deps(deps, ["vscode", "copilot"])
-
-        self.assertEqual(count, 1)
-        mock_vscode.assert_called_once()
-        mock_copilot.assert_called_once()
-
-    @patch("apm_cli.cli._write_inline_mcp_vscode")
-    @patch("apm_cli.cli._write_inline_mcp_copilot")
-    @patch("apm_cli.cli._rich_warning")
-    @patch("apm_cli.cli._get_console", return_value=None)
-    def test_skips_dep_without_name(
-        self, _console, mock_warning, mock_copilot, mock_vscode
-    ):
-        deps = [{"type": "sse", "url": "https://no-name"}]
-        count = _install_inline_mcp_deps(deps, ["vscode"])
-
-        self.assertEqual(count, 0)
-        mock_vscode.assert_not_called()
-        warning_msg = mock_warning.call_args[0][0]
-        self.assertIn("safe fields", warning_msg)
-        self.assertIn("url_present", warning_msg)
-        self.assertNotIn("https://no-name", warning_msg)
-
-    @patch("apm_cli.cli._write_inline_mcp_vscode")
-    @patch("apm_cli.cli._rich_warning")
-    @patch("apm_cli.cli._get_console", return_value=None)
-    def test_missing_required_fields_warning_does_not_expose_header_values(
-        self, _console, mock_warning, mock_vscode
-    ):
-        deps = [
-            {
-                "type": "sse",
-                "headers": {"Authorization": "Bearer secret-token"},
-            }
-        ]
-
-        count = _install_inline_mcp_deps(deps, ["vscode"])
-
-        self.assertEqual(count, 0)
-        mock_vscode.assert_not_called()
-        warning_msg = mock_warning.call_args[0][0]
-        self.assertIn("has_headers", warning_msg)
-        self.assertNotIn("secret-token", warning_msg)
-        self.assertNotIn("Authorization", warning_msg)
-
-    @patch("apm_cli.cli._write_inline_mcp_vscode")
-    @patch("apm_cli.cli._write_inline_mcp_copilot")
-    @patch("apm_cli.cli._rich_warning")
-    @patch("apm_cli.cli._get_console", return_value=None)
-    def test_skips_dep_without_url(self, _console, mock_warning, mock_copilot, mock_vscode):
-        deps = [{"name": "srv"}]
-        count = _install_inline_mcp_deps(deps, ["vscode"])
-
-        self.assertEqual(count, 0)
-        mock_vscode.assert_not_called()
-        warning_msg = mock_warning.call_args[0][0]
-        self.assertIn("safe fields", warning_msg)
-        self.assertIn("has_headers", warning_msg)
-
-    @patch("apm_cli.cli._write_inline_mcp_vscode")
-    @patch("apm_cli.cli._get_console", return_value=None)
-    def test_includes_headers_when_present(self, _console, mock_vscode):
-        deps = [{"name": "s", "type": "sse", "url": "https://s", "headers": {"Authorization": "Bearer x"}}]
-        _install_inline_mcp_deps(deps, ["vscode"])
-
-        call_args = mock_vscode.call_args
-        server_config = call_args[0][1]
-        self.assertIn("headers", server_config)
-        self.assertEqual(server_config["headers"]["Authorization"], "Bearer x")
-
-    @patch("apm_cli.cli._write_inline_mcp_vscode", side_effect=Exception("write failed"))
-    @patch("apm_cli.cli._get_console", return_value=None)
-    def test_continues_on_write_failure(self, _console, mock_vscode):
-        """Failure writing one dep should not prevent the next from being attempted."""
-        deps = [
-            {"name": "fail", "type": "sse", "url": "https://fail"},
-            {"name": "ok", "type": "sse", "url": "https://ok"},
-        ]
-        # Both raise, so no deps are successfully configured
-        count = _install_inline_mcp_deps(deps, ["vscode"])
-        self.assertEqual(count, 0)
-        # But both were attempted
-        self.assertEqual(mock_vscode.call_count, 2)
-
-    @patch("apm_cli.cli._write_inline_mcp_copilot")
-    @patch("apm_cli.cli._get_console", return_value=None)
-    def test_codex_runtime_uses_copilot_writer(self, _console, mock_copilot):
-        deps = [{"name": "s", "type": "sse", "url": "https://s"}]
-        _install_inline_mcp_deps(deps, ["codex"])
-
-        mock_copilot.assert_called_once()
+    def test_root_deps_take_precedence_over_transitive(self):
+        """When root and transitive share a key, the first (root) wins."""
+        root = [{"name": "shared", "type": "sse", "url": "https://root-url"}]
+        transitive = [{"name": "shared", "type": "sse", "url": "https://transitive-url"}]
+        # Root deps come first in the combined list
+        combined = root + transitive
+        result = _deduplicate_mcp_deps(combined)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["url"], "https://root-url")
 
 
 # ---------------------------------------------------------------------------
