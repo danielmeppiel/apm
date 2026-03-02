@@ -179,6 +179,10 @@ APM installs from any GitHub or Azure DevOps repo — no special packaging requi
 
 ---
 
+## Roadmap
+
+See the [APM Roadmap](https://github.com/microsoft/apm/discussions/116) for what's coming next.
+
 ## Documentation
 
 | | |
