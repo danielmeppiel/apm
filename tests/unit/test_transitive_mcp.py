@@ -1,9 +1,10 @@
 """Tests for transitive MCP dependency collection, deduplication, and inline installation."""
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import yaml
 
@@ -11,7 +12,9 @@ from apm_cli.models.apm_package import APMPackage
 from apm_cli.cli import (
     _collect_transitive_mcp_deps,
     _deduplicate_mcp_deps,
+    _install_inline_mcp_deps,
     _install_mcp_dependencies,
+    _validate_inline_url,
 )
 
 
@@ -313,6 +316,152 @@ class TestDeduplicateMCPDeps(unittest.TestCase):
         result = _deduplicate_mcp_deps(combined)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["url"], "https://root-url")
+
+
+# ---------------------------------------------------------------------------
+# _validate_inline_url
+# ---------------------------------------------------------------------------
+class TestValidateInlineUrl(unittest.TestCase):
+
+    def test_allows_https(self):
+        self.assertTrue(_validate_inline_url("https://example.com/mcp", "srv"))
+
+    def test_allows_http(self):
+        self.assertTrue(_validate_inline_url("http://localhost:8080", "srv"))
+
+    @patch("apm_cli.cli._rich_warning")
+    def test_rejects_file_scheme(self, mock_warn):
+        self.assertFalse(_validate_inline_url("file:///etc/passwd", "bad"))
+        mock_warn.assert_called_once()
+        self.assertIn("disallowed URL scheme", mock_warn.call_args[0][0])
+
+    @patch("apm_cli.cli._rich_warning")
+    def test_rejects_data_scheme(self, mock_warn):
+        self.assertFalse(_validate_inline_url("data:text/html,<h1>hi</h1>", "bad"))
+
+    @patch("apm_cli.cli._rich_warning")
+    def test_rejects_empty_scheme(self, mock_warn):
+        self.assertFalse(_validate_inline_url("no-scheme-url", "bad"))
+
+
+# ---------------------------------------------------------------------------
+# _install_inline_mcp_deps
+# ---------------------------------------------------------------------------
+class TestInstallInlineMCPDeps(unittest.TestCase):
+
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.factory.ClientFactory")
+    def test_delegates_to_vscode_adapter(self, mock_factory, _console):
+        mock_adapter = MagicMock()
+        mock_adapter.get_current_config.return_value = {"servers": {}}
+        mock_factory.create_client.return_value = mock_adapter
+
+        deps = [{"name": "s1", "type": "sse", "url": "https://s1.example.com"}]
+        count = _install_inline_mcp_deps(deps, ["vscode"])
+
+        self.assertEqual(count, 1)
+        mock_factory.create_client.assert_called_with("vscode")
+        # VSCode path: read-merge-write with full config
+        mock_adapter.get_current_config.assert_called_once()
+        call_config = mock_adapter.update_config.call_args[0][0]
+        self.assertIn("s1", call_config["servers"])
+        self.assertEqual(call_config["servers"]["s1"]["url"], "https://s1.example.com")
+
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.factory.ClientFactory")
+    def test_delegates_to_copilot_adapter(self, mock_factory, _console):
+        mock_adapter = MagicMock()
+        mock_factory.create_client.return_value = mock_adapter
+
+        deps = [{"name": "s1", "type": "sse", "url": "https://s1.example.com"}]
+        count = _install_inline_mcp_deps(deps, ["copilot"])
+
+        self.assertEqual(count, 1)
+        mock_factory.create_client.assert_called_with("copilot")
+        # Copilot path: merge dict passed directly
+        call_config = mock_adapter.update_config.call_args[0][0]
+        self.assertIn("s1", call_config)
+
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.factory.ClientFactory")
+    def test_codex_uses_own_adapter_not_copilot(self, mock_factory, _console):
+        mock_adapter = MagicMock()
+        mock_factory.create_client.return_value = mock_adapter
+
+        deps = [{"name": "s1", "type": "sse", "url": "https://s1.example.com"}]
+        count = _install_inline_mcp_deps(deps, ["codex"])
+
+        self.assertEqual(count, 1)
+        mock_factory.create_client.assert_called_with("codex")
+        # Codex path: merge dict (adapter writes TOML internally)
+        call_config = mock_adapter.update_config.call_args[0][0]
+        self.assertIn("s1", call_config)
+
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.factory.ClientFactory")
+    def test_installs_for_multiple_runtimes(self, mock_factory, _console):
+        mock_adapter = MagicMock()
+        mock_adapter.get_current_config.return_value = {"servers": {}}
+        mock_factory.create_client.return_value = mock_adapter
+
+        deps = [{"name": "s1", "type": "sse", "url": "https://s1.example.com"}]
+        count = _install_inline_mcp_deps(deps, ["vscode", "copilot", "codex"])
+
+        self.assertEqual(count, 1)
+        self.assertEqual(mock_factory.create_client.call_count, 3)
+
+    @patch("apm_cli.cli._rich_warning")
+    @patch("apm_cli.cli._get_console", return_value=None)
+    def test_skips_dep_without_name(self, _console, mock_warn):
+        deps = [{"type": "sse", "url": "https://no-name"}]
+        count = _install_inline_mcp_deps(deps, ["vscode"])
+        self.assertEqual(count, 0)
+        self.assertIn("safe fields", mock_warn.call_args[0][0])
+        self.assertNotIn("https://no-name", mock_warn.call_args[0][0])
+
+    @patch("apm_cli.cli._rich_warning")
+    @patch("apm_cli.cli._get_console", return_value=None)
+    def test_skips_dep_with_disallowed_scheme(self, _console, mock_warn):
+        deps = [{"name": "bad", "type": "sse", "url": "file:///etc/passwd"}]
+        count = _install_inline_mcp_deps(deps, ["vscode"])
+        self.assertEqual(count, 0)
+        self.assertIn("disallowed URL scheme", mock_warn.call_args[0][0])
+
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.factory.ClientFactory")
+    def test_includes_headers_in_server_config(self, mock_factory, _console):
+        mock_adapter = MagicMock()
+        mock_adapter.get_current_config.return_value = {"servers": {}}
+        mock_factory.create_client.return_value = mock_adapter
+
+        deps = [{"name": "s1", "type": "sse", "url": "https://s1", "headers": {"Authorization": "Bearer x"}}]
+        _install_inline_mcp_deps(deps, ["vscode"])
+
+        call_config = mock_adapter.update_config.call_args[0][0]
+        self.assertIn("headers", call_config["servers"]["s1"])
+
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.factory.ClientFactory")
+    def test_continues_on_adapter_failure(self, mock_factory, _console):
+        mock_adapter = MagicMock()
+        mock_adapter.get_current_config.side_effect = Exception("write failed")
+        mock_factory.create_client.return_value = mock_adapter
+
+        deps = [
+            {"name": "fail", "type": "sse", "url": "https://fail"},
+            {"name": "also-fail", "type": "sse", "url": "https://also"},
+        ]
+        count = _install_inline_mcp_deps(deps, ["vscode"])
+        self.assertEqual(count, 0)
+
+    @patch("apm_cli.cli._rich_warning")
+    @patch("apm_cli.cli._get_console", return_value=None)
+    def test_missing_fields_warning_does_not_expose_headers(self, _console, mock_warn):
+        deps = [{"type": "sse", "headers": {"Authorization": "Bearer secret"}}]
+        _install_inline_mcp_deps(deps, ["vscode"])
+        warning_msg = mock_warn.call_args[0][0]
+        self.assertNotIn("secret", warning_msg)
+        self.assertNotIn("Authorization", warning_msg)
 
 
 # ---------------------------------------------------------------------------
