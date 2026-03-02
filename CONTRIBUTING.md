@@ -74,14 +74,9 @@ uv sync --extra dev
 
 ## Testing
 
-We use pytest for testing. The project uses `uv` to manage virtual environments and dependencies — the recommended way to run tests is:
+We use pytest for testing. After completing the setup above, run the test suite with:
 
 ```bash
-uv run pytest
-# install dev dependencies (creates .venv managed by uv)
-uv sync --extra dev
-
-# run the test suite
 uv run pytest -q
 ```
 
