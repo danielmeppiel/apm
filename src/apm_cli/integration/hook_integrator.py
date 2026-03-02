@@ -4,7 +4,7 @@ Integrates hook JSON files and their referenced scripts during package
 installation. Supports both VSCode Copilot (.github/hooks/) and Claude Code
 (.claude/settings.json) targets.
 
-Hook JSON format (shared by VSCode Copilot and Claude Code):
+Hook JSON format (Claude Code — nested matcher groups):
     {
         "hooks": {
             "PreToolUse": [
@@ -13,6 +13,16 @@ Hook JSON format (shared by VSCode Copilot and Claude Code):
                         {"type": "command", "command": "./scripts/validate.sh", "timeout": 10}
                     ]
                 }
+            ]
+        }
+    }
+
+Hook JSON format (GitHub Copilot — flat arrays with bash/powershell keys):
+    {
+        "version": 1,
+        "hooks": {
+            "preToolUse": [
+                {"type": "command", "bash": "./scripts/validate.sh", "timeoutSec": 10}
             ]
         }
     }
@@ -218,16 +228,30 @@ class HookIntegrator:
             for matcher in matchers:
                 if not isinstance(matcher, dict):
                     continue
+                # Rewrite script paths in the matcher dict itself
+                # (GitHub Copilot flat format: bash/powershell keys at this level)
+                for key in ("command", "bash", "powershell"):
+                    if key in matcher:
+                        new_cmd, scripts = self._rewrite_command_for_target(
+                            matcher[key], package_path, package_name, target,
+                            hook_file_dir=hook_file_dir,
+                        )
+                        matcher[key] = new_cmd
+                        all_scripts.extend(scripts)
+
+                # Rewrite script paths in nested hooks array
+                # (Claude format: matcher groups with inner hooks array)
                 for hook in matcher.get("hooks", []):
                     if not isinstance(hook, dict):
                         continue
-                    if "command" in hook:
-                        new_cmd, scripts = self._rewrite_command_for_target(
-                            hook["command"], package_path, package_name, target,
-                            hook_file_dir=hook_file_dir,
-                        )
-                        hook["command"] = new_cmd
-                        all_scripts.extend(scripts)
+                    for key in ("command", "bash", "powershell"):
+                        if key in hook:
+                            new_cmd, scripts = self._rewrite_command_for_target(
+                                hook[key], package_path, package_name, target,
+                                hook_file_dir=hook_file_dir,
+                            )
+                            hook[key] = new_cmd
+                            all_scripts.extend(scripts)
 
         return rewritten, all_scripts
 

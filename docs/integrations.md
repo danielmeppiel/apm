@@ -295,6 +295,8 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 
 APM automatically integrates hooks from installed packages. Hooks define lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`) supported by both VSCode Copilot and Claude Code.
 
+> **Note:** Hook packages must be authored in the target platform's native format. APM handles path rewriting and file placement but does not translate between hook schema formats (e.g., Claude's `command` key vs GitHub Copilot's `bash`/`powershell` keys, or event name casing differences).
+
 ```bash
 # Install a package with hooks
 apm install anthropics/claude-plugins-official/plugins/hookify
