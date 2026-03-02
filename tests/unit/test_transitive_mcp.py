@@ -12,6 +12,7 @@ from apm_cli.models.apm_package import APMPackage
 from apm_cli.cli import (
     _collect_transitive_mcp_deps,
     _deduplicate_mcp_deps,
+    _install_mcp_dependencies,
     _install_inline_mcp_deps,
     _write_inline_mcp_vscode,
     _write_inline_mcp_copilot,
@@ -205,6 +206,49 @@ class TestCollectTransitiveMCPDeps(unittest.TestCase):
             self.assertEqual(len(result), 1)
             self.assertEqual(result[0]["name"], "learn")
 
+    def test_lockfile_paths_do_not_use_full_rglob_scan(self):
+        """When lock-derived paths are available, avoid full recursive scanning."""
+        with tempfile.TemporaryDirectory() as tmp:
+            apm_modules = Path(tmp) / "apm_modules"
+            locked_dir = apm_modules / "org" / "locked-pkg"
+            locked_dir.mkdir(parents=True)
+            (locked_dir / "apm.yml").write_text(yaml.dump({
+                "name": "locked-pkg",
+                "version": "1.0.0",
+                "dependencies": {"mcp": ["ghcr.io/locked/server"]},
+            }))
+
+            lock_path = Path(tmp) / "apm.lock"
+            lock_path.write_text(yaml.dump({
+                "lockfile_version": "1",
+                "dependencies": [
+                    {"repo_url": "org/locked-pkg", "host": "github.com"},
+                ],
+            }))
+
+            with patch("pathlib.Path.rglob", side_effect=AssertionError("rglob should not be called")):
+                result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+
+            self.assertEqual(result, ["ghcr.io/locked/server"])
+
+    def test_invalid_lockfile_falls_back_to_rglob_scan(self):
+        """If lock parsing fails, function falls back to scanning all apm.yml files."""
+        with tempfile.TemporaryDirectory() as tmp:
+            apm_modules = Path(tmp) / "apm_modules"
+            pkg_dir = apm_modules / "org" / "pkg-a"
+            pkg_dir.mkdir(parents=True)
+            (pkg_dir / "apm.yml").write_text(yaml.dump({
+                "name": "pkg-a",
+                "version": "1.0.0",
+                "dependencies": {"mcp": ["ghcr.io/a/server"]},
+            }))
+
+            lock_path = Path(tmp) / "apm.lock"
+            lock_path.write_text("dependencies: [")
+
+            result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+            self.assertEqual(result, ["ghcr.io/a/server"])
+
 
 # ---------------------------------------------------------------------------
 # _deduplicate_mcp_deps
@@ -333,23 +377,56 @@ class TestInstallInlineMCPDeps(unittest.TestCase):
 
     @patch("apm_cli.cli._write_inline_mcp_vscode")
     @patch("apm_cli.cli._write_inline_mcp_copilot")
+    @patch("apm_cli.cli._rich_warning")
     @patch("apm_cli.cli._get_console", return_value=None)
-    def test_skips_dep_without_name(self, _console, mock_copilot, mock_vscode):
+    def test_skips_dep_without_name(
+        self, _console, mock_warning, mock_copilot, mock_vscode
+    ):
         deps = [{"type": "sse", "url": "https://no-name"}]
         count = _install_inline_mcp_deps(deps, ["vscode"])
 
         self.assertEqual(count, 0)
         mock_vscode.assert_not_called()
+        warning_msg = mock_warning.call_args[0][0]
+        self.assertIn("safe fields", warning_msg)
+        self.assertIn("url_present", warning_msg)
+        self.assertNotIn("https://no-name", warning_msg)
+
+    @patch("apm_cli.cli._write_inline_mcp_vscode")
+    @patch("apm_cli.cli._rich_warning")
+    @patch("apm_cli.cli._get_console", return_value=None)
+    def test_missing_required_fields_warning_does_not_expose_header_values(
+        self, _console, mock_warning, mock_vscode
+    ):
+        deps = [
+            {
+                "type": "sse",
+                "headers": {"Authorization": "Bearer secret-token"},
+            }
+        ]
+
+        count = _install_inline_mcp_deps(deps, ["vscode"])
+
+        self.assertEqual(count, 0)
+        mock_vscode.assert_not_called()
+        warning_msg = mock_warning.call_args[0][0]
+        self.assertIn("has_headers", warning_msg)
+        self.assertNotIn("secret-token", warning_msg)
+        self.assertNotIn("Authorization", warning_msg)
 
     @patch("apm_cli.cli._write_inline_mcp_vscode")
     @patch("apm_cli.cli._write_inline_mcp_copilot")
+    @patch("apm_cli.cli._rich_warning")
     @patch("apm_cli.cli._get_console", return_value=None)
-    def test_skips_dep_without_url(self, _console, mock_copilot, mock_vscode):
+    def test_skips_dep_without_url(self, _console, mock_warning, mock_copilot, mock_vscode):
         deps = [{"name": "srv"}]
         count = _install_inline_mcp_deps(deps, ["vscode"])
 
         self.assertEqual(count, 0)
         mock_vscode.assert_not_called()
+        warning_msg = mock_warning.call_args[0][0]
+        self.assertIn("safe fields", warning_msg)
+        self.assertIn("has_headers", warning_msg)
 
     @patch("apm_cli.cli._write_inline_mcp_vscode")
     @patch("apm_cli.cli._get_console", return_value=None)
@@ -383,6 +460,77 @@ class TestInstallInlineMCPDeps(unittest.TestCase):
         _install_inline_mcp_deps(deps, ["codex"])
 
         mock_copilot.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _install_mcp_dependencies
+# ---------------------------------------------------------------------------
+class TestInstallMCPDependencies(unittest.TestCase):
+
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.registry.operations.MCPServerOperations")
+    def test_already_configured_registry_servers_not_counted_as_new(
+        self, mock_ops_cls, _console
+    ):
+        mock_ops = mock_ops_cls.return_value
+        mock_ops.validate_servers_exist.return_value = (["ghcr.io/org/server"], [])
+        mock_ops.check_servers_needing_installation.return_value = []
+
+        count = _install_mcp_dependencies(["ghcr.io/org/server"], runtime="vscode")
+
+        self.assertEqual(count, 0)
+
+    @patch("apm_cli.cli._install_for_runtime")
+    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.registry.operations.MCPServerOperations")
+    def test_counts_only_newly_configured_registry_servers(
+        self, mock_ops_cls, _console, mock_install_runtime
+    ):
+        mock_ops = mock_ops_cls.return_value
+        mock_ops.validate_servers_exist.return_value = (
+            ["ghcr.io/org/already", "ghcr.io/org/new"],
+            [],
+        )
+        mock_ops.check_servers_needing_installation.return_value = ["ghcr.io/org/new"]
+        mock_ops.batch_fetch_server_info.return_value = {"ghcr.io/org/new": {}}
+        mock_ops.collect_environment_variables.return_value = {}
+        mock_ops.collect_runtime_variables.return_value = {}
+
+        count = _install_mcp_dependencies(
+            ["ghcr.io/org/already", "ghcr.io/org/new"], runtime="vscode"
+        )
+
+        self.assertEqual(count, 1)
+        mock_install_runtime.assert_called_once()
+
+    @patch("apm_cli.cli._install_for_runtime")
+    @patch("apm_cli.registry.operations.MCPServerOperations")
+    def test_mixed_registry_servers_show_already_configured_and_count_only_new(
+        self, mock_ops_cls, mock_install_runtime
+    ):
+        mock_console = unittest.mock.MagicMock()
+        mock_ops = mock_ops_cls.return_value
+        mock_ops.validate_servers_exist.return_value = (
+            ["ghcr.io/org/already", "ghcr.io/org/new"],
+            [],
+        )
+        mock_ops.check_servers_needing_installation.return_value = ["ghcr.io/org/new"]
+        mock_ops.batch_fetch_server_info.return_value = {"ghcr.io/org/new": {}}
+        mock_ops.collect_environment_variables.return_value = {}
+        mock_ops.collect_runtime_variables.return_value = {}
+
+        with patch("apm_cli.cli._get_console", return_value=mock_console):
+            count = _install_mcp_dependencies(
+                ["ghcr.io/org/already", "ghcr.io/org/new"], runtime="vscode"
+            )
+
+        self.assertEqual(count, 1)
+        mock_install_runtime.assert_called_once()
+        printed_lines = "\n".join(
+            str(call.args[0]) for call in mock_console.print.call_args_list if call.args
+        )
+        self.assertIn("ghcr.io/org/already", printed_lines)
+        self.assertIn("already configured", printed_lines)
 
 
 if __name__ == "__main__":

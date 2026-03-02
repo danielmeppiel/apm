@@ -2186,11 +2186,15 @@ def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) 
         except Exception:
             locked_paths = None  # Fall back to full scan
 
+    # Prefer iterating lock-derived paths directly (existing files only).
+    # Fall back to full scan only when lock parsing is unavailable.
+    if locked_paths is not None:
+        apm_yml_paths = [path for path in sorted(locked_paths) if path.exists()]
+    else:
+        apm_yml_paths = apm_modules_dir.rglob("apm.yml")
+
     collected = []
-    for apm_yml_path in apm_modules_dir.rglob("apm.yml"):
-        # Skip packages not in the lock file
-        if locked_paths is not None and apm_yml_path.resolve() not in locked_paths:
-            continue
+    for apm_yml_path in apm_yml_paths:
         try:
             pkg = APMPackage.from_apm_yml(apm_yml_path)
             mcp = pkg.get_mcp_dependencies()
@@ -2249,7 +2253,7 @@ def _install_mcp_dependencies(
         verbose: Show detailed installation information
 
     Returns:
-        int: Number of MCP servers configured
+        int: Number of MCP servers newly configured
     """
     if not mcp_deps:
         _rich_warning("No MCP dependencies found in apm.yml")
@@ -2412,18 +2416,33 @@ def _install_mcp_dependencies(
                 servers_to_install = operations.check_servers_needing_installation(
                     target_runtimes, valid_servers
                 )
+                already_configured_servers = [
+                    dep for dep in valid_servers if dep not in servers_to_install
+                ]
 
                 if not servers_to_install:
                     # All already configured
                     if console:
-                        for dep in registry_deps:
+                        for dep in already_configured_servers:
                             console.print(
                                 f"│  [green]✓[/green] {dep} [dim](already configured)[/dim]"
                             )
                     else:
                         _rich_success("All registry MCP servers already configured")
-                    configured_count += len(registry_deps)
                 else:
+                    # Surface already-configured servers distinctly from newly configured ones
+                    if already_configured_servers:
+                        if console:
+                            for dep in already_configured_servers:
+                                console.print(
+                                    f"│  [green]✓[/green] {dep} [dim](already configured)[/dim]"
+                                )
+                        elif verbose:
+                            _rich_info(
+                                "Already configured registry MCP servers: "
+                                f"{', '.join(already_configured_servers)}"
+                            )
+
                     # Batch fetch server info once to avoid duplicate registry calls
                     if verbose:
                         _rich_info(f"Installing {len(servers_to_install)} servers...")
@@ -2512,7 +2531,16 @@ def _install_inline_mcp_deps(
         headers = dep.get("headers", {})
 
         if not name or not url:
-            _rich_warning(f"Skipping inline MCP dep with missing name or url: {dep}")
+            safe_dep = {
+                "name": name or None,
+                "type": server_type or None,
+                "url_present": bool(url),
+                "has_headers": bool(headers),
+            }
+            _rich_warning(
+                "Skipping inline MCP dep with missing required fields "
+                f"(safe fields: {safe_dep})"
+            )
             continue
 
         if server_type not in _KNOWN_MCP_TYPES:
