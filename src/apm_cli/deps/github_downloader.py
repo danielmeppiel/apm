@@ -301,11 +301,14 @@ class GitHubPackageDownloader:
         if is_ado and not self.has_ado_token:
             error_msg += "For private Azure DevOps repositories, set ADO_APM_PAT environment variable."
         elif configured_host and dep_host and dep_host == configured_host and configured_host != "github.com":
+            suggested = f"github.com/{repo_url_base}"
+            if dep_ref and dep_ref.virtual_path:
+                suggested += f"/{dep_ref.virtual_path}"
             error_msg += (
                 f"GITHUB_HOST is set to '{configured_host}', so shorthand dependencies "
                 f"(without a hostname) resolve against that host. "
                 f"If this package lives on a different server (e.g., github.com), "
-                f"use the full hostname in apm.yml: github.com/{repo_url_base}"
+                f"use the full hostname in apm.yml: {suggested}"
             )
         elif not self.has_github_token:
             error_msg += "For private repositories, set GITHUB_APM_PAT or GITHUB_TOKEN environment variable, " \
