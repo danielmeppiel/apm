@@ -296,8 +296,17 @@ class GitHubPackageDownloader:
         
         # All methods failed
         error_msg = f"Failed to clone repository {repo_url_base} using all available methods. "
+        configured_host = os.environ.get("GITHUB_HOST", "")
+        dep_host = dep_ref.host if dep_ref else None
         if is_ado and not self.has_ado_token:
             error_msg += "For private Azure DevOps repositories, set ADO_APM_PAT environment variable."
+        elif configured_host and dep_host and dep_host == configured_host and configured_host != "github.com":
+            error_msg += (
+                f"GITHUB_HOST is set to '{configured_host}', so shorthand dependencies "
+                f"(without a hostname) resolve against that host. "
+                f"If this package lives on a different server (e.g., github.com), "
+                f"use the full hostname in apm.yml: github.com/{repo_url_base}"
+            )
         elif not self.has_github_token:
             error_msg += "For private repositories, set GITHUB_APM_PAT or GITHUB_TOKEN environment variable, " \
                         "or ensure SSH keys are configured."
@@ -329,9 +338,6 @@ class GitHubPackageDownloader:
         except ValueError as e:
             raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
-        if dep_ref.host:
-            self.github_host = dep_ref.host
-
         # Default to main branch if no reference specified
         ref = dep_ref.reference or "main"
         
@@ -1123,9 +1129,6 @@ author: {dep_ref.repo_url.split('/')[0]}
         except ValueError as e:
             raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
-        if dep_ref.host:
-            self.github_host = dep_ref.host
-
         # Handle virtual packages differently
         if dep_ref.is_virtual:
             if dep_ref.is_virtual_file():
