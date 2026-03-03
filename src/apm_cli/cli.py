@@ -2305,12 +2305,8 @@ def _install_mcp_dependencies(
 ):
     """Install MCP dependencies using existing logic.
 
-    Supports two formats:
-      - Registry strings (e.g. "ghcr.io/github/github-mcp-server")
-      - Inline dicts (e.g. {"name": "my-server", "type": "sse", "url": "…"})
-
     Args:
-        mcp_deps: List of MCP dependency entries (str or dict)
+        mcp_deps: List of MCP dependency entries (registry strings)
         runtime: Target specific runtime only
         exclude: Exclude specific runtime from installation
         verbose: Show detailed installation information
@@ -2322,9 +2318,9 @@ def _install_mcp_dependencies(
         _rich_warning("No MCP dependencies found in apm.yml")
         return 0
 
-    # Separate registry strings from inline dict configs
+    # Filter to registry strings only (inline dicts are preserved during
+    # parsing for data fidelity but not installed — see #132).
     registry_deps = [d for d in mcp_deps if isinstance(d, str)]
-    inline_deps = [d for d in mcp_deps if isinstance(d, dict)]
 
     console = _get_console()
 
@@ -2549,11 +2545,6 @@ def _install_mcp_dependencies(
             _rich_error("Cannot validate MCP servers without registry operations")
             raise RuntimeError("Registry operations module required for MCP installation")
 
-    # --- Inline dict deps (name/type/url) ---
-    if inline_deps:
-        inline_count = _install_inline_mcp_deps(inline_deps, target_runtimes, verbose)
-        configured_count += inline_count
-
     # Close the panel
     if console:
         if configured_count > 0:
@@ -2566,108 +2557,7 @@ def _install_mcp_dependencies(
     return configured_count
 
 
-def _validate_inline_url(url: str, dep_name: str) -> bool:
-    """Validate that an inline MCP dep URL uses an allowed scheme.
 
-    Blocks file://, data:, javascript:, etc. from transitive packages.
-
-    Args:
-        url: The URL to validate.
-        dep_name: Name of the dep (for warning messages).
-
-    Returns:
-        True if the URL scheme is allowed, False otherwise.
-    """
-    from urllib.parse import urlparse
-
-    _ALLOWED_SCHEMES = {"https", "http"}
-    parsed = urlparse(url)
-    if parsed.scheme not in _ALLOWED_SCHEMES:
-        _rich_warning(
-            f"Skipping inline MCP '{dep_name}': disallowed URL scheme '{parsed.scheme}'"
-        )
-        return False
-    return True
-
-
-def _install_inline_mcp_deps(
-    inline_deps: list, target_runtimes: list, verbose: bool = False
-) -> int:
-    """Install inline MCP dependencies via runtime client adapters.
-
-    Delegates JSON/TOML I/O to the existing ClientFactory adapters
-    (VSCodeClientAdapter, CopilotClientAdapter, CodexClientAdapter)
-    instead of reimplementing config file handling.
-
-    Args:
-        inline_deps: List of dict MCP entries.
-        target_runtimes: List of target runtime names.
-        verbose: Show detailed output.
-
-    Returns:
-        int: Number of servers successfully configured.
-    """
-    from apm_cli.factory import ClientFactory
-
-    console = _get_console()
-    configured = 0
-
-    for dep in inline_deps:
-        name = dep.get("name", "")
-        server_type = dep.get("type", "sse")
-        url = dep.get("url", "")
-        headers = dep.get("headers", {})
-
-        if not name or not url:
-            safe_dep = {
-                "name": name or None,
-                "type": server_type or None,
-                "url_present": bool(url),
-                "has_headers": bool(headers),
-            }
-            _rich_warning(
-                "Skipping inline MCP dep with missing required fields "
-                f"(safe fields: {safe_dep})"
-            )
-            continue
-
-        # URL scheme validation (#6)
-        if not _validate_inline_url(url, name):
-            continue
-
-        server_config = {"type": server_type, "url": url}
-        if headers:
-            server_config["headers"] = headers
-
-        any_success = False
-        for rt in target_runtimes:
-            try:
-                adapter = ClientFactory.create_client(rt)
-                if rt == "vscode":
-                    # VSCode adapter.update_config() is a full overwrite;
-                    # read-merge-write to preserve existing servers.
-                    config = adapter.get_current_config()
-                    if "servers" not in config:
-                        config["servers"] = {}
-                    config["servers"][name] = server_config
-                    adapter.update_config(config)
-                else:
-                    # Copilot and Codex adapters merge internally.
-                    adapter.update_config({name: server_config})
-                any_success = True
-            except Exception as e:
-                _rich_error(f"Failed to configure inline MCP '{name}' for {rt}: {e}")
-                continue
-
-        if any_success:
-            if console:
-                console.print(
-                    f"│  [green]✓[/green]  {name} (inline) → "
-                    f"{', '.join([rt.title() for rt in target_runtimes])}"
-                )
-            configured += 1
-
-    return configured
 
 
 def _show_install_summary(

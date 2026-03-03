@@ -519,13 +519,7 @@ dependencies:
     - ghcr.io/github/github-mcp-server
     - ghcr.io/modelcontextprotocol/filesystem-server
     - ghcr.io/modelcontextprotocol/postgres-server
-    # Inline config (private / self-hosted servers)
-    - name: my-knowledge-base
-      type: http
-      url: https://my-kb.example.com/
 ```
-
-Inline MCP entries (`name`/`type`/`url` dicts) are written directly into runtime configs and bypass the registry. They are also collected transitively from APM dependencies.
 
 ```bash
 # Install MCP dependencies
