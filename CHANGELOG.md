@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support hooks as an agent primitive with install-time execution and dependency display (#97)
+- Support hooks as an agent primitive with install-time integration and dependency display (hooks execute at agent runtime, not during `apm install`) (#97)
 - Deploy agents to `.claude/agents/` during `apm install` (#95)
 - Promote sub-skills inside packages to top-level `.github/skills/` entries (#102)
 
