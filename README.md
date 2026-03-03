@@ -28,7 +28,7 @@ dependencies:
     # Skills from any repository
     - anthropics/skills/skills/frontend-design
     - microsoft/GitHub-Copilot-for-Azure/plugin/skills/azure-compliance
-    # A full APM package with rules, skills, prompts...
+    # A full APM package with rules, skills, prompts, hooks...
     - microsoft/apm-sample-package
     # Specific agent primitives from any repository
     - github/awesome-copilot/skills/review-and-refactor
@@ -168,14 +168,17 @@ For private repos or Azure DevOps, set a token:
 
 ## APM Packages
 
-APM installs from any GitHub or Azure DevOps repo — no special packaging required. Point at a prompt file, a skill, or a full package. These are some curated packages to get you started:
+An APM package is anything you can point `apm install` at: a full package with an `apm.yml` manifest and `.apm/` folder, a single primitive file (`.instructions.md`, `.prompt.md`, `.agent.md`), a skill folder, or any subtree inside a repository. Hooks are auto-discovered when a package contains them. See [Primitives](docs/primitives.md) for details on each type.
+
+APM installs from **GitHub.com**, **GitHub Enterprise Server**, **GitHub Enterprise Cloud with Data Residency**, and **Azure DevOps** — no registry required. See [Package Sources](docs/getting-started.md#package-sources) for host configuration.
+
+Popular sources to get you started:
 
 | Package | What you get |
 |---------|-------------|
 | [github/awesome-copilot](https://github.com/github/awesome-copilot) | Community prompts, agents & instructions for GitHub Copilot |
-| [anthropics/courses](https://github.com/anthropics/courses) | Anthropic's official prompt engineering courses |
+| [anthropics/skills](https://github.com/anthropics/skills) | Anthropic's official agent skills |
 | [microsoft/GitHub-Copilot-for-Azure](https://github.com/microsoft/GitHub-Copilot-for-Azure/tree/main/plugin/skills) | Azure Skills |
-| [Add yours →](https://github.com/microsoft/apm/discussions/new) | |
 
 ---
 
