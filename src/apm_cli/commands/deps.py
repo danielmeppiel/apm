@@ -170,6 +170,7 @@ def list_packages():
             table.add_column("Instructions", style="green", justify="center")
             table.add_column("Agents", style="cyan", justify="center")
             table.add_column("Skills", style="yellow", justify="center")
+            table.add_column("Hooks", style="red", justify="center")
             
             for pkg in installed_packages:
                 p = pkg['primitives']
@@ -181,6 +182,7 @@ def list_packages():
                     str(p.get('instructions', 0)) if p.get('instructions', 0) > 0 else "-",
                     str(p.get('agents', 0)) if p.get('agents', 0) > 0 else "-",
                     str(p.get('skills', 0)) if p.get('skills', 0) > 0 else "-",
+                    str(p.get('hooks', 0)) if p.get('hooks', 0) > 0 else "-",
                 )
             
             console.print(table)
@@ -194,8 +196,8 @@ def list_packages():
         else:
             # Fallback text table
             click.echo("📋 APM Dependencies:")
-            click.echo(f"{'Package':<30} {'Version':<10} {'Source':<12} {'Prompts':>7} {'Instr':>7} {'Agents':>7} {'Skills':>7}")
-            click.echo("-" * 90)
+            click.echo(f"{'Package':<30} {'Version':<10} {'Source':<12} {'Prompts':>7} {'Instr':>7} {'Agents':>7} {'Skills':>7} {'Hooks':>7}")
+            click.echo("-" * 98)
             
             for pkg in installed_packages:
                 p = pkg['primitives']
@@ -206,7 +208,8 @@ def list_packages():
                 instructions = str(p.get('instructions', 0)) if p.get('instructions', 0) > 0 else "-"
                 agents = str(p.get('agents', 0)) if p.get('agents', 0) > 0 else "-"
                 skills = str(p.get('skills', 0)) if p.get('skills', 0) > 0 else "-"
-                click.echo(f"{name:<30} {version:<10} {source:<12} {prompts:>7} {instructions:>7} {agents:>7} {skills:>7}")
+                hooks = str(p.get('hooks', 0)) if p.get('hooks', 0) > 0 else "-"
+                click.echo(f"{name:<30} {version:<10} {source:<12} {prompts:>7} {instructions:>7} {agents:>7} {skills:>7} {hooks:>7}")
             
             # Show orphaned packages warning
             if orphaned_packages:
@@ -519,6 +522,11 @@ def info(package: str):
             else:
                 content_lines.append("  • No agent workflows found")
             
+            if package_info.get('hooks', 0) > 0:
+                content_lines.append("")
+                content_lines.append("[bold]Hooks:[/bold]")
+                content_lines.append(f"  • {package_info['hooks']} hook file(s)")
+            
             content = "\n".join(content_lines)
             panel = Panel(content, title=f"ℹ️ Package Info: {package}", border_style="cyan")
             console.print(panel)
@@ -549,6 +557,11 @@ def info(package: str):
                 click.echo(f"  • {package_info['workflows']} executable workflows")
             else:
                 click.echo("  • No agent workflows found")
+            
+            if package_info.get('hooks', 0) > 0:
+                click.echo("")
+                click.echo("Hooks:")
+                click.echo(f"  • {package_info['hooks']} hook file(s)")
     
     except Exception as e:
         _rich_error(f"Error reading package information: {e}")
@@ -563,7 +576,7 @@ def _count_primitives(package_path: Path) -> Dict[str, int]:
     Returns:
         dict: Counts for 'prompts', 'instructions', 'agents', 'skills'
     """
-    counts = {'prompts': 0, 'instructions': 0, 'agents': 0, 'skills': 0}
+    counts = {'prompts': 0, 'instructions': 0, 'agents': 0, 'skills': 0, 'hooks': 0}
     
     apm_dir = package_path / ".apm"
     if apm_dir.exists():
@@ -590,6 +603,11 @@ def _count_primitives(package_path: Path) -> Dict[str, int]:
     # Count root-level SKILL.md as a skill
     if (package_path / "SKILL.md").exists():
         counts['skills'] += 1
+    
+    # Count hooks (.json files in hooks/ or .apm/hooks/)
+    for hooks_dir in [package_path / "hooks", apm_dir / "hooks" if apm_dir.exists() else None]:
+        if hooks_dir and hooks_dir.exists() and hooks_dir.is_dir():
+            counts['hooks'] += len(list(hooks_dir.glob("*.json")))
     
     return counts
 
@@ -689,6 +707,7 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
         if apm_yml_path.exists():
             package = APMPackage.from_apm_yml(apm_yml_path)
             context_count, workflow_count = _count_package_files(package_path)
+            primitives = _count_primitives(package_path)
             return {
                 'name': package.name,
                 'version': package.version or 'unknown',
@@ -697,10 +716,12 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
                 'source': package.source or 'local',
                 'install_path': str(package_path.resolve()),
                 'context_files': _get_detailed_context_counts(package_path),
-                'workflows': workflow_count
+                'workflows': workflow_count,
+                'hooks': primitives.get('hooks', 0)
             }
         else:
             context_count, workflow_count = _count_package_files(package_path)
+            primitives = _count_primitives(package_path)
             return {
                 'name': package_path.name,
                 'version': 'unknown',
@@ -709,7 +730,8 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
                 'source': 'unknown',
                 'install_path': str(package_path.resolve()),
                 'context_files': _get_detailed_context_counts(package_path),
-                'workflows': workflow_count
+                'workflows': workflow_count,
+                'hooks': primitives.get('hooks', 0)
             }
     except Exception as e:
         return {
@@ -720,7 +742,8 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
             'source': 'unknown',
             'install_path': str(package_path.resolve()),
             'context_files': {'instructions': 0, 'chatmodes': 0, 'contexts': 0},
-            'workflows': 0
+            'workflows': 0,
+            'hooks': 0
         }
 
 
