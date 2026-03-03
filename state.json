@@ -1,0 +1,37 @@
+{
+  "last_updated": "2026-03-03T10:55:22Z",
+  "last_run_tasks": ["task1", "task2", "task3", "task7"],
+  "validated_commands": {
+    "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
+    "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
+    "format": "python3 -m uv run black . && python3 -m uv run isort .",
+    "install_dev": "python3 -m uv sync --extra dev",
+    "notes": "uv is not on PATH in CI; use 'python3 -m uv' instead"
+  },
+  "coverage_baseline": {
+    "total": "51%",
+    "run_date": "2026-03-03",
+    "test_count": 879,
+    "pre_existing_failures": 1
+  },
+  "monthly_activity_issue": "pending lookup",
+  "testing_backlog": [
+    {"id": "token-manager", "file": "src/apm_cli/core/token_manager.py", "coverage": "20%", "priority": "medium", "notes": "Needs mocking for OAuth flows"},
+    {"id": "apm-resolver", "file": "src/apm_cli/deps/apm_resolver.py", "coverage": "9%", "priority": "medium"},
+    {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "7%", "priority": "low", "notes": "Heavy network dependency"},
+    {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
+    {"id": "package-validator", "file": "src/apm_cli/deps/package_validator.py", "coverage": "10%", "priority": "medium"},
+    {"id": "fix-ansi-test", "file": "tests/unit/test_install_command.py:44", "priority": "low", "notes": "Pre-existing failure: test checks for 'apm install <org/repo>' but Rich adds ANSI bold codes around < and >"}
+  ],
+  "backlog_cursor": "token-manager",
+  "pending_branches": ["test-assist/constitution-injector-coverage"],
+  "completed_work": [
+    {
+      "run": "2026-03-03",
+      "tasks": ["task1", "task2", "task3", "task7"],
+      "branch": "test-assist/constitution-injector-coverage",
+      "pr_status": "branch_ready_pr_creation_failed",
+      "description": "Added 41 unit tests: constitution_block.py (53%->100%), injector.py (44%->93%)"
+    }
+  ]
+}
