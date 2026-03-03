@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-03T10:55:22Z",
-  "last_run_tasks": ["task1", "task2", "task3", "task7"],
+  "last_updated": "2026-03-03T16:56:00Z",
+  "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -9,9 +9,9 @@
     "notes": "uv is not on PATH in CI; use 'python3 -m uv' instead"
   },
   "coverage_baseline": {
-    "total": "51%",
+    "total": "52%",
     "run_date": "2026-03-03",
-    "test_count": 879,
+    "test_count": 916,
     "pre_existing_failures": 1
   },
   "monthly_activity_issue": "pending lookup",
@@ -20,14 +20,23 @@
     {"id": "apm-resolver", "file": "src/apm_cli/deps/apm_resolver.py", "coverage": "9%", "priority": "medium"},
     {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "7%", "priority": "low", "notes": "Heavy network dependency"},
     {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
-    {"id": "package-validator", "file": "src/apm_cli/deps/package_validator.py", "coverage": "10%", "priority": "medium"},
-    {"id": "fix-ansi-test", "file": "tests/unit/test_install_command.py:44", "priority": "low", "notes": "Pre-existing failure: test checks for 'apm install <org/repo>' but Rich adds ANSI bold codes around < and >"}
+    {"id": "fix-ansi-test", "file": "tests/unit/test_install_command.py:44", "priority": "low", "notes": "Pre-existing failure: test checks for 'apm install <org/repo>' but Rich adds ANSI bold codes around < and >"},
+    {"id": "core-operations", "file": "src/apm_cli/core/operations.py", "coverage": "0%", "priority": "medium"},
+    {"id": "registry-operations", "file": "src/apm_cli/registry/operations.py", "coverage": "6%", "priority": "medium"},
+    {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"}
   ],
   "backlog_cursor": "token-manager",
-  "pending_branches": ["test-assist/constitution-injector-coverage"],
+  "pending_branches": [],
   "completed_work": [
     {
-      "run": "2026-03-03",
+      "run": "2026-03-03T16:56:00Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/package-validator-coverage",
+      "pr_status": "pr_created",
+      "description": "Added 37 unit tests: package_validator.py (10%->100%). Also fixed UnboundLocalError bug in get_package_info_summary()."
+    },
+    {
+      "run": "2026-03-03T10:55:00Z",
       "tasks": ["task1", "task2", "task3", "task7"],
       "branch": "test-assist/constitution-injector-coverage",
       "pr_status": "branch_ready_pr_creation_failed",
