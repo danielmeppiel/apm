@@ -43,26 +43,21 @@ Enhancement suggestions are welcome! Please:
 
 ### Pull Request Process
 
-1. **Choose the appropriate PR template** for your change:
-   - **🚀 New Feature**: Use the `feature.md` template
-   - **🐛 Bug Fix**: Use the `bugfix.md` template
-   - **📖 Documentation**: Use the `documentation.md` template
-   - **🔧 Maintenance**: Use the `maintenance.md` template
-   - **Other**: Use the standard PR template
+1. Fill out the PR template — describe what changed, why, and link the issue.
+2. Ensure your PR addresses only one concern (one feature, one bug fix).
+3. Include tests for new functionality.
+4. Update documentation if needed.
+5. PRs must pass all CI checks before they can be merged.
 
-2. **Apply the correct label** after creating your PR:
-   - `enhancement` or `feature` - New functionality
-   - `bug` or `fix` - Bug fixes
-   - `documentation` or `docs` - Documentation updates
-   - `ignore-for-release` - Exclude from release notes
+### Issue Triage
 
-3. Follow the template provided.
-4. Ensure your PR addresses only one concern (one feature, one bug fix).
-5. Include tests for new functionality.
-6. Update documentation if needed.
-7. PRs must pass all checks before they can be merged.
+Every new issue is automatically labeled `needs-triage`. Maintainers review incoming issues and:
 
-**Note**: Labels are used to automatically categorize changes in release notes. The correct label helps maintainers and users understand what changed in each release.
+1. **Accept** — remove `needs-triage`, add `accepted`, and assign a milestone.
+2. **Prioritize** — optionally add `priority/high` or `priority/low`.
+3. **Close** — if it's a duplicate (`duplicate`) or out of scope, close with a comment explaining why.
+
+Labels used for triage: `needs-triage`, `accepted`, `needs-design`, `priority/high`, `priority/low`.
 
 ## Development Environment
 
@@ -73,22 +68,15 @@ This project uses uv to manage Python environments and dependencies:
 git clone <this-repo-url>
 cd apm
 
-# Create a virtual environment and install dependencies
-uv venv
-source venv/bin/activate  # On Windows, use: venv\Scripts\activate
-uv pip install -e ".[dev]"
+# Install all dependencies (creates .venv automatically)
+uv sync --extra dev
 ```
 
 ## Testing
 
-We use pytest for testing. The project uses `uv` to manage virtual environments and dependencies — the recommended way to run tests is:
+We use pytest for testing. After completing the setup above, run the test suite with:
 
 ```bash
-uv run pytest
-# install dev dependencies (creates .venv managed by uv)
-uv sync --extra dev
-
-# run the test suite
 uv run pytest -q
 ```
 

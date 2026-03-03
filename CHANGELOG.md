@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+
+- **Deploy Agents**: Agents now install to `.claude/agents/` during `apm install` (#95)
+- **Sub-skill Promotion**: Promote sub-skills inside packages to top-level `.github/skills/` entries (#102)
+- **Agentic Workflows**: GitHub Agentic Workflows for docs, testing, and CLI consistency (#104)
+
+### Changed
+
+- **Microsoft OSPO Transfer**: Migrated to Microsoft OSS organization (#85, #105)
+- **README**: Added missing version field in the apm.yml example (#108)
+- **CI**: Slim PR pipelines to Linux-only for fast feedback (#103)
+- **CI**: Auto-approve integration tests for internal PRs (#98)
+- **CODEOWNERS**: Added code ownership file (#115)
+
+### Fixed
+
+- **Workflow Permissions**: Fixed GitHub Actions permissions (#87)
+- **Azure DevOps**: Support spaces in project names (#92)
+- **Virtual Subdirectory Deps**: Fix virtual subdirectory deps marked as orphaned, skipping instruction processing (#100)
+- **CI**: Prevent skip-propagation in integration test pipeline (#106)
+- **Skill Integration**: Fix skill integration bugs, transitive dep cleanup, and simplification (#107)
+- **CI**: Integration test corrections (#109)
+- **Transitive Dependencies**: Fix transitive dependency handling in compile and orphan detection (#111)
+
+
 ## [0.7.3] - 2025-02-15
 
 ### Added

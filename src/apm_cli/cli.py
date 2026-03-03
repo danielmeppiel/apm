@@ -1317,13 +1317,15 @@ def uninstall(ctx, packages, dry_run):
         agents_cleaned = 0
         commands_cleaned = 0
         skills_cleaned = 0
+        hooks_cleaned = 0
 
         try:
-            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_package
+            from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
             from apm_cli.integration.prompt_integrator import PromptIntegrator
             from apm_cli.integration.agent_integrator import AgentIntegrator
             from apm_cli.integration.skill_integrator import SkillIntegrator
             from apm_cli.integration.command_integrator import CommandIntegrator
+            from apm_cli.integration.hook_integrator import HookIntegrator
 
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             project_root = Path(".")
@@ -1354,11 +1356,17 @@ def uninstall(ctx, packages, dry_run):
                 result = integrator.sync_integration(apm_package, project_root)
                 commands_cleaned = result.get("files_removed", 0)
 
+            # Clean hooks (.github/hooks/ and .claude/settings.json)
+            hook_integrator_cleanup = HookIntegrator()
+            result = hook_integrator_cleanup.sync_integration(apm_package, project_root)
+            hooks_cleaned = result.get("files_removed", 0)
+
             # Phase 2: Re-integrate from remaining installed packages in apm_modules/
             prompt_integrator = PromptIntegrator()
             agent_integrator = AgentIntegrator()
             skill_integrator = SkillIntegrator()
             command_integrator = CommandIntegrator()
+            hook_integrator_reint = HookIntegrator()
 
             for dep in apm_package.get_apm_dependencies():
                 dep_ref = dep if hasattr(dep, 'repo_url') else None
@@ -1372,7 +1380,7 @@ def uninstall(ctx, packages, dry_run):
                     continue
 
                 # Build minimal PackageInfo for re-integration
-                result = validate_package(install_path)
+                result = validate_apm_package(install_path)
                 pkg = result.package if result and result.package else None
                 if not pkg:
                     continue
@@ -1393,6 +1401,8 @@ def uninstall(ctx, packages, dry_run):
                     skill_integrator.integrate_package_skill(pkg_info, project_root)
                     if command_integrator.should_integrate(project_root):
                         command_integrator.integrate_package_commands(pkg_info, project_root)
+                    hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
+                    hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
                 except Exception:
                     pass  # Best effort re-integration
 
@@ -1408,6 +1418,8 @@ def uninstall(ctx, packages, dry_run):
             _rich_info(f"✓ Cleaned up {skills_cleaned} skill(s)")
         if commands_cleaned > 0:
             _rich_info(f"✓ Cleaned up {commands_cleaned} command(s)")
+        if hooks_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {hooks_cleaned} hook(s)")
 
         # Final summary
         summary_lines = []
@@ -1617,15 +1629,18 @@ def _install_apm_dependencies(
         agent_integrator = AgentIntegrator()
         from apm_cli.integration.skill_integrator import SkillIntegrator, should_install_skill
         from apm_cli.integration.command_integrator import CommandIntegrator
+        from apm_cli.integration.hook_integrator import HookIntegrator
 
         skill_integrator = SkillIntegrator()
         command_integrator = CommandIntegrator()
+        hook_integrator = HookIntegrator()
         total_prompts_integrated = 0
         total_agents_integrated = 0
         total_skills_integrated = 0
         total_sub_skills_promoted = 0
         total_instructions_found = 0
         total_commands_integrated = 0
+        total_hooks_integrated = 0
         total_links_resolved = 0
 
         # Collect installed packages for lockfile generation
@@ -1873,6 +1888,26 @@ def _install_apm_dependencies(
                                         f"  └─ {command_result.files_updated} commands updated"
                                     )
                                 total_links_resolved += command_result.links_resolved
+
+                            # Hook integration (target-aware)
+                            if integrate_vscode:
+                                hook_result = hook_integrator.integrate_package_hooks(
+                                    cached_package_info, project_root
+                                )
+                                if hook_result.hooks_integrated > 0:
+                                    total_hooks_integrated += hook_result.hooks_integrated
+                                    _rich_info(
+                                        f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/"
+                                    )
+                            if integrate_claude:
+                                hook_result_claude = hook_integrator.integrate_package_hooks_claude(
+                                    cached_package_info, project_root
+                                )
+                                if hook_result_claude.hooks_integrated > 0:
+                                    total_hooks_integrated += hook_result_claude.hooks_integrated
+                                    _rich_info(
+                                        f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json"
+                                    )
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(
@@ -2058,6 +2093,26 @@ def _install_apm_dependencies(
                                         f"  └─ {command_result.files_updated} commands updated"
                                     )
                                 total_links_resolved += command_result.links_resolved
+
+                            # Hook integration (target-aware)
+                            if integrate_vscode:
+                                hook_result = hook_integrator.integrate_package_hooks(
+                                    package_info, project_root
+                                )
+                                if hook_result.hooks_integrated > 0:
+                                    total_hooks_integrated += hook_result.hooks_integrated
+                                    _rich_info(
+                                        f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/"
+                                    )
+                            if integrate_claude:
+                                hook_result_claude = hook_integrator.integrate_package_hooks_claude(
+                                    package_info, project_root
+                                )
+                                if hook_result_claude.hooks_integrated > 0:
+                                    total_hooks_integrated += hook_result_claude.hooks_integrated
+                                    _rich_info(
+                                        f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json"
+                                    )
                         except Exception as e:
                             # Don't fail installation if integration fails
                             _rich_warning(f"  ⚠ Failed to integrate primitives: {e}")
@@ -2126,6 +2181,17 @@ def _install_apm_dependencies(
             except Exception as e:
                 _rich_warning(f"Could not update .gitignore for Claude agents: {e}")
 
+        # Update .gitignore for integrated hooks if any were integrated
+        if integrate_vscode and total_hooks_integrated > 0:
+            try:
+                updated = hook_integrator.update_gitignore(project_root)
+                if updated:
+                    _rich_info(
+                        "Updated .gitignore for integrated hooks (*-apm.json)"
+                    )
+            except Exception as e:
+                _rich_warning(f"Could not update .gitignore for hooks: {e}")
+
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:
             _rich_info(f"✓ Resolved {total_links_resolved} context file links")
@@ -2133,6 +2199,12 @@ def _install_apm_dependencies(
         # Show Claude commands stats if any were integrated
         if total_commands_integrated > 0:
             _rich_info(f"✓ Integrated {total_commands_integrated} command(s)")
+
+        # Show hooks stats if any were integrated
+        if total_hooks_integrated > 0:
+            _rich_info(f"✓ Integrated {total_hooks_integrated} hook(s)")
+
+        _rich_success(f"Installed {installed_count} APM dependencies")
 
         return installed_count, total_prompts_integrated, total_agents_integrated
 

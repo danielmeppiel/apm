@@ -57,6 +57,7 @@ Skill registries install skills. APM manages **every primitive** your AI agents 
 | **Skills** | AI capabilities, workflows | Form builder, code reviewer |
 | **Prompts** | Reusable slash commands | `/security-audit`, `/design-review` |
 | **Agents** | Specialized personas | Accessibility auditor, API designer |
+| **Hooks** | Lifecycle event handlers | Pre-tool validation, post-tool linting |
 | **MCP Servers** | Tool integrations | Database access, API connectors |
 
 All declared in one manifest. All installed with one command — including transitive dependencies:
@@ -119,7 +120,8 @@ my-standards/
     ├── instructions/    # Guardrails (.instructions.md)
     ├── prompts/         # Slash commands (.prompt.md)
     ├── skills/          # Agent Skills (SKILL.md)
-    └── agents/          # Personas (.agent.md)
+    ├── agents/          # Personas (.agent.md)
+    └── hooks/           # Event handlers (.json)
 ```
 
 Add a guardrail and publish:
@@ -176,6 +178,10 @@ APM installs from any GitHub or Azure DevOps repo — no special packaging requi
 | [Add yours →](https://github.com/microsoft/apm/discussions/new) | |
 
 ---
+
+## Roadmap
+
+See the [APM Roadmap](https://github.com/microsoft/apm/discussions/116) for what's coming next.
 
 ## Documentation
 
