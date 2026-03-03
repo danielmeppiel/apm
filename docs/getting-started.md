@@ -124,6 +124,14 @@ apm install partner.ghe.com/external/integration  # FQDN always works
 apm install github.com/public/open-source-package
 ```
 
+> **Important:** When `GITHUB_HOST` is set, **all** bare package names (e.g., `owner/repo`) resolve against that host. To reference packages on a different server, use the full hostname (FQDN) in your `apm.yml`:
+> ```yaml
+> dependencies:
+>   apm:
+>   - team/internal-package                          # → goes to GITHUB_HOST
+>   - github.com/public/open-source-package           # → goes to github.com
+> ```
+
 **Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax to specify supported hosts explicitly (e.g., `github.com`, `*.ghe.com`, Azure DevOps). Custom hosts require setting `GITHUB_HOST`.
 
 ### Azure DevOps Support
