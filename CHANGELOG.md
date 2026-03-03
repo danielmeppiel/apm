@@ -8,29 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2025-03-03
+
 ### Added
 
-- **Deploy Agents**: Agents now install to `.claude/agents/` during `apm install` (#95)
-- **Sub-skill Promotion**: Promote sub-skills inside packages to top-level `.github/skills/` entries (#102)
-- **Agentic Workflows**: GitHub Agentic Workflows for docs, testing, and CLI consistency (#104)
-
-### Changed
-
-- **Microsoft OSPO Transfer**: Migrated to Microsoft OSS organization (#85, #105)
-- **README**: Added missing version field in the apm.yml example (#108)
-- **CI**: Slim PR pipelines to Linux-only for fast feedback (#103)
-- **CI**: Auto-approve integration tests for internal PRs (#98)
-- **CODEOWNERS**: Added code ownership file (#115)
+- Support hooks as an agent primitive with install-time execution and dependency display (#97)
+- Deploy agents to `.claude/agents/` during `apm install` (#95)
+- Promote sub-skills inside packages to top-level `.github/skills/` entries (#102)
 
 ### Fixed
 
-- **Workflow Permissions**: Fixed GitHub Actions permissions (#87)
-- **Azure DevOps**: Support spaces in project names (#92)
-- **Virtual Subdirectory Deps**: Fix virtual subdirectory deps marked as orphaned, skipping instruction processing (#100)
-- **CI**: Prevent skip-propagation in integration test pipeline (#106)
-- **Skill Integration**: Fix skill integration bugs, transitive dep cleanup, and simplification (#107)
-- **CI**: Integration test corrections (#109)
-- **Transitive Dependencies**: Fix transitive dependency handling in compile and orphan detection (#111)
+- Fix skill integration bugs, transitive dep cleanup, and simplification (#107)
+- Fix transitive dependency handling in compile and orphan detection (#111)
+- Fix virtual subdirectory deps marked as orphaned, skipping instruction processing (#100)
+- Improve multi-host error guidance when `GITHUB_HOST` is set (#113, #130)
+- Support spaces in Azure DevOps project names (#92)
+- Fix GitHub Actions workflow permissions, integration test skip-propagation, and test corrections (#87, #106, #109)
+
+### Changed
+
+- Migrated to Microsoft OSS organization (#85, #105)
+- Added CODEOWNERS, simplified PR/issue templates, triage labels, and updated CONTRIBUTING.md (#115, #118)
+- Added missing `version` field in the apm.yml README example (#108)
+- Slim PR pipelines to Linux-only, auto-approve integration tests, added agentic workflows for maintenance (#98, #103, #104, #119)
 
 
 ## [0.7.3] - 2025-02-15
