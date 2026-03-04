@@ -86,17 +86,67 @@ dependencies:
 
     # FQDN shorthand with virtual path (any host)
     - gitlab.com/acme/repo/prompts/code-review.prompt.md
+
+    # Object format: git URL + sub-path / ref / alias
+    - git: https://gitlab.com/acme/coding-standards.git
+      path: instructions/security
+      ref: v2.0
   mcp:
     - io.github.github/github-mcp-server          # Registry reference
 ```
 
-APM accepts dependencies in three formats:
+APM accepts dependencies in two forms:
+
+**String format** (simple cases):
 - **Shorthand** (`owner/repo`) — defaults to GitHub
 - **HTTPS URL** (`https://host/owner/repo.git`) — any git host, whole repo
 - **SSH URL** (`git@host:owner/repo.git`) — any git host, whole repo
 - **FQDN shorthand** (`host/owner/repo/path`) — any host, with virtual path support
 
-> **Note:** Git protocol URLs (HTTPS and SSH) identify whole repositories and cannot embed sub-paths. To reference a specific file, collection, or subdirectory within a repo on a non-GitHub host, use the FQDN shorthand format: `gitlab.com/owner/repo/path/to/file.prompt.md`.
+**Object format** (when you need `path`, `ref`, or `alias` on a git URL):
+
+```yaml
+dependencies:
+  apm:
+    - git: https://gitlab.com/acme/coding-standards.git
+      path: instructions/security        # virtual sub-path inside the repo
+      ref: v2.0                          # pin to a tag, branch, or commit
+    - git: git@bitbucket.org:team/rules.git
+      path: prompts/review.prompt.md
+      alias: review
+```
+
+Fields: `git` (required), `path`, `ref`, `alias` (all optional). The `git` value is any HTTPS or SSH clone URL.
+
+> **Tip:** Use the object format for non-GitHub hosts when you need to reference a sub-path inside a repo. FQDN shorthand (`gitlab.com/owner/repo/path`) also works but can be ambiguous with nested groups (e.g., GitLab).
+
+### How Dependencies Are Stored (Canonical Format)
+
+APM normalizes every dependency entry on write — no matter how you specify a package, the stored form in `apm.yml` is always a clean, canonical string. This works like Docker's default registry convention:
+
+- **GitHub** is the default registry. The `github.com` host is stripped, leaving just `owner/repo`.
+- **Non-default hosts** (GitLab, Bitbucket, self-hosted) keep their FQDN: `gitlab.com/owner/repo`.
+
+| You type | Stored in apm.yml |
+|----------|-------------------|
+| `microsoft/apm-sample-package` | `microsoft/apm-sample-package` |
+| `https://github.com/microsoft/apm-sample-package.git` | `microsoft/apm-sample-package` |
+| `git@github.com:microsoft/apm-sample-package.git` | `microsoft/apm-sample-package` |
+| `github.com/microsoft/apm-sample-package` | `microsoft/apm-sample-package` |
+| `https://gitlab.com/acme/rules.git` | `gitlab.com/acme/rules` |
+| `git@bitbucket.org:team/standards.git` | `bitbucket.org/team/standards` |
+
+Virtual paths, refs, and aliases are preserved:
+
+| You type | Stored in apm.yml |
+|----------|-------------------|
+| `github.com/org/repo/skills/review#v2` | `org/repo/skills/review#v2` |
+| `https://gitlab.com/acme/repo.git` + path `docs` + ref `main` | `gitlab.com/acme/repo/docs#main` |
+
+This normalization means:
+- **Duplicate detection works** across input forms — you can't accidentally install the same package twice using different URL formats.
+- **`apm uninstall` accepts any form** — shorthand, HTTPS URL, or SSH URL all resolve to the same canonical identity.
+- **`apm.yml` stays clean** and readable regardless of how packages were added.
 
 MCP dependencies resolve via the MCP server registry (e.g. `io.github.github/github-mcp-server`).
 
@@ -179,10 +229,11 @@ If authentication fails, you'll see an error with guidance on token setup.
 
 ### Other Git Hosts (GitLab, Bitbucket, etc.)
 
-For non-GitHub repositories, APM uses standard git clone mechanisms:
+For non-GitHub repositories, APM delegates authentication to git — it never sends GitHub tokens to non-GitHub hosts:
 
 - **Public repos**: Work without authentication via HTTPS
-- **Private repos**: Configure SSH keys for your git host, and APM will fall back to SSH automatically
+- **Private repos via SSH**: Configure SSH keys for your host — APM falls back to SSH automatically
+- **Private repos via HTTPS**: Configure a [git credential helper](https://git-scm.com/docs/gitcredentials) — APM allows credential helpers for non-GitHub hosts
 
 ```bash
 # Ensure SSH keys are configured for your host
@@ -395,10 +446,13 @@ Result:
 - `depth: 1` = direct dependency
 - `depth: 2+` = transitive dependency
 
-Uninstalling a package also removes its orphaned transitive dependencies (npm-style pruning):
+Uninstalling a package also removes its orphaned transitive dependencies (npm-style pruning).
+You can use any input form — APM resolves it to the canonical identity stored in `apm.yml`:
 
 ```bash
 apm uninstall acme/package-a
+apm uninstall https://github.com/acme/package-a.git   # same effect
+apm uninstall git@github.com:acme/package-a.git        # same effect
 # Also removes B and C if no other package depends on them
 ```
 

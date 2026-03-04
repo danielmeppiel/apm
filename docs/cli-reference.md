@@ -113,7 +113,7 @@ apm install [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGES` - Optional APM packages to add and install (format: `owner/repo`)
+- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, or FQDN shorthand (`host/owner/repo`). All forms are normalized to canonical format in `apm.yml`.
 
 **Options:**
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
@@ -134,6 +134,12 @@ apm install
 
 # Install ONLY this package (not others in apm.yml)
 apm install microsoft/apm-sample-package
+
+# Install via HTTPS URL (normalized to owner/repo in apm.yml)
+apm install https://github.com/microsoft/apm-sample-package.git
+
+# Install from a non-GitHub host (FQDN preserved)
+apm install https://gitlab.com/acme/coding-standards.git
 
 # Add multiple packages and install
 apm install org/pkg1 org/pkg2
@@ -255,7 +261,7 @@ apm uninstall PACKAGE [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGE` - Package to uninstall (format: `owner/repo`)
+- `PACKAGE` - Package to uninstall. Accepts any format — shorthand (`owner/repo`), HTTPS URL, SSH URL, or FQDN. APM resolves it to the canonical identity stored in `apm.yml`.
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
@@ -265,6 +271,9 @@ apm uninstall PACKAGE [OPTIONS]
 ```bash
 # Uninstall a package
 apm uninstall microsoft/apm-sample-package
+
+# Uninstall using an HTTPS URL (resolves to same identity)
+apm uninstall https://github.com/microsoft/apm-sample-package.git
 
 # Preview what would be removed
 apm uninstall microsoft/apm-sample-package --dry-run

@@ -396,7 +396,12 @@ def init(ctx, project_name, yes):
 
 
 def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
-    """Validate packages exist and can be accessed, then add to apm.yml dependencies section."""
+    """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
+    
+    Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
+    is canonicalized before storage. Default host (github.com) is stripped;
+    non-default hosts are preserved. Duplicates are detected by identity.
+    """
     import subprocess
     import tempfile
     from pathlib import Path
@@ -422,27 +427,47 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     current_deps = data["dependencies"]["apm"] or []
     validated_packages = []
 
+    # Build identity set from existing deps for duplicate detection
+    existing_identities = builtins.set()
+    for dep_entry in current_deps:
+        try:
+            dep_str = dep_entry if isinstance(dep_entry, str) else dep_entry.get("git", "")
+            ref = DependencyReference.parse(dep_str)
+            existing_identities.add(ref.get_identity())
+        except Exception:
+            pass
+
     # First, validate all packages
     _rich_info(f"Validating {len(packages)} package(s)...")
 
     for package in packages:
-        # Validate package format (should be owner/repo)
+        # Validate package format (should be owner/repo or a git URL)
         if "/" not in package:
             _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
             continue
 
-        # Check if package is already in dependencies
-        already_in_deps = package in current_deps
+        # Canonicalize input
+        try:
+            dep_ref = DependencyReference.parse(package)
+            canonical = dep_ref.to_canonical()
+            identity = dep_ref.get_identity()
+        except ValueError as e:
+            _rich_error(f"Invalid package: {package} — {e}")
+            continue
+
+        # Check if package is already in dependencies (by identity)
+        already_in_deps = identity in existing_identities
 
         # Validate package exists and is accessible
         if _validate_package_exists(package):
             if already_in_deps:
                 _rich_info(
-                    f"✓ {package} - already in apm.yml, ensuring installation..."
+                    f"✓ {canonical} - already in apm.yml, ensuring installation..."
                 )
             else:
-                validated_packages.append(package)
-                _rich_info(f"✓ {package} - accessible")
+                validated_packages.append(canonical)
+                existing_identities.add(identity)  # prevent duplicates within batch
+                _rich_info(f"✓ {canonical} - accessible")
         else:
             _rich_error(f"✗ {package} - not accessible or doesn't exist")
 
@@ -460,7 +485,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
             _rich_info(f"  + {pkg}")
         return validated_packages
 
-    # Add validated packages to dependencies
+    # Add validated packages to dependencies (already canonical)
     for package in validated_packages:
         current_deps.append(package)
         _rich_info(f"Added {package} to apm.yml")
@@ -1067,16 +1092,38 @@ def uninstall(ctx, packages, dry_run):
 
         # Validate which packages can be removed
         for package in packages:
-            # Validate package format (should be owner/repo)
+            # Validate package format (should be owner/repo or a git URL)
             if "/" not in package:
                 _rich_error(
                     f"Invalid package format: {package}. Use 'owner/repo' format."
                 )
                 continue
 
-            # Check if package exists in dependencies
-            if package in current_deps:
-                packages_to_remove.append(package)
+            # Match by identity: parse the user input and each apm.yml entry,
+            # compare using get_identity() which normalizes host differences.
+            matched_dep = None
+            try:
+                pkg_ref = DependencyReference.parse(package)
+                pkg_identity = pkg_ref.get_identity()
+            except Exception:
+                pkg_identity = package
+
+            for dep_entry in current_deps:
+                dep_str = dep_entry if isinstance(dep_entry, str) else str(dep_entry)
+                try:
+                    dep_ref = DependencyReference.parse(dep_str)
+                    if dep_ref.get_identity() == pkg_identity:
+                        matched_dep = dep_entry  # preserve original entry for removal
+                        break
+                except Exception:
+                    # Fallback: exact string match
+                    if dep_str == package:
+                        matched_dep = dep_entry
+                        break
+                    pass
+
+            if matched_dep is not None:
+                packages_to_remove.append(matched_dep)
                 _rich_info(f"✓ {package} - found in apm.yml")
             else:
                 packages_not_found.append(package)
@@ -1564,34 +1611,20 @@ def _install_apm_dependencies(
 
         # If specific packages were requested, filter to only those
         if only_packages:
-            # Normalize package strings for comparison
-            # User passes "owner/repo" or "owner/repo/subdir"
-            # str(dep) includes host: "github.com/owner/repo/subdir"
-            # dep.repo_url is just "owner/repo" (no subdir)
-            # We need to match the user input against the dep string (without host prefix)
-            # Also normalize _git/ from ADO URLs (dev.azure.com/org/proj/_git/repo -> org/proj/repo)
-            def normalize_pkg(pkg: str) -> str:
-                """Normalize package string for comparison."""
-                # Remove _git/ from ADO URLs
-                if "/_git/" in pkg:
-                    pkg = pkg.replace("/_git/", "/")
-                return pkg
+            # Build identity set from user-supplied package specs.
+            # Accepts any input form: git URLs, FQDN, shorthand.
+            only_identities = builtins.set()
+            for p in only_packages:
+                try:
+                    ref = DependencyReference.parse(p)
+                    only_identities.add(ref.get_identity())
+                except Exception:
+                    only_identities.add(p)
 
-            only_set = builtins.set(normalize_pkg(p) for p in only_packages)
-
-            def matches_filter(dep):
-                # Check exact match with str(dep)
-                if str(dep) in only_set:
-                    return True
-                # Check if str(dep) ends with "/<pkg>" to ensure path boundary matching
-                # This prevents "prefix-owner/repo" from matching "owner/repo"
-                dep_str = str(dep)
-                for pkg in only_set:
-                    if dep_str.endswith(f"/{pkg}"):
-                        return True
-                return False
-
-            deps_to_install = [dep for dep in deps_to_install if matches_filter(dep)]
+            deps_to_install = [
+                dep for dep in deps_to_install
+                if dep.get_identity() in only_identities
+            ]
 
         if not deps_to_install:
             _rich_info("No APM dependencies to install", symbol="check")

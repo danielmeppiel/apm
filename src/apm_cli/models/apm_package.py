@@ -210,17 +210,91 @@ class DependencyReference:
             return f"{self.repo_url}/{self.virtual_path}"
         return self.repo_url
     
-    def get_canonical_dependency_string(self) -> str:
-        """Get the canonical dependency string as stored in apm.yml.
+    def to_canonical(self) -> str:
+        """Return the canonical form of this dependency for storage in apm.yml.
         
-        This is the unique identifier for a package in the dependency list.
-        It includes:
-        - repo_url (always)
-        - virtual_path (for virtual packages)
-        - Does NOT include: reference (#) or alias (@) as these don't affect identity
+        Follows the Docker-style default-registry convention:
+        - Default host (github.com) is stripped  →  owner/repo
+        - Non-default hosts are preserved         →  gitlab.com/owner/repo
+        - Virtual paths are appended              →  owner/repo/path/to/thing
+        - Refs are appended with #                →  owner/repo#v1.0
+        - Aliases are appended with @             →  owner/repo@my-alias
+        
+        No .git suffix, no https://, no git@ — just the canonical identifier.
         
         Returns:
-            str: Canonical dependency string (e.g., "owner/repo" or "owner/repo/collections/name")
+            str: Canonical dependency string
+        """
+        host = self.host or default_host()
+        is_default = host.lower() == default_host().lower()
+        
+        # Start with optional host prefix
+        if is_default:
+            result = self.repo_url
+        else:
+            result = f"{host}/{self.repo_url}"
+        
+        # Append virtual path for virtual packages
+        if self.is_virtual and self.virtual_path:
+            result = f"{result}/{self.virtual_path}"
+        
+        # Append reference (branch, tag, commit)
+        if self.reference:
+            result = f"{result}#{self.reference}"
+        
+        # Append alias
+        if self.alias:
+            result = f"{result}@{self.alias}"
+        
+        return result
+    
+    def get_identity(self) -> str:
+        """Return the identity of this dependency (canonical form without ref/alias).
+        
+        Two deps with the same identity are the same package, regardless of
+        which ref or alias they specify. Used for duplicate detection and uninstall matching.
+        
+        Returns:
+            str: Identity string (e.g., "owner/repo" or "gitlab.com/owner/repo/path")
+        """
+        host = self.host or default_host()
+        is_default = host.lower() == default_host().lower()
+        
+        if is_default:
+            result = self.repo_url
+        else:
+            result = f"{host}/{self.repo_url}"
+        
+        if self.is_virtual and self.virtual_path:
+            result = f"{result}/{self.virtual_path}"
+        
+        return result
+    
+    @staticmethod
+    def canonicalize(raw: str) -> str:
+        """Parse any raw input form and return its canonical storage form.
+        
+        Convenience method that combines parse() + to_canonical().
+        
+        Args:
+            raw: Any supported input form (shorthand, FQDN, HTTPS, SSH, etc.)
+            
+        Returns:
+            str: Canonical form for apm.yml storage
+        """
+        return DependencyReference.parse(raw).to_canonical()
+    
+    def get_canonical_dependency_string(self) -> str:
+        """Get the host-blind canonical string for filesystem and orphan-detection matching.
+        
+        This returns repo_url (+ virtual_path) without host prefix — it matches
+        the filesystem layout in apm_modules/ which is also host-blind.
+        
+        For identity-based matching that includes non-default hosts, use get_identity().
+        For the full canonical form suitable for apm.yml storage, use to_canonical().
+        
+        Returns:
+            str: Host-blind canonical string (e.g., "owner/repo")
         """
         return self.get_unique_key()
     
@@ -321,6 +395,66 @@ class DependencyReference:
             return f"{user_prefix}{host_part}:{path_part}"
         else:
             return f"git@{host_part}:{path_part}"
+
+    @classmethod
+    def parse_from_dict(cls, entry: dict) -> "DependencyReference":
+        """Parse an object-style dependency entry from apm.yml.
+        
+        Supports the Cargo-inspired object format:
+        
+            - git: https://gitlab.com/acme/coding-standards.git
+              path: instructions/security
+              ref: v2.0
+        
+            - git: git@bitbucket.org:team/rules.git
+              path: prompts/review.prompt.md
+        
+        Args:
+            entry: Dictionary with 'git' (required), 'path' (optional), 'ref' (optional)
+            
+        Returns:
+            DependencyReference: Parsed dependency reference
+            
+        Raises:
+            ValueError: If the entry is missing required fields or has invalid format
+        """
+        if 'git' not in entry:
+            raise ValueError("Object-style dependency must have a 'git' field")
+        
+        git_url = entry['git']
+        if not isinstance(git_url, str) or not git_url.strip():
+            raise ValueError("'git' field must be a non-empty string")
+        
+        sub_path = entry.get('path')
+        ref_override = entry.get('ref')
+        alias_override = entry.get('alias')
+        
+        # Validate sub_path if provided
+        if sub_path is not None:
+            if not isinstance(sub_path, str) or not sub_path.strip():
+                raise ValueError("'path' field must be a non-empty string")
+            sub_path = sub_path.strip().strip('/')
+        
+        # Parse the git URL using the standard parser
+        dep = cls.parse(git_url)
+        
+        # Apply overrides from the object fields
+        if ref_override is not None:
+            if not isinstance(ref_override, str) or not ref_override.strip():
+                raise ValueError("'ref' field must be a non-empty string")
+            dep.reference = ref_override.strip()
+        
+        if alias_override is not None:
+            if not isinstance(alias_override, str) or not alias_override.strip():
+                raise ValueError("'alias' field must be a non-empty string")
+            dep.alias = alias_override.strip()
+        
+        # Apply sub-path as virtual package
+        if sub_path:
+            dep.virtual_path = sub_path
+            dep.is_virtual = True
+        
+        return dep
 
     @classmethod
     def parse(cls, dependency_str: str) -> "DependencyReference":
@@ -809,12 +943,17 @@ class APMPackage:
                     if dep_type == 'apm':
                         # APM dependencies need to be parsed as DependencyReference objects
                         parsed_deps = []
-                        for dep_str in dep_list:
-                            if isinstance(dep_str, str):
+                        for dep_entry in dep_list:
+                            if isinstance(dep_entry, str):
                                 try:
-                                    parsed_deps.append(DependencyReference.parse(dep_str))
+                                    parsed_deps.append(DependencyReference.parse(dep_entry))
                                 except ValueError as e:
-                                    raise ValueError(f"Invalid APM dependency '{dep_str}': {e}")
+                                    raise ValueError(f"Invalid APM dependency '{dep_entry}': {e}")
+                            elif isinstance(dep_entry, dict):
+                                try:
+                                    parsed_deps.append(DependencyReference.parse_from_dict(dep_entry))
+                                except ValueError as e:
+                                    raise ValueError(f"Invalid APM dependency {dep_entry}: {e}")
                         dependencies[dep_type] = parsed_deps
                     else:
                         # Other dependencies (like MCP): keep strings and dicts

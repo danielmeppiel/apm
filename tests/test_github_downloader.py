@@ -305,6 +305,7 @@ class TestEnterpriseHostHandling:
         from git.exc import GitCommandError
         
         monkeypatch.setenv("GITHUB_HOST", "company.ghe.com")
+        monkeypatch.setenv("GITHUB_APM_PAT", "test-enterprise-token")
         
         downloader = GitHubPackageDownloader()
         downloader.github_host = "company.ghe.com"
