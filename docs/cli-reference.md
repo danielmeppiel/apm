@@ -259,7 +259,6 @@ apm uninstall PACKAGE [OPTIONS]
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
-- `--verbose` - Show detailed removal information
 
 **Examples:**
 ```bash
@@ -294,6 +293,26 @@ apm uninstall microsoft/apm-sample-package --dry-run
 - Updates `apm.lock` (or deletes it if no dependencies remain)
 - Cleans up empty parent directories
 - Safe operation: only removes APM-managed files (identified by `-apm` suffix)
+
+### `apm prune` - 🧹 Remove orphaned packages
+
+Remove APM packages from `apm_modules/` that are not listed in `apm.yml`.
+
+```bash
+apm prune [OPTIONS]
+```
+
+**Options:**
+- `--dry-run` - Show what would be removed without removing
+
+**Examples:**
+```bash
+# Remove orphaned packages
+apm prune
+
+# Preview what would be removed
+apm prune --dry-run
+```
 
 ### `apm update` - ⬆️ Update APM to the latest version
 
@@ -474,9 +493,35 @@ apm deps update
 apm deps update compliance-rules
 ```
 
-**Note:** Package update functionality requires dependency downloading infrastructure from enhanced install command.
+### `apm mcp` - 🔌 Browse MCP server registry
 
-### `apm mcp search` - 🔍 Search MCP servers
+Browse and discover MCP servers from the GitHub MCP Registry.
+
+```bash
+apm mcp COMMAND [OPTIONS]
+```
+
+#### `apm mcp list` - 📋 List MCP servers
+
+List all available MCP servers from the registry.
+
+```bash
+apm mcp list [OPTIONS]
+```
+
+**Options:**
+- `--limit INTEGER` - Number of results to show
+
+**Examples:**
+```bash
+# List available MCP servers
+apm mcp list
+
+# Limit results
+apm mcp list --limit 20
+```
+
+#### `apm mcp search` - 🔍 Search MCP servers
 
 Search for MCP servers in the GitHub MCP Registry.
 
@@ -502,7 +547,7 @@ apm mcp search database --limit 5
 apm mcp search github
 ```
 
-### `apm mcp show` - 📋 Show MCP server details
+#### `apm mcp show` - 📋 Show MCP server details
 
 Show detailed information about a specific MCP server from the registry.
 
@@ -616,13 +661,17 @@ apm compile [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output file path (default: AGENTS.md)
-- `-t, --target TEXT` - Target agent format: `vscode`, `claude`, or `all`. Auto-detects if not specified.
+- `-t, --target [vscode|agents|claude|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Generate content without writing file
 - `--no-links` - Skip markdown link resolution
 - `--with-constitution/--no-constitution` - Include Spec Kit `memory/constitution.md` verbatim at top inside a delimited block (default: `--with-constitution`). When disabled, any existing block is preserved but not regenerated.
 - `--watch` - Auto-regenerate on changes (file system monitoring)
 - `--validate` - Validate context without compiling
+- `--single-agents` - Force single-file compilation (legacy mode)
+- `-v, --verbose` - Show detailed source attribution and optimizer analysis
+- `--local-only` - Ignore dependencies, compile only local primitives
+- `--clean` - Remove orphaned AGENTS.md files that are no longer generated
 
 **Target Auto-Detection:**
 
@@ -846,13 +895,14 @@ apm config set auto-integrate 1
 
 ### `apm runtime` - 🤖 Manage AI runtimes
 
-APM manages AI runtime installation and configuration automatically. Currently supports two runtimes: `codex`, and `llm`.
+APM manages AI runtime installation and configuration automatically. Currently supports three runtimes: `copilot`, `codex`, and `llm`.
 
 ```bash
 apm runtime COMMAND [OPTIONS]
 ```
 
 **Supported Runtimes:**
+- **`copilot`** - GitHub Copilot coding agent
 - **`codex`** - OpenAI Codex CLI with GitHub Models support
 - **`llm`** - Simon Willison's LLM library with multiple providers
 
@@ -865,9 +915,10 @@ apm runtime setup RUNTIME_NAME [OPTIONS]
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to remove: `codex`, or `llm`
+- `RUNTIME_NAME` - Runtime to install: `copilot`, `codex`, or `llm`
 
 **Options:**
+- `--version TEXT` - Specific version to install
 - `--vanilla` - Install runtime without APM configuration (uses runtime's native defaults)
 
 **Examples:**
@@ -914,7 +965,10 @@ apm runtime remove RUNTIME_NAME
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to remove: `codex`, or `llm`
+- `RUNTIME_NAME` - Runtime to remove: `copilot`, `codex`, or `llm`
+
+**Options:**
+- `--yes` - Confirm the action without prompting
 
 #### `apm runtime status` - 📊 Show runtime status
 
@@ -925,20 +979,9 @@ apm runtime status
 ```
 
 **Output includes:**
-- Runtime preference order (codex → llm)
+- Runtime preference order (copilot → codex → llm)
 - Currently active runtime
 - Next steps if no runtime is available
-
-#### `apm runtime status` - Show runtime status
-
-Display detailed status for a specific runtime.
-
-```bash
-apm runtime status RUNTIME_NAME
-```
-
-**Arguments:**
-- `RUNTIME_NAME` - Runtime to check: `codex` or `llm`
 
 ## File Formats
 
@@ -991,8 +1034,8 @@ apm init my-hello-world
 cd my-hello-world
 
 # 3. Discover MCP servers (optional)
-apm search filesystem
-apm show @modelcontextprotocol/servers/src/filesystem
+apm mcp search filesystem
+apm mcp show @modelcontextprotocol/servers/src/filesystem
 
 # 4. Install dependencies (like npm install)
 apm install
@@ -1011,7 +1054,7 @@ apm list
 
 1. **Start with runtime setup**: Run `apm runtime setup copilot` 
 2. **Use GitHub Models for free tier**: Set `GITHUB_TOKEN` (user-scoped with Models read permission) for free Codex access
-3. **Discover MCP servers**: Use `apm search` to find available MCP servers before adding to apm.yml
+3. **Discover MCP servers**: Use `apm mcp search` to find available MCP servers before adding to apm.yml
 4. **Preview before running**: Use `apm preview` to check parameter substitution
 5. **Organize prompts**: Use descriptive names and place in logical directories
 6. **Version control**: Include `.prompt.md` files and `apm.yml` in your git repository
