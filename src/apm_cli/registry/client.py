@@ -188,14 +188,15 @@ class SimpleRegistryClient:
         try:
             search_results = self.search_servers(reference)
             
-            # Look for matches in search results - check both exact reference match
-            # and the server name from the registry
+            # Pass 1: exact full-name match (prevents slug collisions)
             for server in search_results:
                 server_name = server.get("name", "")
-                # Check exact match with original reference
                 if server_name == reference:
                     return self.get_server_info(server["id"])
-                # Check match with common identifier patterns
+            
+            # Pass 2: fuzzy slug match (only when reference has no namespace)
+            for server in search_results:
+                server_name = server.get("name", "")
                 if self._is_server_match(reference, server_name):
                     return self.get_server_info(server["id"])
                     
@@ -235,6 +236,12 @@ class SimpleRegistryClient:
     def _is_server_match(self, reference: str, server_name: str) -> bool:
         """Check if a reference matches a server name using common patterns.
         
+        When the reference is a qualified name (contains '/'), only exact
+        full-name matches are accepted to prevent slug collisions
+        (e.g. 'microsoftdocs/mcp' must not match 'com.supabase/mcp').
+        
+        Slug-only matching is used only for simple (unqualified) references.
+        
         Args:
             reference (str): Original reference from user.
             server_name (str): Server name from registry.
@@ -245,8 +252,13 @@ class SimpleRegistryClient:
         # Direct match
         if reference == server_name:
             return True
+        
+        # If the reference is qualified (has '/'), require full-name match only
+        # to prevent slug collisions across different namespaces
+        if '/' in reference:
+            return False
             
-        # Extract repo names and compare
+        # Unqualified reference: fall back to slug comparison
         ref_repo = self._extract_repository_name(reference)
         server_repo = self._extract_repository_name(server_name)
         

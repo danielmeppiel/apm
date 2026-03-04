@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 import yaml
 
-from apm_cli.models.apm_package import APMPackage
+from apm_cli.models.apm_package import APMPackage, MCPDependency
 from apm_cli.cli import (
     _collect_transitive_mcp_deps,
     _deduplicate_mcp_deps,
@@ -30,7 +30,10 @@ class TestAPMPackageMCPParsing:
         pkg = APMPackage.from_apm_yml(yml)
         deps = pkg.get_mcp_dependencies()
 
-        assert deps == ["ghcr.io/some/server"]
+        assert len(deps) == 1
+        assert isinstance(deps[0], MCPDependency)
+        assert deps[0].name == "ghcr.io/some/server"
+        assert deps[0].is_registry_resolved
 
     def test_parse_dict_mcp_deps(self, tmp_path):
         """Inline dict MCP deps are preserved."""
@@ -45,8 +48,9 @@ class TestAPMPackageMCPParsing:
         deps = pkg.get_mcp_dependencies()
 
         assert len(deps) == 1
-        assert isinstance(deps[0], dict)
-        assert deps[0]["name"] == "my-srv"
+        assert isinstance(deps[0], MCPDependency)
+        assert deps[0].name == "my-srv"
+        assert deps[0].transport == "sse"  # legacy 'type' mapped to 'transport'
 
     def test_parse_mixed_mcp_deps(self, tmp_path):
         """A mix of string and dict entries is preserved in order."""
@@ -61,8 +65,10 @@ class TestAPMPackageMCPParsing:
         deps = pkg.get_mcp_dependencies()
 
         assert len(deps) == 2
-        assert isinstance(deps[0], str)
-        assert isinstance(deps[1], dict)
+        assert isinstance(deps[0], MCPDependency)
+        assert deps[0].name == "registry-srv"
+        assert isinstance(deps[1], MCPDependency)
+        assert deps[1].name == "inline-srv"
 
     def test_no_mcp_section(self, tmp_path):
         """Missing MCP section returns empty list."""
@@ -116,7 +122,9 @@ class TestCollectTransitiveMCPDeps:
             "dependencies": {"mcp": ["ghcr.io/a/server"]},
         }))
         result = _collect_transitive_mcp_deps(tmp_path)
-        assert result == ["ghcr.io/a/server"]
+        assert len(result) == 1
+        assert isinstance(result[0], MCPDependency)
+        assert result[0].name == "ghcr.io/a/server"
 
     def test_collects_dict_deps(self, tmp_path):
         inline = {"name": "kb", "type": "sse", "url": "https://kb.example.com"}
@@ -129,7 +137,8 @@ class TestCollectTransitiveMCPDeps:
         }))
         result = _collect_transitive_mcp_deps(tmp_path)
         assert len(result) == 1
-        assert result[0]["name"] == "kb"
+        assert isinstance(result[0], MCPDependency)
+        assert result[0].name == "kb"
 
     def test_collects_from_multiple_packages(self, tmp_path):
         for i, dep in enumerate(["ghcr.io/a/s1", "ghcr.io/b/s2"]):
@@ -179,7 +188,9 @@ class TestCollectTransitiveMCPDeps:
             ],
         }))
         result = _collect_transitive_mcp_deps(apm_modules, lock_path)
-        assert result == ["ghcr.io/locked/server"]
+        assert len(result) == 1
+        assert isinstance(result[0], MCPDependency)
+        assert result[0].name == "ghcr.io/locked/server"
 
     def test_lockfile_with_virtual_path(self, tmp_path):
         """Lock-file filtering works for subdirectory (virtual_path) packages."""
@@ -209,7 +220,8 @@ class TestCollectTransitiveMCPDeps:
         }))
         result = _collect_transitive_mcp_deps(apm_modules, lock_path)
         assert len(result) == 1
-        assert result[0]["name"] == "learn"
+        assert isinstance(result[0], MCPDependency)
+        assert result[0].name == "learn"
 
     def test_lockfile_paths_do_not_use_full_rglob_scan(self, tmp_path):
         """When lock-derived paths are available, avoid full recursive scanning."""
@@ -233,7 +245,8 @@ class TestCollectTransitiveMCPDeps:
         with patch("pathlib.Path.rglob", side_effect=AssertionError("rglob should not be called")):
             result = _collect_transitive_mcp_deps(apm_modules, lock_path)
 
-        assert result == ["ghcr.io/locked/server"]
+        assert len(result) == 1
+        assert result[0].name == "ghcr.io/locked/server"
 
     def test_invalid_lockfile_falls_back_to_rglob_scan(self, tmp_path):
         """If lock parsing fails, function falls back to scanning all apm.yml files."""
@@ -250,7 +263,56 @@ class TestCollectTransitiveMCPDeps:
         lock_path.write_text("dependencies: [")
 
         result = _collect_transitive_mcp_deps(apm_modules, lock_path)
-        assert result == ["ghcr.io/a/server"]
+        assert len(result) == 1
+        assert result[0].name == "ghcr.io/a/server"
+
+    def test_skips_self_defined_by_default(self, tmp_path):
+        """Self-defined servers from transitive packages are skipped without the flag."""
+        pkg_dir = tmp_path / "org" / "pkg-a"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "apm.yml").write_text(yaml.dump({
+            "name": "pkg-a",
+            "version": "1.0.0",
+            "dependencies": {"mcp": [
+                "ghcr.io/registry/server",
+                {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
+            ]},
+        }))
+        result = _collect_transitive_mcp_deps(tmp_path)
+        assert len(result) == 1
+        assert result[0].name == "ghcr.io/registry/server"
+
+    def test_trust_private_includes_self_defined(self, tmp_path):
+        """With trust_private=True, self-defined servers are collected."""
+        pkg_dir = tmp_path / "org" / "pkg-a"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "apm.yml").write_text(yaml.dump({
+            "name": "pkg-a",
+            "version": "1.0.0",
+            "dependencies": {"mcp": [
+                "ghcr.io/registry/server",
+                {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
+            ]},
+        }))
+        result = _collect_transitive_mcp_deps(tmp_path, trust_private=True)
+        assert len(result) == 2
+        names = [d.name for d in result]
+        assert "ghcr.io/registry/server" in names
+        assert "private-srv" in names
+
+    def test_trust_private_false_is_default_behavior(self, tmp_path):
+        """Explicitly passing trust_private=False behaves same as default."""
+        pkg_dir = tmp_path / "org" / "pkg-a"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "apm.yml").write_text(yaml.dump({
+            "name": "pkg-a",
+            "version": "1.0.0",
+            "dependencies": {"mcp": [
+                {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
+            ]},
+        }))
+        result = _collect_transitive_mcp_deps(tmp_path, trust_private=False)
+        assert len(result) == 0
 
 
 # ---------------------------------------------------------------------------

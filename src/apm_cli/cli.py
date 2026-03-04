@@ -593,8 +593,13 @@ def _validate_package_exists(package):
     "--dry-run", is_flag=True, help="Show what would be installed without installing"
 )
 @click.option("--verbose", is_flag=True, help="Show detailed installation information")
+@click.option(
+    "--trust-transitive-mcp",
+    is_flag=True,
+    help="Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose, trust_transitive_mcp):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -705,7 +710,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, verbose):
         apm_modules_path = Path.cwd() / "apm_modules"
         if should_install_mcp and apm_modules_path.exists():
             lock_path = Path.cwd() / "apm.lock"
-            transitive_mcp = _collect_transitive_mcp_deps(apm_modules_path, lock_path)
+            transitive_mcp = _collect_transitive_mcp_deps(apm_modules_path, lock_path, trust_transitive_mcp)
             if transitive_mcp:
                 _rich_info(f"Collected {len(transitive_mcp)} transitive MCP dependency(ies)")
                 mcp_deps = _deduplicate_mcp_deps(mcp_deps + transitive_mcp)
@@ -2221,19 +2226,24 @@ def _install_apm_dependencies(
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
 
 
-def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) -> list:
+def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None, trust_private: bool = False) -> list:
     """Collect MCP dependencies from resolved APM packages listed in apm.lock.
 
     Only scans apm.yml files for packages present in apm.lock to avoid
     picking up stale/orphaned packages from previous installs.
     Falls back to scanning all apm.yml files if no lock file is available.
 
+    Self-defined servers (registry: false) from transitive packages are
+    skipped with a warning unless trust_private is True.
+
     Args:
         apm_modules_dir: Path to the apm_modules directory.
         lock_path: Path to the apm.lock file (optional).
+        trust_private: When True, include self-defined servers from transitive
+            packages without requiring re-declaration.
 
     Returns:
-        List of MCP dependency entries (str or dict).
+        List of MCPDependency entries from transitive packages.
     """
     if not apm_modules_dir.exists():
         return []
@@ -2264,7 +2274,21 @@ def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) 
             pkg = APMPackage.from_apm_yml(apm_yml_path)
             mcp = pkg.get_mcp_dependencies()
             if mcp:
-                collected.extend(mcp)
+                for dep in mcp:
+                    if hasattr(dep, 'is_self_defined') and dep.is_self_defined:
+                        if trust_private:
+                            _rich_info(
+                                f"Trusting self-defined MCP server '{dep.name}' "
+                                f"from transitive package '{pkg.name}' (--trust-transitive-mcp)"
+                            )
+                        else:
+                            _rich_warning(
+                                f"Transitive package '{pkg.name}' declares self-defined "
+                                f"MCP server '{dep.name}' (registry: false). "
+                                f"Re-declare it in your apm.yml or use --trust-transitive-mcp."
+                            )
+                            continue
+                    collected.append(dep)
         except Exception:
             # Skip packages that fail to parse
             continue
@@ -2272,32 +2296,135 @@ def _collect_transitive_mcp_deps(apm_modules_dir: Path, lock_path: Path = None) 
 
 
 def _deduplicate_mcp_deps(deps: list) -> list:
-    """Deduplicate a mixed list of MCP deps (strings and dicts).
+    """Deduplicate a list of MCPDependency objects.
 
-    Strings are deduped by value; dicts are deduped by their 'name' key.
+    Deduplicates by name; first occurrence wins (root deps listed before
+    transitive, so root overlays take precedence).
 
     Args:
-        deps: Mixed list of str and dict MCP entries.
+        deps: List of MCPDependency entries.
 
     Returns:
         Deduplicated list preserving insertion order.
     """
-    seen_strings: builtins.set = builtins.set()
     seen_names: builtins.set = builtins.set()
     result = []
     for dep in deps:
-        if isinstance(dep, str):
-            if dep not in seen_strings:
-                seen_strings.add(dep)
-                result.append(dep)
+        if hasattr(dep, 'name'):
+            name = dep.name
         elif isinstance(dep, dict):
             name = dep.get("name", "")
-            if name and name not in seen_names:
-                seen_names.add(name)
+        else:
+            name = str(dep)
+        if not name:
+            if dep not in result:
                 result.append(dep)
-            elif not name and dep not in result:
-                result.append(dep)
+            continue
+        if name not in seen_names:
+            seen_names.add(name)
+            result.append(dep)
     return result
+
+
+def _build_self_defined_server_info(dep) -> dict:
+    """Build a synthetic server_info dict from a self-defined MCPDependency.
+
+    This mimics the structure returned by the MCP registry so that existing
+    adapter code (configure_mcp_server / _format_server_config) can consume
+    self-defined deps without changes.
+    """
+    info: dict = {"name": dep.name}
+
+    if dep.transport in ("http", "sse", "streamable-http"):
+        # Build as a remote endpoint
+        remote = {
+            "transport_type": dep.transport,
+            "url": dep.url or "",
+        }
+        if dep.headers:
+            remote["headers"] = [
+                {"name": k, "value": v} for k, v in dep.headers.items()
+            ]
+        info["remotes"] = [remote]
+    else:
+        # Build as a stdio package
+        env_vars = []
+        if dep.env:
+            env_vars = [
+                {"name": k, "description": "", "required": True}
+                for k in dep.env
+            ]
+
+        runtime_args = []
+        if dep.args:
+            if isinstance(dep.args, builtins.list):
+                runtime_args = [
+                    {"is_required": True, "value_hint": a} for a in dep.args
+                ]
+            elif isinstance(dep.args, builtins.dict):
+                runtime_args = [
+                    {"is_required": True, "value_hint": v} for v in dep.args.values()
+                ]
+
+        info["packages"] = [
+            {
+                "runtime_hint": dep.command or dep.name,
+                "name": dep.name,
+                "registry_name": "",
+                "runtime_arguments": runtime_args,
+                "package_arguments": [],
+                "environment_variables": env_vars,
+            }
+        ]
+
+    # Embed tools override for adapters to pick up
+    if dep.tools:
+        info["_apm_tools_override"] = dep.tools
+
+    return info
+
+
+def _apply_mcp_overlay(server_info_cache: dict, dep) -> None:
+    """Apply MCPDependency overlay fields onto cached server_info (in-place).
+
+    Modifies the server_info dict in server_info_cache[dep.name] to reflect
+    the overlay preferences (transport selection, env, headers, tools).
+    """
+    info = server_info_cache.get(dep.name)
+    if not info:
+        return
+
+    # Transport overlay: select matching transport from available options
+    if dep.transport:
+        if dep.transport in ("http", "sse", "streamable-http"):
+            # User prefers remote transport — remove packages to force remote path
+            if "remotes" in info and info["remotes"]:
+                info.pop("packages", None)
+        elif dep.transport == "stdio":
+            # User prefers stdio — remove remotes to force package path
+            if "packages" in info and info["packages"]:
+                info.pop("remotes", None)
+
+    # Package type overlay: select specific package registry (npm, pypi, oci)
+    if dep.package and "packages" in info:
+        filtered = [p for p in info["packages"] if p.get("registry_name", "").lower() == dep.package.lower()]
+        if filtered:
+            info["packages"] = filtered
+
+    # Headers overlay: merge into remote headers
+    if dep.headers and "remotes" in info:
+        for remote in info["remotes"]:
+            existing_headers = remote.get("headers", [])
+            if isinstance(existing_headers, builtins.list):
+                for k, v in dep.headers.items():
+                    existing_headers.append({"name": k, "value": v})
+                remote["headers"] = existing_headers
+            elif isinstance(existing_headers, builtins.dict):
+                existing_headers.update(dep.headers)
+
+    # Tools overlay: embed for adapters to pick up
+    if dep.tools:
+        info["_apm_tools_override"] = dep.tools
 
 
 def _install_mcp_dependencies(
@@ -2318,9 +2445,12 @@ def _install_mcp_dependencies(
         _rich_warning("No MCP dependencies found in apm.yml")
         return 0
 
-    # Filter to registry strings only (inline dicts are preserved during
-    # parsing for data fidelity but not installed — see #132).
-    registry_deps = [d for d in mcp_deps if isinstance(d, str)]
+    # Split into registry-resolved and self-defined deps
+    # Backward compat: plain strings are treated as registry deps
+    registry_deps = [dep for dep in mcp_deps if isinstance(dep, str) or (hasattr(dep, 'is_registry_resolved') and dep.is_registry_resolved)]
+    self_defined_deps = [dep for dep in mcp_deps if hasattr(dep, 'is_self_defined') and dep.is_self_defined]
+    registry_dep_names = [dep.name if hasattr(dep, 'name') else dep for dep in registry_deps]
+    registry_dep_map = {dep.name: dep for dep in registry_deps if hasattr(dep, 'name')}
 
     console = _get_console()
 
@@ -2449,8 +2579,8 @@ def _install_mcp_dependencies(
     # Use the new registry operations module for better server detection
     configured_count = 0
 
-    # --- Registry-based deps (strings) ---
-    if registry_deps:
+    # --- Registry-based deps ---
+    if registry_dep_names:
         try:
             from apm_cli.registry.operations import MCPServerOperations
 
@@ -2459,7 +2589,7 @@ def _install_mcp_dependencies(
             # Early validation: check if all servers exist in registry (fail-fast like npm)
             if verbose:
                 _rich_info(f"Validating {len(registry_deps)} registry servers...")
-            valid_servers, invalid_servers = operations.validate_servers_exist(registry_deps)
+            valid_servers, invalid_servers = operations.validate_servers_exist(registry_dep_names)
 
             if invalid_servers:
                 _rich_error(
@@ -2507,10 +2637,21 @@ def _install_mcp_dependencies(
                         _rich_info(f"Installing {len(servers_to_install)} servers...")
                     server_info_cache = operations.batch_fetch_server_info(servers_to_install)
 
+                    # Apply overlays from MCPDependency fields onto fetched server_info
+                    for server_name in servers_to_install:
+                        dep = registry_dep_map.get(server_name)
+                        if dep:
+                            _apply_mcp_overlay(server_info_cache, dep)
+
                     # Collect both environment and runtime variables using cached server info
                     shared_env_vars = operations.collect_environment_variables(
                         servers_to_install, server_info_cache
                     )
+                    # Merge overlay env vars (overlay values take precedence)
+                    for server_name in servers_to_install:
+                        dep = registry_dep_map.get(server_name)
+                        if dep and dep.env:
+                            shared_env_vars.update(dep.env)
                     shared_runtime_vars = operations.collect_runtime_variables(
                         servers_to_install, server_info_cache
                     )
@@ -2544,6 +2685,36 @@ def _install_mcp_dependencies(
             _rich_warning("Registry operations not available")
             _rich_error("Cannot validate MCP servers without registry operations")
             raise RuntimeError("Registry operations module required for MCP installation")
+
+    # --- Self-defined deps (registry: false) ---
+    if self_defined_deps:
+        for dep in self_defined_deps:
+            synthetic_info = _build_self_defined_server_info(dep)
+            self_defined_cache = {dep.name: synthetic_info}
+            self_defined_env = dep.env or {}
+
+            if console:
+                transport_label = dep.transport or "stdio"
+                console.print(f"│  [cyan]⬇️[/cyan]  {dep.name} [dim](self-defined, {transport_label})[/dim]")
+                console.print(
+                    f"│     └─ Configuring for {', '.join([rt.title() for rt in target_runtimes])}..."
+                )
+
+            for rt in target_runtimes:
+                if verbose:
+                    _rich_info(f"Configuring {dep.name} for {rt}...")
+                _install_for_runtime(
+                    rt,
+                    [dep.name],
+                    self_defined_env,
+                    self_defined_cache,
+                )
+
+            if console:
+                console.print(
+                    f"│  [green]✓[/green]  {dep.name} → {', '.join([rt.title() for rt in target_runtimes])}"
+                )
+            configured_count += 1
 
     # Close the panel
     if console:
@@ -3403,6 +3574,20 @@ def compile(
                 _rich_info(f"💡 Error details: {type(e).__name__}")
                 sys.exit(1)
             validation_errors = compiler.validate_primitives(primitives)
+            # Validate MCP dependencies
+            try:
+                from apm_cli.models.apm_package import APMPackage
+                apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
+                mcp_deps = apm_pkg.get_mcp_dependencies()
+                for dep in mcp_deps:
+                    try:
+                        dep.validate()
+                    except ValueError as ve:
+                        validation_errors.append(str(ve))
+            except FileNotFoundError:
+                pass  # No apm.yml — nothing to validate
+            except ValueError as ve:
+                validation_errors.append(f"MCP dependency parsing error: {ve}")
             if validation_errors:
                 _display_validation_errors(validation_errors)
                 _rich_error(f"Validation failed with {len(validation_errors)} errors")
@@ -3412,6 +3597,15 @@ def compile(
             _rich_info(f"  • {len(primitives.chatmodes)} chatmodes")
             _rich_info(f"  • {len(primitives.instructions)} instructions")
             _rich_info(f"  • {len(primitives.contexts)} contexts")
+            # Show MCP dependency validation count
+            try:
+                from apm_cli.models.apm_package import APMPackage
+                apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
+                mcp_count = len(apm_pkg.get_mcp_dependencies())
+                if mcp_count > 0:
+                    _rich_info(f"  • {mcp_count} MCP dependencies")
+            except Exception:
+                pass
             return
 
         # Watch mode
