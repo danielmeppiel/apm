@@ -578,6 +578,101 @@ class TestNestedGroupSupport:
 
     # --- Rejection cases ---
 
+    # --- Ambiguity: nested group + virtual path (shorthand vs dict) ---
+
+    def test_shorthand_ambiguity_virtual_ext_collapses_repo(self):
+        """Shorthand with virtual extension treats owner/repo as 2-segment base.
+
+        gitlab.com/group/subgroup/repo/file.prompt.md → the parser sees the
+        .prompt.md extension and assumes a 2-segment repo (group/subgroup)
+        with virtual path repo/file.prompt.md. This is WRONG if the user
+        meant repo=group/subgroup/repo. That's why dict format is required.
+        """
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo/file.prompt.md")
+        # Parser sees virtual indicator → assumes 2-segment base
+        assert dep.repo_url == "group/subgroup"
+        assert dep.virtual_path == "repo/file.prompt.md"
+        assert dep.is_virtual is True
+
+    def test_dict_format_resolves_ambiguity(self):
+        """Dict format makes nested-group + virtual path unambiguous.
+
+        The dict format explicitly separates the repo URL from the virtual
+        path, so there's no ambiguity about where the repo path ends.
+        """
+        dep = DependencyReference.parse_from_dict({
+            "git": "gitlab.com/group/subgroup/repo",
+            "path": "file.prompt.md"
+        })
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.virtual_path == "file.prompt.md"
+        assert dep.is_virtual is True
+        assert dep.host == "gitlab.com"
+
+    def test_dict_format_nested_group_with_collection(self):
+        """Dict format works for nested-group repos with collections."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "gitlab.com/acme/platform/infra/repo",
+            "path": "collections/security"
+        })
+        assert dep.repo_url == "acme/platform/infra/repo"
+        assert dep.virtual_path == "collections/security"
+        assert dep.is_virtual is True
+
+    def test_dict_format_nested_group_install_path_subdir(self):
+        """Install path for dict-based virtual subdirectory nested-group dep."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "gitlab.com/group/subgroup/repo",
+            "path": "skills/code-review"
+        })
+        path = dep.get_install_path(Path("/apm_modules"))
+        # Subdirectory virtual: repo path + virtual path
+        assert path == Path("/apm_modules/group/subgroup/repo/skills/code-review")
+
+    def test_dict_format_nested_group_install_path_file(self):
+        """Install path for dict-based virtual file nested-group dep."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "gitlab.com/group/subgroup/repo",
+            "path": "prompts/review.prompt.md"
+        })
+        path = dep.get_install_path(Path("/apm_modules"))
+        # Virtual file: first segment / sanitized package name
+        assert path == Path("/apm_modules/group/" + dep.get_virtual_package_name())
+
+    def test_dict_format_nested_group_canonical(self):
+        """Canonical form for dict-based nested-group dep includes virtual path."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "gitlab.com/group/subgroup/repo",
+            "path": "prompts/review.prompt.md"
+        })
+        # Canonical includes virtual path since it's a virtual package
+        assert dep.to_canonical() == "gitlab.com/group/subgroup/repo/prompts/review.prompt.md"
+
+    def test_dict_format_nested_group_clone_url(self):
+        """Clone URL for dict-based nested-group dep."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "gitlab.com/group/subgroup/repo",
+            "path": "prompts/review.prompt.md"
+        })
+        assert dep.to_github_url() == "https://gitlab.com/group/subgroup/repo"
+
+    def test_dict_format_nested_group_with_ref_and_alias(self):
+        """Dict format with all fields on nested-group repo."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/team/project/repo.git",
+            "path": "instructions/security",
+            "ref": "v2.0",
+            "alias": "sec-rules"
+        })
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/team/project/repo"
+        assert dep.virtual_path == "instructions/security"
+        assert dep.reference == "v2.0"
+        assert dep.alias == "sec-rules"
+        assert dep.is_virtual is True
+
+    # --- SSH/HTTPS rejection for nested groups with virtual extensions ---
+
     def test_ssh_nested_group_with_virtual_ext_rejected(self):
         """SSH URLs can't embed virtual paths even with nested groups."""
         with pytest.raises(ValueError, match="virtual file extension"):

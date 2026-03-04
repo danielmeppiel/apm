@@ -121,7 +121,17 @@ dependencies:
 
 Fields: `git` (required), `path`, `ref`, `alias` (all optional). The `git` value is any HTTPS or SSH clone URL.
 
-> **Tip:** For generic hosts (GitLab, Gitea, Bitbucket, etc.), APM treats all path segments after the host as the repo path. This supports GitLab's nested groups (`gitlab.com/group/subgroup/repo`). For virtual packages on repos with nested groups, use the object format with `path:`.
+> **Nested groups (GitLab, Gitea, etc.):** APM treats all path segments after the host as the repo path, so `gitlab.com/group/subgroup/repo` resolves to a repo at `group/subgroup/repo`. Virtual paths on simple 2-segment repos work with shorthand (`gitlab.com/owner/repo/file.prompt.md`). But for **nested-group repos + virtual paths**, use the object format — the shorthand is ambiguous:
+>
+> ```yaml
+> # DON'T — ambiguous: APM can't tell where the repo path ends
+> # gitlab.com/group/subgroup/repo/file.prompt.md
+> #   → parsed as repo=group/subgroup, virtual=repo/file.prompt.md (wrong!)
+>
+> # DO — explicit and unambiguous
+> - git: gitlab.com/group/subgroup/repo
+>   path: file.prompt.md
+> ```
 
 ### How Dependencies Are Stored (Canonical Format)
 
