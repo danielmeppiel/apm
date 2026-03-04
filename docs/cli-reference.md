@@ -493,7 +493,15 @@ apm deps update
 apm deps update compliance-rules
 ```
 
-### `apm mcp list` - 📋 List MCP servers
+### `apm mcp` - 🔌 Browse MCP server registry
+
+Browse and discover MCP servers from the GitHub MCP Registry.
+
+```bash
+apm mcp COMMAND [OPTIONS]
+```
+
+#### `apm mcp list` - 📋 List MCP servers
 
 List all available MCP servers from the registry.
 
@@ -513,7 +521,7 @@ apm mcp list
 apm mcp list --limit 20
 ```
 
-### `apm mcp search` - 🔍 Search MCP servers
+#### `apm mcp search` - 🔍 Search MCP servers
 
 Search for MCP servers in the GitHub MCP Registry.
 
@@ -539,7 +547,7 @@ apm mcp search database --limit 5
 apm mcp search github
 ```
 
-### `apm mcp show` - 📋 Show MCP server details
+#### `apm mcp show` - 📋 Show MCP server details
 
 Show detailed information about a specific MCP server from the registry.
 
@@ -971,7 +979,7 @@ apm runtime status
 ```
 
 **Output includes:**
-- Runtime preference order (codex → llm)
+- Runtime preference order (copilot → codex → llm)
 - Currently active runtime
 - Next steps if no runtime is available
 
