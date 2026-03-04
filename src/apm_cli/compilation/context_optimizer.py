@@ -29,6 +29,12 @@ set = builtins.set
 list = builtins.list
 dict = builtins.dict
 
+# Default directory names excluded from compilation scanning.
+# Shared across _analyze_project_structure and _should_exclude_subdir.
+DEFAULT_EXCLUDED_DIRNAMES = frozenset({
+    'node_modules', '__pycache__', '.git', 'dist', 'build',
+})
+
 
 @dataclass
 class DirectoryAnalysis:
@@ -422,10 +428,8 @@ class ContextOptimizer:
             if any(part.startswith('.') for part in current_path.parts[len(self.base_dir.parts):]):
                 continue
             
-            # Default hardcoded exclusions for backwards compatibility
-            # Use path-component matching to avoid false positives (e.g. "rebuild" matching "build")
-            relative_parts = current_path.relative_to(self.base_dir).parts
-            if any(part in ('node_modules', '__pycache__', '.git', 'dist', 'build') for part in relative_parts):
+            # Default hardcoded exclusions — match on exact path components
+            if any(part in DEFAULT_EXCLUDED_DIRNAMES for part in relative_path.parts):
                 continue
             
             # Apply configurable exclusion patterns
@@ -477,7 +481,7 @@ class ContextOptimizer:
         
         # Also check if subdirectory is a default exclusion
         dir_name = path.name
-        if dir_name in ['node_modules', '__pycache__', '.git', 'dist', 'build']:
+        if dir_name in DEFAULT_EXCLUDED_DIRNAMES:
             return True
         
         # Skip hidden directories
