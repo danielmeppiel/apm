@@ -515,6 +515,7 @@ APM provides first-class support for MCP servers:
 # apm.yml - MCP dependencies
 dependencies:
   mcp:
+    # Registry references
     - ghcr.io/github/github-mcp-server
     - ghcr.io/modelcontextprotocol/filesystem-server
     - ghcr.io/modelcontextprotocol/postgres-server
