@@ -164,7 +164,7 @@ apm install --exclude codex
 
 **Dependency Types:**
 
-- **APM Dependencies**: GitHub repositories containing `apm.yml`
+- **APM Dependencies**: Git repositories containing `apm.yml` (GitHub, GitLab, Bitbucket, or any git host)
 - **Claude Skills**: Repositories with `SKILL.md` (auto-generates `apm.yml` upon installation)
   - Example: `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
   - Skills are transformed to `.github/agents/*.agent.md` for VSCode target

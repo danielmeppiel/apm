@@ -101,6 +101,9 @@ APM installs packages from multiple sources. Use the format that matches your re
 |--------|--------|---------|
 | GitHub.com | `owner/repo` | `apm install microsoft/apm-sample-package` |
 | GitHub Enterprise | `ghe.company.com/owner/repo` | `apm install ghe.myco.com/team/standards` |
+| GitLab | `https://gitlab.com/owner/repo.git` | `apm install https://gitlab.com/acme/rules.git` |
+| Bitbucket | `https://bitbucket.org/owner/repo.git` | `apm install https://bitbucket.org/team/rules.git` |
+| Any git host | `git@host:owner/repo.git` | `apm install git@git.company.com:team/rules.git` |
 | Azure DevOps | `dev.azure.com/org/project/repo` | `apm install dev.azure.com/myorg/proj/rules` |
 | Virtual Package | `owner/repo/path/to/skill` | `apm install github/awesome-copilot/skills/review-and-refactor` |
 
@@ -132,7 +135,7 @@ apm install github.com/public/open-source-package
 >   - github.com/public/open-source-package           # → goes to github.com
 > ```
 
-**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax to specify supported hosts explicitly (e.g., `github.com`, `*.ghe.com`, Azure DevOps). Custom hosts require setting `GITHUB_HOST`.
+**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax for any host (e.g., `github.com`, `gitlab.com`, `bitbucket.org`, `*.ghe.com`, Azure DevOps), or use full HTTPS/SSH git URLs.
 
 ### Azure DevOps Support
 

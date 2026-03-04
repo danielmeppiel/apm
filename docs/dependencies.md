@@ -4,12 +4,14 @@ Complete guide to APM package dependency management - share and reuse context co
 
 ## What Are APM Dependencies?
 
-APM dependencies are GitHub repositories containing `.apm/` directories with context collections (instructions, chatmodes, contexts) and agent workflows (prompts). They enable teams to:
+APM dependencies are git repositories containing `.apm/` directories with context collections (instructions, chatmodes, contexts) and agent workflows (prompts). They enable teams to:
 
 - **Share proven workflows** across projects and team members
 - **Standardize compliance and design patterns** organization-wide
 - **Build on tested context** instead of starting from scratch
 - **Maintain consistency** across multiple repositories and teams
+
+APM supports any git-accessible host — GitHub, GitLab, Bitbucket, self-hosted instances, and more.
 
 ## Dependency Types
 
@@ -71,11 +73,24 @@ name: my-project
 version: 1.0.0
 dependencies:
   apm:
-    - microsoft/apm-sample-package  # Design standards, prompts
-    - github/awesome-copilot/skills/review-and-refactor  # Code review skill
+    # GitHub shorthand (default)
+    - microsoft/apm-sample-package
+    - github/awesome-copilot/skills/review-and-refactor
+
+    # Full HTTPS git URL (any host)
+    - https://gitlab.com/acme/coding-standards.git
+    - https://bitbucket.org/acme/security-rules.git
+
+    # SSH git URL (any host)
+    - git@gitlab.com:acme/coding-standards.git
   mcp:
     - io.github.github/github-mcp-server          # Registry reference
 ```
+
+APM accepts dependencies in three formats:
+- **Shorthand** (`owner/repo`) — defaults to GitHub
+- **HTTPS URL** (`https://host/owner/repo.git`) — any git host
+- **SSH URL** (`git@host:owner/repo.git`) — any git host
 
 MCP dependencies resolve via the MCP server registry (e.g. `io.github.github/github-mcp-server`).
 
@@ -118,9 +133,13 @@ apm compile
 # See docs/wip/distributed-agents-compilation-strategy.md for detailed compilation logic
 ```
 
-## GitHub Authentication Setup
+## Authentication Setup
 
-APM dependencies require GitHub authentication for downloading repositories. Set up your tokens:
+APM dependencies require authentication for downloading private repositories.
+
+### GitHub Authentication
+
+For GitHub and GitHub Enterprise repositories, set up a personal access token:
 
 ### Option 1: Fine-grained Token (Recommended)
 
@@ -151,6 +170,19 @@ apm install --dry-run
 ```
 
 If authentication fails, you'll see an error with guidance on token setup.
+
+### Other Git Hosts (GitLab, Bitbucket, etc.)
+
+For non-GitHub repositories, APM uses standard git clone mechanisms:
+
+- **Public repos**: Work without authentication via HTTPS
+- **Private repos**: Configure SSH keys for your git host, and APM will fall back to SSH automatically
+
+```bash
+# Ensure SSH keys are configured for your host
+ssh -T git@gitlab.com
+ssh -T git@bitbucket.org
+```
 
 ## Real-World Example: Corporate Website Project
 
