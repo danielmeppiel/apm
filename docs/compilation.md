@@ -296,6 +296,7 @@ APM always excludes these directories (no configuration needed):
 - `.git`
 - `dist`
 - `build`
+- `apm_modules`
 - Hidden directories (starting with `.`)
 
 ## Advanced Optimization Features
