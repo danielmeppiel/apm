@@ -296,6 +296,7 @@ APM always excludes directories whose path contains an exact component matching 
 - `.git`
 - `dist`
 - `build`
+- `apm_modules`
 - Hidden directories (starting with `.`)
 
 ## Advanced Optimization Features
