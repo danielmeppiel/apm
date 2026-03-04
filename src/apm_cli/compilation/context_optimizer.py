@@ -429,8 +429,8 @@ class ContextOptimizer:
             if any(part.startswith('.') for part in current_path.parts[len(self.base_dir.parts):]):
                 continue
             
-            # Default hardcoded exclusions for backwards compatibility
-            if any(ignore in str(current_path) for ignore in DEFAULT_EXCLUDED_DIRNAMES):
+            # Default hardcoded exclusions — match on exact path components
+            if any(part in DEFAULT_EXCLUDED_DIRNAMES for part in relative_path.parts):
                 continue
             
             # Apply configurable exclusion patterns
