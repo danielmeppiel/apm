@@ -10,6 +10,7 @@ import os
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
+from urllib.parse import urlparse
 
 import pytest
 from git.exc import GitCommandError
@@ -36,6 +37,17 @@ def _dep(url_str):
     return DependencyReference.parse(url_str)
 
 
+def _url_host(url: str) -> str:
+    """Extract the hostname from an HTTPS or SSH git URL."""
+    parsed = urlparse(url)
+    if parsed.hostname:
+        return parsed.hostname
+    # SSH shorthand: git@host:path
+    if url.startswith("git@") and ":" in url:
+        return url.split("@", 1)[1].split(":", 1)[0]
+    raise ValueError(f"Cannot extract host from URL: {url}")
+
+
 # ===========================================================================
 # _build_repo_url – token scoping
 # ===========================================================================
@@ -48,28 +60,28 @@ class TestBuildRepoUrlTokenScoping:
         dep = _dep("https://github.com/owner/repo.git")
         url = dl._build_repo_url("owner/repo", use_ssh=False, dep_ref=dep)
         assert "ghp_TESTTOKEN" in url
-        assert "github.com" in url
+        assert _url_host(url) == "github.com"
 
     def test_ghe_host_gets_token(self):
         dl = _make_downloader(github_token="ghp_TESTTOKEN")
         dep = _dep("https://company.ghe.com/owner/repo.git")
         url = dl._build_repo_url("owner/repo", use_ssh=False, dep_ref=dep)
         assert "ghp_TESTTOKEN" in url
-        assert "company.ghe.com" in url
+        assert _url_host(url) == "company.ghe.com"
 
     def test_gitlab_does_not_get_github_token(self):
         dl = _make_downloader(github_token="ghp_TESTTOKEN")
         dep = _dep("https://gitlab.com/acme/rules.git")
         url = dl._build_repo_url("acme/rules", use_ssh=False, dep_ref=dep)
         assert "ghp_TESTTOKEN" not in url
-        assert "gitlab.com" in url
+        assert _url_host(url) == "gitlab.com"
 
     def test_bitbucket_does_not_get_github_token(self):
         dl = _make_downloader(github_token="ghp_TESTTOKEN")
         dep = _dep("https://bitbucket.org/team/standards.git")
         url = dl._build_repo_url("team/standards", use_ssh=False, dep_ref=dep)
         assert "ghp_TESTTOKEN" not in url
-        assert "bitbucket.org" in url
+        assert _url_host(url) == "bitbucket.org"
 
     def test_self_hosted_does_not_get_github_token(self):
         dl = _make_downloader(github_token="ghp_TESTTOKEN")
@@ -82,7 +94,7 @@ class TestBuildRepoUrlTokenScoping:
         dep = _dep("git@gitlab.com:acme/rules.git")
         url = dl._build_repo_url("acme/rules", use_ssh=True, dep_ref=dep)
         assert "ghp_TESTTOKEN" not in url
-        assert "gitlab.com" in url
+        assert _url_host(url) == "gitlab.com"
 
     def test_github_ssh_also_no_embedded_token(self):
         dl = _make_downloader(github_token="ghp_TESTTOKEN")
@@ -193,7 +205,7 @@ class TestCloneWithFallbackEnv:
         calls = self._run_clone(dl, dep, succeed_on=1)
         first_url = calls[0][0][0]
         assert "ghp_TESTTOKEN" in first_url
-        assert "github.com" in first_url
+        assert _url_host(first_url) == "github.com"
 
     def test_generic_host_error_message_mentions_credential_helpers(self):
         """When all methods fail for a generic host, the error suggests credential helpers."""
