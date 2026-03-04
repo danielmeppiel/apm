@@ -162,8 +162,8 @@ class ContextOptimizer:
         if self._file_list_cache is None:
             self._file_list_cache = []
             for root, dirs, files in os.walk(self.base_dir):
-                # Skip hidden directories for performance
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                # Skip hidden and excluded directories for performance
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', '__pycache__', 'dist', 'build', 'apm_modules')]
                 for file in files:
                     if not file.startswith('.'):
                         self._file_list_cache.append(Path(root) / file)
@@ -423,7 +423,7 @@ class ContextOptimizer:
                 continue
             
             # Default hardcoded exclusions for backwards compatibility
-            if any(ignore in str(current_path) for ignore in ['node_modules', '__pycache__', '.git', 'dist', 'build']):
+            if any(ignore in str(current_path) for ignore in ['node_modules', '__pycache__', '.git', 'dist', 'build', 'apm_modules']):
                 continue
             
             # Apply configurable exclusion patterns
@@ -475,7 +475,7 @@ class ContextOptimizer:
         
         # Also check if subdirectory is a default exclusion
         dir_name = path.name
-        if dir_name in ['node_modules', '__pycache__', '.git', 'dist', 'build']:
+        if dir_name in ['node_modules', '__pycache__', '.git', 'dist', 'build', 'apm_modules']:
             return True
         
         # Skip hidden directories
@@ -786,9 +786,11 @@ class ContextOptimizer:
                     
                     # Use cached glob results instead of repeated glob calls
                     matches = self._cached_glob(expanded_pattern)
-                    # Convert to Path objects for comparison
-                    match_paths = {Path(match) for match in matches}
-                    if rel_path in match_paths:
+                    # Use cached Set[Path] to avoid recreating on every call
+                    cache_key = f"_set_{expanded_pattern}"
+                    if cache_key not in self._glob_cache:
+                        self._glob_cache[cache_key] = {Path(match) for match in matches}
+                    if rel_path in self._glob_cache[cache_key]:
                         return True
                 except (ValueError, OSError):
                     pass
