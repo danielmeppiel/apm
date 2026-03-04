@@ -738,22 +738,28 @@ class ContextOptimizer:
         return None
     
     def _expand_glob_pattern(self, pattern: str) -> List[str]:
-        """Expand glob pattern with brace expansion.
+        """Expand glob pattern with brace expansion, supporting multiple brace groups.
         
         Args:
-            pattern (str): Pattern like '**/*.{css,scss}'
+            pattern (str): Pattern like '**/*.{css,scss}' or '**/*.{test,spec}.{ts,js}'
         
         Returns:
             List[str]: Expanded patterns like ['**/*.css', '**/*.scss']
+                       or ['**/*.test.ts', '**/*.test.js', '**/*.spec.ts', '**/*.spec.js']
         """
         import re
         
         # Handle brace expansion like {css,scss}
         brace_match = re.search(r'\{([^}]+)\}', pattern)
         if brace_match:
-            extensions = brace_match.group(1).split(',')
-            base_pattern = pattern[:brace_match.start()] + '{}' + pattern[brace_match.end():]
-            return [base_pattern.format(ext) for ext in extensions]
+            alternatives = brace_match.group(1).split(',')
+            prefix = pattern[:brace_match.start()]
+            suffix = pattern[brace_match.end():]
+            # Recursively expand remaining brace groups in each result
+            expanded = []
+            for alt in alternatives:
+                expanded.extend(self._expand_glob_pattern(prefix + alt + suffix))
+            return expanded
         
         return [pattern]
     

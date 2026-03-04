@@ -677,5 +677,37 @@ class TestDirectoryExclusion:
             assert base_path / "custom_exclude" not in cached_dirs  # Custom exclusion
 
 
+class TestExpandGlobPattern:
+    """Test _expand_glob_pattern brace expansion."""
+
+    def test_single_brace_group(self):
+        """Test expansion of a single brace group."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.{css,scss}")
+        assert sorted(result) == sorted(["**/*.css", "**/*.scss"])
+
+    def test_multiple_brace_groups(self):
+        """Test expansion of multiple brace groups (Fixes #153)."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.{test,spec}.{ts,js,mts,mjs}")
+        expected = [
+            "**/*.test.ts", "**/*.test.js", "**/*.test.mts", "**/*.test.mjs",
+            "**/*.spec.ts", "**/*.spec.js", "**/*.spec.mts", "**/*.spec.mjs",
+        ]
+        assert sorted(result) == sorted(expected)
+
+    def test_no_brace_group(self):
+        """Test pattern without braces is returned as-is."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.py")
+        assert result == ["**/*.py"]
+
+    def test_single_item_brace_group(self):
+        """Test brace group with a single item."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.{ts}")
+        assert result == ["**/*.ts"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
