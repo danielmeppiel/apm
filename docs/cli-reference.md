@@ -734,7 +734,7 @@ Use the `exclude` field to skip directories during compilation. This improves pe
 - `projects/**/apm/**` - Complex nested matching with `**`
 
 **Default exclusions** (always applied):
-- `node_modules`, `__pycache__`, `.git`, `dist`, `build`
+- `node_modules`, `__pycache__`, `.git`, `dist`, `build`, `apm_modules`
 - Hidden directories (starting with `.`)
 
 Command-line options always override `apm.yml` settings. Priority order:

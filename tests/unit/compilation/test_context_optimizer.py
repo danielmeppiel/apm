@@ -677,5 +677,153 @@ class TestDirectoryExclusion:
             assert base_path / "custom_exclude" not in cached_dirs  # Custom exclusion
 
 
+class TestExpandGlobPattern:
+    """Test _expand_glob_pattern brace expansion."""
+
+    def test_single_brace_group(self):
+        """Test expansion of a single brace group."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.{css,scss}")
+        assert sorted(result) == sorted(["**/*.css", "**/*.scss"])
+
+    def test_multiple_brace_groups(self):
+        """Test expansion of multiple brace groups (Fixes #153)."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.{test,spec}.{ts,js,mts,mjs}")
+        expected = [
+            "**/*.test.ts", "**/*.test.js", "**/*.test.mts", "**/*.test.mjs",
+            "**/*.spec.ts", "**/*.spec.js", "**/*.spec.mts", "**/*.spec.mjs",
+        ]
+        assert sorted(result) == sorted(expected)
+
+    def test_no_brace_group(self):
+        """Test pattern without braces is returned as-is."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.py")
+        assert result == ["**/*.py"]
+
+    def test_single_item_brace_group(self):
+        """Test brace group with a single item."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("**/*.{ts}")
+        assert result == ["**/*.ts"]
+
+    def test_three_brace_groups(self):
+        """Test expansion of three brace groups."""
+        optimizer = ContextOptimizer(base_dir="/tmp")
+        result = optimizer._expand_glob_pattern("{src,lib}/*.{test,spec}.{ts,js}")
+        expected = [
+            "src/*.test.ts", "src/*.test.js",
+            "src/*.spec.ts", "src/*.spec.js",
+            "lib/*.test.ts", "lib/*.test.js",
+            "lib/*.spec.ts", "lib/*.spec.js",
+        ]
+        assert sorted(result) == sorted(expected)
+
+
+class TestApmModulesExclusion:
+    """Test that apm_modules/ is excluded from project scanning (Fixes #154)."""
+
+    @pytest.fixture
+    def project_with_apm_modules(self):
+        """Create a project with a realistic apm_modules/ tree."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+
+            # Real project directories
+            for d in ["src", "src/components", "tests", "docs"]:
+                (base / d).mkdir(parents=True, exist_ok=True)
+
+            # Real project files
+            for f in [
+                "src/index.ts", "src/components/App.tsx",
+                "tests/app.test.ts", "docs/README.md",
+            ]:
+                (base / f).touch()
+
+            # Simulate apm_modules with many nested packages
+            for i in range(50):
+                pkg_dir = base / "apm_modules" / f"org/package-{i}" / "sub"
+                pkg_dir.mkdir(parents=True, exist_ok=True)
+                (pkg_dir / "SKILL.md").touch()
+                (pkg_dir / "instructions.md").touch()
+
+            yield base
+
+    def test_apm_modules_excluded_from_directory_cache(self, project_with_apm_modules):
+        """apm_modules directories must not appear in _directory_cache."""
+        optimizer = ContextOptimizer(base_dir=str(project_with_apm_modules))
+        optimizer._analyze_project_structure()
+
+        cached_paths = set(optimizer._directory_cache.keys())
+        # Resolve to handle macOS /var -> /private/var symlink
+        resolved_base = project_with_apm_modules.resolve()
+
+        # Real dirs are cached
+        assert resolved_base / "src" in cached_paths
+        assert resolved_base / "tests" in cached_paths
+
+        # No apm_modules path is cached
+        apm_paths = [p for p in cached_paths if "apm_modules" in str(p)]
+        assert apm_paths == [], f"apm_modules leaked into cache: {apm_paths}"
+
+    def test_cache_size_unaffected_by_apm_modules(self, project_with_apm_modules):
+        """Directory cache size should reflect only project dirs, not apm_modules."""
+        optimizer = ContextOptimizer(base_dir=str(project_with_apm_modules))
+        optimizer._analyze_project_structure()
+
+        # 50 packages × sub-directory each = 150+ dirs if not excluded.
+        # Real project has at most ~5 dirs (root, src, src/components, tests, docs).
+        assert len(optimizer._directory_cache) <= 10, (
+            f"Cache has {len(optimizer._directory_cache)} dirs — "
+            f"apm_modules likely not excluded"
+        )
+
+    def test_os_walk_prunes_apm_modules(self, project_with_apm_modules):
+        """os.walk must not descend into apm_modules subdirectories."""
+        optimizer = ContextOptimizer(base_dir=str(project_with_apm_modules))
+        optimizer._analyze_project_structure()
+
+        # _should_exclude_subdir must flag apm_modules
+        apm_modules_path = project_with_apm_modules / "apm_modules"
+        assert optimizer._should_exclude_subdir(apm_modules_path) is True
+
+    def test_find_matching_dirs_ignores_apm_modules(self, project_with_apm_modules):
+        """Pattern matching must not return directories inside apm_modules."""
+        optimizer = ContextOptimizer(base_dir=str(project_with_apm_modules))
+        optimizer._analyze_project_structure()
+
+        matching = optimizer._find_matching_directories("**/*.md")
+        apm_matches = [p for p in matching if "apm_modules" in str(p)]
+        assert apm_matches == [], f"apm_modules dirs matched: {apm_matches}"
+
+
+class TestGlobCacheReuse:
+    """Test that glob results are cached and Set[Path] conversion is not repeated."""
+
+    def test_set_path_cached_across_calls(self):
+        """_file_matches_pattern must cache the Set[Path] conversion."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            (base / "src").mkdir()
+            (base / "src" / "a.ts").touch()
+            (base / "src" / "b.ts").touch()
+
+            optimizer = ContextOptimizer(base_dir=str(base))
+            optimizer._analyze_project_structure()
+
+            file_a = base / "src" / "a.ts"
+            file_b = base / "src" / "b.ts"
+
+            # First call populates cache
+            optimizer._file_matches_pattern(file_a, "**/*.ts")
+            assert "**/*.ts" in optimizer._glob_set_cache
+
+            # Second call should reuse the cached set (not recreate it)
+            cached_set_id = id(optimizer._glob_set_cache["**/*.ts"])
+            optimizer._file_matches_pattern(file_b, "**/*.ts")
+            assert id(optimizer._glob_set_cache["**/*.ts"]) == cached_set_id
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
