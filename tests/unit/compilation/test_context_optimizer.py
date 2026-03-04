@@ -677,6 +677,60 @@ class TestDirectoryExclusion:
             assert base_path / "custom_exclude" not in cached_dirs  # Custom exclusion
 
 
+class TestSubstringExclusionFalsePositives:
+    """Test that directory exclusions use component matching, not substring matching (Fixes #158)."""
+
+    def test_directory_containing_exclusion_token_not_excluded(self):
+        """Directories like 'rebuild/' must NOT be excluded just because 'build' is a substring."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir).resolve()
+            for name in ["rebuild", "apm_modules_guide", "redistribution", "node_modules_compat"]:
+                d = base / "src" / name
+                d.mkdir(parents=True, exist_ok=True)
+                (d / "file.py").touch()
+
+            optimizer = ContextOptimizer(base_dir=str(base))
+            optimizer._analyze_project_structure()
+
+            cached = set(optimizer._directory_cache.keys())
+            for name in ["rebuild", "apm_modules_guide", "redistribution", "node_modules_compat"]:
+                assert base / "src" / name in cached, f"'{name}' was incorrectly excluded"
+
+    def test_exact_exclusion_names_still_excluded(self):
+        """Directories exactly named 'build', 'dist', etc. must still be excluded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir).resolve()
+            for name in ["build", "dist", "node_modules", "__pycache__"]:
+                d = base / name
+                d.mkdir(parents=True, exist_ok=True)
+                (d / "file.py").touch()
+            (base / "src").mkdir(exist_ok=True)
+            (base / "src" / "app.py").touch()
+
+            optimizer = ContextOptimizer(base_dir=str(base))
+            optimizer._analyze_project_structure()
+
+            cached = set(optimizer._directory_cache.keys())
+            assert base / "src" in cached
+            for name in ["build", "dist", "node_modules", "__pycache__"]:
+                assert base / name not in cached, f"'{name}' should be excluded"
+
+    def test_nested_exclusion_name_still_excluded(self):
+        """A directory named 'build' nested under a non-excluded parent must still be excluded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir).resolve()
+            (base / "src" / "build").mkdir(parents=True)
+            (base / "src" / "build" / "output.js").touch()
+            (base / "src" / "app.py").touch()
+
+            optimizer = ContextOptimizer(base_dir=str(base))
+            optimizer._analyze_project_structure()
+
+            cached = set(optimizer._directory_cache.keys())
+            assert base / "src" in cached
+            assert base / "src" / "build" not in cached
+
+
 class TestExpandGlobPattern:
     """Test _expand_glob_pattern brace expansion."""
 
