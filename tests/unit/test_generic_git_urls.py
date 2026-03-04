@@ -336,3 +336,52 @@ class TestSecurityWithGenericHosts:
     def test_invalid_characters_rejected(self):
         with pytest.raises(ValueError, match="Invalid repository path component"):
             DependencyReference.parse("https://gitlab.com/user/repo$bad")
+
+
+class TestFQDNVirtualPaths:
+    """Test FQDN shorthand with virtual paths on generic hosts.
+
+    Git protocol URLs (https://, git@) are repo-level and cannot embed paths.
+    Use FQDN shorthand (host/owner/repo/path) for virtual packages on any host.
+    """
+
+    def test_gitlab_virtual_file(self):
+        dep = DependencyReference.parse("gitlab.com/acme/repo/prompts/file.prompt.md")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/repo"
+        assert dep.virtual_path == "prompts/file.prompt.md"
+        assert dep.is_virtual is True
+        assert dep.is_virtual_file() is True
+
+    def test_bitbucket_virtual_collection(self):
+        dep = DependencyReference.parse("bitbucket.org/team/rules/collections/security")
+        assert dep.host == "bitbucket.org"
+        assert dep.repo_url == "team/rules"
+        assert dep.virtual_path == "collections/security"
+        assert dep.is_virtual is True
+        assert dep.is_virtual_collection() is True
+
+    def test_self_hosted_virtual_subdirectory(self):
+        dep = DependencyReference.parse("git.company.internal/team/skills/brand-guidelines")
+        assert dep.host == "git.company.internal"
+        assert dep.repo_url == "team/skills"
+        assert dep.virtual_path == "brand-guidelines"
+        assert dep.is_virtual is True
+        assert dep.is_virtual_subdirectory() is True
+
+    def test_gitlab_virtual_file_with_ref(self):
+        dep = DependencyReference.parse("gitlab.com/acme/repo/prompts/file.prompt.md#v2.0")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/repo"
+        assert dep.virtual_path == "prompts/file.prompt.md"
+        assert dep.reference == "v2.0"
+
+    def test_https_url_with_path_rejected(self):
+        """HTTPS git URLs can't embed paths — use FQDN shorthand instead."""
+        with pytest.raises(ValueError, match="Invalid repository path"):
+            DependencyReference.parse("https://gitlab.com/acme/repo/prompts/file.prompt.md")
+
+    def test_ssh_url_with_path_rejected(self):
+        """SSH git URLs can't embed paths — use FQDN shorthand instead."""
+        with pytest.raises(ValueError, match="Invalid repository format"):
+            DependencyReference.parse("git@gitlab.com:acme/repo/prompts/file.prompt.md")

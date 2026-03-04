@@ -83,14 +83,20 @@ dependencies:
 
     # SSH git URL (any host)
     - git@gitlab.com:acme/coding-standards.git
+
+    # FQDN shorthand with virtual path (any host)
+    - gitlab.com/acme/repo/prompts/code-review.prompt.md
   mcp:
     - io.github.github/github-mcp-server          # Registry reference
 ```
 
 APM accepts dependencies in three formats:
 - **Shorthand** (`owner/repo`) — defaults to GitHub
-- **HTTPS URL** (`https://host/owner/repo.git`) — any git host
-- **SSH URL** (`git@host:owner/repo.git`) — any git host
+- **HTTPS URL** (`https://host/owner/repo.git`) — any git host, whole repo
+- **SSH URL** (`git@host:owner/repo.git`) — any git host, whole repo
+- **FQDN shorthand** (`host/owner/repo/path`) — any host, with virtual path support
+
+> **Note:** Git protocol URLs (HTTPS and SSH) identify whole repositories and cannot embed sub-paths. To reference a specific file, collection, or subdirectory within a repo on a non-GitHub host, use the FQDN shorthand format: `gitlab.com/owner/repo/path/to/file.prompt.md`.
 
 MCP dependencies resolve via the MCP server registry (e.g. `io.github.github/github-mcp-server`).
 
