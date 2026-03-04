@@ -290,12 +290,13 @@ Use the `exclude` field to skip directories during compilation, improving perfor
 - Prevent duplicate instruction discovery
 
 **Default Exclusions:**
-APM always excludes these directories (no configuration needed):
+APM always excludes directories whose path contains an exact component matching one of these names (no configuration needed). A directory named `rebuild/` is **not** excluded just because it contains `build` as a substring.
 - `node_modules`
 - `__pycache__`
 - `.git`
 - `dist`
 - `build`
+- `apm_modules`
 - Hidden directories (starting with `.`)
 
 ## Advanced Optimization Features

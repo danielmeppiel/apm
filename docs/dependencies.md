@@ -74,8 +74,12 @@ dependencies:
     - microsoft/apm-sample-package  # Design standards, prompts
     - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
-    - io.github.github/github-mcp-server
+    - io.github.github/github-mcp-server          # Registry reference
 ```
+
+MCP dependencies resolve via the MCP server registry (e.g. `io.github.github/github-mcp-server`).
+
+MCP dependencies declared by transitive APM packages are collected automatically during `apm install`.
 
 ### 2. Install Dependencies
 
