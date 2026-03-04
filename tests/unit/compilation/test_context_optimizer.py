@@ -817,12 +817,12 @@ class TestGlobCacheReuse:
 
             # First call populates cache
             optimizer._file_matches_pattern(file_a, "**/*.ts")
-            assert "_set_**/*.ts" in optimizer._glob_cache
+            assert "**/*.ts" in optimizer._glob_set_cache
 
             # Second call should reuse the cached set (not recreate it)
-            cached_set_id = id(optimizer._glob_cache["_set_**/*.ts"])
+            cached_set_id = id(optimizer._glob_set_cache["**/*.ts"])
             optimizer._file_matches_pattern(file_b, "**/*.ts")
-            assert id(optimizer._glob_cache["_set_**/*.ts"]) == cached_set_id
+            assert id(optimizer._glob_set_cache["**/*.ts"]) == cached_set_id
 
 
 if __name__ == "__main__":
