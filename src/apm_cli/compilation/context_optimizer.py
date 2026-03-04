@@ -423,7 +423,9 @@ class ContextOptimizer:
                 continue
             
             # Default hardcoded exclusions for backwards compatibility
-            if any(ignore in str(current_path) for ignore in ['node_modules', '__pycache__', '.git', 'dist', 'build']):
+            # Use path-component matching to avoid false positives (e.g. "rebuild" matching "build")
+            relative_parts = current_path.relative_to(self.base_dir).parts
+            if any(part in ('node_modules', '__pycache__', '.git', 'dist', 'build') for part in relative_parts):
                 continue
             
             # Apply configurable exclusion patterns
