@@ -101,7 +101,10 @@ APM accepts dependencies in two forms:
 - **Shorthand** (`owner/repo`) — defaults to GitHub
 - **HTTPS URL** (`https://host/owner/repo.git`) — any git host, whole repo
 - **SSH URL** (`git@host:owner/repo.git`) — any git host, whole repo
-- **FQDN shorthand** (`host/owner/repo/path`) — any host, with virtual path support
+- **FQDN shorthand** (`host/owner/repo`) — any host, supports nested groups
+  - GitLab nested groups: `gitlab.com/group/subgroup/repo`
+  - Virtual paths on simple repos: `gitlab.com/owner/repo/file.prompt.md`
+  - For nested groups + virtual paths, use the object format below
 
 **Object format** (when you need `path`, `ref`, or `alias` on a git URL):
 
@@ -118,7 +121,7 @@ dependencies:
 
 Fields: `git` (required), `path`, `ref`, `alias` (all optional). The `git` value is any HTTPS or SSH clone URL.
 
-> **Tip:** Use the object format for non-GitHub hosts when you need to reference a sub-path inside a repo. FQDN shorthand (`gitlab.com/owner/repo/path`) also works but can be ambiguous with nested groups (e.g., GitLab).
+> **Tip:** For generic hosts (GitLab, Gitea, Bitbucket, etc.), APM treats all path segments after the host as the repo path. This supports GitLab's nested groups (`gitlab.com/group/subgroup/repo`). For virtual packages on repos with nested groups, use the object format with `path:`.
 
 ### How Dependencies Are Stored (Canonical Format)
 
@@ -134,6 +137,8 @@ APM normalizes every dependency entry on write — no matter how you specify a p
 | `git@github.com:microsoft/apm-sample-package.git` | `microsoft/apm-sample-package` |
 | `github.com/microsoft/apm-sample-package` | `microsoft/apm-sample-package` |
 | `https://gitlab.com/acme/rules.git` | `gitlab.com/acme/rules` |
+| `gitlab.com/group/subgroup/repo` | `gitlab.com/group/subgroup/repo` |
+| `git@gitlab.com:group/subgroup/repo.git` | `gitlab.com/group/subgroup/repo` |
 | `git@bitbucket.org:team/standards.git` | `bitbucket.org/team/standards` |
 
 Virtual paths, refs, and aliases are preserved:

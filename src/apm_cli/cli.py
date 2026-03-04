@@ -431,11 +431,15 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     existing_identities = builtins.set()
     for dep_entry in current_deps:
         try:
-            dep_str = dep_entry if isinstance(dep_entry, str) else dep_entry.get("git", "")
-            ref = DependencyReference.parse(dep_str)
+            if isinstance(dep_entry, str):
+                ref = DependencyReference.parse(dep_entry)
+            elif isinstance(dep_entry, dict):
+                ref = DependencyReference.parse_from_dict(dep_entry)
+            else:
+                continue
             existing_identities.add(ref.get_identity())
-        except Exception:
-            pass
+        except (ValueError, TypeError, AttributeError, KeyError):
+            continue
 
     # First, validate all packages
     _rich_info(f"Validating {len(packages)} package(s)...")
@@ -526,6 +530,8 @@ def _validate_package_exists(package):
         # For Azure DevOps or GitHub Enterprise (non-github.com hosts),
         # use the downloader which handles authentication properly
         if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
+            from apm_cli.utils.github_host import is_github_hostname, is_azure_devops_hostname
+
             downloader = GitHubPackageDownloader()
             # Set the host
             if dep_ref.host:
@@ -536,14 +542,24 @@ def _validate_package_exists(package):
                 dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref
             )
 
-            # Use the downloader's git environment which has auth configured
+            # For generic hosts (not GitHub, not ADO), relax the env so native
+            # credential helpers (SSH keys, macOS Keychain, etc.) can work.
+            # This mirrors _clone_with_fallback() which does the same relaxation.
+            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
+            if is_generic:
+                validate_env = {k: v for k, v in downloader.git_env.items()
+                                if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
+                validate_env['GIT_TERMINAL_PROMPT'] = '0'
+            else:
+                validate_env = {**os.environ, **downloader.git_env}
+
             cmd = ["git", "ls-remote", "--heads", "--exit-code", package_url]
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={**os.environ, **downloader.git_env},
+                env=validate_env,
             )
             return result.returncode == 0
 
@@ -1109,14 +1125,19 @@ def uninstall(ctx, packages, dry_run):
                 pkg_identity = package
 
             for dep_entry in current_deps:
-                dep_str = dep_entry if isinstance(dep_entry, str) else str(dep_entry)
                 try:
-                    dep_ref = DependencyReference.parse(dep_str)
+                    if isinstance(dep_entry, str):
+                        dep_ref = DependencyReference.parse(dep_entry)
+                    elif isinstance(dep_entry, dict):
+                        dep_ref = DependencyReference.parse_from_dict(dep_entry)
+                    else:
+                        continue
                     if dep_ref.get_identity() == pkg_identity:
                         matched_dep = dep_entry  # preserve original entry for removal
                         break
-                except Exception:
+                except (ValueError, TypeError, AttributeError, KeyError):
                     # Fallback: exact string match
+                    dep_str = dep_entry if isinstance(dep_entry, str) else str(dep_entry)
                     if dep_str == package:
                         matched_dep = dep_entry
                         break

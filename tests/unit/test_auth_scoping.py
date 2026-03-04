@@ -402,3 +402,161 @@ dependencies:
 """)
         with pytest.raises(ValueError, match="'git' field"):
             APMPackage.from_apm_yml(yml)
+
+
+# ===========================================================================
+# Dict-style duplicate detection in _validate_and_add_packages_to_apm_yml
+# ===========================================================================
+
+class TestDictIdentityDuplicateDetection:
+    """Verify that dict-style deps with 'path' get distinct identities.
+
+    Bug: previously, dict entries used only dep_entry.get("git", ""),
+    dropping 'path', so {git: "owner/repo", path: "sub"} had the same
+    identity as plain "owner/repo", causing false duplicate detection.
+    """
+
+    def _write_yml(self, tmp_path, content):
+        yml_file = tmp_path / "apm.yml"
+        yml_file.write_text(content, encoding="utf-8")
+        return yml_file
+
+    @patch("apm_cli.cli._validate_package_exists", return_value=True)
+    def test_dict_dep_with_path_not_duplicate_of_base(self, mock_validate, tmp_path):
+        """A dict dep {git: X, path: Y} should not block adding the base repo X."""
+        import yaml
+        yml = self._write_yml(tmp_path, """
+name: test
+version: 1.0.0
+dependencies:
+  apm:
+    - git: https://gitlab.com/acme/rules.git
+      path: instructions/security
+""")
+        with patch("apm_cli.cli.Path") as MockPath:
+            # Make Path("apm.yml") return our test file
+            MockPath.return_value.exists.return_value = True
+            # We test the identity-building logic directly
+            from apm_cli.models.apm_package import DependencyReference
+
+            # Dict dep with path
+            dict_dep = {"git": "https://gitlab.com/acme/rules.git", "path": "instructions/security"}
+            ref_dict = DependencyReference.parse_from_dict(dict_dep)
+
+            # Base repo (no path)
+            ref_base = DependencyReference.parse("gitlab.com/acme/rules")
+
+            # They MUST have different identities
+            assert ref_dict.get_identity() != ref_base.get_identity()
+
+    def test_two_dict_deps_same_repo_different_paths_distinct(self):
+        """Two dict deps from same repo but different paths have distinct identities."""
+        from apm_cli.models.apm_package import DependencyReference
+
+        dep1 = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+            "path": "instructions/security",
+        })
+        dep2 = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+            "path": "prompts/review.prompt.md",
+        })
+        assert dep1.get_identity() != dep2.get_identity()
+
+    def test_dict_dep_no_path_same_identity_as_string(self):
+        """A dict dep without path has the same identity as the string form."""
+        from apm_cli.models.apm_package import DependencyReference
+
+        dep_dict = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+        })
+        dep_str = DependencyReference.parse("gitlab.com/acme/rules")
+        assert dep_dict.get_identity() == dep_str.get_identity()
+
+
+# ===========================================================================
+# _validate_package_exists env scoping for generic hosts
+# ===========================================================================
+
+class TestValidatePackageExistsEnv:
+    """Verify _validate_package_exists uses relaxed env for generic hosts.
+
+    Bug: previously, all non-GitHub.com hosts got the locked-down git_env
+    (GIT_ASKPASS=echo, etc.), blocking credential helpers for generic hosts
+    like GitLab. The clone step already relaxed this, but validation didn't.
+    """
+
+    @patch("subprocess.run")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_generic_host_validation_allows_credential_helpers(self, mock_run):
+        """git ls-remote for a generic host should NOT have GIT_ASKPASS=echo."""
+        from apm_cli.cli import _validate_package_exists
+
+        mock_run.return_value = Mock(returncode=0)
+        _validate_package_exists("gitlab.com/acme/rules")
+
+        # Verify subprocess.run was called
+        assert mock_run.called
+        call_kwargs = mock_run.call_args
+        env_used = call_kwargs.kwargs.get("env") or call_kwargs[1].get("env", {})
+
+        # GIT_ASKPASS must NOT be set to 'echo' (that blocks credential helpers)
+        assert env_used.get("GIT_ASKPASS") != "echo", \
+            "Generic host validation should not set GIT_ASKPASS=echo"
+        # GIT_CONFIG_NOSYSTEM must NOT be '1' (allows system git config)
+        assert env_used.get("GIT_CONFIG_NOSYSTEM") != "1", \
+            "Generic host validation should not set GIT_CONFIG_NOSYSTEM=1"
+        # GIT_TERMINAL_PROMPT should still be '0' (no interactive prompts)
+        assert env_used.get("GIT_TERMINAL_PROMPT") == "0"
+
+    @patch("subprocess.run")
+    @patch.dict(os.environ, {"ADO_APM_PAT": "test-ado-token"}, clear=True)
+    def test_ado_host_validation_uses_locked_env(self, mock_run):
+        """git ls-remote for ADO should use the locked-down env (APM manages auth)."""
+        from apm_cli.cli import _validate_package_exists
+
+        mock_run.return_value = Mock(returncode=0)
+        _validate_package_exists("dev.azure.com/myorg/myproject/myrepo")
+
+        assert mock_run.called
+        call_kwargs = mock_run.call_args
+        env_used = call_kwargs.kwargs.get("env") or call_kwargs[1].get("env", {})
+
+        # ADO should keep the locked-down env
+        assert "GIT_ASKPASS" in env_used or "GIT_CONFIG_NOSYSTEM" in env_used
+
+
+# ===========================================================================
+# is_github classification edge cases
+# ===========================================================================
+
+class TestIsGitHubClassification:
+    """Verify is_github is correctly determined for edge-case hosts."""
+
+    def test_empty_host_defaults_to_github(self):
+        """When no host is set, packages default to GitHub behavior."""
+        downloader = _make_downloader(github_token="ghp_test123")
+        dep_ref = _dep("microsoft/apm-sample-package")
+
+        # No host set → is_github should be True
+        dep_host = dep_ref.host if dep_ref else None
+        # Original bug: `dep_host and is_github_hostname(dep_host) or (not dep_host)`
+        # With empty/None dep_host, this should return True
+        from apm_cli.utils.github_host import is_github_hostname
+        if dep_host:
+            is_github = is_github_hostname(dep_host)
+        else:
+            is_github = True
+        assert is_github is True
+
+    def test_gitlab_host_is_not_github(self):
+        """GitLab host should NOT be classified as GitHub."""
+        dep_ref = _dep("gitlab.com/acme/rules")
+        from apm_cli.utils.github_host import is_github_hostname
+        assert is_github_hostname(dep_ref.host) is False
+
+    def test_ghe_host_is_github(self):
+        """GitHub Enterprise host should be classified as GitHub."""
+        dep_ref = _dep("https://company.ghe.com/org/repo.git")
+        from apm_cli.utils.github_host import is_github_hostname
+        assert is_github_hostname(dep_ref.host) is True

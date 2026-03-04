@@ -101,7 +101,8 @@ APM installs packages from multiple sources. Use the format that matches your re
 |--------|--------|---------|
 | GitHub.com | `owner/repo` | `apm install microsoft/apm-sample-package` |
 | GitHub Enterprise | `ghe.company.com/owner/repo` | `apm install ghe.myco.com/team/standards` |
-| GitLab | `https://gitlab.com/owner/repo.git` | `apm install https://gitlab.com/acme/rules.git` |
+| GitLab | `gitlab.com/group/subgroup/repo` | `apm install gitlab.com/acme/platform/rules` |
+| GitLab (HTTPS) | `https://gitlab.com/group/repo.git` | `apm install https://gitlab.com/acme/rules.git` |
 | Bitbucket | `https://bitbucket.org/owner/repo.git` | `apm install https://bitbucket.org/team/rules.git` |
 | Any git host | `git@host:owner/repo.git` | `apm install git@git.company.com:team/rules.git` |
 | Azure DevOps | `dev.azure.com/org/project/repo` | `apm install dev.azure.com/myorg/proj/rules` |

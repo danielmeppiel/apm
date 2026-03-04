@@ -329,9 +329,15 @@ class TestSecurityWithGenericHosts:
             DependencyReference.parse("")
 
     def test_path_injection_still_rejected(self):
-        """Embedding a hostname in a sub-path position is still rejected."""
-        with pytest.raises(ValueError):
-            DependencyReference.parse("evil.com/github.com/user/repo")
+        """Embedding a hostname in a sub-path position is valid with nested groups.
+        
+        With nested group support on generic hosts, all path segments are part
+        of the repo path. The host is correctly identified from the first segment.
+        """
+        dep = DependencyReference.parse("evil.com/github.com/user/repo")
+        assert dep.host == "evil.com"
+        assert dep.repo_url == "github.com/user/repo"
+        assert dep.is_virtual is False
 
     def test_invalid_characters_rejected(self):
         with pytest.raises(ValueError, match="Invalid repository path component"):
@@ -362,12 +368,15 @@ class TestFQDNVirtualPaths:
         assert dep.is_virtual_collection() is True
 
     def test_self_hosted_virtual_subdirectory(self):
+        """Without virtual indicators, all segments are repo path on generic hosts.
+        
+        Virtual subdirectory packages on generic hosts with nested groups
+        require the dict format: {git: 'host/group/repo', path: 'subdir'}
+        """
         dep = DependencyReference.parse("git.company.internal/team/skills/brand-guidelines")
         assert dep.host == "git.company.internal"
-        assert dep.repo_url == "team/skills"
-        assert dep.virtual_path == "brand-guidelines"
-        assert dep.is_virtual is True
-        assert dep.is_virtual_subdirectory() is True
+        assert dep.repo_url == "team/skills/brand-guidelines"
+        assert dep.is_virtual is False
 
     def test_gitlab_virtual_file_with_ref(self):
         dep = DependencyReference.parse("gitlab.com/acme/repo/prompts/file.prompt.md#v2.0")
@@ -377,11 +386,204 @@ class TestFQDNVirtualPaths:
         assert dep.reference == "v2.0"
 
     def test_https_url_with_path_rejected(self):
-        """HTTPS git URLs can't embed paths — use FQDN shorthand instead."""
-        with pytest.raises(ValueError, match="Invalid repository path"):
+        """HTTPS git URLs can't embed virtual paths — use dict format instead."""
+        with pytest.raises(ValueError, match="virtual file extension"):
             DependencyReference.parse("https://gitlab.com/acme/repo/prompts/file.prompt.md")
 
     def test_ssh_url_with_path_rejected(self):
-        """SSH git URLs can't embed paths — use FQDN shorthand instead."""
-        with pytest.raises(ValueError, match="Invalid repository format"):
-            DependencyReference.parse("git@gitlab.com:acme/repo/prompts/file.prompt.md")
+        """SSH git URLs can't embed virtual paths — use dict format instead."""
+        with pytest.raises(ValueError, match="virtual file extension"):
+            DependencyReference.parse("git@gitlab.com:acme/repo/prompts/code-review.prompt.md")
+
+
+class TestNestedGroupSupport:
+    """Test nested group/subgroup support for generic hosts (GitLab, Gitea, etc.).
+
+    GitLab supports up to 20 levels of nested groups: gitlab.com/group/subgroup/.../repo.
+    For generic hosts (non-GitHub, non-ADO), ALL path segments are treated as repo path
+    unless virtual indicators (file extensions, /collections/) are present.
+    """
+
+    # --- FQDN shorthand ---
+
+    def test_gitlab_two_level_group(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.is_virtual is False
+
+    def test_gitlab_three_level_group(self):
+        dep = DependencyReference.parse("gitlab.com/org/team/project/repo")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "org/team/project/repo"
+        assert dep.is_virtual is False
+
+    def test_gitlab_simple_owner_repo_unchanged(self):
+        dep = DependencyReference.parse("gitlab.com/owner/repo")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "owner/repo"
+        assert dep.is_virtual is False
+
+    def test_nested_group_with_ref(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo#v2.0")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.reference == "v2.0"
+        assert dep.is_virtual is False
+
+    def test_nested_group_with_alias(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo@my-alias")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.alias == "my-alias"
+
+    def test_nested_group_with_ref_and_alias(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo#main@alias")
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.reference == "main"
+        assert dep.alias == "alias"
+
+    # --- SSH URLs ---
+
+    def test_ssh_nested_group(self):
+        dep = DependencyReference.parse("git@gitlab.com:group/subgroup/repo.git")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.is_virtual is False
+
+    def test_ssh_three_level_group(self):
+        dep = DependencyReference.parse("git@gitlab.com:org/team/project/repo.git")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "org/team/project/repo"
+
+    def test_ssh_nested_group_no_git_suffix(self):
+        dep = DependencyReference.parse("git@gitlab.com:group/subgroup/repo")
+        assert dep.repo_url == "group/subgroup/repo"
+
+    def test_ssh_nested_group_with_ref(self):
+        dep = DependencyReference.parse("git@gitlab.com:group/subgroup/repo.git#v1.0")
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.reference == "v1.0"
+
+    # --- HTTPS URLs ---
+
+    def test_https_nested_group(self):
+        dep = DependencyReference.parse("https://gitlab.com/group/subgroup/repo.git")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.is_virtual is False
+
+    def test_https_three_level_group(self):
+        dep = DependencyReference.parse("https://gitlab.com/org/team/project/repo.git")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "org/team/project/repo"
+
+    def test_https_nested_group_no_git_suffix(self):
+        dep = DependencyReference.parse("https://gitlab.com/group/subgroup/repo")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+
+    # --- ssh:// protocol URLs ---
+
+    def test_ssh_protocol_nested_group(self):
+        dep = DependencyReference.parse("ssh://git@gitlab.com/group/subgroup/repo.git")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+
+    # --- Virtual packages with nested groups ---
+
+    def test_nested_group_simple_repo_with_virtual_file(self):
+        """Simple 2-segment repo on generic host with virtual file extension."""
+        dep = DependencyReference.parse("gitlab.com/acme/repo/design.prompt.md")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/repo"
+        assert dep.virtual_path == "design.prompt.md"
+        assert dep.is_virtual is True
+
+    def test_nested_group_simple_repo_with_collection(self):
+        """Simple 2-segment repo on generic host with collections path."""
+        dep = DependencyReference.parse("gitlab.com/acme/repo/collections/security")
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/repo"
+        assert dep.virtual_path == "collections/security"
+        assert dep.is_virtual is True
+
+    def test_nested_group_virtual_requires_dict_format(self):
+        """For nested groups + virtual, dict format is required."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "gitlab.com/group/subgroup/repo",
+            "path": "prompts/review.prompt.md"
+        })
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "group/subgroup/repo"
+        assert dep.virtual_path == "prompts/review.prompt.md"
+        assert dep.is_virtual is True
+
+    # --- Install paths ---
+
+    def test_install_path_nested_group(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo")
+        path = dep.get_install_path(Path("/apm_modules"))
+        assert path == Path("/apm_modules/group/subgroup/repo")
+
+    def test_install_path_three_level_group(self):
+        dep = DependencyReference.parse("gitlab.com/org/team/project/repo")
+        path = dep.get_install_path(Path("/apm_modules"))
+        assert path == Path("/apm_modules/org/team/project/repo")
+
+    def test_install_path_simple_generic_host(self):
+        dep = DependencyReference.parse("gitlab.com/owner/repo")
+        path = dep.get_install_path(Path("/apm_modules"))
+        assert path == Path("/apm_modules/owner/repo")
+
+    # --- Canonical form ---
+
+    def test_canonical_nested_group(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo")
+        assert dep.to_canonical() == "gitlab.com/group/subgroup/repo"
+
+    def test_canonical_nested_group_with_ref(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo#v2.0")
+        assert dep.to_canonical() == "gitlab.com/group/subgroup/repo#v2.0"
+
+    def test_canonical_ssh_nested_group(self):
+        dep = DependencyReference.parse("git@gitlab.com:group/subgroup/repo.git")
+        assert dep.to_canonical() == "gitlab.com/group/subgroup/repo"
+
+    def test_canonical_https_nested_group(self):
+        dep = DependencyReference.parse("https://gitlab.com/group/subgroup/repo.git")
+        assert dep.to_canonical() == "gitlab.com/group/subgroup/repo"
+
+    # --- to_github_url (clone URL) ---
+
+    def test_to_github_url_nested_group(self):
+        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo")
+        assert dep.to_github_url() == "https://gitlab.com/group/subgroup/repo"
+
+    # --- GitHub unchanged ---
+
+    def test_github_shorthand_unchanged(self):
+        """GitHub 2-segment shorthand is unchanged by nested group support."""
+        dep = DependencyReference.parse("owner/repo")
+        assert dep.host == "github.com"
+        assert dep.repo_url == "owner/repo"
+        assert dep.is_virtual is False
+
+    def test_github_virtual_unchanged(self):
+        """GitHub 3+ segments still mean virtual package."""
+        dep = DependencyReference.parse("owner/repo/file.prompt.md")
+        assert dep.repo_url == "owner/repo"
+        assert dep.virtual_path == "file.prompt.md"
+        assert dep.is_virtual is True
+
+    # --- Rejection cases ---
+
+    def test_ssh_nested_group_with_virtual_ext_rejected(self):
+        """SSH URLs can't embed virtual paths even with nested groups."""
+        with pytest.raises(ValueError, match="virtual file extension"):
+            DependencyReference.parse("git@gitlab.com:group/subgroup/file.prompt.md")
+
+    def test_https_nested_group_with_virtual_ext_rejected(self):
+        """HTTPS URLs can't embed virtual paths even with nested groups."""
+        with pytest.raises(ValueError, match="virtual file extension"):
+            DependencyReference.parse("https://gitlab.com/group/subgroup/file.prompt.md")

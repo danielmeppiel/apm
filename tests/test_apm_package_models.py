@@ -110,24 +110,18 @@ class TestDependencyReference:
     
     def test_parse_malicious_url_bypass_attempts(self):
         """Test that URL parsing prevents injection attacks.
-        
+
         This tests the security fix for CWE-20: Improper Input Validation.
         With generic git host support, any valid FQDN is accepted as a host.
         The security focus is on preventing:
-        - Path injection: 'evil.com/github.com/user/repo' → host=evil.com, but
-          path 'github.com/user/repo' has 3 segments, violating the expected
-          2-segment 'owner/repo' format → rejected
         - Protocol-relative URL attacks
-        
-        Valid FQDNs like 'github.com.evil.com' are accepted because the hostname
-        parses correctly and the path 'user/repo' has the expected 2 segments.
+
+        With nested group support on generic hosts, path segments that happen
+        to look like hostnames (e.g., 'github.com/user/repo') are treated as
+        repo path segments — not injection. The host is correctly identified.
         """
         # Attack vectors that should still be REJECTED
         rejected_formats = [
-            # Path injection: embedding github.com in path creates invalid repo format
-            ("evil.com/github.com/user/repo", "Use 'user/repo'"),
-            ("attacker.net/github.com/malicious/repo", "Use 'user/repo'"),
-            
             # Protocol-relative URL attacks
             ("//evil.com/github.com/user/repo", "Protocol-relative URLs are not supported"),
         ]
@@ -135,6 +129,18 @@ class TestDependencyReference:
         for malicious_url, expected_match in rejected_formats:
             with pytest.raises(ValueError, match=expected_match):
                 DependencyReference.parse(malicious_url)
+        
+        # With generic git host support + nested groups, these are valid
+        # (host is correctly identified, remaining segments are repo path)
+        nested_group_on_generic_host = [
+            ("evil.com/github.com/user/repo", "evil.com", "github.com/user/repo"),
+            ("attacker.net/github.com/malicious/repo", "attacker.net", "github.com/malicious/repo"),
+        ]
+        for url, expected_host, expected_repo in nested_group_on_generic_host:
+            dep = DependencyReference.parse(url)
+            assert dep.host == expected_host
+            assert dep.repo_url == expected_repo
+            assert dep.is_virtual is False
         
         # With generic git host support, valid FQDNs are accepted as hosts.
         # These are not injection attacks — they are legitimate host references.

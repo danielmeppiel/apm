@@ -111,8 +111,8 @@ class TestToCanonical:
         dep = DependencyReference.parse("git@bitbucket.org:team/rules.git")
         assert dep.to_canonical() == "bitbucket.org/team/rules"
 
-    def test_custom_ghe_host(self):
-        """GitHub Enterprise (.ghe.com) is default host variant — strips host."""
+    def test_default_github_host_stripped(self):
+        """Default GitHub host (github.com) is stripped from canonical form."""
         dep = DependencyReference.parse("github.com/microsoft/apm-sample-package")
         # github.com is the default, so stripped
         assert dep.to_canonical() == "microsoft/apm-sample-package"

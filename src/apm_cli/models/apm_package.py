@@ -2,7 +2,7 @@
 
 import re
 import urllib.parse
-from ..utils.github_host import is_supported_git_host, is_azure_devops_hostname, default_host, unsupported_host_error
+from ..utils.github_host import is_supported_git_host, is_azure_devops_hostname, is_github_hostname, default_host, unsupported_host_error
 import yaml
 from dataclasses import dataclass
 from enum import Enum
@@ -331,8 +331,8 @@ class DependencyReference:
                     # ADO: org/project/repo/subdir
                     return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2] / self.virtual_path
                 elif len(repo_parts) >= 2:
-                    # GitHub: owner/repo/subdir
-                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / self.virtual_path
+                    # owner/repo/subdir or group/subgroup/repo/subdir
+                    return apm_modules_dir.joinpath(*repo_parts, self.virtual_path)
             else:
                 # Virtual file/collection: use sanitized package name (flattened)
                 package_name = self.get_virtual_package_name()
@@ -340,7 +340,7 @@ class DependencyReference:
                     # ADO: org/project/virtual-pkg-name
                     return apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
                 elif len(repo_parts) >= 2:
-                    # GitHub: owner/virtual-pkg-name
+                    # owner/virtual-pkg-name (use first segment as namespace)
                     return apm_modules_dir / repo_parts[0] / package_name
         else:
             # Regular package: use full repo path
@@ -348,8 +348,8 @@ class DependencyReference:
                 # ADO: org/project/repo
                 return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
             elif len(repo_parts) >= 2:
-                # GitHub: owner/repo
-                return apm_modules_dir / repo_parts[0] / repo_parts[1]
+                # owner/repo or group/subgroup/repo (generic hosts)
+                return apm_modules_dir.joinpath(*repo_parts)
         
         # Fallback: join all parts
         return apm_modules_dir.joinpath(*repo_parts)
@@ -571,7 +571,12 @@ class DependencyReference:
             # For Azure DevOps, the base package format is org/project/repo (3 segments)
             # Virtual packages would have 4+ segments: org/project/repo/path/to/file
             # For GitHub, base is owner/repo (2 segments), virtual is 3+ segments
+            # For generic hosts (GitLab, Gitea, etc.), all segments are repo path
+            # unless virtual indicators (file extensions, collections) are present
             is_ado = validated_host is not None and is_azure_devops_hostname(validated_host)
+            is_generic_host = (validated_host is not None
+                               and not is_github_hostname(validated_host)
+                               and not is_azure_devops_hostname(validated_host))
             
             # Handle _git in ADO URLs: org/project/_git/repo -> org/project/repo
             if is_ado and '_git' in path_segments:
@@ -579,7 +584,23 @@ class DependencyReference:
                 # Remove _git from the path segments
                 path_segments = path_segments[:git_idx] + path_segments[git_idx+1:]
             
-            min_base_segments = 3 if is_ado else 2
+            if is_ado:
+                min_base_segments = 3
+            elif is_generic_host:
+                # For generic hosts (GitLab, Gitea), check for virtual indicators
+                # If present, use 2-segment base (simple owner/repo + virtual path)
+                # If absent, treat ALL segments as the repo path (nested groups)
+                has_virtual_ext = any(
+                    any(seg.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS)
+                    for seg in path_segments
+                )
+                has_collection = 'collections' in path_segments
+                if has_virtual_ext or has_collection:
+                    min_base_segments = 2  # Simple repo with virtual path
+                else:
+                    min_base_segments = len(path_segments)  # All segments = repo path
+            else:
+                min_base_segments = 2  # GitHub: owner/repo
             min_virtual_segments = min_base_segments + 1
             
             if len(path_segments) >= min_virtual_segments:
@@ -683,6 +704,8 @@ class DependencyReference:
                             raise ValueError("Invalid Azure DevOps virtual package format: must be dev.azure.com/org/project/repo/path")
                         repo_url = "/".join(parts[1:4])  # org/project/repo
                     else:
+                        # For virtual packages with host prefix, base is always 2 segments
+                        # (virtual indicators already detected in early detection)
                         repo_url = "/".join(parts[1:3])  # owner/repo
                 elif len(parts) >= 2:
                     # No host prefix
@@ -718,6 +741,9 @@ class DependencyReference:
                     if is_azure_devops_hostname(host) and len(parts) >= 4:
                         # ADO format: dev.azure.com/org/project/repo
                         user_repo = "/".join(parts[1:4])
+                    elif not is_github_hostname(host) and not is_azure_devops_hostname(host):
+                        # Generic host (GitLab, Gitea, etc.): all segments after host = repo path
+                        user_repo = "/".join(parts[1:])
                     else:
                         # GitHub format: github.com/user/repo
                         user_repo = "/".join(parts[1:3])
@@ -728,6 +754,9 @@ class DependencyReference:
                     # Check if default host is ADO
                     if is_azure_devops_hostname(host) and len(parts) >= 3:
                         user_repo = "/".join(parts[:3])  # org/project/repo
+                    elif host and not is_github_hostname(host) and not is_azure_devops_hostname(host):
+                        # Generic host: all segments = repo path
+                        user_repo = "/".join(parts)
                     else:
                         user_repo = "/".join(parts[:2])  # user/repo
                 else:
@@ -739,12 +768,12 @@ class DependencyReference:
 
                 uparts = user_repo.split("/")
                 is_ado_host = host and is_azure_devops_hostname(host)
-                expected_parts = 3 if is_ado_host else 2
                 
-                if len(uparts) < expected_parts:
-                    if is_ado_host:
+                if is_ado_host:
+                    if len(uparts) < 3:
                         raise ValueError(f"Invalid Azure DevOps repository format: {repo_url}. Expected 'org/project/repo'")
-                    else:
+                else:
+                    if len(uparts) < 2:
                         raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
                 
                 # Security: validate characters to prevent injection
@@ -784,13 +813,20 @@ class DependencyReference:
 
             # Validate path format based on host type
             is_ado_host = is_azure_devops_hostname(hostname)
-            expected_parts = 3 if is_ado_host else 2
 
-            if len(path_parts) != expected_parts:
-                if is_ado_host:
+            if is_ado_host:
+                if len(path_parts) != 3:
                     raise ValueError(f"Invalid Azure DevOps repository path: expected 'org/project/repo', got '{path}'")
-                else:
-                    raise ValueError(f"Invalid repository path: expected 'user/repo', got '{path}'")
+            else:
+                if len(path_parts) < 2:
+                    raise ValueError(f"Invalid repository path: expected at least 'user/repo', got '{path}'")
+                # HTTPS URLs cannot embed virtual paths — reject virtual file extensions
+                for pp in path_parts:
+                    if any(pp.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
+                        raise ValueError(
+                            f"Invalid repository path: '{path}' contains a virtual file extension. "
+                            f"Use the dict format with 'path:' for virtual packages in HTTPS URLs"
+                        )
 
             # Validate all path parts contain only allowed characters
             # ADO project names may contain spaces
@@ -820,9 +856,19 @@ class DependencyReference:
             ado_project = ado_parts[1]
             ado_repo = ado_parts[2]
         else:
-            # GitHub format: user/repo (2 segments)
-            if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', repo_url):
+            # Non-ADO format: user/repo or group/subgroup/repo (2+ segments)
+            segments = repo_url.split('/')
+            if len(segments) < 2:
                 raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
+            if not all(re.match(r'^[a-zA-Z0-9._-]+$', s) for s in segments):
+                raise ValueError(f"Invalid repository format: {repo_url}. Contains invalid characters")
+            # SSH/HTTPS URLs cannot embed virtual paths — reject virtual file extensions
+            for seg in segments:
+                if any(seg.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
+                    raise ValueError(
+                        f"Invalid repository format: '{repo_url}' contains a virtual file extension. "
+                        f"Use the dict format with 'path:' for virtual packages in SSH/HTTPS URLs"
+                    )
             ado_organization = None
             ado_project = None
             ado_repo = None

@@ -270,7 +270,11 @@ class GitHubPackageDownloader:
         
         # Determine host type for auth decisions
         dep_host = dep_ref.host if dep_ref else None
-        is_github = dep_host and is_github_hostname(dep_host) or (not dep_host)
+        if dep_host:
+            is_github = is_github_hostname(dep_host)
+        else:
+            # When no host is specified, default to GitHub behavior
+            is_github = True
         is_generic = not is_ado and not is_github
         
         # Tokens are only valid for their matching host type
