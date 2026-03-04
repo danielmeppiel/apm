@@ -62,7 +62,7 @@ Skill registries install skills. APM manages **every primitive** your AI agents 
 
 All declared in one manifest. All installed with one command — including transitive dependencies:
 
-**`apm install`** → integrates prompts, agents, and skills into `.github/` and `.claude/`
+**`apm install`** → integrates prompts, agents, skills, and instructions into `.github/` and `.claude/`
 **`apm compile`** → compiles instructions into `AGENTS.md` (Copilot, Cursor, Codex) and `CLAUDE.md` (Claude)
 
 ## Get Started

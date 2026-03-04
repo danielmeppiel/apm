@@ -1326,6 +1326,7 @@ def uninstall(ctx, packages, dry_run):
         commands_cleaned = 0
         skills_cleaned = 0
         hooks_cleaned = 0
+        instructions_cleaned = 0
 
         try:
             from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
@@ -1334,6 +1335,7 @@ def uninstall(ctx, packages, dry_run):
             from apm_cli.integration.skill_integrator import SkillIntegrator
             from apm_cli.integration.command_integrator import CommandIntegrator
             from apm_cli.integration.hook_integrator import HookIntegrator
+            from apm_cli.integration.instruction_integrator import InstructionIntegrator
 
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             project_root = Path(".")
@@ -1385,12 +1387,20 @@ def uninstall(ctx, packages, dry_run):
                                                               managed_files=_buckets["hooks"] if _buckets else None)
             hooks_cleaned = result.get("files_removed", 0)
 
+            # Clean instructions (.github/instructions/)
+            if Path(".github/instructions").exists():
+                integrator = InstructionIntegrator()
+                result = integrator.sync_integration(apm_package, project_root,
+                                                     managed_files=_buckets["instructions"] if _buckets else None)
+                instructions_cleaned = result.get("files_removed", 0)
+
             # Phase 2: Re-integrate from remaining installed packages in apm_modules/
             prompt_integrator = PromptIntegrator()
             agent_integrator = AgentIntegrator()
             skill_integrator = SkillIntegrator()
             command_integrator = CommandIntegrator()
             hook_integrator_reint = HookIntegrator()
+            instruction_integrator = InstructionIntegrator()
 
             for dep in apm_package.get_apm_dependencies():
                 dep_ref = dep if hasattr(dep, 'repo_url') else None
@@ -1427,6 +1437,7 @@ def uninstall(ctx, packages, dry_run):
                         command_integrator.integrate_package_commands(pkg_info, project_root)
                     hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
                     hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
+                    instruction_integrator.integrate_package_instructions(pkg_info, project_root)
                 except Exception:
                     pass  # Best effort re-integration
 
@@ -1444,6 +1455,8 @@ def uninstall(ctx, packages, dry_run):
             _rich_info(f"✓ Cleaned up {commands_cleaned} command(s)")
         if hooks_cleaned > 0:
             _rich_info(f"✓ Cleaned up {hooks_cleaned} hook(s)")
+        if instructions_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {instructions_cleaned} instruction(s)")
 
         # Final summary
         summary_lines = []
@@ -1656,15 +1669,17 @@ def _install_apm_dependencies(
         from apm_cli.integration.skill_integrator import SkillIntegrator, should_install_skill
         from apm_cli.integration.command_integrator import CommandIntegrator
         from apm_cli.integration.hook_integrator import HookIntegrator
+        from apm_cli.integration.instruction_integrator import InstructionIntegrator
 
         skill_integrator = SkillIntegrator()
         command_integrator = CommandIntegrator()
         hook_integrator = HookIntegrator()
+        instruction_integrator = InstructionIntegrator()
         total_prompts_integrated = 0
         total_agents_integrated = 0
         total_skills_integrated = 0
         total_sub_skills_promoted = 0
-        total_instructions_found = 0
+        total_instructions_integrated = 0
         total_commands_integrated = 0
         total_hooks_integrated = 0
         total_links_resolved = 0
@@ -1887,17 +1902,24 @@ def _install_apm_dependencies(
                                 for tp in skill_result.target_paths:
                                     dep_deployed.append(tp.relative_to(project_root).as_posix())
 
-                            # Count instructions (compiled later via `apm compile`)
-                            instruction_count = len(
-                                skill_integrator.find_instruction_files(
-                                    cached_package_info.install_path
+                            # Integrate instructions → .github/instructions/
+                            if integrate_vscode:
+                                instruction_result = (
+                                    instruction_integrator.integrate_package_instructions(
+                                        cached_package_info, project_root,
+                                        force=force, managed_files=managed_files,
+                                    )
                                 )
-                            )
-                            if instruction_count > 0:
-                                total_instructions_found += instruction_count
-                                _rich_info(
-                                    f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
-                                )
+                                if instruction_result.files_integrated > 0:
+                                    total_instructions_integrated += (
+                                        instruction_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/"
+                                    )
+                                total_links_resolved += instruction_result.links_resolved
+                                for tp in instruction_result.target_paths:
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Claude-specific integration (agents + commands)
                             if integrate_claude:
@@ -2116,17 +2138,24 @@ def _install_apm_dependencies(
                                 for tp in skill_result.target_paths:
                                     dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
-                            # Count instructions (compiled later via `apm compile`)
-                            instruction_count = len(
-                                skill_integrator.find_instruction_files(
-                                    package_info.install_path
+                            # Integrate instructions → .github/instructions/
+                            if integrate_vscode:
+                                instruction_result = (
+                                    instruction_integrator.integrate_package_instructions(
+                                        package_info, project_root,
+                                        force=force, managed_files=managed_files,
+                                    )
                                 )
-                            )
-                            if instruction_count > 0:
-                                total_instructions_found += instruction_count
-                                _rich_info(
-                                    f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
-                                )
+                                if instruction_result.files_integrated > 0:
+                                    total_instructions_integrated += (
+                                        instruction_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/"
+                                    )
+                                total_links_resolved += instruction_result.links_resolved
+                                for tp in instruction_result.target_paths:
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Claude-specific integration (agents + commands)
                             if integrate_claude:
@@ -2241,6 +2270,10 @@ def _install_apm_dependencies(
         # Show hooks stats if any were integrated
         if total_hooks_integrated > 0:
             _rich_info(f"✓ Integrated {total_hooks_integrated} hook(s)")
+
+        # Show instructions stats if any were integrated
+        if total_instructions_integrated > 0:
+            _rich_info(f"✓ Integrated {total_instructions_integrated} instruction(s)")
 
         _rich_success(f"Installed {installed_count} APM dependencies")
 

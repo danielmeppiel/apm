@@ -220,6 +220,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Prompts**: `.prompt.md` files → `.github/prompts/*.prompt.md`
 - **Agents**: `.agent.md` files → `.github/agents/*.agent.md`
 - **Chatmodes**: `.chatmode.md` files → `.github/agents/*.agent.md` (renamed to modern format)
+- **Instructions**: `.instructions.md` files → `.github/instructions/*.instructions.md`
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
 - **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
@@ -244,6 +245,7 @@ Skills are copied directly to target directories:
 ```
 ✓ microsoft/apm-sample-package
   ├─ 3 prompts integrated → .github/prompts/
+  ├─ 1 instruction(s) integrated → .github/instructions/
   ├─ 1 agents integrated → .claude/agents/
   └─ 3 commands integrated → .claude/commands/
 ```
