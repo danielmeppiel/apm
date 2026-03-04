@@ -26,6 +26,7 @@ class LockedDependency:
     is_virtual: bool = False
     depth: int = 1
     resolved_by: Optional[str] = None
+    deployed_files: List[str] = field(default_factory=list)
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
@@ -52,11 +53,26 @@ class LockedDependency:
             result["depth"] = self.depth
         if self.resolved_by:
             result["resolved_by"] = self.resolved_by
+        if self.deployed_files:
+            result["deployed_files"] = sorted(self.deployed_files)
         return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LockedDependency":
-        """Deserialize from dict."""
+        """Deserialize from dict.
+
+        Handles backwards compatibility:
+        - Old ``deployed_skills`` lists are migrated to ``deployed_files``
+          paths under ``.github/skills/`` (and ``.claude/skills/``).
+        """
+        deployed_files = list(data.get("deployed_files", []))
+
+        # Migrate legacy deployed_skills → deployed_files
+        old_skills = data.get("deployed_skills", [])
+        if old_skills and not deployed_files:
+            for skill_name in old_skills:
+                deployed_files.append(f".github/skills/{skill_name}/")
+
         return cls(
             repo_url=data["repo_url"],
             host=data.get("host"),
@@ -67,6 +83,7 @@ class LockedDependency:
             is_virtual=data.get("is_virtual", False),
             depth=data.get("depth", 1),
             resolved_by=data.get("resolved_by"),
+            deployed_files=deployed_files,
         )
 
     @classmethod

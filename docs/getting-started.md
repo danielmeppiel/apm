@@ -395,12 +395,12 @@ apm install
 **What gets installed:**
 
 For VSCode/Copilot (when `.github/` exists):
-- `.github/prompts/*-apm.prompt.md` - Reusable prompt templates
-- `.github/agents/*-apm.agent.md` - Agent definitions
+- `.github/prompts/*.prompt.md` - Reusable prompt templates
+- `.github/agents/*.agent.md` - Agent definitions
 - `.github/skills/{folder-name}/` - Skills with `SKILL.md` meta-guide
 
 For Claude Code (when `.claude/` exists):
-- `.claude/commands/*-apm.md` - Slash commands
+- `.claude/commands/*.md` - Slash commands
 
 > **Tip:** Both integrations can coexist in the same project. APM installs to all detected targets.
 

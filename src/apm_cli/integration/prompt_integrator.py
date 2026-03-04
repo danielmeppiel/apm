@@ -97,31 +97,34 @@ class PromptIntegrator:
         return links_resolved
     
     def get_target_filename(self, source_file: Path, package_name: str) -> str:
-        """Generate target filename with -apm suffix (intent-first naming).
+        """Generate target filename (clean, no suffix).
         
         Args:
             source_file: Source file path
             package_name: Name of the package (not used in simple naming)
             
         Returns:
-            str: Target filename with -apm suffix (e.g., accessibility-audit-apm.prompt.md)
+            str: Target filename (e.g., accessibility-audit.prompt.md)
         """
-        # Intent-first naming: insert -apm suffix before .prompt.md extension
-        # Example: design-review.prompt.md -> design-review-apm.prompt.md
-        stem = source_file.stem.replace('.prompt', '')  # Remove .prompt from stem
-        return f"{stem}-apm.prompt.md"
+        # Use original filename — no -apm suffix
+        return source_file.name
     
 
     
-    def integrate_package_prompts(self, package_info, project_root: Path) -> IntegrationResult:
+    def integrate_package_prompts(self, package_info, project_root: Path,
+                                    force: bool = False,
+                                    managed_files: set = None) -> IntegrationResult:
         """Integrate all prompts from a package into .github/prompts/.
         
-        Always overwrites existing files (it's cheap).
-        Resolves context links during integration.
+        Deploys with clean filenames. Skips files that exist locally and
+        are not tracked in any package's deployed_files (user-authored),
+        unless force=True.
         
         Args:
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
+            force: If True, overwrite user-authored files on collision
+            managed_files: Set of relative paths known to be APM-managed
             
         Returns:
             IntegrationResult: Results of the integration operation
@@ -151,14 +154,28 @@ class PromptIntegrator:
         prompts_dir = project_root / ".github" / "prompts"
         prompts_dir.mkdir(parents=True, exist_ok=True)
         
-        # Process each prompt file - always overwrite
+        # Process each prompt file
         files_integrated = 0
+        files_skipped = 0
         target_paths = []
         total_links_resolved = 0
         
         for source_file in prompt_files:
             target_filename = self.get_target_filename(source_file, package_info.package.name)
             target_path = prompts_dir / target_filename
+            rel_path = str(target_path.relative_to(project_root))
+            
+            # Collision detection: skip user-authored files unless --force
+            # managed_files=None means legacy mode (no collision checking)
+            if managed_files is not None and target_path.exists() and rel_path not in managed_files and not force:
+                import sys
+                print(
+                    f"\u26a0\ufe0f  Skipping {rel_path} \u2014 local file exists (not managed by APM). "
+                    f"Use 'apm install --force' to overwrite.",
+                    file=sys.stderr,
+                )
+                files_skipped += 1
+                continue
             
             links_resolved = self.copy_prompt(source_file, target_path)
             total_links_resolved += links_resolved
@@ -168,32 +185,47 @@ class PromptIntegrator:
         return IntegrationResult(
             files_integrated=files_integrated,
             files_updated=0,
-            files_skipped=0,
+            files_skipped=files_skipped,
             target_paths=target_paths,
             gitignore_updated=False,
             links_resolved=total_links_resolved
         )
     
-    def sync_integration(self, apm_package, project_root: Path) -> Dict[str, int]:
-        """Remove all APM-managed prompt files for clean regeneration.
-        
-        Uses nuke-and-regenerate approach: removes all *-apm.prompt.md files.
-        The caller re-integrates from currently installed packages.
+    def sync_integration(self, apm_package, project_root: Path,
+                          managed_files: set = None) -> Dict[str, int]:
+        """Remove APM-managed prompt files.
+
+        Only removes files listed in *managed_files* (from apm.lock
+        deployed_files).  Falls back to legacy ``*-apm.prompt.md`` glob
+        when *managed_files* is ``None`` (old lockfile).
         """
         stats = {'files_removed': 0, 'errors': 0}
-        
-        for prompts_dir in [
-            project_root / ".github" / "prompts",
-        ]:
-            if not prompts_dir.exists():
-                continue
+
+        prompts_dir = project_root / ".github" / "prompts"
+        if not prompts_dir.exists():
+            return stats
+
+        if managed_files is not None:
+            # Manifest-based: only remove files we know APM deployed
+            for rel_path in managed_files:
+                if not rel_path.startswith(".github/prompts/") or ".." in rel_path:
+                    continue
+                target = project_root / rel_path
+                if target.exists():
+                    try:
+                        target.unlink()
+                        stats['files_removed'] += 1
+                    except Exception:
+                        stats['errors'] += 1
+        else:
+            # Legacy fallback: glob for old -apm suffix files
             for prompt_file in prompts_dir.glob("*-apm.prompt.md"):
                 try:
                     prompt_file.unlink()
                     stats['files_removed'] += 1
                 except Exception:
                     stats['errors'] += 1
-        
+
         return stats
     
     def update_gitignore_for_integrated_prompts(self, project_root: Path) -> bool:

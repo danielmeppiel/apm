@@ -21,6 +21,11 @@ class SkillIntegrationResult:
     references_copied: int  # Now tracks total files copied to subdirectories
     links_resolved: int = 0  # Kept for backwards compatibility
     sub_skills_promoted: int = 0  # Number of sub-skills promoted to top-level
+    target_paths: List[Path] = None  # All deployed directories (for deployed_files manifest)
+    
+    def __post_init__(self):
+        if self.target_paths is None:
+            self.target_paths = []
 
 
 def to_hyphen_case(name: str) -> str:
@@ -444,7 +449,7 @@ class SkillIntegrator:
         return context_files
     
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True) -> int:
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True) -> tuple[int, list[Path]]:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -454,11 +459,12 @@ class SkillIntegrator:
             warn: Whether to emit a warning on name collisions.
 
         Returns:
-            int: Number of sub-skills promoted.
+            tuple[int, list[Path]]: (count of promoted sub-skills, list of deployed dir paths)
         """
         promoted = 0
+        deployed = []
         if not sub_skills_dir.is_dir():
-            return promoted
+            return promoted, deployed
         for sub_skill_path in sub_skills_dir.iterdir():
             if not sub_skill_path.is_dir():
                 continue
@@ -481,11 +487,12 @@ class SkillIntegrator:
             target.mkdir(parents=True, exist_ok=True)
             shutil.copytree(sub_skill_path, target, dirs_exist_ok=True)
             promoted += 1
-        return promoted
+            deployed.append(target)
+        return promoted, deployed
 
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path
-    ) -> int:
+    ) -> tuple[int, list[Path]]:
         """Promote sub-skills from a package that is NOT itself a skill.
 
         Packages typed as INSTRUCTIONS may still ship sub-skills under
@@ -498,29 +505,31 @@ class SkillIntegrator:
             project_root: Root directory of the project.
 
         Returns:
-            int: Number of sub-skills promoted.
+            tuple[int, list[Path]]: (count of promoted sub-skills, list of deployed dirs)
         """
         package_path = package_info.install_path
         sub_skills_dir = package_path / ".apm" / "skills"
         if not sub_skills_dir.is_dir():
-            return 0
+            return 0, []
 
         parent_name = package_path.name
         github_skills_root = project_root / ".github" / "skills"
         github_skills_root.mkdir(parents=True, exist_ok=True)
-        count = self._promote_sub_skills(
+        count, deployed = self._promote_sub_skills(
             sub_skills_dir, github_skills_root, parent_name, warn=True
         )
+        all_deployed = list(deployed)
 
         # Also promote into .claude/skills/ when .claude/ exists
         claude_dir = project_root / ".claude"
         if claude_dir.exists() and claude_dir.is_dir():
             claude_skills_root = claude_dir / "skills"
-            self._promote_sub_skills(
+            _, claude_deployed = self._promote_sub_skills(
                 sub_skills_dir, claude_skills_root, parent_name, warn=False
             )
+            all_deployed.extend(claude_deployed)
 
-        return count
+        return count, all_deployed
 
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path
@@ -599,13 +608,17 @@ class SkillIntegrator:
         
         files_copied = sum(1 for _ in github_skill_dir.rglob('*') if _.is_file())
         
+        # Track deployed paths
+        all_target_paths = [github_skill_dir]
+        
         # === Promote sub-skills to top-level entries ===
         # Packages may contain sub-skills in .apm/skills/*/ subdirectories.
         # Copilot only discovers .github/skills/<name>/SKILL.md (direct children),
         # so we promote each sub-skill to an independent top-level entry.
         sub_skills_dir = package_path / ".apm" / "skills"
         github_skills_root = project_root / ".github" / "skills"
-        sub_skills_count = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True)
+        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True)
+        all_target_paths.extend(sub_deployed)
         
         # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
         claude_dir = project_root / ".claude"
@@ -618,10 +631,12 @@ class SkillIntegrator:
             claude_skill_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(package_path, claude_skill_dir,
                             ignore=shutil.ignore_patterns('.apm'))
+            all_target_paths.append(claude_skill_dir)
             
             # Promote sub-skills for Claude too
             claude_skills_root = claude_dir / "skills"
-            self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False)
+            _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False)
+            all_target_paths.extend(claude_sub_deployed)
         
         return SkillIntegrationResult(
             skill_created=skill_created,
@@ -630,7 +645,8 @@ class SkillIntegrator:
             skill_path=github_skill_md,
             references_copied=files_copied,
             links_resolved=0,
-            sub_skills_promoted=sub_skills_count
+            sub_skills_promoted=sub_skills_count,
+            target_paths=all_target_paths
         )
 
     def integrate_package_skill(self, package_info, project_root: Path) -> SkillIntegrationResult:
@@ -655,7 +671,7 @@ class SkillIntegrator:
         if not should_install_skill(package_info):
             # Even non-skill packages may ship sub-skills under .apm/skills/.
             # Promote them so Copilot can discover them independently.
-            sub_skills_count = self._promote_sub_skills_standalone(
+            sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
                 package_info, project_root
             )
             return SkillIntegrationResult(
@@ -665,7 +681,8 @@ class SkillIntegrator:
                 skill_path=None,
                 references_copied=0,
                 links_resolved=0,
-                sub_skills_promoted=sub_skills_count
+                sub_skills_promoted=sub_skills_count,
+                target_paths=sub_deployed
             )
         
         # Skip virtual FILE and COLLECTION packages - they're individual files, not full packages
@@ -692,7 +709,7 @@ class SkillIntegrator:
         
         # No SKILL.md at root — not a skill package.
         # Still promote any sub-skills shipped under .apm/skills/.
-        sub_skills_count = self._promote_sub_skills_standalone(
+        sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
             package_info, project_root
         )
         return SkillIntegrationResult(
@@ -702,31 +719,53 @@ class SkillIntegrator:
             skill_path=None,
             references_copied=0,
             links_resolved=0,
-            sub_skills_promoted=sub_skills_count
+            sub_skills_promoted=sub_skills_count,
+            target_paths=sub_deployed
         )
     
-    def sync_integration(self, apm_package, project_root: Path) -> Dict[str, int]:
+    def sync_integration(self, apm_package, project_root: Path,
+                          managed_files: set = None) -> Dict[str, int]:
         """Sync .github/skills/ and .claude/skills/ with currently installed packages.
         
-        Removes skill directories for packages that are no longer installed.
-        Uses npm-style approach: derives expected skill directory names from
-        installed dependencies and removes any directory not in that set.
-        
-        T7 Enhancement: Cleans both .github/skills/ and .claude/skills/ locations.
+        When *managed_files* is provided, only removes skill directories whose
+        paths appear in the set.  Otherwise falls back to npm-style orphan
+        detection (derives expected names from installed dependencies).
         
         Args:
             apm_package: APMPackage with current dependencies
             project_root: Root directory of the project
+            managed_files: Set of relative paths known to be APM-managed
             
         Returns:
             Dict with cleanup statistics
         """
         stats = {'files_removed': 0, 'errors': 0}
+
+        if managed_files is not None:
+            # Manifest-based removal — only remove tracked skill directories
+            project_root_resolved = project_root.resolve()
+            for rel_path in managed_files:
+                is_skill = (
+                    rel_path.startswith(".github/skills/")
+                    or rel_path.startswith(".claude/skills/")
+                )
+                if not is_skill or ".." in rel_path:
+                    continue
+                target = project_root / rel_path
+                if not str(target.resolve()).startswith(str(project_root_resolved)):
+                    continue
+                if target.exists() and target.is_dir():
+                    try:
+                        shutil.rmtree(target)
+                        stats['files_removed'] += 1
+                    except Exception:
+                        stats['errors'] += 1
+            return stats
         
+        # Legacy fallback: npm-style orphan detection
         # Build set of expected skill directory names from installed packages
         installed_skill_names = set()
         for dep in apm_package.get_apm_dependencies():
-            # Derive skill name the same way copy_native_skill / copy_skill_to_target does
             raw_name = dep.repo_url.split('/')[-1]
             if dep.is_virtual and dep.virtual_path:
                 raw_name = dep.virtual_path.split('/')[-1]

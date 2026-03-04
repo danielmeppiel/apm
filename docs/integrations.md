@@ -148,37 +148,40 @@ APM automatically integrates prompts and agents from installed packages into VSC
 apm install microsoft/apm-sample-package
 
 # Prompts are automatically integrated to:
-# .github/prompts/*-apm.prompt.md (verbatim copy with -apm suffix)
+# .github/prompts/*.prompt.md (verbatim copy, original filename preserved)
 
 # Agents are automatically integrated to:
-# .github/agents/*-apm.agent.md (verbatim copy)
+# .github/agents/*.agent.md (verbatim copy)
 
 # Hooks are automatically integrated to:
-# .github/hooks/*-apm.json (hook definitions with rewritten script paths)
+# .github/hooks/*.json (hook definitions with rewritten script paths)
 ```
 
 **How Auto-Integration Works**:
 - **Zero-Config**: Always enabled, works automatically with no configuration needed
-- **Auto-Cleanup**: Removes integrated prompts when you uninstall packages
-- **Always Overwrite**: Prompt and agent files are always copied fresh — no version comparison
-- **GitIgnore Protection**: Automatically adds pattern to `.gitignore` for integrated prompts
+- **Auto-Cleanup**: Removes integrated files when you uninstall or prune packages (tracked via `deployed_files` in `apm.lock`)
+- **Collision Detection**: If a local file has the same name as a package file, APM skips it with a warning (use `--force` to overwrite)
+- **Always Overwrite**: Package-owned files are always copied fresh — no version comparison
+- **GitIgnore Protection**: Automatically adds patterns to `.gitignore` for integrated files
 - **Link Resolution**: Context links are resolved during integration
 
 **Integration Flow**:
 1. Run `apm install` to fetch APM packages
 2. APM automatically creates `.github/prompts/`, `.github/agents/`, and `.github/hooks/` directories if needed
 3. Discovers `.prompt.md`, `.agent.md`, and hook `.json` files in each package
-4. Copies prompts to `.github/prompts/` with `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
-5. Copies agents to `.github/agents/` with `-apm` suffix (e.g., `security-apm.agent.md`)
-6. Copies hooks to `.github/hooks/` with `-apm` suffix (e.g., `hookify-hooks-apm.json`) and copies referenced scripts
-7. Updates `.gitignore` to exclude integrated prompts, agents, and hooks
-8. VSCode automatically loads all prompts, agents, and hooks for your coding agents
-9. Run `apm uninstall` to automatically remove integrated primitives
+4. Copies prompts to `.github/prompts/` with their original filename (e.g., `accessibility-audit.prompt.md`)
+5. Copies agents to `.github/agents/` with their original filename (e.g., `security.agent.md`)
+6. Copies hooks to `.github/hooks/` with their original filename and copies referenced scripts
+7. If a local file already exists with the same name, skips with a warning (use `--force` to overwrite)
+8. Records all deployed files in `apm.lock` under `deployed_files` per package
+9. Updates `.gitignore` to exclude integrated files
+10. VSCode automatically loads all prompts, agents, and hooks for your coding agents
+11. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
 
 **Intent-First Discovery**:
-The `-apm` suffix pattern enables natural autocomplete in VSCode:
-- Type `/design` → VSCode shows `design-review-apm.prompt.md`
-- Type `/accessibility` → VSCode shows `accessibility-audit-apm.prompt.md`
+Files keep their original names for natural autocomplete in VSCode:
+- Type `/design` → VSCode shows `design-review.prompt.md`
+- Type `/accessibility` → VSCode shows `accessibility-audit.prompt.md`
 - Search by what you want to do, not where it comes from
 
 **Example**: 
@@ -188,17 +191,17 @@ apm install microsoft/apm-sample-package
 
 # Result in VSCode:
 # Prompts:
-# .github/prompts/accessibility-audit-apm.prompt.md  ✓ Available in chat
-# .github/prompts/design-review-apm.prompt.md        ✓ Available in chat
-# .github/prompts/style-guide-check-apm.prompt.md    ✓ Available in chat
+# .github/prompts/accessibility-audit.prompt.md  ✓ Available in chat
+# .github/prompts/design-review.prompt.md        ✓ Available in chat
+# .github/prompts/style-guide-check.prompt.md    ✓ Available in chat
 
 # Agents:
-# .github/agents/design-reviewer-apm.agent.md        ✓ Available as chat mode
-# .github/agents/accessibility-expert-apm.agent.md   ✓ Available as chat mode
+# .github/agents/design-reviewer.agent.md        ✓ Available as chat mode
+# .github/agents/accessibility-expert.agent.md   ✓ Available as chat mode
 
 # Use with natural autocomplete:
 # Type: /design
-# VSCode suggests: design-review-apm.prompt.md ✨
+# VSCode suggests: design-review.prompt.md ✨
 ```
 
 **VSCode Native Features**:
@@ -227,8 +230,8 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 
 | Location | Purpose |
 |----------|---------|
-| `.claude/agents/*-apm.md` | Sub-agents from installed packages (from `.agent.md` files) |
-| `.claude/commands/*-apm.md` | Slash commands from installed packages (from `.prompt.md` files) |
+| `.claude/agents/*.md` | Sub-agents from installed packages (from `.agent.md` files) |
+| `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
 | `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
 | `.claude/settings.json` (hooks key) | Hooks from installed packages (merged into settings) |
 
@@ -241,12 +244,12 @@ APM automatically deploys agent files from installed packages into `.claude/agen
 apm install danielmeppiel/design-guidelines
 
 # Result:
-# .claude/agents/security-apm.md    → Sub-agent available for Claude Code
+# .claude/agents/security.md    → Sub-agent available for Claude Code
 ```
 
 **How it works:**
 1. `apm install` detects `.agent.md` and `.chatmode.md` files in the package
-2. Copies each to `.claude/agents/` as `.md` files with `-apm` suffix
+2. Copies each to `.claude/agents/` as `.md` files
 3. Updates `.gitignore` to exclude generated agents
 4. `apm uninstall` automatically removes the package's agents
 
@@ -259,16 +262,15 @@ APM automatically converts `.prompt.md` files from installed packages into Claud
 apm install microsoft/apm-sample-package
 
 # Result:
-# .claude/commands/accessibility-audit-apm.md   → /accessibility-audit
-# .claude/commands/design-review-apm.md         → /design-review
+# .claude/commands/accessibility-audit.md   → /accessibility-audit
+# .claude/commands/design-review.md         → /design-review
 ```
 
 **How it works:**
 1. `apm install` detects `.prompt.md` files in the package
 2. Converts each to Claude command format in `.claude/commands/`
-3. Adds `-apm` suffix for tracking
-4. Updates `.gitignore` to exclude generated commands
-5. `apm uninstall` automatically removes the package's commands
+3. Updates `.gitignore` to exclude generated commands
+4. `apm uninstall` automatically removes the package's commands
 
 ### Automatic Skills Integration
 
@@ -302,7 +304,7 @@ APM automatically integrates hooks from installed packages. Hooks define lifecyc
 apm install anthropics/claude-plugins-official/plugins/hookify
 
 # VSCode result (.github/hooks/):
-# .github/hooks/hookify-hooks-apm.json       → Hook definitions
+# .github/hooks/hookify-hooks.json       → Hook definitions
 # .github/hooks/scripts/hookify/hooks/*.py   → Referenced scripts
 
 # Claude result (.claude/settings.json):
@@ -312,7 +314,7 @@ apm install anthropics/claude-plugins-official/plugins/hookify
 
 **How hook integration works:**
 1. `apm install` discovers hook JSON files in `.apm/hooks/` or `hooks/` directories
-2. For VSCode: copies hook JSON to `.github/hooks/` with `-apm` suffix and rewrites script paths
+2. For VSCode: copies hook JSON to `.github/hooks/` and rewrites script paths
 3. For Claude: merges hook definitions into `.claude/settings.json` under the `hooks` key
 4. Copies referenced scripts to the target location
 5. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
@@ -479,8 +481,8 @@ Any IDE with GitHub Copilot support (JetBrains, Visual Studio, etc.) works with 
 apm install microsoft/apm-sample-package
 
 # GitHub Copilot automatically picks up:
-# .github/prompts/*-apm.prompt.md (integrated prompts)
-# .github/agents/*-apm.agent.md (integrated agents)
+# .github/prompts/*.prompt.md (integrated prompts)
+# .github/agents/*.agent.md (integrated agents)
 # .github/agents/ or .github/chatmodes/ (AI personas - both formats supported)
 # .github/instructions/ (file-pattern rules)
 ```

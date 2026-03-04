@@ -396,7 +396,7 @@ APM generates a lockfile (`apm.lock`) after each successful install to ensure re
 
 ### What is apm.lock?
 
-The `apm.lock` file captures the exact state of your dependency tree:
+The `apm.lock` file captures the exact state of your dependency tree, including which files APM deployed:
 
 ```yaml
 lockfile_version: "1.0"
@@ -409,6 +409,10 @@ dependencies:
     resolved_ref: "main"
     version: "1.0.0"
     depth: 1
+    deployed_files:
+      - .github/prompts/design-review.prompt.md
+      - .github/prompts/accessibility-audit.prompt.md
+      - .github/agents/design-reviewer.agent.md
   contoso/validation-patterns:
     repo_url: "https://github.com/contoso/validation-patterns"
     resolved_commit: "789xyz012"
@@ -417,6 +421,8 @@ dependencies:
     depth: 2
     resolved_by: "microsoft/apm-sample-package"
 ```
+
+The `deployed_files` field tracks exactly which files APM placed in your project. This enables safe cleanup on `apm uninstall` and `apm prune` — only tracked files are removed.
 
 ### How It Works
 

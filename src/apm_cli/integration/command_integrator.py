@@ -158,12 +158,18 @@ class CommandIntegrator:
         
         return links_resolved
     
-    def integrate_package_commands(self, package_info, project_root: Path) -> CommandIntegrationResult:
+    def integrate_package_commands(self, package_info, project_root: Path,
+                                    force: bool = False,
+                                    managed_files: set = None) -> CommandIntegrationResult:
         """Integrate all prompt files from a package as Claude commands.
+        
+        Deploys with clean filenames. Skips user-authored files unless force=True.
         
         Args:
             package_info: PackageInfo object with package metadata and install path
             project_root: Root directory of the project
+            force: If True, overwrite user-authored files on collision
+            managed_files: Set of relative paths known to be APM-managed
             
         Returns:
             CommandIntegrationResult: Result of integration
@@ -186,22 +192,33 @@ class CommandIntegrator:
             self.link_resolver = UnifiedLinkResolver(project_root)
         
         files_integrated = 0
+        files_skipped = 0
         target_paths = []
         total_links_resolved = 0
         
         for prompt_file in prompt_files:
-            # Generate command name with package suffix for uniqueness
+            # Generate clean command name (no suffix)
             filename = prompt_file.name
             if filename.endswith('.prompt.md'):
                 base_name = filename[:-len('.prompt.md')]
             else:
                 base_name = prompt_file.stem
             
-            # Add -apm suffix to distinguish from local prompts
-            command_name = f"{base_name}-apm"
-            target_path = commands_dir / f"{command_name}.md"
+            target_path = commands_dir / f"{base_name}.md"
+            rel_path = str(target_path.relative_to(project_root))
             
-            # Always overwrite
+            # Collision detection: skip user-authored files unless --force
+            # managed_files=None means legacy mode (no collision checking)
+            if managed_files is not None and target_path.exists() and rel_path not in managed_files and not force:
+                import sys
+                print(
+                    f"\u26a0\ufe0f  Skipping {rel_path} \u2014 local file exists (not managed by APM). "
+                    f"Use 'apm install --force' to overwrite.",
+                    file=sys.stderr,
+                )
+                files_skipped += 1
+                continue
+            
             links_resolved = self.integrate_command(
                 prompt_file, target_path, package_info, prompt_file
             )
@@ -215,7 +232,7 @@ class CommandIntegrator:
         return CommandIntegrationResult(
             files_integrated=files_integrated,
             files_updated=0,
-            files_skipped=0,
+            files_skipped=files_skipped,
             target_paths=target_paths,
             gitignore_updated=gitignore_updated,
             links_resolved=total_links_resolved
@@ -249,37 +266,50 @@ class CommandIntegrator:
         gitignore_path.write_text(new_content)
         return True
     
-    def sync_integration(self, apm_package, project_root: Path) -> Dict:
-        """Remove all APM-managed command files for clean regeneration.
-        
-        Args:
-            apm_package: APMPackage (unused, kept for interface compatibility)
-            project_root: Root directory of the project
-            
-        Returns:
-            Dict with cleanup stats: {'files_removed': int, 'errors': int}
+    def sync_integration(self, apm_package, project_root: Path,
+                          managed_files: set = None) -> Dict:
+        """Remove APM-managed command files from .claude/commands/.
+
+        Only removes files listed in *managed_files*.  Falls back to
+        legacy ``*-apm.md`` glob when *managed_files* is ``None``.
         """
         stats = {'files_removed': 0, 'errors': 0}
         
         commands_dir = project_root / ".claude" / "commands"
         if not commands_dir.exists():
             return stats
-        
-        for cmd_file in commands_dir.glob("*-apm.md"):
-            try:
-                cmd_file.unlink()
-                stats['files_removed'] += 1
-            except Exception:
-                stats['errors'] += 1
+
+        if managed_files is not None:
+            for rel_path in managed_files:
+                if not rel_path.startswith(".claude/commands/") or ".." in rel_path:
+                    continue
+                target = project_root / rel_path
+                if target.exists():
+                    try:
+                        target.unlink()
+                        stats['files_removed'] += 1
+                    except Exception:
+                        stats['errors'] += 1
+        else:
+            for cmd_file in commands_dir.glob("*-apm.md"):
+                try:
+                    cmd_file.unlink()
+                    stats['files_removed'] += 1
+                except Exception:
+                    stats['errors'] += 1
         
         return stats
     
-    def remove_package_commands(self, package_name: str, project_root: Path) -> int:
-        """Remove all APM-managed command files.
+    def remove_package_commands(self, package_name: str, project_root: Path,
+                                managed_files: set = None) -> int:
+        """Remove APM-managed command files.
+        
+        Uses *managed_files* when available; falls back to legacy glob.
         
         Args:
-            package_name: Name of the package (unused, all -apm files are removed)
+            package_name: Name of the package (unused)
             project_root: Root directory of the project
+            managed_files: Set of relative paths known to be APM-managed
             
         Returns:
             int: Number of files removed
@@ -290,11 +320,24 @@ class CommandIntegrator:
             return 0
         
         files_removed = 0
-        for cmd_file in commands_dir.glob("*-apm.md"):
-            try:
-                cmd_file.unlink()
-                files_removed += 1
-            except Exception:
-                pass
+
+        if managed_files is not None:
+            for rel_path in managed_files:
+                if not rel_path.startswith(".claude/commands/") or ".." in rel_path:
+                    continue
+                target = project_root / rel_path
+                if target.exists():
+                    try:
+                        target.unlink()
+                        files_removed += 1
+                    except Exception:
+                        pass
+        else:
+            for cmd_file in commands_dir.glob("*-apm.md"):
+                try:
+                    cmd_file.unlink()
+                    files_removed += 1
+                except Exception:
+                    pass
         
         return files_removed
