@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix PAT handling in agentic maintenance workflows (daily-doc-updater, daily-test-improver) to use `CREATE_PR_PAT` secret for PR creation (#144)
+
 ## [0.7.4] - 2025-03-03
 
 ### Added
