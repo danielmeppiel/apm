@@ -280,6 +280,48 @@ class DependencyReference:
         # Fallback: join all parts
         return apm_modules_dir.joinpath(*repo_parts)
     
+    @staticmethod
+    def _normalize_ssh_protocol_url(url: str) -> str:
+        """Normalize ssh:// protocol URLs to git@ format for consistent parsing.
+        
+        Converts:
+        - ssh://git@gitlab.com/owner/repo.git → git@gitlab.com:owner/repo.git
+        - ssh://git@host:port/owner/repo.git → git@host:owner/repo.git
+        
+        Non-SSH URLs are returned unchanged.
+        """
+        if not url.startswith('ssh://'):
+            return url
+        
+        # Parse the ssh:// URL
+        # Format: ssh://[user@]host[:port]/path
+        remainder = url[6:]  # Remove 'ssh://'
+        
+        # Extract user if present (typically 'git@')
+        user_prefix = ""
+        if '@' in remainder.split('/')[0]:
+            user_at_idx = remainder.index('@')
+            user_prefix = remainder[:user_at_idx + 1]  # e.g., "git@"
+            remainder = remainder[user_at_idx + 1:]
+        
+        # Extract host (and optional port)
+        slash_idx = remainder.find('/')
+        if slash_idx == -1:
+            return url  # Invalid format, return as-is
+        
+        host_part = remainder[:slash_idx]
+        path_part = remainder[slash_idx + 1:]
+        
+        # Strip port if present (e.g., host:22)
+        if ':' in host_part:
+            host_part = host_part.split(':')[0]
+        
+        # Convert to git@ format: git@host:path
+        if user_prefix:
+            return f"{user_prefix}{host_part}:{path_part}"
+        else:
+            return f"git@{host_part}:{path_part}"
+
     @classmethod
     def parse(cls, dependency_str: str) -> "DependencyReference":
         """Parse a dependency string into a DependencyReference.
@@ -294,6 +336,12 @@ class DependencyReference:
         - user/repo#ref@alias
         - user/repo/path/to/file.prompt.md (virtual file package)
         - user/repo/collections/name (virtual collection package)
+        - https://gitlab.com/owner/repo.git (generic HTTPS git URL)
+        - git@gitlab.com:owner/repo.git (SSH git URL)
+        - ssh://git@gitlab.com/owner/repo.git (SSH protocol URL)
+        
+        Any valid FQDN is accepted as a git host (GitHub, GitLab, Bitbucket,
+        self-hosted instances, etc.).
         
         Args:
             dependency_str: The dependency string to parse
@@ -317,6 +365,9 @@ class DependencyReference:
         # SECURITY: Reject protocol-relative URLs (//example.com)
         if dependency_str.startswith('//'):
             raise ValueError(unsupported_host_error("//...", context="Protocol-relative URLs are not supported"))
+        
+        # Normalize ssh:// protocol URLs to git@ format
+        dependency_str = cls._normalize_ssh_protocol_url(dependency_str)
         
         # Early detection of virtual packages (3+ path segments)
         # Extract the core path before processing reference (#) and alias (@)
@@ -368,7 +419,7 @@ class DependencyReference:
                             )
                     except (ValueError, AttributeError) as e:
                         # If we can't parse or validate, and first segment has dot, it's suspicious - REJECT
-                        if isinstance(e, ValueError) and "Unsupported Git host" in str(e):
+                        if isinstance(e, ValueError) and "Invalid Git host" in str(e):
                             raise  # Re-raise our security error
                         raise ValueError(
                             unsupported_host_error(first_segment)
@@ -438,10 +489,8 @@ class DependencyReference:
         if ssh_match:
             host = ssh_match.group(1)
             ssh_repo_part = ssh_match.group(2)
-            if ssh_repo_part.endswith('.git'):
-                ssh_repo_part = ssh_repo_part[:-4]
 
-            # Handle reference and alias in SSH URL
+            # Handle reference and alias in SSH URL (extract before .git stripping)
             reference = None
             alias = None
 
@@ -454,6 +503,10 @@ class DependencyReference:
                 reference = reference.strip()
             else:
                 repo_part = ssh_repo_part
+
+            # Strip .git suffix after extracting ref and alias
+            if repo_part.endswith('.git'):
+                repo_part = repo_part[:-4]
 
             repo_url = repo_part.strip()
         else:

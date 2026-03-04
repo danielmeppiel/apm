@@ -109,37 +109,44 @@ class TestDependencyReference:
                 DependencyReference.parse(invalid_format)
     
     def test_parse_malicious_url_bypass_attempts(self):
-        """Test that malicious URL bypass attempts are properly rejected.
+        """Test that URL parsing prevents injection attacks.
         
         This tests the security fix for CWE-20: Improper Input Validation.
-        Prevents attacks where an attacker embeds allowed hostnames in unexpected locations.
+        With generic git host support, any valid FQDN is accepted as a host.
+        The security focus is on preventing:
+        - Path injection (embedding hostnames in unexpected path positions)
+        - Protocol-relative URL attacks
         """
-        # Attack vectors that should be REJECTED
-        malicious_formats = [
-            # Subdomain attack: attacker owns prefix subdomain
+        # Attack vectors that should still be REJECTED
+        rejected_formats = [
+            # Path injection: embedding github.com in path creates invalid repo format
+            ("evil.com/github.com/user/repo", "Use 'user/repo'"),
+            ("attacker.net/github.com/malicious/repo", "Use 'user/repo'"),
+            
+            # Protocol-relative URL attacks
+            ("//evil.com/github.com/user/repo", "Protocol-relative URLs are not supported"),
+        ]
+        
+        for malicious_url, expected_match in rejected_formats:
+            with pytest.raises(ValueError, match=expected_match):
+                DependencyReference.parse(malicious_url)
+        
+        # With generic git host support, valid FQDNs are accepted as hosts.
+        # These are not injection attacks — they are legitimate host references.
+        accepted_as_generic_hosts = [
             "evil-github.com/user/repo",
             "malicious-github.com/user/repo",
             "github.com.evil.com/user/repo",
-            
-            # Path injection: embedding github.com in path
-            "evil.com/github.com/user/repo",
-            "attacker.net/github.com/malicious/repo",
-            
-            # Domain suffix attacks
             "fakegithub.com/user/repo",
             "notgithub.com/user/repo",
-            
-            # Protocol-relative URL attacks
-            "//evil.com/github.com/user/repo",
-            
-            # Mixed case attacks (domains are case-insensitive)
             "GitHub.COM.evil.com/user/repo",
             "GITHUB.com.attacker.net/user/repo",
         ]
         
-        for malicious_url in malicious_formats:
-            with pytest.raises(ValueError, match="Unsupported Git host"):
-                DependencyReference.parse(malicious_url)
+        for url in accepted_as_generic_hosts:
+            dep = DependencyReference.parse(url)
+            assert dep.repo_url == "user/repo"
+            assert dep.host is not None
     
     def test_parse_legitimate_github_enterprise_formats(self):
         """Test that legitimate GitHub Enterprise hostnames are accepted.
@@ -265,16 +272,25 @@ class TestDependencyReference:
             DependencyReference.parse("github.com/my%20owner/repo")
 
     def test_parse_virtual_package_with_malicious_host(self):
-        """Test that virtual packages with malicious hosts are rejected."""
-        malicious_virtual_formats = [
-            "evil.com/github.com/user/repo/prompts/file.prompt.md",
-            "github.com.evil.com/user/repo/prompts/file.prompt.md",
-            "attacker.net/user/repo/prompts/file.prompt.md",
-        ]
+        """Test virtual packages with various host types.
         
-        for malicious_url in malicious_virtual_formats:
-            with pytest.raises(ValueError):
-                DependencyReference.parse(malicious_url)
+        With generic git host support, valid FQDNs are accepted as hosts.
+        Path injection (embedding a host in a sub-path) is still rejected.
+        """
+        # Path injection: still rejected (creates invalid repo format)
+        with pytest.raises(ValueError):
+            DependencyReference.parse("evil.com/github.com/user/repo/prompts/file.prompt.md")
+        
+        # Valid generic hosts: now accepted with generic git URL support
+        dep1 = DependencyReference.parse("github.com.evil.com/user/repo/prompts/file.prompt.md")
+        assert dep1.host == "github.com.evil.com"
+        assert dep1.repo_url == "user/repo"
+        assert dep1.is_virtual is True
+        
+        dep2 = DependencyReference.parse("attacker.net/user/repo/prompts/file.prompt.md")
+        assert dep2.host == "attacker.net"
+        assert dep2.repo_url == "user/repo"
+        assert dep2.is_virtual is True
     
     def test_parse_virtual_file_package(self):
         """Test parsing virtual file package (individual file)."""
@@ -370,7 +386,7 @@ class TestDependencyReference:
         ]
         
         for invalid_format in invalid_formats:
-            with pytest.raises(ValueError, match="Unsupported Git host|Empty dependency string|Invalid repository|Use 'user/repo'|path component"):
+            with pytest.raises(ValueError, match="Invalid Git host|Empty dependency string|Invalid repository|Use 'user/repo'|path component"):
                 DependencyReference.parse(invalid_format)
     
     def test_to_github_url(self):
