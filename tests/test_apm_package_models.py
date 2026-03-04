@@ -114,8 +114,13 @@ class TestDependencyReference:
         This tests the security fix for CWE-20: Improper Input Validation.
         With generic git host support, any valid FQDN is accepted as a host.
         The security focus is on preventing:
-        - Path injection (embedding hostnames in unexpected path positions)
+        - Path injection: 'evil.com/github.com/user/repo' → host=evil.com, but
+          path 'github.com/user/repo' has 3 segments, violating the expected
+          2-segment 'owner/repo' format → rejected
         - Protocol-relative URL attacks
+        
+        Valid FQDNs like 'github.com.evil.com' are accepted because the hostname
+        parses correctly and the path 'user/repo' has the expected 2 segments.
         """
         # Attack vectors that should still be REJECTED
         rejected_formats = [

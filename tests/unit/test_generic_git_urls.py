@@ -136,7 +136,7 @@ class TestGitLabSSH:
         assert dep.repo_url == "team/rules"
 
     def test_ssh_protocol_with_port(self):
-        """Port in ssh:// URL should be stripped."""
+        """Port is stripped during normalization to git@ format, which uses SSH config for custom ports."""
         dep = DependencyReference.parse("ssh://git@gitlab.com:2222/acme/repo.git")
         assert dep.host == "gitlab.com"
         assert dep.repo_url == "acme/repo"
