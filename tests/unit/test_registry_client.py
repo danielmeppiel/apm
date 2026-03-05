@@ -319,6 +319,68 @@ class TestSimpleRegistryClient(unittest.TestCase):
                 result = self.client.find_server_by_reference(test_case)
                 self.assertIsNone(result)
 
+    @mock.patch('apm_cli.registry.client.SimpleRegistryClient.get_server_info')
+    @mock.patch('apm_cli.registry.client.SimpleRegistryClient.search_servers')
+    def test_find_server_by_reference_no_slug_collision(self, mock_search_servers, mock_get_server_info):
+        """Test that qualified names don't collide on shared slugs (bug #165)."""
+        # Registry returns multiple servers sharing the slug 'mcp'
+        mock_search_servers.return_value = [
+            {"id": "aaa", "name": "com.supabase/mcp"},
+            {"id": "bbb", "name": "microsoftdocs/mcp"},
+        ]
+        server_data = {"id": "bbb", "name": "microsoftdocs/mcp", "description": "MS Docs"}
+        mock_get_server_info.return_value = server_data
+
+        result = self.client.find_server_by_reference("microsoftdocs/mcp")
+
+        self.assertEqual(result, server_data)
+        mock_get_server_info.assert_called_once_with("bbb")
+
+    @mock.patch('apm_cli.registry.client.SimpleRegistryClient.get_server_info')
+    @mock.patch('apm_cli.registry.client.SimpleRegistryClient.search_servers')
+    def test_find_server_by_reference_qualified_no_match(self, mock_search_servers, mock_get_server_info):
+        """Test that a qualified name with no exact match returns None."""
+        mock_search_servers.return_value = [
+            {"id": "aaa", "name": "com.supabase/mcp"},
+        ]
+
+        result = self.client.find_server_by_reference("microsoftdocs/mcp")
+
+        self.assertIsNone(result)
+        mock_get_server_info.assert_not_called()
+
+    def test_is_server_match_qualified_prevents_collision(self):
+        """Test _is_server_match rejects different namespaces with same slug."""
+        self.assertFalse(self.client._is_server_match("microsoftdocs/mcp", "com.supabase/mcp"))
+        self.assertFalse(self.client._is_server_match("owner-a/server", "owner-b/server"))
+
+    def test_is_server_match_unqualified_allows_slug(self):
+        """Test _is_server_match still works for simple unqualified names."""
+        self.assertTrue(self.client._is_server_match("github-mcp-server", "io.github.github/github-mcp-server"))
+
+    def test_is_server_match_exact(self):
+        """Test _is_server_match accepts exact full-name match."""
+        self.assertTrue(self.client._is_server_match("microsoftdocs/mcp", "microsoftdocs/mcp"))
+
+    def test_is_server_match_qualified_suffix_at_namespace_boundary(self):
+        """Test that a qualified ref matches when it's a namespace-boundary suffix."""
+        self.assertTrue(
+            self.client._is_server_match(
+                "github/github-mcp-server",
+                "io.github.github/github-mcp-server",
+            )
+        )
+
+    def test_is_server_match_qualified_suffix_no_boundary(self):
+        """Qualified ref must NOT match when the suffix isn't at a '.' boundary."""
+        # 'xgithub/server' ends with 'github/server' but not at a '.' boundary
+        self.assertFalse(
+            self.client._is_server_match(
+                "github/server",
+                "xgithub/server",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

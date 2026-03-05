@@ -109,7 +109,7 @@ class TestInstallPromptLinkResolution:
         assert result.files_integrated == 1
         
         # Check that the integrated file exists
-        integrated_prompt = project_root / ".github" / "prompts" / "backend-review-apm.prompt.md"
+        integrated_prompt = project_root / ".github" / "prompts" / "backend-review.prompt.md"
         assert integrated_prompt.exists()
         
         # Read content and verify links are resolved
@@ -196,7 +196,7 @@ class TestInstallAgentLinkResolution:
         assert result.files_integrated == 1
         
         # Check that the integrated file exists
-        integrated_agent = project_root / ".github" / "agents" / "backend-expert-apm.agent.md"
+        integrated_agent = project_root / ".github" / "agents" / "backend-expert.agent.md"
         assert integrated_agent.exists()
         
         # Read content and verify links are resolved
@@ -268,7 +268,7 @@ class TestInstallEdgeCases:
         assert result.files_integrated == 1
         
         # Read integrated file
-        integrated = project_root / ".github" / "prompts" / "broken-apm.prompt.md"
+        integrated = project_root / ".github" / "prompts" / "broken.prompt.md"
         content = integrated.read_text(encoding='utf-8')
         
         # Link should be preserved (broken but documented)

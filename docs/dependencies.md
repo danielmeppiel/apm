@@ -92,7 +92,16 @@ dependencies:
       path: instructions/security
       ref: v2.0
   mcp:
-    - io.github.github/github-mcp-server          # Registry reference
+    - io.github.github/github-mcp-server          # Registry reference (string)
+    - name: io.github.github/github-mcp-server      # Registry with overlays
+      transport: stdio
+      tools: ["repos", "issues"]
+    - name: internal-knowledge-base                  # Self-defined (private server)
+      registry: false
+      transport: http
+      url: "${KNOWLEDGE_BASE_URL}"
+      env:
+        KB_TOKEN: "${KB_TOKEN}"
 ```
 
 APM accepts dependencies in two forms:
@@ -204,11 +213,93 @@ apm compile
 # See docs/wip/distributed-agents-compilation-strategy.md for detailed compilation logic
 ```
 
-## Authentication Setup
+## MCP Dependency Formats
 
-APM dependencies require authentication for downloading private repositories.
+MCP dependencies support three forms: string references, overlay objects, and self-defined servers.
 
-### GitHub Authentication
+### String Reference (default)
+
+Registry-resolved by name. Simplest form:
+
+```yaml
+mcp:
+  - io.github.github/github-mcp-server
+```
+
+### Object with Overlays
+
+Customize a registry-resolved server with project-specific preferences:
+
+```yaml
+mcp:
+  - name: io.github.github/github-mcp-server
+    transport: stdio          # Prefer stdio over remote
+    env:                      # Pre-populate environment variables
+      GITHUB_TOKEN: "${MY_TOKEN}"
+    tools: ["repos", "issues"]  # Restrict exposed tools
+    headers:                  # Custom HTTP headers (remote transports)
+      X-Custom: "value"
+    package: npm              # Select package type (npm, pypi, oci)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Server reference (required) |
+| `transport` | string | `stdio`, `sse`, `http`, or `streamable-http` |
+| `env` | dict | Environment variable overrides |
+| `args` | list or dict | Runtime argument overrides |
+| `version` | string | Pin server version |
+| `package` | string | Select package type (`npm`, `pypi`, `oci`) |
+| `headers` | dict | HTTP headers for remote transports |
+| `tools` | list | Restrict exposed tool names |
+
+Overlay fields are merged on top of registry metadata — they augment, never replace, the registry-first model.
+
+### Self-Defined Servers (`registry: false`)
+
+For private or corporate MCP servers not published to any registry:
+
+```yaml
+mcp:
+  - name: internal-knowledge-base
+    registry: false
+    transport: http
+    url: "https://mcp.internal.example.com"
+    env:
+      API_TOKEN: "${API_TOKEN}"
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+```
+
+Stdio example:
+
+```yaml
+mcp:
+  - name: local-db-tool
+    registry: false
+    transport: stdio
+    command: my-mcp-server
+    args:
+      - "--port"
+      - "8080"
+```
+
+**Required fields when `registry: false`:**
+- `transport` — always required
+- `url` — required for `http`, `sse`, `streamable-http` transports
+- `command` — required for `stdio` transport
+
+⚠️ **Transitive trust rule:** Self-defined servers from transitive APM packages are skipped with a warning by default. You can either re-declare them in your own `apm.yml`, or use `--trust-transitive-mcp` to trust all self-defined servers from upstream packages:
+
+```bash
+apm install --trust-transitive-mcp
+```
+
+### Validation
+
+Run `apm install --dry-run` to preview MCP dependency configuration without writing any files. Self-defined deps are validated for required fields and transport values; overlay deps are loaded as-is and unknown fields are ignored.
+
+## GitHub Authentication Setup
 
 For GitHub and GitHub Enterprise repositories, set up a personal access token:
 
@@ -271,6 +362,12 @@ dependencies:
     - github/awesome-copilot/skills/review-and-refactor
   mcp:
     - io.github.github/github-mcp-server
+    - name: internal-knowledge-base
+      registry: false
+      transport: http
+      url: "${KNOWLEDGE_BASE_URL}"
+      env:
+        KB_TOKEN: "${KB_TOKEN}"
 
 scripts:
   # Design workflows  
@@ -399,7 +496,7 @@ APM generates a lockfile (`apm.lock`) after each successful install to ensure re
 
 ### What is apm.lock?
 
-The `apm.lock` file captures the exact state of your dependency tree:
+The `apm.lock` file captures the exact state of your dependency tree, including which files APM deployed:
 
 ```yaml
 lockfile_version: "1.0"
@@ -412,14 +509,20 @@ dependencies:
     resolved_ref: "main"
     version: "1.0.0"
     depth: 1
-  acme/validation-patterns:
-    repo_url: "https://github.com/acme/validation-patterns"
+    deployed_files:
+      - .github/prompts/design-review.prompt.md
+      - .github/prompts/accessibility-audit.prompt.md
+      - .github/agents/design-reviewer.agent.md
+  contoso/validation-patterns:
+    repo_url: "https://github.com/contoso/validation-patterns"
     resolved_commit: "789xyz012"
     resolved_ref: "main"
     version: "1.2.0"
     depth: 2
     resolved_by: "microsoft/apm-sample-package"
 ```
+
+The `deployed_files` field tracks exactly which files APM placed in your project. This enables safe cleanup on `apm uninstall` and `apm prune` — only tracked files are removed.
 
 ### How It Works
 
@@ -452,7 +555,7 @@ apm install --update
 APM fully resolves transitive dependencies. If package A depends on B, and B depends on C:
 
 ```
-apm install acme/package-a
+apm install contoso/package-a
 ```
 
 Result:

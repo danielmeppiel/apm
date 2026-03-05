@@ -238,6 +238,91 @@ class TestVSCodeClientAdapter(unittest.TestCase):
         self.assertEqual(actual_path.parent, expected_path.parent)
         self.assertEqual(actual_path.name, expected_path.name)
 
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_format_server_config_http_remote(self, mock_get_path):
+        """Test _format_server_config handles http transport in remotes."""
+        mock_get_path.return_value = self.temp_path
+        adapter = VSCodeClientAdapter()
+
+        server_info = {
+            "name": "my-http-server",
+            "remotes": [{"transport_type": "http", "url": "https://example.com/mcp"}],
+        }
+        config, inputs = adapter._format_server_config(server_info)
+
+        self.assertEqual(config["type"], "http")
+        self.assertEqual(config["url"], "https://example.com/mcp")
+        self.assertEqual(config["headers"], {})
+        self.assertEqual(inputs, [])
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_format_server_config_streamable_http_remote(self, mock_get_path):
+        """Test _format_server_config handles streamable-http transport in remotes."""
+        mock_get_path.return_value = self.temp_path
+        adapter = VSCodeClientAdapter()
+
+        server_info = {
+            "name": "streamable-server",
+            "remotes": [{"transport_type": "streamable-http", "url": "https://stream.example.com"}],
+        }
+        config, inputs = adapter._format_server_config(server_info)
+
+        self.assertEqual(config["type"], "streamable-http")
+        self.assertEqual(config["url"], "https://stream.example.com")
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_format_server_config_remote_with_list_headers(self, mock_get_path):
+        """Test _format_server_config normalizes header list to dict."""
+        mock_get_path.return_value = self.temp_path
+        adapter = VSCodeClientAdapter()
+
+        server_info = {
+            "name": "header-server",
+            "remotes": [{
+                "transport_type": "http",
+                "url": "https://example.com",
+                "headers": [
+                    {"name": "Authorization", "value": "Bearer token123"},
+                    {"name": "X-Custom", "value": "val"},
+                ],
+            }],
+        }
+        config, inputs = adapter._format_server_config(server_info)
+
+        self.assertEqual(config["type"], "http")
+        self.assertEqual(config["headers"], {
+            "Authorization": "Bearer token123",
+            "X-Custom": "val",
+        })
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_configure_self_defined_http_via_cache(self, mock_get_path):
+        """Test configuring a self-defined HTTP server through server_info_cache."""
+        mock_get_path.return_value = self.temp_path
+        adapter = VSCodeClientAdapter()
+
+        # Synthetic server_info as built by _build_self_defined_server_info
+        cache = {
+            "my-private-srv": {
+                "name": "my-private-srv",
+                "remotes": [{"transport_type": "http", "url": "http://localhost:8787/"}],
+            }
+        }
+
+        result = adapter.configure_mcp_server(
+            server_url="my-private-srv",
+            server_name="my-private-srv",
+            server_info_cache=cache,
+        )
+
+        self.assertTrue(result)
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        self.assertIn("my-private-srv", config["servers"])
+        self.assertEqual(config["servers"]["my-private-srv"]["type"], "http")
+        self.assertEqual(config["servers"]["my-private-srv"]["url"], "http://localhost:8787/")
+
 
 if __name__ == "__main__":
     unittest.main()
