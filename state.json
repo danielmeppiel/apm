@@ -1,22 +1,21 @@
 {
-  "last_updated": "2026-03-04T01:07:00Z",
+  "last_updated": "2026-03-05T01:07:00Z",
   "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
     "format": "python3 -m uv run black . && python3 -m uv run isort .",
     "install_dev": "python3 -m uv sync --extra dev",
-    "notes": "uv is not on PATH in CI; use 'python3 -m uv' instead"
+    "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'"
   },
   "coverage_baseline": {
     "total": "52%",
-    "run_date": "2026-03-04",
-    "test_count": 931,
+    "run_date": "2026-03-05",
+    "test_count": 969,
     "pre_existing_failures": 1
   },
-  "monthly_activity_issue": "created-2026-03-04",
+  "monthly_activity_issue": "created-2026-03-05-new",
   "testing_backlog": [
-    {"id": "token-manager", "file": "src/apm_cli/token_manager.py", "coverage": "20%", "priority": "medium", "notes": "Needs mocking for OAuth flows"},
     {"id": "apm-resolver", "file": "src/apm_cli/deps/apm_resolver.py", "coverage": "9%", "priority": "medium"},
     {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "7%", "priority": "low", "notes": "Heavy network dependency"},
     {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
@@ -24,22 +23,29 @@
     {"id": "runtime-manager-run-embedded", "file": "src/apm_cli/runtime/manager.py lines 97-146", "coverage": "0% of run_embedded_script", "priority": "low", "notes": "Best covered by integration tests due to subprocess complexity"},
     {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"}
   ],
-  "backlog_cursor": "token-manager",
+  "backlog_cursor": "apm-resolver",
   "pending_branches": [],
   "completed_work": [
+    {
+      "run": "2026-03-05T01:07:00Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/token-manager-coverage",
+      "pr_status": "pr_created",
+      "description": "Added 53 unit tests for GitHubTokenManager: coverage 20%->99%. Covers __init__, get_token_for_purpose (all 4 purposes, precedence, empty-string guard), validate_tokens, setup_environment (preserve_existing), _setup_copilot/codex/llm_tokens, _get_available_tokens, convenience functions. Also documented dead code in validate_tokens warning branch (line 126 unreachable)."
+    },
     {
       "run": "2026-03-04T01:07:00Z",
       "tasks": ["task3", "task7"],
       "branch": "test-assist/core-operations-runtime-manager-coverage",
       "pr_status": "pr_created",
-      "description": "Added 52 unit tests: core/operations.py (0%->100%, 15 tests), runtime/manager.py (17%->84%, 37 tests). Overall coverage 51%->52%. Tests cover: configure_client, install_package (all shared var combos), uninstall_package; RuntimeManager constructor, get_embedded_script/get_common_script/get_token_helper_script (repo+bundle paths), list_runtimes, is_runtime_available, get_runtime_preference, get_available_runtime, remove_runtime (copilot/binary/llm-venv), setup_runtime."
+      "description": "Added 52 unit tests: core/operations.py (0%->100%, 15 tests), runtime/manager.py (17%->84%, 37 tests). Overall coverage 51%->52%."
     },
     {
       "run": "2026-03-03T19:54:00Z",
       "tasks": ["task3", "task7"],
       "branch": "test-assist/registry-operations-coverage",
       "pr_status": "pr_created",
-      "description": "Added 41 unit tests: registry/operations.py (6%->88%). Overall coverage 51%->52%. Tests cover: init, validate_servers_exist, batch_fetch_server_info, check_servers_needing_installation, _get_installed_server_ids (copilot/codex/vscode runtimes), collect_runtime_variables, collect_environment_variables, _prompt_for_environment_variables (CI/E2E/interactive modes)."
+      "description": "Added 41 unit tests: registry/operations.py (6%->88%). Overall coverage 51%->52%."
     },
     {
       "run": "2026-03-03T16:56:00Z",
