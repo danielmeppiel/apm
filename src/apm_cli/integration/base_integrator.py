@@ -89,6 +89,34 @@ class BaseIntegrator:
             return None
         return {p.replace("\\", "/") for p in managed_files}
 
+    # Known integration prefixes that APM is allowed to deploy/remove under
+    INTEGRATION_PREFIXES = (".github/", ".claude/")
+
+    @staticmethod
+    def validate_deploy_path(
+        rel_path: str,
+        project_root: Path,
+        allowed_prefixes: tuple = (".github/", ".claude/"),
+    ) -> bool:
+        """Return True if *rel_path* is safe for APM to deploy or remove.
+
+        Centralised security gate for all paths read from ``deployed_files``
+        before any filesystem operation.
+
+        Checks:
+        1. No path-traversal components (``..``)
+        2. Starts with an allowed integration prefix
+        3. Resolves within *project_root*
+        """
+        if ".." in rel_path:
+            return False
+        if not rel_path.startswith(allowed_prefixes):
+            return False
+        target = project_root / rel_path
+        if not str(target.resolve()).startswith(str(project_root.resolve())):
+            return False
+        return True
+
     @staticmethod
     def partition_managed_files(
         managed_files: Set[str],
@@ -223,7 +251,9 @@ class BaseIntegrator:
         if managed_files is not None:
             for rel_path in managed_files:
                 # managed_files is pre-normalized — no .replace() needed
-                if not rel_path.startswith(prefix) or ".." in rel_path:
+                if not rel_path.startswith(prefix):
+                    continue
+                if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
                     continue
                 target = project_root / rel_path
                 if target.exists():

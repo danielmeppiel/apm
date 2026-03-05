@@ -2,6 +2,7 @@
 
 import builtins
 import os
+import shutil
 import sys
 import warnings
 from pathlib import Path
@@ -131,6 +132,67 @@ def _lazy_confirm():
         return None
 
 
+# ------------------------------------------------------------------
+# Shared orphan-detection helpers
+# ------------------------------------------------------------------
+
+def _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir: Path) -> set:
+    """Build expected package paths under *apm_modules_dir*.
+
+    Combines direct deps (from ``apm.yml``) with transitive deps
+    (depth > 1 from ``apm.lock``), using ``get_install_path()`` for
+    consistency with how packages are actually installed.
+    """
+    expected = builtins.set()
+    for dep in declared_deps:
+        install_path = dep.get_install_path(apm_modules_dir)
+        try:
+            relative_path = install_path.relative_to(apm_modules_dir)
+            expected.add(str(relative_path))
+        except ValueError:
+            expected.add(str(install_path))
+
+    if lockfile:
+        for dep in lockfile.get_all_dependencies():
+            if dep.depth is not None and dep.depth > 1:
+                dep_ref = DependencyReference(
+                    repo_url=dep.repo_url,
+                    host=dep.host,
+                    virtual_path=dep.virtual_path,
+                    is_virtual=dep.is_virtual,
+                )
+                install_path = dep_ref.get_install_path(apm_modules_dir)
+                try:
+                    relative_path = install_path.relative_to(apm_modules_dir)
+                    expected.add(str(relative_path))
+                except ValueError:
+                    pass
+    return expected
+
+
+def _scan_installed_packages(apm_modules_dir: Path) -> list:
+    """Scan *apm_modules_dir* for installed package paths.
+
+    Walks the tree to find directories containing ``apm.yml`` or ``.apm``,
+    supporting GitHub (2-level), ADO (3-level), and subdirectory packages.
+
+    Returns:
+        List of ``"owner/repo"`` or ``"org/project/repo"`` path keys.
+    """
+    installed: list = []
+    if not apm_modules_dir.exists():
+        return installed
+    for candidate in apm_modules_dir.rglob("*"):
+        if not candidate.is_dir() or candidate.name.startswith("."):
+            continue
+        if not ((candidate / "apm.yml").exists() or (candidate / ".apm").exists()):
+            continue
+        rel_parts = candidate.relative_to(apm_modules_dir).parts
+        if len(rel_parts) >= 2:
+            installed.append("/".join(rel_parts))
+    return installed
+
+
 def _check_orphaned_packages():
     """Check for packages in apm_modules/ that are not declared in apm.yml or apm.lock.
 
@@ -142,91 +204,25 @@ def _check_orphaned_packages():
         List[str]: List of orphaned package names in org/repo or org/project/repo format
     """
     try:
-        # Check if apm.yml exists
         if not Path("apm.yml").exists():
             return []
 
-        # Check if apm_modules exists
         apm_modules_dir = Path("apm_modules")
         if not apm_modules_dir.exists():
             return []
 
-        # Parse apm.yml to get declared dependencies
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-
-            # Build set of expected installed package paths using get_install_path()
-            # This ensures consistency with how packages are installed and uninstalled
-            expected_installed = builtins.set()
-            for dep in declared_deps:
-                install_path = dep.get_install_path(apm_modules_dir)
-                # Convert absolute path to relative key for comparison
-                try:
-                    relative_path = install_path.relative_to(apm_modules_dir)
-                    expected_installed.add(str(relative_path))
-                except ValueError:
-                    # If path is not relative to apm_modules_dir, use as-is
-                    expected_installed.add(str(install_path))
-
-            # Also include transitive dependencies from apm.lock
-            # Only protect transitive deps (depth > 1) — direct deps are
-            # tracked via apm.yml and should be prunable when removed.
             lockfile = LockFile.read(Path.cwd() / "apm.lock")
-            if lockfile:
-                for dep in lockfile.get_all_dependencies():
-                    if dep.depth is not None and dep.depth > 1:
-                        dep_ref = DependencyReference(
-                            repo_url=dep.repo_url,
-                            host=dep.host,
-                            virtual_path=dep.virtual_path,
-                            is_virtual=dep.is_virtual,
-                        )
-                        install_path = dep_ref.get_install_path(apm_modules_dir)
-                        try:
-                            relative_path = install_path.relative_to(apm_modules_dir)
-                            expected_installed.add(str(relative_path))
-                        except ValueError:
-                            pass
+            expected = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
         except Exception:
-            return []  # If can't parse apm.yml, assume no orphans
+            return []
 
-        # Find installed packages in apm_modules/ (supports both 2-level and 3-level structures)
-        # GitHub: apm_modules/owner/repo (2 levels)
-        # Azure DevOps: apm_modules/org/project/repo (3 levels)
-        installed_packages = []
-        for level1_dir in apm_modules_dir.iterdir():
-            if level1_dir.is_dir() and not level1_dir.name.startswith("."):
-                for level2_dir in level1_dir.iterdir():
-                    if level2_dir.is_dir() and not level2_dir.name.startswith("."):
-                        # Check if level2 has apm.yml or .apm (GitHub 2-level structure)
-                        if (level2_dir / "apm.yml").exists() or (
-                            level2_dir / ".apm"
-                        ).exists():
-                            path_key = f"{level1_dir.name}/{level2_dir.name}"
-                            installed_packages.append(path_key)
-                        else:
-                            # Check for ADO 3-level structure
-                            for level3_dir in level2_dir.iterdir():
-                                if (
-                                    level3_dir.is_dir()
-                                    and not level3_dir.name.startswith(".")
-                                ):
-                                    if (level3_dir / "apm.yml").exists() or (
-                                        level3_dir / ".apm"
-                                    ).exists():
-                                        path_key = f"{level1_dir.name}/{level2_dir.name}/{level3_dir.name}"
-                                        installed_packages.append(path_key)
-
-        # Find orphaned packages (installed but not declared or locked)
-        orphaned_packages = []
-        for org_repo_name in installed_packages:
-            if org_repo_name not in expected_installed:
-                orphaned_packages.append(org_repo_name)
-
-        return orphaned_packages
+        installed = _scan_installed_packages(apm_modules_dir)
+        return [p for p in installed if p not in expected]
     except Exception:
-        return []  # Return empty list if any error occurs
+        return []
 
 
 def print_version(ctx, param, value):
@@ -787,91 +783,18 @@ def prune(ctx, dry_run):
 
         _rich_info("Analyzing installed packages vs apm.yml...")
 
-        # Parse apm.yml to get declared dependencies
+        # Build expected vs installed using shared helpers
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-
-            # Build set of expected installed package paths
-            # For virtual packages, use the sanitized package name from get_virtual_package_name()
-            # For regular packages, use repo_url as-is
-            # GitHub: owner/repo or owner/virtual-pkg-name (2 levels)
-            # Azure DevOps: org/project/repo or org/project/virtual-pkg-name (3 levels)
-            expected_installed = builtins.set()
-            for dep in declared_deps:
-                repo_parts = dep.repo_url.split("/")
-                if dep.is_virtual:
-                    if dep.is_virtual_subdirectory() and dep.virtual_path:
-                        # Virtual subdirectory packages keep natural path structure.
-                        if dep.is_azure_devops() and len(repo_parts) >= 3:
-                            expected_installed.add(
-                                f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
-                            )
-                        elif len(repo_parts) >= 2:
-                            expected_installed.add(
-                                f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
-                            )
-                    else:
-                        # Virtual file/collection packages are flattened.
-                        package_name = dep.get_virtual_package_name()
-                        if dep.is_azure_devops() and len(repo_parts) >= 3:
-                            expected_installed.add(
-                                f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
-                            )
-                        elif len(repo_parts) >= 2:
-                            expected_installed.add(f"{repo_parts[0]}/{package_name}")
-                else:
-                    # Regular package: use full repo_url path
-                    if dep.is_azure_devops() and len(repo_parts) >= 3:
-                        expected_installed.add(
-                            f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"
-                        )
-                    elif len(repo_parts) >= 2:
-                        expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
-
-            # Also include transitive dependencies from apm.lock
-            # Only protect transitive deps (depth > 1) — direct deps are
-            # tracked via apm.yml and should be prunable when removed.
             lockfile = LockFile.read(Path.cwd() / "apm.lock")
-            if lockfile:
-                for dep in lockfile.get_all_dependencies():
-                    if dep.depth is not None and dep.depth > 1:
-                        dep_ref = DependencyReference(
-                            repo_url=dep.repo_url,
-                            host=dep.host,
-                            virtual_path=dep.virtual_path,
-                            is_virtual=dep.is_virtual,
-                        )
-                        install_path = dep_ref.get_install_path(apm_modules_dir)
-                        try:
-                            relative_path = install_path.relative_to(apm_modules_dir)
-                            expected_installed.add(str(relative_path))
-                        except ValueError:
-                            pass
+            expected_installed = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
 
-        # Find installed packages in apm_modules/ (now org-namespaced)
-        # Walks the tree to find directories containing apm.yml or .apm,
-        # handling GitHub (2-level), ADO (3-level), and subdirectory (4+ level) packages.
-        installed_packages = {}  # {"path": "display_name"}
-        if apm_modules_dir.exists():
-            for candidate in apm_modules_dir.rglob("*"):
-                if not candidate.is_dir() or candidate.name.startswith("."):
-                    continue
-                if not ((candidate / "apm.yml").exists() or (candidate / ".apm").exists()):
-                    continue
-                rel_parts = candidate.relative_to(apm_modules_dir).parts
-                if len(rel_parts) >= 2:
-                    path_key = "/".join(rel_parts)
-                    installed_packages[path_key] = path_key
-
-        # Find orphaned packages (installed but not declared)
-        orphaned_packages = {}
-        for org_repo_name, display_name in installed_packages.items():
-            if org_repo_name not in expected_installed:
-                orphaned_packages[org_repo_name] = display_name
+        installed_packages = _scan_installed_packages(apm_modules_dir)
+        orphaned_packages = [p for p in installed_packages if p not in expected_installed]
 
         if not orphaned_packages:
             _rich_success("No orphaned packages found. apm_modules/ is clean.")
@@ -879,11 +802,11 @@ def prune(ctx, dry_run):
 
         # Show what will be removed
         _rich_info(f"Found {len(orphaned_packages)} orphaned package(s):")
-        for dir_name, display_name in orphaned_packages.items():
+        for pkg_name in orphaned_packages:
             if dry_run:
-                _rich_info(f"  - {display_name} (would be removed)")
+                _rich_info(f"  - {pkg_name} (would be removed)")
             else:
-                _rich_info(f"  - {display_name}")
+                _rich_info(f"  - {pkg_name}")
 
         if dry_run:
             _rich_success("Dry run complete - no changes made")
@@ -892,39 +815,29 @@ def prune(ctx, dry_run):
         # Remove orphaned packages
         removed_count = 0
         pruned_keys = []
-        for org_repo_name, display_name in orphaned_packages.items():
-            # Convert org/repo or org/project/repo to filesystem path
+        deleted_pkg_paths: list = []
+        for org_repo_name in orphaned_packages:
             path_parts = org_repo_name.split("/")
             pkg_path = apm_modules_dir.joinpath(*path_parts)
             try:
-                import shutil
-
                 shutil.rmtree(pkg_path)
-                _rich_info(f"✓ Removed {display_name}")
+                _rich_info(f"✓ Removed {org_repo_name}")
                 removed_count += 1
                 pruned_keys.append(org_repo_name)
-
-                # Clean up empty parent directories (project for ADO, org for both)
-                if len(path_parts) >= 3:
-                    # ADO 3-level: clean up project directory if empty
-                    project_path = apm_modules_dir / path_parts[0] / path_parts[1]
-                    if project_path.exists() and not any(project_path.iterdir()):
-                        project_path.rmdir()
-                # Clean up org directory if empty
-                org_path = apm_modules_dir / path_parts[0]
-                if org_path.exists() and not any(org_path.iterdir()):
-                    org_path.rmdir()
-
+                deleted_pkg_paths.append(pkg_path)
             except Exception as e:
-                _rich_error(f"✗ Failed to remove {display_name}: {e}")
+                _rich_error(f"✗ Failed to remove {org_repo_name}: {e}")
+
+        # Batch parent cleanup — single bottom-up pass
+        from apm_cli.integration.base_integrator import BaseIntegrator
+        BaseIntegrator.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
 
         # Clean deployed files for pruned packages and update lockfile
         if pruned_keys:
             from apm_cli.deps.lockfile import get_lockfile_path
-            from apm_cli.integration.base_integrator import BaseIntegrator
             lockfile_path = get_lockfile_path(Path("."))
             lockfile = LockFile.read(lockfile_path)
-            project_root_resolved = Path(".").resolve()
+            project_root = Path(".")
             if lockfile:
                 deployed_cleaned = 0
                 deleted_targets: list = []
@@ -932,21 +845,14 @@ def prune(ctx, dry_run):
                     dep = lockfile.get_dependency(dep_key)
                     if dep and dep.deployed_files:
                         for rel_path in dep.deployed_files:
-                            # Validate path: must resolve within project root
-                            # and start with a known integration prefix
-                            if ".." in rel_path:
+                            if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
                                 continue
-                            if not (rel_path.startswith(".github/") or rel_path.startswith(".claude/")):
-                                continue
-                            target = Path(".") / rel_path
-                            if not str(target.resolve()).startswith(str(project_root_resolved)):
-                                continue
+                            target = project_root / rel_path
                             if target.is_file():
                                 target.unlink()
                                 deployed_cleaned += 1
                                 deleted_targets.append(target)
                             elif target.is_dir():
-                                import shutil
                                 shutil.rmtree(target)
                                 deployed_cleaned += 1
                                 deleted_targets.append(target)
@@ -954,7 +860,7 @@ def prune(ctx, dry_run):
                     if dep_key in lockfile.dependencies:
                         del lockfile.dependencies[dep_key]
                 # Batch parent cleanup — single bottom-up pass
-                BaseIntegrator.cleanup_empty_parents(deleted_targets, stop_at=Path("."))
+                BaseIntegrator.cleanup_empty_parents(deleted_targets, stop_at=project_root)
                 if deployed_cleaned > 0:
                     _rich_info(f"✓ Cleaned {deployed_cleaned} deployed integration file(s)")
                 # Write updated lockfile (or remove if empty)
@@ -1268,8 +1174,6 @@ def uninstall(ctx, packages, dry_run):
 
                 if package_path.exists():
                     try:
-                        import shutil
-
                         shutil.rmtree(package_path)
                         _rich_info(f"✓ Removed {package} from apm_modules/")
                         removed_from_modules += 1
@@ -1355,7 +1259,6 @@ def uninstall(ctx, packages, dry_run):
 
                     if orphan_path.exists():
                         try:
-                            import shutil
                             shutil.rmtree(orphan_path)
                             _rich_info(f"✓ Removed transitive dependency {orphan_key} from apm_modules/")
                             removed_from_modules += 1
@@ -2169,7 +2072,7 @@ def _install_apm_dependencies(
                             # Track links resolved
                             total_links_resolved += prompt_result.links_resolved
                             for tp in prompt_result.target_paths:
-                                dep_deployed_fresh.append(str(tp.relative_to(project_root)))
+                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Integrate agents
                             agent_result = (
@@ -2192,7 +2095,7 @@ def _install_apm_dependencies(
                             # Track links resolved
                             total_links_resolved += agent_result.links_resolved
                             for tp in agent_result.target_paths:
-                                dep_deployed_fresh.append(str(tp.relative_to(project_root)))
+                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Skill integration (works for both VSCode and Claude)
                             # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
@@ -2211,7 +2114,7 @@ def _install_apm_dependencies(
                                         f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
                                     )
                                 for tp in skill_result.target_paths:
-                                    dep_deployed_fresh.append(str(tp.relative_to(project_root)))
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Count instructions (compiled later via `apm compile`)
                             instruction_count = len(
@@ -2243,7 +2146,7 @@ def _install_apm_dependencies(
                                     )
                                 total_links_resolved += claude_agent_result.links_resolved
                                 for tp in claude_agent_result.target_paths:
-                                    dep_deployed_fresh.append(str(tp.relative_to(project_root)))
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                                 # Generate Claude commands from prompts
                                 command_result = (
@@ -2265,7 +2168,7 @@ def _install_apm_dependencies(
                                     )
                                 total_links_resolved += command_result.links_resolved
                                 for tp in command_result.target_paths:
-                                    dep_deployed_fresh.append(str(tp.relative_to(project_root)))
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Hook integration (target-aware)
                             if integrate_vscode:
@@ -2279,7 +2182,7 @@ def _install_apm_dependencies(
                                         f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/"
                                     )
                                 for tp in hook_result.target_paths:
-                                    dep_deployed_fresh.append(str(tp.relative_to(project_root)))
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
                             if integrate_claude:
                                 hook_result_claude = hook_integrator.integrate_package_hooks_claude(
                                     package_info, project_root,
@@ -2291,7 +2194,7 @@ def _install_apm_dependencies(
                                         f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json"
                                     )
                                 for tp in hook_result_claude.target_paths:
-                                    dep_deployed_fresh.append(str(tp.relative_to(project_root)))
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Record deployed files for this package
                             package_deployed_files[dep_ref.get_unique_key()] = dep_deployed_fresh
@@ -2637,8 +2540,6 @@ def _install_mcp_dependencies(
                 try:
                     if runtime_name == "vscode":
                         # VS Code is special - check if it's installed
-                        import shutil
-
                         if shutil.which("code") is not None:
                             ClientFactory.create_client(
                                 runtime_name
@@ -2656,8 +2557,6 @@ def _install_mcp_dependencies(
                     continue
         except ImportError:
             # Fallback to basic shutil check for known MCP runtimes (prioritize Copilot CLI)
-            import shutil
-
             installed_runtimes = [
                 rt
                 for rt in ["copilot", "codex", "vscode"]
@@ -2986,8 +2885,6 @@ def _filter_available_runtimes(detected_runtimes: List[str]) -> List[str]:
             return [rt for rt in mcp_compatible if manager.is_runtime_available(rt)]
         except ImportError:
             # Fallback to basic shutil check
-            import shutil
-
             available = []
             for rt in mcp_compatible:
                 if shutil.which(rt):
@@ -2997,8 +2894,6 @@ def _filter_available_runtimes(detected_runtimes: List[str]) -> List[str]:
     except ImportError:
         # If factory is not available, fall back to known MCP runtimes
         mcp_compatible = [rt for rt in detected_runtimes if rt in ["vscode", "copilot"]]
-
-        import shutil
 
         return [rt for rt in mcp_compatible if shutil.which(rt)]
 
