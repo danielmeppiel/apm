@@ -3,6 +3,7 @@
 import os
 import shutil
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
@@ -157,6 +158,61 @@ class GitHubPackageDownloader:
         env['GIT_CONFIG_GLOBAL'] = '/dev/null'
         
         return env
+    
+    def _resilient_get(self, url: str, headers: Dict[str, str], timeout: int = 30, max_retries: int = 3) -> requests.Response:
+        """HTTP GET with retry on 429/503 and rate-limit header awareness (#171).
+        
+        Args:
+            url: Request URL
+            headers: HTTP headers
+            timeout: Request timeout in seconds
+            max_retries: Maximum retry attempts for transient failures
+            
+        Returns:
+            requests.Response (caller should call .raise_for_status() as needed)
+            
+        Raises:
+            requests.exceptions.RequestException: After all retries exhausted
+        """
+        last_exc = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, headers=headers, timeout=timeout)
+                
+                # Handle rate limiting
+                if response.status_code in (429, 503):
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after:
+                        wait = min(float(retry_after), 60)
+                    else:
+                        wait = min(2 ** attempt, 30)
+                    _debug(f"Rate limited ({response.status_code}), retry in {wait}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+                    continue
+                
+                # Log rate limit proximity
+                remaining = response.headers.get("X-RateLimit-Remaining")
+                try:
+                    if remaining and int(remaining) < 10:
+                        _debug(f"GitHub API rate limit low: {remaining} requests remaining")
+                except (TypeError, ValueError):
+                    pass
+                
+                return response
+            except requests.exceptions.ConnectionError as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    wait = min(2 ** attempt, 30)
+                    _debug(f"Connection error, retry in {wait}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+            except requests.exceptions.Timeout as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    _debug(f"Timeout, retrying (attempt {attempt + 1}/{max_retries})")
+        
+        if last_exc:
+            raise last_exc
+        raise requests.exceptions.RequestException(f"All {max_retries} attempts failed for {url}")
     
     def _sanitize_git_error(self, error_message: str) -> str:
         """Sanitize Git error messages to remove potentially sensitive authentication information.
@@ -495,7 +551,7 @@ class GitHubPackageDownloader:
             headers['Authorization'] = f'Basic {auth}'
         
         try:
-            response = requests.get(api_url, headers=headers, timeout=30)
+            response = self._resilient_get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.content
         except requests.exceptions.HTTPError as e:
@@ -515,7 +571,7 @@ class GitHubPackageDownloader:
                 )
                 
                 try:
-                    response = requests.get(fallback_url, headers=headers, timeout=30)
+                    response = self._resilient_get(fallback_url, headers=headers, timeout=30)
                     response.raise_for_status()
                     return response.content
                 except requests.exceptions.HTTPError:
@@ -571,7 +627,7 @@ class GitHubPackageDownloader:
         
         # Try to download with the specified ref
         try:
-            response = requests.get(api_url, headers=headers, timeout=30)
+            response = self._resilient_get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.content
         except requests.exceptions.HTTPError as e:
@@ -593,7 +649,7 @@ class GitHubPackageDownloader:
                     fallback_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
                 
                 try:
-                    response = requests.get(fallback_url, headers=headers, timeout=30)
+                    response = self._resilient_get(fallback_url, headers=headers, timeout=30)
                     response.raise_for_status()
                     return response.content
                 except requests.exceptions.HTTPError:
@@ -609,7 +665,7 @@ class GitHubPackageDownloader:
                 if self.github_token and not host.lower().endswith(".ghe.com"):
                     try:
                         unauth_headers = {'Accept': 'application/vnd.github.v3.raw'}
-                        response = requests.get(api_url, headers=unauth_headers, timeout=30)
+                        response = self._resilient_get(api_url, headers=unauth_headers, timeout=30)
                         response.raise_for_status()
                         return response.content
                     except requests.exceptions.HTTPError:
@@ -966,6 +1022,44 @@ author: {dep_ref.repo_url.split('/')[0]}
             dependency_ref=dep_ref  # Store for canonical dependency string
         )
     
+    def _try_sparse_checkout(self, dep_ref: DependencyReference, temp_clone_path: Path, subdir_path: str, ref: str = None) -> bool:
+        """Attempt sparse-checkout to download only a subdirectory (git 2.25+).
+
+        Returns True on success. Falls back silently on failure.
+        """
+        import subprocess
+        try:
+            temp_clone_path.mkdir(parents=True, exist_ok=True)
+            env = {**os.environ, **(self.git_env or {})}
+            auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+
+            cmds = [
+                ['git', 'init'],
+                ['git', 'remote', 'add', 'origin', auth_url],
+                ['git', 'sparse-checkout', 'init', '--cone'],
+                ['git', 'sparse-checkout', 'set', subdir_path],
+            ]
+            fetch_cmd = ['git', 'fetch', 'origin']
+            if ref:
+                fetch_cmd.append(ref)
+            fetch_cmd.append('--depth=1')
+            cmds.append(fetch_cmd)
+            cmds.append(['git', 'checkout', 'FETCH_HEAD'])
+
+            for cmd in cmds:
+                result = subprocess.run(
+                    cmd, cwd=str(temp_clone_path), env=env,
+                    capture_output=True, text=True, timeout=120,
+                )
+                if result.returncode != 0:
+                    _debug(f"Sparse-checkout step failed ({' '.join(cmd)}): {result.stderr.strip()}")
+                    return False
+
+            return True
+        except Exception as e:
+            _debug(f"Sparse-checkout failed: {e}")
+            return False
+
     def download_subdirectory_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a subdirectory from a repo as an APM package.
         
@@ -1008,31 +1102,37 @@ author: {dep_ref.repo_url.split('/')[0]}
             if progress_obj and progress_task_id is not None:
                 progress_obj.update(progress_task_id, completed=20, total=100)
             
-            # Clone the repository (shallow clone for performance)
-            # Don't specify branch if none provided - let git use repo's default
-            package_display_name = subdir_path.split('/')[-1]
-            progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
+            # Phase 4 (#171): Try sparse-checkout first (git 2.25+), fall back to full clone
+            sparse_ok = self._try_sparse_checkout(dep_ref, temp_clone_path, subdir_path, ref)
             
-            clone_kwargs = {
-                'dep_ref': dep_ref,
-                'depth': 1,
-            }
-            if ref:
-                clone_kwargs['branch'] = ref
-            
-            try:
-                self._clone_with_fallback(
-                    dep_ref.repo_url,
-                    temp_clone_path,
-                    progress_reporter=progress_reporter,
-                    **clone_kwargs
-                )
-            except Exception as e:
-                raise RuntimeError(f"Failed to clone repository: {e}")
-            
-            # Disable progress reporter after clone
-            if progress_reporter:
-                progress_reporter.disabled = True
+            if not sparse_ok:
+                # Full shallow clone fallback
+                if temp_clone_path.exists():
+                    shutil.rmtree(temp_clone_path)
+                
+                package_display_name = subdir_path.split('/')[-1]
+                progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
+                
+                clone_kwargs = {
+                    'dep_ref': dep_ref,
+                    'depth': 1,
+                }
+                if ref:
+                    clone_kwargs['branch'] = ref
+                
+                try:
+                    self._clone_with_fallback(
+                        dep_ref.repo_url,
+                        temp_clone_path,
+                        progress_reporter=progress_reporter,
+                        **clone_kwargs
+                    )
+                except Exception as e:
+                    raise RuntimeError(f"Failed to clone repository: {e}")
+                
+                # Disable progress reporter after clone
+                if progress_reporter:
+                    progress_reporter.disabled = True
             
             # Update progress - extracting subdirectory
             if progress_obj and progress_task_id is not None:

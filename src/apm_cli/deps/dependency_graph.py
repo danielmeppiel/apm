@@ -1,5 +1,6 @@
 """Data structures for dependency graph representation and resolution."""
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Any
@@ -55,11 +56,13 @@ class DependencyTree:
     """Hierarchical representation of dependencies before flattening."""
     root_package: APMPackage
     nodes: Dict[str, DependencyNode] = field(default_factory=dict)
+    _nodes_by_depth: Dict[int, List[DependencyNode]] = field(default_factory=lambda: defaultdict(list))
     max_depth: int = 0
     
     def add_node(self, node: DependencyNode) -> None:
         """Add a node to the tree."""
         self.nodes[node.get_id()] = node
+        self._nodes_by_depth[node.depth].append(node)
         self.max_depth = max(self.max_depth, node.depth)
     
     def get_node(self, unique_key: str) -> Optional[DependencyNode]:
@@ -68,7 +71,7 @@ class DependencyTree:
     
     def get_nodes_at_depth(self, depth: int) -> List[DependencyNode]:
         """Get all nodes at a specific depth level."""
-        return [node for node in self.nodes.values() if node.depth == depth]
+        return list(self._nodes_by_depth.get(depth, []))
     
     def has_dependency(self, repo_url: str) -> bool:
         """Check if a dependency exists in the tree."""

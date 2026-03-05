@@ -612,8 +612,15 @@ def _validate_package_exists(package):
     is_flag=True,
     help="Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)",
 )
+@click.option(
+    "--parallel-downloads",
+    type=int,
+    default=4,
+    show_default=True,
+    help="Max concurrent package downloads (0 to disable parallelism)",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -712,7 +719,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 # Otherwise install all from apm.yml
                 only_pkgs = builtins.list(packages) if packages else None
                 apm_count, prompt_count, agent_count = _install_apm_dependencies(
-                    apm_package, update, verbose, only_pkgs, force=force
+                    apm_package, update, verbose, only_pkgs, force=force,
+                    parallel_downloads=parallel_downloads,
                 )
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
@@ -1486,6 +1494,7 @@ def _install_apm_dependencies(
     verbose: bool = False,
     only_packages: "builtins.list" = None,
     force: bool = False,
+    parallel_downloads: int = 4,
 ):
     """Install APM package dependencies.
 
@@ -1495,6 +1504,7 @@ def _install_apm_dependencies(
         verbose: Show detailed installation information
         only_packages: If provided, only install these specific packages (not all from apm.yml)
         force: Whether to overwrite locally-authored files on collision
+        parallel_downloads: Max concurrent downloads (0 disables parallelism)
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -1711,7 +1721,77 @@ def _install_apm_dependencies(
         # downloader already created above for transitive resolution
         installed_count = 0
 
-        # Create progress display for downloads
+        # Phase 4 (#171): Parallel package downloads using ThreadPoolExecutor
+        # Pre-download all non-cached packages in parallel for wall-clock speedup.
+        # Results are stored and consumed by the sequential integration loop below.
+        from concurrent.futures import ThreadPoolExecutor, as_completed as _futures_completed
+
+        _pre_download_results = {}   # dep_key -> PackageInfo
+        _pre_download_failed = set() # dep_keys that failed download
+        _need_download = []
+        for _pd_ref in deps_to_install:
+            _pd_key = _pd_ref.get_unique_key()
+            _pd_path = (apm_modules_dir / _pd_ref.alias) if _pd_ref.alias else _pd_ref.get_install_path(apm_modules_dir)
+            # Skip if already downloaded during BFS resolution
+            if _pd_key in callback_downloaded:
+                continue
+            # Skip if lockfile SHA matches local HEAD (Phase 5 check)
+            if _pd_path.exists() and existing_lockfile and not update_refs:
+                _pd_locked = existing_lockfile.get_dependency(_pd_key)
+                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
+                    try:
+                        from git import Repo as _PDGitRepo
+                        if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked.resolved_commit:
+                            continue
+                    except Exception:
+                        pass
+            # Build download ref (use locked commit for reproducibility)
+            _pd_dlref = str(_pd_ref)
+            if existing_lockfile:
+                _pd_locked = existing_lockfile.get_dependency(_pd_key)
+                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
+                    _pd_base = _pd_ref.repo_url
+                    if _pd_ref.virtual_path:
+                        _pd_base = f"{_pd_base}/{_pd_ref.virtual_path}"
+                    _pd_dlref = f"{_pd_base}#{_pd_locked.resolved_commit}"
+            _need_download.append((_pd_ref, _pd_path, _pd_dlref))
+
+        if _need_download and parallel_downloads > 0:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[cyan]{task.description}[/cyan]"),
+                BarColumn(),
+                TaskProgressColumn(),
+                transient=True,
+            ) as _dl_progress:
+                _max_workers = min(parallel_downloads, len(_need_download))
+                with ThreadPoolExecutor(max_workers=_max_workers) as _executor:
+                    _futures = {}
+                    for _pd_ref, _pd_path, _pd_dlref in _need_download:
+                        _pd_disp = str(_pd_ref) if _pd_ref.is_virtual else _pd_ref.repo_url
+                        _pd_short = _pd_disp.split("/")[-1] if "/" in _pd_disp else _pd_disp
+                        _pd_tid = _dl_progress.add_task(description=f"Fetching {_pd_short}", total=None)
+                        _pd_fut = _executor.submit(
+                            downloader.download_package, _pd_dlref, _pd_path,
+                            progress_task_id=_pd_tid, progress_obj=_dl_progress,
+                        )
+                        _futures[_pd_fut] = (_pd_ref, _pd_tid, _pd_disp)
+                    for _pd_fut in _futures_completed(_futures):
+                        _pd_ref, _pd_tid, _pd_disp = _futures[_pd_fut]
+                        _pd_key = _pd_ref.get_unique_key()
+                        try:
+                            _pd_info = _pd_fut.result()
+                            _pre_download_results[_pd_key] = _pd_info
+                            _dl_progress.update(_pd_tid, visible=False)
+                            _dl_progress.refresh()
+                        except Exception as _pd_err:
+                            _pre_download_failed.add(_pd_key)
+                            _dl_progress.remove_task(_pd_tid)
+                            _rich_error(f"❌ Failed to install {_pd_disp}: {_pd_err}")
+
+        _pre_downloaded_keys = set(_pre_download_results.keys())
+
+        # Create progress display for sequential integration
         with Progress(
             SpinnerColumn(),
             TextColumn("[cyan]{task.description}[/cyan]"),
@@ -1720,6 +1800,10 @@ def _install_apm_dependencies(
             transient=True,  # Progress bar disappears when done
         ) as progress:
             for dep_ref in deps_to_install:
+                # Phase 4 (#171): Skip deps that failed during parallel download
+                if dep_ref.get_unique_key() in _pre_download_failed:
+                    continue
+
                 # Determine installation directory using namespaced structure
                 # e.g., microsoft/apm-sample-package -> apm_modules/microsoft/apm-sample-package/
                 # For virtual packages: owner/repo/prompts/file.prompt.md -> apm_modules/owner/repo-file/
@@ -1737,7 +1821,7 @@ def _install_apm_dependencies(
                 from apm_cli.models.apm_package import GitReferenceType
 
                 resolved_ref = None
-                if dep_ref.reference:
+                if dep_ref.reference and dep_ref.get_unique_key() not in _pre_downloaded_keys:
                     try:
                         resolved_ref = downloader.resolve_git_reference(
                             f"{dep_ref.repo_url}@{dep_ref.reference}"
@@ -1752,8 +1836,20 @@ def _install_apm_dependencies(
                 ]
                 # Skip download if: already fetched by resolver callback, or cached tag/commit
                 already_resolved = dep_ref.get_unique_key() in callback_downloaded
+                # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
+                lockfile_match = False
+                if install_path.exists() and existing_lockfile and not update_refs:
+                    locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                    if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                        try:
+                            from git import Repo as GitRepo
+                            local_repo = GitRepo(install_path)
+                            if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                lockfile_match = True
+                        except Exception:
+                            pass  # Not a git repo or invalid — fall through to download
                 skip_download = install_path.exists() and (
-                    (is_cacheable and not update_refs) or already_resolved
+                    (is_cacheable and not update_refs) or already_resolved or lockfile_match
                 )
 
                 if skip_download:
@@ -2027,13 +2123,18 @@ def _install_apm_dependencies(
                                 base_ref = f"{base_ref}/{dep_ref.virtual_path}"
                             download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
 
-                    # Download with live progress bar
-                    package_info = downloader.download_package(
-                        download_ref,
-                        install_path,
-                        progress_task_id=task_id,
-                        progress_obj=progress,
-                    )
+                    # Phase 4 (#171): Use pre-downloaded result if available
+                    _dep_key = dep_ref.get_unique_key()
+                    if _dep_key in _pre_download_results:
+                        package_info = _pre_download_results[_dep_key]
+                    else:
+                        # Fallback: sequential download (should rarely happen)
+                        package_info = downloader.download_package(
+                            download_ref,
+                            install_path,
+                            progress_task_id=task_id,
+                            progress_obj=progress,
+                        )
 
                     # CRITICAL: Hide progress BEFORE printing success message to avoid overlap
                     progress.update(task_id, visible=False)

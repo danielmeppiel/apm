@@ -306,6 +306,14 @@ When both packages are installed, your project gains:
 4. **Build Dependency Graph**: Resolve transitive dependencies recursively
 5. **Check Conflicts**: Identify any circular dependencies or conflicts
 
+#### Resilient Downloads
+
+APM automatically retries failed HTTP requests with exponential backoff. Rate-limited responses (HTTP 429/503) are handled transparently, respecting `Retry-After` headers when provided. This ensures reliable installs even under heavy API usage or transient network issues.
+
+#### Parallel Downloads
+
+APM downloads packages in parallel using a thread pool, significantly reducing wall-clock time for large dependency trees. The concurrency level defaults to 4 and is configurable via `--parallel-downloads` (set to 0 to disable). For subdirectory packages in monorepos, APM attempts git sparse-checkout (git 2.25+) to download only the needed directory, falling back to a shallow clone if sparse-checkout is unavailable.
+
 ### File Processing and Content Merging
 
 APM uses instruction-level merging rather than file-level precedence. When local and dependency files contribute instructions with overlapping `applyTo` patterns:
@@ -427,7 +435,7 @@ The `deployed_files` field tracks exactly which files APM placed in your project
 ### How It Works
 
 1. **First install**: APM resolves dependencies, downloads packages, and writes `apm.lock`
-2. **Subsequent installs**: APM reads `apm.lock` and uses locked commits for exact reproducibility
+2. **Subsequent installs**: APM reads `apm.lock` and uses locked commits for exact reproducibility. If the local checkout already matches the locked commit SHA, the download is skipped entirely.
 3. **Updating**: Use `--update` to re-resolve dependencies and generate a fresh lockfile
 
 ### Version Control

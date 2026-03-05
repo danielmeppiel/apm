@@ -186,6 +186,8 @@ The enhanced discovery system integrates with:
      - Keep existing primitive (higher priority)
      - Record conflict with losing source information
 
+Conflict detection uses O(1) name-indexed lookups, so performance remains constant regardless of collection size.
+
 ### Error Handling
 
 - Gracefully handles missing `apm_modules/` directory

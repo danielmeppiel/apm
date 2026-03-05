@@ -122,6 +122,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--update` - Update dependencies to latest Git references  
 - `--force` - Overwrite locally-authored files on collision
 - `--dry-run` - Show what would be installed without installing
+- `--parallel-downloads INT` - Max concurrent package downloads (default: 4, 0 to disable)
 - `--verbose` - Show detailed installation information
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 

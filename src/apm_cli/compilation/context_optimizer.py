@@ -121,6 +121,7 @@ class ContextOptimizer:
         self._glob_cache: Dict[str, List[str]] = {}
         self._glob_set_cache: Dict[str, Set[Path]] = {}
         self._file_list_cache: Optional[List[Path]] = None
+        self._inheritance_cache: Dict[Path, List[Path]] = {}  # (#171)
         self._timing_enabled = False
         self._phase_timings: Dict[str, float] = {}
         
@@ -1234,6 +1235,10 @@ class ContextOptimizer:
         Returns:
             List[Path]: Inheritance chain (most specific to root).
         """
+        cached = self._inheritance_cache.get(working_directory)
+        if cached is not None:
+            return cached
+
         chain = []
         # Resolve the starting directory to ensure consistent path comparison
         try:
@@ -1261,6 +1266,7 @@ class ContextOptimizer:
             except (OSError, ValueError):
                 break
         
+        self._inheritance_cache[working_directory] = chain
         return chain
     
     def _is_child_directory(self, child: Path, parent: Path) -> bool:
