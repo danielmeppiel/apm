@@ -236,11 +236,15 @@ class SimpleRegistryClient:
     def _is_server_match(self, reference: str, server_name: str) -> bool:
         """Check if a reference matches a server name using common patterns.
         
-        When the reference is a qualified name (contains '/'), only exact
-        full-name matches are accepted to prevent slug collisions
-        (e.g. 'microsoftdocs/mcp' must not match 'com.supabase/mcp').
-        
-        Slug-only matching is used only for simple (unqualified) references.
+        Matching rules:
+        1. Exact string match always wins.
+        2. Qualified references (contain '/') match if the server name ends
+           with the reference (e.g. 'github/github-mcp-server' matches
+           'io.github.github/github-mcp-server'). The match must happen at
+           a namespace boundary (preceded by '.' or start-of-string) to
+           prevent slug collisions like 'microsoftdocs/mcp' matching
+           'com.supabase/mcp'.
+        3. Unqualified references fall back to slug (last segment) comparison.
         
         Args:
             reference (str): Original reference from user.
@@ -253,9 +257,15 @@ class SimpleRegistryClient:
         if reference == server_name:
             return True
         
-        # If the reference is qualified (has '/'), require full-name match only
-        # to prevent slug collisions across different namespaces
         if '/' in reference:
+            # Qualified reference: allow suffix match at a namespace boundary.
+            # e.g. "github/github-mcp-server" matches "io.github.github/github-mcp-server"
+            # but "microsoftdocs/mcp" must NOT match "com.supabase/mcp".
+            if server_name.endswith(reference):
+                prefix = server_name[: -len(reference)]
+                # Valid boundary: empty (exact), or ends with '.' (namespace separator)
+                if prefix == "" or prefix.endswith("."):
+                    return True
             return False
             
         # Unqualified reference: fall back to slug comparison

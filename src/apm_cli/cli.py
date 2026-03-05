@@ -2422,6 +2422,18 @@ def _apply_mcp_overlay(server_info_cache: dict, dep) -> None:
             elif isinstance(existing_headers, builtins.dict):
                 existing_headers.update(dep.headers)
 
+    # Args overlay: merge into package runtime arguments
+    if dep.args and "packages" in info:
+        for pkg in info["packages"]:
+            existing_args = pkg.get("runtime_arguments", [])
+            if isinstance(dep.args, builtins.list):
+                for arg in dep.args:
+                    existing_args.append({"value_hint": str(arg)})
+            elif isinstance(dep.args, builtins.dict):
+                for k, v in dep.args.items():
+                    existing_args.append({"value_hint": f"--{k}={v}"})
+            pkg["runtime_arguments"] = existing_args
+
     # Tools overlay: embed for adapters to pick up
     if dep.tools:
         info["_apm_tools_override"] = dep.tools

@@ -776,10 +776,27 @@ class MCPDependency:
                 result[field_name] = value
         return result
 
+    _VALID_TRANSPORTS = frozenset({"stdio", "sse", "http", "streamable-http"})
+
+    def __str__(self) -> str:
+        """Return a redacted, human-friendly identifier for logging and CLI output."""
+        if self.transport:
+            return f"{self.name} ({self.transport})"
+        return self.name
+
+    def __repr__(self) -> str:
+        """Return a redacted representation to keep secrets out of debug logs."""
+        return f"MCPDependency({str(self)})"
+
     def validate(self) -> None:
         """Validate the dependency. Raises ValueError on invalid state."""
         if not self.name:
             raise ValueError("MCP dependency 'name' must not be empty")
+        if self.transport and self.transport not in self._VALID_TRANSPORTS:
+            raise ValueError(
+                f"MCP dependency '{self.name}' has unsupported transport "
+                f"'{self.transport}'. Valid values: {', '.join(sorted(self._VALID_TRANSPORTS))}"
+            )
         if self.registry is False:
             if not self.transport:
                 raise ValueError(

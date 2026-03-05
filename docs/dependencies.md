@@ -211,7 +211,7 @@ apm install --trust-transitive-mcp
 
 ### Validation
 
-Run `apm compile --validate` to check MCP dependency configuration. Self-defined deps are validated for required fields; overlay deps are validated for recognized field names.
+Run `apm compile --validate` to check MCP dependency configuration. Self-defined deps are validated for required fields and transport values; overlay deps are loaded as-is and unknown fields are ignored.
 
 ## GitHub Authentication Setup
 

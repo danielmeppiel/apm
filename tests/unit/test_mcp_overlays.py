@@ -151,6 +151,40 @@ class TestMCPDependencyModel:
         assert dep.args == {"org": "my-org"}
         assert isinstance(dep.args, dict)
 
+    # -- __str__ / __repr__ --------------------------------------------------
+
+    def test_str_with_transport(self):
+        dep = MCPDependency(name="my-srv", transport="stdio")
+        assert str(dep) == "my-srv (stdio)"
+
+    def test_str_without_transport(self):
+        dep = MCPDependency(name="my-srv")
+        assert str(dep) == "my-srv"
+
+    def test_repr_does_not_leak_env(self):
+        dep = MCPDependency(
+            name="leaky", transport="stdio",
+            env={"SECRET": "s3cret"}, headers={"Authorization": "Bearer token"},
+        )
+        r = repr(dep)
+        assert "s3cret" not in r
+        assert "Bearer" not in r
+        assert "MCPDependency(leaky (stdio))" == r
+
+    # -- transport validation ------------------------------------------------
+
+    def test_validate_invalid_transport_rejected(self):
+        with pytest.raises(ValueError, match="unsupported transport"):
+            MCPDependency.from_dict(
+                {"name": "x", "registry": False, "transport": "foo", "command": "cmd"}
+            )
+
+    def test_validate_valid_transports_accepted(self):
+        for t in ("stdio", "sse", "http", "streamable-http"):
+            dep = MCPDependency(name="x", transport=t)
+            # Should not raise for registry-resolved deps (no extra required fields)
+            dep.validate()
+
 
 # ---------------------------------------------------------------------------
 # _build_self_defined_server_info
@@ -313,6 +347,31 @@ class TestApplyMCPOverlay:
         # Should not raise
         _apply_mcp_overlay(cache, dep)
         assert cache == {}
+
+    def test_args_list_merged_into_packages(self):
+        cache = {
+            "srv": {
+                "packages": [{"registry_name": "npm", "runtime_hint": "npx"}],
+            }
+        }
+        dep = MCPDependency(name="srv", args=["--org", "acme"])
+        _apply_mcp_overlay(cache, dep)
+        rt_args = cache["srv"]["packages"][0]["runtime_arguments"]
+        assert len(rt_args) == 2
+        assert rt_args[0]["value_hint"] == "--org"
+        assert rt_args[1]["value_hint"] == "acme"
+
+    def test_args_dict_merged_into_packages(self):
+        cache = {
+            "srv": {
+                "packages": [{"registry_name": "npm", "runtime_hint": "npx"}],
+            }
+        }
+        dep = MCPDependency(name="srv", args={"org": "acme"})
+        _apply_mcp_overlay(cache, dep)
+        rt_args = cache["srv"]["packages"][0]["runtime_arguments"]
+        assert len(rt_args) == 1
+        assert rt_args[0]["value_hint"] == "--org=acme"
 
 
 # ---------------------------------------------------------------------------

@@ -362,6 +362,25 @@ class TestSimpleRegistryClient(unittest.TestCase):
         """Test _is_server_match accepts exact full-name match."""
         self.assertTrue(self.client._is_server_match("microsoftdocs/mcp", "microsoftdocs/mcp"))
 
+    def test_is_server_match_qualified_suffix_at_namespace_boundary(self):
+        """Test that a qualified ref matches when it's a namespace-boundary suffix."""
+        self.assertTrue(
+            self.client._is_server_match(
+                "github/github-mcp-server",
+                "io.github.github/github-mcp-server",
+            )
+        )
+
+    def test_is_server_match_qualified_suffix_no_boundary(self):
+        """Qualified ref must NOT match when the suffix isn't at a '.' boundary."""
+        # 'xgithub/server' ends with 'github/server' but not at a '.' boundary
+        self.assertFalse(
+            self.client._is_server_match(
+                "github/server",
+                "xgithub/server",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
