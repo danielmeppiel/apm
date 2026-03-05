@@ -66,7 +66,8 @@ class BaseIntegrator:
             return False
         if not target_path.exists():
             return False
-        if rel_path in managed_files:
+        # Normalize separators for cross-platform lockfile portability
+        if rel_path.replace("\\", "/") in {p.replace("\\", "/") for p in managed_files}:
             return False
         if force:
             return False
@@ -145,7 +146,8 @@ class BaseIntegrator:
 
         if managed_files is not None:
             for rel_path in managed_files:
-                if not rel_path.startswith(prefix) or ".." in rel_path:
+                normalized = rel_path.replace("\\", "/")
+                if not normalized.startswith(prefix) or ".." in rel_path:
                     continue
                 target = project_root / rel_path
                 if target.exists():

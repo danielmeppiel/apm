@@ -316,6 +316,8 @@ class HookIntegrator(BaseIntegrator):
             # Copy referenced scripts (individual file tracking)
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
+                if self.check_collision(target_script, target_rel, managed_files, force):
+                    continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
                 scripts_copied += 1
@@ -402,6 +404,8 @@ class HookIntegrator(BaseIntegrator):
             # Copy referenced scripts
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
+                if self.check_collision(target_script, target_rel, managed_files, force):
+                    continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
                 scripts_copied += 1

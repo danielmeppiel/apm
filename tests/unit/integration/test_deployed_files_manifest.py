@@ -121,7 +121,9 @@ class TestLockedDependencyDeployedFiles:
         dep = LockedDependency.from_dict(data)
         assert ".github/skills/code-review/" in dep.deployed_files
         assert ".github/skills/accessibility/" in dep.deployed_files
-        assert len(dep.deployed_files) == 2
+        assert ".claude/skills/code-review/" in dep.deployed_files
+        assert ".claude/skills/accessibility/" in dep.deployed_files
+        assert len(dep.deployed_files) == 4
 
     def test_deployed_files_wins_over_legacy_skills(self):
         """When both fields exist, deployed_files takes precedence."""

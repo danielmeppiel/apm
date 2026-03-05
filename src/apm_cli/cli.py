@@ -176,27 +176,18 @@ def _check_orphaned_packages():
             if lockfile:
                 for dep in lockfile.get_all_dependencies():
                     if dep.depth is not None and dep.depth > 1:
-                        repo_parts = dep.repo_url.strip("/").split("/")
-                        if dep.subdirectory:
-                            sub_parts = dep.subdirectory.strip("/").split("/")
-                            package_name = sub_parts[-1]
-                            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
-                                )
-                            elif len(repo_parts) >= 2:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{package_name}"
-                                )
-                        else:
-                            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"
-                                )
-                            elif len(repo_parts) >= 2:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{repo_parts[1]}"
-                                )
+                        dep_ref = DependencyReference(
+                            repo_url=dep.repo_url,
+                            host=dep.host,
+                            virtual_path=dep.virtual_path,
+                            is_virtual=dep.is_virtual,
+                        )
+                        install_path = dep_ref.get_install_path(apm_modules_dir)
+                        try:
+                            relative_path = install_path.relative_to(apm_modules_dir)
+                            expected_installed.add(str(relative_path))
+                        except ValueError:
+                            pass
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -843,30 +834,20 @@ def prune(ctx, dry_run):
             # tracked via apm.yml and should be prunable when removed.
             lockfile = LockFile.read(Path.cwd() / "apm.lock")
             if lockfile:
-                apm_modules_lock = Path.cwd() / "apm_modules"
                 for dep in lockfile.get_all_dependencies():
                     if dep.depth is not None and dep.depth > 1:
-                        repo_parts = dep.repo_url.strip("/").split("/")
-                        if dep.subdirectory:
-                            sub_parts = dep.subdirectory.strip("/").split("/")
-                            package_name = sub_parts[-1]
-                            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
-                                )
-                            elif len(repo_parts) >= 2:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{package_name}"
-                                )
-                        else:
-                            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"
-                                )
-                            elif len(repo_parts) >= 2:
-                                expected_installed.add(
-                                    f"{repo_parts[0]}/{repo_parts[1]}"
-                                )
+                        dep_ref = DependencyReference(
+                            repo_url=dep.repo_url,
+                            host=dep.host,
+                            virtual_path=dep.virtual_path,
+                            is_virtual=dep.is_virtual,
+                        )
+                        install_path = dep_ref.get_install_path(apm_modules_dir)
+                        try:
+                            relative_path = install_path.relative_to(apm_modules_dir)
+                            expected_installed.add(str(relative_path))
+                        except ValueError:
+                            pass
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
@@ -1954,7 +1935,7 @@ def _install_apm_dependencies(
                                 # Track links resolved
                                 total_links_resolved += prompt_result.links_resolved
                                 for tp in prompt_result.target_paths:
-                                    dep_deployed.append(str(tp.relative_to(project_root)))
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                                 # Integrate agents
                                 agent_result = (
@@ -1977,7 +1958,7 @@ def _install_apm_dependencies(
                                 # Track links resolved
                                 total_links_resolved += agent_result.links_resolved
                                 for tp in agent_result.target_paths:
-                                    dep_deployed.append(str(tp.relative_to(project_root)))
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Skill integration (works for both VSCode and Claude)
                             # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
@@ -1996,7 +1977,7 @@ def _install_apm_dependencies(
                                         f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
                                     )
                                 for tp in skill_result.target_paths:
-                                    dep_deployed.append(str(tp.relative_to(project_root)))
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Count instructions (compiled later via `apm compile`)
                             instruction_count = len(
@@ -2028,7 +2009,7 @@ def _install_apm_dependencies(
                                     )
                                 total_links_resolved += claude_agent_result.links_resolved
                                 for tp in claude_agent_result.target_paths:
-                                    dep_deployed.append(str(tp.relative_to(project_root)))
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                                 # Generate Claude commands from prompts
                                 command_result = (
@@ -2050,7 +2031,7 @@ def _install_apm_dependencies(
                                     )
                                 total_links_resolved += command_result.links_resolved
                                 for tp in command_result.target_paths:
-                                    dep_deployed.append(str(tp.relative_to(project_root)))
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Hook integration (target-aware)
                             if integrate_vscode:
@@ -2064,7 +2045,7 @@ def _install_apm_dependencies(
                                         f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/"
                                     )
                                 for tp in hook_result.target_paths:
-                                    dep_deployed.append(str(tp.relative_to(project_root)))
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
                             if integrate_claude:
                                 hook_result_claude = hook_integrator.integrate_package_hooks_claude(
                                     cached_package_info, project_root,
@@ -2076,7 +2057,7 @@ def _install_apm_dependencies(
                                         f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json"
                                     )
                                 for tp in hook_result_claude.target_paths:
-                                    dep_deployed.append(str(tp.relative_to(project_root)))
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Record deployed files for this package
                             package_deployed_files[dep_key] = dep_deployed

@@ -63,7 +63,7 @@ class LockedDependency:
 
         Handles backwards compatibility:
         - Old ``deployed_skills`` lists are migrated to ``deployed_files``
-          paths under ``.github/skills/`` (and ``.claude/skills/``).
+          paths under ``.github/skills/`` and ``.claude/skills/``.
         """
         deployed_files = list(data.get("deployed_files", []))
 
@@ -72,6 +72,7 @@ class LockedDependency:
         if old_skills and not deployed_files:
             for skill_name in old_skills:
                 deployed_files.append(f".github/skills/{skill_name}/")
+                deployed_files.append(f".claude/skills/{skill_name}/")
 
         return cls(
             repo_url=data["repo_url"],
