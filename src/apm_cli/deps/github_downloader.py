@@ -31,7 +31,8 @@ from ..utils.github_host import (
     build_ado_api_url,
     sanitize_token_url_in_message, 
     default_host,
-    is_azure_devops_hostname
+    is_azure_devops_hostname,
+    is_github_hostname
 )
 
 
@@ -233,12 +234,15 @@ class GitHubPackageDownloader:
                     host=host
                 )
         else:
-            # Use GitHub URL builders
+            # Determine if this host should receive a GitHub token
+            is_github = is_github_hostname(host)
             if use_ssh:
                 return build_ssh_url(host, repo_ref)
-            elif self.github_token:
+            elif is_github and self.github_token:
+                # Only send GitHub tokens to GitHub hosts
                 return build_https_clone_url(host, repo_ref, token=self.github_token)
             else:
+                # Generic hosts: plain HTTPS, let git credential helpers handle auth
                 return build_https_clone_url(host, repo_ref, token=None)
     
     def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, **clone_kwargs) -> Repo:
@@ -264,42 +268,66 @@ class GitHubPackageDownloader:
         last_error = None
         is_ado = dep_ref and dep_ref.is_azure_devops()
         
-        # For ADO, use ADO-specific token; for GitHub, use GitHub token
-        has_token = self.ado_token if is_ado else self.github_token
+        # Determine host type for auth decisions
+        dep_host = dep_ref.host if dep_ref else None
+        if dep_host:
+            is_github = is_github_hostname(dep_host)
+        else:
+            # When no host is specified, default to GitHub behavior
+            is_github = True
+        is_generic = not is_ado and not is_github
         
-        _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, has_token={has_token is not None}")
+        # Tokens are only valid for their matching host type
+        has_token = self.ado_token if is_ado else (self.github_token if is_github else None)
         
-        # Method 1: Try authenticated HTTPS if token is available
+        _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, is_generic={is_generic}, has_token={has_token is not None}")
+        
+        # When APM has a token for this host, use the locked-down env (APM manages auth).
+        # When no token is available, relax the env so git credential helpers (gh auth,
+        # macOS Keychain, etc.) can provide credentials — regardless of host.
+        if has_token:
+            clone_env = self.git_env
+        else:
+            clone_env = {k: v for k, v in self.git_env.items()
+                         if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
+            clone_env['GIT_TERMINAL_PROMPT'] = '0'  # Still prevent interactive prompts
+        
+        # Method 1: Try authenticated HTTPS if token is available (GitHub/ADO only)
         if has_token:
             try:
                 auth_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
                 _debug(f"Attempting clone with authenticated HTTPS (URL sanitized)")
-                return Repo.clone_from(auth_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
+                return Repo.clone_from(auth_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
             except GitCommandError as e:
                 last_error = e
                 # Continue to next method
         
-        # Method 2: Try SSH if it might work (for SSH key-based authentication)
+        # Method 2: Try SSH (works with SSH keys for any host)
         try:
             ssh_url = self._build_repo_url(repo_url_base, use_ssh=True, dep_ref=dep_ref)
-            return Repo.clone_from(ssh_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
+            return Repo.clone_from(ssh_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
         except GitCommandError as e:
             last_error = e
             # Continue to next method
         
-        # Method 3: Try standard HTTPS as fallback for public repos
+        # Method 3: Try standard HTTPS (public repos, or git credential helper for generic hosts)
         try:
             https_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
-            return Repo.clone_from(https_url, target_path, env=self.git_env, progress=progress_reporter, **clone_kwargs)
+            return Repo.clone_from(https_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
         except GitCommandError as e:
             last_error = e
         
         # All methods failed
         error_msg = f"Failed to clone repository {repo_url_base} using all available methods. "
         configured_host = os.environ.get("GITHUB_HOST", "")
-        dep_host = dep_ref.host if dep_ref else None
         if is_ado and not self.has_ado_token:
             error_msg += "For private Azure DevOps repositories, set ADO_APM_PAT environment variable."
+        elif is_generic:
+            host_name = dep_host or "the target host"
+            error_msg += (
+                f"For private repositories on {host_name}, configure SSH keys or a git credential helper. "
+                f"APM delegates authentication to git for non-GitHub/ADO hosts."
+            )
         elif configured_host and dep_host and dep_host == configured_host and configured_host != "github.com":
             suggested = f"github.com/{repo_url_base}"
             if dep_ref and dep_ref.virtual_path:

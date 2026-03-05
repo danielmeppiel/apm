@@ -96,14 +96,16 @@ apm install github/awesome-copilot/agents/api-architect.agent.md
 ## Install From Anywhere
 
 ```bash
-# GitHub Repo or Path
-apm install owner/repo   
-apm install owner/repo/path                                              
-# Single file
-apm install github/awesome-copilot/skills/review-and-refactor   
+# GitHub (shorthand)
+apm install owner/repo
+apm install owner/repo/path
+# GitLab / Bitbucket / any git host
+apm install https://gitlab.com/acme/coding-standards.git
+apm install git@bitbucket.org:team/security-rules.git
+apm install gitlab.com/acme/repo
 # GitHub Enterprise Server
-apm install ghe.company.com/owner/repo    
-# Azure DevOps                      
+apm install ghe.company.com/owner/repo
+# Azure DevOps
 apm install dev.azure.com/org/project/repo
 ```
 
@@ -154,7 +156,7 @@ Anyone can now `apm install you/my-standards`.
 
 ## Configuration
 
-For private repos or Azure DevOps, set a token:
+For private repos or Azure DevOps, set a token. For other hosts (GitLab, Bitbucket, etc.), configure SSH keys or use `git credential-manager`:
 
 | Token | When you need it |
 |-------|-----------------|
@@ -170,7 +172,7 @@ For private repos or Azure DevOps, set a token:
 
 An APM package is anything you can point `apm install` at: a full package with an `apm.yml` manifest and `.apm/` folder, a single primitive file (`.instructions.md`, `.prompt.md`, `.agent.md`), a skill folder, or any subtree inside a repository. Hooks are auto-discovered when a package contains them. See [Primitives](docs/primitives.md) for details on each type.
 
-APM installs from **GitHub.com**, **GitHub Enterprise Server**, **GitHub Enterprise Cloud with Data Residency**, and **Azure DevOps** — no registry required. See [Package Sources](docs/getting-started.md#package-sources) for host configuration.
+APM installs from **any git host** — GitHub, GitLab, Bitbucket, self-hosted servers, GitHub Enterprise, and Azure DevOps. Use HTTPS or SSH git URLs, or the `owner/repo` shorthand for GitHub. See [Package Sources](docs/getting-started.md#package-sources) for host configuration.
 
 Popular sources to get you started:
 

@@ -56,6 +56,7 @@ def is_supported_git_host(hostname: Optional[str]) -> bool:
     - Azure DevOps Services (dev.azure.com)
     - Azure DevOps legacy (*.visualstudio.com)
     - Any FQDN set via GITHUB_HOST environment variable
+    - Any valid FQDN (generic git host support for GitLab, Bitbucket, etc.)
     """
     if not hostname:
         return False
@@ -71,6 +72,10 @@ def is_supported_git_host(hostname: Optional[str]) -> bool:
     # Accept the configured default host (supports custom Azure DevOps Server, etc.)
     configured_host = os.environ.get("GITHUB_HOST", "").lower()
     if configured_host and hostname.lower() == configured_host:
+        return True
+    
+    # Accept any valid FQDN as a generic git host (GitLab, Bitbucket, self-hosted, etc.)
+    if is_valid_fqdn(hostname):
         return True
     
     return False
@@ -92,12 +97,13 @@ def unsupported_host_error(hostname: str, context: Optional[str] = None) -> str:
     if context:
         msg += f"{context}\n\n"
     
-    msg += f"Unsupported Git host: '{hostname}'.\n"
+    msg += f"Invalid Git host: '{hostname}'.\n"
     msg += "\n"
-    msg += "APM only allows these Git hosts by default:\n"
+    msg += "APM supports any valid FQDN as a Git host, including:\n"
     msg += "  • github.com\n"
     msg += "  • *.ghe.com (GitHub Enterprise Cloud)\n"
     msg += "  • dev.azure.com, *.visualstudio.com (Azure DevOps)\n"
+    msg += "  • gitlab.com, bitbucket.org, or any self-hosted Git server\n"
     msg += "\n"
     
     if current_host:
