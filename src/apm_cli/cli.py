@@ -1391,6 +1391,9 @@ def uninstall(ctx, packages, dry_run):
         if lockfile:
             for dep in lockfile.dependencies.values():
                 all_deployed_files.update(dep.deployed_files)
+        # Normalize path separators once
+        from apm_cli.integration.base_integrator import BaseIntegrator
+        all_deployed_files = BaseIntegrator.normalize_managed_files(all_deployed_files) or builtins.set()
 
         # Update lockfile: remove entries for all removed packages (direct + transitive)
         removed_orphan_keys = builtins.set()
@@ -1443,41 +1446,48 @@ def uninstall(ctx, packages, dry_run):
             # Use pre-collected deployed_files (captured before lockfile entries were deleted)
             sync_managed = all_deployed_files if all_deployed_files else None
 
+            # Pre-partition managed files by integration type — single O(M)
+            # pass instead of 6× O(M) prefix scans inside each integrator.
+            if sync_managed is not None:
+                _buckets = BaseIntegrator.partition_managed_files(sync_managed)
+            else:
+                _buckets = None
+
             # Phase 1: Remove all APM-deployed files
             if Path(".github/prompts").exists():
                 integrator = PromptIntegrator()
                 result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=sync_managed)
+                                                     managed_files=_buckets["prompts"] if _buckets else None)
                 prompts_cleaned = result.get("files_removed", 0)
 
             if Path(".github/agents").exists():
                 integrator = AgentIntegrator()
                 result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=sync_managed)
+                                                     managed_files=_buckets["agents_github"] if _buckets else None)
                 agents_cleaned = result.get("files_removed", 0)
 
             if Path(".claude/agents").exists():
                 integrator = AgentIntegrator()
                 result = integrator.sync_integration_claude(apm_package, project_root,
-                                                            managed_files=sync_managed)
+                                                            managed_files=_buckets["agents_claude"] if _buckets else None)
                 agents_cleaned += result.get("files_removed", 0)
 
             if Path(".github/skills").exists() or Path(".claude/skills").exists():
                 integrator = SkillIntegrator()
                 result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=sync_managed)
+                                                     managed_files=_buckets["skills"] if _buckets else None)
                 skills_cleaned = result.get("files_removed", 0)
 
             if Path(".claude/commands").exists():
                 integrator = CommandIntegrator()
                 result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=sync_managed)
+                                                     managed_files=_buckets["commands"] if _buckets else None)
                 commands_cleaned = result.get("files_removed", 0)
 
             # Clean hooks (.github/hooks/ and .claude/settings.json)
             hook_integrator_cleanup = HookIntegrator()
             result = hook_integrator_cleanup.sync_integration(apm_package, project_root,
-                                                              managed_files=sync_managed)
+                                                              managed_files=_buckets["hooks"] if _buckets else None)
             hooks_cleaned = result.get("files_removed", 0)
 
             # Phase 2: Re-integrate from remaining installed packages in apm_modules/
@@ -1775,6 +1785,9 @@ def _install_apm_dependencies(
         if existing_lockfile:
             for dep in existing_lockfile.dependencies.values():
                 managed_files.update(dep.deployed_files)
+        # Normalize path separators once for O(1) lookups in check_collision
+        from apm_cli.integration.base_integrator import BaseIntegrator
+        managed_files = BaseIntegrator.normalize_managed_files(managed_files)
 
         # Install each dependency with Rich progress display
         from rich.progress import (

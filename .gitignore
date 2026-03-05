@@ -66,20 +66,3 @@ WIP
 # Internal planning documents
 skill-plan.md
 skill-strategy.md
-
-
-# APM dependencies
-apm_modules/
-
-
-# APM integrated prompts
-.github/prompts/*-apm.prompt.md
-
-
-# APM integrated agents
-.github/agents/*-apm.agent.md
-
-
-# APM integrated skills
-.github/skills/*-apm/
-# APM integrated skills

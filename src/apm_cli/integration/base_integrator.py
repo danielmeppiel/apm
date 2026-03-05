@@ -61,13 +61,16 @@ class BaseIntegrator:
         4. ``force`` is ``False``
 
         When a collision is detected a warning is emitted to *stderr*.
+
+        .. note:: Callers must pre-normalize *managed_files* with
+           forward-slash separators (see ``normalize_managed_files``).
         """
         if managed_files is None:
             return False
         if not target_path.exists():
             return False
-        # Normalize separators for cross-platform lockfile portability
-        if rel_path.replace("\\", "/") in {p.replace("\\", "/") for p in managed_files}:
+        # managed_files is pre-normalized at the call site — O(1) lookup
+        if rel_path.replace("\\", "/") in managed_files:
             return False
         if force:
             return False
@@ -78,6 +81,46 @@ class BaseIntegrator:
             file=sys.stderr,
         )
         return True
+
+    @staticmethod
+    def normalize_managed_files(managed_files: Optional[Set[str]]) -> Optional[Set[str]]:
+        """Normalize path separators once for O(1) lookups."""
+        if managed_files is None:
+            return None
+        return {p.replace("\\", "/") for p in managed_files}
+
+    @staticmethod
+    def partition_managed_files(
+        managed_files: Set[str],
+    ) -> dict:
+        """Partition *managed_files* by integration prefix in a single pass.
+
+        Returns a dict with keys ``"prompts"``, ``"agents_github"``,
+        ``"agents_claude"``, ``"commands"``, ``"skills"``, ``"hooks"``
+        mapping to the subset of paths for each integration type.
+        """
+        buckets: dict = {
+            "prompts": set(),
+            "agents_github": set(),
+            "agents_claude": set(),
+            "commands": set(),
+            "skills": set(),
+            "hooks": set(),
+        }
+        for p in managed_files:
+            if p.startswith(".github/prompts/"):
+                buckets["prompts"].add(p)
+            elif p.startswith(".github/agents/"):
+                buckets["agents_github"].add(p)
+            elif p.startswith(".claude/agents/"):
+                buckets["agents_claude"].add(p)
+            elif p.startswith(".claude/commands/"):
+                buckets["commands"].add(p)
+            elif p.startswith((".github/skills/", ".claude/skills/")):
+                buckets["skills"].add(p)
+            elif p.startswith((".github/hooks/", ".claude/hooks/")):
+                buckets["hooks"].add(p)
+        return buckets
 
     # ------------------------------------------------------------------
     # Link resolution helpers
@@ -146,8 +189,8 @@ class BaseIntegrator:
 
         if managed_files is not None:
             for rel_path in managed_files:
-                normalized = rel_path.replace("\\", "/")
-                if not normalized.startswith(prefix) or ".." in rel_path:
+                # managed_files is pre-normalized — no .replace() needed
+                if not rel_path.startswith(prefix) or ".." in rel_path:
                     continue
                 target = project_root / rel_path
                 if target.exists():
