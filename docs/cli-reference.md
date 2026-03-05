@@ -120,6 +120,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--exclude TEXT` - Exclude specific runtime from installation
 - `--only [apm|mcp]` - Install only specific dependency type
 - `--update` - Update dependencies to latest Git references  
+- `--force` - Overwrite locally-authored files on collision
 - `--dry-run` - Show what would be installed without installing
 - `--verbose` - Show detailed installation information
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
@@ -216,21 +217,20 @@ APM automatically detects which integrations to enable based on your project str
 
 When you run `apm install`, APM automatically integrates primitives from installed packages:
 
-- **Prompts**: `.prompt.md` files → `.github/prompts/*-apm.prompt.md`
-- **Agents**: `.agent.md` files → `.github/agents/*-apm.agent.md`
-- **Chatmodes**: `.chatmode.md` files → `.github/agents/*-apm.agent.md` (renamed to modern format)
+- **Prompts**: `.prompt.md` files → `.github/prompts/*.prompt.md`
+- **Agents**: `.agent.md` files → `.github/agents/*.agent.md`
+- **Chatmodes**: `.chatmode.md` files → `.github/agents/*.agent.md` (renamed to modern format)
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
-- **Hooks**: Hook `.json` files → `.github/hooks/*-apm.json` with scripts bundled
-- **Naming**: Integrated files use `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
-- **GitIgnore**: Pattern `*-apm.prompt.md` automatically added to `.gitignore`
+- **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
+- **Collision detection**: Skips local files with a warning; use `--force` to overwrite
 
 **Claude Integration (`.claude/` present):**
 
 APM also integrates with Claude Code when `.claude/` directory exists:
 
-- **Agents**: `.agent.md` and `.chatmode.md` files → `.claude/agents/*-apm.md`
-- **Commands**: `.prompt.md` files → `.claude/commands/*-apm.md`
+- **Agents**: `.agent.md` and `.chatmode.md` files → `.claude/agents/*.md`
+- **Commands**: `.prompt.md` files → `.claude/commands/*.md`
 - **Hooks**: Hook definitions merged into `.claude/settings.json` hooks key
 
 **Skill Integration:**
@@ -280,12 +280,12 @@ apm uninstall microsoft/apm-sample-package --dry-run
 | Package entry | `apm.yml` dependencies section |
 | Package folder | `apm_modules/owner/repo/` |
 | Transitive deps | `apm_modules/` (orphaned transitive dependencies) |
-| Integrated prompts | `.github/prompts/*-apm.prompt.md` |
-| Integrated agents | `.github/agents/*-apm.agent.md` |
-| Integrated chatmodes | `.github/agents/*-apm.agent.md` |
-| Claude commands | `.claude/commands/*-apm.md` |
+| Integrated prompts | `.github/prompts/*.prompt.md` |
+| Integrated agents | `.github/agents/*.agent.md` |
+| Integrated chatmodes | `.github/agents/*.agent.md` |
+| Claude commands | `.claude/commands/*.md` |
 | Skill folders | `.github/skills/{folder-name}/` |
-| Integrated hooks | `.github/hooks/*-apm.json` |
+| Integrated hooks | `.github/hooks/*.json` |
 | Claude hook settings | `.claude/settings.json` (hooks key cleaned) |
 | Lockfile entries | `apm.lock` (removed packages + orphaned transitives) |
 
@@ -293,14 +293,14 @@ apm uninstall microsoft/apm-sample-package --dry-run
 - Removes package from `apm.yml` dependencies
 - Deletes package folder from `apm_modules/`
 - Removes orphaned transitive dependencies (npm-style pruning via `apm.lock`)
-- Removes all integrated files with `-apm` suffix that originated from the package
+- Removes all deployed integration files tracked in `apm.lock` `deployed_files`
 - Updates `apm.lock` (or deletes it if no dependencies remain)
 - Cleans up empty parent directories
-- Safe operation: only removes APM-managed files (identified by `-apm` suffix)
+- Safe operation: only removes files tracked in the `deployed_files` manifest
 
 ### `apm prune` - 🧹 Remove orphaned packages
 
-Remove APM packages from `apm_modules/` that are not listed in `apm.yml`.
+Remove APM packages from `apm_modules/` that are not listed in `apm.yml`, along with their deployed integration files (prompts, agents, hooks, etc.).
 
 ```bash
 apm prune [OPTIONS]
@@ -311,12 +311,17 @@ apm prune [OPTIONS]
 
 **Examples:**
 ```bash
-# Remove orphaned packages
+# Remove orphaned packages and their deployed files
 apm prune
 
 # Preview what would be removed
 apm prune --dry-run
 ```
+
+**Behavior:**
+- Removes orphaned package directories from `apm_modules/`
+- Removes deployed integration files (prompts, agents, hooks, etc.) for pruned packages using the `deployed_files` manifest in `apm.lock`
+- Updates `apm.lock` to reflect the pruned state
 
 ### `apm update` - ⬆️ Update APM to the latest version
 

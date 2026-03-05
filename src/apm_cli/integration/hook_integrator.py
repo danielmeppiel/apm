@@ -40,6 +40,8 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
 
+from apm_cli.integration.base_integrator import BaseIntegrator
+
 
 @dataclass
 class HookIntegrationResult:
@@ -47,32 +49,16 @@ class HookIntegrationResult:
     hooks_integrated: int
     scripts_copied: int
     target_paths: List[Path] = field(default_factory=list)
-    gitignore_updated: bool = False
 
 
-class HookIntegrator:
+class HookIntegrator(BaseIntegrator):
     """Handles integration of APM package hooks into target locations.
 
     Discovers hook JSON files and their referenced scripts from packages,
     then installs them to the appropriate target location:
-    - VSCode: .github/hooks/<pkg>-<name>-apm.json + .github/hooks/scripts/<pkg>/
+    - VSCode: .github/hooks/<pkg>-<name>.json + .github/hooks/scripts/<pkg>/
     - Claude: Merged into .claude/settings.json hooks key + .claude/hooks/<pkg>/
     """
-
-    def __init__(self):
-        """Initialize the hook integrator."""
-        pass
-
-    def should_integrate(self, project_root: Path) -> bool:
-        """Check if hook integration should be performed.
-
-        Args:
-            project_root: Root directory of the project
-
-        Returns:
-            bool: Always True - integration happens automatically
-        """
-        return True
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
         """Find all hook JSON files in a package.
@@ -266,15 +252,19 @@ class HookIntegrator:
         """
         return package_info.install_path.name
 
-    def integrate_package_hooks(self, package_info, project_root: Path) -> HookIntegrationResult:
+    def integrate_package_hooks(self, package_info, project_root: Path,
+                                 force: bool = False,
+                                 managed_files: set = None) -> HookIntegrationResult:
         """Integrate hooks from a package into .github/hooks/ (VSCode target).
 
-        Copies hook JSON files with rewritten script paths and copies
-        referenced script files to .github/hooks/scripts/<pkg-name>/.
+        Deploys hook JSON files with clean filenames and copies referenced
+        script files. Skips user-authored files unless force=True.
 
         Args:
             package_info: PackageInfo with package metadata and install path
             project_root: Root directory of the project
+            force: If True, overwrite user-authored files on collision
+            managed_files: Set of relative paths known to be APM-managed
 
         Returns:
             HookIntegrationResult: Results of the integration operation
@@ -306,10 +296,14 @@ class HookIntegrator:
                 hook_file_dir=hook_file.parent,
             )
 
-            # Generate target filename: <package_name>-<stem>-apm.json
+            # Generate target filename (clean, no -apm suffix)
             stem = hook_file.stem
-            target_filename = f"{package_name}-{stem}-apm.json"
+            target_filename = f"{package_name}-{stem}.json"
             target_path = hooks_dir / target_filename
+            rel_path = str(target_path.relative_to(project_root))
+
+            if self.check_collision(target_path, rel_path, managed_files, force):
+                continue
 
             # Write rewritten JSON
             with open(target_path, 'w', encoding='utf-8') as f:
@@ -319,12 +313,15 @@ class HookIntegrator:
             hooks_integrated += 1
             target_paths.append(target_path)
 
-            # Copy referenced scripts
+            # Copy referenced scripts (individual file tracking)
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
+                if self.check_collision(target_script, target_rel, managed_files, force):
+                    continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
                 scripts_copied += 1
+                target_paths.append(target_script)
 
         return HookIntegrationResult(
             hooks_integrated=hooks_integrated,
@@ -332,15 +329,20 @@ class HookIntegrator:
             target_paths=target_paths,
         )
 
-    def integrate_package_hooks_claude(self, package_info, project_root: Path) -> HookIntegrationResult:
+    def integrate_package_hooks_claude(self, package_info, project_root: Path,
+                                        force: bool = False,
+                                        managed_files: set = None) -> HookIntegrationResult:
         """Integrate hooks from a package into .claude/settings.json (Claude target).
 
         Merges hook definitions into the Claude settings file and copies
-        referenced script files to .claude/hooks/<pkg-name>/.
+        referenced script files. Tracks individual script files for
+        manifest-based cleanup.
 
         Args:
             package_info: PackageInfo with package metadata and install path
             project_root: Root directory of the project
+            force: If True, overwrite user-authored files on collision
+            managed_files: Set of relative paths known to be APM-managed
 
         Returns:
             HookIntegrationResult: Results of the integration operation
@@ -402,6 +404,8 @@ class HookIntegrator:
             # Copy referenced scripts
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
+                if self.check_collision(target_script, target_rel, managed_files, force):
+                    continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
                 scripts_copied += 1
@@ -412,7 +416,8 @@ class HookIntegrator:
         with open(settings_path, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=2)
             f.write('\n')
-        target_paths.append(settings_path)
+        # Don't track settings.json in target_paths — it's a shared file
+        # cleaned via _apm_source markers, not file-level deletion
 
         return HookIntegrationResult(
             hooks_integrated=hooks_integrated,
@@ -420,53 +425,54 @@ class HookIntegrator:
             target_paths=target_paths,
         )
 
-    def sync_integration(self, apm_package, project_root: Path) -> Dict:
-        """Remove all APM-managed hook files for clean regeneration.
+    def sync_integration(self, apm_package, project_root: Path,
+                          managed_files: set = None) -> Dict:
+        """Remove APM-managed hook files.
 
-        Removes:
-        - .github/hooks/*-apm.json files
-        - .github/hooks/scripts/ directory
-        - APM-managed entries from .claude/settings.json
-        - .claude/hooks/ directory
+        Uses *managed_files* (relative paths) to surgically remove only
+        APM-tracked files.  Falls back to legacy ``*-apm.json`` glob when
+        *managed_files* is ``None``.
 
-        Args:
-            apm_package: APMPackage (unused, kept for interface compatibility)
-            project_root: Root directory of the project
+        **Never** calls ``shutil.rmtree``.
 
-        Returns:
-            Dict with cleanup stats: {'files_removed': int, 'errors': int}
+        Also cleans APM entries from ``.claude/settings.json`` via the
+        ``_apm_source`` marker.
         """
         stats: Dict[str, int] = {'files_removed': 0, 'errors': 0}
 
-        # Clean VSCode hooks
-        hooks_dir = project_root / ".github" / "hooks"
-        if hooks_dir.exists():
-            for hook_file in hooks_dir.glob("*-apm.json"):
-                try:
-                    hook_file.unlink()
-                    stats['files_removed'] += 1
-                except Exception:
-                    stats['errors'] += 1
+        if managed_files is not None:
+            # Manifest-based removal — only remove tracked files
+            deleted: list = []
+            for rel_path in managed_files:
+                # Only handle hook-related paths
+                is_hook = (
+                    rel_path.startswith(".github/hooks/")
+                    or rel_path.startswith(".claude/hooks/")
+                )
+                if not is_hook or ".." in rel_path:
+                    continue
+                target = project_root / rel_path
+                if target.exists() and target.is_file():
+                    try:
+                        target.unlink()
+                        stats['files_removed'] += 1
+                        deleted.append(target)
+                    except Exception:
+                        stats['errors'] += 1
+            # Batch parent cleanup — single bottom-up pass
+            self.cleanup_empty_parents(deleted, stop_at=project_root)
+        else:
+            # Legacy fallback — glob for old -apm suffix files
+            hooks_dir = project_root / ".github" / "hooks"
+            if hooks_dir.exists():
+                for hook_file in hooks_dir.glob("*-apm.json"):
+                    try:
+                        hook_file.unlink()
+                        stats['files_removed'] += 1
+                    except Exception:
+                        stats['errors'] += 1
 
-            # Clean scripts directory
-            scripts_dir = hooks_dir / "scripts"
-            if scripts_dir.exists():
-                try:
-                    shutil.rmtree(scripts_dir)
-                    stats['files_removed'] += 1
-                except Exception:
-                    stats['errors'] += 1
-
-        # Clean Claude hooks scripts
-        claude_hooks_dir = project_root / ".claude" / "hooks"
-        if claude_hooks_dir.exists():
-            try:
-                shutil.rmtree(claude_hooks_dir)
-                stats['files_removed'] += 1
-            except Exception:
-                stats['errors'] += 1
-
-        # Clean APM entries from .claude/settings.json
+        # Clean APM entries from .claude/settings.json (safe — uses _apm_source marker)
         settings_path = project_root / ".claude" / "settings.json"
         if settings_path.exists():
             try:
@@ -501,32 +507,3 @@ class HookIntegrator:
 
         return stats
 
-    def update_gitignore(self, project_root: Path) -> bool:
-        """Update .gitignore with patterns for APM-managed hooks.
-
-        Args:
-            project_root: Root directory of the project
-
-        Returns:
-            bool: True if .gitignore was updated, False if patterns already exist
-        """
-        gitignore_path = project_root / ".gitignore"
-        patterns = [
-            ".github/hooks/*-apm.json",
-            ".github/hooks/scripts/",
-        ]
-
-        existing_content = ""
-        if gitignore_path.exists():
-            existing_content = gitignore_path.read_text()
-
-        # Check if patterns already exist
-        if ".github/hooks/*-apm.json" in existing_content:
-            return False
-
-        new_content = existing_content.rstrip() + "\n\n# APM integrated hooks\n"
-        for pattern in patterns:
-            new_content += f"{pattern}\n"
-
-        gitignore_path.write_text(new_content)
-        return True

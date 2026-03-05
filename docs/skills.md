@@ -65,7 +65,7 @@ Skill names are validated per the [agentskills.io](https://agentskills.io/) spec
 ```
 
 ### Step 3: Primitive Integration
-APM also integrates prompts (with `-apm` suffix) and commands from the package.
+APM also integrates prompts and commands from the package (using their original filenames).
 
 ### Installation Path Structure
 

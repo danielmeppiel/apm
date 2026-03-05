@@ -7,7 +7,6 @@ Tests cover:
 - Sync/cleanup integration (nuke-and-regenerate)
 - Official plugin formats (hookify, learning-output-style, ralph-loop)
 - Script path rewriting for ${CLAUDE_PLUGIN_ROOT} references
-- Gitignore updates
 """
 
 import json
@@ -260,7 +259,7 @@ class TestVSCodeIntegration:
         assert result.scripts_copied == 4
 
         # Check hook JSON was created
-        target_json = temp_project / ".github" / "hooks" / "hookify-hooks-apm.json"
+        target_json = temp_project / ".github" / "hooks" / "hookify-hooks.json"
         assert target_json.exists()
 
         # Verify rewritten paths
@@ -297,7 +296,7 @@ class TestVSCodeIntegration:
         assert result.scripts_copied == 1
 
         # Verify rewritten paths
-        target_json = temp_project / ".github" / "hooks" / "learning-output-style-hooks-apm.json"
+        target_json = temp_project / ".github" / "hooks" / "learning-output-style-hooks.json"
         data = json.loads(target_json.read_text())
         cmd = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
         assert "${CLAUDE_PLUGIN_ROOT}" not in cmd
@@ -332,7 +331,7 @@ class TestVSCodeIntegration:
         assert result.hooks_integrated == 1
         assert result.scripts_copied == 1
 
-        target_json = temp_project / ".github" / "hooks" / "ralph-loop-hooks-apm.json"
+        target_json = temp_project / ".github" / "hooks" / "ralph-loop-hooks.json"
         data = json.loads(target_json.read_text())
         cmd = data["hooks"]["Stop"][0]["hooks"][0]["command"]
         assert "ralph-loop" in cmd
@@ -378,7 +377,7 @@ class TestVSCodeIntegration:
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
 
         assert result.hooks_integrated == 1
-        target_json = temp_project / ".github" / "hooks" / "security-hooks-security-apm.json"
+        target_json = temp_project / ".github" / "hooks" / "security-hooks-security.json"
         assert target_json.exists()
 
     def test_integrate_system_command_passthrough(self, temp_project):
@@ -408,7 +407,7 @@ class TestVSCodeIntegration:
         assert result.hooks_integrated == 1
         assert result.scripts_copied == 0  # No scripts to copy for system commands
 
-        target_json = temp_project / ".github" / "hooks" / "format-pkg-format-apm.json"
+        target_json = temp_project / ".github" / "hooks" / "format-pkg-format.json"
         data = json.loads(target_json.read_text())
         cmd = data["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         assert cmd == "npx prettier --check ."
@@ -697,15 +696,17 @@ class TestSyncIntegration:
         assert (hooks_dir / "user-custom.json").exists()
 
     def test_sync_removes_scripts_directory(self, temp_project):
-        """Test that sync removes the scripts/ directory from .github/hooks/."""
+        """Test that sync removes scripts via manifest mode and cleans empty parents."""
         hooks_dir = temp_project / ".github" / "hooks"
         scripts_dir = hooks_dir / "scripts" / "hookify" / "hooks"
         scripts_dir.mkdir(parents=True)
         (scripts_dir / "pretooluse.py").write_text("# script")
 
         integrator = HookIntegrator()
-        stats = integrator.sync_integration(None, temp_project)
+        managed_files = {".github/hooks/scripts/hookify/hooks/pretooluse.py"}
+        stats = integrator.sync_integration(None, temp_project, managed_files=managed_files)
 
+        assert stats["files_removed"] == 1
         assert not (hooks_dir / "scripts").exists()
 
     def test_sync_removes_claude_hook_entries(self, temp_project):
@@ -742,14 +743,16 @@ class TestSyncIntegration:
         assert "PreToolUse" not in updated_settings["hooks"]
 
     def test_sync_removes_claude_hooks_dir(self, temp_project):
-        """Test that sync removes .claude/hooks/ directory."""
+        """Test that sync removes .claude/hooks/ scripts via manifest mode and cleans empty parents."""
         claude_hooks = temp_project / ".claude" / "hooks" / "hookify"
         claude_hooks.mkdir(parents=True)
         (claude_hooks / "pretooluse.py").write_text("# script")
 
         integrator = HookIntegrator()
-        stats = integrator.sync_integration(None, temp_project)
+        managed_files = {".claude/hooks/hookify/pretooluse.py"}
+        stats = integrator.sync_integration(None, temp_project, managed_files=managed_files)
 
+        assert stats["files_removed"] == 1
         assert not (temp_project / ".claude" / "hooks").exists()
 
     def test_sync_empty_project(self, temp_project):
@@ -1104,7 +1107,7 @@ class TestScriptPathRewriting:
         assert result.scripts_copied == 1
 
         # Verify the rewritten command points to the bundled script
-        target_json = temp_project / ".github" / "hooks" / "lint-hooks-hooks-apm.json"
+        target_json = temp_project / ".github" / "hooks" / "lint-hooks-hooks.json"
         data = json.loads(target_json.read_text())
         cmd = data["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
         assert ".github/hooks/scripts/lint-hooks/scripts/lint.sh" in cmd
@@ -1114,50 +1117,6 @@ class TestScriptPathRewriting:
         copied_script = temp_project / ".github" / "hooks" / "scripts" / "lint-hooks" / "scripts" / "lint.sh"
         assert copied_script.exists()
         assert copied_script.read_text() == "#!/bin/bash\necho lint"
-
-
-# ─── Gitignore tests ─────────────────────────────────────────────────────────
-
-
-class TestGitignore:
-    """Tests for .gitignore updates."""
-
-    @pytest.fixture
-    def temp_project(self):
-        temp_dir = tempfile.mkdtemp()
-        yield Path(temp_dir)
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-    def test_update_gitignore_adds_patterns(self, temp_project):
-        """Test that hook patterns are added to .gitignore."""
-        (temp_project / ".gitignore").write_text("node_modules/\n")
-
-        integrator = HookIntegrator()
-        result = integrator.update_gitignore(temp_project)
-
-        assert result is True
-        content = (temp_project / ".gitignore").read_text()
-        assert ".github/hooks/*-apm.json" in content
-        assert ".github/hooks/scripts/" in content
-
-    def test_update_gitignore_idempotent(self, temp_project):
-        """Test that patterns are not duplicated on repeated calls."""
-        (temp_project / ".gitignore").write_text(
-            "node_modules/\n\n# APM integrated hooks\n.github/hooks/*-apm.json\n.github/hooks/scripts/\n"
-        )
-
-        integrator = HookIntegrator()
-        result = integrator.update_gitignore(temp_project)
-
-        assert result is False
-
-    def test_update_gitignore_creates_file(self, temp_project):
-        """Test that .gitignore is created if it doesn't exist."""
-        integrator = HookIntegrator()
-        result = integrator.update_gitignore(temp_project)
-
-        assert result is True
-        assert (temp_project / ".gitignore").exists()
 
 
 # ─── End-to-end: install → verify → cleanup ──────────────────────────────────
@@ -1199,15 +1158,19 @@ class TestEndToEnd:
         assert claude_result.hooks_integrated == 1
 
         # Verify files exist
-        assert (temp_project / ".github" / "hooks" / "hookify-hooks-apm.json").exists()
+        assert (temp_project / ".github" / "hooks" / "hookify-hooks.json").exists()
         assert (temp_project / ".claude" / "settings.json").exists()
 
-        # Cleanup
-        stats = integrator.sync_integration(None, temp_project)
+        # Cleanup — manifest mode with paths from integration results
+        managed_files = {
+            str(p.relative_to(temp_project))
+            for p in vscode_result.target_paths + claude_result.target_paths
+        }
+        stats = integrator.sync_integration(None, temp_project, managed_files=managed_files)
         assert stats["files_removed"] > 0
 
         # Verify cleanup
-        assert not (temp_project / ".github" / "hooks" / "hookify-hooks-apm.json").exists()
+        assert not (temp_project / ".github" / "hooks" / "hookify-hooks.json").exists()
         assert not (temp_project / ".github" / "hooks" / "scripts").exists()
         assert not (temp_project / ".claude" / "hooks").exists()
 
@@ -1234,18 +1197,22 @@ class TestEndToEnd:
         pkg2_info = _make_package_info(pkg2_dir, "learning-output-style")
 
         # Install both
-        integrator.integrate_package_hooks(pkg1_info, temp_project)
-        integrator.integrate_package_hooks(pkg2_info, temp_project)
+        r1 = integrator.integrate_package_hooks(pkg1_info, temp_project)
+        r2 = integrator.integrate_package_hooks(pkg2_info, temp_project)
 
         # Both hook JSONs should exist
-        assert (temp_project / ".github" / "hooks" / "ralph-loop-hooks-apm.json").exists()
-        assert (temp_project / ".github" / "hooks" / "learning-output-style-hooks-apm.json").exists()
+        assert (temp_project / ".github" / "hooks" / "ralph-loop-hooks.json").exists()
+        assert (temp_project / ".github" / "hooks" / "learning-output-style-hooks.json").exists()
 
-        # Cleanup removes all
-        stats = integrator.sync_integration(None, temp_project)
+        # Cleanup removes all — manifest mode
+        managed_files = {
+            str(p.relative_to(temp_project))
+            for p in r1.target_paths + r2.target_paths
+        }
+        stats = integrator.sync_integration(None, temp_project, managed_files=managed_files)
         assert stats["files_removed"] >= 2
-        assert not (temp_project / ".github" / "hooks" / "ralph-loop-hooks-apm.json").exists()
-        assert not (temp_project / ".github" / "hooks" / "learning-output-style-hooks-apm.json").exists()
+        assert not (temp_project / ".github" / "hooks" / "ralph-loop-hooks.json").exists()
+        assert not (temp_project / ".github" / "hooks" / "learning-output-style-hooks.json").exists()
 
 
 # ─── Deep copy safety test ───────────────────────────────────────────────────

@@ -86,7 +86,7 @@ def _make_package(
 
 
 class TestUninstallPreservesOtherPackagePrompts:
-    """Nuke all *-apm.prompt.md, re-integrate remaining → only remaining survives."""
+    """Sync with managed_files removes all deployed files, re-integrate remaining → only remaining survives."""
 
     def test_uninstall_preserves_other_package_prompts(self, tmp_path: Path):
         project_root = tmp_path
@@ -109,23 +109,27 @@ class TestUninstallPreservesOtherPackagePrompts:
         prompt_int.integrate_package_prompts(pkg_b, project_root)
 
         prompts_dir = project_root / ".github" / "prompts"
-        assert (prompts_dir / "review-apm.prompt.md").exists()
-        assert (prompts_dir / "lint-apm.prompt.md").exists()
+        assert (prompts_dir / "review.prompt.md").exists()
+        assert (prompts_dir / "lint.prompt.md").exists()
 
         # --- Simulate uninstall of pkg-a ---
-        # Phase 1: nuke all -apm prompt files
+        # Phase 1: remove all APM-deployed prompt files via managed_files
+        managed_files = {
+            ".github/prompts/review.prompt.md",
+            ".github/prompts/lint.prompt.md",
+        }
         dummy_pkg = APMPackage(name="root", version="0.0.0")
-        prompt_int.sync_integration(dummy_pkg, project_root)
+        prompt_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
 
-        # Everything nuked
-        assert not (prompts_dir / "review-apm.prompt.md").exists()
-        assert not (prompts_dir / "lint-apm.prompt.md").exists()
+        # Everything removed
+        assert not (prompts_dir / "review.prompt.md").exists()
+        assert not (prompts_dir / "lint.prompt.md").exists()
 
         # Phase 2: re-integrate only pkg-b
         prompt_int.integrate_package_prompts(pkg_b, project_root)
 
-        assert not (prompts_dir / "review-apm.prompt.md").exists()
-        assert (prompts_dir / "lint-apm.prompt.md").exists()
+        assert not (prompts_dir / "review.prompt.md").exists()
+        assert (prompts_dir / "lint.prompt.md").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +138,7 @@ class TestUninstallPreservesOtherPackagePrompts:
 
 
 class TestUninstallPreservesOtherPackageAgents:
-    """Nuke all *-apm.agent.md, re-integrate remaining → only remaining survives."""
+    """Sync with managed_files removes all deployed files, re-integrate remaining → only remaining survives."""
 
     def test_uninstall_preserves_other_package_agents(self, tmp_path: Path):
         project_root = tmp_path
@@ -155,21 +159,25 @@ class TestUninstallPreservesOtherPackageAgents:
         agent_int.integrate_package_agents(pkg_b, project_root)
 
         agents_dir = project_root / ".github" / "agents"
-        assert (agents_dir / "security-apm.agent.md").exists()
-        assert (agents_dir / "planner-apm.agent.md").exists()
+        assert (agents_dir / "security.agent.md").exists()
+        assert (agents_dir / "planner.agent.md").exists()
 
-        # Phase 1: nuke
+        # Phase 1: remove all APM-deployed agent files via managed_files
+        managed_files = {
+            ".github/agents/security.agent.md",
+            ".github/agents/planner.agent.md",
+        }
         dummy_pkg = APMPackage(name="root", version="0.0.0")
-        agent_int.sync_integration(dummy_pkg, project_root)
+        agent_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
 
-        assert not (agents_dir / "security-apm.agent.md").exists()
-        assert not (agents_dir / "planner-apm.agent.md").exists()
+        assert not (agents_dir / "security.agent.md").exists()
+        assert not (agents_dir / "planner.agent.md").exists()
 
         # Phase 2: re-integrate only pkg-b
         agent_int.integrate_package_agents(pkg_b, project_root)
 
-        assert not (agents_dir / "security-apm.agent.md").exists()
-        assert (agents_dir / "planner-apm.agent.md").exists()
+        assert not (agents_dir / "security.agent.md").exists()
+        assert (agents_dir / "planner.agent.md").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +292,7 @@ class TestUninstallPreservesUserFiles:
 
 
 class TestUninstallLastPackageLeavesCleanDirs:
-    """Installing one package and uninstalling it removes all -apm artifacts."""
+    """Installing one package and uninstalling it removes all deployed artifacts."""
 
     def test_uninstall_last_package_leaves_clean_dirs(self, tmp_path: Path):
         project_root = tmp_path
@@ -308,20 +316,22 @@ class TestUninstallLastPackageLeavesCleanDirs:
         agents_dir = project_root / ".github" / "agents"
         commands_dir = project_root / ".claude" / "commands"
 
-        # Verify files were created
-        apm_prompts = list(prompts_dir.glob("*-apm.prompt.md"))
-        apm_agents = list(agents_dir.glob("*-apm.agent.md"))
-        apm_commands = list(commands_dir.glob("*-apm.md"))
-        assert len(apm_prompts) > 0
-        assert len(apm_agents) > 0
-        assert len(apm_commands) > 0
+        # Verify files were created (clean naming, no -apm suffix)
+        assert (prompts_dir / "guide.prompt.md").exists()
+        assert (agents_dir / "helper.agent.md").exists()
+        assert (commands_dir / "guide.md").exists()
 
-        # Nuke everything (no re-integration — last package removed)
+        # Nuke everything via managed_files (no re-integration — last package removed)
+        managed_files = {
+            ".github/prompts/guide.prompt.md",
+            ".github/agents/helper.agent.md",
+            ".claude/commands/guide.md",
+        }
         dummy_pkg = APMPackage(name="root", version="0.0.0")
-        prompt_int.sync_integration(dummy_pkg, project_root)
-        agent_int.sync_integration(dummy_pkg, project_root)
-        cmd_int.sync_integration(dummy_pkg, project_root)
+        prompt_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
+        agent_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
+        cmd_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
 
-        assert list(prompts_dir.glob("*-apm.prompt.md")) == []
-        assert list(agents_dir.glob("*-apm.agent.md")) == []
-        assert list(commands_dir.glob("*-apm.md")) == []
+        assert not (prompts_dir / "guide.prompt.md").exists()
+        assert not (agents_dir / "helper.agent.md").exists()
+        assert not (commands_dir / "guide.md").exists()
