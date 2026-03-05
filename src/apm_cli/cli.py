@@ -3599,20 +3599,6 @@ def compile(
                 _rich_info(f"💡 Error details: {type(e).__name__}")
                 sys.exit(1)
             validation_errors = compiler.validate_primitives(primitives)
-            # Validate MCP dependencies
-            try:
-                from apm_cli.models.apm_package import APMPackage
-                apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
-                mcp_deps = apm_pkg.get_mcp_dependencies()
-                for dep in mcp_deps:
-                    try:
-                        dep.validate()
-                    except ValueError as ve:
-                        validation_errors.append(str(ve))
-            except FileNotFoundError:
-                pass  # No apm.yml — nothing to validate
-            except ValueError as ve:
-                validation_errors.append(f"MCP dependency parsing error: {ve}")
             if validation_errors:
                 _display_validation_errors(validation_errors)
                 _rich_error(f"Validation failed with {len(validation_errors)} errors")

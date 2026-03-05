@@ -638,7 +638,7 @@ class TestSlugCollisionPrevention:
         try:
             result = client.find_server_by_reference("github/github-mcp-server")
         except Exception:
-            self.skipTest("Registry unavailable")
+            pytest.skip("Registry unavailable")
 
         assert result is not None, (
             "Expected 'github/github-mcp-server' to resolve a server"
@@ -657,7 +657,7 @@ class TestSlugCollisionPrevention:
             # different namespace — boundary matching must reject it.
             result = client.find_server_by_reference("nonexistent-org/github-mcp-server")
         except Exception:
-            self.skipTest("Registry unavailable")
+            pytest.skip("Registry unavailable")
 
         assert result is None, (
             "Expected 'nonexistent-org/github-mcp-server' to return None "
@@ -671,7 +671,7 @@ class TestSlugCollisionPrevention:
         try:
             result = client.find_server_by_reference("github-mcp-server")
         except Exception:
-            self.skipTest("Registry unavailable")
+            pytest.skip("Registry unavailable")
 
         assert result is not None, (
             "Expected unqualified 'github-mcp-server' to resolve a server"
