@@ -4,13 +4,18 @@
 Simulates realistic scale to measure the impact of algorithmic optimizations:
 - Optimization 1: Pre-normalized managed_files set (check_collision)
 - Optimization 2: Pre-partitioned managed_files (sync_remove_files)
+- Optimization 3: Batch empty-parent cleanup (cleanup_empty_parents)
+- Optimization 4: Scoped uninstall file set (removed packages only)
 
 Usage:
     uv run python scripts/benchmark_manifest_ops.py
 """
 
+import os
+import tempfile
 import time
 import sys
+import shutil
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -182,6 +187,118 @@ def run_benchmarks():
         print(f"    NEW (pre-partitioned):       {new_sync:>8.2f} ms")
         speedup2 = old_sync / new_sync if new_sync > 0 else float("inf")
         print(f"    Speedup:                     {speedup2:>8.1f}×")
+
+        # -- Benchmark 3: empty-parent cleanup ----------------------------
+        #
+        # Create a real temp directory tree and compare per-file parent
+        # walk-up vs. batch bottom-up cleanup.
+        depth = 4  # nesting depth for hook-style paths
+        n_deleted = n_pkgs * 2  # number of files to delete
+
+        def _make_tree(base: Path, count: int, nest: int):
+            """Create *count* files nested *nest* levels deep."""
+            paths = []
+            for i in range(count):
+                parts = [f"d{i % 6}"] + [f"sub{j}" for j in range(nest - 1)]
+                d = base.joinpath(*parts)
+                d.mkdir(parents=True, exist_ok=True)
+                f = d / f"file-{i}.md"
+                f.write_text("")
+                paths.append(f)
+            return paths
+
+        # OLD: per-file walk-up
+        tmp_old = Path(tempfile.mkdtemp())
+        try:
+            files_old = _make_tree(tmp_old, n_deleted, depth)
+            for f in files_old:
+                f.unlink()
+            t0 = time.perf_counter()
+            for f in files_old:
+                parent = f.parent
+                while parent != tmp_old and parent.exists():
+                    try:
+                        if not any(parent.iterdir()):
+                            parent.rmdir()
+                            parent = parent.parent
+                        else:
+                            break
+                    except OSError:
+                        break
+            old_parent_ms = (time.perf_counter() - t0) * 1000
+        finally:
+            shutil.rmtree(tmp_old, ignore_errors=True)
+
+        # NEW: batch bottom-up
+        tmp_new = Path(tempfile.mkdtemp())
+        try:
+            files_new = _make_tree(tmp_new, n_deleted, depth)
+            for f in files_new:
+                f.unlink()
+            t0 = time.perf_counter()
+            # Inline the algorithm (same as BaseIntegrator.cleanup_empty_parents)
+            candidates = set()
+            for p in files_new:
+                parent = p.parent
+                while parent != tmp_new:
+                    candidates.add(parent)
+                    parent = parent.parent
+            for d in sorted(candidates, key=lambda p: len(p.parts), reverse=True):
+                try:
+                    if d.exists() and not any(d.iterdir()):
+                        d.rmdir()
+                except OSError:
+                    pass
+            new_parent_ms = (time.perf_counter() - t0) * 1000
+        finally:
+            shutil.rmtree(tmp_new, ignore_errors=True)
+
+        print(f"\n  cleanup_empty_parents ({n_deleted} deleted files, depth={depth}):")
+        print(f"    OLD (per-file walk-up):      {old_parent_ms:>8.2f} ms")
+        print(f"    NEW (batch bottom-up):       {new_parent_ms:>8.2f} ms")
+        speedup3 = old_parent_ms / new_parent_ms if new_parent_ms > 0 else float("inf")
+        print(f"    Speedup:                     {speedup3:>8.1f}×")
+
+        # -- Benchmark 4: scoped vs. union-all deployed files --------------
+        #
+        # Simulate uninstalling 5 out of n_pkgs packages. Compare iterating
+        # all M paths vs. only the removed packages' paths.
+        removed_count = min(5, n_pkgs)
+        removed_pkgs = set(range(removed_count))
+
+        # Build per-package deployed_files
+        pkg_files: dict = {}
+        for i in range(n_pkgs):
+            prefix = PREFIXES[i % len(PREFIXES)]
+            pkg_files[i] = {f"{prefix}pkg-{i}-file-{j}.md" for j in range(n_files)}
+
+        iters4 = 1000
+
+        # OLD: union ALL
+        all_files = set()
+        for v in pkg_files.values():
+            all_files.update(v)
+        t0 = time.perf_counter()
+        for _ in range(iters4):
+            for prefix in PREFIXES:
+                _ = [p for p in all_files if p.startswith(prefix)]
+        old_scope_ms = (time.perf_counter() - t0) * 1000
+
+        # NEW: union only removed
+        removed_files = set()
+        for i in removed_pkgs:
+            removed_files.update(pkg_files[i])
+        t0 = time.perf_counter()
+        for _ in range(iters4):
+            for prefix in PREFIXES:
+                _ = [p for p in removed_files if p.startswith(prefix)]
+        new_scope_ms = (time.perf_counter() - t0) * 1000
+
+        print(f"\n  scoped uninstall set (removing {removed_count}/{n_pkgs} pkgs, {iters4} cycles):")
+        print(f"    OLD (union ALL {len(all_files)} paths):     {old_scope_ms:>8.2f} ms")
+        print(f"    NEW (union removed {len(removed_files)} paths): {new_scope_ms:>8.2f} ms")
+        speedup4 = old_scope_ms / new_scope_ms if new_scope_ms > 0 else float("inf")
+        print(f"    Speedup:                     {speedup4:>8.1f}×")
 
     print(f"\n{'=' * 72}")
     print("Done.")

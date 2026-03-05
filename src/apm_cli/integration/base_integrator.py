@@ -122,6 +122,39 @@ class BaseIntegrator:
                 buckets["hooks"].add(p)
         return buckets
 
+    @staticmethod
+    def cleanup_empty_parents(
+        deleted_paths: List[Path],
+        stop_at: Path,
+    ) -> None:
+        """Remove empty parent directories in a single bottom-up pass.
+
+        Collects all parent directories of *deleted_paths*, sorts by
+        depth descending, and removes each if empty — O(H+D) syscalls
+        instead of the per-file O(H×D) approach.
+
+        Args:
+            deleted_paths: Paths that were deleted (files or dirs).
+            stop_at: Do not remove this directory or any ancestor.
+        """
+        if not deleted_paths:
+            return
+        stop_resolved = stop_at.resolve()
+        # Collect unique parents (skip stop_at itself)
+        candidates: set = set()
+        for p in deleted_paths:
+            parent = p.parent
+            while parent != stop_at and parent.resolve() != stop_resolved:
+                candidates.add(parent)
+                parent = parent.parent
+        # Sort deepest-first for safe bottom-up removal
+        for d in sorted(candidates, key=lambda p: len(p.parts), reverse=True):
+            try:
+                if d.exists() and not any(d.iterdir()):
+                    d.rmdir()
+            except OSError:
+                pass
+
     # ------------------------------------------------------------------
     # Link resolution helpers
     # ------------------------------------------------------------------

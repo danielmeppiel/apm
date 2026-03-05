@@ -442,6 +442,7 @@ class HookIntegrator(BaseIntegrator):
 
         if managed_files is not None:
             # Manifest-based removal — only remove tracked files
+            deleted: list = []
             for rel_path in managed_files:
                 # Only handle hook-related paths
                 is_hook = (
@@ -455,16 +456,11 @@ class HookIntegrator(BaseIntegrator):
                     try:
                         target.unlink()
                         stats['files_removed'] += 1
-                        # Clean up empty parent directories
-                        parent = target.parent
-                        try:
-                            while parent != project_root and not any(parent.iterdir()):
-                                parent.rmdir()
-                                parent = parent.parent
-                        except (OSError, StopIteration):
-                            pass
+                        deleted.append(target)
                     except Exception:
                         stats['errors'] += 1
+            # Batch parent cleanup — single bottom-up pass
+            self.cleanup_empty_parents(deleted, stop_at=project_root)
         else:
             # Legacy fallback — glob for old -apm suffix files
             hooks_dir = project_root / ".github" / "hooks"

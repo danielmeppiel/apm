@@ -921,11 +921,13 @@ def prune(ctx, dry_run):
         # Clean deployed files for pruned packages and update lockfile
         if pruned_keys:
             from apm_cli.deps.lockfile import get_lockfile_path
+            from apm_cli.integration.base_integrator import BaseIntegrator
             lockfile_path = get_lockfile_path(Path("."))
             lockfile = LockFile.read(lockfile_path)
             project_root_resolved = Path(".").resolve()
             if lockfile:
                 deployed_cleaned = 0
+                deleted_targets: list = []
                 for dep_key in pruned_keys:
                     dep = lockfile.get_dependency(dep_key)
                     if dep and dep.deployed_files:
@@ -942,24 +944,17 @@ def prune(ctx, dry_run):
                             if target.is_file():
                                 target.unlink()
                                 deployed_cleaned += 1
+                                deleted_targets.append(target)
                             elif target.is_dir():
                                 import shutil
                                 shutil.rmtree(target)
                                 deployed_cleaned += 1
-                            # Clean up empty parent directories
-                            parent = target.parent
-                            while parent != Path(".") and parent.exists():
-                                try:
-                                    if not any(parent.iterdir()):
-                                        parent.rmdir()
-                                        parent = parent.parent
-                                    else:
-                                        break
-                                except OSError:
-                                    break
+                                deleted_targets.append(target)
                     # Remove from lockfile
                     if dep_key in lockfile.dependencies:
                         del lockfile.dependencies[dep_key]
+                # Batch parent cleanup — single bottom-up pass
+                BaseIntegrator.cleanup_empty_parents(deleted_targets, stop_at=Path("."))
                 if deployed_cleaned > 0:
                     _rich_info(f"✓ Cleaned {deployed_cleaned} deployed integration file(s)")
                 # Write updated lockfile (or remove if empty)
@@ -1255,6 +1250,7 @@ def uninstall(ctx, packages, dry_run):
         lockfile = LockFile.read(lockfile_path)
 
         if apm_modules_dir.exists():
+            deleted_pkg_paths: list = []
             for package in packages_to_remove:
                 # Parse package into DependencyReference to get canonical install path
                 # This correctly handles virtual packages (owner/repo-packagename) vs
@@ -1277,25 +1273,17 @@ def uninstall(ctx, packages, dry_run):
                         shutil.rmtree(package_path)
                         _rich_info(f"✓ Removed {package} from apm_modules/")
                         removed_from_modules += 1
-
-                        # Cleanup empty parent directories up to apm_modules/
-                        parent = package_path.parent
-                        while parent != apm_modules_dir and parent.exists():
-                            try:
-                                if not any(parent.iterdir()):
-                                    parent.rmdir()
-                                    parent = parent.parent
-                                else:
-                                    break
-                            except OSError:
-                                # Directory not empty or permission error - stop cleanup
-                                break
+                        deleted_pkg_paths.append(package_path)
                     except Exception as e:
                         _rich_error(
                             f"✗ Failed to remove {package} from apm_modules/: {e}"
                         )
                 else:
                     _rich_warning(f"Package {package} not found in apm_modules/")
+
+            # Batch parent cleanup — single bottom-up pass
+            from apm_cli.integration.base_integrator import BaseIntegrator as _BI2
+            _BI2.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
 
         # npm-style transitive dependency cleanup: remove orphaned transitive deps
         # After removing the direct packages, check if they had transitive deps that
@@ -1353,6 +1341,7 @@ def uninstall(ctx, packages, dry_run):
 
                 # Remove only true orphans (not needed by remaining deps)
                 actual_orphans = potential_orphans - remaining_deps
+                deleted_orphan_paths: list = []
                 for orphan_key in actual_orphans:
                     orphan_dep = lockfile.get_dependency(orphan_key)
                     if not orphan_dep:
@@ -1370,29 +1359,32 @@ def uninstall(ctx, packages, dry_run):
                             shutil.rmtree(orphan_path)
                             _rich_info(f"✓ Removed transitive dependency {orphan_key} from apm_modules/")
                             removed_from_modules += 1
-
-                            # Cleanup empty parent directories
-                            parent = orphan_path.parent
-                            while parent != apm_modules_dir and parent.exists():
-                                try:
-                                    if not any(parent.iterdir()):
-                                        parent.rmdir()
-                                        parent = parent.parent
-                                    else:
-                                        break
-                                except OSError:
-                                    break
+                            deleted_orphan_paths.append(orphan_path)
                         except Exception as e:
                             _rich_error(f"✗ Failed to remove transitive dep {orphan_key}: {e}")
 
-        # Collect ALL deployed_files from lockfile BEFORE deleting entries,
-        # so we can pass them to sync_integration for cleanup.
+                # Batch parent cleanup — single bottom-up pass
+                from apm_cli.integration.base_integrator import BaseIntegrator as _BI
+                _BI.cleanup_empty_parents(deleted_orphan_paths, stop_at=apm_modules_dir)
+
+        # Collect deployed_files only for REMOVED packages (direct + transitive)
+        # so sync_integration doesn't iterate paths from packages still installed.
+        from apm_cli.integration.base_integrator import BaseIntegrator
+        removed_keys = builtins.set()
+        for pkg in packages_to_remove:
+            try:
+                ref = DependencyReference.parse(pkg)
+                removed_keys.add(ref.get_unique_key())
+            except ValueError:
+                removed_keys.add(pkg)
+        if 'actual_orphans' in locals():
+            removed_keys.update(actual_orphans)
         all_deployed_files = builtins.set()
         if lockfile:
-            for dep in lockfile.dependencies.values():
-                all_deployed_files.update(dep.deployed_files)
+            for dep_key, dep in lockfile.dependencies.items():
+                if dep_key in removed_keys:
+                    all_deployed_files.update(dep.deployed_files)
         # Normalize path separators once
-        from apm_cli.integration.base_integrator import BaseIntegrator
         all_deployed_files = BaseIntegrator.normalize_managed_files(all_deployed_files) or builtins.set()
 
         # Update lockfile: remove entries for all removed packages (direct + transitive)
