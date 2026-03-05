@@ -94,8 +94,7 @@ class PromptIntegrator(BaseIntegrator):
                 files_updated=0,
                 files_skipped=0,
                 target_paths=[],
-                gitignore_updated=False
-            )
+                )
         
         # Create .github/prompts/ if it doesn't exist
         prompts_dir = project_root / ".github" / "prompts"
@@ -126,7 +125,6 @@ class PromptIntegrator(BaseIntegrator):
             files_updated=0,
             files_skipped=files_skipped,
             target_paths=target_paths,
-            gitignore_updated=False,
             links_resolved=total_links_resolved
         )
     
@@ -146,11 +144,4 @@ class PromptIntegrator(BaseIntegrator):
             legacy_glob_dir=prompts_dir,
             legacy_glob_pattern="*-apm.prompt.md",
         )
-    
-    def update_gitignore_for_integrated_prompts(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for integrated prompts."""
-        return self.update_gitignore(
-            project_root,
-            patterns=[".github/prompts/*-apm.prompt.md"],
-            comment="APM integrated prompts",
-        )
+

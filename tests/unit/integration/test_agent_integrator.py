@@ -202,26 +202,6 @@ class TestAgentIntegrator:
         content = (github_agents / "security.agent.md").read_text()
         assert content == "# Security Agent"
     
-    def test_update_gitignore_adds_patterns(self):
-        """Test that gitignore is updated with integrated agents patterns."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("# Existing content\napm_modules/\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents(self.project_root)
-        
-        assert updated == True
-        content = gitignore.read_text()
-        assert ".github/agents/*-apm.agent.md" in content
-    
-    def test_update_gitignore_skips_if_exists(self):
-        """Test that gitignore update is skipped if patterns exist."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/agents/*-apm.agent.md\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents(self.project_root)
-        
-        assert updated == False
-    
     # ========== Verbatim Copy Tests ==========
     
     def test_copy_agent_preserves_frontmatter(self):
@@ -562,27 +542,6 @@ class TestAgentSuffixPattern:
         source = Path("my_custom-agent.agent.md")
         result = self.integrator.get_target_filename(source, "pkg")
         assert result == "my_custom-agent.agent.md"
-    
-    def test_gitignore_pattern_matches_suffix_files(self):
-        """Test that gitignore patterns match -apm suffix files."""
-        import fnmatch
-        
-        agent_pattern = "*-apm.agent.md"
-        chatmode_pattern = "*-apm.chatmode.md"
-        
-        # Agent pattern should match
-        assert fnmatch.fnmatch("security-apm.agent.md", agent_pattern)
-        assert fnmatch.fnmatch("test-apm.agent.md", agent_pattern)
-        assert fnmatch.fnmatch("a-b-c-apm.agent.md", agent_pattern)
-        
-        # Chatmode pattern should match
-        assert fnmatch.fnmatch("default-apm.chatmode.md", chatmode_pattern)
-        assert fnmatch.fnmatch("backend-apm.chatmode.md", chatmode_pattern)
-        
-        # Should NOT match
-        assert not fnmatch.fnmatch("security.agent.md", agent_pattern)
-        assert not fnmatch.fnmatch("apm.agent.md", agent_pattern)
-        assert not fnmatch.fnmatch("default.chatmode.md", chatmode_pattern)
 
 
 class TestClaudeAgentIntegration:
@@ -780,37 +739,3 @@ You are a security reviewer. Analyze code for vulnerabilities."""
         
         assert result['files_removed'] == 0
         assert result['errors'] == 0
-    
-    def test_update_gitignore_claude_adds_pattern(self):
-        """Test .gitignore is updated with Claude agent pattern."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("node_modules/\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents_claude(self.project_root)
-        
-        assert updated
-        content = gitignore.read_text()
-        assert ".claude/agents/*-apm.md" in content
-    
-    def test_update_gitignore_claude_skips_if_exists(self):
-        """Test .gitignore is not updated if pattern already present."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("node_modules/\n.claude/agents/*-apm.md\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents_claude(self.project_root)
-        
-        assert not updated
-    
-    def test_gitignore_pattern_matches_claude_suffix_files(self):
-        """Test that gitignore pattern matches -apm.md files."""
-        import fnmatch
-        
-        pattern = "*-apm.md"
-        
-        assert fnmatch.fnmatch("security-apm.md", pattern)
-        assert fnmatch.fnmatch("backend-engineer-apm.md", pattern)
-        assert fnmatch.fnmatch("default-apm.md", pattern)
-        
-        # Should NOT match non-APM files
-        assert not fnmatch.fnmatch("security.md", pattern)
-        assert not fnmatch.fnmatch("custom-agent.md", pattern)

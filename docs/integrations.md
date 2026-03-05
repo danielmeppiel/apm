@@ -162,7 +162,6 @@ apm install microsoft/apm-sample-package
 - **Auto-Cleanup**: Removes integrated files when you uninstall or prune packages (tracked via `deployed_files` in `apm.lock`)
 - **Collision Detection**: If a local file has the same name as a package file, APM skips it with a warning (use `--force` to overwrite)
 - **Always Overwrite**: Package-owned files are always copied fresh — no version comparison
-- **GitIgnore Protection**: Automatically adds patterns to `.gitignore` for integrated files
 - **Link Resolution**: Context links are resolved during integration
 
 **Integration Flow**:
@@ -174,9 +173,8 @@ apm install microsoft/apm-sample-package
 6. Copies hooks to `.github/hooks/` with their original filename and copies referenced scripts
 7. If a local file already exists with the same name, skips with a warning (use `--force` to overwrite)
 8. Records all deployed files in `apm.lock` under `deployed_files` per package
-9. Updates `.gitignore` to exclude integrated files
-10. VSCode automatically loads all prompts, agents, and hooks for your coding agents
-11. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
+9. VSCode automatically loads all prompts, agents, and hooks for your coding agents
+10. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
 
 **Intent-First Discovery**:
 Files keep their original names for natural autocomplete in VSCode:
@@ -250,8 +248,7 @@ apm install danielmeppiel/design-guidelines
 **How it works:**
 1. `apm install` detects `.agent.md` and `.chatmode.md` files in the package
 2. Copies each to `.claude/agents/` as `.md` files
-3. Updates `.gitignore` to exclude generated agents
-4. `apm uninstall` automatically removes the package's agents
+3. `apm uninstall` automatically removes the package's agents
 
 ### Automatic Command Integration
 
@@ -269,8 +266,7 @@ apm install microsoft/apm-sample-package
 **How it works:**
 1. `apm install` detects `.prompt.md` files in the package
 2. Converts each to Claude command format in `.claude/commands/`
-3. Updates `.gitignore` to exclude generated commands
-4. `apm uninstall` automatically removes the package's commands
+3. `apm uninstall` automatically removes the package's commands
 
 ### Automatic Skills Integration
 
@@ -290,8 +286,7 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 **How skill integration works:**
 1. `apm install` checks if the package contains a `SKILL.md` file
 2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/`
-3. Updates `.gitignore` to exclude integrated skills
-4. `apm uninstall` removes the skill folder
+3. `apm uninstall` removes the skill folder
 
 ### Automatic Hook Integration
 

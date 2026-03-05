@@ -1,4 +1,4 @@
-"""Base integrator with shared collision detection, sync, and gitignore logic."""
+"""Base integrator with shared collision detection and sync logic."""
 
 import re
 import sys
@@ -19,7 +19,6 @@ class IntegrationResult:
     files_updated: int  # Kept for CLI compat, always 0 today
     files_skipped: int
     target_paths: List[Path]
-    gitignore_updated: bool
     links_resolved: int = 0
 
 
@@ -27,7 +26,7 @@ class BaseIntegrator:
     """Shared infrastructure for file-level integrators.
 
     Subclasses only need to override the abstract hooks; the collision
-    detection, sync removal, link resolution, and gitignore logic is
+    detection, sync removal, and link resolution logic is
     handled here.
     """
 
@@ -164,45 +163,6 @@ class BaseIntegrator:
                     stats["errors"] += 1
 
         return stats
-
-    # ------------------------------------------------------------------
-    # Gitignore helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def update_gitignore(
-        project_root: Path,
-        patterns: List[str],
-        comment: str,
-    ) -> bool:
-        """Append *patterns* to ``.gitignore`` under *comment* if absent.
-
-        Returns ``True`` if the file was modified.
-        """
-        gitignore_path = project_root / ".gitignore"
-
-        existing = ""
-        if gitignore_path.exists():
-            try:
-                existing = gitignore_path.read_text(encoding="utf-8")
-            except Exception:
-                return False
-
-        # Check if any pattern already present
-        if all(p in existing for p in patterns):
-            return False
-
-        to_add = [p for p in patterns if p not in existing]
-        if not to_add:
-            return False
-
-        try:
-            suffix = existing.rstrip()
-            new = suffix + "\n\n" + f"# {comment}\n" + "\n".join(to_add) + "\n"
-            gitignore_path.write_text(new, encoding="utf-8")
-            return True
-        except Exception:
-            return False
 
     # ------------------------------------------------------------------
     # File-discovery helpers (reusable globs)

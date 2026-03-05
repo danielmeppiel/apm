@@ -2341,57 +2341,6 @@ def _install_apm_dependencies(
             except Exception as e:
                 _rich_warning(f"Could not generate apm.lock: {e}")
 
-        # Update .gitignore for integrated prompts if any were integrated
-        # Update .gitignore for all integrated primitives in one pass
-        gitignore_updated = False
-        if total_prompts_integrated > 0:
-            try:
-                if prompt_integrator.update_gitignore_for_integrated_prompts(project_root):
-                    gitignore_updated = True
-            except Exception:
-                pass
-
-        if total_agents_integrated > 0:
-            try:
-                if agent_integrator.update_gitignore_for_integrated_agents(project_root):
-                    gitignore_updated = True
-            except Exception:
-                pass
-
-        if total_skills_integrated > 0 or total_sub_skills_promoted > 0:
-            try:
-                if skill_integrator.update_gitignore_for_skills(project_root):
-                    gitignore_updated = True
-            except Exception:
-                pass
-
-        if gitignore_updated:
-            _rich_info("Updated .gitignore for integrated primitives")
-
-        # Update .gitignore for integrated Claude agents if any were integrated
-        if integrate_claude and total_agents_integrated > 0:
-            try:
-                updated = agent_integrator.update_gitignore_for_integrated_agents_claude(
-                    project_root
-                )
-                if updated:
-                    _rich_info(
-                        "Updated .gitignore for integrated Claude agents"
-                    )
-            except Exception as e:
-                _rich_warning(f"Could not update .gitignore for Claude agents: {e}")
-
-        # Update .gitignore for integrated hooks if any were integrated
-        if integrate_vscode and total_hooks_integrated > 0:
-            try:
-                updated = hook_integrator.update_gitignore_for_hooks(project_root)
-                if updated:
-                    _rich_info(
-                        "Updated .gitignore for integrated hooks"
-                    )
-            except Exception as e:
-                _rich_warning(f"Could not update .gitignore for hooks: {e}")
-
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:
             _rich_info(f"✓ Resolved {total_links_resolved} context file links")

@@ -224,7 +224,6 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Smart updates**: Only updates when package version/commit changes
 - **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
 - **Collision detection**: Skips local files with a warning; use `--force` to overwrite
-- **GitIgnore**: Deployed file patterns automatically added to `.gitignore`
 
 **Claude Integration (`.claude/` present):**
 

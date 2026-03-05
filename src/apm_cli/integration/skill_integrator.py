@@ -813,10 +813,4 @@ class SkillIntegrator(BaseIntegrator):
         
         return {'files_removed': files_removed, 'errors': errors}
     
-    def update_gitignore_for_skills(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for integrated skills."""
-        return BaseIntegrator.update_gitignore(
-            project_root,
-            patterns=[".github/skills/*-apm/"],
-            comment="APM integrated skills",
-        )
+

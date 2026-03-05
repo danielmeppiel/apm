@@ -183,26 +183,6 @@ Some prompt content."""
         assert "# New Content" in content
         assert "# Old Content" not in content
     
-    def test_update_gitignore_adds_pattern(self):
-        """Test that gitignore is updated with integrated prompts pattern."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("# Existing content\napm_modules/\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_prompts(self.project_root)
-        
-        assert updated == True
-        content = gitignore.read_text()
-        assert ".github/prompts/*-apm.prompt.md" in content
-    
-    def test_update_gitignore_skips_if_exists(self):
-        """Test that gitignore update is skipped if pattern exists."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/prompts/*-apm.prompt.md\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_prompts(self.project_root)
-        
-        assert updated == False
-    
     def test_integrate_copies_verbatim_no_metadata(self):
         """Test that integration copies files verbatim without metadata."""
         package_dir = self.project_root / "package"

@@ -7,7 +7,6 @@ Tests cover:
 - Sync/cleanup integration (nuke-and-regenerate)
 - Official plugin formats (hookify, learning-output-style, ralph-loop)
 - Script path rewriting for ${CLAUDE_PLUGIN_ROOT} references
-- Gitignore updates
 """
 
 import json
@@ -1118,49 +1117,6 @@ class TestScriptPathRewriting:
         copied_script = temp_project / ".github" / "hooks" / "scripts" / "lint-hooks" / "scripts" / "lint.sh"
         assert copied_script.exists()
         assert copied_script.read_text() == "#!/bin/bash\necho lint"
-
-
-# ─── Gitignore tests ─────────────────────────────────────────────────────────
-
-
-class TestGitignore:
-    """Tests for .gitignore updates."""
-
-    @pytest.fixture
-    def temp_project(self):
-        temp_dir = tempfile.mkdtemp()
-        yield Path(temp_dir)
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-    def test_update_gitignore_adds_patterns(self, temp_project):
-        """Test that hook patterns are added to .gitignore."""
-        (temp_project / ".gitignore").write_text("node_modules/\n")
-
-        integrator = HookIntegrator()
-        result = integrator.update_gitignore_for_hooks(temp_project)
-
-        assert result is True
-        content = (temp_project / ".gitignore").read_text()
-        assert ".github/hooks/scripts/" in content
-
-    def test_update_gitignore_idempotent(self, temp_project):
-        """Test that patterns are not duplicated on repeated calls."""
-        (temp_project / ".gitignore").write_text(
-            "node_modules/\n\n# APM integrated hooks\n.github/hooks/scripts/\n"
-        )
-
-        integrator = HookIntegrator()
-        result = integrator.update_gitignore_for_hooks(temp_project)
-
-        assert result is False
-
-    def test_update_gitignore_creates_file(self, temp_project):
-        """Test that .gitignore is created if it doesn't exist."""
-        integrator = HookIntegrator()
-        result = integrator.update_gitignore_for_hooks(temp_project)
-
-        assert result is True
-        assert (temp_project / ".gitignore").exists()
 
 
 # ─── End-to-end: install → verify → cleanup ──────────────────────────────────

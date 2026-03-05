@@ -116,7 +116,6 @@ class CommandIntegrator(BaseIntegrator):
                 files_updated=0,
                 files_skipped=0,
                 target_paths=[],
-                gitignore_updated=False,
                 links_resolved=0
             )
         
@@ -149,24 +148,12 @@ class CommandIntegrator(BaseIntegrator):
             total_links_resolved += links_resolved
             target_paths.append(target_path)
         
-        # Update .gitignore
-        gitignore_updated = self._update_gitignore(project_root)
-        
         return IntegrationResult(
             files_integrated=files_integrated,
             files_updated=0,
             files_skipped=files_skipped,
             target_paths=target_paths,
-            gitignore_updated=gitignore_updated,
             links_resolved=total_links_resolved
-        )
-    
-    def _update_gitignore(self, project_root: Path) -> bool:
-        """Add .claude/commands/ patterns to .gitignore if needed."""
-        return self.update_gitignore(
-            project_root,
-            patterns=[".claude/commands/*-apm.md"],
-            comment="APM-generated Claude commands",
         )
     
     def sync_integration(self, apm_package, project_root: Path,

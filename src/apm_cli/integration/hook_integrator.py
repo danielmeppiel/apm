@@ -49,7 +49,6 @@ class HookIntegrationResult:
     hooks_integrated: int
     scripts_copied: int
     target_paths: List[Path] = field(default_factory=list)
-    gitignore_updated: bool = False
 
 
 class HookIntegrator(BaseIntegrator):
@@ -508,10 +507,3 @@ class HookIntegrator(BaseIntegrator):
 
         return stats
 
-    def update_gitignore_for_hooks(self, project_root: Path) -> bool:
-        """Update .gitignore with patterns for APM-managed hooks."""
-        return self.update_gitignore(
-            project_root,
-            patterns=[".github/hooks/scripts/"],
-            comment="APM integrated hooks",
-        )

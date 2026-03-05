@@ -492,38 +492,6 @@ metadata:
         assert result.skill_updated is False
         assert result.skill_skipped is True
     
-    # ========== update_gitignore_for_skills tests ==========
-    
-    def test_update_gitignore_adds_skill_patterns(self):
-        """Test that gitignore is updated with skill patterns."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("# Existing content\napm_modules/\n")
-        
-        updated = self.integrator.update_gitignore_for_skills(self.project_root)
-        
-        assert updated is True
-        content = gitignore.read_text()
-        assert ".github/skills/*-apm/" in content
-    
-    def test_update_gitignore_skips_if_patterns_exist(self):
-        """Test that gitignore update is skipped if patterns already exist."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/skills/*-apm/\n# APM integrated skills\n")
-        
-        updated = self.integrator.update_gitignore_for_skills(self.project_root)
-        
-        assert updated is False
-    
-    def test_update_gitignore_creates_file_if_missing(self):
-        """Test that gitignore is created if it doesn't exist."""
-        updated = self.integrator.update_gitignore_for_skills(self.project_root)
-        
-        assert updated is True
-        gitignore = self.project_root / ".gitignore"
-        assert gitignore.exists()
-        content = gitignore.read_text()
-        assert ".github/skills/*-apm/" in content
-    
     # ========== sync_integration tests ==========
     
     def test_sync_integration_returns_zero_stats(self):

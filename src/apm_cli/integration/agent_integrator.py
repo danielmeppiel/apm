@@ -120,7 +120,6 @@ class AgentIntegrator(BaseIntegrator):
                 files_updated=0,
                 files_skipped=0,
                 target_paths=[],
-                gitignore_updated=False
             )
         
         # Create .github/agents/ if it doesn't exist
@@ -168,7 +167,6 @@ class AgentIntegrator(BaseIntegrator):
             files_updated=0,
             files_skipped=files_skipped,
             target_paths=target_paths,
-            gitignore_updated=False,
             links_resolved=total_links_resolved
         )
     
@@ -221,7 +219,6 @@ class AgentIntegrator(BaseIntegrator):
                 files_updated=0,
                 files_skipped=0,
                 target_paths=[],
-                gitignore_updated=False
             )
         
         # Create .claude/agents/ if it doesn't exist
@@ -253,7 +250,6 @@ class AgentIntegrator(BaseIntegrator):
             files_updated=0,
             files_skipped=files_skipped,
             target_paths=target_paths,
-            gitignore_updated=False,
             links_resolved=total_links_resolved
         )
     
@@ -280,20 +276,5 @@ class AgentIntegrator(BaseIntegrator):
             legacy_glob_dir=agents_dir,
             legacy_glob_pattern="*-apm.md",
         )
-    
-    def update_gitignore_for_integrated_agents(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for integrated agents."""
-        return self.update_gitignore(
-            project_root,
-            patterns=[".github/agents/*-apm.agent.md"],
-            comment="APM integrated agents",
-        )
-    
-    def update_gitignore_for_integrated_agents_claude(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for Claude integrated agents."""
-        return self.update_gitignore(
-            project_root,
-            patterns=[".claude/agents/*-apm.md"],
-            comment="APM integrated Claude agents",
-        )
+
 
