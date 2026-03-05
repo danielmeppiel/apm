@@ -7,46 +7,12 @@ See skill-strategy.md for the full architectural rationale (T5).
 
 from pathlib import Path
 from typing import List, Dict
-from dataclasses import dataclass
-import re
 
-from apm_cli.compilation.link_resolver import UnifiedLinkResolver
-from apm_cli.primitives.discovery import discover_primitives
+from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 
 
-@dataclass
-class IntegrationResult:
-    """Result of agent integration operation.
-    
-    Note: Skills are NOT transformed to agents. They are handled separately
-    by SkillIntegrator and installed to .github/skills/ as native skills.
-    See skill-strategy.md for architectural rationale.
-    """
-    files_integrated: int
-    files_updated: int  # Updated due to version/commit change
-    files_skipped: int  # Unchanged (same version/commit)
-    target_paths: List[Path]
-    gitignore_updated: bool
-    links_resolved: int = 0  # Number of context links resolved
-
-
-class AgentIntegrator:
+class AgentIntegrator(BaseIntegrator):
     """Handles integration of APM package agents into .github/agents/."""
-    
-    def __init__(self):
-        """Initialize the agent integrator."""
-        self.link_resolver = None  # Lazy init when needed
-    
-    def should_integrate(self, project_root: Path) -> bool:
-        """Check if agent integration should be performed.
-        
-        Args:
-            project_root: Root directory of the project
-            
-        Returns:
-            bool: Always True - integration happens automatically
-        """
-        return True
     
     def find_agent_files(self, package_path: Path) -> List[Path]:
         """Find all .agent.md and .chatmode.md files in a package.
@@ -91,29 +57,20 @@ class AgentIntegrator:
 
     
     def get_target_filename(self, source_file: Path, package_name: str) -> str:
-        """Generate target filename with -apm suffix (intent-first naming).
+        """Generate target filename (always .agent.md, no suffix).
         
         Args:
             source_file: Source file path
             package_name: Name of the package (not used in simple naming)
             
         Returns:
-            str: Target filename with -apm suffix (e.g., security-apm.agent.md)
+            str: Target filename (e.g., security.agent.md)
         """
-        # Intent-first naming: insert -apm suffix before extension
-        # Always deploy as .agent.md (.chatmode.md is legacy)
-        # Examples:
-        #   security.agent.md -> security-apm.agent.md
-        #   default.chatmode.md -> default-apm.agent.md
-        
-        # Determine extension — always deploy as .agent.md
-        # (.chatmode.md is legacy; VS Code now uses .agent.md)
         if source_file.name.endswith('.agent.md'):
             stem = source_file.name[:-9]  # Remove .agent.md
         elif source_file.name.endswith('.chatmode.md'):
             stem = source_file.name[:-12]  # Remove .chatmode.md
         else:
-            # Fallback for unexpected naming
             stem = source_file.stem
         
         return f"{stem}.agent.md"
@@ -129,22 +86,7 @@ class AgentIntegrator:
             int: Number of links resolved
         """
         content = source.read_text(encoding='utf-8')
-        
-        # Resolve context links in content
-        links_resolved = 0
-        if self.link_resolver:
-            original_content = content
-            content = self.link_resolver.resolve_links_for_installation(
-                content=content,
-                source_file=source,
-                target_file=target
-            )
-            if content != original_content:
-                link_pattern = re.compile(r'\]\(([^)]+)\)')
-                original_links = set(link_pattern.findall(original_content))
-                resolved_links = set(link_pattern.findall(content))
-                links_resolved = len(original_links - resolved_links)
-        
+        content, links_resolved = self.resolve_links(content, source, target)
         target.write_text(content, encoding='utf-8')
         return links_resolved
     
@@ -165,14 +107,7 @@ class AgentIntegrator:
         Returns:
             IntegrationResult: Results of the integration operation
         """
-        # Initialize link resolver and register contexts
-        self.link_resolver = UnifiedLinkResolver(project_root)
-        try:
-            primitives = discover_primitives(package_info.install_path)
-            self.link_resolver.register_contexts(primitives)
-        except Exception:
-            # If context discovery fails, continue without link resolution
-            self.link_resolver = None
+        self.init_link_resolver(package_info, project_root)
         
         # Find all agent files in the package (.agent.md and .chatmode.md)
         # NOTE: SKILL.md is NOT included - skills go to .github/skills/ via SkillIntegrator
@@ -210,15 +145,7 @@ class AgentIntegrator:
             target_path = agents_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            # Collision detection: skip user-authored files unless --force
-            # managed_files=None means legacy mode (no collision checking)
-            if managed_files is not None and target_path.exists() and rel_path not in managed_files and not force:
-                import sys
-                print(
-                    f"\u26a0\ufe0f  Skipping {rel_path} \u2014 local file exists (not managed by APM). "
-                    f"Use 'apm install --force' to overwrite.",
-                    file=sys.stderr,
-                )
+            if self.check_collision(target_path, rel_path, managed_files, force):
                 files_skipped += 1
                 continue
             
@@ -232,14 +159,7 @@ class AgentIntegrator:
                 claude_filename = self.get_target_filename_claude(source_file, package_info.package.name)
                 claude_target = claude_agents_dir / claude_filename
                 claude_rel = str(claude_target.relative_to(project_root))
-                if managed_files is not None and claude_target.exists() and claude_rel not in managed_files and not force:
-                    import sys
-                    print(
-                        f"\u26a0\ufe0f  Skipping {claude_rel} \u2014 local file exists (not managed by APM). "
-                        f"Use 'apm install --force' to overwrite.",
-                        file=sys.stderr,
-                    )
-                else:
+                if not self.check_collision(claude_target, claude_rel, managed_files, force):
                     self.copy_agent(source_file, claude_target)
                     target_paths.append(claude_target)
         
@@ -290,13 +210,7 @@ class AgentIntegrator:
         Returns:
             IntegrationResult: Results of the integration operation
         """
-        # Initialize link resolver and register contexts
-        self.link_resolver = UnifiedLinkResolver(project_root)
-        try:
-            primitives = discover_primitives(package_info.install_path)
-            self.link_resolver.register_contexts(primitives)
-        except Exception:
-            self.link_resolver = None
+        self.init_link_resolver(package_info, project_root)
         
         # Find all agent files in the package
         agent_files = self.find_agent_files(package_info.install_path)
@@ -325,15 +239,7 @@ class AgentIntegrator:
             target_path = agents_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            # Collision detection: skip user-authored files unless --force
-            # managed_files=None means legacy mode (no collision checking)
-            if managed_files is not None and target_path.exists() and rel_path not in managed_files and not force:
-                import sys
-                print(
-                    f"\u26a0\ufe0f  Skipping {rel_path} \u2014 local file exists (not managed by APM). "
-                    f"Use 'apm install --force' to overwrite.",
-                    file=sys.stderr,
-                )
+            if self.check_collision(target_path, rel_path, managed_files, force):
                 files_skipped += 1
                 continue
             
@@ -353,160 +259,41 @@ class AgentIntegrator:
     
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict[str, int]:
-        """Remove APM-managed agent files from .github/agents/.
-
-        Only removes files listed in *managed_files*.  Falls back to
-        legacy ``*-apm.agent.md`` glob when *managed_files* is ``None``.
-        """
-        stats = {'files_removed': 0, 'errors': 0}
-        
+        """Remove APM-managed agent files from .github/agents/."""
         agents_dir = project_root / ".github" / "agents"
-        if not agents_dir.exists():
-            return stats
-
-        if managed_files is not None:
-            for rel_path in managed_files:
-                if not rel_path.startswith(".github/agents/") or ".." in rel_path:
-                    continue
-                target = project_root / rel_path
-                if target.exists():
-                    try:
-                        target.unlink()
-                        stats['files_removed'] += 1
-                    except Exception:
-                        stats['errors'] += 1
-        else:
-            for agent_file in agents_dir.glob("*-apm.agent.md"):
-                try:
-                    agent_file.unlink()
-                    stats['files_removed'] += 1
-                except Exception:
-                    stats['errors'] += 1
-        
-        return stats
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=".github/agents/",
+            legacy_glob_dir=agents_dir,
+            legacy_glob_pattern="*-apm.agent.md",
+        )
     
     def sync_integration_claude(self, apm_package, project_root: Path,
                                 managed_files: set = None) -> Dict[str, int]:
-        """Remove APM-managed agent files from .claude/agents/.
-
-        Only removes files listed in *managed_files*.  Falls back to
-        legacy ``*-apm.md`` glob when *managed_files* is ``None``.
-        """
-        stats = {'files_removed': 0, 'errors': 0}
-        
+        """Remove APM-managed agent files from .claude/agents/."""
         agents_dir = project_root / ".claude" / "agents"
-        if not agents_dir.exists():
-            return stats
-
-        if managed_files is not None:
-            for rel_path in managed_files:
-                if not rel_path.startswith(".claude/agents/") or ".." in rel_path:
-                    continue
-                target = project_root / rel_path
-                if target.exists():
-                    try:
-                        target.unlink()
-                        stats['files_removed'] += 1
-                    except Exception:
-                        stats['errors'] += 1
-        else:
-            for agent_file in agents_dir.glob("*-apm.md"):
-                try:
-                    agent_file.unlink()
-                    stats['files_removed'] += 1
-                except Exception:
-                    stats['errors'] += 1
-        
-        return stats
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=".claude/agents/",
+            legacy_glob_dir=agents_dir,
+            legacy_glob_pattern="*-apm.md",
+        )
     
     def update_gitignore_for_integrated_agents(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for integrated agents.
-        
-        Args:
-            project_root: Root directory of the project
-            
-        Returns:
-            bool: True if .gitignore was updated, False if pattern already exists
-        """
-        gitignore_path = project_root / ".gitignore"
-        
-        # Pattern for integrated agent files (chatmode.md renamed to agent.md on deploy)
-        patterns = [
-            ".github/agents/*-apm.agent.md"
-        ]
-        
-        # Read current content
-        current_content = []
-        if gitignore_path.exists():
-            try:
-                with open(gitignore_path, "r", encoding="utf-8") as f:
-                    current_content = [line.rstrip("\n\r") for line in f.readlines()]
-            except Exception:
-                return False
-        
-        # Check which patterns need to be added
-        patterns_to_add = []
-        for pattern in patterns:
-            if not any(pattern in line for line in current_content):
-                patterns_to_add.append(pattern)
-        
-        if not patterns_to_add:
-            return False
-        
-        # Add patterns to .gitignore
-        try:
-            with open(gitignore_path, "a", encoding="utf-8") as f:
-                # Add a blank line before our entry if file isn't empty
-                if current_content and current_content[-1].strip():
-                    f.write("\n")
-                f.write("\n# APM integrated agents\n")
-                for pattern in patterns_to_add:
-                    f.write(f"{pattern}\n")
-            return True
-        except Exception:
-            return False
+        """Update .gitignore with pattern for integrated agents."""
+        return self.update_gitignore(
+            project_root,
+            patterns=[".github/agents/*-apm.agent.md"],
+            comment="APM integrated agents",
+        )
     
     def update_gitignore_for_integrated_agents_claude(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for Claude integrated agents.
-        
-        Args:
-            project_root: Root directory of the project
-            
-        Returns:
-            bool: True if .gitignore was updated, False if pattern already exists
-        """
-        gitignore_path = project_root / ".gitignore"
-        
-        patterns = [
-            ".claude/agents/*-apm.md"
-        ]
-        
-        # Read current content
-        current_content = []
-        if gitignore_path.exists():
-            try:
-                with open(gitignore_path, "r", encoding="utf-8") as f:
-                    current_content = [line.rstrip("\n\r") for line in f.readlines()]
-            except Exception:
-                return False
-        
-        # Check which patterns need to be added
-        patterns_to_add = []
-        for pattern in patterns:
-            if not any(pattern in line for line in current_content):
-                patterns_to_add.append(pattern)
-        
-        if not patterns_to_add:
-            return False
-        
-        # Add patterns to .gitignore
-        try:
-            with open(gitignore_path, "a", encoding="utf-8") as f:
-                if current_content and current_content[-1].strip():
-                    f.write("\n")
-                f.write("\n# APM integrated Claude agents\n")
-                for pattern in patterns_to_add:
-                    f.write(f"{pattern}\n")
-            return True
-        except Exception:
-            return False
+        """Update .gitignore with pattern for Claude integrated agents."""
+        return self.update_gitignore(
+            project_root,
+            patterns=[".claude/agents/*-apm.md"],
+            comment="APM integrated Claude agents",
+        )
+

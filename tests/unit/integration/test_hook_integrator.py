@@ -1137,7 +1137,7 @@ class TestGitignore:
         (temp_project / ".gitignore").write_text("node_modules/\n")
 
         integrator = HookIntegrator()
-        result = integrator.update_gitignore(temp_project)
+        result = integrator.update_gitignore_for_hooks(temp_project)
 
         assert result is True
         content = (temp_project / ".gitignore").read_text()
@@ -1150,14 +1150,14 @@ class TestGitignore:
         )
 
         integrator = HookIntegrator()
-        result = integrator.update_gitignore(temp_project)
+        result = integrator.update_gitignore_for_hooks(temp_project)
 
         assert result is False
 
     def test_update_gitignore_creates_file(self, temp_project):
         """Test that .gitignore is created if it doesn't exist."""
         integrator = HookIntegrator()
-        result = integrator.update_gitignore(temp_project)
+        result = integrator.update_gitignore_for_hooks(temp_project)
 
         assert result is True
         assert (temp_project / ".gitignore").exists()

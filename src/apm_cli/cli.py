@@ -170,8 +170,33 @@ def _check_orphaned_packages():
                     expected_installed.add(str(install_path))
 
             # Also include transitive dependencies from apm.lock
-            lockfile_paths = LockFile.installed_paths_for_project(Path.cwd())
-            expected_installed.update(lockfile_paths)
+            # Only protect transitive deps (depth > 1) — direct deps are
+            # tracked via apm.yml and should be prunable when removed.
+            lockfile = LockFile.read(Path.cwd() / "apm.lock")
+            if lockfile:
+                for dep in lockfile.get_all_dependencies():
+                    if dep.depth is not None and dep.depth > 1:
+                        repo_parts = dep.repo_url.strip("/").split("/")
+                        if dep.subdirectory:
+                            sub_parts = dep.subdirectory.strip("/").split("/")
+                            package_name = sub_parts[-1]
+                            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
+                                )
+                            elif len(repo_parts) >= 2:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{package_name}"
+                                )
+                        else:
+                            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"
+                                )
+                            elif len(repo_parts) >= 2:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}"
+                                )
         except Exception:
             return []  # If can't parse apm.yml, assume no orphans
 
@@ -700,7 +725,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 # Otherwise install all from apm.yml
                 only_pkgs = builtins.list(packages) if packages else None
                 apm_count, prompt_count, agent_count = _install_apm_dependencies(
-                    apm_package, update, verbose, only_pkgs
+                    apm_package, update, verbose, only_pkgs, force=force
                 )
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
@@ -814,8 +839,34 @@ def prune(ctx, dry_run):
                         expected_installed.add(f"{repo_parts[0]}/{repo_parts[1]}")
 
             # Also include transitive dependencies from apm.lock
-            lockfile_paths = LockFile.installed_paths_for_project(Path.cwd())
-            expected_installed.update(lockfile_paths)
+            # Only protect transitive deps (depth > 1) — direct deps are
+            # tracked via apm.yml and should be prunable when removed.
+            lockfile = LockFile.read(Path.cwd() / "apm.lock")
+            if lockfile:
+                apm_modules_lock = Path.cwd() / "apm_modules"
+                for dep in lockfile.get_all_dependencies():
+                    if dep.depth is not None and dep.depth > 1:
+                        repo_parts = dep.repo_url.strip("/").split("/")
+                        if dep.subdirectory:
+                            sub_parts = dep.subdirectory.strip("/").split("/")
+                            package_name = sub_parts[-1]
+                            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"
+                                )
+                            elif len(repo_parts) >= 2:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{package_name}"
+                                )
+                        else:
+                            if dep.is_azure_devops() and len(repo_parts) >= 3:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"
+                                )
+                            elif len(repo_parts) >= 2:
+                                expected_installed.add(
+                                    f"{repo_parts[0]}/{repo_parts[1]}"
+                                )
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")
             sys.exit(1)
@@ -888,7 +939,7 @@ def prune(ctx, dry_run):
 
         # Clean deployed files for pruned packages and update lockfile
         if pruned_keys:
-            from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+            from apm_cli.deps.lockfile import get_lockfile_path
             lockfile_path = get_lockfile_path(Path("."))
             lockfile = LockFile.read(lockfile_path)
             project_root_resolved = Path(".").resolve()
@@ -1353,6 +1404,13 @@ def uninstall(ctx, packages, dry_run):
                         except Exception as e:
                             _rich_error(f"✗ Failed to remove transitive dep {orphan_key}: {e}")
 
+        # Collect ALL deployed_files from lockfile BEFORE deleting entries,
+        # so we can pass them to sync_integration for cleanup.
+        all_deployed_files = builtins.set()
+        if lockfile:
+            for dep in lockfile.dependencies.values():
+                all_deployed_files.update(dep.deployed_files)
+
         # Update lockfile: remove entries for all removed packages (direct + transitive)
         removed_orphan_keys = builtins.set()
         if lockfile and apm_modules_dir.exists() and 'actual_orphans' in locals():
@@ -1401,15 +1459,8 @@ def uninstall(ctx, packages, dry_run):
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             project_root = Path(".")
 
-            # Build managed_files from lockfile for manifest-based removal
-            from apm_cli.deps.lockfile import LockFile, get_lockfile_path
-            uninstall_managed = builtins.set()
-            uninstall_lockfile = LockFile.read(get_lockfile_path(project_root))
-            if uninstall_lockfile:
-                for dep in uninstall_lockfile.dependencies.values():
-                    uninstall_managed.update(dep.deployed_files)
-            # Pass None when lockfile has no deployed_files (triggers legacy fallback)
-            sync_managed = uninstall_managed if uninstall_managed else None
+            # Use pre-collected deployed_files (captured before lockfile entries were deleted)
+            sync_managed = all_deployed_files if all_deployed_files else None
 
             # Phase 1: Remove all APM-deployed files
             if Path(".github/prompts").exists():
@@ -1535,6 +1586,7 @@ def _install_apm_dependencies(
     update_refs: bool = False,
     verbose: bool = False,
     only_packages: "builtins.list" = None,
+    force: bool = False,
 ):
     """Install APM package dependencies.
 
@@ -1543,6 +1595,7 @@ def _install_apm_dependencies(
         update_refs: Whether to update existing packages to latest refs
         verbose: Show detailed installation information
         only_packages: If provided, only install these specific packages (not all from apm.yml)
+        force: Whether to overwrite locally-authored files on collision
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -2331,7 +2384,7 @@ def _install_apm_dependencies(
         # Update .gitignore for integrated hooks if any were integrated
         if integrate_vscode and total_hooks_integrated > 0:
             try:
-                updated = hook_integrator.update_gitignore(project_root)
+                updated = hook_integrator.update_gitignore_for_hooks(project_root)
                 if updated:
                     _rich_info(
                         "Updated .gitignore for integrated hooks"

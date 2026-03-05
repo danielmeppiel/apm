@@ -2,41 +2,12 @@
 
 from pathlib import Path
 from typing import List, Dict
-from dataclasses import dataclass
-import re
 
-from apm_cli.compilation.link_resolver import UnifiedLinkResolver
-from apm_cli.primitives.discovery import discover_primitives
+from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 
 
-@dataclass
-class IntegrationResult:
-    """Result of prompt integration operation."""
-    files_integrated: int
-    files_updated: int  # Kept for CLI compatibility, always 0
-    files_skipped: int  # Kept for CLI compatibility, always 0
-    target_paths: List[Path]
-    gitignore_updated: bool
-    links_resolved: int = 0  # Number of context links resolved
-
-
-class PromptIntegrator:
+class PromptIntegrator(BaseIntegrator):
     """Handles integration of APM package prompts into .github/prompts/."""
-    
-    def __init__(self):
-        """Initialize the prompt integrator."""
-        self.link_resolver = None  # Lazy init when needed
-    
-    def should_integrate(self, project_root: Path) -> bool:
-        """Check if prompt integration should be performed.
-        
-        Args:
-            project_root: Root directory of the project
-            
-        Returns:
-            bool: Always True - integration happens automatically
-        """
-        return True
     
     def find_prompt_files(self, package_path: Path) -> List[Path]:
         """Find all .prompt.md files in a package.
@@ -67,9 +38,6 @@ class PromptIntegrator:
     def copy_prompt(self, source: Path, target: Path) -> int:
         """Copy prompt file verbatim with link resolution.
         
-        Copies file content as-is, only resolving context links.
-        No metadata injection.
-        
         Args:
             source: Source file path
             target: Target file path
@@ -78,21 +46,7 @@ class PromptIntegrator:
             int: Number of links resolved
         """
         content = source.read_text(encoding='utf-8')
-        links_resolved = 0
-        
-        if self.link_resolver:
-            resolved_content = self.link_resolver.resolve_links_for_installation(
-                content=content,
-                source_file=source,
-                target_file=target
-            )
-            if resolved_content != content:
-                link_pattern = re.compile(r'\]\(([^)]+)\)')
-                original_links = set(link_pattern.findall(content))
-                resolved_links = set(link_pattern.findall(resolved_content))
-                links_resolved = len(original_links - resolved_links)
-                content = resolved_content
-        
+        content, links_resolved = self.resolve_links(content, source, target)
         target.write_text(content, encoding='utf-8')
         return links_resolved
     
@@ -129,14 +83,7 @@ class PromptIntegrator:
         Returns:
             IntegrationResult: Results of the integration operation
         """
-        # Initialize link resolver and register contexts
-        self.link_resolver = UnifiedLinkResolver(project_root)
-        try:
-            primitives = discover_primitives(package_info.install_path)
-            self.link_resolver.register_contexts(primitives)
-        except Exception:
-            # If context discovery fails, continue without link resolution
-            self.link_resolver = None
+        self.init_link_resolver(package_info, project_root)
         
         # Find all prompt files in the package
         prompt_files = self.find_prompt_files(package_info.install_path)
@@ -165,15 +112,7 @@ class PromptIntegrator:
             target_path = prompts_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            # Collision detection: skip user-authored files unless --force
-            # managed_files=None means legacy mode (no collision checking)
-            if managed_files is not None and target_path.exists() and rel_path not in managed_files and not force:
-                import sys
-                print(
-                    f"\u26a0\ufe0f  Skipping {rel_path} \u2014 local file exists (not managed by APM). "
-                    f"Use 'apm install --force' to overwrite.",
-                    file=sys.stderr,
-                )
+            if self.check_collision(target_path, rel_path, managed_files, force):
                 files_skipped += 1
                 continue
             
@@ -199,74 +138,19 @@ class PromptIntegrator:
         deployed_files).  Falls back to legacy ``*-apm.prompt.md`` glob
         when *managed_files* is ``None`` (old lockfile).
         """
-        stats = {'files_removed': 0, 'errors': 0}
-
         prompts_dir = project_root / ".github" / "prompts"
-        if not prompts_dir.exists():
-            return stats
-
-        if managed_files is not None:
-            # Manifest-based: only remove files we know APM deployed
-            for rel_path in managed_files:
-                if not rel_path.startswith(".github/prompts/") or ".." in rel_path:
-                    continue
-                target = project_root / rel_path
-                if target.exists():
-                    try:
-                        target.unlink()
-                        stats['files_removed'] += 1
-                    except Exception:
-                        stats['errors'] += 1
-        else:
-            # Legacy fallback: glob for old -apm suffix files
-            for prompt_file in prompts_dir.glob("*-apm.prompt.md"):
-                try:
-                    prompt_file.unlink()
-                    stats['files_removed'] += 1
-                except Exception:
-                    stats['errors'] += 1
-
-        return stats
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=".github/prompts/",
+            legacy_glob_dir=prompts_dir,
+            legacy_glob_pattern="*-apm.prompt.md",
+        )
     
     def update_gitignore_for_integrated_prompts(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for integrated prompts.
-        
-        Args:
-            project_root: Root directory of the project
-            
-        Returns:
-            bool: True if .gitignore was updated, False if pattern already exists
-        """
-        gitignore_path = project_root / ".gitignore"
-        pattern = ".github/prompts/*-apm.prompt.md"
-        
-        # Read current content
-        current_content = []
-        if gitignore_path.exists():
-            try:
-                with open(gitignore_path, "r", encoding="utf-8") as f:
-                    current_content = [line.rstrip("\n\r") for line in f.readlines()]
-            except Exception:
-                return False
-        
-        # Check if pattern needs to be added
-        if any(pattern in line for line in current_content):
-            return False
-        
-        patterns_to_add = [pattern]
-        
-        if not patterns_to_add:
-            return False
-        
-        # Add patterns to .gitignore
-        try:
-            with open(gitignore_path, "a", encoding="utf-8") as f:
-                # Add a blank line before our entry if file isn't empty
-                if current_content and current_content[-1].strip():
-                    f.write("\n")
-                f.write(f"\n# APM integrated prompts\n")
-                for p in patterns_to_add:
-                    f.write(f"{p}\n")
-            return True
-        except Exception:
-            return False
+        """Update .gitignore with pattern for integrated prompts."""
+        return self.update_gitignore(
+            project_root,
+            patterns=[".github/prompts/*-apm.prompt.md"],
+            comment="APM integrated prompts",
+        )

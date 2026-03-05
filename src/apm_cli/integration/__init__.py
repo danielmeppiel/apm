@@ -1,5 +1,6 @@
 """APM package integration utilities."""
 
+from .base_integrator import BaseIntegrator, IntegrationResult
 from .prompt_integrator import PromptIntegrator
 from .agent_integrator import AgentIntegrator
 from .hook_integrator import HookIntegrator
@@ -16,6 +17,8 @@ from .skill_integrator import (
 from .skill_transformer import SkillTransformer
 
 __all__ = [
+    'BaseIntegrator',
+    'IntegrationResult',
     'PromptIntegrator',
     'AgentIntegrator',
     'HookIntegrator',

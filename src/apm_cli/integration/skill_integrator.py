@@ -10,6 +10,8 @@ import re
 
 import frontmatter
 
+from apm_cli.integration.base_integrator import BaseIntegrator
+
 
 @dataclass
 class SkillIntegrationResult:
@@ -328,7 +330,7 @@ def copy_skill_to_target(
     return (github_skill_dir, claude_skill_dir)
 
 
-class SkillIntegrator:
+class SkillIntegrator(BaseIntegrator):
     """Handles integration of native SKILL.md files for Claude Code and VS Code.
     
     Claude Skills Spec:
@@ -337,21 +339,6 @@ class SkillIntegrator:
     - Markdown body with instructions and agent definitions
     - references/ subdirectory for prompt files
     """
-    
-    def __init__(self):
-        """Initialize the skill integrator."""
-        self.link_resolver = None  # Lazy init when needed
-    
-    def should_integrate(self, project_root: Path) -> bool:
-        """Check if skill integration should be performed.
-        
-        Args:
-            project_root: Root directory of the project
-            
-        Returns:
-            bool: Always True - integration happens automatically
-        """
-        return True
     
     def find_instruction_files(self, package_path: Path) -> List[Path]:
         """Find all instruction files in a package.
@@ -827,47 +814,9 @@ class SkillIntegrator:
         return {'files_removed': files_removed, 'errors': errors}
     
     def update_gitignore_for_skills(self, project_root: Path) -> bool:
-        """Update .gitignore with pattern for integrated skills.
-        
-        Args:
-            project_root: Root directory of the project
-            
-        Returns:
-            bool: True if .gitignore was updated, False if pattern already exists
-        """
-        gitignore_path = project_root / ".gitignore"
-        
-        patterns = [
-            ".github/skills/*-apm/",  # APM integrated skills use -apm suffix
-            "# APM integrated skills"
-        ]
-        
-        # Read current content
-        current_content = []
-        if gitignore_path.exists():
-            try:
-                with open(gitignore_path, "r", encoding="utf-8") as f:
-                    current_content = [line.rstrip("\n\r") for line in f.readlines()]
-            except Exception:
-                return False
-        
-        # Check which patterns need to be added
-        patterns_to_add = []
-        for pattern in patterns:
-            if not any(pattern in line for line in current_content):
-                patterns_to_add.append(pattern)
-        
-        if not patterns_to_add:
-            return False
-        
-        # Add patterns to .gitignore
-        try:
-            with open(gitignore_path, "a", encoding="utf-8") as f:
-                if current_content and current_content[-1].strip():
-                    f.write("\n")
-                f.write("\n# APM integrated skills\n")
-                for pattern in patterns_to_add:
-                    f.write(f"{pattern}\n")
-            return True
-        except Exception:
-            return False
+        """Update .gitignore with pattern for integrated skills."""
+        return BaseIntegrator.update_gitignore(
+            project_root,
+            patterns=[".github/skills/*-apm/"],
+            comment="APM integrated skills",
+        )

@@ -40,6 +40,8 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
 
+from apm_cli.integration.base_integrator import BaseIntegrator
+
 
 @dataclass
 class HookIntegrationResult:
@@ -50,7 +52,7 @@ class HookIntegrationResult:
     gitignore_updated: bool = False
 
 
-class HookIntegrator:
+class HookIntegrator(BaseIntegrator):
     """Handles integration of APM package hooks into target locations.
 
     Discovers hook JSON files and their referenced scripts from packages,
@@ -58,21 +60,6 @@ class HookIntegrator:
     - VSCode: .github/hooks/<pkg>-<name>.json + .github/hooks/scripts/<pkg>/
     - Claude: Merged into .claude/settings.json hooks key + .claude/hooks/<pkg>/
     """
-
-    def __init__(self):
-        """Initialize the hook integrator."""
-        pass
-
-    def should_integrate(self, project_root: Path) -> bool:
-        """Check if hook integration should be performed.
-
-        Args:
-            project_root: Root directory of the project
-
-        Returns:
-            bool: Always True - integration happens automatically
-        """
-        return True
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
         """Find all hook JSON files in a package.
@@ -316,15 +303,7 @@ class HookIntegrator:
             target_path = hooks_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
 
-            # Collision detection: skip user-authored files unless --force
-            # managed_files=None means legacy mode (no collision checking)
-            if managed_files is not None and target_path.exists() and rel_path not in managed_files and not force:
-                import sys
-                print(
-                    f"\u26a0\ufe0f  Skipping {rel_path} \u2014 local file exists (not managed by APM). "
-                    f"Use 'apm install --force' to overwrite.",
-                    file=sys.stderr,
-                )
+            if self.check_collision(target_path, rel_path, managed_files, force):
                 continue
 
             # Write rewritten JSON
@@ -529,31 +508,10 @@ class HookIntegrator:
 
         return stats
 
-    def update_gitignore(self, project_root: Path) -> bool:
-        """Update .gitignore with patterns for APM-managed hooks.
-
-        Args:
-            project_root: Root directory of the project
-
-        Returns:
-            bool: True if .gitignore was updated, False if patterns already exist
-        """
-        gitignore_path = project_root / ".gitignore"
-        patterns = [
-            ".github/hooks/scripts/",
-        ]
-
-        existing_content = ""
-        if gitignore_path.exists():
-            existing_content = gitignore_path.read_text()
-
-        # Check if patterns already exist
-        if ".github/hooks/scripts/" in existing_content:
-            return False
-
-        new_content = existing_content.rstrip() + "\n\n# APM integrated hooks\n"
-        for pattern in patterns:
-            new_content += f"{pattern}\n"
-
-        gitignore_path.write_text(new_content)
-        return True
+    def update_gitignore_for_hooks(self, project_root: Path) -> bool:
+        """Update .gitignore with patterns for APM-managed hooks."""
+        return self.update_gitignore(
+            project_root,
+            patterns=[".github/hooks/scripts/"],
+            comment="APM integrated hooks",
+        )
