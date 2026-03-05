@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
+import random
 import re
 import requests
 
@@ -183,10 +184,14 @@ class GitHubPackageDownloader:
                 if response.status_code in (429, 503):
                     retry_after = response.headers.get("Retry-After")
                     if retry_after:
-                        wait = min(float(retry_after), 60)
+                        try:
+                            wait = min(float(retry_after), 60)
+                        except (TypeError, ValueError):
+                            # Retry-After may be an HTTP-date; fall back to exponential backoff
+                            wait = min(2 ** attempt, 30) * (0.5 + random.random())
                     else:
-                        wait = min(2 ** attempt, 30)
-                    _debug(f"Rate limited ({response.status_code}), retry in {wait}s (attempt {attempt + 1}/{max_retries})")
+                        wait = min(2 ** attempt, 30) * (0.5 + random.random())
+                    _debug(f"Rate limited ({response.status_code}), retry in {wait:.1f}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(wait)
                     continue
                 
@@ -202,8 +207,8 @@ class GitHubPackageDownloader:
             except requests.exceptions.ConnectionError as e:
                 last_exc = e
                 if attempt < max_retries - 1:
-                    wait = min(2 ** attempt, 30)
-                    _debug(f"Connection error, retry in {wait}s (attempt {attempt + 1}/{max_retries})")
+                    wait = min(2 ** attempt, 30) * (0.5 + random.random())
+                    _debug(f"Connection error, retry in {wait:.1f}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(wait)
             except requests.exceptions.Timeout as e:
                 last_exc = e

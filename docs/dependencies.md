@@ -308,7 +308,7 @@ When both packages are installed, your project gains:
 
 #### Resilient Downloads
 
-APM automatically retries failed HTTP requests with exponential backoff. Rate-limited responses (HTTP 429/503) are handled transparently, respecting `Retry-After` headers when provided. This ensures reliable installs even under heavy API usage or transient network issues.
+APM automatically retries failed HTTP requests with exponential backoff and jitter. Rate-limited responses (HTTP 429/503) are handled transparently, respecting `Retry-After` headers when provided. This ensures reliable installs even under heavy API usage or transient network issues.
 
 #### Parallel Downloads
 

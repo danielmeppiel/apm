@@ -7,7 +7,7 @@ Covers the bottlenecks identified in issue #171:
 - from_apm_yml() parse caching
 - Inheritance chain caching
 
-Run with: uv run pytest tests/benchmarks/ -v --tb=short
+Run with: uv run pytest tests/benchmarks/ -v --tb=short -m benchmark
 """
 
 import time
@@ -65,6 +65,7 @@ def _build_deep_tree(n_packages: int, max_depth: int) -> DependencyTree:
 # Benchmark: Primitive conflict detection
 # ---------------------------------------------------------------------------
 
+@pytest.mark.benchmark
 class TestPrimitiveConflictDetectionPerf:
     """Verify O(m) conflict detection (was O(m²) before #171)."""
 
@@ -99,6 +100,7 @@ class TestPrimitiveConflictDetectionPerf:
 # Benchmark: Dependency tree depth-index
 # ---------------------------------------------------------------------------
 
+@pytest.mark.benchmark
 class TestDepthIndexPerf:
     """Verify O(1) depth lookups (was O(V × max_depth) before #171)."""
 
@@ -131,6 +133,7 @@ class TestDepthIndexPerf:
 # Benchmark: Cycle detection
 # ---------------------------------------------------------------------------
 
+@pytest.mark.benchmark
 class TestCycleDetectionPerf:
     """Verify O(V+E) cycle detection (was O(V×D) before #171)."""
 
@@ -159,6 +162,7 @@ class TestCycleDetectionPerf:
 # Benchmark: from_apm_yml caching
 # ---------------------------------------------------------------------------
 
+@pytest.mark.benchmark
 class TestFromApmYmlCachePerf:
     """Verify parse caching eliminates repeated disk I/O."""
 
@@ -189,6 +193,7 @@ class TestFromApmYmlCachePerf:
 # Benchmark: read_constitution caching
 # ---------------------------------------------------------------------------
 
+@pytest.mark.benchmark
 class TestConstitutionCachePerf:
     """Verify constitution read caching."""
 

@@ -1727,7 +1727,6 @@ def _install_apm_dependencies(
         from concurrent.futures import ThreadPoolExecutor, as_completed as _futures_completed
 
         _pre_download_results = {}   # dep_key -> PackageInfo
-        _pre_download_failed = set() # dep_keys that failed download
         _need_download = []
         for _pd_ref in deps_to_install:
             _pd_key = _pd_ref.get_unique_key()
@@ -1784,10 +1783,9 @@ def _install_apm_dependencies(
                             _pre_download_results[_pd_key] = _pd_info
                             _dl_progress.update(_pd_tid, visible=False)
                             _dl_progress.refresh()
-                        except Exception as _pd_err:
-                            _pre_download_failed.add(_pd_key)
+                        except Exception:
                             _dl_progress.remove_task(_pd_tid)
-                            _rich_error(f"❌ Failed to install {_pd_disp}: {_pd_err}")
+                            # Silent: sequential loop below will retry and report errors
 
         _pre_downloaded_keys = set(_pre_download_results.keys())
 

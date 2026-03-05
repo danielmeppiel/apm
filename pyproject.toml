@@ -70,7 +70,9 @@ warn_return_any = true
 warn_unused_configs = true
 
 [tool.pytest.ini_options]
+addopts = "-m 'not benchmark'"
 markers = [
     "integration: marks tests as integration tests that may require network access",
     "slow: marks tests as slow running tests",
+    "benchmark: marks performance benchmark tests (deselected by default, run with -m benchmark)",
 ]
