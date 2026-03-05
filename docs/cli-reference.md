@@ -122,6 +122,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--update` - Update dependencies to latest Git references  
 - `--dry-run` - Show what would be installed without installing
 - `--verbose` - Show detailed installation information
+- `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
@@ -155,6 +156,9 @@ apm install --update
 
 # Install for all runtimes except Codex
 apm install --exclude codex
+
+# Trust self-defined MCP servers from transitive packages
+apm install --trust-transitive-mcp
 ```
 
 **Auto-Bootstrap Behavior:**
@@ -186,7 +190,7 @@ dependencies:
     - microsoft/apm-sample-package  # Design standards, prompts
     - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
-    - github/github-mcp-server
+    - io.github.github/github-mcp-server
 ```
 
 ```bash

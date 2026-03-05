@@ -296,11 +296,16 @@ class VSCodeClientAdapter(MCPClientAdapter):
             elif "remotes" in server_info and server_info["remotes"]:
                 remotes = server_info["remotes"]
                 remote = remotes[0]  # Take the first remote
-                if remote.get("transport_type") == "sse":
+                transport = remote.get("transport_type", "")
+                if transport in ("sse", "http", "streamable-http"):
+                    headers = remote.get("headers", {})
+                    # Normalize header list format to dict
+                    if isinstance(headers, list):
+                        headers = {h["name"]: h["value"] for h in headers if "name" in h and "value" in h}
                     server_config = {
-                        "type": "sse",
+                        "type": transport,
                         "url": remote.get("url", ""),
-                        "headers": remote.get("headers", {})
+                        "headers": headers,
                     }
             # If no packages AND no endpoints/remotes, fail with clear error
             else:

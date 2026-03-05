@@ -74,7 +74,16 @@ dependencies:
     - microsoft/apm-sample-package  # Design standards, prompts
     - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
-    - io.github.github/github-mcp-server          # Registry reference
+    - io.github.github/github-mcp-server          # Registry reference (string)
+    - name: io.github.github/github-mcp-server      # Registry with overlays
+      transport: stdio
+      tools: ["repos", "issues"]
+    - name: internal-knowledge-base                  # Self-defined (private server)
+      registry: false
+      transport: http
+      url: "${KNOWLEDGE_BASE_URL}"
+      env:
+        KB_TOKEN: "${KB_TOKEN}"
 ```
 
 MCP dependencies resolve via the MCP server registry (e.g. `io.github.github/github-mcp-server`).
@@ -117,6 +126,92 @@ apm compile
 # Instructions with matching applyTo patterns are merged from all sources
 # See docs/wip/distributed-agents-compilation-strategy.md for detailed compilation logic
 ```
+
+## MCP Dependency Formats
+
+MCP dependencies support three forms: string references, overlay objects, and self-defined servers.
+
+### String Reference (default)
+
+Registry-resolved by name. Simplest form:
+
+```yaml
+mcp:
+  - io.github.github/github-mcp-server
+```
+
+### Object with Overlays
+
+Customize a registry-resolved server with project-specific preferences:
+
+```yaml
+mcp:
+  - name: io.github.github/github-mcp-server
+    transport: stdio          # Prefer stdio over remote
+    env:                      # Pre-populate environment variables
+      GITHUB_TOKEN: "${MY_TOKEN}"
+    tools: ["repos", "issues"]  # Restrict exposed tools
+    headers:                  # Custom HTTP headers (remote transports)
+      X-Custom: "value"
+    package: npm              # Select package type (npm, pypi, oci)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Server reference (required) |
+| `transport` | string | `stdio`, `sse`, `http`, or `streamable-http` |
+| `env` | dict | Environment variable overrides |
+| `args` | list or dict | Runtime argument overrides |
+| `version` | string | Pin server version |
+| `package` | string | Select package type (`npm`, `pypi`, `oci`) |
+| `headers` | dict | HTTP headers for remote transports |
+| `tools` | list | Restrict exposed tool names |
+
+Overlay fields are merged on top of registry metadata — they augment, never replace, the registry-first model.
+
+### Self-Defined Servers (`registry: false`)
+
+For private or corporate MCP servers not published to any registry:
+
+```yaml
+mcp:
+  - name: internal-knowledge-base
+    registry: false
+    transport: http
+    url: "https://mcp.internal.example.com"
+    env:
+      API_TOKEN: "${API_TOKEN}"
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+```
+
+Stdio example:
+
+```yaml
+mcp:
+  - name: local-db-tool
+    registry: false
+    transport: stdio
+    command: my-mcp-server
+    args:
+      - "--port"
+      - "8080"
+```
+
+**Required fields when `registry: false`:**
+- `transport` — always required
+- `url` — required for `http`, `sse`, `streamable-http` transports
+- `command` — required for `stdio` transport
+
+⚠️ **Transitive trust rule:** Self-defined servers from transitive APM packages are skipped with a warning by default. You can either re-declare them in your own `apm.yml`, or use `--trust-transitive-mcp` to trust all self-defined servers from upstream packages:
+
+```bash
+apm install --trust-transitive-mcp
+```
+
+### Validation
+
+Run `apm install --dry-run` to preview MCP dependency configuration without writing any files. Self-defined deps are validated for required fields and transport values; overlay deps are loaded as-is and unknown fields are ignored.
 
 ## GitHub Authentication Setup
 
@@ -167,6 +262,12 @@ dependencies:
     - github/awesome-copilot/skills/review-and-refactor
   mcp:
     - io.github.github/github-mcp-server
+    - name: internal-knowledge-base
+      registry: false
+      transport: http
+      url: "${KNOWLEDGE_BASE_URL}"
+      env:
+        KB_TOKEN: "${KB_TOKEN}"
 
 scripts:
   # Design workflows  
@@ -308,8 +409,8 @@ dependencies:
     resolved_ref: "main"
     version: "1.0.0"
     depth: 1
-  acme/validation-patterns:
-    repo_url: "https://github.com/acme/validation-patterns"
+  contoso/validation-patterns:
+    repo_url: "https://github.com/contoso/validation-patterns"
     resolved_commit: "789xyz012"
     resolved_ref: "main"
     version: "1.2.0"
@@ -348,7 +449,7 @@ apm install --update
 APM fully resolves transitive dependencies. If package A depends on B, and B depends on C:
 
 ```
-apm install acme/package-a
+apm install contoso/package-a
 ```
 
 Result:
@@ -360,7 +461,7 @@ Result:
 Uninstalling a package also removes its orphaned transitive dependencies (npm-style pruning):
 
 ```bash
-apm uninstall acme/package-a
+apm uninstall contoso/package-a
 # Also removes B and C if no other package depends on them
 ```
 

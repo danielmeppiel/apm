@@ -188,14 +188,15 @@ class SimpleRegistryClient:
         try:
             search_results = self.search_servers(reference)
             
-            # Look for matches in search results - check both exact reference match
-            # and the server name from the registry
+            # Pass 1: exact full-name match (prevents slug collisions)
             for server in search_results:
                 server_name = server.get("name", "")
-                # Check exact match with original reference
                 if server_name == reference:
                     return self.get_server_info(server["id"])
-                # Check match with common identifier patterns
+            
+            # Pass 2: fuzzy slug match (only when reference has no namespace)
+            for server in search_results:
+                server_name = server.get("name", "")
                 if self._is_server_match(reference, server_name):
                     return self.get_server_info(server["id"])
                     
@@ -235,6 +236,16 @@ class SimpleRegistryClient:
     def _is_server_match(self, reference: str, server_name: str) -> bool:
         """Check if a reference matches a server name using common patterns.
         
+        Matching rules:
+        1. Exact string match always wins.
+        2. Qualified references (contain '/') match if the server name ends
+           with the reference (e.g. 'github/github-mcp-server' matches
+           'io.github.github/github-mcp-server'). The match must happen at
+           a namespace boundary (preceded by '.' or start-of-string) to
+           prevent slug collisions like 'microsoftdocs/mcp' matching
+           'com.supabase/mcp'.
+        3. Unqualified references fall back to slug (last segment) comparison.
+        
         Args:
             reference (str): Original reference from user.
             server_name (str): Server name from registry.
@@ -245,8 +256,19 @@ class SimpleRegistryClient:
         # Direct match
         if reference == server_name:
             return True
+        
+        if '/' in reference:
+            # Qualified reference: allow suffix match at a namespace boundary.
+            # e.g. "github/github-mcp-server" matches "io.github.github/github-mcp-server"
+            # but "microsoftdocs/mcp" must NOT match "com.supabase/mcp".
+            if server_name.endswith(reference):
+                prefix = server_name[: -len(reference)]
+                # Valid boundary: empty (exact), or ends with '.' (namespace separator)
+                if prefix == "" or prefix.endswith("."):
+                    return True
+            return False
             
-        # Extract repo names and compare
+        # Unqualified reference: fall back to slug comparison
         ref_repo = self._extract_repository_name(reference)
         server_repo = self._extract_repository_name(server_name)
         
