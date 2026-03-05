@@ -174,6 +174,9 @@ apm install --exclude codex
   - Single `.prompt.md` or `.agent.md` files from any GitHub repository
   - Collections from curated sources (e.g., `github/awesome-copilot`)
   - Example: `apm install github/awesome-copilot/skills/review-and-refactor`
+- **Azure DevOps Packages**: Azure DevOps repositories using `dev.azure.com` URL format
+  - Example: `apm install dev.azure.com/org/project/_git/repo`
+  - Requires `ADO_APM_PAT` environment variable for private repositories (PAT with Code Read scope)
 - **MCP Dependencies**: Model Context Protocol servers for runtime integration
 
 **Working Example with Dependencies:**
@@ -1072,6 +1075,7 @@ apm list
     # Purpose-specific authentication
     export GITHUB_APM_PAT=${{ secrets.GITHUB_APM_PAT }}          # Private modules + fallback
     export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}              # Optional: Codex CLI with GitHub Models
+    export ADO_APM_PAT=${{ secrets.ADO_APM_PAT }}                # Optional: Private Azure DevOps modules
     
 - name: Setup APM project
   run: apm install
@@ -1090,6 +1094,7 @@ apm runtime setup codex
 # Fine-grained token preferred
 export GITHUB_APM_PAT=your_fine_grained_token      # Private modules + fallback auth
 export GITHUB_TOKEN=your_models_token              # Codex CLI with GitHub Models
+export ADO_APM_PAT=your_ado_pat_token              # Private Azure DevOps modules (Code Read scope)
 
 cd my-apm-project
 apm install
