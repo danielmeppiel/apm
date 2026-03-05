@@ -1800,10 +1800,6 @@ def _install_apm_dependencies(
             transient=True,  # Progress bar disappears when done
         ) as progress:
             for dep_ref in deps_to_install:
-                # Phase 4 (#171): Skip deps that failed during parallel download
-                if dep_ref.get_unique_key() in _pre_download_failed:
-                    continue
-
                 # Determine installation directory using namespaced structure
                 # e.g., microsoft/apm-sample-package -> apm_modules/microsoft/apm-sample-package/
                 # For virtual packages: owner/repo/prompts/file.prompt.md -> apm_modules/owner/repo-file/
