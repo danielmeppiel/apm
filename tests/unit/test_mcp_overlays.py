@@ -169,7 +169,12 @@ class TestMCPDependencyModel:
         r = repr(dep)
         assert "s3cret" not in r
         assert "Bearer" not in r
-        assert "MCPDependency(leaky (stdio))" == r
+        assert "***" in r
+        assert "env=" in r
+        assert "headers=" in r
+        assert r.startswith("MCPDependency(")
+        assert "name='leaky'" in r
+        assert "transport='stdio'" in r
 
     # -- transport validation ------------------------------------------------
 
@@ -373,6 +378,26 @@ class TestApplyMCPOverlay:
         assert len(rt_args) == 1
         assert rt_args[0]["value_hint"] == "--org=acme"
 
+    def test_version_overlay_emits_warning(self):
+        cache = {"srv": {"packages": [{"registry_name": "npm"}]}}
+        dep = MCPDependency(name="srv", version="1.0.0")
+        with pytest.warns(UserWarning, match=r"MCP overlay field 'version' on 'srv'.*ignored"):
+            _apply_mcp_overlay(cache, dep)
+
+    def test_custom_registry_overlay_emits_warning(self):
+        cache = {"srv": {"packages": [{"registry_name": "npm"}]}}
+        dep = MCPDependency(name="srv", registry="https://custom.registry.io")
+        with pytest.warns(UserWarning, match=r"MCP overlay field 'registry' on 'srv'.*ignored"):
+            _apply_mcp_overlay(cache, dep)
+
+    def test_registry_false_no_warning(self):
+        cache = {"srv": {"packages": [{"registry_name": "npm"}]}}
+        dep = MCPDependency(name="srv", registry=False)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _apply_mcp_overlay(cache, dep)
+
 
 # ---------------------------------------------------------------------------
 # Install Flow Integration (with mocking)
@@ -411,22 +436,22 @@ class TestInstallMCPDepsWithOverlays:
     ):
         mock_ops = mock_ops_cls.return_value
         mock_ops.validate_servers_exist.return_value = (
-            ["github/github-mcp-server"], []
+            ["io.github.github/github-mcp-server"], []
         )
         mock_ops.check_servers_needing_installation.return_value = [
-            "github/github-mcp-server"
+            "io.github.github/github-mcp-server"
         ]
         mock_ops.batch_fetch_server_info.return_value = {
-            "github/github-mcp-server": {}
+            "io.github.github/github-mcp-server": {}
         }
         mock_ops.collect_environment_variables.return_value = {}
         mock_ops.collect_runtime_variables.return_value = {}
 
-        dep = MCPDependency.from_string("github/github-mcp-server")
+        dep = MCPDependency.from_string("io.github.github/github-mcp-server")
         count = _install_mcp_dependencies([dep], runtime="vscode")
 
         mock_ops.validate_servers_exist.assert_called_once_with(
-            ["github/github-mcp-server"]
+            ["io.github.github/github-mcp-server"]
         )
         assert count == 1
 
@@ -438,18 +463,18 @@ class TestInstallMCPDepsWithOverlays:
     ):
         mock_ops = mock_ops_cls.return_value
         mock_ops.validate_servers_exist.return_value = (
-            ["github/github-mcp-server"], []
+            ["io.github.github/github-mcp-server"], []
         )
         mock_ops.check_servers_needing_installation.return_value = [
-            "github/github-mcp-server"
+            "io.github.github/github-mcp-server"
         ]
         mock_ops.batch_fetch_server_info.return_value = {
-            "github/github-mcp-server": {}
+            "io.github.github/github-mcp-server": {}
         }
         mock_ops.collect_environment_variables.return_value = {}
         mock_ops.collect_runtime_variables.return_value = {}
 
-        registry_dep = MCPDependency.from_string("github/github-mcp-server")
+        registry_dep = MCPDependency.from_string("io.github.github/github-mcp-server")
         self_defined_dep = MCPDependency(
             name="my-local", registry=False, transport="stdio", command="my-cmd",
         )
@@ -460,7 +485,7 @@ class TestInstallMCPDepsWithOverlays:
 
         # Registry dep goes through validation
         mock_ops.validate_servers_exist.assert_called_once_with(
-            ["github/github-mcp-server"]
+            ["io.github.github/github-mcp-server"]
         )
         # Both deps result in _install_for_runtime calls (1 registry + 1 self-defined)
         assert mock_install_runtime.call_count == 2

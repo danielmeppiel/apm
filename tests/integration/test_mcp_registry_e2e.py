@@ -161,7 +161,7 @@ class TestMCPRegistryE2E:
         print("\n=== Testing MCP Registry Show ===")
         
         # Test show GitHub MCP server details
-        github_server = "github/github-mcp-server"
+        github_server = "io.github.github/github-mcp-server"
         result = run_command(f"{apm_binary} mcp show {github_server}", timeout=30)
         assert result.returncode == 0, f"MCP show failed: {result.stderr}"
         
@@ -203,7 +203,7 @@ class TestMCPRegistryE2E:
                 'version': '1.0.0',
                 'dependencies': {
                     'mcp': [
-                        'github/github-mcp-server',  # GitHub MCP server (must have)
+                        'io.github.github/github-mcp-server',  # GitHub MCP server (must have)
                         'neondatabase/mcp-server-neon'  # Neon database server from registry
                     ]
                 },
@@ -223,7 +223,7 @@ class TestMCPRegistryE2E:
                     f.write("version: 1.0.0\n")
                     f.write("dependencies:\n")
                     f.write("  mcp:\n")
-                    f.write("    - github/github-mcp-server\n")
+                    f.write("    - io.github.github/github-mcp-server\n")
                     f.write("    - neondatabase/mcp-server-neon\n")
                     f.write("scripts:\n")
                     f.write('  start: codex run start --param name="$name"\n')
@@ -329,7 +329,7 @@ class TestMCPRegistryE2E:
                 f.write("version: 1.0.0\n")
                 f.write("dependencies:\n")
                 f.write("  mcp:\n")
-                f.write("    - github/github-mcp-server\n")
+                f.write("    - io.github.github/github-mcp-server\n")
                 f.write("scripts:\n")
                 f.write('  start: codex run start\n')
             
@@ -344,7 +344,7 @@ class TestMCPRegistryE2E:
                 f.write("version: 1.0.0\n")
                 f.write("dependencies:\n")
                 f.write("  mcp:\n")
-                f.write("    - github/github-mcp-server\n")
+                f.write("    - io.github.github/github-mcp-server\n")
                 f.write("scripts:\n")
                 f.write('  start: copilot run start --param name="$name"\n')
             
@@ -438,7 +438,7 @@ class TestMCPRegistryE2E:
                 f.write("version: 1.0.0\n")
                 f.write("dependencies:\n")
                 f.write("  mcp:\n")
-                f.write("    - github/github-mcp-server\n")
+                f.write("    - io.github.github/github-mcp-server\n")
                 f.write("scripts:\n")
                 f.write('  start: codex run start\n')
             
@@ -499,7 +499,7 @@ class TestMCPRegistryE2E:
                 f.write("version: 1.0.0\n")
                 f.write("dependencies:\n")
                 f.write("  mcp:\n")
-                f.write("    - github/github-mcp-server\n")
+                f.write("    - io.github.github/github-mcp-server\n")
                 f.write("scripts:\n")
                 f.write('  start: codex run start\n')
             
@@ -563,7 +563,7 @@ class TestMCPRegistryE2E:
                 f.write("version: 1.0.0\n")
                 f.write("dependencies:\n")
                 f.write("  mcp:\n")
-                f.write("    - github/github-mcp-server\n")
+                f.write("    - io.github.github/github-mcp-server\n")
                 f.write("scripts:\n")
                 f.write('  start: codex run start\n')
             
@@ -618,6 +618,64 @@ class TestMCPRegistryE2E:
                 print(f"✓ Configuration verified - no excessive duplication detected")
             
             print("✓ Duplication prevention working correctly")
+
+
+class TestSlugCollisionPrevention:
+    """Integration tests for slug-collision prevention against the live MCP registry.
+
+    These tests verify that ``find_server_by_reference`` resolves qualified and
+    unqualified shorthands correctly, preventing cross-namespace slug collisions.
+    Network failures cause the individual test to be skipped rather than fail.
+    """
+
+    def _make_client(self):
+        from apm_cli.registry.client import SimpleRegistryClient
+        return SimpleRegistryClient()
+
+    def test_qualified_shorthand_resolves_to_canonical_name(self):
+        """Qualified ref 'github/github-mcp-server' should resolve to the canonical name."""
+        client = self._make_client()
+        try:
+            result = client.find_server_by_reference("github/github-mcp-server")
+        except Exception:
+            self.skipTest("Registry unavailable")
+
+        assert result is not None, (
+            "Expected 'github/github-mcp-server' to resolve a server"
+        )
+        assert result.get("name") == "io.github.github/github-mcp-server", (
+            f"Expected canonical name 'io.github.github/github-mcp-server', "
+            f"got '{result.get('name')}'"
+        )
+
+    def test_qualified_ref_does_not_match_different_namespace(self):
+        """Qualified ref with a bogus namespace must NOT resolve to a real server sharing the same slug."""
+        client = self._make_client()
+        try:
+            # 'nonexistent-org/github-mcp-server' shares the slug with
+            # 'io.github.github/github-mcp-server' but belongs to a
+            # different namespace — boundary matching must reject it.
+            result = client.find_server_by_reference("nonexistent-org/github-mcp-server")
+        except Exception:
+            self.skipTest("Registry unavailable")
+
+        assert result is None, (
+            "Expected 'nonexistent-org/github-mcp-server' to return None "
+            "(namespace mismatch), "
+            f"but got: {result.get('name') if result else result}"
+        )
+
+    def test_unqualified_slug_resolves(self):
+        """Unqualified slug 'github-mcp-server' should resolve via slug matching."""
+        client = self._make_client()
+        try:
+            result = client.find_server_by_reference("github-mcp-server")
+        except Exception:
+            self.skipTest("Registry unavailable")
+
+        assert result is not None, (
+            "Expected unqualified 'github-mcp-server' to resolve a server"
+        )
 
 
 if __name__ == "__main__":

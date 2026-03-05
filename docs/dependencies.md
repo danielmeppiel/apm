@@ -75,7 +75,7 @@ dependencies:
     - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
     - io.github.github/github-mcp-server          # Registry reference (string)
-    - name: github/github-mcp-server               # Registry with overlays
+    - name: io.github.github/github-mcp-server      # Registry with overlays
       transport: stdio
       tools: ["repos", "issues"]
     - name: internal-knowledge-base                  # Self-defined (private server)
@@ -146,7 +146,7 @@ Customize a registry-resolved server with project-specific preferences:
 
 ```yaml
 mcp:
-  - name: github/github-mcp-server
+  - name: io.github.github/github-mcp-server
     transport: stdio          # Prefer stdio over remote
     env:                      # Pre-populate environment variables
       GITHUB_TOKEN: "${MY_TOKEN}"
@@ -211,7 +211,7 @@ apm install --trust-transitive-mcp
 
 ### Validation
 
-Run `apm compile --validate` to check MCP dependency configuration. Self-defined deps are validated for required fields and transport values; overlay deps are loaded as-is and unknown fields are ignored.
+Run `apm install --dry-run` to preview MCP dependency configuration without writing any files. Self-defined deps are validated for required fields and transport values; overlay deps are loaded as-is and unknown fields are ignored.
 
 ## GitHub Authentication Setup
 

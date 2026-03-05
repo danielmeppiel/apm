@@ -190,7 +190,7 @@ dependencies:
     - microsoft/apm-sample-package  # Design standards, prompts
     - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
-    - github/github-mcp-server
+    - io.github.github/github-mcp-server
 ```
 
 ```bash

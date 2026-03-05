@@ -786,7 +786,24 @@ class MCPDependency:
 
     def __repr__(self) -> str:
         """Return a redacted representation to keep secrets out of debug logs."""
-        return f"MCPDependency({str(self)})"
+        parts = [f"name={self.name!r}"]
+        if self.transport:
+            parts.append(f"transport={self.transport!r}")
+        if self.env:
+            safe_env = {k: '***' for k in self.env}
+            parts.append(f"env={safe_env}")
+        if self.headers:
+            safe_headers = {k: '***' for k in self.headers}
+            parts.append(f"headers={safe_headers}")
+        if self.args is not None:
+            parts.append("args=...")
+        if self.tools:
+            parts.append(f"tools={self.tools!r}")
+        if self.url:
+            parts.append(f"url={self.url!r}")
+        if self.command:
+            parts.append(f"command={self.command!r}")
+        return f"MCPDependency({', '.join(parts)})"
 
     def validate(self) -> None:
         """Validate the dependency. Raises ValueError on invalid state."""

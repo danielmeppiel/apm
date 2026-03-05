@@ -3,6 +3,7 @@
 import builtins
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import List
 
@@ -2437,6 +2438,18 @@ def _apply_mcp_overlay(server_info_cache: dict, dep) -> None:
     # Tools overlay: embed for adapters to pick up
     if dep.tools:
         info["_apm_tools_override"] = dep.tools
+
+    # Warn about overlay fields not yet applied at install time
+    if dep.version:
+        warnings.warn(
+            f"MCP overlay field 'version' on '{dep.name}' is not yet applied at install time and will be ignored.",
+            stacklevel=2,
+        )
+    if isinstance(dep.registry, str):
+        warnings.warn(
+            f"MCP overlay field 'registry' on '{dep.name}' is not yet applied at install time and will be ignored.",
+            stacklevel=2,
+        )
 
 
 def _install_mcp_dependencies(
