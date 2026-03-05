@@ -375,10 +375,10 @@ Skills installed to `.claude/skills/` are automatically available for Claude Cod
 
 APM maintains synchronization between packages and Claude primitives:
 
-- **Install**: Adds agents, commands, and skills for new packages
-- **Uninstall**: Removes only that package's agents and commands  
-- **Update**: Refreshes commands when package version changes
-- **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked and removed correctly
+- **Install**: Adds agents, commands, and skills for new packages, tracked via `deployed_files` in `apm.lock`
+- **Uninstall**: Removes only that package's agents, commands, and skill directories (as tracked in `apm.lock`). User-authored files are preserved.
+- **Update**: Refreshes agents, commands, and skills when package version changes
+- **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked via `apm.lock` and removed correctly on uninstall
 
 ## Development Tool Integrations
 
