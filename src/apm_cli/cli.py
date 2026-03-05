@@ -1787,7 +1787,7 @@ def _install_apm_dependencies(
                             _dl_progress.remove_task(_pd_tid)
                             # Silent: sequential loop below will retry and report errors
 
-        _pre_downloaded_keys = set(_pre_download_results.keys())
+        _pre_downloaded_keys = builtins.set(_pre_download_results.keys())
 
         # Create progress display for sequential integration
         with Progress(
