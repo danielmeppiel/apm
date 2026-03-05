@@ -79,10 +79,14 @@ def test_is_supported_git_host():
     assert github_host.is_supported_git_host("dev.azure.com")
     assert github_host.is_supported_git_host("mycompany.visualstudio.com")
     
-    # Unsupported hosts
-    assert not github_host.is_supported_git_host("gitlab.com")
-    assert not github_host.is_supported_git_host("bitbucket.org")
-    assert not github_host.is_supported_git_host("example.com")
+    # Generic git hosts (supported via valid FQDN)
+    assert github_host.is_supported_git_host("gitlab.com")
+    assert github_host.is_supported_git_host("bitbucket.org")
+    assert github_host.is_supported_git_host("gitea.example.com")
+    assert github_host.is_supported_git_host("git.company.internal")
+    
+    # Invalid hostnames (not valid FQDNs)
+    assert not github_host.is_supported_git_host("localhost")
     assert not github_host.is_supported_git_host(None)
     assert not github_host.is_supported_git_host("")
 
