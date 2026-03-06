@@ -1902,7 +1902,7 @@ def _install_apm_dependencies(
                         except Exception:
                             pass  # Not a git repo or invalid — fall through to download
                 skip_download = install_path.exists() and (
-                    (is_cacheable and not update_refs) or (already_resolved and not update_refs) or lockfile_match
+                    (is_cacheable and not update_refs) or already_resolved or lockfile_match
                 )
 
                 if skip_download:

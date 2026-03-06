@@ -4,14 +4,9 @@ Verifies that `apm install --update` bypasses lockfile-pinned SHAs
 and re-fetches the latest content, especially for subdirectory packages.
 """
 
-import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock
 
-from apm_cli.models.apm_package import (
-    DependencyReference,
-    GitReferenceType,
-)
+from apm_cli.models.apm_package import DependencyReference
 
 
 class TestSkipDownloadWithUpdateFlag:
@@ -23,9 +18,15 @@ class TestSkipDownloadWithUpdateFlag:
 
     def _build_skip_download(self, *, install_path_exists, is_cacheable, update_refs,
                               already_resolved, lockfile_match):
-        """Reproduce the skip_download condition from cli.py."""
+        """Reproduce the skip_download condition from cli.py.
+
+        Note: ``already_resolved`` is intentionally NOT gated by ``update_refs``.
+        When the BFS resolver callback downloads a package during this run it is
+        always a fresh fetch (the callback itself skips lockfile overrides when
+        ``update_refs=True``), so re-downloading would be redundant.
+        """
         return install_path_exists and (
-            (is_cacheable and not update_refs) or (already_resolved and not update_refs) or lockfile_match
+            (is_cacheable and not update_refs) or already_resolved or lockfile_match
         )
 
     def test_already_resolved_skips_without_update(self):
@@ -38,15 +39,16 @@ class TestSkipDownloadWithUpdateFlag:
             lockfile_match=False,
         ) is True
 
-    def test_already_resolved_does_not_skip_with_update(self):
-        """With --update, already_resolved packages must NOT be skipped."""
+    def test_already_resolved_still_skips_with_update(self):
+        """With --update, already_resolved packages are still skipped because
+        the BFS callback already fetched them fresh in this run."""
         assert self._build_skip_download(
             install_path_exists=True,
             is_cacheable=False,
             update_refs=True,
             already_resolved=True,
             lockfile_match=False,
-        ) is False
+        ) is True
 
     def test_cacheable_skips_without_update(self):
         """Without --update, cacheable (tag/commit) packages should be skipped."""
