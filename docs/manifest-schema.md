@@ -75,17 +75,18 @@ compilation:   <CompilationConfig>
 |---|---|
 | **Type** | `enum<string>` |
 | **Required** | No |
-| **Default** | `all` |
+| **Default** | Auto-detect: `vscode` if `.github/` exists, `claude` if `.claude/` exists, `all` if both, `minimal` if neither |
 | **Allowed values** | `vscode` · `agents` · `claude` · `all` |
 
-Controls which output targets are generated during compilation. Unknown values are silently ignored (auto-detection takes over).
+Controls which output targets are generated during compilation. When unset, the CLI auto-detects based on `.github/` and `.claude/` folder presence. Unknown values are silently ignored (auto-detection takes over).
 
 | Value | Effect |
 |---|---|
-| `vscode` | Emits `AGENTS.md` files into `.github/` |
+| `vscode` | Emits `AGENTS.md` at the project root (and per-directory files in distributed mode) |
 | `agents` | Alias for `vscode` |
-| `claude` | Emits `CLAUDE.md` into `.claude/` |
-| `all` | Both targets |
+| `claude` | Emits `CLAUDE.md` at the project root |
+| `all` | Both `vscode` and `claude` targets |
+| `minimal` | AGENTS.md only at project root (fallback when no `.github/` or `.claude/` detected) |
 
 ### `type`
 
@@ -139,8 +140,8 @@ Grammar:
 
 ```
 dependency = url_form | shorthand_form
-url_form   = ("https://" | "git@") <clone-url>
-shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["@" alias] ["#" ref]
+url_form   = ("https://" | "http://" | "ssh://git@" | "git@") <clone-url>
+shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref] ["@" alias]
 ```
 
 | Segment | Required | Pattern | Description |
@@ -148,8 +149,8 @@ shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["@" alias] ["#" r
 | `host` | No | FQDN (e.g. `gitlab.com`) | Git host. Defaults to `github.com`. |
 | `owner/repo` | **Yes** | `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` | Repository path. Nested groups supported for non-GitHub hosts (e.g. `gitlab.com/group/sub/repo`). |
 | `virtual_path` | No | Path segments after repo | Subdirectory or file within the repo. See *Virtual Packages* below. |
-| `alias` | No | `^[a-zA-Z0-9._-]+$` | Local alias for the dependency. Parsed before `ref`. |
 | `ref` | No | Branch, tag, or commit SHA | Git reference. Commit SHAs matched by `^[a-f0-9]{7,40}$`. Semver tags matched by `^v?\d+\.\d+\.\d+`. |
+| `alias` | No | `^[a-zA-Z0-9._-]+$` | Local alias for the dependency. Appears after `#ref` in the string. |
 
 **Examples:**
 
@@ -167,7 +168,9 @@ dependencies:
 
     # Full URLs
     - https://github.com/microsoft/apm-sample-package.git
+    - http://github.com/microsoft/apm-sample-package.git
     - git@github.com:microsoft/apm-sample-package.git
+    - ssh://git@github.com/microsoft/apm-sample-package.git
 
     # Virtual packages
     - ComposioHQ/awesome-claude-skills/brand-guidelines   # subdirectory
@@ -197,12 +200,14 @@ Required when the shorthand is ambiguous (e.g. nested-group repos with virtual p
 
 #### Virtual Packages
 
-A dependency that targets a subdirectory or file within a repository rather than the whole repo.
+A dependency that targets a subdirectory, file, or collection within a repository rather than the whole repo.
 
 | Kind | Detection rule | Example |
 |---|---|---|
 | **File** | `virtual_path` ends in `.prompt.md`, `.instructions.md`, `.agent.md`, or `.chatmode.md` | `owner/repo/prompts/review.prompt.md` |
-| **Subdirectory** | `virtual_path` does not match any file extension above | `owner/repo/skills/security` |
+| **Collection (dir)** | `virtual_path` contains `/collections/` (no collection extension) | `owner/repo/collections/security` |
+| **Collection (manifest)** | `virtual_path` contains `/collections/` and ends with `.collection.yml` or `.collection.yaml` | `owner/repo/collections/security.collection.yml` |
+| **Subdirectory** | `virtual_path` does not match any file, collection, or extension rule above | `owner/repo/skills/security` |
 
 #### Canonical Normalisation
 
@@ -275,7 +280,7 @@ Optional section controlling `apm compile` behaviour. All fields have sensible d
 
 | Field | Type | Default | Constraint | Description |
 |---|---|---|---|---|
-| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `all` | Output target (same values as top-level `target`). |
+| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `all` | Output target (same values as top-level `target`). Defaults to `all` when set explicitly in compilation config. |
 | `strategy` | `enum<string>` | `distributed` | `distributed` · `single-file` | `distributed` generates per-directory AGENTS.md files. `single-file` generates one monolithic file. |
 | `single_file` | `bool` | `false` | | Legacy alias. When `true`, overrides `strategy` to `single-file`. |
 | `output` | `string` | `AGENTS.md` | File path | Custom output path for the compiled file. |
@@ -358,18 +363,17 @@ After successful dependency resolution, a conforming resolver MUST write a lockf
 lockfile_version: "1"
 generated_at:     <ISO 8601 timestamp>
 apm_version:      <string>
-dependencies:
-  <canonical-dependency-string>:
-    repo_url:        <string>          # Resolved clone URL
-    host:            <string>          # Git host (optional, e.g. "gitlab.com")
-    resolved_commit: <string>          # Full commit SHA
-    resolved_ref:    <string>          # Branch/tag that was resolved
-    version:         <string>          # Package version from its apm.yml
-    virtual_path:    <string>          # Virtual package path (if applicable)
-    is_virtual:      <bool>            # True for virtual (file/subdirectory) packages
-    depth:           <int>             # 1 = direct, 2+ = transitive
-    resolved_by:     <string>          # Parent dependency (transitive only)
-    deployed_files:  <list<string>>    # Workspace-relative paths of installed files
+dependencies:                              # YAML list (not a map)
+  - repo_url:        <string>              # Resolved clone URL
+    host:            <string>              # Git host (optional, e.g. "gitlab.com")
+    resolved_commit: <string>              # Full commit SHA
+    resolved_ref:    <string>              # Branch/tag that was resolved
+    version:         <string>              # Package version from its apm.yml
+    virtual_path:    <string>              # Virtual package path (if applicable)
+    is_virtual:      <bool>                # True for virtual (file/subdirectory) packages
+    depth:           <int>                 # 1 = direct, 2+ = transitive
+    resolved_by:     <string>              # Parent dependency (transitive only)
+    deployed_files:  <list<string>>        # Workspace-relative paths of installed files
 ```
 
 ### Resolver Behaviour
