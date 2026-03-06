@@ -1,12 +1,38 @@
-# `apm.yml` Manifest Specification
+# APM Manifest Format Specification
 
-> **Version:** 0.1 &nbsp;|&nbsp; **Status:** Draft &nbsp;|&nbsp; **Format:** YAML 1.2
+<dl>
+<dt>Version</dt><dd>0.1 (Working Draft)</dd>
+<dt>Date</dt><dd>2026-03-06</dd>
+<dt>Editors</dt><dd>Daniel Meppiel (Microsoft)</dd>
+<dt>Repository</dt><dd>https://github.com/microsoft/apm</dd>
+<dt>Format</dt><dd>YAML 1.2</dd>
+</dl>
+
+## Status of This Document
+
+This is a **Working Draft**. It may be updated, replaced, or made obsolete at any time. It is inappropriate to cite this document as other than work in progress.
+
+This specification defines the manifest format (`apm.yml`) used by the Agent Package Manager (APM). Feedback is welcome via [GitHub Issues](https://github.com/microsoft/apm/issues).
+
+---
+
+## Abstract
 
 The `apm.yml` manifest declares the full closure of agent primitive dependencies, MCP servers, scripts, and compilation settings for a project. It is the contract between package authors, runtimes, and integrators — any conforming resolver can consume this format to install, compile, and run agentic workflows.
 
 ---
 
-## Document Structure
+## 1. Conformance
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+A conforming manifest is a YAML 1.2 document that satisfies all MUST-level requirements in this specification. A conforming resolver is a program that correctly parses conforming manifests and performs dependency resolution as described herein.
+
+---
+
+## 2. Document Structure
+
+A conforming manifest MUST be a YAML mapping at the top level with the following shape:
 
 ```yaml
 # apm.yml
@@ -26,59 +52,59 @@ compilation:   <CompilationConfig>
 
 ---
 
-## Top-Level Fields
+## 3. Top-Level Fields
 
-### `name`
+### 3.1. `name`
 
 | | |
 |---|---|
 | **Type** | `string` |
-| **Required** | Yes |
+| **Required** | MUST be present |
 | **Description** | Package identifier. Free-form string (no pattern enforced at parse time). Convention: alphanumeric, dots, hyphens, underscores. |
 
-### `version`
+### 3.2. `version`
 
 | | |
 |---|---|
 | **Type** | `string` |
-| **Required** | Yes |
+| **Required** | MUST be present |
 | **Pattern** | `^\d+\.\d+\.\d+` (semver; pre-release/build suffixes allowed) |
-| **Description** | Semantic version. A value that does not match the pattern produces a validation warning (non-blocking). |
+| **Description** | Semantic version. A value that does not match the pattern SHOULD produce a validation warning (non-blocking). |
 
-### `description`
+### 3.3. `description`
 
 | | |
 |---|---|
 | **Type** | `string` |
-| **Required** | No |
+| **Required** | OPTIONAL |
 | **Description** | Brief human-readable description. |
 
-### `author`
+### 3.4. `author`
 
 | | |
 |---|---|
 | **Type** | `string` |
-| **Required** | No |
+| **Required** | OPTIONAL |
 | **Description** | Package author or organization. |
 
-### `license`
+### 3.5. `license`
 
 | | |
 |---|---|
 | **Type** | `string` |
-| **Required** | No |
+| **Required** | OPTIONAL |
 | **Description** | SPDX license identifier (e.g. `MIT`, `Apache-2.0`). |
 
-### `target`
+### 3.6. `target`
 
 | | |
 |---|---|
 | **Type** | `enum<string>` |
-| **Required** | No |
+| **Required** | OPTIONAL |
 | **Default** | Auto-detect: `vscode` if `.github/` exists, `claude` if `.claude/` exists, `all` if both, `minimal` if neither |
 | **Allowed values** | `vscode` · `agents` · `claude` · `all` |
 
-Controls which output targets are generated during compilation. When unset, the CLI auto-detects based on `.github/` and `.claude/` folder presence. Unknown values are silently ignored (auto-detection takes over).
+Controls which output targets are generated during compilation. When unset, a conforming resolver SHOULD auto-detect based on `.github/` and `.claude/` folder presence. Unknown values MUST be silently ignored (auto-detection takes over).
 
 | Value | Effect |
 |---|---|
@@ -88,12 +114,12 @@ Controls which output targets are generated during compilation. When unset, the 
 | `all` | Both `vscode` and `claude` targets |
 | `minimal` | AGENTS.md only at project root (fallback when no `.github/` or `.claude/` detected) |
 
-### `type`
+### 3.7. `type`
 
 | | |
 |---|---|
 | **Type** | `enum<string>` |
-| **Required** | No |
+| **Required** | OPTIONAL |
 | **Default** | None (unset — behaviour depends on package content) |
 | **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` |
 
@@ -106,51 +132,51 @@ Declares how the package's content is processed during install and compile:
 | `hybrid` | Both AGENTS.md compilation and skill installation. |
 | `prompts` | Commands/prompts only. No instructions or skills. |
 
-### `scripts`
+### 3.8. `scripts`
 
 | | |
 |---|---|
 | **Type** | `map<string, string>` |
-| **Required** | No |
+| **Required** | OPTIONAL |
 | **Key pattern** | Script name (free-form string) |
 | **Value** | Shell command string |
-| **Description** | Named commands executed via `apm run <name>`. Supports `--param key=value` substitution. |
+| **Description** | Named commands executed via `apm run <name>`. MUST support `--param key=value` substitution. |
 
 ---
 
-## `dependencies`
+## 4. Dependencies
 
 | | |
 |---|---|
 | **Type** | `object` |
-| **Required** | No |
+| **Required** | OPTIONAL |
 | **Allowed keys** | `apm`, `mcp` |
 
-Contains two optional lists: `apm` for agent primitive packages and `mcp` for MCP servers. Each list entry is either a string shorthand or a typed object.
+Contains two OPTIONAL lists: `apm` for agent primitive packages and `mcp` for MCP servers. Each list entry is either a string shorthand or a typed object.
 
 ---
 
-### `dependencies.apm` — `list<ApmDependency>`
+### 4.1. `dependencies.apm` — `list<ApmDependency>`
 
-Each element is one of two forms: **string** or **object**.
+Each element MUST be one of two forms: **string** or **object**.
 
-#### String Form
+#### 4.1.1. String Form
 
-Grammar:
+Grammar (ABNF-style):
 
 ```
-dependency = url_form | shorthand_form
-url_form   = ("https://" | "http://" | "ssh://git@" | "git@") <clone-url>
+dependency     = url_form / shorthand_form
+url_form       = ("https://" / "http://" / "ssh://git@" / "git@") clone-url
 shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref] ["@" alias]
 ```
 
 | Segment | Required | Pattern | Description |
 |---|---|---|---|
-| `host` | No | FQDN (e.g. `gitlab.com`) | Git host. Defaults to `github.com`. |
-| `owner/repo` | **Yes** | `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` | Repository path. Nested groups supported for non-GitHub hosts (e.g. `gitlab.com/group/sub/repo`). |
-| `virtual_path` | No | Path segments after repo | Subdirectory or file within the repo. See *Virtual Packages* below. |
-| `ref` | No | Branch, tag, or commit SHA | Git reference. Commit SHAs matched by `^[a-f0-9]{7,40}$`. Semver tags matched by `^v?\d+\.\d+\.\d+`. |
-| `alias` | No | `^[a-zA-Z0-9._-]+$` | Local alias for the dependency. Appears after `#ref` in the string. |
+| `host` | OPTIONAL | FQDN (e.g. `gitlab.com`) | Git host. Defaults to `github.com`. |
+| `owner/repo` | REQUIRED | `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` | Repository path. Nested groups supported for non-GitHub hosts (e.g. `gitlab.com/group/sub/repo`). |
+| `virtual_path` | OPTIONAL | Path segments after repo | Subdirectory, file, or collection within the repo. See §4.1.3. |
+| `ref` | OPTIONAL | Branch, tag, or commit SHA | Git reference. Commit SHAs matched by `^[a-f0-9]{7,40}$`. Semver tags matched by `^v?\d+\.\d+\.\d+`. |
+| `alias` | OPTIONAL | `^[a-zA-Z0-9._-]+$` | Local alias for the dependency. Appears after `#ref` in the string. |
 
 **Examples:**
 
@@ -180,16 +206,16 @@ dependencies:
     - dev.azure.com/org/project/_git/repo
 ```
 
-#### Object Form
+#### 4.1.2. Object Form
 
-Required when the shorthand is ambiguous (e.g. nested-group repos with virtual paths).
+REQUIRED when the shorthand is ambiguous (e.g. nested-group repos with virtual paths).
 
 | Field | Type | Required | Pattern / Constraint | Description |
 |---|---|---|---|---|
-| `git` | `string` | **Yes** | HTTPS URL, SSH URL, or FQDN shorthand | Clone URL of the repository. |
-| `path` | `string` | No | Relative path within the repo | Subdirectory or file (virtual package). |
-| `ref` | `string` | No | Branch, tag, or commit SHA | Git reference to checkout. |
-| `alias` | `string` | No | `^[a-zA-Z0-9._-]+$` | Local alias. |
+| `git` | `string` | REQUIRED | HTTPS URL, SSH URL, or FQDN shorthand | Clone URL of the repository. |
+| `path` | `string` | OPTIONAL | Relative path within the repo | Subdirectory, file, or collection (virtual package). |
+| `ref` | `string` | OPTIONAL | Branch, tag, or commit SHA | Git reference to checkout. |
+| `alias` | `string` | OPTIONAL | `^[a-zA-Z0-9._-]+$` | Local alias. |
 
 ```yaml
 - git: https://gitlab.com/acme/repo.git
@@ -198,9 +224,9 @@ Required when the shorthand is ambiguous (e.g. nested-group repos with virtual p
   alias: acme-sec
 ```
 
-#### Virtual Packages
+#### 4.1.3. Virtual Packages
 
-A dependency that targets a subdirectory, file, or collection within a repository rather than the whole repo.
+A dependency MAY target a subdirectory, file, or collection within a repository rather than the whole repo. Conforming resolvers MUST classify virtual packages using the following rules, evaluated in order:
 
 | Kind | Detection rule | Example |
 |---|---|---|
@@ -209,9 +235,9 @@ A dependency that targets a subdirectory, file, or collection within a repositor
 | **Collection (manifest)** | `virtual_path` contains `/collections/` and ends with `.collection.yml` or `.collection.yaml` | `owner/repo/collections/security.collection.yml` |
 | **Subdirectory** | `virtual_path` does not match any file, collection, or extension rule above | `owner/repo/skills/security` |
 
-#### Canonical Normalisation
+#### 4.1.4. Canonical Normalisation
 
-Conforming writers MUST normalise entries to canonical form on write. `github.com` is the default host and is stripped; all other hosts are preserved as FQDN.
+Conforming writers MUST normalise entries to canonical form on write. `github.com` is the default host and MUST be stripped; all other hosts MUST be preserved as FQDN.
 
 | Input | Canonical form |
 |---|---|
@@ -221,34 +247,37 @@ Conforming writers MUST normalise entries to canonical form on write. `github.co
 
 ---
 
-### `dependencies.mcp` — `list<McpDependency>`
+### 4.2. `dependencies.mcp` — `list<McpDependency>`
 
-Each element is one of two forms: **string** or **object**.
+Each element MUST be one of two forms: **string** or **object**.
 
-#### String Form
+#### 4.2.1. String Form
 
 A plain registry reference: `io.github.github/github-mcp-server`
 
-#### Object Form
+#### 4.2.2. Object Form
 
 | Field | Type | Required | Constraint | Description |
 |---|---|---|---|---|
-| `name` | `string` | **Yes** | Non-empty | Server identifier (registry name or custom name). |
-| `transport` | `enum<string>` | Conditional | `stdio` · `sse` · `http` · `streamable-http` | Transport protocol. **Required** when `registry: false`. |
-| `env` | `map<string, string>` | No | | Environment variable overrides. |
-| `args` | `dict` or `list` | No | | Dict for overlay variable overrides (registry), list for positional args (self-defined). |
-| `version` | `string` | No | | Pin to a specific server version. |
-| `registry` | `bool` or `string` | No | Default: `true` (public registry) | `false` = self-defined (private) server. String = custom registry URL. |
-| `package` | `enum<string>` | No | `npm` · `pypi` · `oci` | Package manager type hint. |
-| `headers` | `map<string, string>` | No | | Custom HTTP headers for remote endpoints. |
-| `tools` | `list<string>` | No | Default: `["*"]` | Restrict which tools are exposed. |
-| `url` | `string` | Conditional | | Endpoint URL. **Required** when `registry: false` and `transport` is `http`, `sse`, or `streamable-http`. |
-| `command` | `string` | Conditional | | Binary path. **Required** when `registry: false` and `transport` is `stdio`. |
+| `name` | `string` | REQUIRED | Non-empty | Server identifier (registry name or custom name). |
+| `transport` | `enum<string>` | Conditional | `stdio` · `sse` · `http` · `streamable-http` | Transport protocol. REQUIRED when `registry: false`. |
+| `env` | `map<string, string>` | OPTIONAL | | Environment variable overrides. |
+| `args` | `dict` or `list` | OPTIONAL | | Dict for overlay variable overrides (registry), list for positional args (self-defined). |
+| `version` | `string` | OPTIONAL | | Pin to a specific server version. |
+| `registry` | `bool` or `string` | OPTIONAL | Default: `true` (public registry) | `false` = self-defined (private) server. String = custom registry URL. |
+| `package` | `enum<string>` | OPTIONAL | `npm` · `pypi` · `oci` | Package manager type hint. |
+| `headers` | `map<string, string>` | OPTIONAL | | Custom HTTP headers for remote endpoints. |
+| `tools` | `list<string>` | OPTIONAL | Default: `["*"]` | Restrict which tools are exposed. |
+| `url` | `string` | Conditional | | Endpoint URL. REQUIRED when `registry: false` and `transport` is `http`, `sse`, or `streamable-http`. |
+| `command` | `string` | Conditional | | Binary path. REQUIRED when `registry: false` and `transport` is `stdio`. |
 
-**Validation rules for self-defined servers (`registry: false`):**
-- `transport` MUST be present.
-- If `transport` is `stdio`, `command` MUST be present.
-- If `transport` is `http`, `sse`, or `streamable-http`, `url` MUST be present.
+#### 4.2.3. Validation Rules for Self-Defined Servers
+
+When `registry` is `false`, the following constraints apply:
+
+1. `transport` MUST be present.
+2. If `transport` is `stdio`, `command` MUST be present.
+3. If `transport` is `http`, `sse`, or `streamable-http`, `url` MUST be present.
 
 ```yaml
 dependencies:
@@ -274,13 +303,13 @@ dependencies:
 
 ---
 
-## `compilation` — `CompilationConfig`
+## 5. Compilation
 
-Optional section controlling `apm compile` behaviour. All fields have sensible defaults; omitting the entire section is valid.
+The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fields have sensible defaults; omitting the entire section is valid.
 
 | Field | Type | Default | Constraint | Description |
 |---|---|---|---|---|
-| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `all` | Output target (same values as top-level `target`). Defaults to `all` when set explicitly in compilation config. |
+| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `all` | Output target (same values as §3.6). Defaults to `all` when set explicitly in compilation config. |
 | `strategy` | `enum<string>` | `distributed` | `distributed` · `single-file` | `distributed` generates per-directory AGENTS.md files. `single-file` generates one monolithic file. |
 | `single_file` | `bool` | `false` | | Legacy alias. When `true`, overrides `strategy` to `single-file`. |
 | `output` | `string` | `AGENTS.md` | File path | Custom output path for the compiled file. |
@@ -288,9 +317,9 @@ Optional section controlling `apm compile` behaviour. All fields have sensible d
 | `resolve_links` | `bool` | `true` | | Resolve relative Markdown links in primitives. |
 | `source_attribution` | `bool` | `true` | | Include source-file origin comments in compiled output. |
 | `exclude` | `list<string>` or `string` | `[]` | Glob patterns | Directories to skip during compilation (e.g. `apm_modules/**`). |
-| `placement` | `object` | — | | Placement tuning. See sub-fields below. |
+| `placement` | `object` | — | | Placement tuning. See §5.1. |
 
-#### `compilation.placement`
+### 5.1. `compilation.placement`
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -310,7 +339,50 @@ compilation:
 
 ---
 
-## Complete Example
+## 6. Lockfile (`apm.lock`)
+
+After successful dependency resolution, a conforming resolver MUST write a lockfile capturing the exact resolved state. The lockfile MUST be a YAML file named `apm.lock` at the project root. It SHOULD be committed to version control.
+
+### 6.1. Structure
+
+```yaml
+lockfile_version: "1"
+generated_at:     <ISO 8601 timestamp>
+apm_version:      <string>
+dependencies:                              # YAML list (not a map)
+  - repo_url:        <string>              # Resolved clone URL
+    host:            <string>              # Git host (OPTIONAL, e.g. "gitlab.com")
+    resolved_commit: <string>              # Full commit SHA
+    resolved_ref:    <string>              # Branch/tag that was resolved
+    version:         <string>              # Package version from its apm.yml
+    virtual_path:    <string>              # Virtual package path (if applicable)
+    is_virtual:      <bool>                # True for virtual (file/subdirectory) packages
+    depth:           <int>                 # 1 = direct, 2+ = transitive
+    resolved_by:     <string>              # Parent dependency (transitive only)
+    deployed_files:  <list<string>>        # Workspace-relative paths of installed files
+```
+
+### 6.2. Resolver Behaviour
+
+1. **First install** — Resolve all dependencies, write `apm.lock`.
+2. **Subsequent installs** — Read `apm.lock`, use locked commit SHAs. A resolver SHOULD skip download if local checkout already matches.
+3. **`--update` flag** — Re-resolve from `apm.yml`, overwrite lockfile.
+
+---
+
+## 7. Integrator Contract
+
+Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDEs) MUST implement these steps:
+
+1. **Parse** — Read `apm.yml` as YAML. Validate the two REQUIRED fields (`name`, `version`) and the `dependencies` object shape.
+2. **Resolve `dependencies.apm`** — For each entry, clone/fetch the git repo (respecting `ref`), locate the `.apm/` directory (or virtual path), and extract primitives.
+3. **Resolve `dependencies.mcp`** — For each entry, resolve from the MCP registry or validate self-defined transport config per §4.2.3.
+4. **Transitive resolution** — Resolved packages MAY contain their own `apm.yml` with further dependencies, forming a dependency tree. Resolvers MUST resolve transitively. Conflicts are merged at instruction level (by `applyTo` pattern), not file level.
+5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock` per §6.
+
+---
+
+## Appendix A. Complete Example
 
 ```yaml
 name: my-project
@@ -353,45 +425,8 @@ compilation:
 
 ---
 
-## Lockfile Specification (`apm.lock`)
+## Appendix B. Revision History
 
-After successful dependency resolution, a conforming resolver MUST write a lockfile capturing the exact resolved state. The lockfile is a separate YAML file committed to version control.
-
-### Structure
-
-```yaml
-lockfile_version: "1"
-generated_at:     <ISO 8601 timestamp>
-apm_version:      <string>
-dependencies:                              # YAML list (not a map)
-  - repo_url:        <string>              # Resolved clone URL
-    host:            <string>              # Git host (optional, e.g. "gitlab.com")
-    resolved_commit: <string>              # Full commit SHA
-    resolved_ref:    <string>              # Branch/tag that was resolved
-    version:         <string>              # Package version from its apm.yml
-    virtual_path:    <string>              # Virtual package path (if applicable)
-    is_virtual:      <bool>                # True for virtual (file/subdirectory) packages
-    depth:           <int>                 # 1 = direct, 2+ = transitive
-    resolved_by:     <string>              # Parent dependency (transitive only)
-    deployed_files:  <list<string>>        # Workspace-relative paths of installed files
-```
-
-### Resolver Behaviour
-
-1. **First install** — resolve all dependencies, write `apm.lock`.
-2. **Subsequent installs** — read `apm.lock`, use locked commit SHAs. Skip download if local checkout already matches.
-3. **`--update` flag** — re-resolve from `apm.yml`, overwrite lockfile.
-
----
-
-## Integrator Contract
-
-Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDEs) should implement these steps:
-
-1. **Parse** — Read `apm.yml` as YAML. Validate the two required fields (`name`, `version`) and the `dependencies` object shape.
-2. **Resolve `dependencies.apm`** — For each entry, clone/fetch the git repo (respecting `ref`), locate the `.apm/` directory (or virtual path), and extract primitives.
-3. **Resolve `dependencies.mcp`** — For each entry, resolve from the MCP registry or validate self-defined transport config.
-4. **Transitive resolution** — Resolved packages may contain their own `apm.yml` with further dependencies, forming a dependency tree. Resolve transitively. Conflicts are merged at instruction level (by `applyTo` pattern), not file level.
-5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock` for reproducibility.
-
-The schema (this document) is the contract. Implementations — resolver, downloader, installer, compiler — are decoupled. Each runtime builds its own against this spec.
+| Version | Date | Changes |
+|---|---|---|
+| 0.1 | 2026-03-06 | Initial Working Draft. |
