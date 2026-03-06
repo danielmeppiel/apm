@@ -449,7 +449,7 @@ class TestVSCodeStdioRegistryPackages(unittest.TestCase):
         server = config["servers"]["azure"]
         self.assertEqual(server["type"], "stdio")
         self.assertEqual(server["command"], "npx")
-        self.assertEqual(server["args"], ["-y", "server", "start"])
+        self.assertEqual(server["args"], ["-y", "@azure/mcp", "server", "start"])
 
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_generic_runtime_hint_fallback(self, mock_get_path):
@@ -684,8 +684,8 @@ class TestVSCodeRealApiFormat(unittest.TestCase):
         server = config["servers"]["azure"]
         self.assertEqual(server["type"], "stdio")
         self.assertEqual(server["command"], "npx")
-        # npm inferred from @azure/mcp scoped name, -y flag added, pkg args appended
-        self.assertEqual(server["args"], ["-y", "server", "start"])
+        # npm inferred from @azure/mcp scoped name, -y flag added, package name prepended
+        self.assertEqual(server["args"], ["-y", "@azure/mcp", "server", "start"])
 
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_pypi_inferred_from_name_pattern(self, mock_get_path):
