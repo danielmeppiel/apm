@@ -113,7 +113,7 @@ apm install [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGES` - Optional APM packages to add and install (format: `owner/repo`)
+- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, or FQDN shorthand (`host/owner/repo`). All forms are normalized to canonical format in `apm.yml`.
 
 **Options:**
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
@@ -136,6 +136,12 @@ apm install
 
 # Install ONLY this package (not others in apm.yml)
 apm install microsoft/apm-sample-package
+
+# Install via HTTPS URL (normalized to owner/repo in apm.yml)
+apm install https://github.com/microsoft/apm-sample-package.git
+
+# Install from a non-GitHub host (FQDN preserved)
+apm install https://gitlab.com/acme/coding-standards.git
 
 # Add multiple packages and install
 apm install org/pkg1 org/pkg2
@@ -169,7 +175,7 @@ apm install --trust-transitive-mcp
 
 **Dependency Types:**
 
-- **APM Dependencies**: GitHub repositories containing `apm.yml`
+- **APM Dependencies**: Git repositories containing `apm.yml` (GitHub, GitLab, Bitbucket, or any git host)
 - **Claude Skills**: Repositories with `SKILL.md` (auto-generates `apm.yml` upon installation)
   - Example: `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
   - Skills are transformed to `.github/agents/*.agent.md` for VSCode target
@@ -220,6 +226,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Prompts**: `.prompt.md` files → `.github/prompts/*.prompt.md`
 - **Agents**: `.agent.md` files → `.github/agents/*.agent.md`
 - **Chatmodes**: `.chatmode.md` files → `.github/agents/*.agent.md` (renamed to modern format)
+- **Instructions**: `.instructions.md` files → `.github/instructions/*.instructions.md`
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
 - **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
@@ -244,6 +251,7 @@ Skills are copied directly to target directories:
 ```
 ✓ microsoft/apm-sample-package
   ├─ 3 prompts integrated → .github/prompts/
+  ├─ 1 instruction(s) integrated → .github/instructions/
   ├─ 1 agents integrated → .claude/agents/
   └─ 3 commands integrated → .claude/commands/
 ```
@@ -259,7 +267,7 @@ apm uninstall PACKAGE [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGE` - Package to uninstall (format: `owner/repo`)
+- `PACKAGE` - Package to uninstall. Accepts any format — shorthand (`owner/repo`), HTTPS URL, SSH URL, or FQDN. APM resolves it to the canonical identity stored in `apm.yml`.
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
@@ -268,6 +276,9 @@ apm uninstall PACKAGE [OPTIONS]
 ```bash
 # Uninstall a package
 apm uninstall microsoft/apm-sample-package
+
+# Uninstall using an HTTPS URL (resolves to same identity)
+apm uninstall https://github.com/microsoft/apm-sample-package.git
 
 # Preview what would be removed
 apm uninstall microsoft/apm-sample-package --dry-run

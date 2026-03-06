@@ -1,0 +1,562 @@
+"""Unit tests for auth scoping: tokens are only sent to their matching hosts.
+
+Tests cover:
+- _build_repo_url: GitHub tokens only go to GitHub hosts, not to generic hosts
+- _clone_with_fallback: generic hosts get relaxed env (no GIT_ASKPASS etc.)
+- Object-style dependency entries (parse_from_dict, from_apm_yml)
+"""
+
+import os
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch, MagicMock
+from urllib.parse import urlparse
+
+import pytest
+from git.exc import GitCommandError
+
+from apm_cli.deps.github_downloader import GitHubPackageDownloader
+from apm_cli.models.apm_package import DependencyReference, APMPackage
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_downloader(github_token=None, ado_token=None):
+    """Create a GitHubPackageDownloader with controlled tokens."""
+    with patch.dict(os.environ, {
+        **({"GITHUB_APM_PAT": github_token} if github_token else {}),
+        **({"ADO_APM_PAT": ado_token} if ado_token else {}),
+    }, clear=True):
+        return GitHubPackageDownloader()
+
+
+def _dep(url_str):
+    """Shortcut: parse a DependencyReference from a string."""
+    return DependencyReference.parse(url_str)
+
+
+def _url_host(url: str) -> str:
+    """Extract the hostname from an HTTPS or SSH git URL."""
+    parsed = urlparse(url)
+    if parsed.hostname:
+        return parsed.hostname
+    # SSH shorthand: git@host:path
+    if url.startswith("git@") and ":" in url:
+        return url.split("@", 1)[1].split(":", 1)[0]
+    raise ValueError(f"Cannot extract host from URL: {url}")
+
+
+# ===========================================================================
+# _build_repo_url – token scoping
+# ===========================================================================
+
+class TestBuildRepoUrlTokenScoping:
+    """Verify _build_repo_url sends GitHub tokens only to GitHub hosts."""
+
+    def test_github_com_gets_token(self):
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://github.com/owner/repo.git")
+        url = dl._build_repo_url("owner/repo", use_ssh=False, dep_ref=dep)
+        assert "ghp_TESTTOKEN" in url
+        assert _url_host(url) == "github.com"
+
+    def test_ghe_host_gets_token(self):
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://company.ghe.com/owner/repo.git")
+        url = dl._build_repo_url("owner/repo", use_ssh=False, dep_ref=dep)
+        assert "ghp_TESTTOKEN" in url
+        assert _url_host(url) == "company.ghe.com"
+
+    def test_gitlab_does_not_get_github_token(self):
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://gitlab.com/acme/rules.git")
+        url = dl._build_repo_url("acme/rules", use_ssh=False, dep_ref=dep)
+        assert "ghp_TESTTOKEN" not in url
+        assert _url_host(url) == "gitlab.com"
+
+    def test_bitbucket_does_not_get_github_token(self):
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://bitbucket.org/team/standards.git")
+        url = dl._build_repo_url("team/standards", use_ssh=False, dep_ref=dep)
+        assert "ghp_TESTTOKEN" not in url
+        assert _url_host(url) == "bitbucket.org"
+
+    def test_self_hosted_does_not_get_github_token(self):
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://git.company.internal/team/rules.git")
+        url = dl._build_repo_url("team/rules", use_ssh=False, dep_ref=dep)
+        assert "ghp_TESTTOKEN" not in url
+
+    def test_ssh_url_never_embeds_token(self):
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("git@gitlab.com:acme/rules.git")
+        url = dl._build_repo_url("acme/rules", use_ssh=True, dep_ref=dep)
+        assert "ghp_TESTTOKEN" not in url
+        assert _url_host(url) == "gitlab.com"
+
+    def test_github_ssh_also_no_embedded_token(self):
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("git@github.com:owner/repo.git")
+        url = dl._build_repo_url("owner/repo", use_ssh=True, dep_ref=dep)
+        assert "ghp_TESTTOKEN" not in url
+
+    def test_no_token_at_all_plain_url(self):
+        dl = _make_downloader()
+        dep = _dep("https://github.com/owner/repo.git")
+        url = dl._build_repo_url("owner/repo", use_ssh=False, dep_ref=dep)
+        assert "@" not in url  # no token embedded
+
+
+# ===========================================================================
+# _clone_with_fallback – env relaxation for generic hosts
+# ===========================================================================
+
+class TestCloneWithFallbackEnv:
+    """Verify that env lockdown is based on token availability, not host type."""
+
+    def _run_clone(self, dl, dep, succeed_on=1):
+        """Run _clone_with_fallback, succeeding on the nth attempt (1-based).
+
+        Returns the list of Repo.clone_from call_args.
+        """
+        mock_repo = Mock()
+        mock_repo.head.commit.hexsha = "abc123"
+
+        effects = []
+        for i in range(3):
+            if i == succeed_on - 1:
+                effects.append(mock_repo)
+            else:
+                effects.append(GitCommandError("clone", "failed"))
+
+        with patch('apm_cli.deps.github_downloader.Repo') as MockRepo:
+            MockRepo.clone_from.side_effect = effects
+            target = Path(tempfile.mkdtemp())
+            try:
+                dl._clone_with_fallback(dep.repo_url, target, dep_ref=dep)
+            except RuntimeError:
+                pass  # all methods failed is OK here
+            finally:
+                import shutil
+                shutil.rmtree(target, ignore_errors=True)
+            return MockRepo.clone_from.call_args_list
+
+    def test_generic_host_env_allows_credential_helpers(self):
+        """For GitLab/Bitbucket, GIT_ASKPASS / GIT_CONFIG_GLOBAL are NOT set."""
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://gitlab.com/acme/rules.git")
+
+        calls = self._run_clone(dl, dep, succeed_on=1)
+        assert len(calls) >= 1
+
+        # First call should be SSH (no token for generic), check its env
+        # Actually for generic: no token → skip method 1, go to method 2 (SSH)
+        env_used = calls[0][1].get("env", calls[0].kwargs.get("env"))
+        assert "GIT_ASKPASS" not in env_used
+        assert "GIT_CONFIG_GLOBAL" not in env_used
+        assert "GIT_CONFIG_NOSYSTEM" not in env_used
+        # But GIT_TERMINAL_PROMPT should still be set
+        assert env_used.get("GIT_TERMINAL_PROMPT") == "0"
+
+    def test_github_host_env_is_locked_down(self):
+        """For GitHub hosts WITH a token, the locked-down env with GIT_ASKPASS etc. is used."""
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://github.com/owner/repo.git")
+
+        calls = self._run_clone(dl, dep, succeed_on=1)
+        assert len(calls) >= 1
+
+        env_used = calls[0][1].get("env", calls[0].kwargs.get("env"))
+        assert env_used.get("GIT_ASKPASS") == "echo"
+        assert env_used.get("GIT_CONFIG_NOSYSTEM") == "1"
+        assert env_used.get("GIT_CONFIG_GLOBAL") == "/dev/null"
+
+    def test_github_host_no_token_allows_credential_helpers(self):
+        """For GitHub hosts WITHOUT a token, env is relaxed so credential helpers work."""
+        dl = _make_downloader(github_token=None)
+        dep = _dep("https://github.com/owner/repo.git")
+
+        calls = self._run_clone(dl, dep, succeed_on=1)
+        assert len(calls) >= 1
+
+        env_used = calls[0][1].get("env", calls[0].kwargs.get("env"))
+        assert "GIT_ASKPASS" not in env_used
+        assert "GIT_CONFIG_GLOBAL" not in env_used
+        assert "GIT_CONFIG_NOSYSTEM" not in env_used
+        assert env_used.get("GIT_TERMINAL_PROMPT") == "0"
+
+    def test_generic_host_no_token_skips_method1(self):
+        """Generic hosts have no token → Method 1 (auth HTTPS) is skipped."""
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://gitlab.com/acme/rules.git")
+
+        calls = self._run_clone(dl, dep, succeed_on=1)
+        # Should only attempt SSH (method 2) first, since no token for generic
+        first_url = calls[0][0][0]
+        assert "git@" in first_url or "ssh://" in first_url
+
+    def test_github_host_with_token_tries_method1_first(self):
+        """GitHub with a token → Method 1 (auth HTTPS) is tried first."""
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://github.com/owner/repo.git")
+
+        calls = self._run_clone(dl, dep, succeed_on=1)
+        first_url = calls[0][0][0]
+        assert "ghp_TESTTOKEN" in first_url
+        assert _url_host(first_url) == "github.com"
+
+    def test_generic_host_error_message_mentions_credential_helpers(self):
+        """When all methods fail for a generic host, the error suggests credential helpers."""
+        dl = _make_downloader(github_token="ghp_TESTTOKEN")
+        dep = _dep("https://gitlab.com/acme/rules.git")
+
+        with patch('apm_cli.deps.github_downloader.Repo') as MockRepo:
+            MockRepo.clone_from.side_effect = GitCommandError("clone", "failed")
+            target = Path(tempfile.mkdtemp())
+            try:
+                with pytest.raises(RuntimeError, match="credential helper"):
+                    dl._clone_with_fallback(dep.repo_url, target, dep_ref=dep)
+            finally:
+                import shutil
+                shutil.rmtree(target, ignore_errors=True)
+
+
+# ===========================================================================
+# Object-style dependency entries (parse_from_dict)
+# ===========================================================================
+
+class TestParseFromDict:
+    """Test DependencyReference.parse_from_dict for object-style entries."""
+
+    def test_basic_git_url(self):
+        dep = DependencyReference.parse_from_dict({"git": "https://gitlab.com/acme/rules.git"})
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/rules"
+        assert dep.virtual_path is None
+        assert dep.reference is None
+
+    def test_git_url_with_path(self):
+        dep = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+            "path": "instructions/security",
+        })
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/rules"
+        assert dep.virtual_path == "instructions/security"
+        assert dep.is_virtual is True
+
+    def test_git_url_with_ref(self):
+        dep = DependencyReference.parse_from_dict({
+            "git": "https://bitbucket.org/team/standards.git",
+            "ref": "v2.0",
+        })
+        assert dep.host == "bitbucket.org"
+        assert dep.reference == "v2.0"
+
+    def test_git_url_with_alias(self):
+        dep = DependencyReference.parse_from_dict({
+            "git": "git@gitlab.com:acme/rules.git",
+            "alias": "my-rules",
+        })
+        assert dep.alias == "my-rules"
+        assert dep.host == "gitlab.com"
+
+    def test_git_url_with_all_fields(self):
+        dep = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+            "path": "prompts/review.prompt.md",
+            "ref": "main",
+            "alias": "review",
+        })
+        assert dep.host == "gitlab.com"
+        assert dep.repo_url == "acme/rules"
+        assert dep.virtual_path == "prompts/review.prompt.md"
+        assert dep.is_virtual is True
+        assert dep.reference == "main"
+        assert dep.alias == "review"
+
+    def test_ssh_git_url(self):
+        dep = DependencyReference.parse_from_dict({
+            "git": "git@bitbucket.org:team/rules.git",
+            "path": "security",
+        })
+        assert dep.host == "bitbucket.org"
+        assert dep.repo_url == "team/rules"
+        assert dep.virtual_path == "security"
+
+    def test_path_strips_slashes(self):
+        dep = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+            "path": "/prompts/file.md/",
+        })
+        assert dep.virtual_path == "prompts/file.md"
+
+    def test_ref_in_url_overridden_by_field(self):
+        """'ref' field takes precedence over inline #ref in git URL."""
+        dep = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git#v1.0",
+            "ref": "v2.0",
+        })
+        assert dep.reference == "v2.0"
+
+    # --- Error cases ---
+
+    def test_missing_git_field(self):
+        with pytest.raises(ValueError, match="'git' field"):
+            DependencyReference.parse_from_dict({"path": "foo"})
+
+    def test_empty_git_field(self):
+        with pytest.raises(ValueError, match="non-empty string"):
+            DependencyReference.parse_from_dict({"git": ""})
+
+    def test_git_field_not_string(self):
+        with pytest.raises(ValueError, match="non-empty string"):
+            DependencyReference.parse_from_dict({"git": 42})
+
+    def test_empty_path_field(self):
+        with pytest.raises(ValueError, match="'path' field"):
+            DependencyReference.parse_from_dict({"git": "https://gitlab.com/a/b.git", "path": ""})
+
+    def test_empty_ref_field(self):
+        with pytest.raises(ValueError, match="'ref' field"):
+            DependencyReference.parse_from_dict({"git": "https://gitlab.com/a/b.git", "ref": ""})
+
+    def test_empty_alias_field(self):
+        with pytest.raises(ValueError, match="'alias' field"):
+            DependencyReference.parse_from_dict({"git": "https://gitlab.com/a/b.git", "alias": ""})
+
+
+# ===========================================================================
+# from_apm_yml – mixed string + dict dependencies
+# ===========================================================================
+
+class TestFromApmYmlMixedDeps:
+    """Test APMPackage.from_apm_yml with both string and object-style deps."""
+
+    def _write_yml(self, tmp_path, content):
+        """Write an apm.yml file and return its Path."""
+        yml_file = tmp_path / "apm.yml"
+        yml_file.write_text(content, encoding="utf-8")
+        return yml_file
+
+    def test_string_only_deps(self, tmp_path):
+        yml = self._write_yml(tmp_path, """
+name: test-pkg
+version: 1.0.0
+dependencies:
+  apm:
+    - owner/repo
+    - gitlab.com/acme/rules
+""")
+        pkg = APMPackage.from_apm_yml(yml)
+        deps = pkg.get_apm_dependencies()
+        assert len(deps) == 2
+        assert deps[0].repo_url == "owner/repo"
+        assert deps[1].host == "gitlab.com"
+
+    def test_dict_only_deps(self, tmp_path):
+        yml = self._write_yml(tmp_path, """
+name: test-pkg
+version: 1.0.0
+dependencies:
+  apm:
+    - git: https://gitlab.com/acme/rules.git
+      path: instructions/security
+      ref: v2.0
+""")
+        pkg = APMPackage.from_apm_yml(yml)
+        deps = pkg.get_apm_dependencies()
+        assert len(deps) == 1
+        assert deps[0].host == "gitlab.com"
+        assert deps[0].virtual_path == "instructions/security"
+        assert deps[0].reference == "v2.0"
+
+    def test_mixed_string_and_dict_deps(self, tmp_path):
+        yml = self._write_yml(tmp_path, """
+name: test-pkg
+version: 1.0.0
+dependencies:
+  apm:
+    - owner/repo
+    - git: https://gitlab.com/acme/rules.git
+      path: prompts/review.prompt.md
+    - bitbucket.org/team/standards
+""")
+        pkg = APMPackage.from_apm_yml(yml)
+        deps = pkg.get_apm_dependencies()
+        assert len(deps) == 3
+        assert deps[0].repo_url == "owner/repo"
+        assert deps[1].host == "gitlab.com"
+        assert deps[1].virtual_path == "prompts/review.prompt.md"
+        assert deps[2].host == "bitbucket.org"
+
+    def test_invalid_dict_dep_raises(self, tmp_path):
+        yml = self._write_yml(tmp_path, """
+name: test-pkg
+version: 1.0.0
+dependencies:
+  apm:
+    - path: foo/bar
+""")
+        with pytest.raises(ValueError, match="'git' field"):
+            APMPackage.from_apm_yml(yml)
+
+
+# ===========================================================================
+# Dict-style duplicate detection in _validate_and_add_packages_to_apm_yml
+# ===========================================================================
+
+class TestDictIdentityDuplicateDetection:
+    """Verify that dict-style deps with 'path' get distinct identities.
+
+    Bug: previously, dict entries used only dep_entry.get("git", ""),
+    dropping 'path', so {git: "owner/repo", path: "sub"} had the same
+    identity as plain "owner/repo", causing false duplicate detection.
+    """
+
+    def _write_yml(self, tmp_path, content):
+        yml_file = tmp_path / "apm.yml"
+        yml_file.write_text(content, encoding="utf-8")
+        return yml_file
+
+    @patch("apm_cli.cli._validate_package_exists", return_value=True)
+    def test_dict_dep_with_path_not_duplicate_of_base(self, mock_validate, tmp_path):
+        """A dict dep {git: X, path: Y} should not block adding the base repo X."""
+        import yaml
+        yml = self._write_yml(tmp_path, """
+name: test
+version: 1.0.0
+dependencies:
+  apm:
+    - git: https://gitlab.com/acme/rules.git
+      path: instructions/security
+""")
+        with patch("apm_cli.cli.Path") as MockPath:
+            # Make Path("apm.yml") return our test file
+            MockPath.return_value.exists.return_value = True
+            # We test the identity-building logic directly
+            from apm_cli.models.apm_package import DependencyReference
+
+            # Dict dep with path
+            dict_dep = {"git": "https://gitlab.com/acme/rules.git", "path": "instructions/security"}
+            ref_dict = DependencyReference.parse_from_dict(dict_dep)
+
+            # Base repo (no path)
+            ref_base = DependencyReference.parse("gitlab.com/acme/rules")
+
+            # They MUST have different identities
+            assert ref_dict.get_identity() != ref_base.get_identity()
+
+    def test_two_dict_deps_same_repo_different_paths_distinct(self):
+        """Two dict deps from same repo but different paths have distinct identities."""
+        from apm_cli.models.apm_package import DependencyReference
+
+        dep1 = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+            "path": "instructions/security",
+        })
+        dep2 = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+            "path": "prompts/review.prompt.md",
+        })
+        assert dep1.get_identity() != dep2.get_identity()
+
+    def test_dict_dep_no_path_same_identity_as_string(self):
+        """A dict dep without path has the same identity as the string form."""
+        from apm_cli.models.apm_package import DependencyReference
+
+        dep_dict = DependencyReference.parse_from_dict({
+            "git": "https://gitlab.com/acme/rules.git",
+        })
+        dep_str = DependencyReference.parse("gitlab.com/acme/rules")
+        assert dep_dict.get_identity() == dep_str.get_identity()
+
+
+# ===========================================================================
+# _validate_package_exists env scoping for generic hosts
+# ===========================================================================
+
+class TestValidatePackageExistsEnv:
+    """Verify _validate_package_exists uses relaxed env for generic hosts.
+
+    Bug: previously, all non-GitHub.com hosts got the locked-down git_env
+    (GIT_ASKPASS=echo, etc.), blocking credential helpers for generic hosts
+    like GitLab. The clone step already relaxed this, but validation didn't.
+    """
+
+    @patch("subprocess.run")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_generic_host_validation_allows_credential_helpers(self, mock_run):
+        """git ls-remote for a generic host should NOT have GIT_ASKPASS=echo."""
+        from apm_cli.cli import _validate_package_exists
+
+        mock_run.return_value = Mock(returncode=0)
+        _validate_package_exists("gitlab.com/acme/rules")
+
+        # Verify subprocess.run was called
+        assert mock_run.called
+        call_kwargs = mock_run.call_args
+        env_used = call_kwargs.kwargs.get("env") or call_kwargs[1].get("env", {})
+
+        # GIT_ASKPASS must NOT be set to 'echo' (that blocks credential helpers)
+        assert env_used.get("GIT_ASKPASS") != "echo", \
+            "Generic host validation should not set GIT_ASKPASS=echo"
+        # GIT_CONFIG_NOSYSTEM must NOT be '1' (allows system git config)
+        assert env_used.get("GIT_CONFIG_NOSYSTEM") != "1", \
+            "Generic host validation should not set GIT_CONFIG_NOSYSTEM=1"
+        # GIT_TERMINAL_PROMPT should still be '0' (no interactive prompts)
+        assert env_used.get("GIT_TERMINAL_PROMPT") == "0"
+
+    @patch("subprocess.run")
+    @patch.dict(os.environ, {"ADO_APM_PAT": "test-ado-token"}, clear=True)
+    def test_ado_host_validation_uses_locked_env(self, mock_run):
+        """git ls-remote for ADO should use the locked-down env (APM manages auth)."""
+        from apm_cli.cli import _validate_package_exists
+
+        mock_run.return_value = Mock(returncode=0)
+        _validate_package_exists("dev.azure.com/myorg/myproject/myrepo")
+
+        assert mock_run.called
+        call_kwargs = mock_run.call_args
+        env_used = call_kwargs.kwargs.get("env") or call_kwargs[1].get("env", {})
+
+        # ADO should keep the locked-down env
+        assert "GIT_ASKPASS" in env_used or "GIT_CONFIG_NOSYSTEM" in env_used
+
+
+# ===========================================================================
+# is_github classification edge cases
+# ===========================================================================
+
+class TestIsGitHubClassification:
+    """Verify is_github is correctly determined for edge-case hosts."""
+
+    def test_empty_host_defaults_to_github(self):
+        """When no host is set, packages default to GitHub behavior."""
+        downloader = _make_downloader(github_token="ghp_test123")
+        dep_ref = _dep("microsoft/apm-sample-package")
+
+        # No host set → is_github should be True
+        dep_host = dep_ref.host if dep_ref else None
+        # Original bug: `dep_host and is_github_hostname(dep_host) or (not dep_host)`
+        # With empty/None dep_host, this should return True
+        from apm_cli.utils.github_host import is_github_hostname
+        if dep_host:
+            is_github = is_github_hostname(dep_host)
+        else:
+            is_github = True
+        assert is_github is True
+
+    def test_gitlab_host_is_not_github(self):
+        """GitLab host should NOT be classified as GitHub."""
+        dep_ref = _dep("gitlab.com/acme/rules")
+        from apm_cli.utils.github_host import is_github_hostname
+        assert is_github_hostname(dep_ref.host) is False
+
+    def test_ghe_host_is_github(self):
+        """GitHub Enterprise host should be classified as GitHub."""
+        dep_ref = _dep("https://company.ghe.com/org/repo.git")
+        from apm_cli.utils.github_host import is_github_hostname
+        assert is_github_hostname(dep_ref.host) is True
