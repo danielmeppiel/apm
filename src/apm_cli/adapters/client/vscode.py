@@ -189,40 +189,27 @@ class VSCodeClientAdapter(MCPClientAdapter):
         
         # Check for packages information
         if "packages" in server_info and server_info["packages"]:
-            package = server_info["packages"][0]
-            runtime_hint = package.get("runtime_hint", "")
+            package = self._select_best_package(server_info["packages"])
+            runtime_hint = package.get("runtime_hint", "") if package else ""
+            registry_name = self._infer_registry_name(package) if package else ""
+            pkg_args = self._extract_package_args(package) if package else []
             
             # Handle npm packages
-            if runtime_hint == "npx" or "npm" in package.get("registry_name", "").lower():
-                # Get args directly from runtime_arguments
-                args = []
-                if "runtime_arguments" in package and package["runtime_arguments"]:
-                    for arg in package["runtime_arguments"]:
-                        if arg.get("is_required", False) and arg.get("value_hint"):
-                            args.append(arg.get("value_hint"))
-                
-                # Fallback if no runtime_arguments are provided
-                if not args and package.get("name"):
-                    args = [package.get("name")]
+            if runtime_hint == "npx" or registry_name == "npm":
+                package_name = package.get("name")
+                # Filter out package name from extracted args to avoid duplication
+                # (legacy runtime_arguments often include it as the first entry)
+                extra_args = [a for a in pkg_args if a != package_name] if pkg_args else []
                 
                 server_config = {
                     "type": "stdio",
                     "command": "npx",
-                    "args": args
+                    "args": ["-y", package_name] + extra_args
                 }
             
             # Handle docker packages
-            elif runtime_hint == "docker":
-                # Get args directly from runtime_arguments
-                args = []
-                if "runtime_arguments" in package and package["runtime_arguments"]:
-                    for arg in package["runtime_arguments"]:
-                        if arg.get("is_required", False) and arg.get("value_hint"):
-                            args.append(arg.get("value_hint"))
-                
-                # Fallback if no runtime_arguments are provided - use standard docker run command
-                if not args:
-                    args = ["run", "-i", "--rm", package.get("name")]
+            elif runtime_hint == "docker" or registry_name == "docker":
+                args = pkg_args if pkg_args else ["run", "-i", "--rm", package.get("name")]
                 
                 server_config = {
                     "type": "stdio",
@@ -231,31 +218,22 @@ class VSCodeClientAdapter(MCPClientAdapter):
                 }
             
             # Handle Python packages
-            elif runtime_hint in ["uvx", "pip", "python"] or "python" in runtime_hint or package.get("registry_name", "").lower() == "pypi":
+            elif runtime_hint in ["uvx", "pip", "python"] or "python" in runtime_hint or registry_name == "pypi":
                 # Determine the command based on runtime_hint
                 if runtime_hint == "uvx":
                     command = "uvx"
                 elif "python" in runtime_hint:
-                    # Use the specified Python path if it's a full path, otherwise default to python3
                     command = "python3" if runtime_hint in ["python", "pip"] else runtime_hint
                 else:
-                    command = "python3"
+                    command = "uvx"
                 
-                # Get args directly from runtime_arguments
-                args = []
-                if "runtime_arguments" in package and package["runtime_arguments"]:
-                    for arg in package["runtime_arguments"]:
-                        if arg.get("is_required", False) and arg.get("value_hint"):
-                            args.append(arg.get("value_hint"))
-                
-                # Fallback if no runtime_arguments are provided
-                if not args:
-                    if runtime_hint == "uvx":
-                        module_name = package.get("name", "").replace("mcp-server-", "")
-                        args = [f"mcp-server-{module_name}"]
-                    else:
-                        module_name = package.get("name", "").replace("mcp-server-", "").replace("-", "_")
-                        args = ["-m", f"mcp_server_{module_name}"]
+                if pkg_args:
+                    args = pkg_args
+                elif runtime_hint == "uvx" or command == "uvx":
+                    args = [package.get("name", "")]
+                else:
+                    module_name = package.get("name", "").replace("mcp-server-", "").replace("-", "_")
+                    args = ["-m", f"mcp_server_{module_name}"]
                 
                 server_config = {
                     "type": "stdio",
@@ -263,10 +241,21 @@ class VSCodeClientAdapter(MCPClientAdapter):
                     "args": args
                 }
             
+            # Generic fallback for packages with a runtime_hint (e.g. dotnet, nuget, mcpb)
+            elif package and runtime_hint:
+                args = pkg_args if pkg_args else [package.get("name", "")]
+                
+                server_config = {
+                    "type": "stdio",
+                    "command": runtime_hint,
+                    "args": args
+                }
+            
             # Add environment variables if present
-            if "environment_variables" in package and package["environment_variables"]:
+            env_vars = package.get("environment_variables") or package.get("environmentVariables") or []
+            if env_vars:
                 server_config["env"] = {}
-                for env_var in package["environment_variables"]:
+                for env_var in env_vars:
                     if "name" in env_var:
                         # Convert variable name to lowercase and replace underscores with hyphens for VS Code convention
                         input_var_name = env_var["name"].lower().replace("_", "-")
@@ -309,8 +298,85 @@ class VSCodeClientAdapter(MCPClientAdapter):
                     }
             # If no packages AND no endpoints/remotes, fail with clear error
             else:
+                packages = server_info.get("packages", [])
+                if packages:
+                    inferred = [self._infer_registry_name(p) or p.get("name", "unknown") for p in packages]
+                    raise ValueError(
+                        f"No supported transport for VS Code runtime. "
+                        f"Server '{server_info.get('name', 'unknown')}' provides stdio packages "
+                        f"({', '.join(inferred)}) but none could be mapped to a VS Code configuration. "
+                        f"Supported package types: npm, pypi, docker.")
                 raise ValueError(f"MCP server has incomplete configuration in registry - no package information or remote endpoints available. "
-                               f"This appears to be a temporary registry issue. "
                                f"Server: {server_info.get('name', 'unknown')}")
         
         return server_config, input_vars
+
+    @staticmethod
+    def _extract_package_args(package):
+        """Extract positional arguments from a package entry.
+        
+        The MCP registry API uses ``package_arguments`` (with ``type``/``value``
+        pairs).  Older or synthetic entries may use ``runtime_arguments``
+        (with ``is_required``/``value_hint``).  This method normalises both
+        formats into a flat list of argument strings.
+        
+        Args:
+            package (dict): A single package entry.
+            
+        Returns:
+            list[str]: Ordered argument strings, may be empty.
+        """
+        if not package:
+            return []
+        
+        # Prefer package_arguments (current API format)
+        pkg_args = package.get("package_arguments") or []
+        if pkg_args:
+            args = []
+            for arg in pkg_args:
+                if isinstance(arg, dict):
+                    value = arg.get("value", "")
+                    if value:
+                        args.append(value)
+            if args:
+                return args
+        
+        # Fall back to runtime_arguments (legacy / synthetic format)
+        rt_args = package.get("runtime_arguments") or []
+        if rt_args:
+            args = []
+            for arg in rt_args:
+                if isinstance(arg, dict):
+                    if arg.get("is_required", False) and arg.get("value_hint"):
+                        args.append(arg["value_hint"])
+            if args:
+                return args
+        
+        return []
+
+    def _select_best_package(self, packages):
+        """Select the best package for VS Code installation from available packages.
+        
+        Prioritizes packages in order: npm, pypi, docker, then others.
+        Uses ``_infer_registry_name`` so selection works even when the
+        API returns an empty ``registry_name``.
+        
+        Args:
+            packages (list): List of package dictionaries.
+            
+        Returns:
+            dict: Best package to use, or None if no suitable package found.
+        """
+        priority_order = ["npm", "pypi", "docker"]
+        
+        for target in priority_order:
+            for package in packages:
+                if self._infer_registry_name(package) == target:
+                    return package
+        
+        # Fall back to any package that has a runtime_hint
+        for package in packages:
+            if package.get("runtime_hint"):
+                return package
+        
+        return packages[0] if packages else None

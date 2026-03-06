@@ -512,7 +512,28 @@ apm compile
 
 ## MCP (Model Context Protocol) Integration
 
-APM provides first-class support for MCP servers:
+APM provides first-class support for MCP servers, including registry-based servers that publish stdio packages (npm, pypi, docker) or HTTP/SSE remote endpoints.
+
+### Package Type Inference
+
+The MCP registry API may return empty `registry_name` fields for packages. APM infers the package type from:
+
+1. Explicit `registry_name` (when provided)
+2. `runtime_hint` (e.g. `npx` → npm, `uvx` → pypi)
+3. Package name patterns (e.g. `@scope/name` → npm, `ghcr.io/…` → docker, `PascalCase.Name` → nuget)
+
+### Supported Package Types
+
+When installing registry MCP servers, APM selects the best available package for each runtime:
+
+| Package Registry | VS Code | Copilot CLI |
+|-----------------|---------|-------------|
+| npm | Yes (npx) | Yes (npx) |
+| pypi | Yes (uvx/python3) | Yes (uvx) |
+| docker | Yes | Yes |
+| homebrew | — | Yes |
+| Other (with runtime_hint) | Yes (generic) | Yes (generic) |
+| HTTP/SSE remotes | Yes | Yes |
 
 ### MCP Server Management
 
