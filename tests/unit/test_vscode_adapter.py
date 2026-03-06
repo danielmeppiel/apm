@@ -150,7 +150,7 @@ class TestVSCodeClientAdapter(unittest.TestCase):
         # Verify the server configuration
         self.assertEqual(updated_config["servers"]["fetch"]["type"], "stdio")
         self.assertEqual(updated_config["servers"]["fetch"]["command"], "npx")
-        self.assertEqual(updated_config["servers"]["fetch"]["args"], ["@mcp/fetch"])
+        self.assertEqual(updated_config["servers"]["fetch"]["args"], ["-y", "@mcp/fetch"])
     
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_configure_mcp_server_update_existing(self, mock_get_path):
@@ -189,7 +189,7 @@ class TestVSCodeClientAdapter(unittest.TestCase):
         # Verify the server configuration
         self.assertEqual(updated_config["servers"]["fetch"]["type"], "stdio")
         self.assertEqual(updated_config["servers"]["fetch"]["command"], "npx")
-        self.assertEqual(updated_config["servers"]["fetch"]["args"], ["@mcp/fetch"])
+        self.assertEqual(updated_config["servers"]["fetch"]["args"], ["-y", "@mcp/fetch"])
     
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_configure_mcp_server_empty_url(self, mock_get_path):
@@ -322,6 +322,406 @@ class TestVSCodeClientAdapter(unittest.TestCase):
         self.assertIn("my-private-srv", config["servers"])
         self.assertEqual(config["servers"]["my-private-srv"]["type"], "http")
         self.assertEqual(config["servers"]["my-private-srv"]["url"], "http://localhost:8787/")
+
+
+class TestVSCodeSelectBestPackage(unittest.TestCase):
+    """Test cases for _select_best_package logic."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher.start()
+        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher.start()
+        self.adapter = VSCodeClientAdapter()
+
+    def tearDown(self):
+        self.mock_registry_patcher.stop()
+        self.mock_integration_patcher.stop()
+
+    def test_prefers_npm_over_nuget(self):
+        """npm should be selected over nuget when both are available."""
+        packages = [
+            {"name": "Azure.Mcp", "registry_name": "nuget", "runtime_hint": "dotnet"},
+            {"name": "@azure/mcp", "registry_name": "npm", "runtime_hint": "npx"},
+            {"name": "msmcp-azure", "registry_name": "pypi", "runtime_hint": "uvx"},
+        ]
+        result = self.adapter._select_best_package(packages)
+        self.assertEqual(result["registry_name"], "npm")
+
+    def test_prefers_pypi_when_no_npm(self):
+        """pypi should be selected when npm is not available."""
+        packages = [
+            {"name": "Azure.Mcp", "registry_name": "nuget", "runtime_hint": "dotnet"},
+            {"name": "msmcp-azure", "registry_name": "pypi", "runtime_hint": "uvx"},
+        ]
+        result = self.adapter._select_best_package(packages)
+        self.assertEqual(result["registry_name"], "pypi")
+
+    def test_falls_back_to_runtime_hint(self):
+        """Falls back to any package with runtime_hint when no priority match."""
+        packages = [
+            {"name": "Azure.Mcp", "registry_name": "nuget", "runtime_hint": "dotnet"},
+            {"name": "azure-mcp-linux-x64", "registry_name": "mcpb", "runtime_hint": ""},
+        ]
+        result = self.adapter._select_best_package(packages)
+        self.assertEqual(result["name"], "Azure.Mcp")
+
+    def test_returns_first_if_no_match(self):
+        """Returns first package if no priority or runtime_hint match."""
+        packages = [
+            {"name": "azure-mcp-linux-x64", "registry_name": "mcpb"},
+        ]
+        result = self.adapter._select_best_package(packages)
+        self.assertEqual(result["name"], "azure-mcp-linux-x64")
+
+    def test_returns_none_for_empty_list(self):
+        self.assertIsNone(self.adapter._select_best_package([]))
+
+
+class TestVSCodeStdioRegistryPackages(unittest.TestCase):
+    """Test that VS Code adapter correctly handles stdio-only registry servers."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.vscode_dir = os.path.join(self.temp_dir.name, ".vscode")
+        os.makedirs(self.vscode_dir, exist_ok=True)
+        self.temp_path = os.path.join(self.vscode_dir, "mcp.json")
+        with open(self.temp_path, "w") as f:
+            json.dump({"servers": {}}, f)
+
+        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_class = self.mock_registry_patcher.start()
+        self.mock_registry = MagicMock()
+        self.mock_registry_class.return_value = self.mock_registry
+
+        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher.start()
+
+    def tearDown(self):
+        import gc; gc.collect()
+        import time; time.sleep(0.1)
+        self.mock_registry_patcher.stop()
+        self.mock_integration_patcher.stop()
+        self.temp_dir.cleanup()
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_stdio_npm_selected_over_nuget(self, mock_get_path):
+        """Reproduces the reported bug: server has nuget+npm+pypi+mcpb packages, no remotes."""
+        mock_get_path.return_value = self.temp_path
+
+        # Simulates com.microsoft/azure registry metadata
+        server_info = {
+            "id": "azure-mcp-id",
+            "name": "azure",
+            "description": "Azure MCP server",
+            "packages": [
+                {"name": "Azure.Mcp", "version": "2.0.0-beta.24", "registry_name": "nuget",
+                 "runtime_hint": "dotnet", "runtime_arguments": [
+                     {"is_required": True, "value_hint": "server"},
+                     {"is_required": True, "value_hint": "start"}]},
+                {"name": "@azure/mcp", "version": "2.0.0-beta.24", "registry_name": "npm",
+                 "runtime_hint": "npx", "runtime_arguments": [
+                     {"is_required": True, "value_hint": "server"},
+                     {"is_required": True, "value_hint": "start"}]},
+                {"name": "msmcp-azure", "version": "2.0.0-beta.24", "registry_name": "pypi",
+                 "runtime_hint": "uvx", "runtime_arguments": [
+                     {"is_required": True, "value_hint": "server"},
+                     {"is_required": True, "value_hint": "start"}]},
+                {"name": "azure-mcp-linux-x64", "version": "2.0.0-beta.24", "registry_name": "mcpb",
+                 "runtime_hint": "", "runtime_arguments": []},
+            ]
+            # No remotes key — server only provides stdio packages
+        }
+
+        self.mock_registry.find_server_by_reference.return_value = server_info
+        adapter = VSCodeClientAdapter()
+
+        result = adapter.configure_mcp_server(
+            server_url="com.microsoft/azure",
+            server_name="azure",
+        )
+
+        self.assertTrue(result)
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        server = config["servers"]["azure"]
+        self.assertEqual(server["type"], "stdio")
+        self.assertEqual(server["command"], "npx")
+        self.assertEqual(server["args"], ["-y", "server", "start"])
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_generic_runtime_hint_fallback(self, mock_get_path):
+        """Server with only nuget package should use generic fallback via runtime_hint."""
+        mock_get_path.return_value = self.temp_path
+
+        server_info = {
+            "id": "nuget-only-id",
+            "name": "nuget-server",
+            "packages": [
+                {"name": "MyServer.Mcp", "registry_name": "nuget",
+                 "runtime_hint": "dotnet", "runtime_arguments": [
+                     {"is_required": True, "value_hint": "run"},
+                     {"is_required": True, "value_hint": "--project"},
+                     {"is_required": True, "value_hint": "MyServer.Mcp"}]}
+            ]
+        }
+        self.mock_registry.find_server_by_reference.return_value = server_info
+        adapter = VSCodeClientAdapter()
+
+        result = adapter.configure_mcp_server(
+            server_url="nuget-server",
+            server_name="nuget-server",
+        )
+
+        self.assertTrue(result)
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        server = config["servers"]["nuget-server"]
+        self.assertEqual(server["type"], "stdio")
+        self.assertEqual(server["command"], "dotnet")
+        self.assertEqual(server["args"], ["run", "--project", "MyServer.Mcp"])
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_error_message_when_packages_exist_but_none_supported(self, mock_get_path):
+        """Error message should list available registries, not claim 'no package information'."""
+        mock_get_path.return_value = self.temp_path
+        adapter = VSCodeClientAdapter()
+
+        server_info = {
+            "id": "binary-only-id",
+            "name": "binary-only",
+            "packages": [
+                {"name": "binary-linux-x64", "registry_name": "mcpb"},
+                {"name": "binary-linux-arm64", "registry_name": "mcpb"},
+            ]
+        }
+
+        with self.assertRaises(ValueError) as ctx:
+            adapter._format_server_config(server_info)
+
+        self.assertIn("No supported transport for VS Code runtime", str(ctx.exception))
+        self.assertIn("mcpb", str(ctx.exception))
+        self.assertNotIn("no package information", str(ctx.exception))
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_error_message_when_no_packages_and_no_remotes(self, mock_get_path):
+        """Truly empty server should still report 'no package information'."""
+        mock_get_path.return_value = self.temp_path
+        adapter = VSCodeClientAdapter()
+
+        with self.assertRaises(ValueError) as ctx:
+            adapter._format_server_config({"name": "empty-server"})
+
+        self.assertIn("no package information", str(ctx.exception))
+
+
+class TestVSCodeInferRegistryName(unittest.TestCase):
+    """Test _infer_registry_name with various package metadata patterns."""
+
+    def setUp(self):
+        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher.start()
+        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher.start()
+
+    def tearDown(self):
+        self.mock_registry_patcher.stop()
+        self.mock_integration_patcher.stop()
+
+    def test_explicit_registry_name(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "pkg", "registry_name": "npm"}), "npm")
+
+    def test_empty_registry_name_scoped_npm(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "@azure/mcp", "registry_name": ""}), "npm")
+
+    def test_empty_registry_name_runtime_hint_npx(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "some-pkg", "registry_name": "", "runtime_hint": "npx"}), "npm")
+
+    def test_empty_registry_name_runtime_hint_uvx(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "some-pkg", "registry_name": "", "runtime_hint": "uvx"}), "pypi")
+
+    def test_empty_registry_name_docker_image(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "ghcr.io/org/img", "registry_name": ""}), "docker")
+
+    def test_empty_registry_name_nuget_pascal_case(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "Azure.Mcp", "registry_name": ""}), "nuget")
+
+    def test_empty_registry_name_mcpb_url(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "https://example.com/bin.mcpb", "registry_name": ""}), "mcpb")
+
+    def test_unknown_returns_empty(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "unknown-pkg", "registry_name": ""}), "")
+
+    def test_none_package(self):
+        self.assertEqual(VSCodeClientAdapter._infer_registry_name(None), "")
+
+
+class TestVSCodeExtractPackageArgs(unittest.TestCase):
+    """Test _extract_package_args with both API formats."""
+
+    def setUp(self):
+        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher.start()
+        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher.start()
+
+    def tearDown(self):
+        self.mock_registry_patcher.stop()
+        self.mock_integration_patcher.stop()
+
+    def test_package_arguments_api_format(self):
+        pkg = {
+            "name": "@azure/mcp",
+            "package_arguments": [
+                {"type": "positional", "value": "server"},
+                {"type": "positional", "value": "start"},
+            ],
+        }
+        self.assertEqual(VSCodeClientAdapter._extract_package_args(pkg), ["server", "start"])
+
+    def test_runtime_arguments_legacy_format(self):
+        pkg = {
+            "name": "@azure/mcp",
+            "runtime_arguments": [
+                {"is_required": True, "value_hint": "server"},
+                {"is_required": True, "value_hint": "start"},
+            ],
+        }
+        self.assertEqual(VSCodeClientAdapter._extract_package_args(pkg), ["server", "start"])
+
+    def test_prefers_package_arguments_over_runtime(self):
+        pkg = {
+            "name": "pkg",
+            "package_arguments": [{"type": "positional", "value": "run"}],
+            "runtime_arguments": [{"is_required": True, "value_hint": "old"}],
+        }
+        self.assertEqual(VSCodeClientAdapter._extract_package_args(pkg), ["run"])
+
+    def test_empty_returns_empty(self):
+        self.assertEqual(VSCodeClientAdapter._extract_package_args({}), [])
+        self.assertEqual(VSCodeClientAdapter._extract_package_args(None), [])
+
+
+class TestVSCodeRealApiFormat(unittest.TestCase):
+    """Test with the actual MCP registry API response format (empty registry_name, package_arguments)."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.vscode_dir = os.path.join(self.temp_dir.name, ".vscode")
+        os.makedirs(self.vscode_dir, exist_ok=True)
+        self.temp_path = os.path.join(self.vscode_dir, "mcp.json")
+        with open(self.temp_path, "w") as f:
+            json.dump({"servers": {}}, f)
+
+        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_class = self.mock_registry_patcher.start()
+        self.mock_registry = MagicMock()
+        self.mock_registry_class.return_value = self.mock_registry
+
+        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher.start()
+
+    def tearDown(self):
+        import gc; gc.collect()
+        import time; time.sleep(0.1)
+        self.mock_registry_patcher.stop()
+        self.mock_integration_patcher.stop()
+        self.temp_dir.cleanup()
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_azure_mcp_real_api_format(self, mock_get_path):
+        """Test with the actual registry API response for Azure MCP (empty registry_name)."""
+        mock_get_path.return_value = self.temp_path
+
+        # Matches the real API response: registry_name is empty, uses package_arguments
+        server_info = {
+            "id": "d3965c5a53be4f8bab7921b9d0511419",
+            "name": "azure",
+            "description": "Azure MCP Server",
+            "packages": [
+                {
+                    "name": "@azure/mcp",
+                    "version": "2.0.0-beta.24",
+                    "registry_name": "",
+                    "package_arguments": [
+                        {"type": "positional", "value": "server"},
+                        {"type": "positional", "value": "start"},
+                    ],
+                },
+                {
+                    "name": "msmcp-azure",
+                    "version": "2.0.0-beta.24",
+                    "registry_name": "",
+                    "package_arguments": [
+                        {"type": "positional", "value": "server"},
+                        {"type": "positional", "value": "start"},
+                    ],
+                },
+                {
+                    "name": "Azure.Mcp",
+                    "version": "2.0.0-beta.24",
+                    "registry_name": "",
+                    "package_arguments": [],
+                },
+            ],
+        }
+
+        self.mock_registry.find_server_by_reference.return_value = server_info
+        adapter = VSCodeClientAdapter()
+
+        result = adapter.configure_mcp_server(
+            server_url="com.microsoft/azure",
+            server_name="azure",
+        )
+
+        self.assertTrue(result)
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        server = config["servers"]["azure"]
+        self.assertEqual(server["type"], "stdio")
+        self.assertEqual(server["command"], "npx")
+        # npm inferred from @azure/mcp scoped name, -y flag added, pkg args appended
+        self.assertEqual(server["args"], ["-y", "server", "start"])
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_pypi_inferred_from_name_pattern(self, mock_get_path):
+        """PyPI package selected when only non-scoped simple names available."""
+        mock_get_path.return_value = self.temp_path
+
+        server_info = {
+            "id": "abc123",
+            "name": "my-pypi-server",
+            "packages": [
+                {
+                    "name": "my-mcp-server",
+                    "version": "1.0.0",
+                    "registry_name": "",
+                    "runtime_hint": "uvx",
+                    "package_arguments": [],
+                },
+            ],
+        }
+
+        self.mock_registry.find_server_by_reference.return_value = server_info
+        adapter = VSCodeClientAdapter()
+
+        result = adapter.configure_mcp_server(
+            server_url="my-pypi-server",
+            server_name="my-pypi-server",
+        )
+
+        self.assertTrue(result)
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        server = config["servers"]["my-pypi-server"]
+        self.assertEqual(server["type"], "stdio")
+        self.assertEqual(server["command"], "uvx")
+        self.assertEqual(server["args"], ["my-mcp-server"])
 
 
 if __name__ == "__main__":
