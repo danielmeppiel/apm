@@ -40,6 +40,7 @@ When you run `apm install owner/repo/plugin-name`:
    - `agents/` → `.apm/agents/`
    - `skills/` → `.apm/skills/`
    - `commands/` → `.apm/prompts/`
+    - `*.md` command files are normalized to `*.prompt.md` for prompt/command integration
 4. **Synthesize** - `apm.yml` is automatically generated from plugin metadata
 5. **Integrate** - The plugin is now a standard dependency with:
    - Version pinning via `apm.lock`

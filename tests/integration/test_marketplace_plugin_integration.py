@@ -11,7 +11,20 @@ import json
 import shutil
 from pathlib import Path
 import pytest
-from src.apm_cli.models.apm_package import validate_apm_package, PackageType
+from datetime import datetime
+
+from apm_cli.integration.agent_integrator import AgentIntegrator
+from apm_cli.integration.command_integrator import CommandIntegrator
+from apm_cli.integration.prompt_integrator import PromptIntegrator
+from apm_cli.integration.skill_integrator import SkillIntegrator
+from src.apm_cli.models.apm_package import (
+    APMPackage,
+    GitReferenceType,
+    PackageInfo,
+    PackageType,
+    ResolvedReference,
+    validate_apm_package,
+)
 
 
 class TestPluginIntegration:
@@ -170,7 +183,7 @@ class TestPluginIntegration:
         assert result3.package.name == "Claude Plugin"
         assert result3.package.version == "3.0.0"
     
-    def test_plugin_detection_and_structure_mapping(self):
+    def test_plugin_detection_and_structure_mapping(self, tmp_path):
         """Test that a plugin is detected and mapped correctly using fixtures."""
         # Use the mock plugin fixture
         fixture_path = Path(__file__).parent.parent / "fixtures" / "mock-marketplace-plugin"
@@ -178,8 +191,11 @@ class TestPluginIntegration:
         if not fixture_path.exists():
             pytest.skip("Mock marketplace plugin fixture not available")
         
+        plugin_dir = tmp_path / "mock-marketplace-plugin"
+        shutil.copytree(fixture_path, plugin_dir)
+
         # Validate the plugin package
-        result = validate_apm_package(fixture_path)
+        result = validate_apm_package(plugin_dir)
         
         # Verify package type detection
         assert result.package_type == PackageType.MARKETPLACE_PLUGIN, \
@@ -195,11 +211,11 @@ class TestPluginIntegration:
         assert result.package.description == "A test marketplace plugin for APM integration testing"
         
         # Verify apm.yml was synthesized
-        apm_yml_path = fixture_path / "apm.yml"
+        apm_yml_path = plugin_dir / "apm.yml"
         assert apm_yml_path.exists(), "apm.yml should be synthesized"
         
         # Verify .apm directory structure was created
-        apm_dir = fixture_path / ".apm"
+        apm_dir = plugin_dir / ".apm"
         assert apm_dir.exists(), ".apm directory should exist"
         
         # Verify artifact mapping
@@ -213,13 +229,7 @@ class TestPluginIntegration:
         
         prompts_dir = apm_dir / "prompts"
         assert prompts_dir.exists(), "commands/ should be mapped to .apm/prompts/"
-        assert (prompts_dir / "test-command.md").exists(), "Command should be mapped to prompts"
-        
-        # Cleanup synthesized files for next test run
-        if apm_yml_path.exists():
-            apm_yml_path.unlink()
-        if apm_dir.exists():
-            shutil.rmtree(apm_dir)
+        assert (prompts_dir / "test-command.prompt.md").exists(), "Command should be mapped to prompts"
     
     def test_plugin_with_dependencies(self, tmp_path):
         """Test plugin with dependencies are handled correctly."""
@@ -345,3 +355,56 @@ class TestPluginIntegration:
         # .apm directory should still be created even if empty
         apm_dir = plugin_dir / ".apm"
         assert apm_dir.exists()
+
+    def test_plugin_install_is_immediately_pickup_ready_for_vscode_and_copilot(self, tmp_path):
+        """Plugin install should populate .github/.claude targets consumed by editors."""
+        fixture_path = Path(__file__).parent.parent / "fixtures" / "mock-marketplace-plugin"
+        plugin_dir = tmp_path / "installed-plugin"
+        shutil.copytree(fixture_path, plugin_dir)
+
+        # Normalize plugin.json into apm.yml + .apm/
+        validation = validate_apm_package(plugin_dir)
+        assert validation.is_valid
+        assert validation.package_type == PackageType.MARKETPLACE_PLUGIN
+
+        package = validation.package
+        assert isinstance(package, APMPackage)
+
+        package_info = PackageInfo(
+            package=package,
+            install_path=plugin_dir,
+            resolved_reference=ResolvedReference(
+                original_ref="main",
+                ref_type=GitReferenceType.BRANCH,
+                resolved_commit="abcdef1234567890",
+                ref_name="main",
+            ),
+            installed_at=datetime.now().isoformat(),
+            package_type=validation.package_type,
+        )
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        prompt_result = PromptIntegrator().integrate_package_prompts(package_info, project_root)
+        agent_result = AgentIntegrator().integrate_package_agents(package_info, project_root)
+        skill_result = SkillIntegrator().integrate_package_skill(package_info, project_root)
+        claude_agent_result = AgentIntegrator().integrate_package_agents_claude(package_info, project_root)
+        command_result = CommandIntegrator().integrate_package_commands(package_info, project_root)
+
+        # VS Code / Copilot pickup locations
+        assert prompt_result.files_integrated == 1
+        assert (project_root / ".github" / "prompts" / "test-command.prompt.md").exists()
+
+        assert agent_result.files_integrated == 1
+        assert (project_root / ".github" / "agents" / "test-agent.agent.md").exists()
+
+        assert skill_result.skill_created or skill_result.skill_skipped
+        assert (project_root / ".github" / "skills" / "test-skill" / "SKILL.md").exists()
+
+        # Claude/Copilot-compatible locations produced during install path
+        assert claude_agent_result.files_integrated == 1
+        assert (project_root / ".claude" / "agents" / "test-agent.md").exists()
+
+        assert command_result.files_integrated == 1
+        assert (project_root / ".claude" / "commands" / "test-command.md").exists()

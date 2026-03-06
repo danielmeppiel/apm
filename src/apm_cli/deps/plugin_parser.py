@@ -107,7 +107,24 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Dict[str, 
         target_prompts = apm_dir / "prompts"
         if target_prompts.exists():
             shutil.rmtree(target_prompts)
-        shutil.copytree(source_commands, target_prompts)
+        target_prompts.mkdir(parents=True, exist_ok=True)
+
+        # Prompt integration looks for *.prompt.md files. Claude plugin commands
+        # are commonly *.md, so normalize them while preserving subdirectories.
+        for source_file in source_commands.rglob("*"):
+            if not source_file.is_file():
+                continue
+
+            relative_path = source_file.relative_to(source_commands)
+            target_path = target_prompts / relative_path
+
+            if source_file.name.endswith(".prompt.md"):
+                pass
+            elif source_file.suffix == ".md":
+                target_path = target_path.with_name(f"{source_file.stem}.prompt.md")
+
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_file, target_path)
 
 
 def _generate_apm_yml(manifest: Dict[str, Any]) -> str:
