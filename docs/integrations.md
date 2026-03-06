@@ -153,6 +153,9 @@ apm install microsoft/apm-sample-package
 # Agents are automatically integrated to:
 # .github/agents/*.agent.md (verbatim copy)
 
+# Instructions are automatically integrated to:
+# .github/instructions/*.instructions.md (verbatim copy, original filename)
+
 # Hooks are automatically integrated to:
 # .github/hooks/*.json (hook definitions with rewritten script paths)
 ```
@@ -166,15 +169,16 @@ apm install microsoft/apm-sample-package
 
 **Integration Flow**:
 1. Run `apm install` to fetch APM packages
-2. APM automatically creates `.github/prompts/`, `.github/agents/`, and `.github/hooks/` directories if needed
-3. Discovers `.prompt.md`, `.agent.md`, and hook `.json` files in each package
+2. APM automatically creates `.github/prompts/`, `.github/agents/`, `.github/instructions/`, and `.github/hooks/` directories as needed
+3. Discovers `.prompt.md`, `.agent.md`, `.instructions.md`, and hook `.json` files in each package
 4. Copies prompts to `.github/prompts/` with their original filename (e.g., `accessibility-audit.prompt.md`)
 5. Copies agents to `.github/agents/` with their original filename (e.g., `security.agent.md`)
-6. Copies hooks to `.github/hooks/` with their original filename and copies referenced scripts
-7. If a local file already exists with the same name, skips with a warning (use `--force` to overwrite)
-8. Records all deployed files in `apm.lock` under `deployed_files` per package
-9. VSCode automatically loads all prompts, agents, and hooks for your coding agents
-10. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
+6. Copies instructions to `.github/instructions/` with their original filename (e.g., `python.instructions.md`)
+7. Copies hooks to `.github/hooks/` with their original filename and copies referenced scripts
+8. If a local file already exists with the same name, skips with a warning (use `--force` to overwrite)
+9. Records all deployed files in `apm.lock` under `deployed_files` per package
+10. VSCode automatically loads all prompts, agents, instructions, and hooks for your coding agents
+11. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
 
 **Intent-First Discovery**:
 Files keep their original names for natural autocomplete in VSCode:
@@ -196,6 +200,9 @@ apm install microsoft/apm-sample-package
 # Agents:
 # .github/agents/design-reviewer.agent.md        ✓ Available as chat mode
 # .github/agents/accessibility-expert.agent.md   ✓ Available as chat mode
+
+# Instructions:
+# .github/instructions/python.instructions.md         ✓ Applied to matching files
 
 # Use with natural autocomplete:
 # Type: /design
@@ -332,7 +339,7 @@ apm compile --target vscode
 # Creates: AGENTS.md (instructions only)
 ```
 
-> **Remember**: `apm compile` generates instruction files only. Use `apm install` to integrate prompts, agents, commands, and skills from packages.
+> **Remember**: `apm compile` generates instruction files only. Use `apm install` to integrate prompts, agents, instructions, commands, and skills from packages.
 
 ### Claude Command Format
 
@@ -479,6 +486,7 @@ apm install microsoft/apm-sample-package
 # .github/prompts/*.prompt.md (integrated prompts)
 # .github/agents/*.agent.md (integrated agents)
 # .github/agents/ or .github/chatmodes/ (AI personas - both formats supported)
+# .github/instructions/*.instructions.md (file-pattern rules from packages)
 # .github/instructions/ (file-pattern rules)
 ```
 

@@ -134,6 +134,7 @@ class BaseIntegrator:
             "commands": set(),
             "skills": set(),
             "hooks": set(),
+            "instructions": set(),
         }
         for p in managed_files:
             if p.startswith(".github/prompts/"):
@@ -148,6 +149,8 @@ class BaseIntegrator:
                 buckets["skills"].add(p)
             elif p.startswith((".github/hooks/", ".claude/hooks/")):
                 buckets["hooks"].add(p)
+            elif p.startswith(".github/instructions/"):
+                buckets["instructions"].add(p)
         return buckets
 
     @staticmethod

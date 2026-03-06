@@ -409,7 +409,12 @@ def init(ctx, project_name, yes):
 
 
 def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
-    """Validate packages exist and can be accessed, then add to apm.yml dependencies section."""
+    """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
+    
+    Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
+    is canonicalized before storage. Default host (github.com) is stripped;
+    non-default hosts are preserved. Duplicates are detected by identity.
+    """
     import subprocess
     import tempfile
     from pathlib import Path
@@ -435,27 +440,51 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     current_deps = data["dependencies"]["apm"] or []
     validated_packages = []
 
+    # Build identity set from existing deps for duplicate detection
+    existing_identities = builtins.set()
+    for dep_entry in current_deps:
+        try:
+            if isinstance(dep_entry, str):
+                ref = DependencyReference.parse(dep_entry)
+            elif isinstance(dep_entry, dict):
+                ref = DependencyReference.parse_from_dict(dep_entry)
+            else:
+                continue
+            existing_identities.add(ref.get_identity())
+        except (ValueError, TypeError, AttributeError, KeyError):
+            continue
+
     # First, validate all packages
     _rich_info(f"Validating {len(packages)} package(s)...")
 
     for package in packages:
-        # Validate package format (should be owner/repo)
+        # Validate package format (should be owner/repo or a git URL)
         if "/" not in package:
             _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
             continue
 
-        # Check if package is already in dependencies
-        already_in_deps = package in current_deps
+        # Canonicalize input
+        try:
+            dep_ref = DependencyReference.parse(package)
+            canonical = dep_ref.to_canonical()
+            identity = dep_ref.get_identity()
+        except ValueError as e:
+            _rich_error(f"Invalid package: {package} — {e}")
+            continue
+
+        # Check if package is already in dependencies (by identity)
+        already_in_deps = identity in existing_identities
 
         # Validate package exists and is accessible
         if _validate_package_exists(package):
             if already_in_deps:
                 _rich_info(
-                    f"✓ {package} - already in apm.yml, ensuring installation..."
+                    f"✓ {canonical} - already in apm.yml, ensuring installation..."
                 )
             else:
-                validated_packages.append(package)
-                _rich_info(f"✓ {package} - accessible")
+                validated_packages.append(canonical)
+                existing_identities.add(identity)  # prevent duplicates within batch
+                _rich_info(f"✓ {canonical} - accessible")
         else:
             _rich_error(f"✗ {package} - not accessible or doesn't exist")
 
@@ -473,7 +502,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
             _rich_info(f"  + {pkg}")
         return validated_packages
 
-    # Add validated packages to dependencies
+    # Add validated packages to dependencies (already canonical)
     for package in validated_packages:
         current_deps.append(package)
         _rich_info(f"Added {package} to apm.yml")
@@ -514,6 +543,8 @@ def _validate_package_exists(package):
         # For Azure DevOps or GitHub Enterprise (non-github.com hosts),
         # use the downloader which handles authentication properly
         if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
+            from apm_cli.utils.github_host import is_github_hostname, is_azure_devops_hostname
+
             downloader = GitHubPackageDownloader()
             # Set the host
             if dep_ref.host:
@@ -524,14 +555,24 @@ def _validate_package_exists(package):
                 dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref
             )
 
-            # Use the downloader's git environment which has auth configured
+            # For generic hosts (not GitHub, not ADO), relax the env so native
+            # credential helpers (SSH keys, macOS Keychain, etc.) can work.
+            # This mirrors _clone_with_fallback() which does the same relaxation.
+            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
+            if is_generic:
+                validate_env = {k: v for k, v in downloader.git_env.items()
+                                if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
+                validate_env['GIT_TERMINAL_PROMPT'] = '0'
+            else:
+                validate_env = {**os.environ, **downloader.git_env}
+
             cmd = ["git", "ls-remote", "--heads", "--exit-code", package_url]
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={**os.environ, **downloader.git_env},
+                env=validate_env,
             )
             return result.returncode == 0
 
@@ -612,8 +653,15 @@ def _validate_package_exists(package):
     is_flag=True,
     help="Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)",
 )
+@click.option(
+    "--parallel-downloads",
+    type=int,
+    default=4,
+    show_default=True,
+    help="Max concurrent package downloads (0 to disable parallelism)",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -712,7 +760,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 # Otherwise install all from apm.yml
                 only_pkgs = builtins.list(packages) if packages else None
                 apm_count, prompt_count, agent_count = _install_apm_dependencies(
-                    apm_package, update, verbose, only_pkgs, force=force
+                    apm_package, update, verbose, only_pkgs, force=force,
+                    parallel_downloads=parallel_downloads,
                 )
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
@@ -1062,16 +1111,43 @@ def uninstall(ctx, packages, dry_run):
 
         # Validate which packages can be removed
         for package in packages:
-            # Validate package format (should be owner/repo)
+            # Validate package format (should be owner/repo or a git URL)
             if "/" not in package:
                 _rich_error(
                     f"Invalid package format: {package}. Use 'owner/repo' format."
                 )
                 continue
 
-            # Check if package exists in dependencies
-            if package in current_deps:
-                packages_to_remove.append(package)
+            # Match by identity: parse the user input and each apm.yml entry,
+            # compare using get_identity() which normalizes host differences.
+            matched_dep = None
+            try:
+                pkg_ref = DependencyReference.parse(package)
+                pkg_identity = pkg_ref.get_identity()
+            except Exception:
+                pkg_identity = package
+
+            for dep_entry in current_deps:
+                try:
+                    if isinstance(dep_entry, str):
+                        dep_ref = DependencyReference.parse(dep_entry)
+                    elif isinstance(dep_entry, dict):
+                        dep_ref = DependencyReference.parse_from_dict(dep_entry)
+                    else:
+                        continue
+                    if dep_ref.get_identity() == pkg_identity:
+                        matched_dep = dep_entry  # preserve original entry for removal
+                        break
+                except (ValueError, TypeError, AttributeError, KeyError):
+                    # Fallback: exact string match
+                    dep_str = dep_entry if isinstance(dep_entry, str) else str(dep_entry)
+                    if dep_str == package:
+                        matched_dep = dep_entry
+                        break
+                    pass
+
+            if matched_dep is not None:
+                packages_to_remove.append(matched_dep)
                 _rich_info(f"✓ {package} - found in apm.yml")
             else:
                 packages_not_found.append(package)
@@ -1326,6 +1402,7 @@ def uninstall(ctx, packages, dry_run):
         commands_cleaned = 0
         skills_cleaned = 0
         hooks_cleaned = 0
+        instructions_cleaned = 0
 
         try:
             from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
@@ -1334,6 +1411,7 @@ def uninstall(ctx, packages, dry_run):
             from apm_cli.integration.skill_integrator import SkillIntegrator
             from apm_cli.integration.command_integrator import CommandIntegrator
             from apm_cli.integration.hook_integrator import HookIntegrator
+            from apm_cli.integration.instruction_integrator import InstructionIntegrator
 
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             project_root = Path(".")
@@ -1385,12 +1463,20 @@ def uninstall(ctx, packages, dry_run):
                                                               managed_files=_buckets["hooks"] if _buckets else None)
             hooks_cleaned = result.get("files_removed", 0)
 
+            # Clean instructions (.github/instructions/)
+            if Path(".github/instructions").exists():
+                integrator = InstructionIntegrator()
+                result = integrator.sync_integration(apm_package, project_root,
+                                                     managed_files=_buckets["instructions"] if _buckets else None)
+                instructions_cleaned = result.get("files_removed", 0)
+
             # Phase 2: Re-integrate from remaining installed packages in apm_modules/
             prompt_integrator = PromptIntegrator()
             agent_integrator = AgentIntegrator()
             skill_integrator = SkillIntegrator()
             command_integrator = CommandIntegrator()
             hook_integrator_reint = HookIntegrator()
+            instruction_integrator = InstructionIntegrator()
 
             for dep in apm_package.get_apm_dependencies():
                 dep_ref = dep if hasattr(dep, 'repo_url') else None
@@ -1427,6 +1513,7 @@ def uninstall(ctx, packages, dry_run):
                         command_integrator.integrate_package_commands(pkg_info, project_root)
                     hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
                     hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
+                    instruction_integrator.integrate_package_instructions(pkg_info, project_root)
                 except Exception:
                     pass  # Best effort re-integration
 
@@ -1444,6 +1531,8 @@ def uninstall(ctx, packages, dry_run):
             _rich_info(f"✓ Cleaned up {commands_cleaned} command(s)")
         if hooks_cleaned > 0:
             _rich_info(f"✓ Cleaned up {hooks_cleaned} hook(s)")
+        if instructions_cleaned > 0:
+            _rich_info(f"✓ Cleaned up {instructions_cleaned} instruction(s)")
 
         # Final summary
         summary_lines = []
@@ -1473,6 +1562,7 @@ def _install_apm_dependencies(
     verbose: bool = False,
     only_packages: "builtins.list" = None,
     force: bool = False,
+    parallel_downloads: int = 4,
 ):
     """Install APM package dependencies.
 
@@ -1482,6 +1572,7 @@ def _install_apm_dependencies(
         verbose: Show detailed installation information
         only_packages: If provided, only install these specific packages (not all from apm.yml)
         force: Whether to overwrite locally-authored files on collision
+        parallel_downloads: Max concurrent downloads (0 disables parallelism)
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -1581,34 +1672,20 @@ def _install_apm_dependencies(
 
         # If specific packages were requested, filter to only those
         if only_packages:
-            # Normalize package strings for comparison
-            # User passes "owner/repo" or "owner/repo/subdir"
-            # str(dep) includes host: "github.com/owner/repo/subdir"
-            # dep.repo_url is just "owner/repo" (no subdir)
-            # We need to match the user input against the dep string (without host prefix)
-            # Also normalize _git/ from ADO URLs (dev.azure.com/org/proj/_git/repo -> org/proj/repo)
-            def normalize_pkg(pkg: str) -> str:
-                """Normalize package string for comparison."""
-                # Remove _git/ from ADO URLs
-                if "/_git/" in pkg:
-                    pkg = pkg.replace("/_git/", "/")
-                return pkg
+            # Build identity set from user-supplied package specs.
+            # Accepts any input form: git URLs, FQDN, shorthand.
+            only_identities = builtins.set()
+            for p in only_packages:
+                try:
+                    ref = DependencyReference.parse(p)
+                    only_identities.add(ref.get_identity())
+                except Exception:
+                    only_identities.add(p)
 
-            only_set = builtins.set(normalize_pkg(p) for p in only_packages)
-
-            def matches_filter(dep):
-                # Check exact match with str(dep)
-                if str(dep) in only_set:
-                    return True
-                # Check if str(dep) ends with "/<pkg>" to ensure path boundary matching
-                # This prevents "prefix-owner/repo" from matching "owner/repo"
-                dep_str = str(dep)
-                for pkg in only_set:
-                    if dep_str.endswith(f"/{pkg}"):
-                        return True
-                return False
-
-            deps_to_install = [dep for dep in deps_to_install if matches_filter(dep)]
+            deps_to_install = [
+                dep for dep in deps_to_install
+                if dep.get_identity() in only_identities
+            ]
 
         if not deps_to_install:
             _rich_info("No APM dependencies to install", symbol="check")
@@ -1656,15 +1733,17 @@ def _install_apm_dependencies(
         from apm_cli.integration.skill_integrator import SkillIntegrator, should_install_skill
         from apm_cli.integration.command_integrator import CommandIntegrator
         from apm_cli.integration.hook_integrator import HookIntegrator
+        from apm_cli.integration.instruction_integrator import InstructionIntegrator
 
         skill_integrator = SkillIntegrator()
         command_integrator = CommandIntegrator()
         hook_integrator = HookIntegrator()
+        instruction_integrator = InstructionIntegrator()
         total_prompts_integrated = 0
         total_agents_integrated = 0
         total_skills_integrated = 0
         total_sub_skills_promoted = 0
-        total_instructions_found = 0
+        total_instructions_integrated = 0
         total_commands_integrated = 0
         total_hooks_integrated = 0
         total_links_resolved = 0
@@ -1696,7 +1775,75 @@ def _install_apm_dependencies(
         # downloader already created above for transitive resolution
         installed_count = 0
 
-        # Create progress display for downloads
+        # Phase 4 (#171): Parallel package downloads using ThreadPoolExecutor
+        # Pre-download all non-cached packages in parallel for wall-clock speedup.
+        # Results are stored and consumed by the sequential integration loop below.
+        from concurrent.futures import ThreadPoolExecutor, as_completed as _futures_completed
+
+        _pre_download_results = {}   # dep_key -> PackageInfo
+        _need_download = []
+        for _pd_ref in deps_to_install:
+            _pd_key = _pd_ref.get_unique_key()
+            _pd_path = (apm_modules_dir / _pd_ref.alias) if _pd_ref.alias else _pd_ref.get_install_path(apm_modules_dir)
+            # Skip if already downloaded during BFS resolution
+            if _pd_key in callback_downloaded:
+                continue
+            # Skip if lockfile SHA matches local HEAD (Phase 5 check)
+            if _pd_path.exists() and existing_lockfile and not update_refs:
+                _pd_locked = existing_lockfile.get_dependency(_pd_key)
+                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
+                    try:
+                        from git import Repo as _PDGitRepo
+                        if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked.resolved_commit:
+                            continue
+                    except Exception:
+                        pass
+            # Build download ref (use locked commit for reproducibility)
+            _pd_dlref = str(_pd_ref)
+            if existing_lockfile:
+                _pd_locked = existing_lockfile.get_dependency(_pd_key)
+                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
+                    _pd_base = _pd_ref.repo_url
+                    if _pd_ref.virtual_path:
+                        _pd_base = f"{_pd_base}/{_pd_ref.virtual_path}"
+                    _pd_dlref = f"{_pd_base}#{_pd_locked.resolved_commit}"
+            _need_download.append((_pd_ref, _pd_path, _pd_dlref))
+
+        if _need_download and parallel_downloads > 0:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[cyan]{task.description}[/cyan]"),
+                BarColumn(),
+                TaskProgressColumn(),
+                transient=True,
+            ) as _dl_progress:
+                _max_workers = min(parallel_downloads, len(_need_download))
+                with ThreadPoolExecutor(max_workers=_max_workers) as _executor:
+                    _futures = {}
+                    for _pd_ref, _pd_path, _pd_dlref in _need_download:
+                        _pd_disp = str(_pd_ref) if _pd_ref.is_virtual else _pd_ref.repo_url
+                        _pd_short = _pd_disp.split("/")[-1] if "/" in _pd_disp else _pd_disp
+                        _pd_tid = _dl_progress.add_task(description=f"Fetching {_pd_short}", total=None)
+                        _pd_fut = _executor.submit(
+                            downloader.download_package, _pd_dlref, _pd_path,
+                            progress_task_id=_pd_tid, progress_obj=_dl_progress,
+                        )
+                        _futures[_pd_fut] = (_pd_ref, _pd_tid, _pd_disp)
+                    for _pd_fut in _futures_completed(_futures):
+                        _pd_ref, _pd_tid, _pd_disp = _futures[_pd_fut]
+                        _pd_key = _pd_ref.get_unique_key()
+                        try:
+                            _pd_info = _pd_fut.result()
+                            _pre_download_results[_pd_key] = _pd_info
+                            _dl_progress.update(_pd_tid, visible=False)
+                            _dl_progress.refresh()
+                        except Exception:
+                            _dl_progress.remove_task(_pd_tid)
+                            # Silent: sequential loop below will retry and report errors
+
+        _pre_downloaded_keys = set(_pre_download_results.keys())
+
+        # Create progress display for sequential integration
         with Progress(
             SpinnerColumn(),
             TextColumn("[cyan]{task.description}[/cyan]"),
@@ -1722,7 +1869,7 @@ def _install_apm_dependencies(
                 from apm_cli.models.apm_package import GitReferenceType
 
                 resolved_ref = None
-                if dep_ref.reference:
+                if dep_ref.reference and dep_ref.get_unique_key() not in _pre_downloaded_keys:
                     try:
                         resolved_ref = downloader.resolve_git_reference(
                             f"{dep_ref.repo_url}@{dep_ref.reference}"
@@ -1737,8 +1884,20 @@ def _install_apm_dependencies(
                 ]
                 # Skip download if: already fetched by resolver callback, or cached tag/commit
                 already_resolved = dep_ref.get_unique_key() in callback_downloaded
+                # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
+                lockfile_match = False
+                if install_path.exists() and existing_lockfile and not update_refs:
+                    locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                    if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                        try:
+                            from git import Repo as GitRepo
+                            local_repo = GitRepo(install_path)
+                            if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                lockfile_match = True
+                        except Exception:
+                            pass  # Not a git repo or invalid — fall through to download
                 skip_download = install_path.exists() and (
-                    (is_cacheable and not update_refs) or already_resolved
+                    (is_cacheable and not update_refs) or already_resolved or lockfile_match
                 )
 
                 if skip_download:
@@ -1887,17 +2046,24 @@ def _install_apm_dependencies(
                                 for tp in skill_result.target_paths:
                                     dep_deployed.append(tp.relative_to(project_root).as_posix())
 
-                            # Count instructions (compiled later via `apm compile`)
-                            instruction_count = len(
-                                skill_integrator.find_instruction_files(
-                                    cached_package_info.install_path
+                            # Integrate instructions → .github/instructions/
+                            if integrate_vscode:
+                                instruction_result = (
+                                    instruction_integrator.integrate_package_instructions(
+                                        cached_package_info, project_root,
+                                        force=force, managed_files=managed_files,
+                                    )
                                 )
-                            )
-                            if instruction_count > 0:
-                                total_instructions_found += instruction_count
-                                _rich_info(
-                                    f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
-                                )
+                                if instruction_result.files_integrated > 0:
+                                    total_instructions_integrated += (
+                                        instruction_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/"
+                                    )
+                                total_links_resolved += instruction_result.links_resolved
+                                for tp in instruction_result.target_paths:
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Claude-specific integration (agents + commands)
                             if integrate_claude:
@@ -2005,13 +2171,18 @@ def _install_apm_dependencies(
                                 base_ref = f"{base_ref}/{dep_ref.virtual_path}"
                             download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
 
-                    # Download with live progress bar
-                    package_info = downloader.download_package(
-                        download_ref,
-                        install_path,
-                        progress_task_id=task_id,
-                        progress_obj=progress,
-                    )
+                    # Phase 4 (#171): Use pre-downloaded result if available
+                    _dep_key = dep_ref.get_unique_key()
+                    if _dep_key in _pre_download_results:
+                        package_info = _pre_download_results[_dep_key]
+                    else:
+                        # Fallback: sequential download (should rarely happen)
+                        package_info = downloader.download_package(
+                            download_ref,
+                            install_path,
+                            progress_task_id=task_id,
+                            progress_obj=progress,
+                        )
 
                     # CRITICAL: Hide progress BEFORE printing success message to avoid overlap
                     progress.update(task_id, visible=False)
@@ -2116,17 +2287,24 @@ def _install_apm_dependencies(
                                 for tp in skill_result.target_paths:
                                     dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
-                            # Count instructions (compiled later via `apm compile`)
-                            instruction_count = len(
-                                skill_integrator.find_instruction_files(
-                                    package_info.install_path
+                            # Integrate instructions → .github/instructions/
+                            if integrate_vscode:
+                                instruction_result = (
+                                    instruction_integrator.integrate_package_instructions(
+                                        package_info, project_root,
+                                        force=force, managed_files=managed_files,
+                                    )
                                 )
-                            )
-                            if instruction_count > 0:
-                                total_instructions_found += instruction_count
-                                _rich_info(
-                                    f"  └─ {instruction_count} instruction(s) ready (compile via `apm compile`)"
-                                )
+                                if instruction_result.files_integrated > 0:
+                                    total_instructions_integrated += (
+                                        instruction_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/"
+                                    )
+                                total_links_resolved += instruction_result.links_resolved
+                                for tp in instruction_result.target_paths:
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Claude-specific integration (agents + commands)
                             if integrate_claude:
@@ -2241,6 +2419,10 @@ def _install_apm_dependencies(
         # Show hooks stats if any were integrated
         if total_hooks_integrated > 0:
             _rich_info(f"✓ Integrated {total_hooks_integrated} hook(s)")
+
+        # Show instructions stats if any were integrated
+        if total_instructions_integrated > 0:
+            _rich_info(f"✓ Integrated {total_instructions_integrated} instruction(s)")
 
         _rich_success(f"Installed {installed_count} APM dependencies")
 
