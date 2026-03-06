@@ -1340,8 +1340,8 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     
     has_apm_yml = apm_yml_path.exists()
     has_skill_md = skill_md_path.exists()
-    has_plugin_json = plugin_json_path is not None
     has_hooks = _has_hook_json(package_path)
+    has_plugin_json = plugin_json_path is not None
     
     # Determine package type (apm.yml takes precedence)
     if has_apm_yml and has_skill_md:
@@ -1350,16 +1350,13 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         result.package_type = PackageType.APM_PACKAGE
     elif has_skill_md:
         result.package_type = PackageType.CLAUDE_SKILL
+    elif has_hooks:
+        result.package_type = PackageType.HOOK_PACKAGE
     elif has_plugin_json:
         result.package_type = PackageType.MARKETPLACE_PLUGIN
     else:
         result.package_type = PackageType.INVALID
-        result.add_error("Missing required file: apm.yml, SKILL.md, or plugin.json")
-    elif has_hooks:
-        result.package_type = PackageType.HOOK_PACKAGE
-    else:
-        result.package_type = PackageType.INVALID
-        result.add_error("Missing required file: apm.yml, SKILL.md, or hooks/*.json")
+        result.add_error("Missing required file: apm.yml, SKILL.md, plugin.json, or hooks/*.json")
         return result
     
     # Handle hook-only packages (no apm.yml or SKILL.md)
