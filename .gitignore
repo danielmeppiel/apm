@@ -2,6 +2,7 @@
 APPROACH.md
 next-steps.md
 apm-action-plan.md
+tests/benchmarks/BASELINE.md
 
 # Python
 __pycache__/
