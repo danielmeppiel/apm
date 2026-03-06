@@ -1138,19 +1138,27 @@ author: {dep_ref.repo_url.split('/')[0]}
             sparse_ok = self._try_sparse_checkout(dep_ref, temp_clone_path, subdir_path, ref)
             
             if not sparse_ok:
-                # Full shallow clone fallback
+                # Full clone fallback
                 if temp_clone_path.exists():
                     shutil.rmtree(temp_clone_path)
                 
                 package_display_name = subdir_path.split('/')[-1]
                 progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
                 
+                # Detect if ref is a commit SHA (can't be used with --branch in shallow clones)
+                is_commit_sha = ref and re.match(r'^[a-f0-9]{7,40}$', ref) is not None
+                
                 clone_kwargs = {
                     'dep_ref': dep_ref,
-                    'depth': 1,
                 }
-                if ref:
-                    clone_kwargs['branch'] = ref
+                if is_commit_sha:
+                    # For commit SHAs, clone without checkout then checkout the specific commit.
+                    # Shallow clone doesn't support fetching by arbitrary SHA.
+                    clone_kwargs['no_checkout'] = True
+                else:
+                    clone_kwargs['depth'] = 1
+                    if ref:
+                        clone_kwargs['branch'] = ref
                 
                 try:
                     self._clone_with_fallback(
@@ -1160,7 +1168,14 @@ author: {dep_ref.repo_url.split('/')[0]}
                         **clone_kwargs
                     )
                 except Exception as e:
-                    raise RuntimeError(f"Failed to clone repository: {e}")
+                    raise RuntimeError(f"Failed to clone repository: {e}") from e
+                
+                if is_commit_sha:
+                    try:
+                        repo_obj = Repo(temp_clone_path)
+                        repo_obj.git.checkout(ref)
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to checkout commit {ref}: {e}") from e
                 
                 # Disable progress reporter after clone
                 if progress_reporter:
