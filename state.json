@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-05T01:07:00Z",
+  "last_updated": "2026-03-06T01:08:37Z",
   "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
@@ -10,22 +10,28 @@
   },
   "coverage_baseline": {
     "total": "52%",
-    "run_date": "2026-03-05",
-    "test_count": 969,
+    "run_date": "2026-03-06",
+    "test_count": 1305,
     "pre_existing_failures": 1
   },
-  "monthly_activity_issue": "created-2026-03-05-new",
+  "monthly_activity_issue": "open-2026-03",
   "testing_backlog": [
-    {"id": "apm-resolver", "file": "src/apm_cli/deps/apm_resolver.py", "coverage": "9%", "priority": "medium"},
     {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "7%", "priority": "low", "notes": "Heavy network dependency"},
     {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
     {"id": "fix-ansi-test", "file": "tests/unit/test_install_command.py:44", "priority": "low", "notes": "Pre-existing failure: test checks for 'apm install <org/repo>' but Rich adds ANSI bold codes around < and >"},
     {"id": "runtime-manager-run-embedded", "file": "src/apm_cli/runtime/manager.py lines 97-146", "coverage": "0% of run_embedded_script", "priority": "low", "notes": "Best covered by integration tests due to subprocess complexity"},
     {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"}
   ],
-  "backlog_cursor": "apm-resolver",
-  "pending_branches": [],
+  "backlog_cursor": "github-downloader",
+  "pending_branches": ["test-assist/apm-resolver-coverage"],
   "completed_work": [
+    {
+      "run": "2026-03-06T01:08:37Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/apm-resolver-coverage",
+      "pr_status": "pr_created",
+      "description": "Added 65 unit tests: apm_resolver.py (9%->98%), dependency_graph.py (59%->100%). Tests cover all public methods including _try_load_dependency_package (11 scenarios) and all data structures. Note: tests/test_apm_resolver.py already existed in tests/ root (not run by CI) with 23 tests using src. import prefix; new file in tests/unit/ uses correct imports."
+    },
     {
       "run": "2026-03-05T01:07:00Z",
       "tasks": ["task3", "task7"],
