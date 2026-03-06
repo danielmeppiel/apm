@@ -148,7 +148,23 @@ class PrimitiveCollection:
         self.contexts = []
         self.skills = []
         self.conflicts = []
+        # Name→index maps for O(1) conflict lookups (see #171)
+        self._chatmode_index: Dict[str, int] = {}
+        self._instruction_index: Dict[str, int] = {}
+        self._context_index: Dict[str, int] = {}
+        self._skill_index: Dict[str, int] = {}
     
+    def _index_for(self, primitive_type: str) -> Dict[str, int]:
+        """Return the name→index map for the given primitive type."""
+        if primitive_type == "chatmode":
+            return self._chatmode_index
+        elif primitive_type == "instruction":
+            return self._instruction_index
+        elif primitive_type == "context":
+            return self._context_index
+        else:
+            return self._skill_index
+
     def add_primitive(self, primitive: Primitive) -> None:
         """Add a primitive to the appropriate collection.
         
@@ -169,15 +185,12 @@ class PrimitiveCollection:
     
     def _add_with_conflict_detection(self, new_primitive: Primitive, collection: List[Primitive], primitive_type: str) -> None:
         """Add primitive with conflict detection."""
-        # Find existing primitive with same name
-        existing_index = None
-        for i, existing in enumerate(collection):
-            if existing.name == new_primitive.name:
-                existing_index = i
-                break
+        name_index = self._index_for(primitive_type)
+        existing_index = name_index.get(new_primitive.name)
         
         if existing_index is None:
             # No conflict, just add the primitive
+            name_index[new_primitive.name] = len(collection)
             collection.append(new_primitive)
         else:
             # Conflict detected - apply priority rules

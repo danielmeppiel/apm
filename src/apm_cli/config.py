@@ -2,10 +2,13 @@
 
 import os
 import json
+from typing import Optional
 
 
 CONFIG_DIR = os.path.expanduser("~/.apm")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+
+_config_cache: Optional[dict] = None
 
 
 def ensure_config_exists():
@@ -21,12 +24,24 @@ def ensure_config_exists():
 def get_config():
     """Get the current configuration.
     
+    Results are cached for the lifetime of the process.
+    
     Returns:
         dict: Current configuration.
     """
+    global _config_cache
+    if _config_cache is not None:
+        return _config_cache
     ensure_config_exists()
     with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
+        _config_cache = json.load(f)
+    return _config_cache
+
+
+def _invalidate_config_cache():
+    """Invalidate the config cache (called after writes)."""
+    global _config_cache
+    _config_cache = None
 
 
 def update_config(updates):
@@ -35,11 +50,13 @@ def update_config(updates):
     Args:
         updates (dict): Dictionary of configuration values to update.
     """
+    _invalidate_config_cache()
     config = get_config()
     config.update(updates)
     
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
+    _invalidate_config_cache()
 
 
 def get_default_client():
