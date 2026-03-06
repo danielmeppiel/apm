@@ -2,12 +2,20 @@
 
 import re
 import urllib.parse
-from ..utils.github_host import is_supported_git_host, is_azure_devops_hostname, default_host, unsupported_host_error
+from ..utils.github_host import is_supported_git_host, is_azure_devops_hostname, is_github_hostname, default_host, unsupported_host_error
 import yaml
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union
+
+# Module-level parse cache: resolved path -> APMPackage (#171)
+_apm_yml_cache: Dict[Path, "APMPackage"] = {}
+
+
+def clear_apm_yml_cache() -> None:
+    """Clear the from_apm_yml parse cache. Call in tests for isolation."""
+    _apm_yml_cache.clear()
 
 
 class GitReferenceType(Enum):
@@ -21,10 +29,11 @@ class PackageType(Enum):
     """Types of packages that APM can install.
     
     This enum is used internally to classify packages based on their content
-    (presence of apm.yml, SKILL.md, plugin.json, etc.).
+    (presence of apm.yml, SKILL.md, hooks/, plugin.json, etc.).
     """
     APM_PACKAGE = "apm_package"      # Has apm.yml
     CLAUDE_SKILL = "claude_skill"    # Has SKILL.md, no apm.yml
+    HOOK_PACKAGE = "hook_package"    # Has hooks/hooks.json, no apm.yml or SKILL.md
     HYBRID = "hybrid"                # Has both apm.yml and SKILL.md
     MARKETPLACE_PLUGIN = "marketplace_plugin"  # Has plugin.json, no apm.yml
     INVALID = "invalid"              # None of the above
@@ -210,17 +219,91 @@ class DependencyReference:
             return f"{self.repo_url}/{self.virtual_path}"
         return self.repo_url
     
-    def get_canonical_dependency_string(self) -> str:
-        """Get the canonical dependency string as stored in apm.yml.
+    def to_canonical(self) -> str:
+        """Return the canonical form of this dependency for storage in apm.yml.
         
-        This is the unique identifier for a package in the dependency list.
-        It includes:
-        - repo_url (always)
-        - virtual_path (for virtual packages)
-        - Does NOT include: reference (#) or alias (@) as these don't affect identity
+        Follows the Docker-style default-registry convention:
+        - Default host (github.com) is stripped  →  owner/repo
+        - Non-default hosts are preserved         →  gitlab.com/owner/repo
+        - Virtual paths are appended              →  owner/repo/path/to/thing
+        - Refs are appended with #                →  owner/repo#v1.0
+        - Aliases are appended with @             →  owner/repo@my-alias
+        
+        No .git suffix, no https://, no git@ — just the canonical identifier.
         
         Returns:
-            str: Canonical dependency string (e.g., "owner/repo" or "owner/repo/collections/name")
+            str: Canonical dependency string
+        """
+        host = self.host or default_host()
+        is_default = host.lower() == default_host().lower()
+        
+        # Start with optional host prefix
+        if is_default:
+            result = self.repo_url
+        else:
+            result = f"{host}/{self.repo_url}"
+        
+        # Append virtual path for virtual packages
+        if self.is_virtual and self.virtual_path:
+            result = f"{result}/{self.virtual_path}"
+        
+        # Append reference (branch, tag, commit)
+        if self.reference:
+            result = f"{result}#{self.reference}"
+        
+        # Append alias
+        if self.alias:
+            result = f"{result}@{self.alias}"
+        
+        return result
+    
+    def get_identity(self) -> str:
+        """Return the identity of this dependency (canonical form without ref/alias).
+        
+        Two deps with the same identity are the same package, regardless of
+        which ref or alias they specify. Used for duplicate detection and uninstall matching.
+        
+        Returns:
+            str: Identity string (e.g., "owner/repo" or "gitlab.com/owner/repo/path")
+        """
+        host = self.host or default_host()
+        is_default = host.lower() == default_host().lower()
+        
+        if is_default:
+            result = self.repo_url
+        else:
+            result = f"{host}/{self.repo_url}"
+        
+        if self.is_virtual and self.virtual_path:
+            result = f"{result}/{self.virtual_path}"
+        
+        return result
+    
+    @staticmethod
+    def canonicalize(raw: str) -> str:
+        """Parse any raw input form and return its canonical storage form.
+        
+        Convenience method that combines parse() + to_canonical().
+        
+        Args:
+            raw: Any supported input form (shorthand, FQDN, HTTPS, SSH, etc.)
+            
+        Returns:
+            str: Canonical form for apm.yml storage
+        """
+        return DependencyReference.parse(raw).to_canonical()
+    
+    def get_canonical_dependency_string(self) -> str:
+        """Get the host-blind canonical string for filesystem and orphan-detection matching.
+        
+        This returns repo_url (+ virtual_path) without host prefix — it matches
+        the filesystem layout in apm_modules/ which is also host-blind.
+        
+        For identity-based matching that includes non-default hosts, use get_identity().
+        For the full canonical form suitable for apm.yml storage, use to_canonical().
+        
+        Returns:
+            str: Host-blind canonical string (e.g., "owner/repo")
         """
         return self.get_unique_key()
     
@@ -257,8 +340,8 @@ class DependencyReference:
                     # ADO: org/project/repo/subdir
                     return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2] / self.virtual_path
                 elif len(repo_parts) >= 2:
-                    # GitHub: owner/repo/subdir
-                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / self.virtual_path
+                    # owner/repo/subdir or group/subgroup/repo/subdir
+                    return apm_modules_dir.joinpath(*repo_parts, self.virtual_path)
             else:
                 # Virtual file/collection: use sanitized package name (flattened)
                 package_name = self.get_virtual_package_name()
@@ -266,7 +349,7 @@ class DependencyReference:
                     # ADO: org/project/virtual-pkg-name
                     return apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
                 elif len(repo_parts) >= 2:
-                    # GitHub: owner/virtual-pkg-name
+                    # owner/virtual-pkg-name (use first segment as namespace)
                     return apm_modules_dir / repo_parts[0] / package_name
         else:
             # Regular package: use full repo path
@@ -274,12 +357,114 @@ class DependencyReference:
                 # ADO: org/project/repo
                 return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
             elif len(repo_parts) >= 2:
-                # GitHub: owner/repo
-                return apm_modules_dir / repo_parts[0] / repo_parts[1]
+                # owner/repo or group/subgroup/repo (generic hosts)
+                return apm_modules_dir.joinpath(*repo_parts)
         
         # Fallback: join all parts
         return apm_modules_dir.joinpath(*repo_parts)
     
+    @staticmethod
+    def _normalize_ssh_protocol_url(url: str) -> str:
+        """Normalize ssh:// protocol URLs to git@ format for consistent parsing.
+        
+        Converts:
+        - ssh://git@gitlab.com/owner/repo.git → git@gitlab.com:owner/repo.git
+        - ssh://git@host:port/owner/repo.git → git@host:owner/repo.git
+        
+        Non-SSH URLs are returned unchanged.
+        """
+        if not url.startswith('ssh://'):
+            return url
+        
+        # Parse the ssh:// URL
+        # Format: ssh://[user@]host[:port]/path
+        remainder = url[6:]  # Remove 'ssh://'
+        
+        # Extract user if present (typically 'git@')
+        user_prefix = ""
+        if '@' in remainder.split('/')[0]:
+            user_at_idx = remainder.index('@')
+            user_prefix = remainder[:user_at_idx + 1]  # e.g., "git@"
+            remainder = remainder[user_at_idx + 1:]
+        
+        # Extract host (and optional port)
+        slash_idx = remainder.find('/')
+        if slash_idx == -1:
+            return url  # Invalid format, return as-is
+        
+        host_part = remainder[:slash_idx]
+        path_part = remainder[slash_idx + 1:]
+        
+        # Strip port if present (e.g., host:22)
+        if ':' in host_part:
+            host_part = host_part.split(':')[0]
+        
+        # Convert to git@ format: git@host:path
+        if user_prefix:
+            return f"{user_prefix}{host_part}:{path_part}"
+        else:
+            return f"git@{host_part}:{path_part}"
+
+    @classmethod
+    def parse_from_dict(cls, entry: dict) -> "DependencyReference":
+        """Parse an object-style dependency entry from apm.yml.
+        
+        Supports the Cargo-inspired object format:
+        
+            - git: https://gitlab.com/acme/coding-standards.git
+              path: instructions/security
+              ref: v2.0
+        
+            - git: git@bitbucket.org:team/rules.git
+              path: prompts/review.prompt.md
+        
+        Args:
+            entry: Dictionary with 'git' (required), 'path' (optional), 'ref' (optional)
+            
+        Returns:
+            DependencyReference: Parsed dependency reference
+            
+        Raises:
+            ValueError: If the entry is missing required fields or has invalid format
+        """
+        if 'git' not in entry:
+            raise ValueError("Object-style dependency must have a 'git' field")
+        
+        git_url = entry['git']
+        if not isinstance(git_url, str) or not git_url.strip():
+            raise ValueError("'git' field must be a non-empty string")
+        
+        sub_path = entry.get('path')
+        ref_override = entry.get('ref')
+        alias_override = entry.get('alias')
+        
+        # Validate sub_path if provided
+        if sub_path is not None:
+            if not isinstance(sub_path, str) or not sub_path.strip():
+                raise ValueError("'path' field must be a non-empty string")
+            sub_path = sub_path.strip().strip('/')
+        
+        # Parse the git URL using the standard parser
+        dep = cls.parse(git_url)
+        
+        # Apply overrides from the object fields
+        if ref_override is not None:
+            if not isinstance(ref_override, str) or not ref_override.strip():
+                raise ValueError("'ref' field must be a non-empty string")
+            dep.reference = ref_override.strip()
+        
+        if alias_override is not None:
+            if not isinstance(alias_override, str) or not alias_override.strip():
+                raise ValueError("'alias' field must be a non-empty string")
+            dep.alias = alias_override.strip()
+        
+        # Apply sub-path as virtual package
+        if sub_path:
+            dep.virtual_path = sub_path
+            dep.is_virtual = True
+        
+        return dep
+
     @classmethod
     def parse(cls, dependency_str: str) -> "DependencyReference":
         """Parse a dependency string into a DependencyReference.
@@ -294,6 +479,12 @@ class DependencyReference:
         - user/repo#ref@alias
         - user/repo/path/to/file.prompt.md (virtual file package)
         - user/repo/collections/name (virtual collection package)
+        - https://gitlab.com/owner/repo.git (generic HTTPS git URL)
+        - git@gitlab.com:owner/repo.git (SSH git URL)
+        - ssh://git@gitlab.com/owner/repo.git (SSH protocol URL)
+        
+        Any valid FQDN is accepted as a git host (GitHub, GitLab, Bitbucket,
+        self-hosted instances, etc.).
         
         Args:
             dependency_str: The dependency string to parse
@@ -317,6 +508,9 @@ class DependencyReference:
         # SECURITY: Reject protocol-relative URLs (//example.com)
         if dependency_str.startswith('//'):
             raise ValueError(unsupported_host_error("//...", context="Protocol-relative URLs are not supported"))
+        
+        # Normalize ssh:// protocol URLs to git@ format
+        dependency_str = cls._normalize_ssh_protocol_url(dependency_str)
         
         # Early detection of virtual packages (3+ path segments)
         # Extract the core path before processing reference (#) and alias (@)
@@ -368,7 +562,7 @@ class DependencyReference:
                             )
                     except (ValueError, AttributeError) as e:
                         # If we can't parse or validate, and first segment has dot, it's suspicious - REJECT
-                        if isinstance(e, ValueError) and "Unsupported Git host" in str(e):
+                        if isinstance(e, ValueError) and "Invalid Git host" in str(e):
                             raise  # Re-raise our security error
                         raise ValueError(
                             unsupported_host_error(first_segment)
@@ -386,7 +580,12 @@ class DependencyReference:
             # For Azure DevOps, the base package format is org/project/repo (3 segments)
             # Virtual packages would have 4+ segments: org/project/repo/path/to/file
             # For GitHub, base is owner/repo (2 segments), virtual is 3+ segments
+            # For generic hosts (GitLab, Gitea, etc.), all segments are repo path
+            # unless virtual indicators (file extensions, collections) are present
             is_ado = validated_host is not None and is_azure_devops_hostname(validated_host)
+            is_generic_host = (validated_host is not None
+                               and not is_github_hostname(validated_host)
+                               and not is_azure_devops_hostname(validated_host))
             
             # Handle _git in ADO URLs: org/project/_git/repo -> org/project/repo
             if is_ado and '_git' in path_segments:
@@ -394,7 +593,23 @@ class DependencyReference:
                 # Remove _git from the path segments
                 path_segments = path_segments[:git_idx] + path_segments[git_idx+1:]
             
-            min_base_segments = 3 if is_ado else 2
+            if is_ado:
+                min_base_segments = 3
+            elif is_generic_host:
+                # For generic hosts (GitLab, Gitea), check for virtual indicators
+                # If present, use 2-segment base (simple owner/repo + virtual path)
+                # If absent, treat ALL segments as the repo path (nested groups)
+                has_virtual_ext = any(
+                    any(seg.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS)
+                    for seg in path_segments
+                )
+                has_collection = 'collections' in path_segments
+                if has_virtual_ext or has_collection:
+                    min_base_segments = 2  # Simple repo with virtual path
+                else:
+                    min_base_segments = len(path_segments)  # All segments = repo path
+            else:
+                min_base_segments = 2  # GitHub: owner/repo
             min_virtual_segments = min_base_segments + 1
             
             if len(path_segments) >= min_virtual_segments:
@@ -438,10 +653,8 @@ class DependencyReference:
         if ssh_match:
             host = ssh_match.group(1)
             ssh_repo_part = ssh_match.group(2)
-            if ssh_repo_part.endswith('.git'):
-                ssh_repo_part = ssh_repo_part[:-4]
 
-            # Handle reference and alias in SSH URL
+            # Handle reference and alias in SSH URL (extract before .git stripping)
             reference = None
             alias = None
 
@@ -454,6 +667,10 @@ class DependencyReference:
                 reference = reference.strip()
             else:
                 repo_part = ssh_repo_part
+
+            # Strip .git suffix after extracting ref and alias
+            if repo_part.endswith('.git'):
+                repo_part = repo_part[:-4]
 
             repo_url = repo_part.strip()
         else:
@@ -496,6 +713,8 @@ class DependencyReference:
                             raise ValueError("Invalid Azure DevOps virtual package format: must be dev.azure.com/org/project/repo/path")
                         repo_url = "/".join(parts[1:4])  # org/project/repo
                     else:
+                        # For virtual packages with host prefix, base is always 2 segments
+                        # (virtual indicators already detected in early detection)
                         repo_url = "/".join(parts[1:3])  # owner/repo
                 elif len(parts) >= 2:
                     # No host prefix
@@ -531,6 +750,9 @@ class DependencyReference:
                     if is_azure_devops_hostname(host) and len(parts) >= 4:
                         # ADO format: dev.azure.com/org/project/repo
                         user_repo = "/".join(parts[1:4])
+                    elif not is_github_hostname(host) and not is_azure_devops_hostname(host):
+                        # Generic host (GitLab, Gitea, etc.): all segments after host = repo path
+                        user_repo = "/".join(parts[1:])
                     else:
                         # GitHub format: github.com/user/repo
                         user_repo = "/".join(parts[1:3])
@@ -541,6 +763,9 @@ class DependencyReference:
                     # Check if default host is ADO
                     if is_azure_devops_hostname(host) and len(parts) >= 3:
                         user_repo = "/".join(parts[:3])  # org/project/repo
+                    elif host and not is_github_hostname(host) and not is_azure_devops_hostname(host):
+                        # Generic host: all segments = repo path
+                        user_repo = "/".join(parts)
                     else:
                         user_repo = "/".join(parts[:2])  # user/repo
                 else:
@@ -552,12 +777,12 @@ class DependencyReference:
 
                 uparts = user_repo.split("/")
                 is_ado_host = host and is_azure_devops_hostname(host)
-                expected_parts = 3 if is_ado_host else 2
                 
-                if len(uparts) < expected_parts:
-                    if is_ado_host:
+                if is_ado_host:
+                    if len(uparts) < 3:
                         raise ValueError(f"Invalid Azure DevOps repository format: {repo_url}. Expected 'org/project/repo'")
-                    else:
+                else:
+                    if len(uparts) < 2:
                         raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
                 
                 # Security: validate characters to prevent injection
@@ -597,13 +822,20 @@ class DependencyReference:
 
             # Validate path format based on host type
             is_ado_host = is_azure_devops_hostname(hostname)
-            expected_parts = 3 if is_ado_host else 2
 
-            if len(path_parts) != expected_parts:
-                if is_ado_host:
+            if is_ado_host:
+                if len(path_parts) != 3:
                     raise ValueError(f"Invalid Azure DevOps repository path: expected 'org/project/repo', got '{path}'")
-                else:
-                    raise ValueError(f"Invalid repository path: expected 'user/repo', got '{path}'")
+            else:
+                if len(path_parts) < 2:
+                    raise ValueError(f"Invalid repository path: expected at least 'user/repo', got '{path}'")
+                # HTTPS URLs cannot embed virtual paths — reject virtual file extensions
+                for pp in path_parts:
+                    if any(pp.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
+                        raise ValueError(
+                            f"Invalid repository path: '{path}' contains a virtual file extension. "
+                            f"Use the dict format with 'path:' for virtual packages in HTTPS URLs"
+                        )
 
             # Validate all path parts contain only allowed characters
             # ADO project names may contain spaces
@@ -633,9 +865,19 @@ class DependencyReference:
             ado_project = ado_parts[1]
             ado_repo = ado_parts[2]
         else:
-            # GitHub format: user/repo (2 segments)
-            if not re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', repo_url):
+            # Non-ADO format: user/repo or group/subgroup/repo (2+ segments)
+            segments = repo_url.split('/')
+            if len(segments) < 2:
                 raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
+            if not all(re.match(r'^[a-zA-Z0-9._-]+$', s) for s in segments):
+                raise ValueError(f"Invalid repository format: {repo_url}. Contains invalid characters")
+            # SSH/HTTPS URLs cannot embed virtual paths — reject virtual file extensions
+            for seg in segments:
+                if any(seg.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
+                    raise ValueError(
+                        f"Invalid repository format: '{repo_url}' contains a virtual file extension. "
+                        f"Use the dict format with 'path:' for virtual packages in SSH/HTTPS URLs"
+                    )
             ado_organization = None
             ado_project = None
             ado_repo = None
@@ -700,6 +942,138 @@ class DependencyReference:
 
 
 @dataclass
+class MCPDependency:
+    """Represents an MCP server dependency with optional overlay configuration.
+
+    Supports three forms:
+    - String (registry reference): MCPDependency.from_string("io.github.github/github-mcp-server")
+    - Object with overlays: MCPDependency.from_dict({"name": "...", "transport": "stdio", ...})
+    - Self-defined (registry: false): MCPDependency.from_dict({"name": "...", "registry": False, "transport": "http", "url": "..."})
+    """
+    name: str
+    transport: Optional[str] = None          # "stdio" | "sse" | "streamable-http" | "http"
+    env: Optional[Dict[str, str]] = None     # Environment variable overrides
+    args: Optional[Any] = None               # Dict for overlay variable overrides, List for self-defined positional args
+    version: Optional[str] = None            # Pin specific server version
+    registry: Optional[Any] = None           # None=default, False=self-defined, str=custom registry URL
+    package: Optional[str] = None            # "npm" | "pypi" | "oci" — select package type
+    headers: Optional[Dict[str, str]] = None # Custom HTTP headers for remote endpoints
+    tools: Optional[List[str]] = None        # Restrict exposed tools (default is ["*"])
+    url: Optional[str] = None                # Required for self-defined http/sse transports
+    command: Optional[str] = None            # Required for self-defined stdio transports
+
+    @classmethod
+    def from_string(cls, s: str) -> "MCPDependency":
+        """Create an MCPDependency from a plain string (registry reference)."""
+        return cls(name=s)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "MCPDependency":
+        """Parse an MCPDependency from a dict.
+
+        Handles backward compatibility: 'type' key is mapped to 'transport'.
+        Unknown keys are silently ignored for forward compatibility.
+        """
+        if 'name' not in d:
+            raise ValueError("MCP dependency dict must contain 'name'")
+
+        transport = d.get('transport') or d.get('type')  # legacy 'type' -> 'transport'
+
+        instance = cls(
+            name=d['name'],
+            transport=transport,
+            env=d.get('env'),
+            args=d.get('args'),
+            version=d.get('version'),
+            registry=d.get('registry'),
+            package=d.get('package'),
+            headers=d.get('headers'),
+            tools=d.get('tools'),
+            url=d.get('url'),
+            command=d.get('command'),
+        )
+
+        if instance.registry is False:
+            instance.validate()
+
+        return instance
+
+    @property
+    def is_registry_resolved(self) -> bool:
+        """True when the dependency is resolved via a registry."""
+        return self.registry is not False
+
+    @property
+    def is_self_defined(self) -> bool:
+        """True when the dependency is self-defined (registry: false)."""
+        return self.registry is False
+
+    def to_dict(self) -> dict:
+        """Serialize to dict, including only non-None fields."""
+        result: Dict[str, Any] = {'name': self.name}
+        for field_name in ('transport', 'env', 'args', 'version', 'registry',
+                           'package', 'headers', 'tools', 'url', 'command'):
+            value = getattr(self, field_name)
+            if value is not None or (field_name == 'registry' and value is False):
+                result[field_name] = value
+        return result
+
+    _VALID_TRANSPORTS = frozenset({"stdio", "sse", "http", "streamable-http"})
+
+    def __str__(self) -> str:
+        """Return a redacted, human-friendly identifier for logging and CLI output."""
+        if self.transport:
+            return f"{self.name} ({self.transport})"
+        return self.name
+
+    def __repr__(self) -> str:
+        """Return a redacted representation to keep secrets out of debug logs."""
+        parts = [f"name={self.name!r}"]
+        if self.transport:
+            parts.append(f"transport={self.transport!r}")
+        if self.env:
+            safe_env = {k: '***' for k in self.env}
+            parts.append(f"env={safe_env}")
+        if self.headers:
+            safe_headers = {k: '***' for k in self.headers}
+            parts.append(f"headers={safe_headers}")
+        if self.args is not None:
+            parts.append("args=...")
+        if self.tools:
+            parts.append(f"tools={self.tools!r}")
+        if self.url:
+            parts.append(f"url={self.url!r}")
+        if self.command:
+            parts.append(f"command={self.command!r}")
+        return f"MCPDependency({', '.join(parts)})"
+
+    def validate(self) -> None:
+        """Validate the dependency. Raises ValueError on invalid state."""
+        if not self.name:
+            raise ValueError("MCP dependency 'name' must not be empty")
+        if self.transport and self.transport not in self._VALID_TRANSPORTS:
+            raise ValueError(
+                f"MCP dependency '{self.name}' has unsupported transport "
+                f"'{self.transport}'. Valid values: {', '.join(sorted(self._VALID_TRANSPORTS))}"
+            )
+        if self.registry is False:
+            if not self.transport:
+                raise ValueError(
+                    f"Self-defined MCP dependency '{self.name}' requires 'transport'"
+                )
+            if self.transport in ('http', 'sse', 'streamable-http') and not self.url:
+                raise ValueError(
+                    f"Self-defined MCP dependency '{self.name}' with transport "
+                    f"'{self.transport}' requires 'url'"
+                )
+            if self.transport == 'stdio' and not self.command:
+                raise ValueError(
+                    f"Self-defined MCP dependency '{self.name}' with transport "
+                    f"'stdio' requires 'command'"
+                )
+
+
+@dataclass
 class APMPackage:
     """Represents an APM package with metadata."""
     name: str
@@ -709,7 +1083,7 @@ class APMPackage:
     license: Optional[str] = None
     source: Optional[str] = None  # Source location (for dependencies)
     resolved_commit: Optional[str] = None  # Resolved commit SHA (for dependencies)
-    dependencies: Optional[Dict[str, List[Union[DependencyReference, str]]]] = None  # Mixed types for APM/MCP
+    dependencies: Optional[Dict[str, List[Union[DependencyReference, str, dict]]]] = None  # Mixed types for APM/MCP/inline
     scripts: Optional[Dict[str, str]] = None
     package_path: Optional[Path] = None  # Local path to package
     target: Optional[str] = None  # Target agent: vscode, claude, or all (applies to compile and install)
@@ -718,6 +1092,8 @@ class APMPackage:
     @classmethod
     def from_apm_yml(cls, apm_yml_path: Path) -> "APMPackage":
         """Load APM package from apm.yml file.
+        
+        Results are cached by resolved path for the lifetime of the process.
         
         Args:
             apm_yml_path: Path to the apm.yml file
@@ -731,6 +1107,11 @@ class APMPackage:
         """
         if not apm_yml_path.exists():
             raise FileNotFoundError(f"apm.yml not found: {apm_yml_path}")
+        
+        resolved = apm_yml_path.resolve()
+        cached = _apm_yml_cache.get(resolved)
+        if cached is not None:
+            return cached
         
         try:
             with open(apm_yml_path, 'r', encoding='utf-8') as f:
@@ -756,16 +1137,32 @@ class APMPackage:
                     if dep_type == 'apm':
                         # APM dependencies need to be parsed as DependencyReference objects
                         parsed_deps = []
-                        for dep_str in dep_list:
-                            if isinstance(dep_str, str):
+                        for dep_entry in dep_list:
+                            if isinstance(dep_entry, str):
                                 try:
-                                    parsed_deps.append(DependencyReference.parse(dep_str))
+                                    parsed_deps.append(DependencyReference.parse(dep_entry))
                                 except ValueError as e:
-                                    raise ValueError(f"Invalid APM dependency '{dep_str}': {e}")
+                                    raise ValueError(f"Invalid APM dependency '{dep_entry}': {e}")
+                            elif isinstance(dep_entry, dict):
+                                try:
+                                    parsed_deps.append(DependencyReference.parse_from_dict(dep_entry))
+                                except ValueError as e:
+                                    raise ValueError(f"Invalid APM dependency {dep_entry}: {e}")
                         dependencies[dep_type] = parsed_deps
+                    elif dep_type == 'mcp':
+                        parsed_mcp = []
+                        for dep in dep_list:
+                            if isinstance(dep, str):
+                                parsed_mcp.append(MCPDependency.from_string(dep))
+                            elif isinstance(dep, dict):
+                                try:
+                                    parsed_mcp.append(MCPDependency.from_dict(dep))
+                                except ValueError as e:
+                                    raise ValueError(f"Invalid MCP dependency: {e}")
+                        dependencies[dep_type] = parsed_mcp
                     else:
-                        # Other dependencies (like MCP) remain as strings
-                        dependencies[dep_type] = [str(dep) for dep in dep_list if isinstance(dep, str)]
+                        # Other dependency types: keep as-is
+                        dependencies[dep_type] = [dep for dep in dep_list if isinstance(dep, (str, dict))]
         
         # Parse package content type
         pkg_type = None
@@ -778,7 +1175,7 @@ class APMPackage:
             except ValueError as e:
                 raise ValueError(f"Invalid 'type' field in apm.yml: {e}")
         
-        return cls(
+        result = cls(
             name=data['name'],
             version=data['version'],
             description=data.get('description'),
@@ -790,6 +1187,8 @@ class APMPackage:
             target=data.get('target'),
             type=pkg_type,
         )
+        _apm_yml_cache[resolved] = result
+        return result
     
     def get_apm_dependencies(self) -> List[DependencyReference]:
         """Get list of APM dependencies."""
@@ -798,13 +1197,12 @@ class APMPackage:
         # Filter to only return DependencyReference objects
         return [dep for dep in self.dependencies['apm'] if isinstance(dep, DependencyReference)]
     
-    def get_mcp_dependencies(self) -> List[str]:
-        """Get list of MCP dependencies (as strings for compatibility)."""
+    def get_mcp_dependencies(self) -> List["MCPDependency"]:
+        """Get list of MCP dependencies."""
         if not self.dependencies or 'mcp' not in self.dependencies:
             return []
-        # MCP deps are stored as strings, not DependencyReference objects
-        return [str(dep) if isinstance(dep, DependencyReference) else dep 
-                for dep in self.dependencies.get('mcp', [])]
+        return [dep for dep in (self.dependencies.get('mcp') or [])
+                if isinstance(dep, MCPDependency)]
     
     def has_apm_dependencies(self) -> bool:
         """Check if this package has APM dependencies."""
@@ -882,15 +1280,27 @@ class PackageInfo:
     def has_primitives(self) -> bool:
         """Check if the package has any primitives."""
         apm_dir = self.get_primitives_path()
-        if not apm_dir.exists():
-            return False
+        if apm_dir.exists():
+            # Check for any primitive files in .apm/ subdirectories
+            for primitive_type in ['instructions', 'chatmodes', 'contexts', 'prompts', 'hooks']:
+                primitive_dir = apm_dir / primitive_type
+                if primitive_dir.exists() and any(primitive_dir.iterdir()):
+                    return True
         
-        # Check for any primitive files in subdirectories
-        for primitive_type in ['instructions', 'chatmodes', 'contexts', 'prompts']:
-            primitive_dir = apm_dir / primitive_type
-            if primitive_dir.exists() and any(primitive_dir.iterdir()):
-                return True
+        # Also check hooks/ at package root (Claude-native convention)
+        hooks_dir = self.install_path / "hooks"
+        if hooks_dir.exists() and any(hooks_dir.glob("*.json")):
+            return True
+        
         return False
+
+
+def _has_hook_json(package_path: Path) -> bool:
+    """Check if the package has hook JSON files in hooks/ or .apm/hooks/."""
+    for hooks_dir in [package_path / "hooks", package_path / ".apm" / "hooks"]:
+        if hooks_dir.exists() and any(hooks_dir.glob("*.json")):
+            return True
+    return False
 
 
 def validate_apm_package(package_path: Path) -> ValidationResult:
@@ -898,7 +1308,8 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     
     Supports four package types:
     - APM_PACKAGE: Has apm.yml and .apm/ directory
-    - CLAUDE_SKILL: Has SKILL.md but no apm.yml (auto-generates minimal apm.yml)
+    - CLAUDE_SKILL: Has SKILL.md but no apm.yml (auto-generates apm.yml)
+    - HOOK_PACKAGE: Has hooks/*.json but no apm.yml or SKILL.md
     - MARKETPLACE_PLUGIN: Has plugin.json but no apm.yml (synthesizes apm.yml)
     - HYBRID: Has both apm.yml and SKILL.md
     
@@ -930,6 +1341,7 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     has_apm_yml = apm_yml_path.exists()
     has_skill_md = skill_md_path.exists()
     has_plugin_json = plugin_json_path is not None
+    has_hooks = _has_hook_json(package_path)
     
     # Determine package type (apm.yml takes precedence)
     if has_apm_yml and has_skill_md:
@@ -943,7 +1355,16 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     else:
         result.package_type = PackageType.INVALID
         result.add_error("Missing required file: apm.yml, SKILL.md, or plugin.json")
+    elif has_hooks:
+        result.package_type = PackageType.HOOK_PACKAGE
+    else:
+        result.package_type = PackageType.INVALID
+        result.add_error("Missing required file: apm.yml, SKILL.md, or hooks/*.json")
         return result
+    
+    # Handle hook-only packages (no apm.yml or SKILL.md)
+    if result.package_type == PackageType.HOOK_PACKAGE:
+        return _validate_hook_package(package_path, result)
     
     # Handle Claude Skills (no apm.yml) - auto-generate minimal apm.yml
     if result.package_type == PackageType.CLAUDE_SKILL:
@@ -955,6 +1376,34 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     
     # Standard APM package validation (has apm.yml)
     return _validate_apm_package_with_yml(package_path, apm_yml_path, result)
+
+
+def _validate_hook_package(package_path: Path, result: ValidationResult) -> ValidationResult:
+    """Validate a hook-only package and create APMPackage from its metadata.
+    
+    A hook package has hooks/*.json (or .apm/hooks/*.json) defining hook
+    handlers per the Claude Code hooks specification, but no apm.yml or SKILL.md.
+    
+    Args:
+        package_path: Path to the package directory  
+        result: ValidationResult to populate
+        
+    Returns:
+        ValidationResult: Updated validation result
+    """
+    package_name = package_path.name
+    
+    # Create APMPackage from directory name
+    package = APMPackage(
+        name=package_name,
+        version="1.0.0",
+        description=f"Hook package: {package_name}",
+        package_path=package_path,
+        type=PackageContentType.HYBRID
+    )
+    result.package = package
+    
+    return result
 
 
 def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: ValidationResult) -> ValidationResult:
@@ -1081,6 +1530,10 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
                             result.add_warning(f"Empty primitive file: {md_file.relative_to(package_path)}")
                     except Exception as e:
                         result.add_warning(f"Could not read primitive file {md_file.relative_to(package_path)}: {e}")
+    
+    # Also check for hooks (JSON files in .apm/hooks/ or hooks/)
+    if not has_primitives:
+        has_primitives = _has_hook_json(package_path)
     
     if not has_primitives:
         result.add_warning("No primitive files found in .apm/ directory")

@@ -49,10 +49,11 @@ class TestRuntimeArguments(unittest.TestCase):
         # Validate the args array includes all required runtime arguments
         self.assertEqual(server_config["type"], "stdio")
         self.assertEqual(server_config["command"], "npx")
-        self.assertEqual(len(server_config["args"]), 3)
-        self.assertEqual(server_config["args"][0], "test-package")
-        self.assertEqual(server_config["args"][1], "<YOUR_API_KEY>")
-        self.assertEqual(server_config["args"][2], "<YOUR_APP_KEY>")
+        self.assertEqual(len(server_config["args"]), 4)
+        self.assertEqual(server_config["args"][0], "-y")
+        self.assertEqual(server_config["args"][1], "test-package")
+        self.assertEqual(server_config["args"][2], "<YOUR_API_KEY>")
+        self.assertEqual(server_config["args"][3], "<YOUR_APP_KEY>")
     
     def test_datadog_mcp_server_args(self):
         """Test that Datadog MCP Server arguments are correctly processed."""
@@ -110,11 +111,12 @@ class TestRuntimeArguments(unittest.TestCase):
         
         # Validate the args array includes all required runtime arguments for Datadog MCP server
         self.assertEqual(server_config["command"], "npx")
-        self.assertEqual(len(server_config["args"]), 4)
-        self.assertEqual(server_config["args"][0], "datadog-mcp-server")
-        self.assertEqual(server_config["args"][1], "<YOUR_API_KEY>")
-        self.assertEqual(server_config["args"][2], "<YOUR_APP_KEY>")
-        self.assertEqual(server_config["args"][3], "<YOUR_DD_SITE>(e.g us5.datadoghq.com)")
+        self.assertEqual(len(server_config["args"]), 5)
+        self.assertEqual(server_config["args"][0], "-y")
+        self.assertEqual(server_config["args"][1], "datadog-mcp-server")
+        self.assertEqual(server_config["args"][2], "<YOUR_API_KEY>")
+        self.assertEqual(server_config["args"][3], "<YOUR_APP_KEY>")
+        self.assertEqual(server_config["args"][4], "<YOUR_DD_SITE>(e.g us5.datadoghq.com)")
     
     def test_docker_runtime_args_handling(self):
         """Test that docker runtime arguments are correctly added to the args list."""

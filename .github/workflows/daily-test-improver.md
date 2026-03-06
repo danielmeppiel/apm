@@ -31,6 +31,7 @@ network:
   - java
 
 safe-outputs:
+  github-token: ${{ secrets.CREATE_PR_PAT }}
   add-comment:
     target: "*"
     hide-older-comments: true

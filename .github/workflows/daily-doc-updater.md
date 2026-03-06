@@ -30,6 +30,7 @@ tools:
 timeout-minutes: 30
 
 safe-outputs:
+  github-token: ${{ secrets.CREATE_PR_PAT }}
   create-pull-request:
     expires: 2d
     title-prefix: "[docs] "

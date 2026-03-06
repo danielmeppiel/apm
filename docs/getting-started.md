@@ -101,6 +101,10 @@ APM installs packages from multiple sources. Use the format that matches your re
 |--------|--------|---------|
 | GitHub.com | `owner/repo` | `apm install microsoft/apm-sample-package` |
 | GitHub Enterprise | `ghe.company.com/owner/repo` | `apm install ghe.myco.com/team/standards` |
+| GitLab | `gitlab.com/group/subgroup/repo` | `apm install gitlab.com/acme/platform/rules` |
+| GitLab (HTTPS) | `https://gitlab.com/group/repo.git` | `apm install https://gitlab.com/acme/rules.git` |
+| Bitbucket | `https://bitbucket.org/owner/repo.git` | `apm install https://bitbucket.org/team/rules.git` |
+| Any git host | `git@host:owner/repo.git` | `apm install git@git.company.com:team/rules.git` |
 | Azure DevOps | `dev.azure.com/org/project/repo` | `apm install dev.azure.com/myorg/proj/rules` |
 | Virtual Package | `owner/repo/path/to/skill` | `apm install github/awesome-copilot/skills/review-and-refactor` |
 
@@ -124,7 +128,15 @@ apm install partner.ghe.com/external/integration  # FQDN always works
 apm install github.com/public/open-source-package
 ```
 
-**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax to specify supported hosts explicitly (e.g., `github.com`, `*.ghe.com`, Azure DevOps). Custom hosts require setting `GITHUB_HOST`.
+> **Important:** When `GITHUB_HOST` is set, **all** bare package names (e.g., `owner/repo`) resolve against that host. To reference packages on a different server, use the full hostname (FQDN) in your `apm.yml`:
+> ```yaml
+> dependencies:
+>   apm:
+>   - team/internal-package                          # → goes to GITHUB_HOST
+>   - github.com/public/open-source-package           # → goes to github.com
+> ```
+
+**Key Insight:** Use `GITHUB_HOST` to set your default for bare package names. Use FQDN syntax for any host (e.g., `github.com`, `gitlab.com`, `bitbucket.org`, `*.ghe.com`, Azure DevOps), or use full HTTPS/SSH git URLs.
 
 ### Azure DevOps Support
 
@@ -387,12 +399,12 @@ apm install
 **What gets installed:**
 
 For VSCode/Copilot (when `.github/` exists):
-- `.github/prompts/*-apm.prompt.md` - Reusable prompt templates
-- `.github/agents/*-apm.agent.md` - Agent definitions
+- `.github/prompts/*.prompt.md` - Reusable prompt templates
+- `.github/agents/*.agent.md` - Agent definitions
 - `.github/skills/{folder-name}/` - Skills with `SKILL.md` meta-guide
 
 For Claude Code (when `.claude/` exists):
-- `.claude/commands/*-apm.md` - Slash commands
+- `.claude/commands/*.md` - Slash commands
 
 > **Tip:** Both integrations can coexist in the same project. APM installs to all detected targets.
 

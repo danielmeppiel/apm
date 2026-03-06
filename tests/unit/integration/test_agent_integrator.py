@@ -111,13 +111,13 @@ class TestAgentIntegrator:
         assert target_content == source_content
     
     def test_get_target_filename_agent_format(self):
-        """Test target filename generation with -apm suffix for .agent.md."""
+        """Test target filename generation with clean naming for .agent.md."""
         source = Path("/package/security.agent.md")
         package_name = "acme/security-standards"
         
         target = self.integrator.get_target_filename(source, package_name)
-        # Intent-first naming: -apm suffix before extension
-        assert target == "security-apm.agent.md"
+        # Clean naming: original stem preserved
+        assert target == "security.agent.md"
     
     def test_get_target_filename_chatmode_format(self):
         """Test target filename generation renames .chatmode.md to .agent.md."""
@@ -126,7 +126,7 @@ class TestAgentIntegrator:
         
         target = self.integrator.get_target_filename(source, package_name)
         # chatmode is legacy — deploy as .agent.md
-        assert target == "default-apm.agent.md"
+        assert target == "default.agent.md"
     
 
     
@@ -172,7 +172,7 @@ class TestAgentIntegrator:
         github_agents.mkdir(parents=True)
         
         # Pre-create the target file with old content
-        (github_agents / "security-apm.agent.md").write_text("# Old Content")
+        (github_agents / "security.agent.md").write_text("# Old Content")
         
         package = APMPackage(
             name="test-pkg",
@@ -199,28 +199,8 @@ class TestAgentIntegrator:
         assert result.files_updated == 0
         assert result.files_skipped == 0
         # Verify content was overwritten
-        content = (github_agents / "security-apm.agent.md").read_text()
+        content = (github_agents / "security.agent.md").read_text()
         assert content == "# Security Agent"
-    
-    def test_update_gitignore_adds_patterns(self):
-        """Test that gitignore is updated with integrated agents patterns."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("# Existing content\napm_modules/\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents(self.project_root)
-        
-        assert updated == True
-        content = gitignore.read_text()
-        assert ".github/agents/*-apm.agent.md" in content
-    
-    def test_update_gitignore_skips_if_exists(self):
-        """Test that gitignore update is skipped if patterns exist."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/agents/*-apm.agent.md\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents(self.project_root)
-        
-        assert updated == False
     
     # ========== Verbatim Copy Tests ==========
     
@@ -276,7 +256,7 @@ tools: []
         assert result.files_skipped == 0
         
         # Verify verbatim copy — no frontmatter injected
-        target_file = github_agents / "security-apm.agent.md"
+        target_file = github_agents / "security.agent.md"
         content = target_file.read_text()
         assert content == "# Security Agent Content"
         assert 'apm:' not in content
@@ -291,7 +271,7 @@ tools: []
         github_agents.mkdir(parents=True)
         
         # Pre-create file with old content
-        (github_agents / "security-apm.agent.md").write_text("# Old Content")
+        (github_agents / "security.agent.md").write_text("# Old Content")
         
         package = APMPackage(
             name="test-pkg",
@@ -319,7 +299,7 @@ tools: []
         assert result.files_skipped == 0
         
         # Verify content was overwritten verbatim
-        target_file = github_agents / "security-apm.agent.md"
+        target_file = github_agents / "security.agent.md"
         content = target_file.read_text()
         assert content == "# Updated Agent Content"
     
@@ -337,8 +317,8 @@ tools: []
         github_agents.mkdir(parents=True)
         
         # Pre-create some target files
-        (github_agents / "existing-apm.agent.md").write_text("# Old Content")
-        (github_agents / "another-apm.agent.md").write_text("# Old Another")
+        (github_agents / "existing.agent.md").write_text("# Old Content")
+        (github_agents / "another.agent.md").write_text("# Old Another")
         
         package = APMPackage(
             name="test-pkg",
@@ -366,9 +346,9 @@ tools: []
         assert result.files_skipped == 0
         
         # Verify all files exist with verbatim content
-        assert (github_agents / "new-apm.agent.md").read_text() == "# New Agent"
-        assert (github_agents / "existing-apm.agent.md").read_text() == "# Updated Agent"
-        assert (github_agents / "another-apm.agent.md").read_text() == "# Another Agent"
+        assert (github_agents / "new.agent.md").read_text() == "# New Agent"
+        assert (github_agents / "existing.agent.md").read_text() == "# Updated Agent"
+        assert (github_agents / "another.agent.md").read_text() == "# Another Agent"
     
     # ========== Sync Integration Tests (Nuke & Regenerate) ==========
     
@@ -527,62 +507,41 @@ This is a skill, not an agent.""")
 
 
 class TestAgentSuffixPattern:
-    """Test -apm suffix pattern edge cases for agents."""
+    """Test clean naming pattern edge cases for agents."""
     
     def setup_method(self):
         """Set up test fixtures."""
         self.integrator = AgentIntegrator()
     
-    def test_suffix_with_simple_agent_filename(self):
-        """Test suffix pattern with simple agent filename."""
+    def test_clean_naming_simple_agent_filename(self):
+        """Test clean naming with simple agent filename."""
         source = Path("security.agent.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "security-apm.agent.md"
+        assert result == "security.agent.md"
     
-    def test_suffix_with_simple_chatmode_filename(self):
-        """Test suffix pattern renames chatmode to agent format."""
+    def test_clean_naming_chatmode_to_agent(self):
+        """Test clean naming renames chatmode to agent format."""
         source = Path("default.chatmode.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "default-apm.agent.md"
+        assert result == "default.agent.md"
     
-    def test_suffix_with_hyphenated_filename(self):
-        """Test suffix pattern with hyphenated filename."""
+    def test_clean_naming_hyphenated_filename(self):
+        """Test clean naming with hyphenated filename."""
         source = Path("backend-engineer.agent.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "backend-engineer-apm.agent.md"
+        assert result == "backend-engineer.agent.md"
     
-    def test_suffix_with_multi_part_filename(self):
-        """Test suffix pattern with multi-part filename."""
+    def test_clean_naming_multi_part_filename(self):
+        """Test clean naming with multi-part filename."""
         source = Path("security-audit-tool.agent.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "security-audit-tool-apm.agent.md"
+        assert result == "security-audit-tool.agent.md"
     
-    def test_suffix_preserves_original_name(self):
+    def test_clean_naming_preserves_original_name(self):
         """Test that original filename structure is preserved."""
         source = Path("my_custom-agent.agent.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "my_custom-agent-apm.agent.md"
-    
-    def test_gitignore_pattern_matches_suffix_files(self):
-        """Test that gitignore patterns match -apm suffix files."""
-        import fnmatch
-        
-        agent_pattern = "*-apm.agent.md"
-        chatmode_pattern = "*-apm.chatmode.md"
-        
-        # Agent pattern should match
-        assert fnmatch.fnmatch("security-apm.agent.md", agent_pattern)
-        assert fnmatch.fnmatch("test-apm.agent.md", agent_pattern)
-        assert fnmatch.fnmatch("a-b-c-apm.agent.md", agent_pattern)
-        
-        # Chatmode pattern should match
-        assert fnmatch.fnmatch("default-apm.chatmode.md", chatmode_pattern)
-        assert fnmatch.fnmatch("backend-apm.chatmode.md", chatmode_pattern)
-        
-        # Should NOT match
-        assert not fnmatch.fnmatch("security.agent.md", agent_pattern)
-        assert not fnmatch.fnmatch("apm.agent.md", agent_pattern)
-        assert not fnmatch.fnmatch("default.chatmode.md", chatmode_pattern)
+        assert result == "my_custom-agent.agent.md"
 
 
 class TestClaudeAgentIntegration:
@@ -623,19 +582,19 @@ class TestClaudeAgentIntegration:
         """Test Claude filename from .agent.md uses .md extension."""
         source = Path("security.agent.md")
         result = self.integrator.get_target_filename_claude(source, "pkg")
-        assert result == "security-apm.md"
+        assert result == "security.md"
     
     def test_get_target_filename_claude_from_chatmode_md(self):
         """Test Claude filename from .chatmode.md uses .md extension."""
         source = Path("default.chatmode.md")
         result = self.integrator.get_target_filename_claude(source, "pkg")
-        assert result == "default-apm.md"
+        assert result == "default.md"
     
     def test_get_target_filename_claude_hyphenated(self):
         """Test Claude filename with hyphenated source name."""
         source = Path("backend-engineer.agent.md")
         result = self.integrator.get_target_filename_claude(source, "pkg")
-        assert result == "backend-engineer-apm.md"
+        assert result == "backend-engineer.md"
     
     def test_integrate_creates_claude_agents_directory(self):
         """Test that integration creates .claude/agents/ if missing."""
@@ -659,7 +618,7 @@ class TestClaudeAgentIntegration:
         result = self.integrator.integrate_package_agents_claude(package_info, self.project_root)
         
         assert result.files_integrated == 1
-        target_file = self.project_root / ".claude" / "agents" / "security-apm.md"
+        target_file = self.project_root / ".claude" / "agents" / "security.md"
         assert target_file.exists()
         content = target_file.read_text()
         assert "Security Agent" in content
@@ -675,7 +634,7 @@ class TestClaudeAgentIntegration:
         result = self.integrator.integrate_package_agents_claude(package_info, self.project_root)
         
         assert result.files_integrated == 1
-        target_file = self.project_root / ".claude" / "agents" / "backend-apm.md"
+        target_file = self.project_root / ".claude" / "agents" / "backend.md"
         assert target_file.exists()
     
     def test_integrate_multiple_agents(self):
@@ -690,9 +649,9 @@ class TestClaudeAgentIntegration:
         result = self.integrator.integrate_package_agents_claude(package_info, self.project_root)
         
         assert result.files_integrated == 3
-        assert (self.project_root / ".claude" / "agents" / "security-apm.md").exists()
-        assert (self.project_root / ".claude" / "agents" / "planner-apm.md").exists()
-        assert (self.project_root / ".claude" / "agents" / "default-apm.md").exists()
+        assert (self.project_root / ".claude" / "agents" / "security.md").exists()
+        assert (self.project_root / ".claude" / "agents" / "planner.md").exists()
+        assert (self.project_root / ".claude" / "agents" / "default.md").exists()
     
     def test_integrate_agents_from_apm_agents_dir(self):
         """Test finding agents in .apm/agents/ subdirectory."""
@@ -705,7 +664,7 @@ class TestClaudeAgentIntegration:
         result = self.integrator.integrate_package_agents_claude(package_info, self.project_root)
         
         assert result.files_integrated == 1
-        assert (self.project_root / ".claude" / "agents" / "reviewer-apm.md").exists()
+        assert (self.project_root / ".claude" / "agents" / "reviewer.md").exists()
     
     def test_integrate_no_agents_returns_empty_result(self):
         """Test empty result when no agent files found."""
@@ -728,13 +687,13 @@ class TestClaudeAgentIntegration:
         # Pre-create target
         agents_dir = self.project_root / ".claude" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "security-apm.md").write_text("# Old Content")
+        (agents_dir / "security.md").write_text("# Old Content")
         
         package_info = self._create_package_info(package_dir)
         result = self.integrator.integrate_package_agents_claude(package_info, self.project_root)
         
         assert result.files_integrated == 1
-        content = (agents_dir / "security-apm.md").read_text()
+        content = (agents_dir / "security.md").read_text()
         assert "Updated Content" in content
     
     def test_integrate_preserves_frontmatter(self):
@@ -754,7 +713,7 @@ You are a security reviewer. Analyze code for vulnerabilities."""
         package_info = self._create_package_info(package_dir)
         self.integrator.integrate_package_agents_claude(package_info, self.project_root)
         
-        target_content = (self.project_root / ".claude" / "agents" / "security-apm.md").read_text()
+        target_content = (self.project_root / ".claude" / "agents" / "security.md").read_text()
         assert "name: security-reviewer" in target_content
         assert "description: Reviews code for security issues" in target_content
         assert "security reviewer" in target_content
@@ -780,37 +739,3 @@ You are a security reviewer. Analyze code for vulnerabilities."""
         
         assert result['files_removed'] == 0
         assert result['errors'] == 0
-    
-    def test_update_gitignore_claude_adds_pattern(self):
-        """Test .gitignore is updated with Claude agent pattern."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("node_modules/\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents_claude(self.project_root)
-        
-        assert updated
-        content = gitignore.read_text()
-        assert ".claude/agents/*-apm.md" in content
-    
-    def test_update_gitignore_claude_skips_if_exists(self):
-        """Test .gitignore is not updated if pattern already present."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("node_modules/\n.claude/agents/*-apm.md\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_agents_claude(self.project_root)
-        
-        assert not updated
-    
-    def test_gitignore_pattern_matches_claude_suffix_files(self):
-        """Test that gitignore pattern matches -apm.md files."""
-        import fnmatch
-        
-        pattern = "*-apm.md"
-        
-        assert fnmatch.fnmatch("security-apm.md", pattern)
-        assert fnmatch.fnmatch("backend-engineer-apm.md", pattern)
-        assert fnmatch.fnmatch("default-apm.md", pattern)
-        
-        # Should NOT match non-APM files
-        assert not fnmatch.fnmatch("security.md", pattern)
-        assert not fnmatch.fnmatch("custom-agent.md", pattern)

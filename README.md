@@ -28,7 +28,7 @@ dependencies:
     # Skills from any repository
     - anthropics/skills/skills/frontend-design
     - microsoft/GitHub-Copilot-for-Azure/plugin/skills/azure-compliance
-    # A full APM package with rules, skills, prompts...
+    # A full APM package with rules, skills, prompts, hooks...
     - microsoft/apm-sample-package
     # Specific agent primitives from any repository
     - github/awesome-copilot/skills/review-and-refactor
@@ -57,11 +57,12 @@ Skill registries install skills. APM manages **every primitive** your AI agents 
 | **Skills** | AI capabilities, workflows | Form builder, code reviewer |
 | **Prompts** | Reusable slash commands | `/security-audit`, `/design-review` |
 | **Agents** | Specialized personas | Accessibility auditor, API designer |
+| **Hooks** | Lifecycle event handlers | Pre-tool validation, post-tool linting |
 | **MCP Servers** | Tool integrations | Database access, API connectors |
 
 All declared in one manifest. All installed with one command — including transitive dependencies:
 
-**`apm install`** → integrates prompts, agents, and skills into `.github/` and `.claude/`
+**`apm install`** → installs prompts, agents, skills, and instructions under `.github/instructions/` when editor integration (e.g., VS Code) is enabled
 **`apm compile`** → compiles instructions into `AGENTS.md` (Copilot, Cursor, Codex) and `CLAUDE.md` (Claude)
 
 ## Get Started
@@ -95,14 +96,16 @@ apm install github/awesome-copilot/agents/api-architect.agent.md
 ## Install From Anywhere
 
 ```bash
-# GitHub Repo or Path
-apm install owner/repo   
-apm install owner/repo/path                                              
-# Single file
-apm install github/awesome-copilot/skills/review-and-refactor   
+# GitHub (shorthand)
+apm install owner/repo
+apm install owner/repo/path
+# GitLab / Bitbucket / any git host
+apm install https://gitlab.com/acme/coding-standards.git
+apm install git@bitbucket.org:team/security-rules.git
+apm install gitlab.com/acme/repo
 # GitHub Enterprise Server
-apm install ghe.company.com/owner/repo    
-# Azure DevOps                      
+apm install ghe.company.com/owner/repo
+# Azure DevOps
 apm install dev.azure.com/org/project/repo
 ```
 
@@ -119,7 +122,8 @@ my-standards/
     ├── instructions/    # Guardrails (.instructions.md)
     ├── prompts/         # Slash commands (.prompt.md)
     ├── skills/          # Agent Skills (SKILL.md)
-    └── agents/          # Personas (.agent.md)
+    ├── agents/          # Personas (.agent.md)
+    └── hooks/           # Event handlers (.json)
 ```
 
 Add a guardrail and publish:
@@ -152,7 +156,7 @@ Anyone can now `apm install you/my-standards`.
 
 ## Configuration
 
-For private repos or Azure DevOps, set a token:
+For private repos or Azure DevOps, set a token. For other hosts (GitLab, Bitbucket, etc.), configure SSH keys or use `git credential-manager`:
 
 | Token | When you need it |
 |-------|-----------------|
@@ -166,16 +170,23 @@ For private repos or Azure DevOps, set a token:
 
 ## APM Packages
 
-APM installs from any GitHub or Azure DevOps repo — no special packaging required. Point at a prompt file, a skill, or a full package. These are some curated packages to get you started:
+An APM package is anything you can point `apm install` at: a full package with an `apm.yml` manifest and `.apm/` folder, a single primitive file (`.instructions.md`, `.prompt.md`, `.agent.md`), a skill folder, or any subtree inside a repository. Hooks are auto-discovered when a package contains them. See [Primitives](docs/primitives.md) for details on each type.
+
+APM installs from **any git host** — GitHub, GitLab, Bitbucket, self-hosted servers, GitHub Enterprise, and Azure DevOps. Use HTTPS or SSH git URLs, or the `owner/repo` shorthand for GitHub. See [Package Sources](docs/getting-started.md#package-sources) for host configuration.
+
+Popular sources to get you started:
 
 | Package | What you get |
 |---------|-------------|
 | [github/awesome-copilot](https://github.com/github/awesome-copilot) | Community prompts, agents & instructions for GitHub Copilot |
-| [anthropics/courses](https://github.com/anthropics/courses) | Anthropic's official prompt engineering courses |
+| [anthropics/skills](https://github.com/anthropics/skills) | Anthropic's official agent skills |
 | [microsoft/GitHub-Copilot-for-Azure](https://github.com/microsoft/GitHub-Copilot-for-Azure/tree/main/plugin/skills) | Azure Skills |
-| [Add yours →](https://github.com/microsoft/apm/discussions/new) | |
 
 ---
+
+## Roadmap
+
+See the [APM Roadmap](https://github.com/microsoft/apm/discussions/116) for what's coming next.
 
 ## Documentation
 

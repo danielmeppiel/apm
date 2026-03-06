@@ -192,7 +192,7 @@ class CodexClientAdapter(MCPClientAdapter):
             package = self._select_best_package(packages)
             
             if package:
-                registry_name = package.get("registry_name", "")
+                registry_name = self._infer_registry_name(package)
                 package_name = package.get("name", "")
                 runtime_hint = package.get("runtime_hint", "")
                 runtime_arguments = package.get("runtime_arguments", [])
@@ -209,8 +209,10 @@ class CodexClientAdapter(MCPClientAdapter):
                 # Generate command and args based on package type
                 if registry_name == "npm":
                     config["command"] = runtime_hint or "npx"
-                    # For npm packages, use runtime_arguments directly as they contain the complete npx command
-                    config["args"] = processed_runtime_args + processed_package_args
+                    # Always include package name; filter duplicates from legacy runtime_arguments
+                    all_args = processed_runtime_args + processed_package_args
+                    extra_args = [a for a in all_args if a != package_name] if all_args else []
+                    config["args"] = ["-y", package_name] + extra_args
                     # For NPM packages, also use env block for environment variables
                     if resolved_env:
                         config["env"] = resolved_env
@@ -509,6 +511,8 @@ class CodexClientAdapter(MCPClientAdapter):
         """Select the best package for installation from available packages.
         
         Prioritizes packages in order: npm, docker, pypi, homebrew, others.
+        Uses ``_infer_registry_name`` so selection works even when the
+        registry API returns empty ``registry_name``.
         
         Args:
             packages (list): List of package dictionaries.
@@ -518,11 +522,11 @@ class CodexClientAdapter(MCPClientAdapter):
         """
         priority_order = ["npm", "docker", "pypi", "homebrew"]
         
-        # Sort packages by priority
-        for registry_name in priority_order:
+        for target in priority_order:
             for package in packages:
-                if package.get("registry_name") == registry_name:
+                if self._infer_registry_name(package) == target:
                     return package
         
         # If no priority package found, return the first one
         return packages[0] if packages else None
+

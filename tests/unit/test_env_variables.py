@@ -92,7 +92,7 @@ class TestEnvironmentVariablesHandling(unittest.TestCase):
         server_config = updated_config["servers"]["io.github.tinyfish-io/agentql-mcp"]
         self.assertEqual(server_config["type"], "stdio")
         self.assertEqual(server_config["command"], "npx")
-        self.assertEqual(server_config["args"], ["agentql-mcp"])
+        self.assertEqual(server_config["args"], ["-y", "agentql-mcp"])
         
         # Verify environment variables were added
         self.assertIn("env", server_config)

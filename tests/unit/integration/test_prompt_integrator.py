@@ -100,13 +100,13 @@ Some prompt content."""
         assert "apm:" not in target_content
     
     def test_get_target_filename(self):
-        """Test target filename generation with -apm suffix (intent-first naming)."""
+        """Test target filename generation with clean naming (no suffix)."""
         source = Path("/package/accessibility-audit.prompt.md")
         package_name = "microsoft/apm-sample-package"
         
         target = self.integrator.get_target_filename(source, package_name)
-        # Intent-first naming: -apm suffix before extension
-        assert target == "accessibility-audit-apm.prompt.md"
+        # Clean naming: original filename preserved
+        assert target == "accessibility-audit.prompt.md"
     
     def test_integrate_package_prompts_creates_directory(self):
         """Test that integration creates .github/prompts/ if missing."""
@@ -150,7 +150,7 @@ Some prompt content."""
         github_prompts.mkdir(parents=True)
         
         # Pre-create the target file with old content
-        (github_prompts / "test-apm.prompt.md").write_text("# Old Content")
+        (github_prompts / "test.prompt.md").write_text("# Old Content")
         
         package = APMPackage(
             name="test-pkg",
@@ -179,29 +179,9 @@ Some prompt content."""
         assert result.files_skipped == 0
         
         # Verify content was overwritten
-        content = (github_prompts / "test-apm.prompt.md").read_text()
+        content = (github_prompts / "test.prompt.md").read_text()
         assert "# New Content" in content
         assert "# Old Content" not in content
-    
-    def test_update_gitignore_adds_pattern(self):
-        """Test that gitignore is updated with integrated prompts pattern."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text("# Existing content\napm_modules/\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_prompts(self.project_root)
-        
-        assert updated == True
-        content = gitignore.read_text()
-        assert ".github/prompts/*-apm.prompt.md" in content
-    
-    def test_update_gitignore_skips_if_exists(self):
-        """Test that gitignore update is skipped if pattern exists."""
-        gitignore = self.project_root / ".gitignore"
-        gitignore.write_text(".github/prompts/*-apm.prompt.md\n")
-        
-        updated = self.integrator.update_gitignore_for_integrated_prompts(self.project_root)
-        
-        assert updated == False
     
     def test_integrate_copies_verbatim_no_metadata(self):
         """Test that integration copies files verbatim without metadata."""
@@ -239,7 +219,7 @@ Some prompt content."""
         assert result.files_skipped == 0
         
         # Verify file is copied verbatim - no metadata
-        target_file = github_prompts / "test-apm.prompt.md"
+        target_file = github_prompts / "test.prompt.md"
         content = target_file.read_text()
         assert content == source_content
         assert 'apm:' not in content
@@ -258,7 +238,7 @@ Some prompt content."""
         github_prompts.mkdir(parents=True)
         
         # Pre-create one existing file to test overwrite
-        (github_prompts / "file2-apm.prompt.md").write_text("# Old File 2")
+        (github_prompts / "file2.prompt.md").write_text("# Old File 2")
         
         package = APMPackage(
             name="test-pkg",
@@ -287,9 +267,9 @@ Some prompt content."""
         assert result.files_skipped == 0
         
         # Verify all files exist with correct content
-        assert (github_prompts / "file1-apm.prompt.md").exists()
-        assert (github_prompts / "file2-apm.prompt.md").read_text() == "# File 2"
-        assert (github_prompts / "file3-apm.prompt.md").exists()
+        assert (github_prompts / "file1.prompt.md").exists()
+        assert (github_prompts / "file2.prompt.md").read_text() == "# File 2"
+        assert (github_prompts / "file3.prompt.md").exists()
     
     # ========== Sync Integration Tests (Nuke-and-Regenerate) ==========
     
@@ -363,35 +343,35 @@ Some prompt content."""
 
 
 class TestPromptSuffixPattern:
-    """Test -apm suffix pattern edge cases."""
+    """Test clean naming pattern edge cases."""
     
     def setup_method(self):
         """Set up test fixtures."""
         self.integrator = PromptIntegrator()
     
-    def test_suffix_with_simple_filename(self):
-        """Test suffix pattern with simple filename."""
+    def test_clean_naming_simple_filename(self):
+        """Test clean naming with simple filename."""
         source = Path("test.prompt.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "test-apm.prompt.md"
+        assert result == "test.prompt.md"
     
-    def test_suffix_with_hyphenated_filename(self):
-        """Test suffix pattern with hyphenated filename."""
+    def test_clean_naming_hyphenated_filename(self):
+        """Test clean naming with hyphenated filename."""
         source = Path("design-review.prompt.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "design-review-apm.prompt.md"
+        assert result == "design-review.prompt.md"
     
-    def test_suffix_with_multi_part_filename(self):
-        """Test suffix pattern with multi-part filename."""
+    def test_clean_naming_multi_part_filename(self):
+        """Test clean naming with multi-part filename."""
         source = Path("accessibility-audit-wcag.prompt.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "accessibility-audit-wcag-apm.prompt.md"
+        assert result == "accessibility-audit-wcag.prompt.md"
     
-    def test_suffix_preserves_original_name(self):
+    def test_clean_naming_preserves_original_name(self):
         """Test that original filename structure is preserved."""
         source = Path("my_custom-workflow.prompt.md")
         result = self.integrator.get_target_filename(source, "pkg")
-        assert result == "my_custom-workflow-apm.prompt.md"
+        assert result == "my_custom-workflow.prompt.md"
     
     def test_gitignore_pattern_matches_suffix_files(self):
         """Test that gitignore pattern matches -apm suffix files."""

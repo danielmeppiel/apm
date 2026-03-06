@@ -41,7 +41,7 @@ target: vscode  # or claude, or all
 | `all` | Both `AGENTS.md` and `CLAUDE.md` | Universal compatibility |
 | `minimal` | `AGENTS.md` only | Works everywhere, no folder integration |
 
-> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](integrations.md) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, and `.claude/commands/`.
+> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](integrations.md) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, and `.claude/commands/`.
 
 ### How It Works
 
@@ -290,12 +290,13 @@ Use the `exclude` field to skip directories during compilation, improving perfor
 - Prevent duplicate instruction discovery
 
 **Default Exclusions:**
-APM always excludes these directories (no configuration needed):
+APM always excludes directories whose path contains an exact component matching one of these names (no configuration needed). A directory named `rebuild/` is **not** excluded just because it contains `build` as a substring.
 - `node_modules`
 - `__pycache__`
 - `.git`
 - `dist`
 - `build`
+- `apm_modules`
 - Hidden directories (starting with `.`)
 
 ## Advanced Optimization Features
