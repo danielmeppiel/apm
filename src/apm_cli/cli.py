@@ -313,7 +313,7 @@ cli.add_command(deps)
 @cli.command(help="🚀 Initialize a new APM project")
 @click.argument("project_name", required=False)
 @click.option(
-    "--yes", "-y", is_flag=True, help="Skip prompts and use auto-detected defaults"
+    "--yes", "-y", is_flag=True, help="Skip interactive prompts and use auto-detected defaults"
 )
 @click.pass_context
 def init(ctx, project_name, yes):
@@ -808,7 +808,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         sys.exit(1)
 
 
-@cli.command(help="Remove APM packages not listed in apm.yml")
+@cli.command(help="🧹 Remove APM packages not listed in apm.yml")
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be removed without removing"
 )
@@ -1064,7 +1064,7 @@ def update(check):
         sys.exit(1)
 
 
-@cli.command(help="Remove APM packages from apm.yml and apm_modules")
+@cli.command(help="🗑️ Remove APM packages from apm.yml and apm_modules")
 @click.argument("packages", nargs=-1, required=True)
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be removed without removing"
@@ -3143,7 +3143,7 @@ def _list_available_scripts():
     return {}
 
 
-@cli.command(help="Run a script with parameters")
+@cli.command(help="🚀 Run a script with parameters")
 @click.argument("script_name", required=False)
 @click.option("--param", "-p", multiple=True, help="Parameter in format name=value")
 @click.pass_context
@@ -3218,7 +3218,7 @@ def run(ctx, script_name, param):
         sys.exit(1)
 
 
-@cli.command(help="Preview a script's compiled prompt files")
+@cli.command(help="👀 Preview a script's compiled prompt files")
 @click.argument("script_name", required=False)
 @click.option("--param", "-p", multiple=True, help="Parameter in format name=value")
 @click.pass_context
@@ -3345,7 +3345,7 @@ def preview(ctx, script_name, param):
         sys.exit(1)
 
 
-@cli.command(help="List available scripts in the current project")
+@cli.command(help="📋 List available scripts in the current project")
 @click.pass_context
 def list(ctx):
     """List all available scripts from apm.yml."""
@@ -4151,7 +4151,7 @@ def compile(
         sys.exit(1)
 
 
-@cli.group(help="Configure APM CLI")
+@cli.group(help="⚙️ Configure APM CLI")
 @click.pass_context
 def config(ctx):
     """Configure APM CLI settings."""
@@ -4241,7 +4241,7 @@ def config(ctx):
             click.echo(f"  APM CLI Version: {get_version()}")
 
 
-@config.command(help="Set configuration value")
+@config.command(help="⚙️ Set a configuration value")
 @click.argument("key")
 @click.argument("value")
 def set(key, value):
@@ -4272,7 +4272,7 @@ def set(key, value):
         sys.exit(1)
 
 
-@config.command(help="Get configuration value")
+@config.command(help="⚙️ Get a configuration value")
 @click.argument("key", required=False)
 def get(key):
     """Get a configuration value or show all configuration.
@@ -4306,7 +4306,7 @@ def get(key):
                 click.echo(f"  {k}: {v}")
 
 
-@cli.group(help="Manage Coding Agent CLI runtimes")
+@cli.group(help="🤖 Manage Coding Agent CLI runtimes")
 def runtime():
     """Manage Coding Agent CLI runtime installations and configurations."""
     pass
@@ -4330,7 +4330,7 @@ def _atomic_write(path: Path, data: str) -> None:
         raise
 
 
-@cli.group(help="Manage MCP servers")
+@cli.group(help="🔌 Manage MCP servers")
 def mcp():
     """Manage MCP server discovery and information."""
     pass
