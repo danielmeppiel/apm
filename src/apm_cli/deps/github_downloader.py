@@ -1073,8 +1073,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                 ['git', 'sparse-checkout', 'set', subdir_path],
             ]
             fetch_cmd = ['git', 'fetch', 'origin']
-            if ref:
-                fetch_cmd.append(ref)
+            fetch_cmd.append(ref if ref else 'HEAD')
             fetch_cmd.append('--depth=1')
             cmds.append(fetch_cmd)
             cmds.append(['git', 'checkout', 'FETCH_HEAD'])
