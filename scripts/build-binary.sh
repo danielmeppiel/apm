@@ -62,6 +62,16 @@ else
     echo -e "${YELLOW}UPX not found - binary will not be compressed (install with: brew install upx)${NC}"
 fi
 
+# Inject build SHA into version.py
+VERSION_FILE="src/apm_cli/version.py"
+BUILD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+if [ -n "$BUILD_SHA" ]; then
+    echo -e "${YELLOW}Injecting build SHA: $BUILD_SHA${NC}"
+    sed -i.bak "s/^__BUILD_SHA__ = None$/__BUILD_SHA__ = \"$BUILD_SHA\"/" "$VERSION_FILE"
+    # Guarantee restore on any exit (success, failure, or signal)
+    trap 'if [ -f "${VERSION_FILE}.bak" ]; then mv "${VERSION_FILE}.bak" "$VERSION_FILE"; fi' EXIT
+fi
+
 # Build binary
 echo -e "${YELLOW}Building binary with PyInstaller...${NC}"
 uv run pyinstaller build/apm.spec

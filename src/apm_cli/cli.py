@@ -36,7 +36,7 @@ from apm_cli.utils.console import (
 from apm_cli.utils.github_host import is_valid_fqdn, default_host
 
 # APM imports - use absolute imports everywhere for consistency
-from apm_cli.version import get_version
+from apm_cli.version import get_build_sha, get_version
 from apm_cli.utils.version_checker import check_for_updates
 
 # APM Dependencies - Import for Task 5 integration
@@ -230,6 +230,11 @@ def print_version(ctx, param, value):
     if not value or ctx.resilient_parsing:
         return
 
+    version_str = get_version()
+    sha = get_build_sha()
+    if sha:
+        version_str += f" ({sha})"
+
     console = _get_console()
     if console:
         from rich.panel import Panel  # type: ignore
@@ -237,12 +242,12 @@ def print_version(ctx, param, value):
 
         version_text = Text()
         version_text.append("Agent Package Manager (APM) CLI", style="bold cyan")
-        version_text.append(f" version {get_version()}", style="white")
+        version_text.append(f" version {version_str}", style="white")
         console.print(Panel(version_text, border_style="cyan", padding=(0, 1)))
     else:
         # Graceful fallback when Rich isn't available (e.g., stripped automation environment)
         click.echo(
-            f"{TITLE}Agent Package Manager (APM) CLI{RESET} version {get_version()}"
+            f"{TITLE}Agent Package Manager (APM) CLI{RESET} version {version_str}"
         )
 
     ctx.exit()
