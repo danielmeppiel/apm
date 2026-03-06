@@ -4306,7 +4306,7 @@ def get(key):
                 click.echo(f"  {k}: {v}")
 
 
-@cli.group(help="🤖 Manage Coding Agent CLI runtimes")
+@cli.group(help="🤖 Manage AI runtimes")
 def runtime():
     """Manage Coding Agent CLI runtime installations and configurations."""
     pass
