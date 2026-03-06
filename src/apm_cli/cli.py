@@ -4330,7 +4330,7 @@ def _atomic_write(path: Path, data: str) -> None:
         raise
 
 
-@cli.group(help="🔌 Manage MCP servers")
+@cli.group(help="🔌 Browse MCP server registry")
 def mcp():
     """Manage MCP server discovery and information."""
     pass
