@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Generic git URL support**: APM now accepts any valid FQDN as a git host, enabling installation of packages from GitLab, Bitbucket, self-hosted Gitea, and any other git-accessible server (#150)
+  - HTTPS URLs: `https://gitlab.com/acme/rules.git`, `https://bitbucket.org/team/standards.git`
+  - SSH URLs: `git@gitlab.com:acme/rules.git`, `git@bitbucket.org:team/standards.git`
+  - FQDN shorthand: `gitlab.com/acme/rules`, `gitlab.com/group/subgroup/repo`
+  - Object format with `git:` key supports `path`, `ref`, and `alias` on any git URL
+  - Authentication delegates to git credentials / SSH keys for non-GitHub hosts
+
 ## [0.7.4] - 2025-03-03
 
 ### Added
