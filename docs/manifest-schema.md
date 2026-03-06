@@ -112,7 +112,7 @@ Controls which output targets are generated during compilation. When unset, a co
 | `agents` | Alias for `vscode` |
 | `claude` | Emits `CLAUDE.md` at the project root |
 | `all` | Both `vscode` and `claude` targets |
-| `minimal` | AGENTS.md only at project root (fallback when no `.github/` or `.claude/` detected) |
+| `minimal` | AGENTS.md only at project root. **Auto-detected only** — this value MUST NOT be set explicitly in manifests; it is an internal fallback when no `.github/` or `.claude/` folder is detected. |
 
 ### 3.7. `type`
 
@@ -150,9 +150,9 @@ Declares how the package's content is processed during install and compile:
 |---|---|
 | **Type** | `object` |
 | **Required** | OPTIONAL |
-| **Allowed keys** | `apm`, `mcp` |
+| **Known keys** | `apm`, `mcp` |
 
-Contains two OPTIONAL lists: `apm` for agent primitive packages and `mcp` for MCP servers. Each list entry is either a string shorthand or a typed object.
+Contains two OPTIONAL lists: `apm` for agent primitive packages and `mcp` for MCP servers. Each list entry is either a string shorthand or a typed object. Additional keys MAY be present for future dependency types; conforming resolvers MUST ignore unknown keys for resolution but MUST preserve them when reading and rewriting manifests, to allow forward compatibility.
 
 ---
 
@@ -173,7 +173,7 @@ shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref] ["@" ali
 | Segment | Required | Pattern | Description |
 |---|---|---|---|
 | `host` | OPTIONAL | FQDN (e.g. `gitlab.com`) | Git host. Defaults to `github.com`. |
-| `owner/repo` | REQUIRED | `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` | Repository path. Nested groups supported for non-GitHub hosts (e.g. `gitlab.com/group/sub/repo`). |
+| `owner/repo` | REQUIRED | 2+ path segments of `[a-zA-Z0-9._-]+` | Repository path. GitHub uses exactly 2 segments (`owner/repo`). Non-GitHub hosts MAY use nested groups (e.g. `gitlab.com/group/sub/repo`). |
 | `virtual_path` | OPTIONAL | Path segments after repo | Subdirectory, file, or collection within the repo. See §4.1.3. |
 | `ref` | OPTIONAL | Branch, tag, or commit SHA | Git reference. Commit SHAs matched by `^[a-f0-9]{7,40}$`. Semver tags matched by `^v?\d+\.\d+\.\d+`. |
 | `alias` | OPTIONAL | `^[a-zA-Z0-9._-]+$` | Local alias for the dependency. Appears after `#ref` in the string. |
