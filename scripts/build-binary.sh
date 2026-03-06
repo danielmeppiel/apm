@@ -68,16 +68,13 @@ BUILD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "")
 if [ -n "$BUILD_SHA" ]; then
     echo -e "${YELLOW}Injecting build SHA: $BUILD_SHA${NC}"
     sed -i.bak "s/^__BUILD_SHA__ = None$/__BUILD_SHA__ = \"$BUILD_SHA\"/" "$VERSION_FILE"
+    # Guarantee restore on any exit (success, failure, or signal)
+    trap 'if [ -f "${VERSION_FILE}.bak" ]; then mv "${VERSION_FILE}.bak" "$VERSION_FILE"; fi' EXIT
 fi
 
 # Build binary
 echo -e "${YELLOW}Building binary with PyInstaller...${NC}"
 uv run pyinstaller build/apm.spec
-
-# Restore version.py to avoid dirtying the working tree
-if [ -f "${VERSION_FILE}.bak" ]; then
-    mv "${VERSION_FILE}.bak" "$VERSION_FILE"
-fi
 
 # Check if build was successful (onedir mode creates dist/apm/apm)
 if [ ! -f "dist/apm/apm" ]; then

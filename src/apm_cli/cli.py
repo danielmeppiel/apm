@@ -230,27 +230,24 @@ def print_version(ctx, param, value):
     if not value or ctx.resilient_parsing:
         return
 
+    version_str = get_version()
+    sha = get_build_sha()
+    if sha:
+        version_str += f" ({sha})"
+
     console = _get_console()
     if console:
         from rich.panel import Panel  # type: ignore
         from rich.text import Text  # type: ignore
 
-        sha = get_build_sha()
-        version_str = get_version()
-        if sha:
-            version_str += f" ({sha})"
         version_text = Text()
         version_text.append("Agent Package Manager (APM) CLI", style="bold cyan")
         version_text.append(f" version {version_str}", style="white")
         console.print(Panel(version_text, border_style="cyan", padding=(0, 1)))
     else:
         # Graceful fallback when Rich isn't available (e.g., stripped automation environment)
-        sha = get_build_sha()
-        ver = get_version()
-        if sha:
-            ver += f" ({sha})"
         click.echo(
-            f"{TITLE}Agent Package Manager (APM) CLI{RESET} version {ver}"
+            f"{TITLE}Agent Package Manager (APM) CLI{RESET} version {version_str}"
         )
 
     ctx.exit()
