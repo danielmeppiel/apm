@@ -34,17 +34,16 @@ class TestPluginIntegration:
         """Test that plugin.json is detected and apm.yml is synthesized (root location)."""
         plugin_dir = tmp_path / "test-plugin"
         plugin_dir.mkdir()
-        
-        # Create plugin.json
+
+        # Create plugin.json (version is optional per spec)
         plugin_json = {
             "name": "Test Plugin",
-            "version": "1.0.0",
             "description": "A test plugin",
-            "author": "Test Author",
+            "author": {"name": "Test Author"},
             "license": "MIT",
             "tags": ["testing"]
         }
-        
+
         with open(plugin_dir / "plugin.json", "w") as f:
             json.dump(plugin_json, f)
         
@@ -59,7 +58,7 @@ class TestPluginIntegration:
         assert result.package_type == PackageType.MARKETPLACE_PLUGIN
         assert result.package is not None
         assert result.package.name == "Test Plugin"
-        assert result.package.version == "1.0.0"
+        assert result.package.version == "0.0.0"  # defaults when absent
         
         # Verify synthesized apm.yml exists
         apm_yml_path = plugin_dir / "apm.yml"
@@ -243,7 +242,7 @@ class TestPluginIntegration:
   "name": "Plugin With Dependencies",
   "version": "2.0.0",
   "description": "A plugin with dependencies",
-  "author": "Test Author",
+  "author": {"name": "Test Author"},
   "dependencies": [
     "owner/dependency-package",
     "another/required-package#v1.0"
@@ -279,7 +278,7 @@ class TestPluginIntegration:
   "name": "Full Metadata Plugin",
   "version": "1.5.0",
   "description": "A plugin with complete metadata",
-  "author": "APM Contributors",
+  "author": {"name": "APM Contributors", "email": "apm@microsoft.com"},
   "license": "Apache-2.0",
   "repository": "microsoft/apm-plugin",
   "homepage": "https://apm.dev/plugins/test",
@@ -297,7 +296,7 @@ class TestPluginIntegration:
         assert package.name == "Full Metadata Plugin"
         assert package.version == "1.5.0"
         assert package.description == "A plugin with complete metadata"
-        assert package.author == "APM Contributors"
+        assert package.author == "APM Contributors"  # extracted from author.name
         assert package.license == "Apache-2.0"
         
         # Read apm.yml and verify fields
@@ -309,26 +308,20 @@ class TestPluginIntegration:
         assert "agents" in apm_yml
     
     def test_invalid_plugin_json(self, tmp_path):
-        """Test that invalid plugin.json is handled gracefully."""
+        """Test that malformed plugin.json (invalid JSON syntax) is handled gracefully."""
         plugin_dir = tmp_path / "invalid-plugin"
         plugin_dir.mkdir()
-        
-        # Create invalid plugin.json (missing required fields)
+
+        # Write syntactically invalid JSON
         plugin_json = plugin_dir / "plugin.json"
-        plugin_json.write_text("""
-{
-  "name": "Invalid Plugin"
-}
-""")
-        
-        # Validate
+        plugin_json.write_text("{ this is not valid json }")
+
+        # Validate — the parser should fall back to dir-name defaults and succeed
         result = validate_apm_package(plugin_dir)
-        
-        # Should fail validation
-        assert not result.is_valid
-        assert len(result.errors) > 0
-        assert any("version" in err.lower() or "required" in err.lower() 
-                   for err in result.errors)
+        assert result.package_type == PackageType.MARKETPLACE_PLUGIN
+        # name derived from directory name
+        assert result.package is not None
+        assert result.package.name == "invalid-plugin"
     
     def test_plugin_without_artifacts(self, tmp_path):
         """Test plugin with only plugin.json and no artifacts."""
@@ -356,7 +349,43 @@ class TestPluginIntegration:
         apm_dir = plugin_dir / ".apm"
         assert apm_dir.exists()
 
-    def test_plugin_install_is_immediately_pickup_ready_for_vscode_and_copilot(self, tmp_path):
+    def test_plugin_without_plugin_json(self, tmp_path):
+        """Any directory with standard component dirs and no apm.yml/SKILL.md is a Claude plugin."""
+        plugin_dir = tmp_path / "no-manifest-plugin"
+        plugin_dir.mkdir()
+
+        # Only standard component directories — no plugin.json at all
+        (plugin_dir / "commands").mkdir()
+        (plugin_dir / "commands" / "do-something.md").write_text("# Do Something")
+        (plugin_dir / "agents").mkdir()
+        (plugin_dir / "agents" / "helper.agent.md").write_text("# Helper")
+
+        result = validate_apm_package(plugin_dir)
+
+        assert result.package_type == PackageType.MARKETPLACE_PLUGIN
+        assert result.is_valid
+        assert result.package is not None
+        # Name derived from directory name
+        assert result.package.name == "no-manifest-plugin"
+        assert result.package.version == "0.0.0"
+
+    def test_mcp_json_copied_through(self, tmp_path):
+        """MCP plugins: .mcp.json must be present in .apm/ after normalization."""
+        plugin_dir = tmp_path / "mcp-plugin"
+        plugin_dir.mkdir()
+
+        mcp_config = {"mcpServers": {"my-server": {"command": "node", "args": ["index.js"]}}}
+        (plugin_dir / ".mcp.json").write_text(json.dumps(mcp_config))
+        (plugin_dir / "commands").mkdir()
+        (plugin_dir / "commands" / "run.md").write_text("# Run")
+
+        result = validate_apm_package(plugin_dir)
+
+        assert result.package_type == PackageType.MARKETPLACE_PLUGIN
+        assert result.is_valid
+        assert (plugin_dir / ".apm" / ".mcp.json").exists(), ".mcp.json must be copied to .apm/"
+
+
         """Plugin install should populate .github/.claude targets consumed by editors."""
         fixture_path = Path(__file__).parent.parent / "fixtures" / "mock-marketplace-plugin"
         plugin_dir = tmp_path / "installed-plugin"

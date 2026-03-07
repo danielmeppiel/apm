@@ -1333,17 +1333,17 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     # Detect package type
     apm_yml_path = package_path / "apm.yml"
     skill_md_path = package_path / "SKILL.md"
-    
-    # Check for plugin.json using centralized helper
+
+    # Check for plugin.json — optional metadata, not a detection gate
     from ..utils.helpers import find_plugin_json
     plugin_json_path = find_plugin_json(package_path)
-    
+
     has_apm_yml = apm_yml_path.exists()
     has_skill_md = skill_md_path.exists()
     has_hooks = _has_hook_json(package_path)
-    has_plugin_json = plugin_json_path is not None
-    
-    # Determine package type (apm.yml takes precedence)
+
+    # Determine package type.  apm.yml / SKILL.md take precedence; everything
+    # else (hooks-only or bare plugin directories) normalizes as a Claude plugin.
     if has_apm_yml and has_skill_md:
         result.package_type = PackageType.HYBRID
     elif has_apm_yml:
@@ -1352,12 +1352,10 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         result.package_type = PackageType.CLAUDE_SKILL
     elif has_hooks:
         result.package_type = PackageType.HOOK_PACKAGE
-    elif has_plugin_json:
-        result.package_type = PackageType.MARKETPLACE_PLUGIN
     else:
-        result.package_type = PackageType.INVALID
-        result.add_error("Missing required file: apm.yml, SKILL.md, plugin.json, or hooks/*.json")
-        return result
+        # Fallback: treat any directory without apm.yml / SKILL.md as a Claude plugin.
+        # plugin.json, when present, is read as optional metadata.
+        result.package_type = PackageType.MARKETPLACE_PLUGIN
     
     # Handle hook-only packages (no apm.yml or SKILL.md)
     if result.package_type == PackageType.HOOK_PACKAGE:
@@ -1443,39 +1441,36 @@ def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: Vali
     return result
 
 
-def _validate_marketplace_plugin(package_path: Path, plugin_json_path: Path, result: ValidationResult) -> ValidationResult:
-    """Validate a marketplace plugin and synthesize apm.yml from plugin.json.
-    
+def _validate_marketplace_plugin(package_path: Path, plugin_json_path: Optional[Path], result: ValidationResult) -> ValidationResult:
+    """Validate a Claude plugin and synthesize apm.yml.
+
+    plugin.json is **optional** per the spec.  When present it provides
+    metadata (name, version, description …).  When absent the plugin name is
+    derived from the directory name and all other fields default gracefully.
+
     Args:
         package_path: Path to the package directory
-        plugin_json_path: Path to plugin.json
+        plugin_json_path: Path to plugin.json if found, or None
         result: ValidationResult to populate
-        
+
     Returns:
         ValidationResult: Updated validation result with MARKETPLACE_PLUGIN type
     """
-    from ..deps.plugin_parser import parse_plugin_manifest, synthesize_apm_yml_from_plugin
-    
+    from ..deps.plugin_parser import normalize_plugin_directory
+
     try:
-        # Parse plugin.json manifest
-        manifest = parse_plugin_manifest(plugin_json_path)
-        
-        # Synthesize apm.yml from plugin metadata
-        apm_yml_path = synthesize_apm_yml_from_plugin(package_path, manifest)
-        
-        # Now validate the synthesized apm.yml
+        # Normalize the plugin directory; plugin.json is optional metadata
+        apm_yml_path = normalize_plugin_directory(package_path, plugin_json_path)
+
+        # Load the synthesized apm.yml
         package = APMPackage.from_apm_yml(apm_yml_path)
         result.package = package
-        # Keep the MARKETPLACE_PLUGIN type to track that it came from plugin.json
         result.package_type = PackageType.MARKETPLACE_PLUGIN
-        
-    except (ValueError, FileNotFoundError) as e:
-        result.add_error(f"Invalid plugin.json: {e}")
-        return result
+
     except Exception as e:
-        result.add_error(f"Failed to process marketplace plugin: {e}")
+        result.add_error(f"Failed to process Claude plugin: {e}")
         return result
-    
+
     return result
 
 
