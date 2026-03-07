@@ -29,7 +29,7 @@ New to APM? Follow this learning path for the fastest way to get productive:
 ## Development & Contributing
 
 ### Project Development
-- **[Changelog](../CHANGELOG.md)** - Current feature status and release history
+- **[Roadmap](https://github.com/microsoft/apm/discussions/116)** - Current roadmap and feature plans
 - **[Integration Testing](integration-testing.md)** - Testing strategy and execution
 - **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute to the APM ecosystem
 
