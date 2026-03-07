@@ -264,11 +264,11 @@ This makes all package prompts available in VSCode, Claude Code, and compatible 
 Remove installed APM packages and their integrated files.
 
 ```bash
-apm uninstall PACKAGE [OPTIONS]
+apm uninstall [OPTIONS] PACKAGES...
 ```
 
 **Arguments:**
-- `PACKAGE` - Package to uninstall. Accepts any format — shorthand (`owner/repo`), HTTPS URL, SSH URL, or FQDN. APM resolves it to the canonical identity stored in `apm.yml`.
+- `PACKAGES...` - One or more packages to uninstall. Accepts any format — shorthand (`owner/repo`), HTTPS URL, SSH URL, or FQDN. APM resolves each to the canonical identity stored in `apm.yml`.
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
@@ -672,23 +672,23 @@ Available scripts:
   debug: RUST_LOG=debug codex hello-world.prompt.md
 ```
 
-### `apm compile` - 📝 Compile APM context files into AGENTS.md
+### `apm compile` - 📝 Compile APM context into distributed AGENTS.md files
 
-Compile APM context files (chatmodes, instructions, contexts) into a single intelligent AGENTS.md file with conditional sections, markdown link resolution, and project setup auto-detection.
+Compile APM context files (chatmodes, instructions, contexts) into distributed AGENTS.md files with conditional sections, markdown link resolution, and project setup auto-detection.
 
 ```bash
 apm compile [OPTIONS]
 ```
 
 **Options:**
-- `-o, --output TEXT` - Output file path (default: AGENTS.md)
+- `-o, --output TEXT` - Output file path (for single-file mode)
 - `-t, --target [vscode|agents|claude|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
-- `--dry-run` - Generate content without writing file
+- `--dry-run` - Preview compilation without writing files (shows placement decisions)
 - `--no-links` - Skip markdown link resolution
 - `--with-constitution/--no-constitution` - Include Spec Kit `memory/constitution.md` verbatim at top inside a delimited block (default: `--with-constitution`). When disabled, any existing block is preserved but not regenerated.
 - `--watch` - Auto-regenerate on changes (file system monitoring)
-- `--validate` - Validate context without compiling
+- `--validate` - Validate primitives without compiling
 - `--single-agents` - Force single-file compilation (legacy mode)
 - `-v, --verbose` - Show detailed source attribution and optimizer analysis
 - `--local-only` - Ignore dependencies, compile only local primitives
