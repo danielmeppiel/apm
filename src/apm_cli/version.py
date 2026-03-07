@@ -3,9 +3,10 @@
 import sys
 from pathlib import Path
 
-# Build-time version constant (will be injected during build)
+# Build-time constants (will be injected during build)
 # This avoids TOML parsing overhead during runtime
 __BUILD_VERSION__ = None
+__BUILD_SHA__ = None
 
 
 def get_version() -> str:
@@ -63,6 +64,34 @@ def get_version() -> str:
         pass
     
     return "unknown"
+
+
+def get_build_sha() -> str:
+    """Get the short git commit SHA for the current build.
+
+    Uses the build-time constant when available (shipped binaries),
+    otherwise falls back to querying git at runtime (development).
+    """
+    if __BUILD_SHA__:
+        return __BUILD_SHA__
+
+    # Fallback: query git at runtime (development only)
+    if not getattr(sys, 'frozen', False):
+        import subprocess
+        try:
+            repo_root = Path(__file__).parent.parent.parent
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+    return ""
 
 
 # For backward compatibility

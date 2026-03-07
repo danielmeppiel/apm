@@ -69,12 +69,13 @@ apm run review-copilot --param files="src/auth/"
 
 ## Overview
 
-The APM CLI supports four types of primitives:
+The APM CLI supports the following types of primitives:
 
 - **Agents** (`.agent.md`) - Define AI assistant personalities and behaviors (legacy: `.chatmode.md`)
 - **Instructions** (`.instructions.md`) - Provide coding standards and guidelines for specific file types
 - **Skills** (`SKILL.md`) - Package meta-guides that help AI agents understand what a package does
 - **Context** (`.context.md`, `.memory.md`) - Supply background information and project context
+- **Hooks** (`.json` in `.apm/hooks/` or `hooks/`) - Define lifecycle event handlers with script references
 
 > **Note**: Both `.agent.md` (new format) and `.chatmode.md` (legacy format) are fully supported. VSCode provides Quick Fix actions to help migrate from `.chatmode.md` to `.agent.md`.
 
@@ -95,8 +96,12 @@ APM discovers primitives in these locations:
 │   └── *.instructions.md
 ├── context/            # Project context files
 │   └── *.context.md
-└── memory/             # Team info, contacts, etc.
-    └── *.memory.md
+├── memory/             # Team info, contacts, etc.
+│   └── *.memory.md
+└── hooks/              # Lifecycle event handlers
+    ├── *.json          # Hook definitions (JSON)
+    └── scripts/        # Referenced scripts
+        └── *.sh, *.py
 
 # VSCode-compatible structure  
 .github/
@@ -117,7 +122,7 @@ APM discovers primitives in these locations:
 
 ## Component Types Overview
 
-Context implements the complete [AI-Native Development framework](https://danielmeppiel.github.io/awesome-ai-native/docs/concepts/) through four core component types:
+Context implements the complete [AI-Native Development framework](https://danielmeppiel.github.io/awesome-ai-native/docs/concepts/) through the following core component types:
 
 ### Instructions (.instructions.md)
 **Context Engineering Layer** - Targeted guidance by file type and domain
@@ -339,6 +344,38 @@ Team information (`.apm/memory/team-contacts.memory.md`):
 - Daily standup: 9:00 AM PST
 - Sprint planning: Mondays 2:00 PM PST
 ```
+
+### Hooks
+
+Hooks define lifecycle event handlers that run scripts at specific points during AI agent operations (e.g., before/after tool use).
+
+**Format:** `.json` files in `hooks/` or `.apm/hooks/`
+
+**Structure:**
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": { "tool_name": "write_file" },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/lint-changed.sh $TOOL_INPUT_path"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Supported Events:** `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SubagentStop`
+
+**Integration:**
+- VSCode: Hook JSON files are copied to `.github/hooks/*-apm.json` with script paths rewritten
+- Claude: Hooks are merged into `.claude/settings.json` under the `hooks` key
+- Scripts referenced by hooks are bundled alongside the hook definitions
 
 ## Discovery and Parsing
 

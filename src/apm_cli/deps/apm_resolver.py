@@ -225,6 +225,7 @@ class APMDependencyResolver:
         circular_deps = []
         visited: Set[str] = set()
         current_path: List[str] = []
+        current_path_set: Set[str] = set()  # O(1) membership test (#171)
         
         def dfs_detect_cycles(node: DependencyNode) -> None:
             """Recursive DFS function to detect cycles."""
@@ -234,7 +235,7 @@ class APMDependencyResolver:
             unique_key = node.dependency_ref.get_unique_key()
             
             # Check if this unique key is already in our current path (cycle detected)
-            if unique_key in current_path:
+            if unique_key in current_path_set:
                 # Found a cycle - create the cycle path
                 cycle_start_index = current_path.index(unique_key)
                 cycle_path = current_path[cycle_start_index:] + [unique_key]
@@ -249,23 +250,25 @@ class APMDependencyResolver:
             # Mark current node as visited and add unique key to path
             visited.add(node_id)
             current_path.append(unique_key)
+            current_path_set.add(unique_key)
             
             # Check all children
             for child in node.children:
                 child_id = child.get_id()
                 
                 # Only recurse if we haven't processed this subtree completely
-                if child_id not in visited or child.dependency_ref.get_unique_key() in current_path:
+                if child_id not in visited or child.dependency_ref.get_unique_key() in current_path_set:
                     dfs_detect_cycles(child)
             
             # Remove from path when backtracking (but keep in visited)
-            current_path.pop()
+            current_path_set.discard(current_path.pop())
         
         # Start DFS from all root level dependencies (depth 1)
         root_deps = tree.get_nodes_at_depth(1)
         for root_dep in root_deps:
             if root_dep.get_id() not in visited:
                 current_path = []  # Reset path for each root
+                current_path_set = set()
                 dfs_detect_cycles(root_dep)
         
         return circular_deps

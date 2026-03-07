@@ -305,6 +305,7 @@ class TestEnterpriseHostHandling:
         from git.exc import GitCommandError
         
         monkeypatch.setenv("GITHUB_HOST", "company.ghe.com")
+        monkeypatch.setenv("GITHUB_APM_PAT", "test-enterprise-token")
         
         downloader = GitHubPackageDownloader()
         downloader.github_host = "company.ghe.com"
@@ -825,6 +826,176 @@ class TestMixedSourceTokenSelection:
             # ADO token should NOT be used for GHE - no credentials at all
             assert parsed.username is None or parsed.username != 'ado-token'
             assert 'ado-token' not in url
+
+
+class TestSubdirectoryPackageCommitSHA:
+    """Test commit SHA handling in download_subdirectory_package."""
+
+    def setup_method(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def teardown_method(self):
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_dep_ref(self, ref=None):
+        """Create a virtual subdirectory DependencyReference."""
+        dep = DependencyReference(
+            repo_url='owner/monorepo',
+            host='github.com',
+            reference=ref,
+            virtual_path='packages/my-skill',
+            is_virtual=True,
+        )
+        return dep
+
+    @patch('apm_cli.deps.github_downloader.Repo')
+    @patch('apm_cli.deps.github_downloader.validate_apm_package')
+    def test_sha_ref_clones_without_depth_and_checks_out(self, mock_validate, mock_repo_class):
+        """Commit SHA refs must clone with no_checkout (no depth/branch) then checkout the SHA."""
+        sha = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2'
+        dep_ref = self._make_dep_ref(ref=sha)
+
+        mock_repo = Mock()
+        mock_repo_class.return_value = mock_repo
+
+        mock_validation = ValidationResult()
+        mock_validation.is_valid = True
+        mock_validation.package = APMPackage(name='my-skill', version='1.0.0')
+        mock_validate.return_value = mock_validation
+
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+        with patch.object(downloader, '_clone_with_fallback') as mock_clone:
+            mock_clone.return_value = mock_repo
+
+            target = self.temp_dir / 'my-skill'
+
+            # Create the subdirectory structure that download_subdirectory_package expects
+            def setup_subdir(*args, **kwargs):
+                clone_path = args[1]
+                subdir = clone_path / 'packages' / 'my-skill'
+                subdir.mkdir(parents=True)
+                (subdir / 'apm.yml').write_text('name: my-skill\nversion: 1.0.0\n')
+                return mock_repo
+
+            mock_clone.side_effect = setup_subdir
+
+            downloader.download_subdirectory_package(dep_ref, target)
+
+            # Verify clone was called without depth/branch but WITH no_checkout
+            call_kwargs = mock_clone.call_args
+            assert 'depth' not in call_kwargs.kwargs, "SHA ref should NOT use shallow clone"
+            assert 'branch' not in call_kwargs.kwargs, "SHA ref should NOT pass branch"
+            assert call_kwargs.kwargs.get('no_checkout') is True, "SHA ref should use no_checkout=True"
+
+            # Verify checkout was called with the SHA
+            mock_repo.git.checkout.assert_called_once_with(sha)
+
+    @patch('apm_cli.deps.github_downloader.Repo')
+    @patch('apm_cli.deps.github_downloader.validate_apm_package')
+    def test_branch_ref_uses_shallow_clone(self, mock_validate, mock_repo_class):
+        """Branch/tag refs must use shallow clone with depth=1 and branch kwarg."""
+        dep_ref = self._make_dep_ref(ref='main')
+
+        mock_repo = Mock()
+        mock_repo_class.return_value = mock_repo
+
+        mock_validation = ValidationResult()
+        mock_validation.is_valid = True
+        mock_validation.package = APMPackage(name='my-skill', version='1.0.0')
+        mock_validate.return_value = mock_validation
+
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+        with patch.object(downloader, '_clone_with_fallback') as mock_clone:
+            mock_clone.return_value = mock_repo
+
+            target = self.temp_dir / 'my-skill'
+
+            def setup_subdir(*args, **kwargs):
+                clone_path = args[1]
+                subdir = clone_path / 'packages' / 'my-skill'
+                subdir.mkdir(parents=True)
+                (subdir / 'apm.yml').write_text('name: my-skill\nversion: 1.0.0\n')
+                return mock_repo
+
+            mock_clone.side_effect = setup_subdir
+
+            downloader.download_subdirectory_package(dep_ref, target)
+
+            call_kwargs = mock_clone.call_args
+            assert call_kwargs.kwargs.get('depth') == 1, "Branch ref should use depth=1"
+            assert call_kwargs.kwargs.get('branch') == 'main', "Branch ref should pass branch"
+            assert 'no_checkout' not in call_kwargs.kwargs, "Branch ref should not set no_checkout"
+
+            # No explicit checkout for branch refs
+            mock_repo.git.checkout.assert_not_called()
+
+    @patch('apm_cli.deps.github_downloader.Repo')
+    @patch('apm_cli.deps.github_downloader.validate_apm_package')
+    def test_no_ref_uses_shallow_clone_without_branch(self, mock_validate, mock_repo_class):
+        """No ref should use shallow clone without branch kwarg (default branch)."""
+        dep_ref = self._make_dep_ref(ref=None)
+
+        mock_repo = Mock()
+        mock_repo_class.return_value = mock_repo
+
+        mock_validation = ValidationResult()
+        mock_validation.is_valid = True
+        mock_validation.package = APMPackage(name='my-skill', version='1.0.0')
+        mock_validate.return_value = mock_validation
+
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+        with patch.object(downloader, '_clone_with_fallback') as mock_clone:
+            mock_clone.return_value = mock_repo
+
+            target = self.temp_dir / 'my-skill'
+
+            def setup_subdir(*args, **kwargs):
+                clone_path = args[1]
+                subdir = clone_path / 'packages' / 'my-skill'
+                subdir.mkdir(parents=True)
+                (subdir / 'apm.yml').write_text('name: my-skill\nversion: 1.0.0\n')
+                return mock_repo
+
+            mock_clone.side_effect = setup_subdir
+
+            downloader.download_subdirectory_package(dep_ref, target)
+
+            call_kwargs = mock_clone.call_args
+            assert call_kwargs.kwargs.get('depth') == 1, "No ref should still shallow clone"
+            assert 'branch' not in call_kwargs.kwargs, "No ref should not pass branch"
+
+    @patch('apm_cli.deps.github_downloader.Repo')
+    def test_sha_checkout_failure_raises_descriptive_error(self, mock_repo_class):
+        """Checkout failure for SHA ref should raise error mentioning 'checkout', not 'clone'."""
+        sha = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2'
+        dep_ref = self._make_dep_ref(ref=sha)
+
+        mock_repo = Mock()
+        mock_repo.git.checkout.side_effect = Exception("bad object a1b2c3d")
+        mock_repo_class.return_value = mock_repo
+
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+        with patch.object(downloader, '_clone_with_fallback') as mock_clone:
+            def setup_subdir(*args, **kwargs):
+                clone_path = args[1]
+                subdir = clone_path / 'packages' / 'my-skill'
+                subdir.mkdir(parents=True)
+                return mock_repo
+
+            mock_clone.side_effect = setup_subdir
+
+            target = self.temp_dir / 'my-skill'
+            with pytest.raises(RuntimeError, match="Failed to checkout commit"):
+                downloader.download_subdirectory_package(dep_ref, target)
 
 
 if __name__ == '__main__':

@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+## [0.7.4] - 2025-03-03
+
+### Added
+
+- Support hooks as an agent primitive with install-time integration and dependency display (hooks execute at agent runtime, not during `apm install`) (#97)
+- Deploy agents to `.claude/agents/` during `apm install` (#95)
+- Promote sub-skills inside packages to top-level `.github/skills/` entries (#102)
+
+### Fixed
+
+- Fix skill integration bugs, transitive dep cleanup, and simplification (#107)
+- Fix transitive dependency handling in compile and orphan detection (#111)
+- Fix virtual subdirectory deps marked as orphaned, skipping instruction processing (#100)
+- Improve multi-host error guidance when `GITHUB_HOST` is set (#113, #130)
+- Support spaces in Azure DevOps project names (#92)
+- Fix GitHub Actions workflow permissions, integration test skip-propagation, and test corrections (#87, #106, #109)
+
+### Changed
+
+- Migrated to Microsoft OSS organization (#85, #105)
+- Added CODEOWNERS, simplified PR/issue templates, triage labels, and updated CONTRIBUTING.md (#115, #118)
+- Added missing `version` field in the apm.yml README example (#108)
+- Slim PR pipelines to Linux-only, auto-approve integration tests, added agentic workflows for maintenance (#98, #103, #104, #119)
+
+
 ## [0.7.3] - 2025-02-15
 
 ### Added

@@ -29,6 +29,12 @@ set = builtins.set
 list = builtins.list
 dict = builtins.dict
 
+# Default directory names excluded from compilation scanning.
+# Shared across _analyze_project_structure, _should_exclude_subdir, and _get_all_files.
+DEFAULT_EXCLUDED_DIRNAMES = frozenset({
+    'node_modules', '__pycache__', '.git', 'dist', 'build', 'apm_modules',
+})
+
 
 @dataclass
 class DirectoryAnalysis:
@@ -113,7 +119,9 @@ class ContextOptimizer:
         
         # Performance optimization caches
         self._glob_cache: Dict[str, List[str]] = {}
+        self._glob_set_cache: Dict[str, Set[Path]] = {}
         self._file_list_cache: Optional[List[Path]] = None
+        self._inheritance_cache: Dict[Path, List[Path]] = {}  # (#171)
         self._timing_enabled = False
         self._phase_timings: Dict[str, float] = {}
         
@@ -162,8 +170,8 @@ class ContextOptimizer:
         if self._file_list_cache is None:
             self._file_list_cache = []
             for root, dirs, files in os.walk(self.base_dir):
-                # Skip hidden directories for performance
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                # Skip hidden and excluded directories for performance
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in DEFAULT_EXCLUDED_DIRNAMES]
                 for file in files:
                     if not file.startswith('.'):
                         self._file_list_cache.append(Path(root) / file)
@@ -422,8 +430,8 @@ class ContextOptimizer:
             if any(part.startswith('.') for part in current_path.parts[len(self.base_dir.parts):]):
                 continue
             
-            # Default hardcoded exclusions for backwards compatibility
-            if any(ignore in str(current_path) for ignore in ['node_modules', '__pycache__', '.git', 'dist', 'build']):
+            # Default hardcoded exclusions — match on exact path components
+            if any(part in DEFAULT_EXCLUDED_DIRNAMES for part in relative_path.parts):
                 continue
             
             # Apply configurable exclusion patterns
@@ -475,7 +483,7 @@ class ContextOptimizer:
         
         # Also check if subdirectory is a default exclusion
         dir_name = path.name
-        if dir_name in ['node_modules', '__pycache__', '.git', 'dist', 'build']:
+        if dir_name in DEFAULT_EXCLUDED_DIRNAMES:
             return True
         
         # Skip hidden directories
@@ -738,22 +746,28 @@ class ContextOptimizer:
         return None
     
     def _expand_glob_pattern(self, pattern: str) -> List[str]:
-        """Expand glob pattern with brace expansion.
+        """Expand glob pattern with brace expansion, supporting multiple brace groups.
         
         Args:
-            pattern (str): Pattern like '**/*.{css,scss}'
+            pattern (str): Pattern like '**/*.{css,scss}' or '**/*.{test,spec}.{ts,js}'
         
         Returns:
             List[str]: Expanded patterns like ['**/*.css', '**/*.scss']
+                       or ['**/*.test.ts', '**/*.test.js', '**/*.spec.ts', '**/*.spec.js']
         """
         import re
         
         # Handle brace expansion like {css,scss}
         brace_match = re.search(r'\{([^}]+)\}', pattern)
         if brace_match:
-            extensions = brace_match.group(1).split(',')
-            base_pattern = pattern[:brace_match.start()] + '{}' + pattern[brace_match.end():]
-            return [base_pattern.format(ext) for ext in extensions]
+            alternatives = brace_match.group(1).split(',')
+            prefix = pattern[:brace_match.start()]
+            suffix = pattern[brace_match.end():]
+            # Recursively expand remaining brace groups in each result
+            expanded = []
+            for alt in alternatives:
+                expanded.extend(self._expand_glob_pattern(prefix + alt + suffix))
+            return expanded
         
         return [pattern]
     
@@ -780,9 +794,10 @@ class ContextOptimizer:
                     
                     # Use cached glob results instead of repeated glob calls
                     matches = self._cached_glob(expanded_pattern)
-                    # Convert to Path objects for comparison
-                    match_paths = {Path(match) for match in matches}
-                    if rel_path in match_paths:
+                    # Use cached Set[Path] to avoid recreating on every call
+                    if expanded_pattern not in self._glob_set_cache:
+                        self._glob_set_cache[expanded_pattern] = {Path(match) for match in matches}
+                    if rel_path in self._glob_set_cache[expanded_pattern]:
                         return True
                 except (ValueError, OSError):
                     pass
@@ -1220,6 +1235,10 @@ class ContextOptimizer:
         Returns:
             List[Path]: Inheritance chain (most specific to root).
         """
+        cached = self._inheritance_cache.get(working_directory)
+        if cached is not None:
+            return cached
+
         chain = []
         # Resolve the starting directory to ensure consistent path comparison
         try:
@@ -1247,6 +1266,7 @@ class ContextOptimizer:
             except (OSError, ValueError):
                 break
         
+        self._inheritance_cache[working_directory] = chain
         return chain
     
     def _is_child_directory(self, child: Path, parent: Path) -> bool:

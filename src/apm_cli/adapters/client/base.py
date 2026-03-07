@@ -37,3 +37,50 @@ class MCPClientAdapter(ABC):
             bool: True if successful, False otherwise.
         """
         pass
+
+    @staticmethod
+    def _infer_registry_name(package):
+        """Infer the registry type from package metadata.
+
+        The MCP registry API often returns empty ``registry_name``.  This
+        method derives the registry from explicit fields first, then falls
+        back to heuristics on the package name.
+
+        Args:
+            package (dict): A single package entry from the registry.
+
+        Returns:
+            str: Inferred registry name (e.g. "npm", "pypi", "docker") or "".
+        """
+        if not package:
+            return ""
+
+        explicit = package.get("registry_name", "")
+        if explicit:
+            return explicit
+
+        name = package.get("name", "")
+        runtime_hint = package.get("runtime_hint", "")
+
+        # Infer from runtime_hint
+        if runtime_hint in ("npx", "npm"):
+            return "npm"
+        if runtime_hint in ("uvx", "pip", "pipx"):
+            return "pypi"
+        if runtime_hint == "docker":
+            return "docker"
+        if runtime_hint in ("dotnet", "dnx"):
+            return "nuget"
+
+        # Infer from package name patterns
+        if name.startswith("@") and "/" in name:
+            return "npm"  # scoped npm package, e.g. @azure/mcp
+        if name.startswith(("ghcr.io/", "mcr.microsoft.com/", "docker.io/")):
+            return "docker"
+        if name.startswith("https://") and name.endswith(".mcpb"):
+            return "mcpb"
+        # PascalCase with dots usually means nuget (e.g. Azure.Mcp)
+        if "." in name and not name.startswith("http") and name[0].isupper():
+            return "nuget"
+
+        return ""

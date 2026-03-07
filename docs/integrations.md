@@ -148,33 +148,42 @@ APM automatically integrates prompts and agents from installed packages into VSC
 apm install microsoft/apm-sample-package
 
 # Prompts are automatically integrated to:
-# .github/prompts/*-apm.prompt.md (verbatim copy with -apm suffix)
+# .github/prompts/*.prompt.md (verbatim copy, original filename preserved)
 
 # Agents are automatically integrated to:
-# .github/agents/*-apm.agent.md (verbatim copy)
+# .github/agents/*.agent.md (verbatim copy)
+
+# Instructions are automatically integrated to:
+# .github/instructions/*.instructions.md (verbatim copy, original filename)
+
+# Hooks are automatically integrated to:
+# .github/hooks/*.json (hook definitions with rewritten script paths)
 ```
 
 **How Auto-Integration Works**:
 - **Zero-Config**: Always enabled, works automatically with no configuration needed
-- **Auto-Cleanup**: Removes integrated prompts when you uninstall packages
-- **Always Overwrite**: Prompt and agent files are always copied fresh — no version comparison
-- **GitIgnore Protection**: Automatically adds pattern to `.gitignore` for integrated prompts
+- **Auto-Cleanup**: Removes integrated files when you uninstall or prune packages (tracked via `deployed_files` in `apm.lock`)
+- **Collision Detection**: If a local file has the same name as a package file, APM skips it with a warning (use `--force` to overwrite)
+- **Always Overwrite**: Package-owned files are always copied fresh — no version comparison
 - **Link Resolution**: Context links are resolved during integration
 
 **Integration Flow**:
 1. Run `apm install` to fetch APM packages
-2. APM automatically creates `.github/prompts/` and `.github/agents/` directories if needed
-3. Discovers `.prompt.md` and `.agent.md` files in each package
-4. Copies prompts to `.github/prompts/` with `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
-5. Copies agents to `.github/agents/` with `-apm` suffix (e.g., `security-apm.agent.md`)
-6. Updates `.gitignore` to exclude integrated prompts and agents
-7. VSCode automatically loads all prompts and agents for your coding agents
-8. Run `apm uninstall` to automatically remove integrated prompts and agents
+2. APM automatically creates `.github/prompts/`, `.github/agents/`, `.github/instructions/`, and `.github/hooks/` directories as needed
+3. Discovers `.prompt.md`, `.agent.md`, `.instructions.md`, and hook `.json` files in each package
+4. Copies prompts to `.github/prompts/` with their original filename (e.g., `accessibility-audit.prompt.md`)
+5. Copies agents to `.github/agents/` with their original filename (e.g., `security.agent.md`)
+6. Copies instructions to `.github/instructions/` with their original filename (e.g., `python.instructions.md`)
+7. Copies hooks to `.github/hooks/` with their original filename and copies referenced scripts
+8. If a local file already exists with the same name, skips with a warning (use `--force` to overwrite)
+9. Records all deployed files in `apm.lock` under `deployed_files` per package
+10. VSCode automatically loads all prompts, agents, instructions, and hooks for your coding agents
+11. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
 
 **Intent-First Discovery**:
-The `-apm` suffix pattern enables natural autocomplete in VSCode:
-- Type `/design` → VSCode shows `design-review-apm.prompt.md`
-- Type `/accessibility` → VSCode shows `accessibility-audit-apm.prompt.md`
+Files keep their original names for natural autocomplete in VSCode:
+- Type `/design` → VSCode shows `design-review.prompt.md`
+- Type `/accessibility` → VSCode shows `accessibility-audit.prompt.md`
 - Search by what you want to do, not where it comes from
 
 **Example**: 
@@ -184,17 +193,20 @@ apm install microsoft/apm-sample-package
 
 # Result in VSCode:
 # Prompts:
-# .github/prompts/accessibility-audit-apm.prompt.md  ✓ Available in chat
-# .github/prompts/design-review-apm.prompt.md        ✓ Available in chat
-# .github/prompts/style-guide-check-apm.prompt.md    ✓ Available in chat
+# .github/prompts/accessibility-audit.prompt.md  ✓ Available in chat
+# .github/prompts/design-review.prompt.md        ✓ Available in chat
+# .github/prompts/style-guide-check.prompt.md    ✓ Available in chat
 
 # Agents:
-# .github/agents/design-reviewer-apm.agent.md        ✓ Available as chat mode
-# .github/agents/accessibility-expert-apm.agent.md   ✓ Available as chat mode
+# .github/agents/design-reviewer.agent.md        ✓ Available as chat mode
+# .github/agents/accessibility-expert.agent.md   ✓ Available as chat mode
+
+# Instructions:
+# .github/instructions/python.instructions.md         ✓ Applied to matching files
 
 # Use with natural autocomplete:
 # Type: /design
-# VSCode suggests: design-review-apm.prompt.md ✨
+# VSCode suggests: design-review.prompt.md ✨
 ```
 
 **VSCode Native Features**:
@@ -222,10 +234,11 @@ When you run `apm compile`, APM generates Claude-native files:
 When you run `apm install`, APM integrates package primitives into Claude's native structure:
 
 | Location | Purpose |
-|----------|---------||
-| `.claude/agents/*-apm.md` | Sub-agents from installed packages (from `.agent.md` files) |
-| `.claude/commands/*-apm.md` | Slash commands from installed packages (from `.prompt.md` files) |
+|----------|---------|
+| `.claude/agents/*.md` | Sub-agents from installed packages (from `.agent.md` files) |
+| `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
 | `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
+| `.claude/settings.json` (hooks key) | Hooks from installed packages (merged into settings) |
 
 ### Automatic Agent Integration
 
@@ -236,14 +249,13 @@ APM automatically deploys agent files from installed packages into `.claude/agen
 apm install danielmeppiel/design-guidelines
 
 # Result:
-# .claude/agents/security-apm.md    → Sub-agent available for Claude Code
+# .claude/agents/security.md    → Sub-agent available for Claude Code
 ```
 
 **How it works:**
 1. `apm install` detects `.agent.md` and `.chatmode.md` files in the package
-2. Copies each to `.claude/agents/` as `.md` files with `-apm` suffix
-3. Updates `.gitignore` to exclude generated agents
-4. `apm uninstall` automatically removes the package's agents
+2. Copies each to `.claude/agents/` as `.md` files
+3. `apm uninstall` automatically removes the package's agents
 
 ### Automatic Command Integration
 
@@ -254,16 +266,14 @@ APM automatically converts `.prompt.md` files from installed packages into Claud
 apm install microsoft/apm-sample-package
 
 # Result:
-# .claude/commands/accessibility-audit-apm.md   → /accessibility-audit
-# .claude/commands/design-review-apm.md         → /design-review
+# .claude/commands/accessibility-audit.md   → /accessibility-audit
+# .claude/commands/design-review.md         → /design-review
 ```
 
 **How it works:**
 1. `apm install` detects `.prompt.md` files in the package
 2. Converts each to Claude command format in `.claude/commands/`
-3. Adds `-apm` suffix for tracking
-4. Updates `.gitignore` to exclude generated commands
-5. `apm uninstall` automatically removes the package's commands
+3. `apm uninstall` automatically removes the package's commands
 
 ### Automatic Skills Integration
 
@@ -283,8 +293,34 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 **How skill integration works:**
 1. `apm install` checks if the package contains a `SKILL.md` file
 2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/`
-3. Updates `.gitignore` to exclude integrated skills
-4. `apm uninstall` removes the skill folder
+3. `apm uninstall` removes the skill folder
+
+### Automatic Hook Integration
+
+APM automatically integrates hooks from installed packages. Hooks define lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`) supported by both VSCode Copilot and Claude Code.
+
+> **Note:** Hook packages must be authored in the target platform's native format. APM handles path rewriting and file placement but does not translate between hook schema formats (e.g., Claude's `command` key vs GitHub Copilot's `bash`/`powershell` keys, or event name casing differences).
+
+```bash
+# Install a package with hooks
+apm install anthropics/claude-plugins-official/plugins/hookify
+
+# VSCode result (.github/hooks/):
+# .github/hooks/hookify-hooks.json       → Hook definitions
+# .github/hooks/scripts/hookify/hooks/*.py   → Referenced scripts
+
+# Claude result (.claude/settings.json):
+# Hooks merged into .claude/settings.json hooks key
+# Scripts copied to .claude/hooks/hookify/
+```
+
+**How hook integration works:**
+1. `apm install` discovers hook JSON files in `.apm/hooks/` or `hooks/` directories
+2. For VSCode: copies hook JSON to `.github/hooks/` and rewrites script paths
+3. For Claude: merges hook definitions into `.claude/settings.json` under the `hooks` key
+4. Copies referenced scripts to the target location
+5. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
+6. `apm uninstall` removes hook files and cleans up merged settings
 
 ### Target-Specific Compilation
 
@@ -303,7 +339,7 @@ apm compile --target vscode
 # Creates: AGENTS.md (instructions only)
 ```
 
-> **Remember**: `apm compile` generates instruction files only. Use `apm install` to integrate prompts, agents, commands, and skills from packages.
+> **Remember**: `apm compile` generates instruction files only. Use `apm install` to integrate prompts, agents, instructions, commands, and skills from packages.
 
 ### Claude Command Format
 
@@ -346,10 +382,10 @@ Skills installed to `.claude/skills/` are automatically available for Claude Cod
 
 APM maintains synchronization between packages and Claude primitives:
 
-- **Install**: Adds agents, commands, and skills for new packages
-- **Uninstall**: Removes only that package's agents and commands  
-- **Update**: Refreshes commands when package version changes
-- **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked and removed correctly
+- **Install**: Adds agents, commands, and skills for new packages, tracked via `deployed_files` in `apm.lock`
+- **Uninstall**: Removes only that package's agents, commands, and skill directories (as tracked in `apm.lock`). User-authored files are preserved.
+- **Update**: Refreshes agents, commands, and skills when package version changes
+- **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked via `apm.lock` and removed correctly on uninstall
 
 ## Development Tool Integrations
 
@@ -447,9 +483,10 @@ Any IDE with GitHub Copilot support (JetBrains, Visual Studio, etc.) works with 
 apm install microsoft/apm-sample-package
 
 # GitHub Copilot automatically picks up:
-# .github/prompts/*-apm.prompt.md (integrated prompts)
-# .github/agents/*-apm.agent.md (integrated agents)
+# .github/prompts/*.prompt.md (integrated prompts)
+# .github/agents/*.agent.md (integrated agents)
 # .github/agents/ or .github/chatmodes/ (AI personas - both formats supported)
+# .github/instructions/*.instructions.md (file-pattern rules from packages)
 # .github/instructions/ (file-pattern rules)
 ```
 
@@ -475,7 +512,28 @@ apm compile
 
 ## MCP (Model Context Protocol) Integration
 
-APM provides first-class support for MCP servers:
+APM provides first-class support for MCP servers, including registry-based servers that publish stdio packages (npm, pypi, docker) or HTTP/SSE remote endpoints.
+
+### Package Type Inference
+
+The MCP registry API may return empty `registry_name` fields for packages. APM infers the package type from:
+
+1. Explicit `registry_name` (when provided)
+2. `runtime_hint` (e.g. `npx` → npm, `uvx` → pypi)
+3. Package name patterns (e.g. `@scope/name` → npm, `ghcr.io/…` → docker, `PascalCase.Name` → nuget)
+
+### Supported Package Types
+
+When installing registry MCP servers, APM selects the best available package for each runtime:
+
+| Package Registry | VS Code | Copilot CLI |
+|-----------------|---------|-------------|
+| npm | Yes (npx) | Yes (npx) |
+| pypi | Yes (uvx/python3) | Yes (uvx) |
+| docker | Yes | Yes |
+| homebrew | — | Yes |
+| Other (with runtime_hint) | Yes (generic) | Yes (generic) |
+| HTTP/SSE remotes | Yes | Yes |
 
 ### MCP Server Management
 
@@ -483,6 +541,7 @@ APM provides first-class support for MCP servers:
 # apm.yml - MCP dependencies
 dependencies:
   mcp:
+    # Registry references
     - ghcr.io/github/github-mcp-server
     - ghcr.io/modelcontextprotocol/filesystem-server
     - ghcr.io/modelcontextprotocol/postgres-server

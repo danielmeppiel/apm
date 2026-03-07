@@ -65,7 +65,7 @@ Skill names are validated per the [agentskills.io](https://agentskills.io/) spec
 ```
 
 ### Step 3: Primitive Integration
-APM also integrates prompts (with `-apm` suffix) and commands from the package.
+APM also integrates prompts and commands from the package (using their original filenames).
 
 ### Installation Path Structure
 
@@ -276,6 +276,7 @@ APM automatically detects package types:
 |-----|------|-----------|
 | `apm.yml` only | APM Package | Standard APM primitives |
 | `SKILL.md` only | Claude Skill | Treated as native skill |
+| `hooks/*.json` only | Hook Package | Hook handlers only |
 | Both files | Hybrid Package | Best of both worlds |
 
 ## Target Detection

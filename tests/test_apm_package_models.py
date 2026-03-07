@@ -1,5 +1,6 @@
 """Unit tests for APM package data models and validation."""
 
+import json
 import pytest
 import tempfile
 import yaml
@@ -15,6 +16,7 @@ from src.apm_cli.models.apm_package import (
     PackageInfo,
     GitReferenceType,
     PackageContentType,
+    PackageType,
     validate_apm_package,
     parse_git_reference,
 )
@@ -107,37 +109,55 @@ class TestDependencyReference:
                 DependencyReference.parse(invalid_format)
     
     def test_parse_malicious_url_bypass_attempts(self):
-        """Test that malicious URL bypass attempts are properly rejected.
-        
+        """Test that URL parsing prevents injection attacks.
+
         This tests the security fix for CWE-20: Improper Input Validation.
-        Prevents attacks where an attacker embeds allowed hostnames in unexpected locations.
+        With generic git host support, any valid FQDN is accepted as a host.
+        The security focus is on preventing:
+        - Protocol-relative URL attacks
+
+        With nested group support on generic hosts, path segments that happen
+        to look like hostnames (e.g., 'github.com/user/repo') are treated as
+        repo path segments — not injection. The host is correctly identified.
         """
-        # Attack vectors that should be REJECTED
-        malicious_formats = [
-            # Subdomain attack: attacker owns prefix subdomain
+        # Attack vectors that should still be REJECTED
+        rejected_formats = [
+            # Protocol-relative URL attacks
+            ("//evil.com/github.com/user/repo", "Protocol-relative URLs are not supported"),
+        ]
+        
+        for malicious_url, expected_match in rejected_formats:
+            with pytest.raises(ValueError, match=expected_match):
+                DependencyReference.parse(malicious_url)
+        
+        # With generic git host support + nested groups, these are valid
+        # (host is correctly identified, remaining segments are repo path)
+        nested_group_on_generic_host = [
+            ("evil.com/github.com/user/repo", "evil.com", "github.com/user/repo"),
+            ("attacker.net/github.com/malicious/repo", "attacker.net", "github.com/malicious/repo"),
+        ]
+        for url, expected_host, expected_repo in nested_group_on_generic_host:
+            dep = DependencyReference.parse(url)
+            assert dep.host == expected_host
+            assert dep.repo_url == expected_repo
+            assert dep.is_virtual is False
+        
+        # With generic git host support, valid FQDNs are accepted as hosts.
+        # These are not injection attacks — they are legitimate host references.
+        accepted_as_generic_hosts = [
             "evil-github.com/user/repo",
             "malicious-github.com/user/repo",
             "github.com.evil.com/user/repo",
-            
-            # Path injection: embedding github.com in path
-            "evil.com/github.com/user/repo",
-            "attacker.net/github.com/malicious/repo",
-            
-            # Domain suffix attacks
             "fakegithub.com/user/repo",
             "notgithub.com/user/repo",
-            
-            # Protocol-relative URL attacks
-            "//evil.com/github.com/user/repo",
-            
-            # Mixed case attacks (domains are case-insensitive)
             "GitHub.COM.evil.com/user/repo",
             "GITHUB.com.attacker.net/user/repo",
         ]
         
-        for malicious_url in malicious_formats:
-            with pytest.raises(ValueError, match="Unsupported Git host"):
-                DependencyReference.parse(malicious_url)
+        for url in accepted_as_generic_hosts:
+            dep = DependencyReference.parse(url)
+            assert dep.repo_url == "user/repo"
+            assert dep.host is not None
     
     def test_parse_legitimate_github_enterprise_formats(self):
         """Test that legitimate GitHub Enterprise hostnames are accepted.
@@ -263,16 +283,25 @@ class TestDependencyReference:
             DependencyReference.parse("github.com/my%20owner/repo")
 
     def test_parse_virtual_package_with_malicious_host(self):
-        """Test that virtual packages with malicious hosts are rejected."""
-        malicious_virtual_formats = [
-            "evil.com/github.com/user/repo/prompts/file.prompt.md",
-            "github.com.evil.com/user/repo/prompts/file.prompt.md",
-            "attacker.net/user/repo/prompts/file.prompt.md",
-        ]
+        """Test virtual packages with various host types.
         
-        for malicious_url in malicious_virtual_formats:
-            with pytest.raises(ValueError):
-                DependencyReference.parse(malicious_url)
+        With generic git host support, valid FQDNs are accepted as hosts.
+        Path injection (embedding a host in a sub-path) is still rejected.
+        """
+        # Path injection: still rejected (creates invalid repo format)
+        with pytest.raises(ValueError):
+            DependencyReference.parse("evil.com/github.com/user/repo/prompts/file.prompt.md")
+        
+        # Valid generic hosts: now accepted with generic git URL support
+        dep1 = DependencyReference.parse("github.com.evil.com/user/repo/prompts/file.prompt.md")
+        assert dep1.host == "github.com.evil.com"
+        assert dep1.repo_url == "user/repo"
+        assert dep1.is_virtual is True
+        
+        dep2 = DependencyReference.parse("attacker.net/user/repo/prompts/file.prompt.md")
+        assert dep2.host == "attacker.net"
+        assert dep2.repo_url == "user/repo"
+        assert dep2.is_virtual is True
     
     def test_parse_virtual_file_package(self):
         """Test parsing virtual file package (individual file)."""
@@ -368,7 +397,7 @@ class TestDependencyReference:
         ]
         
         for invalid_format in invalid_formats:
-            with pytest.raises(ValueError, match="Unsupported Git host|Empty dependency string|Invalid repository|Use 'user/repo'|path component"):
+            with pytest.raises(ValueError, match="Invalid Git host|Empty dependency string|Invalid repository|Use 'user/repo'|path component"):
                 DependencyReference.parse(invalid_format)
     
     def test_to_github_url(self):
@@ -632,11 +661,11 @@ class TestPackageValidation:
             assert any("not a directory" in error for error in result.errors)
     
     def test_validate_missing_apm_yml(self):
-        """Test validating directory without apm.yml."""
+        """Test validating directory without apm.yml, SKILL.md, or hooks."""
         with tempfile.TemporaryDirectory() as tmpdir:
             result = validate_apm_package(Path(tmpdir))
             assert not result.is_valid
-            assert any("Missing required file: apm.yml" in error for error in result.errors)
+            assert any("Missing required file" in error for error in result.errors)
     
     def test_validate_invalid_apm_yml(self):
         """Test validating directory with invalid apm.yml."""
@@ -846,6 +875,71 @@ name: minimal-skill
             assert result.package is not None
             # Description should be auto-generated
             assert "Claude Skill: minimal-skill" in result.package.description
+
+
+class TestHookPackageValidation:
+    """Test hook-only package validation."""
+
+    def test_validate_hook_package_with_hooks_dir(self):
+        """Test validating a package with only hooks/hooks.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            hooks_dir = Path(tmpdir) / "hooks"
+            hooks_dir.mkdir()
+            hooks_json = hooks_dir / "hooks.json"
+            hooks_json.write_text(json.dumps({
+                "hooks": {
+                    "PreToolUse": [{
+                        "hooks": [{
+                            "type": "command",
+                            "command": "echo hello"
+                        }]
+                    }]
+                }
+            }))
+
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package_type == PackageType.HOOK_PACKAGE
+            assert result.package is not None
+            assert result.package.name == Path(tmpdir).name
+
+    def test_validate_hook_package_with_apm_hooks_dir(self):
+        """Test validating a package with .apm/hooks/*.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            hooks_dir = Path(tmpdir) / ".apm" / "hooks"
+            hooks_dir.mkdir(parents=True)
+            hooks_json = hooks_dir / "my-hooks.json"
+            hooks_json.write_text(json.dumps({
+                "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo bye"}]}]}
+            }))
+
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package_type == PackageType.HOOK_PACKAGE
+
+    def test_validate_hook_package_prefers_apm_yml(self):
+        """Test that apm.yml takes precedence over hooks/ for type detection."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create both apm.yml + .apm/ and hooks/
+            apm_yml = Path(tmpdir) / "apm.yml"
+            apm_yml.write_text("name: test\nversion: 1.0.0")
+            apm_dir = Path(tmpdir) / ".apm" / "instructions"
+            apm_dir.mkdir(parents=True)
+            (apm_dir / "main.md").write_text("# Instructions")
+            hooks_dir = Path(tmpdir) / "hooks"
+            hooks_dir.mkdir()
+            (hooks_dir / "hooks.json").write_text('{"hooks": {}}')
+
+            result = validate_apm_package(Path(tmpdir))
+            assert result.is_valid, f"Errors: {result.errors}"
+            assert result.package_type == PackageType.APM_PACKAGE
+
+    def test_validate_empty_dir_is_invalid(self):
+        """Test that a dir with no apm.yml, SKILL.md, or hooks is invalid."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = validate_apm_package(Path(tmpdir))
+            assert not result.is_valid
+            assert result.package_type == PackageType.INVALID
 
 
 class TestGitReferenceUtils:

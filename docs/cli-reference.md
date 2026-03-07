@@ -113,15 +113,18 @@ apm install [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGES` - Optional APM packages to add and install (format: `owner/repo`)
+- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, or FQDN shorthand (`host/owner/repo`). All forms are normalized to canonical format in `apm.yml`.
 
 **Options:**
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
 - `--exclude TEXT` - Exclude specific runtime from installation
 - `--only [apm|mcp]` - Install only specific dependency type
 - `--update` - Update dependencies to latest Git references  
+- `--force` - Overwrite locally-authored files on collision
 - `--dry-run` - Show what would be installed without installing
+- `--parallel-downloads INT` - Max concurrent package downloads (default: 4, 0 to disable)
 - `--verbose` - Show detailed installation information
+- `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
@@ -134,6 +137,12 @@ apm install
 
 # Install ONLY this package (not others in apm.yml)
 apm install microsoft/apm-sample-package
+
+# Install via HTTPS URL (normalized to owner/repo in apm.yml)
+apm install https://github.com/microsoft/apm-sample-package.git
+
+# Install from a non-GitHub host (FQDN preserved)
+apm install https://gitlab.com/acme/coding-standards.git
 
 # Add multiple packages and install
 apm install org/pkg1 org/pkg2
@@ -155,6 +164,9 @@ apm install --update
 
 # Install for all runtimes except Codex
 apm install --exclude codex
+
+# Trust self-defined MCP servers from transitive packages
+apm install --trust-transitive-mcp
 ```
 
 **Auto-Bootstrap Behavior:**
@@ -164,10 +176,12 @@ apm install --exclude codex
 
 **Dependency Types:**
 
-- **APM Dependencies**: GitHub repositories containing `apm.yml`
+- **APM Dependencies**: Git repositories containing `apm.yml` (GitHub, GitLab, Bitbucket, or any git host)
 - **Claude Skills**: Repositories with `SKILL.md` (auto-generates `apm.yml` upon installation)
   - Example: `apm install ComposioHQ/awesome-claude-skills/brand-guidelines`
   - Skills are transformed to `.github/agents/*.agent.md` for VSCode target
+- **Hook Packages**: Repositories with `hooks/*.json` (no `apm.yml` or `SKILL.md` required)
+  - Example: `apm install anthropics/claude-plugins-official/plugins/hookify`
 - **Virtual Packages**: Single files or collections installed directly from URLs
   - Single `.prompt.md` or `.agent.md` files from any GitHub repository
   - Collections from curated sources (e.g., `github/awesome-copilot`)
@@ -184,7 +198,7 @@ dependencies:
     - microsoft/apm-sample-package  # Design standards, prompts
     - github/awesome-copilot/skills/review-and-refactor  # Code review skill
   mcp:
-    - github/github-mcp-server
+    - io.github.github/github-mcp-server
 ```
 
 ```bash
@@ -210,20 +224,22 @@ APM automatically detects which integrations to enable based on your project str
 
 When you run `apm install`, APM automatically integrates primitives from installed packages:
 
-- **Prompts**: `.prompt.md` files → `.github/prompts/*-apm.prompt.md`
-- **Agents**: `.agent.md` files → `.github/agents/*-apm.agent.md`
-- **Chatmodes**: `.chatmode.md` files → `.github/agents/*-apm.agent.md` (renamed to modern format)
+- **Prompts**: `.prompt.md` files → `.github/prompts/*.prompt.md`
+- **Agents**: `.agent.md` files → `.github/agents/*.agent.md`
+- **Chatmodes**: `.chatmode.md` files → `.github/agents/*.agent.md` (renamed to modern format)
+- **Instructions**: `.instructions.md` files → `.github/instructions/*.instructions.md`
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
-- **Naming**: Integrated files use `-apm` suffix (e.g., `accessibility-audit-apm.prompt.md`)
-- **GitIgnore**: Pattern `*-apm.prompt.md` automatically added to `.gitignore`
+- **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
+- **Collision detection**: Skips local files with a warning; use `--force` to overwrite
 
 **Claude Integration (`.claude/` present):**
 
 APM also integrates with Claude Code when `.claude/` directory exists:
 
-- **Agents**: `.agent.md` and `.chatmode.md` files → `.claude/agents/*-apm.md`
-- **Commands**: `.prompt.md` files → `.claude/commands/*-apm.md`
+- **Agents**: `.agent.md` and `.chatmode.md` files → `.claude/agents/*.md`
+- **Commands**: `.prompt.md` files → `.claude/commands/*.md`
+- **Hooks**: Hook definitions merged into `.claude/settings.json` hooks key
 
 **Skill Integration:**
 
@@ -236,6 +252,7 @@ Skills are copied directly to target directories:
 ```
 ✓ microsoft/apm-sample-package
   ├─ 3 prompts integrated → .github/prompts/
+  ├─ 1 instruction(s) integrated → .github/instructions/
   ├─ 1 agents integrated → .claude/agents/
   └─ 3 commands integrated → .claude/commands/
 ```
@@ -247,20 +264,22 @@ This makes all package prompts available in VSCode, Claude Code, and compatible 
 Remove installed APM packages and their integrated files.
 
 ```bash
-apm uninstall PACKAGE [OPTIONS]
+apm uninstall [OPTIONS] PACKAGES...
 ```
 
 **Arguments:**
-- `PACKAGE` - Package to uninstall (format: `owner/repo`)
+- `PACKAGES...` - One or more packages to uninstall. Accepts any format — shorthand (`owner/repo`), HTTPS URL, SSH URL, or FQDN. APM resolves each to the canonical identity stored in `apm.yml`.
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
-- `--verbose` - Show detailed removal information
 
 **Examples:**
 ```bash
 # Uninstall a package
 apm uninstall microsoft/apm-sample-package
+
+# Uninstall using an HTTPS URL (resolves to same identity)
+apm uninstall https://github.com/microsoft/apm-sample-package.git
 
 # Preview what would be removed
 apm uninstall microsoft/apm-sample-package --dry-run
@@ -273,21 +292,48 @@ apm uninstall microsoft/apm-sample-package --dry-run
 | Package entry | `apm.yml` dependencies section |
 | Package folder | `apm_modules/owner/repo/` |
 | Transitive deps | `apm_modules/` (orphaned transitive dependencies) |
-| Integrated prompts | `.github/prompts/*-apm.prompt.md` |
-| Integrated agents | `.github/agents/*-apm.agent.md` |
-| Integrated chatmodes | `.github/agents/*-apm.agent.md` |
-| Claude commands | `.claude/commands/*-apm.md` |
+| Integrated prompts | `.github/prompts/*.prompt.md` |
+| Integrated agents | `.github/agents/*.agent.md` |
+| Integrated chatmodes | `.github/agents/*.agent.md` |
+| Claude commands | `.claude/commands/*.md` |
 | Skill folders | `.github/skills/{folder-name}/` |
+| Integrated hooks | `.github/hooks/*.json` |
+| Claude hook settings | `.claude/settings.json` (hooks key cleaned) |
 | Lockfile entries | `apm.lock` (removed packages + orphaned transitives) |
 
 **Behavior:**
 - Removes package from `apm.yml` dependencies
 - Deletes package folder from `apm_modules/`
 - Removes orphaned transitive dependencies (npm-style pruning via `apm.lock`)
-- Removes all integrated files with `-apm` suffix that originated from the package
+- Removes all deployed integration files tracked in `apm.lock` `deployed_files`
 - Updates `apm.lock` (or deletes it if no dependencies remain)
 - Cleans up empty parent directories
-- Safe operation: only removes APM-managed files (identified by `-apm` suffix)
+- Safe operation: only removes files tracked in the `deployed_files` manifest
+
+### `apm prune` - 🧹 Remove orphaned packages
+
+Remove APM packages from `apm_modules/` that are not listed in `apm.yml`, along with their deployed integration files (prompts, agents, hooks, etc.).
+
+```bash
+apm prune [OPTIONS]
+```
+
+**Options:**
+- `--dry-run` - Show what would be removed without removing
+
+**Examples:**
+```bash
+# Remove orphaned packages and their deployed files
+apm prune
+
+# Preview what would be removed
+apm prune --dry-run
+```
+
+**Behavior:**
+- Removes orphaned package directories from `apm_modules/`
+- Removes deployed integration files (prompts, agents, hooks, etc.) for pruned packages using the `deployed_files` manifest in `apm.lock`
+- Updates `apm.lock` to reflect the pruned state
 
 ### `apm update` - ⬆️ Update APM to the latest version
 
@@ -468,9 +514,35 @@ apm deps update
 apm deps update compliance-rules
 ```
 
-**Note:** Package update functionality requires dependency downloading infrastructure from enhanced install command.
+### `apm mcp` - 🔌 Browse MCP server registry
 
-### `apm mcp search` - 🔍 Search MCP servers
+Browse and discover MCP servers from the GitHub MCP Registry.
+
+```bash
+apm mcp COMMAND [OPTIONS]
+```
+
+#### `apm mcp list` - 📋 List MCP servers
+
+List all available MCP servers from the registry.
+
+```bash
+apm mcp list [OPTIONS]
+```
+
+**Options:**
+- `--limit INTEGER` - Number of results to show
+
+**Examples:**
+```bash
+# List available MCP servers
+apm mcp list
+
+# Limit results
+apm mcp list --limit 20
+```
+
+#### `apm mcp search` - 🔍 Search MCP servers
 
 Search for MCP servers in the GitHub MCP Registry.
 
@@ -496,7 +568,7 @@ apm mcp search database --limit 5
 apm mcp search github
 ```
 
-### `apm mcp show` - 📋 Show MCP server details
+#### `apm mcp show` - 📋 Show MCP server details
 
 Show detailed information about a specific MCP server from the registry.
 
@@ -600,23 +672,27 @@ Available scripts:
   debug: RUST_LOG=debug codex hello-world.prompt.md
 ```
 
-### `apm compile` - 📝 Compile APM context files into AGENTS.md
+### `apm compile` - 📝 Compile APM context into distributed AGENTS.md files
 
-Compile APM context files (chatmodes, instructions, contexts) into a single intelligent AGENTS.md file with conditional sections, markdown link resolution, and project setup auto-detection.
+Compile APM context files (chatmodes, instructions, contexts) into distributed AGENTS.md files with conditional sections, markdown link resolution, and project setup auto-detection.
 
 ```bash
 apm compile [OPTIONS]
 ```
 
 **Options:**
-- `-o, --output TEXT` - Output file path (default: AGENTS.md)
-- `-t, --target TEXT` - Target agent format: `vscode`, `claude`, or `all`. Auto-detects if not specified.
+- `-o, --output TEXT` - Output file path (for single-file mode)
+- `-t, --target [vscode|agents|claude|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
-- `--dry-run` - Generate content without writing file
+- `--dry-run` - Preview compilation without writing files (shows placement decisions)
 - `--no-links` - Skip markdown link resolution
 - `--with-constitution/--no-constitution` - Include Spec Kit `memory/constitution.md` verbatim at top inside a delimited block (default: `--with-constitution`). When disabled, any existing block is preserved but not regenerated.
 - `--watch` - Auto-regenerate on changes (file system monitoring)
-- `--validate` - Validate context without compiling
+- `--validate` - Validate primitives without compiling
+- `--single-agents` - Force single-file compilation (legacy mode)
+- `-v, --verbose` - Show detailed source attribution and optimizer analysis
+- `--local-only` - Ignore dependencies, compile only local primitives
+- `--clean` - Remove orphaned AGENTS.md files that are no longer generated
 
 **Target Auto-Detection:**
 
@@ -718,8 +794,8 @@ Use the `exclude` field to skip directories during compilation. This improves pe
 - `coverage/**` - Matches "coverage" and all subdirectories
 - `projects/**/apm/**` - Complex nested matching with `**`
 
-**Default exclusions** (always applied):
-- `node_modules`, `__pycache__`, `.git`, `dist`, `build`
+**Default exclusions** (always applied, matched on exact path components):
+- `node_modules`, `__pycache__`, `.git`, `dist`, `build`, `apm_modules`
 - Hidden directories (starting with `.`)
 
 Command-line options always override `apm.yml` settings. Priority order:
@@ -840,13 +916,14 @@ apm config set auto-integrate 1
 
 ### `apm runtime` - 🤖 Manage AI runtimes
 
-APM manages AI runtime installation and configuration automatically. Currently supports two runtimes: `codex`, and `llm`.
+APM manages AI runtime installation and configuration automatically. Currently supports three runtimes: `copilot`, `codex`, and `llm`.
 
 ```bash
 apm runtime COMMAND [OPTIONS]
 ```
 
 **Supported Runtimes:**
+- **`copilot`** - GitHub Copilot coding agent
 - **`codex`** - OpenAI Codex CLI with GitHub Models support
 - **`llm`** - Simon Willison's LLM library with multiple providers
 
@@ -859,9 +936,10 @@ apm runtime setup RUNTIME_NAME [OPTIONS]
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to remove: `codex`, or `llm`
+- `RUNTIME_NAME` - Runtime to install: `copilot`, `codex`, or `llm`
 
 **Options:**
+- `--version TEXT` - Specific version to install
 - `--vanilla` - Install runtime without APM configuration (uses runtime's native defaults)
 
 **Examples:**
@@ -908,7 +986,10 @@ apm runtime remove RUNTIME_NAME
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to remove: `codex`, or `llm`
+- `RUNTIME_NAME` - Runtime to remove: `copilot`, `codex`, or `llm`
+
+**Options:**
+- `--yes` - Confirm the action without prompting
 
 #### `apm runtime status` - 📊 Show runtime status
 
@@ -919,20 +1000,9 @@ apm runtime status
 ```
 
 **Output includes:**
-- Runtime preference order (codex → llm)
+- Runtime preference order (copilot → codex → llm)
 - Currently active runtime
 - Next steps if no runtime is available
-
-#### `apm runtime status` - Show runtime status
-
-Display detailed status for a specific runtime.
-
-```bash
-apm runtime status RUNTIME_NAME
-```
-
-**Arguments:**
-- `RUNTIME_NAME` - Runtime to check: `codex` or `llm`
 
 ## File Formats
 
@@ -985,8 +1055,8 @@ apm init my-hello-world
 cd my-hello-world
 
 # 3. Discover MCP servers (optional)
-apm search filesystem
-apm show @modelcontextprotocol/servers/src/filesystem
+apm mcp search filesystem
+apm mcp show @modelcontextprotocol/servers/src/filesystem
 
 # 4. Install dependencies (like npm install)
 apm install
@@ -1005,7 +1075,7 @@ apm list
 
 1. **Start with runtime setup**: Run `apm runtime setup copilot` 
 2. **Use GitHub Models for free tier**: Set `GITHUB_TOKEN` (user-scoped with Models read permission) for free Codex access
-3. **Discover MCP servers**: Use `apm search` to find available MCP servers before adding to apm.yml
+3. **Discover MCP servers**: Use `apm mcp search` to find available MCP servers before adding to apm.yml
 4. **Preview before running**: Use `apm preview` to check parameter substitution
 5. **Organize prompts**: Use descriptive names and place in logical directories
 6. **Version control**: Include `.prompt.md` files and `apm.yml` in your git repository

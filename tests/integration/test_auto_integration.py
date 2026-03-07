@@ -76,11 +76,11 @@ class TestAutoIntegrationEndToEnd:
         # Verify results
         assert result.files_integrated == 2
         
-        # Check files exist (intent-first naming with -apm suffix)
+        # Check files exist (clean naming, no suffix)
         prompts_dir = self.project_root / ".github" / "prompts"
-        assert (prompts_dir / "workflow1-apm.prompt.md").exists()
-        assert (prompts_dir / "workflow2-apm.prompt.md").exists()
+        assert (prompts_dir / "workflow1.prompt.md").exists()
+        assert (prompts_dir / "workflow2.prompt.md").exists()
         
         # Verify content is copied verbatim (no metadata injection)
-        content1 = (prompts_dir / "workflow1-apm.prompt.md").read_text()
+        content1 = (prompts_dir / "workflow1.prompt.md").read_text()
         assert "# workflow1" in content1
