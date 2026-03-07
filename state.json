@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-06T01:08:37Z",
+  "last_updated": "2026-03-07T01:06:50Z",
   "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
@@ -9,22 +9,34 @@
     "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'"
   },
   "coverage_baseline": {
-    "total": "52%",
-    "run_date": "2026-03-06",
-    "test_count": 1305,
-    "pre_existing_failures": 1
+    "total": "54%",
+    "run_date": "2026-03-07",
+    "test_count": 1307,
+    "pre_existing_failures": 0,
+    "notes": "ANSI test failure fixed this run"
   },
   "monthly_activity_issue": "open-2026-03",
   "testing_backlog": [
-    {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "7%", "priority": "low", "notes": "Heavy network dependency"},
+    {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "18%", "priority": "low", "notes": "Heavy network dependency"},
     {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
-    {"id": "fix-ansi-test", "file": "tests/unit/test_install_command.py:44", "priority": "low", "notes": "Pre-existing failure: test checks for 'apm install <org/repo>' but Rich adds ANSI bold codes around < and >"},
-    {"id": "runtime-manager-run-embedded", "file": "src/apm_cli/runtime/manager.py lines 97-146", "coverage": "0% of run_embedded_script", "priority": "low", "notes": "Best covered by integration tests due to subprocess complexity"},
-    {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"}
+    {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"},
+    {"id": "injector", "file": "src/apm_cli/compilation/injector.py", "coverage": "44%", "priority": "low", "notes": "Awaiting PR merge (test-assist/constitution-injector-coverage)"},
+    {"id": "distributed-compiler", "file": "src/apm_cli/compilation/distributed_compiler.py", "coverage": "66%", "priority": "medium", "notes": "Complex compilation logic"},
+    {"id": "agents-compiler", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "69%", "priority": "medium"}
   ],
-  "backlog_cursor": "github-downloader",
-  "pending_branches": ["test-assist/apm-resolver-coverage"],
+  "backlog_cursor": "distributed-compiler",
+  "pending_branches": [
+    "test-assist/apm-resolver-coverage",
+    "test-assist/collection-parser-ansi-fix"
+  ],
   "completed_work": [
+    {
+      "run": "2026-03-07T01:06:50Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/collection-parser-ansi-fix",
+      "pr_status": "pr_created",
+      "description": "Added 32 unit tests for collection_parser.py (0%->100%). Fixed ANSI test failure in test_install_command.py by stripping ANSI escape codes before asserting. All 1307 tests pass (was 1271 passing + 1 failing)."
+    },
     {
       "run": "2026-03-06T01:08:37Z",
       "tasks": ["task3", "task7"],
