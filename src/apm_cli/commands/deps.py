@@ -16,7 +16,7 @@ from ..deps.apm_resolver import APMDependencyResolver
 
 
 
-@click.group(help="🔗 Manage APM package dependencies")
+@click.group(help="Manage APM package dependencies")
 def deps():
     """APM dependency management commands."""
     pass

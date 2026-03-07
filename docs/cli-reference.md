@@ -672,7 +672,7 @@ Available scripts:
   debug: RUST_LOG=debug codex hello-world.prompt.md
 ```
 
-### `apm compile` - 🚀 Compile APM context into distributed AGENTS.md files
+### `apm compile` - 📝 Compile APM context into distributed AGENTS.md files
 
 Compile APM context files (chatmodes, instructions, contexts) into distributed AGENTS.md files with conditional sections, markdown link resolution, and project setup auto-detection.
 
@@ -853,7 +853,7 @@ apm config
 apm config
 ```
 
-#### `apm config get` - ⚙️ Get a configuration value
+#### `apm config get` - Get a configuration value
 
 Get a specific configuration value or display all configuration values.
 
@@ -876,7 +876,7 @@ apm config get auto-integrate
 apm config get
 ```
 
-#### `apm config set` - ⚙️ Set a configuration value
+#### `apm config set` - Set a configuration value
 
 Set a configuration value globally for APM CLI.
 
