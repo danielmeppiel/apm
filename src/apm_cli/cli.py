@@ -313,7 +313,7 @@ cli.add_command(deps)
 @cli.command(help="🚀 Initialize a new APM project")
 @click.argument("project_name", required=False)
 @click.option(
-    "--yes", "-y", is_flag=True, help="Skip prompts and use auto-detected defaults"
+    "--yes", "-y", is_flag=True, help="Skip interactive prompts and use auto-detected defaults"
 )
 @click.pass_context
 def init(ctx, project_name, yes):
@@ -1805,7 +1805,7 @@ def _install_apm_dependencies(
                         pass
             # Build download ref (use locked commit for reproducibility)
             _pd_dlref = str(_pd_ref)
-            if existing_lockfile:
+            if existing_lockfile and not update_refs:
                 _pd_locked = existing_lockfile.get_dependency(_pd_key)
                 if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
                     _pd_base = _pd_ref.repo_url
@@ -2167,7 +2167,7 @@ def _install_apm_dependencies(
 
                     # T5: Build download ref - use locked commit if available
                     download_ref = str(dep_ref)
-                    if existing_lockfile:
+                    if existing_lockfile and not update_refs:
                         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
                         if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
                             # Override with locked commit for reproducible install
@@ -4245,7 +4245,7 @@ def config(ctx):
             click.echo(f"  APM CLI Version: {get_version()}")
 
 
-@config.command(help="Set configuration value")
+@config.command(help="Set a configuration value")
 @click.argument("key")
 @click.argument("value")
 def set(key, value):
@@ -4276,7 +4276,7 @@ def set(key, value):
         sys.exit(1)
 
 
-@config.command(help="Get configuration value")
+@config.command(help="Get a configuration value")
 @click.argument("key", required=False)
 def get(key):
     """Get a configuration value or show all configuration.
@@ -4310,7 +4310,7 @@ def get(key):
                 click.echo(f"  {k}: {v}")
 
 
-@cli.group(help="Manage Coding Agent CLI runtimes")
+@cli.group(help="Manage AI runtimes")
 def runtime():
     """Manage Coding Agent CLI runtime installations and configurations."""
     pass
@@ -4334,7 +4334,7 @@ def _atomic_write(path: Path, data: str) -> None:
         raise
 
 
-@cli.group(help="Manage MCP servers")
+@cli.group(help="Browse MCP server registry")
 def mcp():
     """Manage MCP server discovery and information."""
     pass
