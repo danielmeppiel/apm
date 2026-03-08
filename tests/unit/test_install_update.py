@@ -12,8 +12,9 @@ from apm_cli.models.apm_package import DependencyReference
 class TestSkipDownloadWithUpdateFlag:
     """Test that skip_download respects --update (update_refs=True).
 
-    The skip_download condition must NOT skip when update_refs is True,
-    even if the package was already resolved by the BFS callback.
+    When update_refs is True, cacheable installs should not skip based on the
+    local cache alone, but packages that have already been resolved by the BFS
+    callback (``already_resolved=True``) may still skip re-download.
     """
 
     def _build_skip_download(self, *, install_path_exists, is_cacheable, update_refs,
