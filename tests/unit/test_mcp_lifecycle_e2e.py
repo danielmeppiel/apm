@@ -129,6 +129,140 @@ class TestSelectiveInstallTransitiveMCP:
 
 
 # ---------------------------------------------------------------------------
+# Scenario 1b — Deep transitive chain (3+ levels)
+# ---------------------------------------------------------------------------
+class TestDeepTransitiveChainMCP:
+    """MCP servers declared at depth 4 (A → B → C → D) must be collected
+    when only A is locked at depth 1.  Exercises the full recursive walk."""
+
+    def setup_method(self):
+        self._orig_cwd = os.getcwd()
+
+    def teardown_method(self):
+        os.chdir(self._orig_cwd)
+
+    def test_depth_four_mcp_collected(self, tmp_path):
+        os.chdir(tmp_path)
+        apm_modules = tmp_path / "apm_modules"
+
+        # A → B → C → D (D has MCP)
+        _make_pkg_dir(apm_modules, "acme/pkg-a", apm_deps=["acme/pkg-b"])
+        _make_pkg_dir(apm_modules, "acme/pkg-b", apm_deps=["acme/pkg-c"])
+        _make_pkg_dir(apm_modules, "acme/pkg-c", apm_deps=["acme/pkg-d"])
+        _make_pkg_dir(apm_modules, "acme/pkg-d", mcp=[
+            "ghcr.io/acme/mcp-deep-server",
+        ])
+
+        lock_path = tmp_path / "apm.lock"
+        _write_lockfile(lock_path, [
+            LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
+            LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
+            LockedDependency(repo_url="acme/pkg-c", depth=3, resolved_by="acme/pkg-b"),
+            LockedDependency(repo_url="acme/pkg-d", depth=4, resolved_by="acme/pkg-c"),
+        ])
+
+        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        names = [d.name for d in result]
+        assert "ghcr.io/acme/mcp-deep-server" in names
+
+    def test_mcp_at_every_level_collected(self, tmp_path):
+        """Each level in the chain has its own MCP — all must appear."""
+        os.chdir(tmp_path)
+        apm_modules = tmp_path / "apm_modules"
+
+        _make_pkg_dir(apm_modules, "acme/pkg-a", apm_deps=["acme/pkg-b"],
+                      mcp=["ghcr.io/acme/mcp-level-1"])
+        _make_pkg_dir(apm_modules, "acme/pkg-b", apm_deps=["acme/pkg-c"],
+                      mcp=["ghcr.io/acme/mcp-level-2"])
+        _make_pkg_dir(apm_modules, "acme/pkg-c",
+                      mcp=["ghcr.io/acme/mcp-level-3"])
+
+        lock_path = tmp_path / "apm.lock"
+        _write_lockfile(lock_path, [
+            LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
+            LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
+            LockedDependency(repo_url="acme/pkg-c", depth=3, resolved_by="acme/pkg-b"),
+        ])
+
+        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        names = [d.name for d in result]
+        assert "ghcr.io/acme/mcp-level-1" in names
+        assert "ghcr.io/acme/mcp-level-2" in names
+        assert "ghcr.io/acme/mcp-level-3" in names
+
+
+# ---------------------------------------------------------------------------
+# Scenario 1c — Diamond dependency (A → B, A → C, B → D, C → D)
+# ---------------------------------------------------------------------------
+class TestDiamondDependencyMCP:
+    """When two branches of the tree converge on the same leaf (diamond),
+    MCP servers from the shared leaf must appear exactly once."""
+
+    def setup_method(self):
+        self._orig_cwd = os.getcwd()
+
+    def teardown_method(self):
+        os.chdir(self._orig_cwd)
+
+    def test_diamond_mcp_collected_once(self, tmp_path):
+        os.chdir(tmp_path)
+        apm_modules = tmp_path / "apm_modules"
+
+        # A → B, A → C, B → D, C → D
+        _make_pkg_dir(apm_modules, "acme/pkg-a", apm_deps=["acme/pkg-b", "acme/pkg-c"])
+        _make_pkg_dir(apm_modules, "acme/pkg-b", apm_deps=["acme/pkg-d"])
+        _make_pkg_dir(apm_modules, "acme/pkg-c", apm_deps=["acme/pkg-d"])
+        _make_pkg_dir(apm_modules, "acme/pkg-d", mcp=[
+            "ghcr.io/acme/mcp-shared-server",
+        ])
+
+        lock_path = tmp_path / "apm.lock"
+        _write_lockfile(lock_path, [
+            LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
+            LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
+            LockedDependency(repo_url="acme/pkg-c", depth=2, resolved_by="acme/pkg-a"),
+            LockedDependency(repo_url="acme/pkg-d", depth=3, resolved_by="acme/pkg-b"),
+        ])
+
+        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        names = [d.name for d in result]
+        assert "ghcr.io/acme/mcp-shared-server" in names
+
+        # After dedup, exactly one entry
+        merged = _deduplicate_mcp_deps(result)
+        merged_names = [d.name for d in merged]
+        assert merged_names.count("ghcr.io/acme/mcp-shared-server") == 1
+
+    def test_diamond_multiple_mcp_from_branches(self, tmp_path):
+        """Each branch also contributes its own MCP — all must be present."""
+        os.chdir(tmp_path)
+        apm_modules = tmp_path / "apm_modules"
+
+        _make_pkg_dir(apm_modules, "acme/pkg-a", apm_deps=["acme/pkg-b", "acme/pkg-c"])
+        _make_pkg_dir(apm_modules, "acme/pkg-b", apm_deps=["acme/pkg-d"],
+                      mcp=["ghcr.io/acme/mcp-branch-b"])
+        _make_pkg_dir(apm_modules, "acme/pkg-c", apm_deps=["acme/pkg-d"],
+                      mcp=["ghcr.io/acme/mcp-branch-c"])
+        _make_pkg_dir(apm_modules, "acme/pkg-d", mcp=["ghcr.io/acme/mcp-leaf"])
+
+        lock_path = tmp_path / "apm.lock"
+        _write_lockfile(lock_path, [
+            LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
+            LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
+            LockedDependency(repo_url="acme/pkg-c", depth=2, resolved_by="acme/pkg-a"),
+            LockedDependency(repo_url="acme/pkg-d", depth=3, resolved_by="acme/pkg-b"),
+        ])
+
+        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        merged = _deduplicate_mcp_deps(result)
+        names = [d.name for d in merged]
+        assert "ghcr.io/acme/mcp-branch-b" in names
+        assert "ghcr.io/acme/mcp-branch-c" in names
+        assert "ghcr.io/acme/mcp-leaf" in names
+        assert len(names) == 3
+
+
+# ---------------------------------------------------------------------------
 # Scenario 2 — Uninstall removes transitive MCP servers
 # ---------------------------------------------------------------------------
 class TestUninstallRemovesTransitiveMCP:
