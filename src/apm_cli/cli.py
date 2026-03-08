@@ -2788,7 +2788,7 @@ def _remove_stale_mcp_servers(
     if runtime:
         target_runtimes = {runtime}
     else:
-        target_runtimes = set(all_runtimes)
+        target_runtimes = builtins.set(all_runtimes)
     if exclude:
         target_runtimes.discard(exclude)
 
