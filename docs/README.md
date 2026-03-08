@@ -18,7 +18,7 @@ Welcome to the Agent Package Manager documentation. Choose your path:
 
 ## 🔧 **Advanced**
 - **[Runtime Integration](runtime-integration.md)** - Codex and LLM setup
-- **[Development Status](development-status.md)** - Feature status
+- **[Changelog](../CHANGELOG.md)** - Feature status and release history
 - **[Contributing Guide](../CONTRIBUTING.md)** - Join the ecosystem
 
 ---
