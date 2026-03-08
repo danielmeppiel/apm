@@ -588,3 +588,63 @@ class TestSelfDefinedMCPTrustGating:
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-registry-server" in names
         assert "private-srv" in names
+
+
+class TestStaleCleanupKeyNormalization:
+    """_remove_stale_mcp_servers should match config keys that use only the
+    last path segment (Copilot CLI, Codex) even when stale_names contains
+    full registry references with '/'."""
+
+    def test_last_segment_removed_from_copilot_config(self, tmp_path, monkeypatch):
+        """Stale name 'io.github.github/github-mcp-server' should remove
+        config key 'github-mcp-server' from Copilot CLI config."""
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        copilot_dir = tmp_path / ".copilot"
+        copilot_dir.mkdir()
+        copilot_config = copilot_dir / "mcp-config.json"
+        copilot_config.write_text(json.dumps({
+            "mcpServers": {"github-mcp-server": {"command": "npx", "args": ["mcp-server"]}}
+        }))
+
+        stale = {"io.github.github/github-mcp-server"}
+        _remove_stale_mcp_servers(stale, runtime="copilot")
+
+        result = json.loads(copilot_config.read_text())
+        assert "github-mcp-server" not in result["mcpServers"]
+
+    def test_full_ref_removed_from_vscode_config(self, tmp_path, monkeypatch):
+        """VS Code uses the full reference as key — should still match."""
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        vscode_dir = tmp_path / ".vscode"
+        vscode_dir.mkdir()
+        mcp_json = vscode_dir / "mcp.json"
+        mcp_json.write_text(json.dumps({
+            "servers": {"io.github.github/github-mcp-server": {"type": "stdio"}}
+        }))
+
+        stale = {"io.github.github/github-mcp-server"}
+        _remove_stale_mcp_servers(stale, runtime="vscode")
+
+        result = json.loads(mcp_json.read_text())
+        assert "io.github.github/github-mcp-server" not in result["servers"]
+
+    def test_short_name_without_slash_still_works(self, tmp_path, monkeypatch):
+        """A stale name without '/' (e.g. 'acme-kb') should still match directly."""
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        copilot_dir = tmp_path / ".copilot"
+        copilot_dir.mkdir()
+        copilot_config = copilot_dir / "mcp-config.json"
+        copilot_config.write_text(json.dumps({
+            "mcpServers": {"acme-kb": {"command": "npx", "args": ["acme-kb"]}}
+        }))
+
+        stale = {"acme-kb"}
+        _remove_stale_mcp_servers(stale, runtime="copilot")
+
+        result = json.loads(copilot_config.read_text())
+        assert "acme-kb" not in result["mcpServers"]

@@ -1271,6 +1271,10 @@ def uninstall(ctx, packages, dry_run):
         lockfile_path = get_lockfile_path(Path("."))
         lockfile = LockFile.read(lockfile_path)
 
+        # Capture MCP servers from lockfile *before* it is mutated/deleted so
+        # that stale-MCP cleanup can compute the diff even when all deps are removed.
+        _pre_uninstall_mcp_servers = builtins.set(lockfile.mcp_servers) if lockfile else builtins.set()
+
         if apm_modules_dir.exists():
             deleted_pkg_paths: list = []
             for package in packages_to_remove:
@@ -1590,13 +1594,11 @@ def uninstall(ctx, packages, dry_run):
 
         # Clean up stale MCP servers after uninstall
         try:
-            lock_path = Path.cwd() / "apm.lock"
-            existing_lock = LockFile.read(lock_path)
-            old_mcp_servers = builtins.set(existing_lock.mcp_servers) if existing_lock else builtins.set()
+            old_mcp_servers = _pre_uninstall_mcp_servers
             if old_mcp_servers:
                 # Recompute MCP deps from remaining packages
                 apm_modules_path = Path.cwd() / "apm_modules"
-                remaining_mcp = _collect_transitive_mcp_deps(apm_modules_path, lock_path, trust_private=True)
+                remaining_mcp = _collect_transitive_mcp_deps(apm_modules_path, lockfile_path, trust_private=True)
                 # Also include root-level MCP deps from apm.yml
                 try:
                     remaining_root_mcp = apm_package.get_mcp_dependencies()
@@ -2790,11 +2792,13 @@ def _remove_stale_mcp_servers(
     """Remove MCP server entries that are no longer required by any dependency.
 
     Cleans up runtime configuration files only for the runtimes that were
-    actually targeted during installation.  ``stale_names`` contains short
-    server names (e.g. ``"github"``), **not** full dependency references.
+    actually targeted during installation.  ``stale_names`` contains MCP
+    dependency references (e.g. ``"io.github.github/github-mcp-server"``).
+    For Copilot CLI and Codex, config keys are derived from the last path
+    segment, so we match against both the full reference and the short name.
 
     Args:
-        stale_names: Set of short MCP server names to remove.
+        stale_names: Set of MCP dependency references to remove.
         runtime: If set, only clean this specific runtime.
         exclude: If set, skip this runtime during cleanup.
     """
@@ -2810,6 +2814,14 @@ def _remove_stale_mcp_servers(
     if exclude:
         target_runtimes.discard(exclude)
 
+    # Build an expanded set that includes both the full reference and the
+    # last-segment short name so we match config keys in every runtime.
+    expanded_stale: builtins.set = builtins.set()
+    for n in stale_names:
+        expanded_stale.add(n)
+        if "/" in n:
+            expanded_stale.add(n.rsplit("/", 1)[-1])
+
     # Clean .vscode/mcp.json
     if "vscode" in target_runtimes:
         vscode_mcp = Path.cwd() / ".vscode" / "mcp.json"
@@ -2819,7 +2831,7 @@ def _remove_stale_mcp_servers(
 
                 config = _json.loads(vscode_mcp.read_text(encoding="utf-8"))
                 servers = config.get("servers", {})
-                removed = [n for n in stale_names if n in servers]
+                removed = [n for n in expanded_stale if n in servers]
                 for name in removed:
                     del servers[name]
                 if removed:
@@ -2840,7 +2852,7 @@ def _remove_stale_mcp_servers(
 
                 config = _json.loads(copilot_mcp.read_text(encoding="utf-8"))
                 servers = config.get("mcpServers", {})
-                removed = [n for n in stale_names if n in servers]
+                removed = [n for n in expanded_stale if n in servers]
                 for name in removed:
                     del servers[name]
                 if removed:
@@ -2861,7 +2873,7 @@ def _remove_stale_mcp_servers(
 
                 config = _toml.loads(codex_cfg.read_text(encoding="utf-8"))
                 servers = config.get("mcp_servers", {})
-                removed = [n for n in stale_names if n in servers]
+                removed = [n for n in expanded_stale if n in servers]
                 for name in removed:
                     del servers[name]
                 if removed:

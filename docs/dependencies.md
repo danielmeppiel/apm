@@ -535,7 +535,7 @@ mcp_servers:
 
 The `deployed_files` field tracks exactly which files APM placed in your project. This enables safe cleanup on `apm uninstall` and `apm prune` — only tracked files are removed.
 
-The `mcp_servers` field records the short names of MCP servers currently managed by APM. It is used to detect and clean up stale servers when dependencies change.
+The `mcp_servers` field records the MCP dependency references (e.g. `io.github.github/github-mcp-server`) for servers currently managed by APM. It is used to detect and clean up stale servers when dependencies change.
 
 ### How It Works
 
