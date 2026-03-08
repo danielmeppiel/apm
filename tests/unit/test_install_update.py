@@ -65,7 +65,7 @@ class TestSkipDownloadWithUpdateFlag:
         assert self._build_skip_download(
             install_path_exists=True,
             is_cacheable=False,
-            update_refs=True,
+            update_refs=False,
             already_resolved=False,
             lockfile_match=True,
         ) is True
