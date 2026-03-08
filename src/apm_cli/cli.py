@@ -2479,7 +2479,19 @@ def _install_apm_dependencies(
                 for dep_key, dep_files in package_deployed_files.items():
                     if dep_key in lockfile.dependencies:
                         lockfile.dependencies[dep_key].deployed_files = dep_files
+
                 lockfile_path = get_lockfile_path(project_root)
+
+                # When installing a subset of packages (apm install <pkg>),
+                # merge new entries into the existing lockfile instead of
+                # overwriting it — otherwise the uninstalled packages disappear.
+                if only_packages:
+                    existing = LockFile.read(lockfile_path)
+                    if existing:
+                        for key, dep in lockfile.dependencies.items():
+                            existing.add_dependency(dep)
+                        lockfile = existing
+
                 lockfile.save(lockfile_path)
                 _rich_info(f"Generated apm.lock with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
