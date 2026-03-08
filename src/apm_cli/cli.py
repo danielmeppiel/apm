@@ -1748,6 +1748,9 @@ def _install_apm_dependencies(
         deps_to_install = flat_deps.get_installation_list()
 
         # If specific packages were requested, filter to only those
+        # **and their full transitive dependency subtrees** so that
+        # sub-deps (and their MCP servers) are installed and recorded
+        # in the lockfile.
         if only_packages:
             # Build identity set from user-supplied package specs.
             # Accepts any input form: git URLs, FQDN, shorthand.
@@ -1758,6 +1761,21 @@ def _install_apm_dependencies(
                     only_identities.add(ref.get_identity())
                 except Exception:
                     only_identities.add(p)
+
+            # Expand the set to include transitive descendants of the
+            # requested packages so their MCP servers, primitives, etc.
+            # are correctly installed and written to the lockfile.
+            tree = dependency_graph.dependency_tree
+
+            def _collect_descendants(node):
+                """Walk the tree and add every child identity."""
+                for child in node.children:
+                    only_identities.add(child.dependency_ref.get_identity())
+                    _collect_descendants(child)
+
+            for node in tree.nodes.values():
+                if node.dependency_ref.get_identity() in only_identities:
+                    _collect_descendants(node)
 
             deps_to_install = [
                 dep for dep in deps_to_install
