@@ -129,7 +129,7 @@ class TestSelectiveInstallTransitiveMCPIntegration:
         ])
 
         # The command should succeed (exit 0)
-        assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, "stderr", "")}"
+        assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
 
         # Lockfile must contain both packages
         lockfile = LockFile.read(tmp_path / "apm.lock")
@@ -340,7 +340,7 @@ class TestFullInstallTransitiveMCPIntegration:
 
         result = runner.invoke(cli, ["install", "--trust-transitive-mcp"])
 
-        assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, "stderr", "")}"
+        assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
 
         lockfile = LockFile.read(tmp_path / "apm.lock")
         assert lockfile is not None
@@ -393,7 +393,7 @@ class TestStaleRemovalAfterUpdate:
                 "install", "--trust-transitive-mcp",
             ])
 
-            assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, "stderr", "")}"
+            assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
 
             # Stale server must be removed from mcp.json
             updated = json.loads(mcp_json.read_text(encoding="utf-8"))
@@ -431,7 +431,7 @@ class TestNoMCPWhenOnlyAPM:
         from apm_cli.cli import cli
         result = runner.invoke(cli, ["install", "--only=apm"])
 
-        assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, "stderr", "")}"
+        assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
 
         # MCP servers must be preserved (not wiped) even with --only=apm
         lockfile = LockFile.read(tmp_path / "apm.lock")
