@@ -1805,7 +1805,7 @@ def _install_apm_dependencies(
                         pass
             # Build download ref (use locked commit for reproducibility)
             _pd_dlref = str(_pd_ref)
-            if existing_lockfile:
+            if existing_lockfile and not update_refs:
                 _pd_locked = existing_lockfile.get_dependency(_pd_key)
                 if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
                     _pd_base = _pd_ref.repo_url
@@ -2167,7 +2167,7 @@ def _install_apm_dependencies(
 
                     # T5: Build download ref - use locked commit if available
                     download_ref = str(dep_ref)
-                    if existing_lockfile:
+                    if existing_lockfile and not update_refs:
                         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
                         if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
                             # Override with locked commit for reproducible install
