@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- CLI consistency: align `apm uninstall` help text with documentation (#188)
+
 ## [0.7.4] - 2025-03-03
 
 ### Added
