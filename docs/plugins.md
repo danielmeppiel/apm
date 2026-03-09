@@ -160,6 +160,36 @@ By default APM looks for `agents/`, `skills/`, `commands/`, and `hooks/` directo
 - For **agents**, directory contents are flattened into `.apm/agents/` (agents are flat files, not named directories)
 - `hooks` also accepts an inline object: `"hooks": {"hooks": {"PreToolUse": [...]}}`
 
+#### MCP Server Definitions
+
+Plugins can ship MCP servers that are automatically deployed through APM's MCP pipeline. Define servers using `mcpServers` in `plugin.json`:
+
+```json
+{
+  "name": "my-plugin",
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "my-mcp-server"]
+    },
+    "my-api": {
+      "url": "https://api.example.com/mcp"
+    }
+  }
+}
+```
+
+`mcpServers` supports three forms:
+- **Object** — inline server definitions (as above)
+- **String** — path to a JSON file containing `mcpServers`
+- **Array** — list of JSON file paths (merged, last-wins on name conflicts)
+
+When `mcpServers` is absent, APM auto-discovers `.mcp.json` at the plugin root (then `.github/.mcp.json` as fallback), matching Claude Code's auto-discovery behavior.
+
+Servers with `command` are configured as `stdio` transport; servers with `url` use `http` (or the `type` field if it specifies `sse` or `streamable-http`). All plugin-defined MCP servers are treated as self-defined (`registry: false`).
+
+**Trust model**: Self-defined MCP servers from direct dependencies (depth=1) are auto-trusted. Transitive dependencies require `--trust-transitive-mcp`. See [dependencies.md](./dependencies.md#self-defined-servers) for details.
+
 ## Examples
 
 ### Installing Plugins from GitHub

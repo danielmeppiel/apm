@@ -55,8 +55,10 @@ class MCPIntegrator:
         picking up stale/orphaned packages from previous installs.
         Falls back to scanning all apm.yml files if no lock file is available.
 
-        Self-defined servers (registry: false) from transitive packages are
-        skipped with a warning unless *trust_private* is True.
+        Self-defined servers (registry: false) from direct dependencies
+        (depth == 1) are auto-trusted.  Self-defined servers from transitive
+        dependencies (depth > 1) are skipped with a warning unless
+        *trust_private* is True.
         """
         if not apm_modules_dir.exists():
             return []
@@ -65,6 +67,8 @@ class MCPIntegrator:
 
         # Build set of expected apm.yml paths from apm.lock
         locked_paths = None
+        direct_paths: builtins.set = builtins.set()
+        lockfile = None
         if lock_path and lock_path.exists():
             lockfile = LockFile.read(lock_path)
             if lockfile is not None:
@@ -77,6 +81,8 @@ class MCPIntegrator:
                             else apm_modules_dir / dep.repo_url / "apm.yml"
                         )
                         locked_paths.add(yml.resolve())
+                        if dep.depth == 1:
+                            direct_paths.add(yml.resolve())
 
         # Prefer iterating lock-derived paths directly (existing files only).
         # Fall back to full scan only when lock parsing is unavailable.
@@ -91,9 +97,15 @@ class MCPIntegrator:
                 pkg = APMPackage.from_apm_yml(apm_yml_path)
                 mcp = pkg.get_mcp_dependencies()
                 if mcp:
+                    is_direct = apm_yml_path.resolve() in direct_paths
                     for dep in mcp:
                         if hasattr(dep, "is_self_defined") and dep.is_self_defined:
-                            if trust_private:
+                            if is_direct:
+                                _rich_info(
+                                    f"Trusting direct dependency MCP '{dep.name}' "
+                                    f"from '{pkg.name}'"
+                                )
+                            elif trust_private:
                                 _rich_info(
                                     f"Trusting self-defined MCP server '{dep.name}' "
                                     f"from transitive package '{pkg.name}' (--trust-transitive-mcp)"
@@ -157,6 +169,17 @@ class MCPIntegrator:
         """
         info: dict = {"name": dep.name}
 
+        # For stdio self-defined deps, store raw command/args so adapters
+        # can bypass registry-specific formatting (npm, docker, etc.).
+        if dep.transport == "stdio" or (
+            dep.transport not in ("http", "sse", "streamable-http") and dep.command
+        ):
+            info["_raw_stdio"] = {
+                "command": dep.command or dep.name,
+                "args": list(dep.args) if dep.args else [],
+                "env": dict(dep.env) if dep.env else {},
+            }
+
         if dep.transport in ("http", "sse", "streamable-http"):
             # Build as a remote endpoint
             remote = {
@@ -192,7 +215,7 @@ class MCPIntegrator:
                 {
                     "runtime_hint": dep.command or dep.name,
                     "name": dep.name,
-                    "registry_name": "",
+                    "registry_name": "self-defined",
                     "runtime_arguments": runtime_args,
                     "package_arguments": [],
                     "environment_variables": env_vars,

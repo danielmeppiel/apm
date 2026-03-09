@@ -165,6 +165,19 @@ class CopilotClientAdapter(MCPClientAdapter):
             "tools": ["*"],  # Required by Copilot CLI specification - default to all tools
             "id": server_info.get("id", "")  # Add registry UUID for conflict detection
         }
+
+        # Self-defined stdio deps carry raw command/args — use directly
+        raw = server_info.get("_raw_stdio")
+        if raw:
+            config["command"] = raw["command"]
+            config["args"] = raw["args"]
+            if raw.get("env"):
+                config["env"] = raw["env"]
+            # Apply tools override if present
+            tools_override = server_info.get("_apm_tools_override")
+            if tools_override:
+                config["tools"] = tools_override
+            return config
         
         # Check for remote endpoints first (registry-defined priority)
         remotes = server_info.get("remotes", [])
