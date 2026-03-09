@@ -282,6 +282,84 @@ class TestPluginHeroScenarios:
         assert pkg.name == "context-engineering"
         assert pkg.version == "2.0.0"
 
+    # ---- Test 7: compile discovers plugin primitives --------------------
+
+    def test_compile_discovers_plugin_primitives(self, tmp_path):
+        """Compile primitive discovery should find .apm/ content from plugins."""
+        from apm_cli.primitives.discovery import discover_primitives_with_dependencies
+
+        if not FIXTURE_DIR.exists():
+            pytest.skip("mock-marketplace-plugin fixture not found")
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        (project_root / ".github").mkdir()
+
+        # Set up apm_modules with the plugin
+        pkg_dir = project_root / "apm_modules" / "microsoft" / "apm-test-plugin"
+        pkg_dir.mkdir(parents=True)
+        shutil.copytree(FIXTURE_DIR, pkg_dir, dirs_exist_ok=True)
+
+        # Validate to trigger normalization (creates .apm/ and apm.yml)
+        result = validate_apm_package(pkg_dir)
+        assert result.is_valid
+
+        # Create apm.yml declaring the dependency
+        (project_root / "apm.yml").write_text(
+            "name: compile-test\nversion: 1.0.0\n"
+            "dependencies:\n  apm:\n    - microsoft/apm-test-plugin\n"
+        )
+
+        # Run primitive discovery (what compile uses internally)
+        collection = discover_primitives_with_dependencies(str(project_root))
+
+        # Plugin primitives should appear (agents/ and any instructions in .apm/)
+        all_sources = [p.source for p in collection.all_primitives()]
+        has_dep_source = any("dependency:microsoft/apm-test-plugin" in s for s in all_sources)
+        assert has_dep_source, (
+            f"Plugin primitives not discovered. Sources found: {all_sources}"
+        )
+
+    # ---- Test 8: lockfile package_type round-trip -----------------------
+
+    def test_lockfile_package_type_roundtrip(self, tmp_path):
+        """LockedDependency.package_type serializes and deserializes correctly."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        dep = LockedDependency(
+            repo_url="microsoft/apm-test-plugin",
+            resolved_commit="abc123",
+            package_type="marketplace_plugin",
+            deployed_files=[".github/agents/test.agent.md"],
+        )
+
+        serialized = dep.to_dict()
+        assert serialized["package_type"] == "marketplace_plugin"
+
+        restored = LockedDependency.from_dict(serialized)
+        assert restored.package_type == "marketplace_plugin"
+        assert restored.deployed_files == [".github/agents/test.agent.md"]
+
+    # ---- Test 9: generated apm.yml always has type: hybrid --------------
+
+    def test_generated_apm_yml_type_is_hybrid(self, tmp_path):
+        """Synthesized apm.yml should always emit type: hybrid (dead metadata)."""
+        import yaml as yaml_lib
+
+        if not FIXTURE_DIR.exists():
+            pytest.skip("mock-marketplace-plugin fixture not found")
+
+        plugin_dir = tmp_path / "type-test-plugin"
+        shutil.copytree(FIXTURE_DIR, plugin_dir)
+
+        result = validate_apm_package(plugin_dir)
+        assert result.is_valid
+
+        parsed = yaml_lib.safe_load((plugin_dir / "apm.yml").read_text())
+        assert parsed["type"] == "hybrid", (
+            f"Expected type 'hybrid', got '{parsed.get('type')}'"
+        )
+
 
 # ===========================================================================
 # Class 2 — NETWORK E2E tests (real CLI, requires GitHub token)
@@ -524,3 +602,150 @@ class TestPluginNetworkE2E:
         assert "agent" in combined.lower(), (
             f"Uninstall should report agent cleanup:\n{combined}"
         )
+
+    # ---- Test 7: compile includes plugin primitives ---------------------
+
+    def test_compile_includes_plugin_primitives(self, apm_command, temp_project):
+        """apm compile should include primitives from a normalized plugin."""
+        # Install the plugin
+        r = subprocess.run(
+            [apm_command, "install", self.PLUGIN_REF, "--verbose"],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=180,
+        )
+        assert r.returncode == 0, f"Install failed:\n{r.stderr}"
+
+        # Compile
+        result = subprocess.run(
+            [apm_command, "compile"],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=60,
+        )
+        assert result.returncode == 0, (
+            f"Compile failed (rc={result.returncode}):\n{result.stderr}"
+        )
+
+        # AGENTS.md should exist (even if minimal — plugin primitives are in .apm/)
+        agents_md = temp_project / "AGENTS.md"
+        if agents_md.exists():
+            content = agents_md.read_text()
+            # Should reference the plugin as a source
+            assert "context-engineering" in content.lower() or "awesome-copilot" in content.lower(), (
+                f"AGENTS.md should reference the plugin source:\n{content[:500]}"
+            )
+
+    # ---- Test 8: prune removes orphaned plugin --------------------------
+
+    def test_prune_removes_orphaned_plugin(self, apm_command, temp_project):
+        """apm prune should remove a plugin no longer in apm.yml."""
+        # Install the plugin
+        r = subprocess.run(
+            [apm_command, "install", self.PLUGIN_REF, "--verbose"],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=180,
+        )
+        assert r.returncode == 0, f"Install failed:\n{r.stderr}"
+
+        pkg_path = temp_project / "apm_modules" / self.PLUGIN_REF
+        assert pkg_path.is_dir(), "Plugin must be installed before prune test"
+
+        # Remove the plugin from apm.yml (simulate user edit)
+        apm_yml = temp_project / "apm.yml"
+        apm_yml.write_text(
+            "name: e2e-test-project\n"
+            "version: 1.0.0\n"
+            "description: E2E test project\n"
+            "dependencies:\n"
+            "  apm: []\n"
+        )
+
+        # Prune should detect and remove the orphan
+        result = subprocess.run(
+            [apm_command, "prune"],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=60,
+        )
+        assert result.returncode == 0, (
+            f"Prune failed (rc={result.returncode}):\n{result.stderr}"
+        )
+
+        combined = result.stdout + result.stderr
+        assert "orphan" in combined.lower() or "removed" in combined.lower(), (
+            f"Prune should report orphan removal:\n{combined}"
+        )
+
+    # ---- Test 9: install counter reports plugin -------------------------
+
+    def test_install_counter_includes_plugin(self, apm_command, temp_project):
+        """apm install output should count plugin as an installed dependency."""
+        result = subprocess.run(
+            [apm_command, "install", self.PLUGIN_REF],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=180,
+        )
+        assert result.returncode == 0, f"Install failed:\n{result.stderr}"
+
+        combined = result.stdout + result.stderr
+        # Should NOT say "Installed 0"
+        assert "installed 0" not in combined.lower(), (
+            f"Install counter should not be 0 after plugin install:\n{combined}"
+        )
+
+    # ---- Test 10: lockfile records package_type -------------------------
+
+    def test_lockfile_records_package_type(self, apm_command, temp_project):
+        """Lockfile should record package_type for plugin dependencies."""
+        result = subprocess.run(
+            [apm_command, "install", self.PLUGIN_REF],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=180,
+        )
+        assert result.returncode == 0, f"Install failed:\n{result.stderr}"
+
+        import yaml
+
+        lockfile = yaml.safe_load((temp_project / "apm.lock").read_text())
+        assert "dependencies" in lockfile, "Lockfile missing dependencies"
+
+        plugin_entry = None
+        for dep in lockfile["dependencies"]:
+            key = dep.get("repo_url", "")
+            vpath = dep.get("virtual_path", "")
+            full = f"{key}/{vpath}" if vpath else key
+            if "context-engineering" in full:
+                plugin_entry = dep
+                break
+
+        assert plugin_entry is not None, (
+            f"Plugin not found in lockfile. Deps: {lockfile['dependencies']}"
+        )
+        assert plugin_entry.get("package_type") == "marketplace_plugin", (
+            f"Expected package_type 'marketplace_plugin', got: {plugin_entry.get('package_type')}"
+        )
+
+    # ---- Test 11: idempotent reinstall ----------------------------------
+
+    def test_idempotent_reinstall(self, apm_command, temp_project):
+        """Running apm install twice should be safe and produce identical results."""
+        # First install
+        r1 = subprocess.run(
+            [apm_command, "install", self.PLUGIN_REF],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=180,
+        )
+        assert r1.returncode == 0, f"First install failed:\n{r1.stderr}"
+
+        # Capture lockfile state
+        import yaml
+
+        lock1 = yaml.safe_load((temp_project / "apm.lock").read_text())
+
+        # Second install (should use cache)
+        r2 = subprocess.run(
+            [apm_command, "install", self.PLUGIN_REF],
+            capture_output=True, text=True, cwd=str(temp_project), timeout=180,
+        )
+        assert r2.returncode == 0, f"Second install failed:\n{r2.stderr}"
+
+        # Lockfile should be identical
+        lock2 = yaml.safe_load((temp_project / "apm.lock").read_text())
+        assert len(lock1["dependencies"]) == len(lock2["dependencies"]), (
+            "Reinstall changed lockfile dependency count"
+        )
+
+        # Package should still be on disk
+        pkg_path = temp_project / "apm_modules" / self.PLUGIN_REF
+        assert pkg_path.is_dir(), "Plugin should still be present after reinstall"

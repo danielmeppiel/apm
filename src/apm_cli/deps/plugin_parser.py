@@ -108,27 +108,8 @@ def synthesize_apm_yml_from_plugin(plugin_path: Path, manifest: Dict[str, Any]) 
     # Map plugin structure into .apm/ subdirectories
     _map_plugin_artifacts(plugin_path, apm_dir, manifest)
 
-    # Determine package type from what was actually mapped
-    has_skills = (apm_dir / "skills").exists() and any((apm_dir / "skills").iterdir())
-    has_instructions = (
-        (apm_dir / "instructions").exists() and any((apm_dir / "instructions").iterdir())
-    )
-    has_prompts = (apm_dir / "prompts").exists() and any((apm_dir / "prompts").iterdir())
-    has_agents = (apm_dir / "agents").exists() and any((apm_dir / "agents").iterdir())
-
-    if has_skills and (has_instructions or has_agents or has_prompts):
-        pkg_type = 'hybrid'
-    elif has_skills:
-        pkg_type = 'skill'
-    elif has_prompts and not has_instructions and not has_agents:
-        pkg_type = 'prompts'
-    elif has_instructions or has_agents or has_prompts:
-        pkg_type = 'instructions'
-    else:
-        pkg_type = 'hybrid'  # Fallback for plugins with only hooks/pass-through files
-
     # Generate apm.yml from plugin metadata
-    apm_yml_content = _generate_apm_yml(manifest, pkg_type)
+    apm_yml_content = _generate_apm_yml(manifest)
     apm_yml_path = plugin_path / "apm.yml"
 
     with open(apm_yml_path, 'w', encoding='utf-8') as f:
@@ -242,12 +223,11 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
             shutil.copy2(source_file, apm_dir / passthrough)
 
 
-def _generate_apm_yml(manifest: Dict[str, Any], pkg_type: str = 'hybrid') -> str:
+def _generate_apm_yml(manifest: Dict[str, Any]) -> str:
     """Generate apm.yml content from plugin metadata.
 
     Args:
         manifest: Plugin metadata dict.
-        pkg_type: Package type determined from mapped artifacts.
 
     Returns:
         str: YAML content for apm.yml.
@@ -273,7 +253,9 @@ def _generate_apm_yml(manifest: Dict[str, Any], pkg_type: str = 'hybrid') -> str
     if manifest.get('dependencies'):
         apm_package['dependencies'] = {'apm': manifest['dependencies']}
 
-    apm_package['type'] = pkg_type
+    # Install behavior is driven by file presence (SKILL.md, etc.), not this
+    # field.  Default to hybrid so the standard pipeline handles all components.
+    apm_package['type'] = 'hybrid'
 
     return yaml.dump(apm_package, default_flow_style=False, sort_keys=False)
 

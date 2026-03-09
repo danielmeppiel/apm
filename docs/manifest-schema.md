@@ -120,10 +120,10 @@ Controls which output targets are generated during compilation. When unset, a co
 |---|---|
 | **Type** | `enum<string>` |
 | **Required** | OPTIONAL |
-| **Default** | None (unset — behaviour depends on package content) |
-| **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` · `marketplace_plugin` |
+| **Default** | `hybrid` |
+| **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` |
 
-Declares how the package's content is processed during install and compile:
+Declares how the package's content is processed during install and compile. Currently behaviour is driven by package content (presence of `SKILL.md`, component directories, etc.); this field is reserved for future explicit overrides.
 
 | Value | Behaviour |
 |---|---|
@@ -131,7 +131,6 @@ Declares how the package's content is processed during install and compile:
 | `skill` | Installed as a native skill only. No AGENTS.md output. |
 | `hybrid` | Both AGENTS.md compilation and skill installation. |
 | `prompts` | Commands/prompts only. No instructions or skills. |
-| `marketplace_plugin` | Auto-synthesized from `plugin.json`. Mapped to APM primitives. |
 
 ### 3.8. `scripts`
 
