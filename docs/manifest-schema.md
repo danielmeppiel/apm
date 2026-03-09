@@ -360,6 +360,7 @@ dependencies:                              # YAML list (not a map)
     depth:           <int>                 # 1 = direct, 2+ = transitive
     resolved_by:     <string>              # Parent dependency (transitive only)
     deployed_files:  <list<string>>        # Workspace-relative paths of installed files
+mcp_servers:       <list<string>>          # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
 ```
 
 ### 6.2. Resolver Behaviour

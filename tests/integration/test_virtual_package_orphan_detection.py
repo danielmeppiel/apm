@@ -531,3 +531,57 @@ def test_get_dependency_declaration_order_virtual_subdirectory(tmp_path):
 
     assert len(dep_order) == 1
     assert dep_order[0] == "owner/repo/skills/azure-naming"
+
+
+# ---------------------------------------------------------------------------
+# Tests for _is_nested_under_package — plugin skill sub-dirs must not be
+# treated as orphaned packages.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_plugin_skill_subdirs_not_flagged_as_orphans(tmp_path):
+    """Skill sub-directories inside a plugin must not appear as orphaned packages.
+
+    Scenario: a plugin installed at ``apm_modules/owner/my-plugin/`` contains
+    ``skills/skill-a/SKILL.md`` and ``skills/skill-b/SKILL.md``.  These are
+    deployment artifacts inside the parent package, not independent packages.
+    """
+    from apm_cli.commands.deps import _is_nested_under_package
+
+    apm_modules = tmp_path / "apm_modules"
+    plugin_root = apm_modules / "owner" / "my-plugin"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "apm.yml").write_text("name: my-plugin\nversion: 1.0.0\n")
+
+    # Simulate skills shipped with the plugin (outside .apm/)
+    for skill_name in ("skill-a", "skill-b", "skill-c"):
+        skill_dir = plugin_root / "skills" / skill_name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(f"# {skill_name}\n")
+
+    # Each skill sub-dir must be detected as nested
+    for skill_name in ("skill-a", "skill-b", "skill-c"):
+        nested = _is_nested_under_package(
+            plugin_root / "skills" / skill_name, apm_modules
+        )
+        assert nested, (
+            f"skills/{skill_name} should be detected as nested under my-plugin"
+        )
+
+    # The plugin root itself must NOT be detected as nested
+    assert not _is_nested_under_package(plugin_root, apm_modules)
+
+
+@pytest.mark.integration
+def test_standalone_skill_package_not_skipped(tmp_path):
+    """A standalone skill that has only SKILL.md (no parent apm.yml) must NOT
+    be skipped by the nested-under-package check."""
+    from apm_cli.commands.deps import _is_nested_under_package
+
+    apm_modules = tmp_path / "apm_modules"
+    skill_root = apm_modules / "owner" / "my-skill"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text("# My Skill\n")
+    # No apm.yml in any ancestor between skill_root and apm_modules
+
+    assert not _is_nested_under_package(skill_root, apm_modules)

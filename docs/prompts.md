@@ -129,7 +129,7 @@ Please analyze the Kubernetes cluster by:
 [Include relevant data in the prompt or as context]
 ```
 
-See [MCP Integration Status](wip/mcp-integration.md) for Phase 2 development plans.
+See [MCP Integration](integrations.md#mcp-model-context-protocol-integration) for MCP server configuration and usage.
 
 ## Writing Effective Prompts
 

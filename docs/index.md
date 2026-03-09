@@ -18,6 +18,7 @@ New to APM? Follow this learning path for the fastest way to get productive:
 
 ### Command Line Interface
 - **[CLI Reference](cli-reference.md)** - Complete command documentation with examples
+- **[Plugin System](plugins.md)** - Installing and using plugins with plugin.json format
 - **[Manifest Schema](manifest-schema.md)** - Complete `apm.yml` schema reference for integrators
 - **[Integration Guide](integrations.md)** - VSCode, Spec-kit, AI runtimes, and tool compatibility
 
@@ -29,7 +30,7 @@ New to APM? Follow this learning path for the fastest way to get productive:
 ## Development & Contributing
 
 ### Project Development
-- **[Development Status](development-status.md)** - Current feature status and testing coverage
+- **[Roadmap](https://github.com/microsoft/apm/discussions/116)** - Current roadmap and feature plans
 - **[Integration Testing](integration-testing.md)** - Testing strategy and execution
 - **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute to the APM ecosystem
 
@@ -39,9 +40,6 @@ New to APM? Follow this learning path for the fastest way to get productive:
 - **[AI-Native Development Guide](https://danielmeppiel.github.io/awesome-ai-native/)** - Complete framework documentation
 
 ## Architecture & Advanced Topics
-
-### Work in Progress
-- **[MCP Integration](wip/mcp-integration.md)** - Model Context Protocol tool integration (Phase 2)
 
 ### Framework Context
 APM implements the complete [AI-Native Development framework](https://danielmeppiel.github.io/awesome-ai-native/docs/concepts/) through:
