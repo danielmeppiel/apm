@@ -120,7 +120,7 @@ Controls which output targets are generated during compilation. When unset, a co
 |---|---|
 | **Type** | `enum<string>` |
 | **Required** | OPTIONAL |
-| **Default** | `hybrid` |
+| **Default** | None (behaviour driven by package content; synthesized plugin manifests use `hybrid`) |
 | **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` |
 
 Declares how the package's content is processed during install and compile. Currently behaviour is driven by package content (presence of `SKILL.md`, component directories, etc.); this field is reserved for future explicit overrides.

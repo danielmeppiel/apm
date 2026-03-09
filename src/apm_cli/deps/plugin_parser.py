@@ -12,6 +12,7 @@ Key spec rules:
 """
 
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -41,7 +42,6 @@ def parse_plugin_manifest(plugin_json_path: Path) -> Dict[str, Any]:
         raise ValueError(f"Invalid JSON in plugin.json: {e}")
 
     if not manifest.get('name'):
-        import logging
         logging.getLogger("apm").warning(
             "plugin.json at %s is missing 'name' field; falling back to directory name",
             plugin_json_path,
