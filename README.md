@@ -155,6 +155,7 @@ Anyone can now `apm install you/my-standards`.
 | `apm compile` | Compile instructions into AGENTS.md / CLAUDE.md |
 | `apm init [name]` | Scaffold a new APM project or package |
 | `apm run <prompt>` | Execute a prompt workflow via AI runtime |
+| `apm uninstall <pkg>` | Remove a package from apm.yml and clean up its files |
 | `apm deps list` | Show installed packages and versions |
 | `apm compile --target` | Target a specific agent (`vscode`, `claude`, `all`) |
 
