@@ -121,7 +121,7 @@ Controls which output targets are generated during compilation. When unset, a co
 | **Type** | `enum<string>` |
 | **Required** | OPTIONAL |
 | **Default** | None (unset — behaviour depends on package content) |
-| **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` |
+| **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` · `marketplace_plugin` |
 
 Declares how the package's content is processed during install and compile:
 
@@ -131,6 +131,7 @@ Declares how the package's content is processed during install and compile:
 | `skill` | Installed as a native skill only. No AGENTS.md output. |
 | `hybrid` | Both AGENTS.md compilation and skill installation. |
 | `prompts` | Commands/prompts only. No instructions or skills. |
+| `marketplace_plugin` | Auto-synthesized from `plugin.json`. Mapped to APM primitives. |
 
 ### 3.8. `scripts`
 
@@ -359,6 +360,7 @@ dependencies:                              # YAML list (not a map)
     is_virtual:      <bool>                # True for virtual (file/subdirectory) packages
     depth:           <int>                 # 1 = direct, 2+ = transitive
     resolved_by:     <string>              # Parent dependency (transitive only)
+    package_type:    <string>              # Package type (e.g. "apm_package", "marketplace_plugin")
     deployed_files:  <list<string>>        # Workspace-relative paths of installed files
 ```
 

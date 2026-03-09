@@ -40,6 +40,13 @@ def parse_plugin_manifest(plugin_json_path: Path) -> Dict[str, Any]:
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in plugin.json: {e}")
 
+    if not manifest.get('name'):
+        import logging
+        logging.getLogger("apm").warning(
+            "plugin.json at %s is missing 'name' field; falling back to directory name",
+            plugin_json_path,
+        )
+
     return manifest
 
 
@@ -99,10 +106,29 @@ def synthesize_apm_yml_from_plugin(plugin_path: Path, manifest: Dict[str, Any]) 
     apm_dir.mkdir(exist_ok=True)
 
     # Map plugin structure into .apm/ subdirectories
-    _map_plugin_artifacts(plugin_path, apm_dir)
+    _map_plugin_artifacts(plugin_path, apm_dir, manifest)
+
+    # Determine package type from what was actually mapped
+    has_skills = (apm_dir / "skills").exists() and any((apm_dir / "skills").iterdir())
+    has_instructions = (
+        (apm_dir / "instructions").exists() and any((apm_dir / "instructions").iterdir())
+    )
+    has_prompts = (apm_dir / "prompts").exists() and any((apm_dir / "prompts").iterdir())
+    has_agents = (apm_dir / "agents").exists() and any((apm_dir / "agents").iterdir())
+
+    if has_skills and (has_instructions or has_agents or has_prompts):
+        pkg_type = 'hybrid'
+    elif has_skills:
+        pkg_type = 'skill'
+    elif has_prompts and not has_instructions and not has_agents:
+        pkg_type = 'prompts'
+    elif has_instructions or has_agents or has_prompts:
+        pkg_type = 'instructions'
+    else:
+        pkg_type = 'hybrid'  # Fallback for plugins with only hooks/pass-through files
 
     # Generate apm.yml from plugin metadata
-    apm_yml_content = _generate_apm_yml(manifest)
+    apm_yml_content = _generate_apm_yml(manifest, pkg_type)
     apm_yml_path = plugin_path / "apm.yml"
 
     with open(apm_yml_path, 'w', encoding='utf-8') as f:
@@ -116,7 +142,7 @@ def _ignore_symlinks(directory, contents):
     return [name for name in contents if (Path(directory) / name).is_symlink()]
 
 
-def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
+def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[Dict[str, Any]] = None) -> None:
     """Map plugin artifacts to .apm/ subdirectories and copy pass-through files.
 
     Copies:
@@ -128,55 +154,86 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
     - .lsp.json   → .apm/.lsp.json
     - settings.json → .apm/settings.json
 
+    When the manifest specifies custom component paths (e.g. ``"agents": ["custom/"]``),
+    those paths are used instead of the defaults.
+
     Symlinks are skipped entirely to prevent content exfiltration attacks.
 
     Args:
         plugin_path: Root of the plugin directory.
         apm_dir: Path to the .apm/ directory.
+        manifest: Optional plugin.json metadata; used for custom component paths.
     """
+    if manifest is None:
+        manifest = {}
+
+    # Resolve source directories — use manifest arrays if present, else defaults
+    def _resolve_sources(component: str, default_dir: str):
+        """Return list of existing source directories for a component."""
+        custom = manifest.get(component)
+        if isinstance(custom, list):
+            dirs = []
+            for p in custom:
+                src = plugin_path / str(p)
+                if src.exists() and src.is_dir():
+                    dirs.append(src)
+            return dirs
+        elif isinstance(custom, str):
+            src = plugin_path / custom
+            return [src] if src.exists() and src.is_dir() else []
+        default = plugin_path / default_dir
+        return [default] if default.exists() and default.is_dir() else []
+
     # Map agents/
-    source_agents = plugin_path / "agents"
-    if source_agents.exists() and source_agents.is_dir():
+    agent_sources = _resolve_sources("agents", "agents")
+    if agent_sources:
         target_agents = apm_dir / "agents"
         if target_agents.exists():
             shutil.rmtree(target_agents)
-        shutil.copytree(source_agents, target_agents, ignore=_ignore_symlinks)
+        # Copy first source, then merge additional sources
+        shutil.copytree(agent_sources[0], target_agents, ignore=_ignore_symlinks)
+        for extra in agent_sources[1:]:
+            shutil.copytree(extra, target_agents, dirs_exist_ok=True, ignore=_ignore_symlinks)
 
     # Map skills/
-    source_skills = plugin_path / "skills"
-    if source_skills.exists() and source_skills.is_dir():
+    skill_sources = _resolve_sources("skills", "skills")
+    if skill_sources:
         target_skills = apm_dir / "skills"
         if target_skills.exists():
             shutil.rmtree(target_skills)
-        shutil.copytree(source_skills, target_skills, ignore=_ignore_symlinks)
+        shutil.copytree(skill_sources[0], target_skills, ignore=_ignore_symlinks)
+        for extra in skill_sources[1:]:
+            shutil.copytree(extra, target_skills, dirs_exist_ok=True, ignore=_ignore_symlinks)
 
     # Map commands/ → .apm/prompts/ (normalize .md → .prompt.md)
-    source_commands = plugin_path / "commands"
-    if source_commands.exists() and source_commands.is_dir():
+    command_sources = _resolve_sources("commands", "commands")
+    if command_sources:
         target_prompts = apm_dir / "prompts"
         if target_prompts.exists():
             shutil.rmtree(target_prompts)
         target_prompts.mkdir(parents=True, exist_ok=True)
 
-        for source_file in source_commands.rglob("*"):
-            if not source_file.is_file() or source_file.is_symlink():
-                continue
-            relative_path = source_file.relative_to(source_commands)
-            target_path = target_prompts / relative_path
-            if source_file.name.endswith(".prompt.md"):
-                pass
-            elif source_file.suffix == ".md":
-                target_path = target_path.with_name(f"{source_file.stem}.prompt.md")
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_file, target_path)
+        for source_dir in command_sources:
+            for source_file in source_dir.rglob("*"):
+                if not source_file.is_file() or source_file.is_symlink():
+                    continue
+                relative_path = source_file.relative_to(source_dir)
+                target_path = target_prompts / relative_path
+                # Normalize .md → .prompt.md (skip files already named correctly)
+                if not source_file.name.endswith(".prompt.md") and source_file.suffix == ".md":
+                    target_path = target_path.with_name(f"{source_file.stem}.prompt.md")
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_file, target_path)
 
     # Map hooks/
-    source_hooks = plugin_path / "hooks"
-    if source_hooks.exists() and source_hooks.is_dir():
+    hook_sources = _resolve_sources("hooks", "hooks")
+    if hook_sources:
         target_hooks = apm_dir / "hooks"
         if target_hooks.exists():
             shutil.rmtree(target_hooks)
-        shutil.copytree(source_hooks, target_hooks, ignore=_ignore_symlinks)
+        shutil.copytree(hook_sources[0], target_hooks, ignore=_ignore_symlinks)
+        for extra in hook_sources[1:]:
+            shutil.copytree(extra, target_hooks, dirs_exist_ok=True, ignore=_ignore_symlinks)
 
     # Pass-through files required for MCP/LSP plugins to function
     for passthrough in (".mcp.json", ".lsp.json", "settings.json"):
@@ -185,11 +242,12 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
             shutil.copy2(source_file, apm_dir / passthrough)
 
 
-def _generate_apm_yml(manifest: Dict[str, Any]) -> str:
+def _generate_apm_yml(manifest: Dict[str, Any], pkg_type: str = 'hybrid') -> str:
     """Generate apm.yml content from plugin metadata.
 
     Args:
         manifest: Plugin metadata dict.
+        pkg_type: Package type determined from mapped artifacts.
 
     Returns:
         str: YAML content for apm.yml.
@@ -215,7 +273,7 @@ def _generate_apm_yml(manifest: Dict[str, Any]) -> str:
     if manifest.get('dependencies'):
         apm_package['dependencies'] = {'apm': manifest['dependencies']}
 
-    apm_package['type'] = 'hybrid'
+    apm_package['type'] = pkg_type
 
     return yaml.dump(apm_package, default_flow_style=False, sort_keys=False)
 

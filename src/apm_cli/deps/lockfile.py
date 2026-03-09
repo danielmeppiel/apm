@@ -26,6 +26,7 @@ class LockedDependency:
     is_virtual: bool = False
     depth: int = 1
     resolved_by: Optional[str] = None
+    package_type: Optional[str] = None
     deployed_files: List[str] = field(default_factory=list)
 
     def get_unique_key(self) -> str:
@@ -53,6 +54,8 @@ class LockedDependency:
             result["depth"] = self.depth
         if self.resolved_by:
             result["resolved_by"] = self.resolved_by
+        if self.package_type:
+            result["package_type"] = self.package_type
         if self.deployed_files:
             result["deployed_files"] = sorted(self.deployed_files)
         return result
@@ -84,6 +87,7 @@ class LockedDependency:
             is_virtual=data.get("is_virtual", False),
             depth=data.get("depth", 1),
             resolved_by=data.get("resolved_by"),
+            package_type=data.get("package_type"),
             deployed_files=deployed_files,
         )
 
