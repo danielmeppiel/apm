@@ -133,7 +133,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
         target_agents = apm_dir / "agents"
         if target_agents.exists():
             shutil.rmtree(target_agents)
-        shutil.copytree(source_agents, target_agents)
+        shutil.copytree(source_agents, target_agents, symlinks=False)
 
     # Map skills/
     source_skills = plugin_path / "skills"
@@ -141,7 +141,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
         target_skills = apm_dir / "skills"
         if target_skills.exists():
             shutil.rmtree(target_skills)
-        shutil.copytree(source_skills, target_skills)
+        shutil.copytree(source_skills, target_skills, symlinks=False)
 
     # Map commands/ → .apm/prompts/ (normalize .md → .prompt.md)
     source_commands = plugin_path / "commands"
@@ -152,7 +152,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
         target_prompts.mkdir(parents=True, exist_ok=True)
 
         for source_file in source_commands.rglob("*"):
-            if not source_file.is_file():
+            if not source_file.is_file() or source_file.is_symlink():
                 continue
             relative_path = source_file.relative_to(source_commands)
             target_path = target_prompts / relative_path
@@ -169,12 +169,12 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
         target_hooks = apm_dir / "hooks"
         if target_hooks.exists():
             shutil.rmtree(target_hooks)
-        shutil.copytree(source_hooks, target_hooks)
+        shutil.copytree(source_hooks, target_hooks, symlinks=False)
 
     # Pass-through files required for MCP/LSP plugins to function
     for passthrough in (".mcp.json", ".lsp.json", "settings.json"):
         source_file = plugin_path / passthrough
-        if source_file.exists():
+        if source_file.exists() and not source_file.is_symlink():
             shutil.copy2(source_file, apm_dir / passthrough)
 
 
