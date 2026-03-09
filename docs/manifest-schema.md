@@ -361,6 +361,7 @@ dependencies:                              # YAML list (not a map)
     resolved_by:     <string>              # Parent dependency (transitive only)
     package_type:    <string>              # Package type (e.g. "apm_package", "marketplace_plugin")
     deployed_files:  <list<string>>        # Workspace-relative paths of installed files
+mcp_servers:       <list<string>>          # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
 ```
 
 ### 6.2. Resolver Behaviour
