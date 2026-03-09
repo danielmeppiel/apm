@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-03-09
+
+### Added
+
+- Plugin management system with CLI commands for installing and managing plugins from marketplaces (#83)
+- Generic git URL support for GitLab, Bitbucket, and any self-hosted git provider (#150)
+- InstructionIntegrator for `apm install` — deploy `.instructions.md` files alongside existing integrators (#162)
+- Transitive MCP dependency propagation (#123)
+- MCP dependency config overlays, transitive trust flag, and related bug fixes (#166)
+- Display build commit SHA in CLI version output (#176)
+- Documentation: apm.yml manifest schema reference for integrators (#186)
+
+### Fixed
+
+- Handle multiple brace groups in `applyTo` glob patterns (#155)
+- Replace substring matching with path-component matching in directory exclusions (#159)
+- Handle commit SHA refs in subdirectory package clones (#178)
+- Infer `registry_name` when MCP registry API returns empty values (#181)
+- Resolve `set()` shadowing and sparse checkout ref issues (#184)
+- CLI consistency — align help text with docs (#188)
+- `--update` flag now bypasses lockfile SHA to fetch latest content (#192)
+- Clean stale MCP servers on install/update/uninstall and prevent `.claude` folder creation (#201)
+- Harden plugin security, validation, tests, and docs (#208)
+- Use `CREATE_PR_PAT` for agentic workflows in Microsoft org (#144)
+
+### Changed
+
+- Unified `deployed_files` manifest for safe integration lifecycle (#163)
+- Exclude `apm_modules` from compilation scanning and cache `Set[Path]` for performance (#157)
+- Performance optimization for deep dependency trees (#173)
+- Upgrade GitHub Agentic Workflows to v0.52.1 (#141)
+- Fix CLI reference drift from consistency reports (#160, #161)
+- Replace CHANGELOG link with roadmap discussion in docs index (#196)
+- Update documentation for features from 2026-03-07 (#195)
+
 ## [0.7.4] - 2025-03-03
 
 ### Added
