@@ -5,6 +5,8 @@ import platform
 import subprocess
 import shutil
 import sys
+from pathlib import Path
+from typing import Optional
 
 
 def is_tool_available(tool_name):
@@ -99,3 +101,28 @@ def detect_platform():
         return "windows"
     else:
         return "unknown"
+
+
+def find_plugin_json(plugin_path: Path) -> Optional[Path]:
+    """Find plugin.json in a plugin directory.
+    
+    Checks exactly three spec-defined locations in priority order:
+      1. <root>/plugin.json
+      2. <root>/.github/plugin/plugin.json
+      3. <root>/.claude-plugin/plugin.json
+    
+    Args:
+        plugin_path: Path to the plugin directory
+        
+    Returns:
+        Optional[Path]: Path to the plugin.json file if found, None otherwise
+    """
+    candidates = [
+        plugin_path / "plugin.json",
+        plugin_path / ".github" / "plugin" / "plugin.json",
+        plugin_path / ".claude-plugin" / "plugin.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
