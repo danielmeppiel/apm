@@ -36,16 +36,16 @@ class AgentIntegrator(BaseIntegrator):
             agent_files.extend(package_path.glob("*.chatmode.md"))  # Legacy
         
         # Search in .apm/agents/ (new standard)
+        # Use rglob so agents in subdirectories (e.g. from plugin mapping) are
+        # still discovered.
         apm_agents = package_path / ".apm" / "agents"
         if apm_agents.exists():
-            agent_files.extend(apm_agents.glob("*.agent.md"))
+            agent_files.extend(apm_agents.rglob("*.agent.md"))
             # Also pick up plain .md files in agents/; plugins may not use
             # the .agent.md convention — the directory name already implies type
-            _NON_AGENT_NAMES = {"README.md", "CHANGELOG.md", "LICENSE.md", "CONTRIBUTING.md", "NOTES.md"}
-            for md_file in apm_agents.glob("*.md"):
+            for md_file in apm_agents.rglob("*.md"):
                 if (
                     not md_file.name.endswith(".agent.md")
-                    and md_file.name not in _NON_AGENT_NAMES
                     and md_file not in agent_files
                 ):
                     agent_files.append(md_file)

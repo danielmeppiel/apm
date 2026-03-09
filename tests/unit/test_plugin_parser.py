@@ -393,9 +393,36 @@ class TestMapPluginArtifacts:
             manifest={"agents": ["./agents", "extra-agent.md"]},
         )
 
-        # Directory entry preserved as named subdir; file entry flat
-        assert (apm_dir / "agents" / "agents" / "a.md").read_text() == "# A"
+        # Directory contents are flattened into .apm/agents/; file entry also flat
+        assert (apm_dir / "agents" / "a.md").read_text() == "# A"
         assert (apm_dir / "agents" / "extra-agent.md").read_text() == "# Extra"
+
+    def test_custom_agents_dir_list_flattens_contents(self, tmp_path):
+        """Manifest agents as ["./agents"] must not produce .apm/agents/agents/ nesting.
+
+        Regression test for the context-engineering plugin pattern where
+        plugin.json declares: "agents": ["./agents"] and the directory contains
+        plain .md files (not .agent.md).
+        """
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        agents = plugin_dir / "agents"
+        agents.mkdir()
+        (agents / "context-architect.md").write_text("# Context Architect")
+        (agents / "planner.md").write_text("# Planner")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir, apm_dir,
+            manifest={"agents": ["./agents"]},
+        )
+
+        # Files should be directly in .apm/agents/, NOT .apm/agents/agents/
+        assert (apm_dir / "agents" / "context-architect.md").read_text() == "# Context Architect"
+        assert (apm_dir / "agents" / "planner.md").read_text() == "# Planner"
+        assert not (apm_dir / "agents" / "agents").exists(), \
+            "Should not create nested agents/agents/ directory"
 
 
 class TestGenerateApmYml:
