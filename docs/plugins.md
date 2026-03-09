@@ -118,9 +118,10 @@ plugin-repo/
     └── command-2.md
 ```
 
-**Priority Order**: APM searches for `plugin.json`:
-1. `plugin.json` (root) - checked first
-2. Then recursively in subdirectories (e.g., `.github/plugin/`, `.claude-plugin/`)
+**Priority Order**: APM checks for `plugin.json` in exactly three locations:
+1. `plugin.json` (root)
+2. `.github/plugin/plugin.json`
+3. `.claude-plugin/plugin.json`
 
 **Note**: Primitives (agents, skills, commands, instructions) are always located at the repository root, regardless of where `plugin.json` is located.
 

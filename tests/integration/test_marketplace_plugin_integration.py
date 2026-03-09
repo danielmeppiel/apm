@@ -133,8 +133,8 @@ class TestPluginIntegration:
         assert result.package.version == "3.0.0"
     
     def test_plugin_location_priority(self, tmp_path):
-        """Test that plugin.json is found at root first, then recursively in subdirectories."""
-        # Test 1: Root plugin.json takes priority over subdirectories
+        """Test that plugin.json is found via deterministic 3-location check."""
+        # Test 1: Root plugin.json takes priority
         plugin_dir = tmp_path / "priority-test"
         plugin_dir.mkdir()
         
@@ -158,7 +158,7 @@ class TestPluginIntegration:
         assert result.package.name == "Root Plugin"
         assert result.package.version == "1.0.0"
         
-        # Test 2: Recursive search finds .github/plugin/ when no root
+        # Test 2: .github/plugin/ is found when no root plugin.json
         plugin_dir2 = tmp_path / "github-test"
         plugin_dir2.mkdir()
         (plugin_dir2 / ".github" / "plugin").mkdir(parents=True)
@@ -170,7 +170,7 @@ class TestPluginIntegration:
         assert result2.package.name == "GitHub Plugin"
         assert result2.package.version == "2.0.0"
         
-        # Test 3: Recursive search finds .claude-plugin/ when no root
+        # Test 3: .claude-plugin/ is found when no root plugin.json
         plugin_dir3 = tmp_path / "claude-test"
         plugin_dir3.mkdir()
         (plugin_dir3 / ".claude-plugin").mkdir()

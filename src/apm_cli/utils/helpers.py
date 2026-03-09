@@ -106,7 +106,10 @@ def detect_platform():
 def find_plugin_json(plugin_path: Path) -> Optional[Path]:
     """Find plugin.json in a plugin directory.
     
-    Searches for plugin.json first at the root, then recursively in subdirectories.
+    Checks exactly three spec-defined locations in priority order:
+      1. <root>/plugin.json
+      2. <root>/.github/plugin/plugin.json
+      3. <root>/.claude-plugin/plugin.json
     
     Args:
         plugin_path: Path to the plugin directory
@@ -114,11 +117,12 @@ def find_plugin_json(plugin_path: Path) -> Optional[Path]:
     Returns:
         Optional[Path]: Path to the plugin.json file if found, None otherwise
     """
-    # Check root first (fastest)
-    root_plugin = plugin_path / "plugin.json"
-    if root_plugin.exists():
-        return root_plugin
-    
-    # Fallback to recursive search in subdirectories
-    matches = list(plugin_path.glob("**/plugin.json"))
-    return matches[0] if matches else None
+    candidates = [
+        plugin_path / "plugin.json",
+        plugin_path / ".github" / "plugin" / "plugin.json",
+        plugin_path / ".claude-plugin" / "plugin.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None

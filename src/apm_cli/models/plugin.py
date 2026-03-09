@@ -88,7 +88,7 @@ class Plugin:
     def from_path(cls, plugin_path: Path) -> "Plugin":
         """Load a plugin from its installation directory.
         
-        Plugin structure: plugin.json can be in .github/plugin/, .claude-plugin/, plugins/, or root.
+        Plugin structure: plugin.json can be in root, .github/plugin/, or .claude-plugin/.
         Primitives (agents, skills, etc.) are always at the repository root.
         
         Args:
