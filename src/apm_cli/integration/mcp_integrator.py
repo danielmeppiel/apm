@@ -169,6 +169,17 @@ class MCPIntegrator:
         """
         info: dict = {"name": dep.name}
 
+        # For stdio self-defined deps, store raw command/args so adapters
+        # can bypass registry-specific formatting (npm, docker, etc.).
+        if dep.transport == "stdio" or (
+            dep.transport not in ("http", "sse", "streamable-http") and dep.command
+        ):
+            info["_raw_stdio"] = {
+                "command": dep.command or dep.name,
+                "args": list(dep.args) if dep.args else [],
+                "env": dict(dep.env) if dep.env else {},
+            }
+
         if dep.transport in ("http", "sse", "streamable-http"):
             # Build as a remote endpoint
             remote = {
@@ -204,7 +215,7 @@ class MCPIntegrator:
                 {
                     "runtime_hint": dep.command or dep.name,
                     "name": dep.name,
-                    "registry_name": "",
+                    "registry_name": "self-defined",
                     "runtime_arguments": runtime_args,
                     "package_arguments": [],
                     "environment_variables": env_vars,

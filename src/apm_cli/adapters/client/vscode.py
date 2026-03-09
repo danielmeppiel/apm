@@ -186,6 +186,18 @@ class VSCodeClientAdapter(MCPClientAdapter):
         # Initialize the base config structure
         server_config = {}
         input_vars = []
+
+        # Self-defined stdio deps carry raw command/args — use directly
+        raw = server_info.get("_raw_stdio")
+        if raw:
+            server_config = {
+                "type": "stdio",
+                "command": raw["command"],
+                "args": raw["args"],
+            }
+            if raw.get("env"):
+                server_config["env"] = raw["env"]
+            return server_config, input_vars
         
         # Check for packages information
         if "packages" in server_info and server_info["packages"]:
