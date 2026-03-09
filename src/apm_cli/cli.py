@@ -34,6 +34,7 @@ from apm_cli.utils.console import (
     show_download_spinner,
 )
 from apm_cli.utils.github_host import is_valid_fqdn, default_host
+from apm_cli.utils.mcp_lifecycle import collect_transitive_mcp_deps, remove_stale_mcp_servers
 
 # APM imports - use absolute imports everywhere for consistency
 from apm_cli.version import get_build_sha, get_version
