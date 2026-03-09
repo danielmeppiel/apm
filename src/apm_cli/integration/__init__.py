@@ -16,6 +16,7 @@ from .skill_integrator import (
     get_effective_type,
 )
 from .skill_transformer import SkillTransformer
+from .mcp_integrator import MCPIntegrator
 
 __all__ = [
     'BaseIntegrator',
@@ -26,6 +27,7 @@ __all__ = [
     'InstructionIntegrator',
     'SkillIntegrator',
     'SkillTransformer',
+    'MCPIntegrator',
     'validate_skill_name',
     'normalize_skill_name',
     'to_hyphen_case',

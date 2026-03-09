@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-from apm_cli.cli import _detect_runtimes_from_scripts, _filter_available_runtimes
+from apm_cli.integration.mcp_integrator import MCPIntegrator
 
 
 class TestRuntimeDetection(unittest.TestCase):
@@ -12,7 +12,7 @@ class TestRuntimeDetection(unittest.TestCase):
     def test_detect_single_runtime(self):
         """Test detecting single runtime from scripts."""
         scripts = {"start": "copilot --log-level all -p hello.md"}
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         self.assertEqual(detected, ["copilot"])
     
     def test_detect_multiple_runtimes(self):
@@ -22,7 +22,7 @@ class TestRuntimeDetection(unittest.TestCase):
             "debug": "codex --verbose hello.md", 
             "llm": "llm hello.md -m gpt-4"
         }
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         # Order may vary due to set() usage, so check contents
         self.assertEqual(set(detected), {"copilot", "codex", "llm"})
         self.assertEqual(len(detected), 3)
@@ -30,7 +30,7 @@ class TestRuntimeDetection(unittest.TestCase):
     def test_detect_no_runtimes(self):
         """Test detecting no recognized runtimes."""
         scripts = {"start": "python hello.py", "test": "pytest"}
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         self.assertEqual(detected, [])
     
     def test_detect_runtime_in_complex_command(self):
@@ -40,7 +40,7 @@ class TestRuntimeDetection(unittest.TestCase):
             "dev": "npm run build && copilot -p prompt.md",
             "ai": "export MODEL=gpt-4 && llm prompt.md"
         }
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         self.assertEqual(set(detected), {"codex", "copilot", "llm"})
     
     def test_detect_same_runtime_multiple_times(self):
@@ -50,13 +50,13 @@ class TestRuntimeDetection(unittest.TestCase):
             "dev": "copilot -p dev.md",
             "test": "copilot -p test.md"
         }
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         self.assertEqual(detected, ["copilot"])
     
     def test_detect_empty_scripts(self):
         """Test handling empty scripts dictionary."""
         scripts = {}
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         self.assertEqual(detected, [])
     
     def test_detect_runtime_case_sensitivity(self):
@@ -65,7 +65,7 @@ class TestRuntimeDetection(unittest.TestCase):
             "start": "COPILOT -p hello.md",  # Should not match
             "dev": "copilot -p hello.md"     # Should match
         }
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         self.assertEqual(detected, ["copilot"])
     
     def test_detect_runtime_word_boundaries(self):
@@ -75,7 +75,7 @@ class TestRuntimeDetection(unittest.TestCase):
             "dev": "copilot-cli -p hello.md",    # Should not match  
             "test": "copilot -p hello.md"        # Should match
         }
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         self.assertEqual(detected, ["copilot"])
 
 
@@ -95,7 +95,7 @@ class TestRuntimeFiltering(unittest.TestCase):
         mock_manager_class.return_value = mock_manager
         
         detected = ["copilot", "codex", "llm"]
-        available = _filter_available_runtimes(detected)
+        available = MCPIntegrator._filter_runtimes(detected)
         
         self.assertEqual(set(available), set(detected))
     
@@ -112,7 +112,7 @@ class TestRuntimeFiltering(unittest.TestCase):
         mock_manager_class.return_value = mock_manager
         
         detected = ["copilot", "codex", "llm"]
-        available = _filter_available_runtimes(detected)
+        available = MCPIntegrator._filter_runtimes(detected)
         
         self.assertEqual(available, ["copilot"])
     
@@ -129,7 +129,7 @@ class TestRuntimeFiltering(unittest.TestCase):
         mock_manager_class.return_value = mock_manager
         
         detected = ["copilot", "codex", "llm"]
-        available = _filter_available_runtimes(detected)
+        available = MCPIntegrator._filter_runtimes(detected)
         
         self.assertEqual(available, [])
     
@@ -150,7 +150,7 @@ class TestRuntimeFiltering(unittest.TestCase):
                 mock_which.side_effect = lambda cmd: cmd in ["copilot", "codex"]
                 
                 detected = ["copilot", "codex", "unsupported"]
-                available = _filter_available_runtimes(detected)
+                available = MCPIntegrator._filter_runtimes(detected)
                 
                 # Should filter out unsupported runtime
                 self.assertEqual(set(available), {"copilot", "codex"})
@@ -158,7 +158,7 @@ class TestRuntimeFiltering(unittest.TestCase):
     def test_filter_empty_list(self):
         """Test filtering empty list of detected runtimes."""
         detected = []
-        available = _filter_available_runtimes(detected)
+        available = MCPIntegrator._filter_runtimes(detected)
         self.assertEqual(available, [])
 
 
@@ -174,12 +174,12 @@ class TestRuntimeDetectionIntegration(unittest.TestCase):
         }
         
         # Detect runtimes from scripts
-        detected = _detect_runtimes_from_scripts(scripts)
+        detected = MCPIntegrator._detect_runtimes(scripts)
         expected_detected = {"copilot", "codex"}
         self.assertEqual(set(detected), expected_detected)
         
         # Filter available runtimes (this will use real system state)
-        available = _filter_available_runtimes(detected)
+        available = MCPIntegrator._filter_runtimes(detected)
         
         # Available should be subset of detected
         self.assertTrue(set(available).issubset(set(detected)))
