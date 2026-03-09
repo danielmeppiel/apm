@@ -505,6 +505,29 @@ This is a skill, not an agent.""")
         assert "SKILL.md" not in found_names
         assert "skill.md" not in found_names
 
+    def test_find_agent_files_excludes_non_agent_md(self):
+        """Plain .md scan in .apm/agents/ excludes README, CHANGELOG, etc."""
+        package_dir = self.project_root / "package"
+        apm_agents = package_dir / ".apm" / "agents"
+        apm_agents.mkdir(parents=True)
+
+        (apm_agents / "planner.md").write_text("# Planner agent")
+        (apm_agents / "coder.md").write_text("# Coder agent")
+        (apm_agents / "README.md").write_text("# Docs")
+        (apm_agents / "CHANGELOG.md").write_text("# Changes")
+        (apm_agents / "LICENSE.md").write_text("MIT")
+        (apm_agents / "CONTRIBUTING.md").write_text("# Contributing")
+
+        agents = self.integrator.find_agent_files(package_dir)
+        names = {a.name for a in agents}
+
+        assert "planner.md" in names
+        assert "coder.md" in names
+        assert "README.md" not in names
+        assert "CHANGELOG.md" not in names
+        assert "LICENSE.md" not in names
+        assert "CONTRIBUTING.md" not in names
+
 
 class TestAgentSuffixPattern:
     """Test clean naming pattern edge cases for agents."""

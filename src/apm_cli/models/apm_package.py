@@ -1353,9 +1353,21 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     elif has_hooks:
         result.package_type = PackageType.HOOK_PACKAGE
     else:
-        # Fallback: treat any directory without apm.yml / SKILL.md as a Claude plugin.
-        # plugin.json, when present, is read as optional metadata.
-        result.package_type = PackageType.MARKETPLACE_PLUGIN
+        # Require plugin.json or at least one standard component directory
+        has_plugin_evidence = (
+            plugin_json_path is not None
+            or (package_path / "agents").is_dir()
+            or (package_path / "skills").is_dir()
+            or (package_path / "commands").is_dir()
+        )
+        if has_plugin_evidence:
+            result.package_type = PackageType.MARKETPLACE_PLUGIN
+        else:
+            result.add_error(
+                f"Not a valid APM package: no apm.yml, SKILL.md, hooks, or "
+                f"plugin structure found in {package_path.name}"
+            )
+            return result
     
     # Handle hook-only packages (no apm.yml or SKILL.md)
     if result.package_type == PackageType.HOOK_PACKAGE:

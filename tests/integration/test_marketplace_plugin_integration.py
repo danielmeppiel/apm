@@ -385,7 +385,7 @@ class TestPluginIntegration:
         assert result.is_valid
         assert (plugin_dir / ".apm" / ".mcp.json").exists(), ".mcp.json must be copied to .apm/"
 
-
+    def test_plugin_integrator_deployment(self, tmp_path):
         """Plugin install should populate .github/.claude targets consumed by editors."""
         fixture_path = Path(__file__).parent.parent / "fixtures" / "mock-marketplace-plugin"
         plugin_dir = tmp_path / "installed-plugin"
