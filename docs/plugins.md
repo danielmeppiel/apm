@@ -156,7 +156,8 @@ By default APM looks for `agents/`, `skills/`, `commands/`, and `hooks/` directo
 
 - **String** — single directory or file path
 - **Array** — list of directories or individual files
-- When an array contains directories, each is preserved as a named subdirectory (e.g., `./skills/analysis/` → `.apm/skills/analysis/SKILL.md`)
+- For **skills**, directories are preserved as named subdirectories (e.g., `./skills/analysis/` → `.apm/skills/analysis/SKILL.md`)
+- For **agents**, directory contents are flattened into `.apm/agents/` (agents are flat files, not named directories)
 - `hooks` also accepts an inline object: `"hooks": {"hooks": {"PreToolUse": [...]}}`
 
 ## Examples
