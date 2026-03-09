@@ -60,7 +60,7 @@ apm [OPTIONS] COMMAND [ARGS]...
 
 ## Core Commands
 
-### `apm init` - 🚀 Initialize new APM project
+### `apm init` - Initialize new APM project
 
 Initialize a new APM project with minimal `apm.yml` configuration (like `npm init`).
 
@@ -104,7 +104,7 @@ apm init my-project --yes
 - `description` - Generated from project name
 - `version` - Defaults to "1.0.0"
 
-### `apm install` - 📦 Install APM and MCP dependencies
+### `apm install` - Install APM and MCP dependencies
 
 Install APM package and MCP server dependencies from `apm.yml` (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
 
@@ -259,7 +259,7 @@ Skills are copied directly to target directories:
 
 This makes all package prompts available in VSCode, Claude Code, and compatible editors for immediate use with your coding agents.
 
-### `apm uninstall` - 🗑️ Remove APM packages
+### `apm uninstall` - Remove APM packages
 
 Remove installed APM packages and their integrated files.
 
@@ -310,7 +310,7 @@ apm uninstall microsoft/apm-sample-package --dry-run
 - Cleans up empty parent directories
 - Safe operation: only removes files tracked in the `deployed_files` manifest
 
-### `apm prune` - 🧹 Remove orphaned packages
+### `apm prune` - Remove orphaned packages
 
 Remove APM packages from `apm_modules/` that are not listed in `apm.yml`, along with their deployed integration files (prompts, agents, hooks, etc.).
 
@@ -335,7 +335,7 @@ apm prune --dry-run
 - Removes deployed integration files (prompts, agents, hooks, etc.) for pruned packages using the `deployed_files` manifest in `apm.lock`
 - Updates `apm.lock` to reflect the pruned state
 
-### `apm update` - ⬆️ Update APM to the latest version
+### `apm update` - Update APM to the latest version
 
 Update the APM CLI to the latest version available on GitHub releases.
 
@@ -378,7 +378,7 @@ If the automatic update fails, you can always update manually:
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
-### `apm deps` - 🔗 Manage APM package dependencies
+### `apm deps` - Manage APM package dependencies
 
 Manage APM package dependencies with installation status, tree visualization, and package information.
 
@@ -386,7 +386,7 @@ Manage APM package dependencies with installation status, tree visualization, an
 apm deps COMMAND [OPTIONS]
 ```
 
-#### `apm deps list` - 📋 List installed APM dependencies
+#### `apm deps list` - List installed APM dependencies
 
 Show all installed APM dependencies in a Rich table format with per-primitive counts.
 
@@ -415,7 +415,7 @@ apm deps list
 - Source information
 - Per-primitive counts (prompts, instructions, agents, skills)
 
-#### `apm deps tree` - 🌳 Show dependency tree structure
+#### `apm deps tree` - Show dependency tree structure
 
 Display dependencies in hierarchical tree format with primitive counts.
 
@@ -447,7 +447,7 @@ company-website (local)
 - Version numbers from dependency package metadata
 - Version information for each dependency
 
-#### `apm deps info` - ℹ️ Show detailed package information
+#### `apm deps info` - Show detailed package information
 
 Display comprehensive information about a specific installed package.
 
@@ -474,7 +474,7 @@ apm deps info design-guidelines
 - Agent workflow descriptions and counts
 - Installation path and status
 
-#### `apm deps clean` - 🧹 Remove all APM dependencies
+#### `apm deps clean` - Remove all APM dependencies
 
 Remove the entire `apm_modules/` directory and all installed APM packages.
 
@@ -494,7 +494,7 @@ apm deps clean
 - Displays count of packages that will be removed
 - Can be cancelled with Ctrl+C or 'n' response
 
-#### `apm deps update` - 🔄 Update APM dependencies
+#### `apm deps update` - Update APM dependencies
 
 Update installed APM dependencies to their latest versions.
 
@@ -514,7 +514,7 @@ apm deps update
 apm deps update compliance-rules
 ```
 
-### `apm mcp` - 🔌 Browse MCP server registry
+### `apm mcp` - Browse MCP server registry
 
 Browse and discover MCP servers from the GitHub MCP Registry.
 
@@ -522,7 +522,7 @@ Browse and discover MCP servers from the GitHub MCP Registry.
 apm mcp COMMAND [OPTIONS]
 ```
 
-#### `apm mcp list` - 📋 List MCP servers
+#### `apm mcp list` - List MCP servers
 
 List all available MCP servers from the registry.
 
@@ -542,7 +542,7 @@ apm mcp list
 apm mcp list --limit 20
 ```
 
-#### `apm mcp search` - 🔍 Search MCP servers
+#### `apm mcp search` - Search MCP servers
 
 Search for MCP servers in the GitHub MCP Registry.
 
@@ -568,7 +568,7 @@ apm mcp search database --limit 5
 apm mcp search github
 ```
 
-#### `apm mcp show` - 📋 Show MCP server details
+#### `apm mcp show` - Show MCP server details
 
 Show detailed information about a specific MCP server from the registry.
 
@@ -595,7 +595,7 @@ apm mcp show a5e8a7f0-d4e4-4a1d-b12f-2896a23fd4f1
 - Available installation packages
 - Installation instructions
 
-### `apm run` - 🚀 Execute prompts
+### `apm run` - Execute prompts
 
 Execute a script defined in your apm.yml with parameters and real-time output streaming.
 
@@ -627,7 +627,7 @@ apm run llm --param service=api --param environment=prod
 - `0` - Success
 - `1` - Execution failed or error occurred
 
-### `apm preview` - 👀 Preview compiled scripts
+### `apm preview` - Preview compiled scripts
 
 Show the processed prompt content with parameters substituted, without executing.
 
@@ -650,7 +650,7 @@ apm preview start --param name="<YourGitHubHandle>"
 apm preview llm --param name="Alice"
 ```
 
-### `apm list` - 📋 List available scripts
+### `apm list` - List available scripts
 
 Display all scripts defined in apm.yml.
 
@@ -672,7 +672,7 @@ Available scripts:
   debug: RUST_LOG=debug codex hello-world.prompt.md
 ```
 
-### `apm compile` - 📝 Compile APM context into distributed AGENTS.md files
+### `apm compile` - Compile APM context into distributed AGENTS.md files
 
 Compile APM context files (chatmodes, instructions, contexts) into distributed AGENTS.md files with conditional sections, markdown link resolution, and project setup auto-detection.
 
@@ -822,7 +822,7 @@ The structure is entirely dictated by the instruction context found in `.apm/` a
 
 APM integrates seamlessly with [Spec-kit](https://github.com/github/spec-kit) for specification-driven development, automatically injecting Spec-kit `constitution` into the compiled context layer.
 
-### `apm config` - ⚙️ Configure APM CLI
+### `apm config` - Configure APM CLI
 
 Manage APM CLI configuration settings. Running `apm config` without subcommands displays the current configuration.
 
@@ -914,7 +914,7 @@ apm config set auto-integrate 1
 
 ## Runtime Management
 
-### `apm runtime` - 🤖 Manage AI runtimes
+### `apm runtime` - Manage AI runtimes
 
 APM manages AI runtime installation and configuration automatically. Currently supports three runtimes: `copilot`, `codex`, and `llm`.
 
@@ -927,7 +927,7 @@ apm runtime COMMAND [OPTIONS]
 - **`codex`** - OpenAI Codex CLI with GitHub Models support
 - **`llm`** - Simon Willison's LLM library with multiple providers
 
-#### `apm runtime setup` - ⚙️ Install AI runtime
+#### `apm runtime setup` - Install AI runtime
 
 Download and configure an AI runtime from official sources.
 
@@ -963,7 +963,7 @@ apm runtime setup llm
 - Uses runtime's native defaults (e.g., OpenAI for Codex)
 - No configuration files created by APM
 
-#### `apm runtime list` - 📋 Show installed runtimes
+#### `apm runtime list` - Show installed runtimes
 
 List all available runtimes and their installation status.
 
@@ -977,7 +977,7 @@ apm runtime list
 - Installation path and version
 - Configuration details
 
-#### `apm runtime remove` - 🗑️ Uninstall runtime
+#### `apm runtime remove` - Uninstall runtime
 
 Remove an installed runtime and its configuration.
 
@@ -991,7 +991,7 @@ apm runtime remove RUNTIME_NAME
 **Options:**
 - `--yes` - Confirm the action without prompting
 
-#### `apm runtime status` - 📊 Show runtime status
+#### `apm runtime status` - Show runtime status
 
 Display which runtime APM will use for execution and runtime preference order.
 
