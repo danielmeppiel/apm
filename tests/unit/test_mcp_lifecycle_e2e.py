@@ -13,13 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from apm_cli.cli import (
-    _collect_transitive_mcp_deps,
-    _deduplicate_mcp_deps,
-    _get_mcp_dep_names,
-    _remove_stale_mcp_servers,
-    _update_lockfile_mcp_servers,
-)
+from apm_cli.integration.mcp_integrator import MCPIntegrator
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 
 
@@ -104,7 +98,7 @@ class TestSelectiveInstallTransitiveMCP:
             LockedDependency(repo_url="acme/infra-cloud", depth=2, resolved_by="acme/squad-alpha"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-server-alpha" in names
         assert "ghcr.io/acme/mcp-server-beta" in names
@@ -123,7 +117,7 @@ class TestSelectiveInstallTransitiveMCP:
             LockedDependency(repo_url="acme/squad-alpha", depth=1, resolved_by="root"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         names = [d.name for d in result]
         assert "ghcr.io/acme/orphan-server" not in names
 
@@ -161,7 +155,7 @@ class TestDeepTransitiveChainMCP:
             LockedDependency(repo_url="acme/pkg-d", depth=4, resolved_by="acme/pkg-c"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-deep-server" in names
 
@@ -184,7 +178,7 @@ class TestDeepTransitiveChainMCP:
             LockedDependency(repo_url="acme/pkg-c", depth=3, resolved_by="acme/pkg-b"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-level-1" in names
         assert "ghcr.io/acme/mcp-level-2" in names
@@ -224,12 +218,12 @@ class TestDiamondDependencyMCP:
             LockedDependency(repo_url="acme/pkg-d", depth=3, resolved_by="acme/pkg-b"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-shared-server" in names
 
         # After dedup, exactly one entry
-        merged = _deduplicate_mcp_deps(result)
+        merged = MCPIntegrator.deduplicate(result)
         merged_names = [d.name for d in merged]
         assert merged_names.count("ghcr.io/acme/mcp-shared-server") == 1
 
@@ -253,8 +247,8 @@ class TestDiamondDependencyMCP:
             LockedDependency(repo_url="acme/pkg-d", depth=3, resolved_by="acme/pkg-b"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
-        merged = _deduplicate_mcp_deps(result)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
+        merged = MCPIntegrator.deduplicate(result)
         names = [d.name for d in merged]
         assert "ghcr.io/acme/mcp-branch-b" in names
         assert "ghcr.io/acme/mcp-branch-c" in names
@@ -291,7 +285,7 @@ class TestUninstallRemovesTransitiveMCP:
         new_servers = {"ghcr.io/acme/mcp-server-gamma"}
         stale = old_servers - new_servers
 
-        _remove_stale_mcp_servers(stale, runtime="vscode")
+        MCPIntegrator.remove_stale(stale, runtime="vscode")
 
         updated = json.loads(mcp_json.read_text(encoding="utf-8"))
         assert "ghcr.io/acme/mcp-server-alpha" not in updated["servers"]
@@ -307,7 +301,7 @@ class TestUninstallRemovesTransitiveMCP:
         ], mcp_servers=["ghcr.io/acme/mcp-server-alpha", "ghcr.io/acme/mcp-server-beta"])
 
         # After uninstall, only beta remains
-        _update_lockfile_mcp_servers({"ghcr.io/acme/mcp-server-beta"})
+        MCPIntegrator.update_lockfile({"ghcr.io/acme/mcp-server-beta"})
 
         reloaded = LockFile.read(lock_path)
         assert reloaded.mcp_servers == ["ghcr.io/acme/mcp-server-beta"]
@@ -320,7 +314,7 @@ class TestUninstallRemovesTransitiveMCP:
             LockedDependency(repo_url="acme/base-lib", depth=1, resolved_by="root"),
         ], mcp_servers=["ghcr.io/acme/mcp-server-alpha"])
 
-        _update_lockfile_mcp_servers(set())
+        MCPIntegrator.update_lockfile(set())
 
         reloaded = LockFile.read(lock_path)
         assert reloaded.mcp_servers == []
@@ -357,8 +351,8 @@ class TestUpdateMCPRename:
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ], mcp_servers=sorted(old_mcp))
 
-        transitive = _collect_transitive_mcp_deps(apm_modules, lock_path)
-        new_mcp = _get_mcp_dep_names(transitive)
+        transitive = MCPIntegrator.collect_transitive(apm_modules, lock_path)
+        new_mcp = MCPIntegrator.get_server_names(transitive)
         stale = old_mcp - new_mcp
 
         assert "ghcr.io/acme/mcp-server-old" in stale
@@ -375,7 +369,7 @@ class TestUpdateMCPRename:
             "ghcr.io/acme/mcp-server-gamma": {"command": "npx", "args": ["gamma"]},
         })
 
-        _remove_stale_mcp_servers({"ghcr.io/acme/mcp-server-old"}, runtime="vscode")
+        MCPIntegrator.remove_stale({"ghcr.io/acme/mcp-server-old"}, runtime="vscode")
 
         updated = json.loads(mcp_json.read_text(encoding="utf-8"))
         assert "ghcr.io/acme/mcp-server-old" not in updated["servers"]
@@ -409,8 +403,8 @@ class TestUpdateMCPRemoval:
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ], mcp_servers=sorted(old_mcp))
 
-        transitive = _collect_transitive_mcp_deps(apm_modules, lock_path)
-        new_mcp = _get_mcp_dep_names(transitive)
+        transitive = MCPIntegrator.collect_transitive(apm_modules, lock_path)
+        new_mcp = MCPIntegrator.get_server_names(transitive)
         stale = old_mcp - new_mcp
 
         assert stale == old_mcp  # all old servers are stale
@@ -428,8 +422,8 @@ class TestUpdateMCPRemoval:
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ], mcp_servers=["ghcr.io/acme/mcp-server-alpha"])
 
-        _remove_stale_mcp_servers({"ghcr.io/acme/mcp-server-alpha"}, runtime="vscode")
-        _update_lockfile_mcp_servers(set())
+        MCPIntegrator.remove_stale({"ghcr.io/acme/mcp-server-alpha"}, runtime="vscode")
+        MCPIntegrator.update_lockfile(set())
 
         updated = json.loads(mcp_json.read_text(encoding="utf-8"))
         assert updated["servers"] == {}
@@ -458,9 +452,9 @@ class TestDeduplicationRootAndTransitive:
 
         # Root declares alpha with extra config (dict form)
         root_mcp = [{"name": "ghcr.io/acme/mcp-server-alpha", "type": "http", "url": "https://custom.example.com"}]
-        transitive_mcp = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        transitive_mcp = MCPIntegrator.collect_transitive(apm_modules, lock_path)
 
-        merged = _deduplicate_mcp_deps(root_mcp + transitive_mcp)
+        merged = MCPIntegrator.deduplicate(root_mcp + transitive_mcp)
         assert len(merged) == 1
         # Root's dict form should win (first occurrence)
         assert isinstance(merged[0], dict)
@@ -477,8 +471,8 @@ class TestDeduplicationRootAndTransitive:
             LockedDependency(repo_url="acme/base-lib", depth=2, resolved_by="acme/infra-cloud"),
         ])
 
-        transitive_mcp = _collect_transitive_mcp_deps(apm_modules, lock_path)
-        merged = _deduplicate_mcp_deps(transitive_mcp)
+        transitive_mcp = MCPIntegrator.collect_transitive(apm_modules, lock_path)
+        merged = MCPIntegrator.deduplicate(transitive_mcp)
         names = [d.name for d in merged]
         assert len(names) == 2
         assert "ghcr.io/acme/mcp-server-alpha" in names
@@ -514,7 +508,7 @@ class TestVirtualPathMCPCollection:
             ),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-server-web" in names
 
@@ -541,7 +535,7 @@ class TestVirtualPathMCPCollection:
             ),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         names = [d.name for d in result]
         assert len(names) == 2
         assert "ghcr.io/acme/mcp-base" in names
@@ -567,7 +561,7 @@ class TestSelfDefinedMCPTrustGating:
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path, trust_private=False)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path, trust_private=False)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-registry-server" in names
         assert "private-srv" not in names
@@ -584,7 +578,7 @@ class TestSelfDefinedMCPTrustGating:
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ])
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path, trust_private=True)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path, trust_private=True)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-registry-server" in names
         assert "private-srv" in names
@@ -609,7 +603,7 @@ class TestStaleCleanupKeyNormalization:
         }))
 
         stale = {"io.github.github/github-mcp-server"}
-        _remove_stale_mcp_servers(stale, runtime="copilot")
+        MCPIntegrator.remove_stale(stale, runtime="copilot")
 
         result = json.loads(copilot_config.read_text())
         assert "github-mcp-server" not in result["mcpServers"]
@@ -626,7 +620,7 @@ class TestStaleCleanupKeyNormalization:
         }))
 
         stale = {"io.github.github/github-mcp-server"}
-        _remove_stale_mcp_servers(stale, runtime="vscode")
+        MCPIntegrator.remove_stale(stale, runtime="vscode")
 
         result = json.loads(mcp_json.read_text())
         assert "io.github.github/github-mcp-server" not in result["servers"]
@@ -644,7 +638,7 @@ class TestStaleCleanupKeyNormalization:
         }))
 
         stale = {"acme-kb"}
-        _remove_stale_mcp_servers(stale, runtime="copilot")
+        MCPIntegrator.remove_stale(stale, runtime="copilot")
 
         result = json.loads(copilot_config.read_text())
         assert "acme-kb" not in result["mcpServers"]

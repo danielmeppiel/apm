@@ -5,12 +5,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from apm_cli.models.apm_package import MCPDependency
-from apm_cli.cli import (
-    _build_self_defined_server_info,
-    _apply_mcp_overlay,
-    _install_mcp_dependencies,
-    _deduplicate_mcp_deps,
-)
+from apm_cli.integration.mcp_integrator import MCPIntegrator
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +196,7 @@ class TestBuildSelfDefinedServerInfo:
             name="http-srv", registry=False, transport="http",
             url="http://example.com",
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         assert "remotes" in result
         assert len(result["remotes"]) == 1
         assert result["remotes"][0]["url"] == "http://example.com"
@@ -213,7 +208,7 @@ class TestBuildSelfDefinedServerInfo:
             name="sse-srv", registry=False, transport="sse",
             url="http://example.com/sse",
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         assert "remotes" in result
         assert result["remotes"][0]["transport_type"] == "sse"
         assert result["remotes"][0]["url"] == "http://example.com/sse"
@@ -223,7 +218,7 @@ class TestBuildSelfDefinedServerInfo:
             name="stdio-srv", registry=False, transport="stdio",
             command="my-cmd",
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         assert "packages" in result
         assert len(result["packages"]) == 1
         assert result["packages"][0]["runtime_hint"] == "my-cmd"
@@ -235,7 +230,7 @@ class TestBuildSelfDefinedServerInfo:
             url="http://example.com",
             headers={"Authorization": "Bearer token"},
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         headers = result["remotes"][0]["headers"]
         assert len(headers) == 1
         assert headers[0] == {"name": "Authorization", "value": "Bearer token"}
@@ -245,7 +240,7 @@ class TestBuildSelfDefinedServerInfo:
             name="env-srv", registry=False, transport="stdio",
             command="x", env={"KEY": "val"},
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         env_vars = result["packages"][0]["environment_variables"]
         assert len(env_vars) == 1
         assert env_vars[0]["name"] == "KEY"
@@ -255,7 +250,7 @@ class TestBuildSelfDefinedServerInfo:
             name="args-srv", registry=False, transport="stdio",
             command="npx", args=["-y", "pkg"],
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         runtime_args = result["packages"][0]["runtime_arguments"]
         assert len(runtime_args) == 2
         assert runtime_args[0]["value_hint"] == "-y"
@@ -266,7 +261,7 @@ class TestBuildSelfDefinedServerInfo:
             name="tools-srv", registry=False, transport="stdio",
             command="cmd", tools=["read", "write"],
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         assert result["_apm_tools_override"] == ["read", "write"]
 
     def test_no_tools_no_key(self):
@@ -274,7 +269,7 @@ class TestBuildSelfDefinedServerInfo:
             name="no-tools", registry=False, transport="stdio",
             command="cmd",
         )
-        result = _build_self_defined_server_info(dep)
+        result = MCPIntegrator._build_self_defined_info(dep)
         assert "_apm_tools_override" not in result
 
 
@@ -291,7 +286,7 @@ class TestApplyMCPOverlay:
             }
         }
         dep = MCPDependency(name="srv", transport="stdio")
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         assert "remotes" not in cache["srv"]
         assert "packages" in cache["srv"]
 
@@ -303,7 +298,7 @@ class TestApplyMCPOverlay:
             }
         }
         dep = MCPDependency(name="srv", transport="http")
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         assert "packages" not in cache["srv"]
         assert "remotes" in cache["srv"]
 
@@ -317,7 +312,7 @@ class TestApplyMCPOverlay:
             }
         }
         dep = MCPDependency(name="srv", package="npm")
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         assert len(cache["srv"]["packages"]) == 1
         assert cache["srv"]["packages"][0]["registry_name"] == "npm"
 
@@ -328,7 +323,7 @@ class TestApplyMCPOverlay:
             }
         }
         dep = MCPDependency(name="srv", headers={"X-Custom": "val"})
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         headers = cache["srv"]["remotes"][0]["headers"]
         assert len(headers) == 1
         assert headers[0] == {"name": "X-Custom", "value": "val"}
@@ -336,21 +331,21 @@ class TestApplyMCPOverlay:
     def test_tools_embedded(self):
         cache = {"srv": {"packages": [{"registry_name": "npm"}]}}
         dep = MCPDependency(name="srv", tools=["repos"])
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         assert cache["srv"]["_apm_tools_override"] == ["repos"]
 
     def test_no_overlay_no_change(self):
         original = {"packages": [{"registry_name": "npm", "runtime_hint": "npx"}]}
         cache = {"srv": original.copy()}
         dep = MCPDependency(name="srv")
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         assert cache["srv"]["packages"] == original["packages"]
 
     def test_missing_server_info_noop(self):
         cache = {}
         dep = MCPDependency(name="nonexistent", transport="stdio")
         # Should not raise
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         assert cache == {}
 
     def test_args_list_merged_into_packages(self):
@@ -360,7 +355,7 @@ class TestApplyMCPOverlay:
             }
         }
         dep = MCPDependency(name="srv", args=["--org", "acme"])
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         rt_args = cache["srv"]["packages"][0]["runtime_arguments"]
         assert len(rt_args) == 2
         assert rt_args[0]["value_hint"] == "--org"
@@ -373,7 +368,7 @@ class TestApplyMCPOverlay:
             }
         }
         dep = MCPDependency(name="srv", args={"org": "acme"})
-        _apply_mcp_overlay(cache, dep)
+        MCPIntegrator._apply_overlay(cache, dep)
         rt_args = cache["srv"]["packages"][0]["runtime_arguments"]
         assert len(rt_args) == 1
         assert rt_args[0]["value_hint"] == "--org=acme"
@@ -382,13 +377,13 @@ class TestApplyMCPOverlay:
         cache = {"srv": {"packages": [{"registry_name": "npm"}]}}
         dep = MCPDependency(name="srv", version="1.0.0")
         with pytest.warns(UserWarning, match=r"MCP overlay field 'version' on 'srv'.*ignored"):
-            _apply_mcp_overlay(cache, dep)
+            MCPIntegrator._apply_overlay(cache, dep)
 
     def test_custom_registry_overlay_emits_warning(self):
         cache = {"srv": {"packages": [{"registry_name": "npm"}]}}
         dep = MCPDependency(name="srv", registry="https://custom.registry.io")
         with pytest.warns(UserWarning, match=r"MCP overlay field 'registry' on 'srv'.*ignored"):
-            _apply_mcp_overlay(cache, dep)
+            MCPIntegrator._apply_overlay(cache, dep)
 
     def test_registry_false_no_warning(self):
         cache = {"srv": {"packages": [{"registry_name": "npm"}]}}
@@ -396,7 +391,7 @@ class TestApplyMCPOverlay:
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            _apply_mcp_overlay(cache, dep)
+            MCPIntegrator._apply_overlay(cache, dep)
 
 
 # ---------------------------------------------------------------------------
@@ -404,8 +399,8 @@ class TestApplyMCPOverlay:
 # ---------------------------------------------------------------------------
 class TestInstallMCPDepsWithOverlays:
 
-    @patch("apm_cli.cli._install_for_runtime")
-    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
     def test_self_defined_deps_skip_registry_validation(
         self, _console, mock_install_runtime
     ):
@@ -413,7 +408,7 @@ class TestInstallMCPDepsWithOverlays:
             name="my-local", registry=False, transport="stdio", command="my-cmd",
         )
 
-        count = _install_mcp_dependencies([dep], runtime="vscode")
+        count = MCPIntegrator.install([dep], runtime="vscode")
 
         # Self-defined deps should NOT go through registry validation
         # (MCPServerOperations is never instantiated for self-defined-only lists)
@@ -428,8 +423,8 @@ class TestInstallMCPDepsWithOverlays:
         assert "packages" in server_cache["my-local"]
         assert count == 1
 
-    @patch("apm_cli.cli._install_for_runtime")
-    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
     @patch("apm_cli.registry.operations.MCPServerOperations")
     def test_registry_deps_use_dep_names(
         self, mock_ops_cls, _console, mock_install_runtime
@@ -448,15 +443,15 @@ class TestInstallMCPDepsWithOverlays:
         mock_ops.collect_runtime_variables.return_value = {}
 
         dep = MCPDependency.from_string("io.github.github/github-mcp-server")
-        count = _install_mcp_dependencies([dep], runtime="vscode")
+        count = MCPIntegrator.install([dep], runtime="vscode")
 
         mock_ops.validate_servers_exist.assert_called_once_with(
             ["io.github.github/github-mcp-server"]
         )
         assert count == 1
 
-    @patch("apm_cli.cli._install_for_runtime")
-    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
     @patch("apm_cli.registry.operations.MCPServerOperations")
     def test_mixed_deps_both_paths(
         self, mock_ops_cls, _console, mock_install_runtime
@@ -479,7 +474,7 @@ class TestInstallMCPDepsWithOverlays:
             name="my-local", registry=False, transport="stdio", command="my-cmd",
         )
 
-        count = _install_mcp_dependencies(
+        count = MCPIntegrator.install(
             [registry_dep, self_defined_dep], runtime="vscode"
         )
 

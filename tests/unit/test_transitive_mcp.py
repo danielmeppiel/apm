@@ -6,11 +6,7 @@ from unittest.mock import patch, MagicMock
 import yaml
 
 from apm_cli.models.apm_package import APMPackage, MCPDependency
-from apm_cli.cli import (
-    _collect_transitive_mcp_deps,
-    _deduplicate_mcp_deps,
-    _install_mcp_dependencies,
-)
+from apm_cli.integration.mcp_integrator import MCPIntegrator
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +106,7 @@ class TestCollectTransitiveMCPDeps:
     """Tests for scanning apm_modules/ for MCP deps."""
 
     def test_empty_when_dir_missing(self, tmp_path):
-        result = _collect_transitive_mcp_deps(tmp_path / "nonexistent")
+        result = MCPIntegrator.collect_transitive(tmp_path / "nonexistent")
         assert result == []
 
     def test_collects_string_deps(self, tmp_path):
@@ -121,7 +117,7 @@ class TestCollectTransitiveMCPDeps:
             "version": "1.0.0",
             "dependencies": {"mcp": ["ghcr.io/a/server"]},
         }))
-        result = _collect_transitive_mcp_deps(tmp_path)
+        result = MCPIntegrator.collect_transitive(tmp_path)
         assert len(result) == 1
         assert isinstance(result[0], MCPDependency)
         assert result[0].name == "ghcr.io/a/server"
@@ -135,7 +131,7 @@ class TestCollectTransitiveMCPDeps:
             "version": "1.0.0",
             "dependencies": {"mcp": [inline]},
         }))
-        result = _collect_transitive_mcp_deps(tmp_path)
+        result = MCPIntegrator.collect_transitive(tmp_path)
         assert len(result) == 1
         assert isinstance(result[0], MCPDependency)
         assert result[0].name == "kb"
@@ -149,7 +145,7 @@ class TestCollectTransitiveMCPDeps:
                 "version": "1.0.0",
                 "dependencies": {"mcp": [dep]},
             }))
-        result = _collect_transitive_mcp_deps(tmp_path)
+        result = MCPIntegrator.collect_transitive(tmp_path)
         assert len(result) == 2
 
     def test_skips_unparseable_apm_yml(self, tmp_path):
@@ -157,7 +153,7 @@ class TestCollectTransitiveMCPDeps:
         pkg_dir.mkdir(parents=True)
         (pkg_dir / "apm.yml").write_text("invalid: yaml: [")
         # Should not raise
-        result = _collect_transitive_mcp_deps(tmp_path)
+        result = MCPIntegrator.collect_transitive(tmp_path)
         assert result == []
 
     def test_lockfile_scopes_collection_to_locked_packages(self, tmp_path):
@@ -187,7 +183,7 @@ class TestCollectTransitiveMCPDeps:
                 {"repo_url": "org/locked-pkg", "host": "github.com"},
             ],
         }))
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         assert len(result) == 1
         assert isinstance(result[0], MCPDependency)
         assert result[0].name == "ghcr.io/locked/server"
@@ -218,7 +214,7 @@ class TestCollectTransitiveMCPDeps:
                 {"repo_url": "org/monorepo", "host": "github.com", "virtual_path": "skills/azure"},
             ],
         }))
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         assert len(result) == 1
         assert isinstance(result[0], MCPDependency)
         assert result[0].name == "learn"
@@ -243,7 +239,7 @@ class TestCollectTransitiveMCPDeps:
         }))
 
         with patch("pathlib.Path.rglob", side_effect=AssertionError("rglob should not be called")):
-            result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+            result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
 
         assert len(result) == 1
         assert result[0].name == "ghcr.io/locked/server"
@@ -262,7 +258,7 @@ class TestCollectTransitiveMCPDeps:
         lock_path = tmp_path / "apm.lock"
         lock_path.write_text("dependencies: [")
 
-        result = _collect_transitive_mcp_deps(apm_modules, lock_path)
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
         assert len(result) == 1
         assert result[0].name == "ghcr.io/a/server"
 
@@ -278,7 +274,7 @@ class TestCollectTransitiveMCPDeps:
                 {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
             ]},
         }))
-        result = _collect_transitive_mcp_deps(tmp_path)
+        result = MCPIntegrator.collect_transitive(tmp_path)
         assert len(result) == 1
         assert result[0].name == "ghcr.io/registry/server"
 
@@ -294,7 +290,7 @@ class TestCollectTransitiveMCPDeps:
                 {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
             ]},
         }))
-        result = _collect_transitive_mcp_deps(tmp_path, trust_private=True)
+        result = MCPIntegrator.collect_transitive(tmp_path, trust_private=True)
         assert len(result) == 2
         names = [d.name for d in result]
         assert "ghcr.io/registry/server" in names
@@ -311,7 +307,7 @@ class TestCollectTransitiveMCPDeps:
                 {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
             ]},
         }))
-        result = _collect_transitive_mcp_deps(tmp_path, trust_private=False)
+        result = MCPIntegrator.collect_transitive(tmp_path, trust_private=False)
         assert len(result) == 0
 
 
@@ -322,31 +318,31 @@ class TestDeduplicateMCPDeps:
 
     def test_deduplicates_strings(self):
         deps = ["a", "b", "a", "c", "b"]
-        assert _deduplicate_mcp_deps(deps) == ["a", "b", "c"]
+        assert MCPIntegrator.deduplicate(deps) == ["a", "b", "c"]
 
     def test_deduplicates_dicts_by_name(self):
         d1 = {"name": "srv", "type": "sse", "url": "https://one"}
         d2 = {"name": "srv", "type": "sse", "url": "https://two"}  # same name
         d3 = {"name": "other", "type": "sse", "url": "https://three"}
-        result = _deduplicate_mcp_deps([d1, d2, d3])
+        result = MCPIntegrator.deduplicate([d1, d2, d3])
         assert len(result) == 2
         assert result[0]["url"] == "https://one"  # first wins
 
     def test_mixed_dedup(self):
         inline = {"name": "kb", "type": "sse", "url": "https://kb"}
         deps = ["a", inline, "a", {"name": "kb", "type": "sse", "url": "https://kb2"}]
-        result = _deduplicate_mcp_deps(deps)
+        result = MCPIntegrator.deduplicate(deps)
         assert len(result) == 2
         assert isinstance(result[0], str)
         assert isinstance(result[1], dict)
 
     def test_empty_list(self):
-        assert _deduplicate_mcp_deps([]) == []
+        assert MCPIntegrator.deduplicate([]) == []
 
     def test_dict_without_name_kept(self):
         """Dicts without 'name' are kept if not already in result."""
         d = {"type": "sse", "url": "https://x"}
-        result = _deduplicate_mcp_deps([d, d])
+        result = MCPIntegrator.deduplicate([d, d])
         assert len(result) == 1
 
     def test_root_deps_take_precedence_over_transitive(self):
@@ -355,7 +351,7 @@ class TestDeduplicateMCPDeps:
         transitive = [{"name": "shared", "type": "sse", "url": "https://transitive-url"}]
         # Root deps come first in the combined list
         combined = root + transitive
-        result = _deduplicate_mcp_deps(combined)
+        result = MCPIntegrator.deduplicate(combined)
         assert len(result) == 1
         assert result[0]["url"] == "https://root-url"
 
@@ -366,7 +362,7 @@ class TestDeduplicateMCPDeps:
 # ---------------------------------------------------------------------------
 class TestInstallMCPDependencies:
 
-    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
     @patch("apm_cli.registry.operations.MCPServerOperations")
     def test_already_configured_registry_servers_not_counted_as_new(
         self, mock_ops_cls, _console
@@ -375,12 +371,12 @@ class TestInstallMCPDependencies:
         mock_ops.validate_servers_exist.return_value = (["ghcr.io/org/server"], [])
         mock_ops.check_servers_needing_installation.return_value = []
 
-        count = _install_mcp_dependencies(["ghcr.io/org/server"], runtime="vscode")
+        count = MCPIntegrator.install(["ghcr.io/org/server"], runtime="vscode")
 
         assert count == 0
 
-    @patch("apm_cli.cli._install_for_runtime")
-    @patch("apm_cli.cli._get_console", return_value=None)
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
     @patch("apm_cli.registry.operations.MCPServerOperations")
     def test_counts_only_newly_configured_registry_servers(
         self, mock_ops_cls, _console, mock_install_runtime
@@ -395,14 +391,14 @@ class TestInstallMCPDependencies:
         mock_ops.collect_environment_variables.return_value = {}
         mock_ops.collect_runtime_variables.return_value = {}
 
-        count = _install_mcp_dependencies(
+        count = MCPIntegrator.install(
             ["ghcr.io/org/already", "ghcr.io/org/new"], runtime="vscode"
         )
 
         assert count == 1
         mock_install_runtime.assert_called_once()
 
-    @patch("apm_cli.cli._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
     @patch("apm_cli.registry.operations.MCPServerOperations")
     def test_mixed_registry_servers_show_already_configured_and_count_only_new(
         self, mock_ops_cls, mock_install_runtime
@@ -418,8 +414,8 @@ class TestInstallMCPDependencies:
         mock_ops.collect_environment_variables.return_value = {}
         mock_ops.collect_runtime_variables.return_value = {}
 
-        with patch("apm_cli.cli._get_console", return_value=mock_console):
-            count = _install_mcp_dependencies(
+        with patch("apm_cli.integration.mcp_integrator._get_console", return_value=mock_console):
+            count = MCPIntegrator.install(
                 ["ghcr.io/org/already", "ghcr.io/org/new"], runtime="vscode"
             )
 
