@@ -228,15 +228,15 @@ class TestMapPluginArtifacts:
         assert (apm_dir / "agents" / "bot.agent.md").exists()
 
     def test_custom_skills_path_array(self, tmp_path):
-        """Manifest skills field as an array merges multiple directories."""
+        """Manifest skills array preserves each directory as named component."""
         plugin_dir = tmp_path / "plugin"
         plugin_dir.mkdir()
         s1 = plugin_dir / "skills"
         s1.mkdir()
-        (s1 / "a.md").write_text("# A")
+        (s1 / "SKILL.md").write_text("# A")
         s2 = plugin_dir / "extra-skills"
         s2.mkdir()
-        (s2 / "b.md").write_text("# B")
+        (s2 / "SKILL.md").write_text("# B")
 
         apm_dir = plugin_dir / ".apm"
         apm_dir.mkdir()
@@ -245,8 +245,9 @@ class TestMapPluginArtifacts:
             manifest={"skills": ["skills/", "extra-skills/"]},
         )
 
-        assert (apm_dir / "skills" / "a.md").exists()
-        assert (apm_dir / "skills" / "b.md").exists()
+        # Each array entry becomes a named subdirectory
+        assert (apm_dir / "skills" / "skills" / "SKILL.md").read_text() == "# A"
+        assert (apm_dir / "skills" / "extra-skills" / "SKILL.md").read_text() == "# B"
 
     def test_custom_commands_path(self, tmp_path):
         """Manifest commands field redirects command discovery."""
@@ -323,6 +324,78 @@ class TestMapPluginArtifacts:
 
         assert not (apm_dir / "agents").exists()
         assert not (apm_dir / "skills").exists()
+
+    # ---- Individual file paths (not just directories) ----
+
+    def test_agents_individual_file_paths(self, tmp_path):
+        """Manifest agents as individual file paths copies each file."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "planner.md").write_text("# Planner")
+        (agents_dir / "coder.md").write_text("# Coder")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir, apm_dir,
+            manifest={"agents": ["./agents/planner.md", "./agents/coder.md"]},
+        )
+
+        assert (apm_dir / "agents" / "planner.md").read_text() == "# Planner"
+        assert (apm_dir / "agents" / "coder.md").read_text() == "# Coder"
+
+    def test_skills_individual_file_paths(self, tmp_path):
+        """Manifest skills as individual file paths copies each file."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        skill = plugin_dir / "my-skill.md"
+        skill.write_text("# Skill")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir, apm_dir,
+            manifest={"skills": ["my-skill.md"]},
+        )
+
+        assert (apm_dir / "skills" / "my-skill.md").read_text() == "# Skill"
+
+    def test_commands_individual_file_paths(self, tmp_path):
+        """Manifest commands as individual file paths; .md normalized to .prompt.md."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "deploy.md").write_text("# Deploy")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir, apm_dir,
+            manifest={"commands": ["deploy.md"]},
+        )
+
+        assert (apm_dir / "prompts" / "deploy.prompt.md").read_text() == "# Deploy"
+
+    def test_mixed_files_and_dirs(self, tmp_path):
+        """Manifest mixing file and directory paths for same component."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "a.md").write_text("# A")
+        (plugin_dir / "extra-agent.md").write_text("# Extra")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir, apm_dir,
+            manifest={"agents": ["./agents", "extra-agent.md"]},
+        )
+
+        # Directory entry preserved as named subdir; file entry flat
+        assert (apm_dir / "agents" / "agents" / "a.md").read_text() == "# A"
+        assert (apm_dir / "agents" / "extra-agent.md").read_text() == "# Extra"
 
 
 class TestGenerateApmYml:

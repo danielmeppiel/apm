@@ -140,6 +140,25 @@ Optional fields:
 }
 ```
 
+#### Custom component paths
+
+By default APM looks for `agents/`, `skills/`, `commands/`, and `hooks/` directories at the plugin root. You can override these with custom paths using strings or arrays:
+
+```json
+{
+  "name": "my-plugin",
+  "agents": ["./agents/planner.md", "./agents/coder.md"],
+  "skills": ["./skills/analysis", "./skills/review"],
+  "commands": "my-commands/",
+  "hooks": "hooks.json"
+}
+```
+
+- **String** — single directory or file path
+- **Array** — list of directories or individual files
+- When an array contains directories, each is preserved as a named subdirectory (e.g., `./skills/analysis/` → `.apm/skills/analysis/SKILL.md`)
+- `hooks` also accepts an inline object: `"hooks": {"hooks": {"PreToolUse": [...]}}`
+
 ## Examples
 
 ### Installing Plugins from GitHub

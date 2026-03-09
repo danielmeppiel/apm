@@ -148,20 +148,21 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
     if manifest is None:
         manifest = {}
 
-    # Resolve source directories — use manifest arrays if present, else defaults
+    # Resolve source paths — use manifest arrays if present, else defaults.
+    # Custom paths may be directories OR individual files.
     def _resolve_sources(component: str, default_dir: str):
-        """Return list of existing source directories for a component."""
+        """Return list of existing source paths (dirs or files) for a component."""
         custom = manifest.get(component)
         if isinstance(custom, list):
-            dirs = []
+            paths = []
             for p in custom:
                 src = plugin_path / str(p)
-                if src.exists() and src.is_dir():
-                    dirs.append(src)
-            return dirs
+                if src.exists() and not src.is_symlink():
+                    paths.append(src)
+            return paths
         elif isinstance(custom, str):
             src = plugin_path / custom
-            return [src] if src.exists() and src.is_dir() else []
+            return [src] if src.exists() and not src.is_symlink() else []
         default = plugin_path / default_dir
         return [default] if default.exists() and default.is_dir() else []
 
@@ -171,10 +172,26 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
         target_agents = apm_dir / "agents"
         if target_agents.exists():
             shutil.rmtree(target_agents)
-        # Copy first source, then merge additional sources
-        shutil.copytree(agent_sources[0], target_agents, ignore=_ignore_symlinks)
-        for extra in agent_sources[1:]:
-            shutil.copytree(extra, target_agents, dirs_exist_ok=True, ignore=_ignore_symlinks)
+        agent_dirs = [s for s in agent_sources if s.is_dir()]
+        agent_files = [s for s in agent_sources if s.is_file()]
+        # Array of directories → each is a named component; preserve dir name.
+        # Single/default directories → copy contents as root.
+        is_custom_list = isinstance(manifest.get("agents"), list)
+        if is_custom_list and agent_dirs:
+            target_agents.mkdir(parents=True, exist_ok=True)
+            for d in agent_dirs:
+                shutil.copytree(
+                    d, target_agents / d.name,
+                    ignore=_ignore_symlinks, dirs_exist_ok=True,
+                )
+        elif agent_dirs:
+            shutil.copytree(agent_dirs[0], target_agents, ignore=_ignore_symlinks)
+            for extra in agent_dirs[1:]:
+                shutil.copytree(extra, target_agents, dirs_exist_ok=True, ignore=_ignore_symlinks)
+        if agent_files:
+            target_agents.mkdir(parents=True, exist_ok=True)
+            for f in agent_files:
+                shutil.copy2(f, target_agents / f.name)
 
     # Map skills/
     skill_sources = _resolve_sources("skills", "skills")
@@ -182,9 +199,24 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
         target_skills = apm_dir / "skills"
         if target_skills.exists():
             shutil.rmtree(target_skills)
-        shutil.copytree(skill_sources[0], target_skills, ignore=_ignore_symlinks)
-        for extra in skill_sources[1:]:
-            shutil.copytree(extra, target_skills, dirs_exist_ok=True, ignore=_ignore_symlinks)
+        skill_dirs = [s for s in skill_sources if s.is_dir()]
+        skill_files = [s for s in skill_sources if s.is_file()]
+        is_custom_list = isinstance(manifest.get("skills"), list)
+        if is_custom_list and skill_dirs:
+            target_skills.mkdir(parents=True, exist_ok=True)
+            for d in skill_dirs:
+                shutil.copytree(
+                    d, target_skills / d.name,
+                    ignore=_ignore_symlinks, dirs_exist_ok=True,
+                )
+        elif skill_dirs:
+            shutil.copytree(skill_dirs[0], target_skills, ignore=_ignore_symlinks)
+            for extra in skill_dirs[1:]:
+                shutil.copytree(extra, target_skills, dirs_exist_ok=True, ignore=_ignore_symlinks)
+        if skill_files:
+            target_skills.mkdir(parents=True, exist_ok=True)
+            for f in skill_files:
+                shutil.copy2(f, target_skills / f.name)
 
     # Map commands/ → .apm/prompts/ (normalize .md → .prompt.md)
     command_sources = _resolve_sources("commands", "commands")
@@ -194,17 +226,26 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
             shutil.rmtree(target_prompts)
         target_prompts.mkdir(parents=True, exist_ok=True)
 
-        for source_dir in command_sources:
-            for source_file in source_dir.rglob("*"):
-                if not source_file.is_file() or source_file.is_symlink():
-                    continue
-                relative_path = source_file.relative_to(source_dir)
-                target_path = target_prompts / relative_path
-                # Normalize .md → .prompt.md (skip files already named correctly)
-                if not source_file.name.endswith(".prompt.md") and source_file.suffix == ".md":
-                    target_path = target_path.with_name(f"{source_file.stem}.prompt.md")
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source_file, target_path)
+        def _copy_command_file(source_file: Path, dest_dir: Path, rel_to: Path = None):
+            """Copy a command file, normalizing .md → .prompt.md."""
+            if rel_to:
+                relative_path = source_file.relative_to(rel_to)
+                target_path = dest_dir / relative_path
+            else:
+                target_path = dest_dir / source_file.name
+            if not source_file.name.endswith(".prompt.md") and source_file.suffix == ".md":
+                target_path = target_path.with_name(f"{source_file.stem}.prompt.md")
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_file, target_path)
+
+        for source in command_sources:
+            if source.is_file() and not source.is_symlink():
+                _copy_command_file(source, target_prompts)
+            elif source.is_dir():
+                for source_file in source.rglob("*"):
+                    if not source_file.is_file() or source_file.is_symlink():
+                        continue
+                    _copy_command_file(source_file, target_prompts, rel_to=source)
 
     # Map hooks/ — the spec allows a directory path, a config file path,
     # or an inline object.  Handle all three forms.
