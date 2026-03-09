@@ -473,18 +473,25 @@ def info(package: str):
         _rich_info("Run 'apm install' to install dependencies first")
         sys.exit(1)
     
-    # Find the package directory - handle org/repo structure
+    # Find the package directory - handle org/repo and deep sub-path structures
     package_path = None
-    for org_dir in apm_modules_path.iterdir():
-        if org_dir.is_dir() and not org_dir.name.startswith('.'):
-            for package_dir in org_dir.iterdir():
-                if package_dir.is_dir() and not package_dir.name.startswith('.'):
-                    # Check both package name and org/package format
-                    if package_dir.name == package or f"{org_dir.name}/{package_dir.name}" == package:
-                        package_path = package_dir
-                        break
-            if package_path:
-                break
+    # First try direct path match (handles any depth: org/repo, org/repo/subdir/pkg)
+    direct_match = apm_modules_path / package
+    if direct_match.is_dir() and (
+        (direct_match / "apm.yml").exists() or (direct_match / "SKILL.md").exists()
+    ):
+        package_path = direct_match
+    else:
+        # Fallback: scan org/repo structure (2-level) for short package names
+        for org_dir in apm_modules_path.iterdir():
+            if org_dir.is_dir() and not org_dir.name.startswith('.'):
+                for package_dir in org_dir.iterdir():
+                    if package_dir.is_dir() and not package_dir.name.startswith('.'):
+                        if package_dir.name == package or f"{org_dir.name}/{package_dir.name}" == package:
+                            package_path = package_dir
+                            break
+                if package_path:
+                    break
     
     if not package_path:
         _rich_error(f"Package '{package}' not found in apm_modules/")

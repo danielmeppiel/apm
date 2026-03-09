@@ -111,6 +111,11 @@ def synthesize_apm_yml_from_plugin(plugin_path: Path, manifest: Dict[str, Any]) 
     return apm_yml_path
 
 
+def _ignore_symlinks(directory, contents):
+    """Ignore function for shutil.copytree that skips symlinks."""
+    return [name for name in contents if (Path(directory) / name).is_symlink()]
+
+
 def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
     """Map plugin artifacts to .apm/ subdirectories and copy pass-through files.
 
@@ -123,6 +128,8 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
     - .lsp.json   → .apm/.lsp.json
     - settings.json → .apm/settings.json
 
+    Symlinks are skipped entirely to prevent content exfiltration attacks.
+
     Args:
         plugin_path: Root of the plugin directory.
         apm_dir: Path to the .apm/ directory.
@@ -133,7 +140,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
         target_agents = apm_dir / "agents"
         if target_agents.exists():
             shutil.rmtree(target_agents)
-        shutil.copytree(source_agents, target_agents, symlinks=False)
+        shutil.copytree(source_agents, target_agents, ignore=_ignore_symlinks)
 
     # Map skills/
     source_skills = plugin_path / "skills"
@@ -141,7 +148,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
         target_skills = apm_dir / "skills"
         if target_skills.exists():
             shutil.rmtree(target_skills)
-        shutil.copytree(source_skills, target_skills, symlinks=False)
+        shutil.copytree(source_skills, target_skills, ignore=_ignore_symlinks)
 
     # Map commands/ → .apm/prompts/ (normalize .md → .prompt.md)
     source_commands = plugin_path / "commands"
@@ -169,7 +176,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path) -> None:
         target_hooks = apm_dir / "hooks"
         if target_hooks.exists():
             shutil.rmtree(target_hooks)
-        shutil.copytree(source_hooks, target_hooks, symlinks=False)
+        shutil.copytree(source_hooks, target_hooks, ignore=_ignore_symlinks)
 
     # Pass-through files required for MCP/LSP plugins to function
     for passthrough in (".mcp.json", ".lsp.json", "settings.json"):
