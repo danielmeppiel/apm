@@ -1849,6 +1849,7 @@ def _install_apm_dependencies(
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
         installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by)
         package_deployed_files: dict = {}  # dep_key → list of relative deployed paths
+        package_types: dict = {}  # dep_key → package type string
 
         # Build managed_files from existing lockfile for collision detection
         managed_files = builtins.set()
@@ -2003,6 +2004,7 @@ def _install_apm_dependencies(
                     )
                     ref_str = f" @{dep_ref.reference}" if dep_ref.reference else ""
                     _rich_info(f"✓ {display_name}{ref_str} (cached)")
+                    installed_count += 1
 
                     # Still need to integrate prompts for cached packages (zero-config behavior)
                     if integrate_vscode or integrate_claude:
@@ -2053,7 +2055,11 @@ def _install_apm_dependencies(
                             # skill integration is not silently skipped
                             skill_md_exists = (install_path / "SKILL.md").exists()
                             apm_yml_exists = (install_path / "apm.yml").exists()
-                            if skill_md_exists and apm_yml_exists:
+                            from apm_cli.utils.helpers import find_plugin_json
+                            plugin_json_exists = find_plugin_json(install_path) is not None
+                            if plugin_json_exists and not apm_yml_exists:
+                                cached_package_info.package_type = PackageType.MARKETPLACE_PLUGIN
+                            elif skill_md_exists and apm_yml_exists:
                                 cached_package_info.package_type = PackageType.HYBRID
                             elif skill_md_exists:
                                 cached_package_info.package_type = PackageType.CLAUDE_SKILL
@@ -2075,6 +2081,10 @@ def _install_apm_dependencies(
                                 cached_commit = dep_ref.reference
                             installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
                             dep_deployed: list = []  # collect deployed paths for this package
+
+                            # Track package type for lockfile
+                            if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
+                                package_types[dep_key] = cached_package_info.package_type.value
 
                             # VSCode + Claude integration (prompts + agents)
                             if integrate_vscode or integrate_claude:
@@ -2299,6 +2309,10 @@ def _install_apm_dependencies(
                     installed_packages.append((dep_ref, resolved_commit, depth, resolved_by))
                     dep_deployed_fresh: list = []  # collect deployed paths for this package
 
+                    # Track package type for lockfile
+                    if hasattr(package_info, 'package_type') and package_info.package_type:
+                        package_types[dep_ref.get_unique_key()] = package_info.package_type.value
+
                     # Show package type in verbose mode
                     if verbose and hasattr(package_info, "package_type"):
                         from apm_cli.models.apm_package import PackageType
@@ -2499,11 +2513,20 @@ def _install_apm_dependencies(
         if installed_packages:
             try:
                 lockfile = LockFile.from_installed_packages(installed_packages, dependency_graph)
-                # Attach deployed_files to each LockedDependency
+                # Attach deployed_files and package_type to each LockedDependency
                 for dep_key, dep_files in package_deployed_files.items():
                     if dep_key in lockfile.dependencies:
                         lockfile.dependencies[dep_key].deployed_files = dep_files
-
+                for dep_key, pkg_type in package_types.items():
+                    if dep_key in lockfile.dependencies:
+                        lockfile.dependencies[dep_key].package_type = pkg_type
+                # Merge with existing lockfile to preserve entries for packages
+                # not processed in this run (e.g. `apm install X` only installs X).
+                # Skip merge when update_refs is set — stale entries must not survive.
+                if existing_lockfile and not update_refs:
+                    for dep_key, dep in existing_lockfile.dependencies.items():
+                        if dep_key not in lockfile.dependencies:
+                            lockfile.dependencies[dep_key] = dep
                 lockfile_path = get_lockfile_path(project_root)
 
                 # When installing a subset of packages (apm install <pkg>),

@@ -120,10 +120,10 @@ Controls which output targets are generated during compilation. When unset, a co
 |---|---|
 | **Type** | `enum<string>` |
 | **Required** | OPTIONAL |
-| **Default** | None (unset — behaviour depends on package content) |
+| **Default** | None (behaviour driven by package content; synthesized plugin manifests use `hybrid`) |
 | **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` |
 
-Declares how the package's content is processed during install and compile:
+Declares how the package's content is processed during install and compile. Currently behaviour is driven by package content (presence of `SKILL.md`, component directories, etc.); this field is reserved for future explicit overrides.
 
 | Value | Behaviour |
 |---|---|
@@ -359,6 +359,7 @@ dependencies:                              # YAML list (not a map)
     is_virtual:      <bool>                # True for virtual (file/subdirectory) packages
     depth:           <int>                 # 1 = direct, 2+ = transitive
     resolved_by:     <string>              # Parent dependency (transitive only)
+    package_type:    <string>              # Package type (e.g. "apm_package", "marketplace_plugin")
     deployed_files:  <list<string>>        # Workspace-relative paths of installed files
 mcp_servers:       <list<string>>          # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
 ```

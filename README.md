@@ -33,6 +33,8 @@ dependencies:
     # Specific agent primitives from any repository
     - github/awesome-copilot/skills/review-and-refactor
     - github/awesome-copilot/agents/api-architect.agent.md
+    # Plugins (auto-detected from plugin.json)
+    - github/awesome-copilot/plugins/context-engineering
 ```
 
 New developer joins the team:
@@ -58,6 +60,7 @@ Skill registries install skills. APM manages **every primitive** your AI agents 
 | **Prompts** | Reusable slash commands | `/security-audit`, `/design-review` |
 | **Agents** | Specialized personas | Accessibility auditor, API designer |
 | **Hooks** | Lifecycle event handlers | Pre-tool validation, post-tool linting |
+| **Plugins** | Pre-packaged agent bundles | Context engineering, commit helpers |
 | **MCP Servers** | Tool integrations | Database access, API connectors |
 
 All declared in one manifest. All installed with one command — including transitive dependencies:
@@ -89,6 +92,7 @@ pip install apm-cli
 apm install microsoft/apm-sample-package
 apm install anthropics/skills/skills/frontend-design
 apm install github/awesome-copilot/agents/api-architect.agent.md
+apm install github/awesome-copilot/plugins/context-engineering
 ```
 
 **Done.** Open your project in VS Code or Claude and your AI tools are ready.
@@ -170,7 +174,7 @@ For private repos or Azure DevOps, set a token. For other hosts (GitLab, Bitbuck
 
 ## APM Packages
 
-An APM package is anything you can point `apm install` at: a full package with an `apm.yml` manifest and `.apm/` folder, a single primitive file (`.instructions.md`, `.prompt.md`, `.agent.md`), a skill folder, or any subtree inside a repository. Hooks are auto-discovered when a package contains them. See [Primitives](docs/primitives.md) for details on each type.
+An APM package is anything you can point `apm install` at: a full package with an `apm.yml` manifest and `.apm/` folder, a plugin with `plugin.json`, a single primitive file (`.instructions.md`, `.prompt.md`, `.agent.md`), a skill folder, or any subtree inside a repository. Hooks are auto-discovered when a package contains them. See [Primitives](docs/primitives.md) for details on each type.
 
 APM installs from **any git host** — GitHub, GitLab, Bitbucket, self-hosted servers, GitHub Enterprise, and Azure DevOps. Use HTTPS or SSH git URLs, or the `owner/repo` shorthand for GitHub. See [Package Sources](docs/getting-started.md#package-sources) for host configuration.
 
@@ -193,7 +197,7 @@ See the [APM Roadmap](https://github.com/microsoft/apm/discussions/116) for what
 | | |
 |---|---|
 | **Get Started** | [Quick Start](docs/getting-started.md) · [Core Concepts](docs/concepts.md) · [Examples](docs/examples.md) |
-| **Reference** | [CLI Reference](docs/cli-reference.md) · [Compilation Engine](docs/compilation.md) · [Skills](docs/skills.md) · [Integrations](docs/integrations.md) |
+| **Reference** | [CLI Reference](docs/cli-reference.md) · [Compilation Engine](docs/compilation.md) · [Skills](docs/skills.md) · [Plugins](docs/plugins.md) · [Integrations](docs/integrations.md) |
 | **Advanced** | [Dependencies](docs/dependencies.md) · [Primitives](docs/primitives.md) · [Contributing](CONTRIBUTING.md) |
 
 ---
