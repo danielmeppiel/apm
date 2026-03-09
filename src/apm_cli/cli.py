@@ -310,6 +310,10 @@ def cli(ctx):
 # Register command groups
 cli.add_command(deps)
 
+from apm_cli.commands.pack import pack_cmd, unpack_cmd
+cli.add_command(pack_cmd, name="pack")
+cli.add_command(unpack_cmd, name="unpack")
+
 
 @cli.command(help="Initialize a new APM project")
 @click.argument("project_name", required=False)
