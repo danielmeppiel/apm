@@ -130,7 +130,13 @@ def list_packages():
             # Skip sub-skills inside .apm/ directories — they belong to the parent package
             if '.apm' in rel_parts:
                 continue
-            
+
+            # Skip skill sub-dirs nested inside another package (e.g. plugin
+            # skills/ directories that are deployment artifacts, not packages).
+            if has_skill_md and not has_apm_yml:
+                if _is_nested_under_package(candidate, apm_modules_path):
+                    continue
+
             try:
                 version = 'unknown'
                 if has_apm_yml:
@@ -357,6 +363,10 @@ def tree():
                         rel_parts = candidate.relative_to(apm_modules_path).parts
                         if len(rel_parts) < 2:
                             continue
+                        if '.apm' in rel_parts:
+                            continue
+                        if has_skill and not has_apm and _is_nested_under_package(candidate, apm_modules_path):
+                            continue
                         display = "/".join(rel_parts)
                         info = _get_package_display_info(candidate)
                         branch = root_tree.add(f"[green]{info['display_name']}[/green]")
@@ -569,6 +579,25 @@ def info(package: str):
 
 
 # Helper functions
+
+
+def _is_nested_under_package(candidate: Path, apm_modules_path: Path) -> bool:
+    """Check if *candidate* is a sub-directory of another installed package.
+
+    When a plugin ships ``skills/*/SKILL.md`` at its root (outside ``.apm/``),
+    the ``rglob`` scan would otherwise treat each skill sub-directory as an
+    independent package.  This helper walks up from *candidate* towards
+    *apm_modules_path* and returns ``True`` if any intermediate parent already
+    contains ``apm.yml`` — meaning the candidate is a deployment artifact, not
+    a standalone package.
+    """
+    parent = candidate.parent
+    while parent != apm_modules_path and parent != parent.parent:
+        if (parent / "apm.yml").exists():
+            return True
+        parent = parent.parent
+    return False
+
 
 def _count_primitives(package_path: Path) -> Dict[str, int]:
     """Count primitives by type in a package.
