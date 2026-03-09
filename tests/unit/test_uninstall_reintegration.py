@@ -36,9 +36,7 @@ def _make_package(
     pkg_path.mkdir(parents=True, exist_ok=True)
 
     type_line = f"\ntype: {pkg_type.value}" if pkg_type else ""
-    (pkg_path / "apm.yml").write_text(
-        f"name: {name}\nversion: 1.0.0{type_line}\n"
-    )
+    (pkg_path / "apm.yml").write_text(f"name: {name}\nversion: 1.0.0{type_line}\n")
 
     if prompts:
         prompts_dir = pkg_path / ".apm" / "prompts"
@@ -94,11 +92,15 @@ class TestUninstallPreservesOtherPackagePrompts:
 
         # Two packages, each with a prompt
         pkg_a = _make_package(
-            tmp_path, "owner", "pkg-a",
+            tmp_path,
+            "owner",
+            "pkg-a",
             prompts={"review.prompt.md": "---\nname: review\n---\n# Review A"},
         )
         pkg_b = _make_package(
-            tmp_path, "owner", "pkg-b",
+            tmp_path,
+            "owner",
+            "pkg-b",
             prompts={"lint.prompt.md": "---\nname: lint\n---\n# Lint B"},
         )
 
@@ -119,7 +121,9 @@ class TestUninstallPreservesOtherPackagePrompts:
             ".github/prompts/lint.prompt.md",
         }
         dummy_pkg = APMPackage(name="root", version="0.0.0")
-        prompt_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
+        prompt_int.sync_integration(
+            dummy_pkg, project_root, managed_files=managed_files
+        )
 
         # Everything removed
         assert not (prompts_dir / "review.prompt.md").exists()
@@ -145,11 +149,15 @@ class TestUninstallPreservesOtherPackageAgents:
         (project_root / ".github").mkdir()
 
         pkg_a = _make_package(
-            tmp_path, "owner", "pkg-a",
+            tmp_path,
+            "owner",
+            "pkg-a",
             agents={"security.agent.md": "---\nname: security\n---\n# Security A"},
         )
         pkg_b = _make_package(
-            tmp_path, "owner", "pkg-b",
+            tmp_path,
+            "owner",
+            "pkg-b",
             agents={"planner.agent.md": "---\nname: planner\n---\n# Planner B"},
         )
 
@@ -193,12 +201,16 @@ class TestUninstallPreservesOtherPackageSkills:
         (project_root / ".github").mkdir()
 
         pkg_a = _make_package(
-            tmp_path, "owner", "skill-a",
+            tmp_path,
+            "owner",
+            "skill-a",
             skill_md="---\nname: skill-a\ndescription: test A\n---\n# Skill A",
             pkg_type=PackageContentType.SKILL,
         )
         pkg_b = _make_package(
-            tmp_path, "owner", "skill-b",
+            tmp_path,
+            "owner",
+            "skill-b",
             skill_md="---\nname: skill-b\ndescription: test B\n---\n# Skill B",
             pkg_type=PackageContentType.SKILL,
         )
@@ -217,16 +229,69 @@ class TestUninstallPreservesOtherPackageSkills:
         # We use a real APMPackage loaded from a manifest that references skill-b only.
         remaining_manifest = tmp_path / "remaining_apm.yml"
         remaining_manifest.write_text(
-            "name: root\nversion: 0.0.0\n"
-            "dependencies:\n"
-            "  apm:\n"
-            "    - owner/skill-b\n"
+            "name: root\nversion: 0.0.0\ndependencies:\n  apm:\n    - owner/skill-b\n"
         )
         root_pkg = APMPackage.from_apm_yml(remaining_manifest)
 
         skill_int.sync_integration(root_pkg, project_root)
 
         # skill-a removed, skill-b preserved
+        assert not (skills_dir / "skill-a").exists()
+        assert (skills_dir / "skill-b").is_dir()
+
+    def test_uninstall_preserves_other_package_skills_opencode(self, tmp_path: Path):
+        """Skills in .opencode/skills follow same name-based cleanup behavior."""
+        project_root = tmp_path
+        (project_root / ".opencode").mkdir()
+
+        pkg_a = _make_package(
+            tmp_path,
+            "owner",
+            "skill-a",
+            skill_md="---\nname: skill-a\ndescription: test A\n---\n# Skill A",
+            pkg_type=PackageContentType.SKILL,
+        )
+        pkg_b = _make_package(
+            tmp_path,
+            "owner",
+            "skill-b",
+            skill_md="---\nname: skill-b\ndescription: test B\n---\n# Skill B",
+            pkg_type=PackageContentType.SKILL,
+        )
+
+        skill_int = SkillIntegrator()
+
+        skill_int.integrate_package_skill(
+            pkg_a,
+            project_root,
+            destinations={"opencode"},
+        )
+        skill_int.integrate_package_skill(
+            pkg_b,
+            project_root,
+            destinations={"opencode"},
+        )
+
+        skills_dir = project_root / ".opencode" / "skills"
+        assert (skills_dir / "skill-a").is_dir()
+        assert (skills_dir / "skill-b").is_dir()
+
+        remaining_manifest = tmp_path / "remaining_apm.yml"
+        remaining_manifest.write_text(
+            "name: root\nversion: 0.0.0\n"
+            "dependencies:\n"
+            "  apm:\n"
+            "    - owner/skill-b\n"
+            "target: opencode\n"
+        )
+        root_pkg = APMPackage.from_apm_yml(remaining_manifest)
+
+        skill_int.sync_integration(
+            root_pkg,
+            project_root,
+            destinations={"opencode"},
+        )
+
         assert not (skills_dir / "skill-a").exists()
         assert (skills_dir / "skill-b").is_dir()
 
@@ -256,7 +321,7 @@ class TestUninstallPreservesUserFiles:
         user_agent.write_text("# My custom agent")
 
         # User-created command
-        commands_dir = project_root / ".claude" / "commands"
+        commands_dir = project_root / ".opencode" / "commands"
         commands_dir.mkdir(parents=True)
         user_cmd = commands_dir / "my-command.md"
         user_cmd.write_text("# My custom command")
@@ -299,7 +364,9 @@ class TestUninstallLastPackageLeavesCleanDirs:
         (project_root / ".github").mkdir()
 
         pkg = _make_package(
-            tmp_path, "owner", "only-pkg",
+            tmp_path,
+            "owner",
+            "only-pkg",
             prompts={"guide.prompt.md": "---\nname: guide\n---\n# Guide"},
             agents={"helper.agent.md": "---\nname: helper\n---\n# Helper"},
         )
@@ -314,7 +381,7 @@ class TestUninstallLastPackageLeavesCleanDirs:
 
         prompts_dir = project_root / ".github" / "prompts"
         agents_dir = project_root / ".github" / "agents"
-        commands_dir = project_root / ".claude" / "commands"
+        commands_dir = project_root / ".opencode" / "commands"
 
         # Verify files were created (clean naming, no -apm suffix)
         assert (prompts_dir / "guide.prompt.md").exists()
@@ -325,10 +392,12 @@ class TestUninstallLastPackageLeavesCleanDirs:
         managed_files = {
             ".github/prompts/guide.prompt.md",
             ".github/agents/helper.agent.md",
-            ".claude/commands/guide.md",
+            ".opencode/commands/guide.md",
         }
         dummy_pkg = APMPackage(name="root", version="0.0.0")
-        prompt_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
+        prompt_int.sync_integration(
+            dummy_pkg, project_root, managed_files=managed_files
+        )
         agent_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
         cmd_int.sync_integration(dummy_pkg, project_root, managed_files=managed_files)
 

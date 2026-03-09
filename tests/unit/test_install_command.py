@@ -66,7 +66,11 @@ class TestInstallCommandAutoBootstrap:
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
             # Mock the install function to avoid actual installation
-            mock_install_apm.return_value = (0, 0, 0)  # Return tuple (installed_count, prompts_integrated, agents_integrated)
+            mock_install_apm.return_value = (
+                0,
+                0,
+                0,
+            )  # Return tuple (installed_count, prompts_integrated, agents_integrated)
 
             result = self.runner.invoke(cli, ["install", "test/package"])
 
@@ -106,7 +110,11 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = (0, 0, 0)  # Return tuple (installed_count, prompts_integrated, agents_integrated)
+            mock_install_apm.return_value = (
+                0,
+                0,
+                0,
+            )  # Return tuple (installed_count, prompts_integrated, agents_integrated)
 
             result = self.runner.invoke(cli, ["install", "org1/pkg1", "org2/pkg2"])
 
@@ -148,7 +156,11 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = (0, 0, 0)  # Return tuple (installed_count, prompts_integrated, agents_integrated)
+            mock_install_apm.return_value = (
+                0,
+                0,
+                0,
+            )  # Return tuple (installed_count, prompts_integrated, agents_integrated)
 
             result = self.runner.invoke(cli, ["install"])
 
@@ -186,7 +198,11 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = (0, 0, 0)  # Return tuple (installed_count, prompts_integrated, agents_integrated)
+            mock_install_apm.return_value = (
+                0,
+                0,
+                0,
+            )  # Return tuple (installed_count, prompts_integrated, agents_integrated)
 
             result = self.runner.invoke(cli, ["install", "test/package"])
 
@@ -239,3 +255,63 @@ class TestInstallCommandAutoBootstrap:
             assert "Would add" in result.output or "Dry run" in result.output
             # apm.yml should still be created (for dry-run to work)
             assert Path("apm.yml").exists()
+
+    @patch("apm_cli.cli._validate_package_exists")
+    @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.cli.APMPackage")
+    @patch("apm_cli.cli._install_apm_dependencies")
+    def test_install_with_existing_opencode_dir_does_not_create_github(
+        self, mock_install_apm, mock_apm_package, mock_validate
+    ):
+        """Test auto-bootstrap does not create .github/ when .opencode/ already exists."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+
+            Path(".opencode").mkdir()
+            mock_validate.return_value = True
+
+            mock_pkg_instance = MagicMock()
+            mock_pkg_instance.get_apm_dependencies.return_value = [
+                MagicMock(repo_url="test/package", reference="main")
+            ]
+            mock_pkg_instance.get_mcp_dependencies.return_value = []
+            mock_pkg_instance.target = None
+            mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
+
+            mock_install_apm.return_value = (0, 0, 0)
+
+            result = self.runner.invoke(cli, ["install", "test/package"])
+
+            assert result.exit_code == 0
+            assert Path(".opencode").exists()
+            assert not Path(".github").exists()
+
+    @patch("apm_cli.cli._validate_package_exists")
+    @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.cli.APMPackage")
+    @patch("apm_cli.cli._install_apm_dependencies")
+    def test_install_with_existing_claude_dir_does_not_create_github(
+        self, mock_install_apm, mock_apm_package, mock_validate
+    ):
+        """Test auto-bootstrap does not create .github/ when .claude/ already exists."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+
+            Path(".claude").mkdir()
+            mock_validate.return_value = True
+
+            mock_pkg_instance = MagicMock()
+            mock_pkg_instance.get_apm_dependencies.return_value = [
+                MagicMock(repo_url="test/package", reference="main")
+            ]
+            mock_pkg_instance.get_mcp_dependencies.return_value = []
+            mock_pkg_instance.target = None
+            mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
+
+            mock_install_apm.return_value = (0, 0, 0)
+
+            result = self.runner.invoke(cli, ["install", "test/package"])
+
+            assert result.exit_code == 0
+            assert Path(".claude").exists()
+            assert not Path(".github").exists()

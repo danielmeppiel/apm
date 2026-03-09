@@ -31,12 +31,17 @@ from apm_cli.models.apm_package import (
 )
 
 
-def _make_package_info(tmp_path: Path, name: str = "test-pkg",
-                       prompt_files: dict = None, agent_files: dict = None,
-                       command_files: dict = None, hook_files: dict = None,
-                       skill_md: str = None) -> PackageInfo:
+def _make_package_info(
+    tmp_path: Path,
+    name: str = "test-pkg",
+    prompt_files: dict = None,
+    agent_files: dict = None,
+    command_files: dict = None,
+    hook_files: dict = None,
+    skill_md: str = None,
+) -> PackageInfo:
     """Create a PackageInfo with optional primitive files on disk.
-    
+
     prompt_files/agent_files: placed in package root (found by integrators)
     command_files: placed in .apm/prompts/ (found by CommandIntegrator)
     hook_files: placed in hooks/ (found by HookIntegrator)
@@ -89,7 +94,10 @@ class TestLockedDependencyDeployedFiles:
         """Produce a dict containing sorted deployed_files."""
         dep = LockedDependency(
             repo_url="github.com/o/r",
-            deployed_files=[".github/prompts/b.prompt.md", ".github/prompts/a.prompt.md"],
+            deployed_files=[
+                ".github/prompts/b.prompt.md",
+                ".github/prompts/a.prompt.md",
+            ],
         )
         d = dep.to_dict()
         assert d["deployed_files"] == [
@@ -182,9 +190,7 @@ class TestPromptCollisionDetection:
         prompts_dir.mkdir(parents=True)
         (prompts_dir / "review.prompt.md").write_text("# old")
 
-        info = _make_package_info(
-            tmp_path, prompt_files={"review.prompt.md": "# new"}
-        )
+        info = _make_package_info(tmp_path, prompt_files={"review.prompt.md": "# new"})
         managed = {".github/prompts/review.prompt.md"}
         result = PromptIntegrator().integrate_package_prompts(
             info, tmp_path, force=False, managed_files=managed
@@ -199,9 +205,7 @@ class TestPromptCollisionDetection:
         prompts_dir.mkdir(parents=True)
         (prompts_dir / "review.prompt.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, prompt_files={"review.prompt.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, prompt_files={"review.prompt.md": "# pkg"})
         managed = {".github/prompts/OTHER.prompt.md"}
         result = PromptIntegrator().integrate_package_prompts(
             info, tmp_path, force=False, managed_files=managed
@@ -215,9 +219,7 @@ class TestPromptCollisionDetection:
         prompts_dir.mkdir(parents=True)
         (prompts_dir / "review.prompt.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, prompt_files={"review.prompt.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, prompt_files={"review.prompt.md": "# pkg"})
         result = PromptIntegrator().integrate_package_prompts(
             info, tmp_path, force=True, managed_files=set()
         )
@@ -263,7 +265,9 @@ class TestPromptSync:
         (prompts_dir / "b.prompt.md").write_text("user")
 
         managed = {".github/prompts/a.prompt.md"}
-        stats = PromptIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        stats = PromptIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
 
         assert stats["files_removed"] == 1
         assert not (prompts_dir / "a.prompt.md").exists()
@@ -291,7 +295,9 @@ class TestPromptSync:
         (agents_dir / "sec.agent.md").write_text("agent")
 
         managed = {".github/agents/sec.agent.md"}
-        stats = PromptIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        stats = PromptIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
         assert stats["files_removed"] == 0
         assert (agents_dir / "sec.agent.md").exists()
 
@@ -310,9 +316,7 @@ class TestAgentCollisionDetection:
         agents_dir.mkdir(parents=True)
         (agents_dir / "security.agent.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, agent_files={"security.agent.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, agent_files={"security.agent.md": "# pkg"})
         result = AgentIntegrator().integrate_package_agents(
             info, tmp_path, force=False, managed_files=None
         )
@@ -325,9 +329,7 @@ class TestAgentCollisionDetection:
         agents_dir.mkdir(parents=True)
         (agents_dir / "security.agent.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, agent_files={"security.agent.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, agent_files={"security.agent.md": "# pkg"})
         result = AgentIntegrator().integrate_package_agents(
             info, tmp_path, force=False, managed_files=set()
         )
@@ -341,9 +343,7 @@ class TestAgentCollisionDetection:
         agents_dir.mkdir(parents=True)
         (agents_dir / "security.agent.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, agent_files={"security.agent.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, agent_files={"security.agent.md": "# pkg"})
         result = AgentIntegrator().integrate_package_agents(
             info, tmp_path, force=True, managed_files=set()
         )
@@ -362,9 +362,7 @@ class TestClaudeAgentCollisionDetection:
         claude_dir.mkdir(parents=True)
         (claude_dir / "security.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, agent_files={"security.agent.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, agent_files={"security.agent.md": "# pkg"})
         result = AgentIntegrator().integrate_package_agents_claude(
             info, tmp_path, force=False, managed_files=None
         )
@@ -377,9 +375,7 @@ class TestClaudeAgentCollisionDetection:
         claude_dir.mkdir(parents=True)
         (claude_dir / "security.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, agent_files={"security.agent.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, agent_files={"security.agent.md": "# pkg"})
         result = AgentIntegrator().integrate_package_agents_claude(
             info, tmp_path, force=False, managed_files=set()
         )
@@ -393,9 +389,7 @@ class TestClaudeAgentCollisionDetection:
         claude_dir.mkdir(parents=True)
         (claude_dir / "security.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, agent_files={"security.agent.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, agent_files={"security.agent.md": "# pkg"})
         result = AgentIntegrator().integrate_package_agents_claude(
             info, tmp_path, force=True, managed_files=set()
         )
@@ -421,7 +415,9 @@ class TestAgentSync:
         (agents_dir / "b.agent.md").write_text("user")
 
         managed = {".github/agents/a.agent.md"}
-        stats = AgentIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        stats = AgentIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
 
         assert stats["files_removed"] == 1
         assert not (agents_dir / "a.agent.md").exists()
@@ -473,11 +469,13 @@ class TestAgentSync:
 
 
 # ---------------------------------------------------------------------------
-# 6. Command integrator — collision detection (.claude/commands/)
+# 6. Command integrator — collision detection (.opencode/commands/)
 # ---------------------------------------------------------------------------
 
 
-SAMPLE_PROMPT_MD = "---\nmode: agent\ndescription: test\n---\n# Test Prompt\nDo something.\n"
+SAMPLE_PROMPT_MD = (
+    "---\nmode: agent\ndescription: test\n---\n# Test Prompt\nDo something.\n"
+)
 
 
 class TestCommandCollisionDetection:
@@ -485,7 +483,7 @@ class TestCommandCollisionDetection:
 
     def test_managed_files_none_no_collision_check(self, tmp_path: Path):
         """Legacy mode: managed_files=None → always overwrite."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review.md").write_text("# user version")
 
@@ -501,7 +499,7 @@ class TestCommandCollisionDetection:
 
     def test_empty_managed_set_all_collisions(self, tmp_path: Path):
         """managed_files=set() → every pre-existing file is a collision."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review.md").write_text("# user version")
 
@@ -518,14 +516,14 @@ class TestCommandCollisionDetection:
 
     def test_managed_file_not_collision(self, tmp_path: Path):
         """File listed in managed_files is overwritten (not a collision)."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review.md").write_text("# old")
 
         info = _make_package_info(
             tmp_path, command_files={"review.prompt.md": SAMPLE_PROMPT_MD}
         )
-        managed = {".claude/commands/review.md"}
+        managed = {".opencode/commands/review.md"}
         result = CommandIntegrator().integrate_package_commands(
             info, tmp_path, force=False, managed_files=managed
         )
@@ -534,14 +532,14 @@ class TestCommandCollisionDetection:
 
     def test_unmanaged_file_is_collision(self, tmp_path: Path):
         """File NOT in managed_files is skipped as a collision."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review.md").write_text("# user")
 
         info = _make_package_info(
             tmp_path, command_files={"review.prompt.md": SAMPLE_PROMPT_MD}
         )
-        managed = {".claude/commands/OTHER.md"}
+        managed = {".opencode/commands/OTHER.md"}
         result = CommandIntegrator().integrate_package_commands(
             info, tmp_path, force=False, managed_files=managed
         )
@@ -551,7 +549,7 @@ class TestCommandCollisionDetection:
 
     def test_force_overrides_collision(self, tmp_path: Path):
         """force=True overwrites even unmanaged command files."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review.md").write_text("# user")
 
@@ -567,7 +565,7 @@ class TestCommandCollisionDetection:
 
     def test_skipped_files_excluded_from_target_paths(self, tmp_path: Path):
         """Skipped (collision) files are excluded from target_paths."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "a.md").write_text("# user a")
 
@@ -578,13 +576,13 @@ class TestCommandCollisionDetection:
                 "b.prompt.md": SAMPLE_PROMPT_MD,
             },
         )
-        managed = {".claude/commands/b.md"}  # only b is managed
+        managed = {".opencode/commands/b.md"}  # only b is managed
         result = CommandIntegrator().integrate_package_commands(
             info, tmp_path, force=False, managed_files=managed
         )
         rel_paths = [str(p.relative_to(tmp_path)) for p in result.target_paths]
-        assert ".claude/commands/b.md" in rel_paths
-        assert ".claude/commands/a.md" not in rel_paths
+        assert ".opencode/commands/b.md" in rel_paths
+        assert ".opencode/commands/a.md" not in rel_paths
 
 
 # ---------------------------------------------------------------------------
@@ -597,13 +595,15 @@ class TestCommandSync:
 
     def test_sync_removes_managed_files(self, tmp_path: Path):
         """Only files in managed_files are removed."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "a.md").write_text("managed")
         (cmds_dir / "b.md").write_text("user")
 
-        managed = {".claude/commands/a.md"}
-        stats = CommandIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        managed = {".opencode/commands/a.md"}
+        stats = CommandIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
 
         assert stats["files_removed"] == 1
         assert not (cmds_dir / "a.md").exists()
@@ -611,7 +611,7 @@ class TestCommandSync:
 
     def test_sync_legacy_fallback_glob(self, tmp_path: Path):
         """managed_files=None → legacy glob removes *-apm.md only."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review-apm.md").write_text("old style")
         (cmds_dir / "my-custom.md").write_text("user")
@@ -623,15 +623,17 @@ class TestCommandSync:
         assert (cmds_dir / "my-custom.md").exists()
 
     def test_sync_ignores_non_command_paths(self, tmp_path: Path):
-        """Managed paths outside .claude/commands/ are ignored by command sync."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        """Managed paths outside .opencode/commands/ are ignored by command sync."""
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         agents_dir = tmp_path / ".github" / "agents"
         agents_dir.mkdir(parents=True)
         (agents_dir / "sec.agent.md").write_text("agent")
 
         managed = {".github/agents/sec.agent.md"}
-        stats = CommandIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        stats = CommandIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
         assert stats["files_removed"] == 0
         assert (agents_dir / "sec.agent.md").exists()
 
@@ -641,14 +643,20 @@ class TestCommandSync:
 # ---------------------------------------------------------------------------
 
 
-SAMPLE_HOOK_JSON = json.dumps({
-    "hooks": {
-        "PostToolUse": [{
-            "matcher": "write_to_file",
-            "hooks": [{"type": "command", "command": "echo lint", "timeout": 5}]
-        }]
+SAMPLE_HOOK_JSON = json.dumps(
+    {
+        "hooks": {
+            "PostToolUse": [
+                {
+                    "matcher": "write_to_file",
+                    "hooks": [
+                        {"type": "command", "command": "echo lint", "timeout": 5}
+                    ],
+                }
+            ]
+        }
     }
-})
+)
 
 
 class TestHookCollisionDetection:
@@ -660,9 +668,7 @@ class TestHookCollisionDetection:
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "test-pkg-hooks.json").write_text('{"user": true}')
 
-        info = _make_package_info(
-            tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON}
-        )
+        info = _make_package_info(tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON})
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=None
         )
@@ -674,16 +680,16 @@ class TestHookCollisionDetection:
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "test-pkg-hooks.json").write_text('{"user": true}')
 
-        info = _make_package_info(
-            tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON}
-        )
+        info = _make_package_info(tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON})
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=set()
         )
         # Hook file collides → skipped, so no hooks actually integrated
         assert result.hooks_integrated == 0
         # Verify user content is preserved
-        assert json.loads((hooks_dir / "test-pkg-hooks.json").read_text()) == {"user": True}
+        assert json.loads((hooks_dir / "test-pkg-hooks.json").read_text()) == {
+            "user": True
+        }
 
     def test_managed_file_not_collision(self, tmp_path: Path):
         """Hook file in managed_files is overwritten (not a collision)."""
@@ -691,9 +697,7 @@ class TestHookCollisionDetection:
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "test-pkg-hooks.json").write_text('{"old": true}')
 
-        info = _make_package_info(
-            tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON}
-        )
+        info = _make_package_info(tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON})
         managed = {".github/hooks/test-pkg-hooks.json"}
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=managed
@@ -706,15 +710,15 @@ class TestHookCollisionDetection:
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "test-pkg-hooks.json").write_text('{"user": true}')
 
-        info = _make_package_info(
-            tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON}
-        )
+        info = _make_package_info(tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON})
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=True, managed_files=set()
         )
         assert result.hooks_integrated >= 1
         # Verify user content was overwritten
-        assert json.loads((hooks_dir / "test-pkg-hooks.json").read_text()) != {"user": True}
+        assert json.loads((hooks_dir / "test-pkg-hooks.json").read_text()) != {
+            "user": True
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -773,7 +777,9 @@ class TestSkillSync:
         (user_skill / "SKILL.md").write_text("user authored")
 
         managed = {".github/skills/code-review/"}
-        stats = SkillIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        stats = SkillIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
 
         assert stats["files_removed"] == 1
         assert not managed_skill.exists()
@@ -792,7 +798,9 @@ class TestSkillSync:
         (user_skill / "SKILL.md").write_text("user")
 
         managed = {".claude/skills/code-review/"}
-        stats = SkillIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        stats = SkillIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
 
         assert stats["files_removed"] == 1
         assert not managed_skill.exists()
@@ -807,7 +815,9 @@ class TestSkillSync:
         (prompts_dir / "a.prompt.md").write_text("prompt")
 
         managed = {".github/prompts/a.prompt.md"}
-        stats = SkillIntegrator().sync_integration(None, tmp_path, managed_files=managed)
+        stats = SkillIntegrator().sync_integration(
+            None, tmp_path, managed_files=managed
+        )
         assert stats["files_removed"] == 0
         assert (prompts_dir / "a.prompt.md").exists()
 
@@ -826,9 +836,7 @@ class TestCollisionWarningOutput:
         prompts_dir.mkdir(parents=True)
         (prompts_dir / "review.prompt.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, prompt_files={"review.prompt.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, prompt_files={"review.prompt.md": "# pkg"})
         PromptIntegrator().integrate_package_prompts(
             info, tmp_path, force=False, managed_files=set()
         )
@@ -842,9 +850,7 @@ class TestCollisionWarningOutput:
         agents_dir.mkdir(parents=True)
         (agents_dir / "security.agent.md").write_text("# user")
 
-        info = _make_package_info(
-            tmp_path, agent_files={"security.agent.md": "# pkg"}
-        )
+        info = _make_package_info(tmp_path, agent_files={"security.agent.md": "# pkg"})
         AgentIntegrator().integrate_package_agents(
             info, tmp_path, force=False, managed_files=set()
         )
@@ -854,7 +860,7 @@ class TestCollisionWarningOutput:
 
     def test_command_collision_warns_on_stderr(self, tmp_path: Path, capsys):
         """Command collision should print warning to stderr."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review.md").write_text("# user")
 
@@ -874,9 +880,7 @@ class TestCollisionWarningOutput:
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "test-pkg-hooks.json").write_text('{"user": true}')
 
-        info = _make_package_info(
-            tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON}
-        )
+        info = _make_package_info(tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON})
         HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=set()
         )
@@ -929,8 +933,8 @@ class TestSuccessfulDeployment:
         assert result.files_integrated >= 1
         assert (tmp_path / ".claude" / "agents" / "sec.md").exists()
 
-    def test_command_deployed_to_claude(self, tmp_path: Path):
-        """Command files are deployed to .claude/commands/."""
+    def test_command_deployed_to_opencode(self, tmp_path: Path):
+        """Command files are deployed to .opencode/commands/."""
         info = _make_package_info(
             tmp_path, command_files={"review.prompt.md": SAMPLE_PROMPT_MD}
         )
@@ -938,13 +942,11 @@ class TestSuccessfulDeployment:
             info, tmp_path, force=False, managed_files=set()
         )
         assert result.files_integrated == 1
-        assert (tmp_path / ".claude" / "commands" / "review.md").exists()
+        assert (tmp_path / ".opencode" / "commands" / "review.md").exists()
 
     def test_hook_deployed_to_github(self, tmp_path: Path):
         """Hook JSON files are deployed to .github/hooks/."""
-        info = _make_package_info(
-            tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON}
-        )
+        info = _make_package_info(tmp_path, hook_files={"hooks.json": SAMPLE_HOOK_JSON})
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=set()
         )
@@ -1006,13 +1008,13 @@ class TestSyncPreservesUserFiles:
         assert (claude_dir / "my-agent.md").read_text() == "user authored"
 
     def test_command_sync_preserves_user_files(self, tmp_path: Path):
-        """User-authored commands in .claude/commands/ survive sync."""
-        cmds_dir = tmp_path / ".claude" / "commands"
+        """User-authored commands in .opencode/commands/ survive sync."""
+        cmds_dir = tmp_path / ".opencode" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "managed.md").write_text("managed")
         (cmds_dir / "my-command.md").write_text("user command")
 
-        managed = {".claude/commands/managed.md"}
+        managed = {".opencode/commands/managed.md"}
         CommandIntegrator().sync_integration(None, tmp_path, managed_files=managed)
 
         assert not (cmds_dir / "managed.md").exists()

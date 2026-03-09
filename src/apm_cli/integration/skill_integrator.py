@@ -1,7 +1,7 @@
 """Skill integration functionality for APM packages (Claude Code support)."""
 
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, Iterable, List, Literal, TYPE_CHECKING
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
@@ -13,9 +13,16 @@ import frontmatter
 from apm_cli.integration.base_integrator import BaseIntegrator
 
 
+SkillDestination = Literal["github", "claude", "opencode"]
+
+if TYPE_CHECKING:
+    from apm_cli.models.apm_package import PackageContentType
+
+
 @dataclass
 class SkillIntegrationResult:
     """Result of skill integration operation."""
+
     skill_created: bool
     skill_updated: bool
     skill_skipped: bool
@@ -23,8 +30,10 @@ class SkillIntegrationResult:
     references_copied: int  # Now tracks total files copied to subdirectories
     links_resolved: int = 0  # Kept for backwards compatibility
     sub_skills_promoted: int = 0  # Number of sub-skills promoted to top-level
-    target_paths: List[Path] = None  # All deployed directories (for deployed_files manifest)
-    
+    target_paths: List[Path] = (
+        None  # All deployed directories (for deployed_files manifest)
+    )
+
     def __post_init__(self):
         if self.target_paths is None:
             self.target_paths = []
@@ -32,48 +41,48 @@ class SkillIntegrationResult:
 
 def to_hyphen_case(name: str) -> str:
     """Convert a package name to hyphen-case for Claude Skills spec.
-    
+
     Args:
         name: Package name (e.g., "owner/repo" or "MyPackage")
-        
+
     Returns:
         str: Hyphen-case name, max 64 chars (e.g., "owner-repo" or "my-package")
     """
     # Extract just the repo name if it's owner/repo format
     if "/" in name:
         name = name.split("/")[-1]
-    
+
     # Replace underscores and spaces with hyphens
     result = name.replace("_", "-").replace(" ", "-")
-    
+
     # Insert hyphens before uppercase letters (camelCase to hyphen-case)
     result = re.sub(r'([a-z])([A-Z])', r'\1-\2', result)
-    
+
     # Convert to lowercase and remove any invalid characters
     result = re.sub(r'[^a-z0-9-]', '', result.lower())
-    
+
     # Remove consecutive hyphens
     result = re.sub(r'-+', '-', result)
-    
+
     # Remove leading/trailing hyphens
     result = result.strip('-')
-    
+
     # Truncate to 64 chars (Claude Skills spec limit)
     return result[:64]
 
 
 def validate_skill_name(name: str) -> tuple[bool, str]:
     """Validate skill name per agentskills.io spec.
-    
+
     Skill names must:
     - Be 1-64 characters long
     - Contain only lowercase alphanumeric characters and hyphens (a-z, 0-9, -)
     - Not contain consecutive hyphens (--)
     - Not start or end with a hyphen
-    
+
     Args:
         name: Skill name to validate
-        
+
     Returns:
         tuple[bool, str]: (is_valid, error_message)
             - is_valid: True if name is valid, False otherwise
@@ -82,21 +91,21 @@ def validate_skill_name(name: str) -> tuple[bool, str]:
     # Check length
     if len(name) < 1:
         return (False, "Skill name cannot be empty")
-    
+
     if len(name) > 64:
         return (False, f"Skill name must be 1-64 characters (got {len(name)})")
-    
+
     # Check for consecutive hyphens
     if '--' in name:
         return (False, "Skill name cannot contain consecutive hyphens (--)")
-    
+
     # Check for leading/trailing hyphens
     if name.startswith('-'):
         return (False, "Skill name cannot start with a hyphen")
-    
+
     if name.endswith('-'):
         return (False, "Skill name cannot end with a hyphen")
-    
+
     # Check for valid characters (lowercase alphanumeric + hyphens only)
     # Pattern: must start and end with alphanumeric, with alphanumeric or hyphens in between
     pattern = r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
@@ -104,26 +113,32 @@ def validate_skill_name(name: str) -> tuple[bool, str]:
         # Determine specific error
         if any(c.isupper() for c in name):
             return (False, "Skill name must be lowercase (no uppercase letters)")
-        
+
         if '_' in name:
-            return (False, "Skill name cannot contain underscores (use hyphens instead)")
-        
-        if ' ' in name:
+            return (
+                False,
+                "Skill name cannot contain underscores (use hyphens instead)",
+            )
+
+        if " " in name:
             return (False, "Skill name cannot contain spaces (use hyphens instead)")
-        
+
         # Check for other invalid characters
         invalid_chars = set(re.findall(r'[^a-z0-9-]', name))
         if invalid_chars:
-            return (False, f"Skill name contains invalid characters: {', '.join(sorted(invalid_chars))}")
-        
+            return (
+                False,
+                f"Skill name contains invalid characters: {', '.join(sorted(invalid_chars))}",
+            )
+
         return (False, "Skill name must be lowercase alphanumeric with hyphens only")
-    
+
     return (True, "")
 
 
 def normalize_skill_name(name: str) -> str:
     """Convert any package name to a valid skill name per agentskills.io spec.
-    
+
     Normalization steps:
     1. Extract repo name if owner/repo format
     2. Convert to lowercase
@@ -133,10 +148,10 @@ def normalize_skill_name(name: str) -> str:
     6. Remove consecutive hyphens
     7. Strip leading/trailing hyphens
     8. Truncate to 64 characters
-    
+
     Args:
         name: Package name to normalize (e.g., "owner/MyRepo_Name")
-        
+
     Returns:
         str: Valid skill name (e.g., "my-repo-name")
     """
@@ -156,57 +171,58 @@ def normalize_skill_name(name: str) -> str:
 # - Packages with SKILL.md OR explicit type: skill/hybrid → become skills
 # - Packages with only instructions → compile to AGENTS.md, NOT skills
 
-def get_effective_type(package_info) -> "PackageContentType":
+
+def get_effective_type(package_info):
     """Get effective package content type based on package structure.
-    
+
     Determines type by:
     1. Package has SKILL.md (PackageType.CLAUDE_SKILL or HYBRID) → SKILL
     2. Otherwise → INSTRUCTIONS (compile to AGENTS.md only)
-    
+
     Args:
         package_info: PackageInfo object containing package metadata
-        
+
     Returns:
         PackageContentType: The effective type
     """
     from apm_cli.models.apm_package import PackageContentType, PackageType
-    
+
     # Check if package has SKILL.md (via package_type field)
     # PackageType.CLAUDE_SKILL = has SKILL.md only
     # PackageType.HYBRID = has both apm.yml AND SKILL.md
     if package_info.package_type in (PackageType.CLAUDE_SKILL, PackageType.HYBRID):
         return PackageContentType.SKILL
-    
+
     # Default to INSTRUCTIONS for packages without SKILL.md
     return PackageContentType.INSTRUCTIONS
 
 
 def should_install_skill(package_info) -> bool:
     """Determine if package should be installed as a native skill.
-    
+
     This controls whether a package gets installed to .github/skills/ (or .claude/skills/).
-    
+
     Per skill-strategy.md Decision 2 - "Skills are explicit, not implicit":
-    
+
     Returns True for:
         - SKILL: Package has SKILL.md or declares type: skill
         - HYBRID: Package declares type: hybrid in apm.yml
-        
+
     Returns False for:
         - INSTRUCTIONS: Compile to AGENTS.md only, no skill created
         - PROMPTS: Commands/prompts only, no skill created
         - Packages without SKILL.md and no explicit type field
-    
+
     Args:
         package_info: PackageInfo object containing package metadata
-        
+
     Returns:
         bool: True if package should be installed as a native skill
     """
     from apm_cli.models.apm_package import PackageContentType
-    
+
     effective_type = get_effective_type(package_info)
-    
+
     # SKILL and HYBRID should install as skills
     # INSTRUCTIONS and PROMPTS should NOT install as skills
     return effective_type in (PackageContentType.SKILL, PackageContentType.HYBRID)
@@ -214,62 +230,66 @@ def should_install_skill(package_info) -> bool:
 
 def should_compile_instructions(package_info) -> bool:
     """Determine if package should compile to AGENTS.md/CLAUDE.md.
-    
+
     This controls whether a package's instructions are included in compiled output.
-    
+
     Per skill-strategy.md Decision 2:
-    
+
     Returns True for:
         - INSTRUCTIONS: Compile to AGENTS.md only (default for packages without SKILL.md)
         - HYBRID: Package declares type: hybrid in apm.yml
-        
+
     Returns False for:
         - SKILL: Install as native skill only, no AGENTS.md compilation
         - PROMPTS: Commands/prompts only, no instructions compiled
-    
+
     Args:
         package_info: PackageInfo object containing package metadata
-        
+
     Returns:
         bool: True if package's instructions should be compiled to AGENTS.md/CLAUDE.md
     """
     from apm_cli.models.apm_package import PackageContentType
-    
+
     effective_type = get_effective_type(package_info)
-    
+
     # INSTRUCTIONS and HYBRID should compile to AGENTS.md
     # SKILL and PROMPTS should NOT compile to AGENTS.md
-    return effective_type in (PackageContentType.INSTRUCTIONS, PackageContentType.HYBRID)
+    return effective_type in (
+        PackageContentType.INSTRUCTIONS,
+        PackageContentType.HYBRID,
+    )
 
 
 def copy_skill_to_target(
     package_info,
     source_path: Path,
     target_base: Path,
+    destinations: Iterable[SkillDestination] | None = None,
 ) -> tuple[Path | None, Path | None]:
     """Copy skill directory to .github/skills/ and optionally .claude/skills/.
-    
+
     This is a standalone function for direct skill copy operations.
     It handles:
     - Package type routing via should_install_skill()
     - Skill name validation/normalization
     - Directory structure preservation
     - Compatibility copy to .claude/skills/ when .claude/ exists (T7)
-    
+
     Source SKILL.md is copied verbatim — no metadata injection.
-    
+
     Copies:
     - SKILL.md (required)
     - scripts/ (optional)
     - references/ (optional)
     - assets/ (optional)
     - Any other subdirectories the package contains
-    
+
     Args:
         package_info: PackageInfo object with package metadata
         source_path: Path to skill in apm_modules/
         target_base: Usually project root
-        
+
     Returns:
         Tuple of (github_path, claude_path):
         - github_path: Path to .github/skills/{name}/ or None if skipped
@@ -278,165 +298,181 @@ def copy_skill_to_target(
     # Check if package type allows skill installation (T4 routing)
     if not should_install_skill(package_info):
         return (None, None)
-    
+
     # Check for SKILL.md existence
     source_skill_md = source_path / "SKILL.md"
     if not source_skill_md.exists():
         # No SKILL.md means this package is handled by compilation, not skill copy
         return (None, None)
-    
+
     # Get and validate skill name from folder
     raw_skill_name = source_path.name
-    
+
     is_valid, error_msg = validate_skill_name(raw_skill_name)
     if is_valid:
         skill_name = raw_skill_name
     else:
         skill_name = normalize_skill_name(raw_skill_name)
-    
-    # === Primary target: .github/skills/ ===
-    github_skill_dir = target_base / ".github" / "skills" / skill_name
-    
-    # Create .github/skills/ if it doesn't exist
-    github_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-    
-    # If skill already exists, remove it for update
-    if github_skill_dir.exists():
-        shutil.rmtree(github_skill_dir)
-    
-    # Copy the entire skill folder preserving structure
-    # This copies SKILL.md, scripts/, references/, assets/, etc.
-    shutil.copytree(source_path, github_skill_dir)
-    
-    # === Secondary target: .claude/skills/ (T7 - compatibility copy) ===
-    claude_skill_dir: Path | None = None
-    claude_dir = target_base / ".claude"
-    
-    # Only copy to .claude/skills/ if .claude/ directory already exists
-    # Do NOT create .claude/ folder if it doesn't exist
-    if claude_dir.exists() and claude_dir.is_dir():
-        claude_skill_dir = claude_dir / "skills" / skill_name
-        
-        # Create .claude/skills/ if needed (but .claude/ must already exist)
-        claude_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-        
-        # If skill already exists, remove it for update
-        if claude_skill_dir.exists():
-            shutil.rmtree(claude_skill_dir)
-        
-        # Copy the entire skill folder (identical to github copy)
-        shutil.copytree(source_path, claude_skill_dir)
-    
-    return (github_skill_dir, claude_skill_dir)
+
+    destination_paths = SkillIntegrator._resolve_target_skill_roots(
+        target_base, destinations
+    )
+
+    github_skill_dir = destination_paths.get("github")
+    claude_skill_dir = destination_paths.get("claude")
+
+    for skill_root in destination_paths.values():
+        skill_dir = skill_root / skill_name
+        skill_dir.parent.mkdir(parents=True, exist_ok=True)
+        if skill_dir.exists():
+            shutil.rmtree(skill_dir)
+        shutil.copytree(source_path, skill_dir)
+
+    return (
+        github_skill_dir / skill_name if github_skill_dir else None,
+        claude_skill_dir / skill_name if claude_skill_dir else None,
+    )
 
 
 class SkillIntegrator(BaseIntegrator):
     """Handles integration of native SKILL.md files for Claude Code and VS Code.
-    
+
     Claude Skills Spec:
     - SKILL.md files provide structured context for Claude Code
     - YAML frontmatter with name, description, and metadata
     - Markdown body with instructions and agent definitions
     - references/ subdirectory for prompt files
     """
-    
+
+    @staticmethod
+    def _resolve_target_skill_roots(
+        project_root: Path,
+        destinations: Iterable[SkillDestination] | None = None,
+    ) -> Dict[SkillDestination, Path]:
+        """Resolve active target skill roots based on requested destinations."""
+        roots: Dict[SkillDestination, Path] = {}
+        if destinations is None:
+            roots["github"] = project_root / ".github" / "skills"
+            claude_dir = project_root / ".claude"
+            if claude_dir.exists() and claude_dir.is_dir():
+                roots["claude"] = claude_dir / "skills"
+            opencode_dir = project_root / ".opencode"
+            if opencode_dir.exists() and opencode_dir.is_dir():
+                roots["opencode"] = opencode_dir / "skills"
+            return roots
+
+        requested = set(destinations)
+        if "github" in requested:
+            roots["github"] = project_root / ".github" / "skills"
+        if "claude" in requested:
+            roots["claude"] = project_root / ".claude" / "skills"
+        if "opencode" in requested:
+            roots["opencode"] = project_root / ".opencode" / "skills"
+        return roots
+
     def find_instruction_files(self, package_path: Path) -> List[Path]:
         """Find all instruction files in a package.
-        
+
         Searches in:
         - .apm/instructions/ subdirectory
-        
+
         Args:
             package_path: Path to the package directory
-            
+
         Returns:
             List[Path]: List of absolute paths to instruction files
         """
         instruction_files = []
-        
+
         # Search in .apm/instructions/
         apm_instructions = package_path / ".apm" / "instructions"
         if apm_instructions.exists():
             instruction_files.extend(apm_instructions.glob("*.instructions.md"))
-        
+
         return instruction_files
-    
+
     def find_agent_files(self, package_path: Path) -> List[Path]:
         """Find all agent files in a package.
-        
+
         Searches in:
         - .apm/agents/ subdirectory
-        
+
         Args:
             package_path: Path to the package directory
-            
+
         Returns:
             List[Path]: List of absolute paths to agent files
         """
         agent_files = []
-        
+
         # Search in .apm/agents/
         apm_agents = package_path / ".apm" / "agents"
         if apm_agents.exists():
             agent_files.extend(apm_agents.glob("*.agent.md"))
-        
+
         return agent_files
-    
+
     def find_prompt_files(self, package_path: Path) -> List[Path]:
         """Find all prompt files in a package.
-        
+
         Searches in:
         - Package root directory
         - .apm/prompts/ subdirectory
-        
+
         Args:
             package_path: Path to the package directory
-            
+
         Returns:
             List[Path]: List of absolute paths to prompt files
         """
         prompt_files = []
-        
+
         # Search in package root
         if package_path.exists():
             prompt_files.extend(package_path.glob("*.prompt.md"))
-        
+
         # Search in .apm/prompts/
         apm_prompts = package_path / ".apm" / "prompts"
         if apm_prompts.exists():
             prompt_files.extend(apm_prompts.glob("*.prompt.md"))
-        
+
         return prompt_files
-    
+
     def find_context_files(self, package_path: Path) -> List[Path]:
         """Find all context/memory files in a package.
-        
+
         Searches in:
         - .apm/context/ subdirectory
         - .apm/memory/ subdirectory
-        
+
         Args:
             package_path: Path to the package directory
-            
+
         Returns:
             List[Path]: List of absolute paths to context files
         """
         context_files = []
-        
+
         # Search in .apm/context/
         apm_context = package_path / ".apm" / "context"
         if apm_context.exists():
             context_files.extend(apm_context.glob("*.context.md"))
-        
+
         # Search in .apm/memory/
         apm_memory = package_path / ".apm" / "memory"
         if apm_memory.exists():
             context_files.extend(apm_memory.glob("*.memory.md"))
-        
+
         return context_files
-    
+
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True) -> tuple[int, list[Path]]:
+    def _promote_sub_skills(
+        sub_skills_dir: Path,
+        target_skills_root: Path,
+        parent_name: str,
+        *,
+        warn: bool = True,
+    ) -> tuple[int, list[Path]]:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -465,6 +501,7 @@ class SkillIntegrator(BaseIntegrator):
                 if warn:
                     try:
                         from apm_cli.cli import _rich_warning
+
                         _rich_warning(
                             f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill at {target_skills_root.name}/{sub_name}/"
                         )
@@ -478,7 +515,10 @@ class SkillIntegrator(BaseIntegrator):
         return promoted, deployed
 
     def _promote_sub_skills_standalone(
-        self, package_info, project_root: Path
+        self,
+        package_info,
+        project_root: Path,
+        destinations: Iterable[SkillDestination] | None = None,
     ) -> tuple[int, list[Path]]:
         """Promote sub-skills from a package that is NOT itself a skill.
 
@@ -500,64 +540,67 @@ class SkillIntegrator(BaseIntegrator):
             return 0, []
 
         parent_name = package_path.name
-        github_skills_root = project_root / ".github" / "skills"
-        github_skills_root.mkdir(parents=True, exist_ok=True)
-        count, deployed = self._promote_sub_skills(
-            sub_skills_dir, github_skills_root, parent_name, warn=True
-        )
-        all_deployed = list(deployed)
-
-        # Also promote into .claude/skills/ when .claude/ exists
-        claude_dir = project_root / ".claude"
-        if claude_dir.exists() and claude_dir.is_dir():
-            claude_skills_root = claude_dir / "skills"
-            _, claude_deployed = self._promote_sub_skills(
-                sub_skills_dir, claude_skills_root, parent_name, warn=False
+        target_roots = self._resolve_target_skill_roots(project_root, destinations)
+        count = 0
+        all_deployed: list[Path] = []
+        for destination, skills_root in target_roots.items():
+            skills_root.mkdir(parents=True, exist_ok=True)
+            promoted, deployed = self._promote_sub_skills(
+                sub_skills_dir,
+                skills_root,
+                parent_name,
+                warn=destination == "github",
             )
-            all_deployed.extend(claude_deployed)
+            if destination == "github":
+                count = promoted
+            all_deployed.extend(deployed)
 
         return count, all_deployed
 
     def _integrate_native_skill(
-        self, package_info, project_root: Path, source_skill_md: Path
+        self,
+        package_info,
+        project_root: Path,
+        source_skill_md: Path,
+        destinations: Iterable[SkillDestination] | None = None,
     ) -> SkillIntegrationResult:
         """Copy a native Skill (with existing SKILL.md) to .github/skills/ and optionally .claude/skills/.
-        
+
         For packages that already have a SKILL.md at their root (like those from
-        awesome-claude-skills), we copy the entire skill folder rather than 
+        awesome-claude-skills), we copy the entire skill folder rather than
         regenerating from .apm/ primitives.
-        
+
         The skill folder name is the source folder name (e.g., `mcp-builder`),
         validated and normalized per the agentskills.io spec.
-        
+
         Source SKILL.md is copied verbatim — no metadata injection. Orphan
         detection uses apm.lock via directory name matching instead.
-        
+
         T7 Enhancement: Also copies to .claude/skills/ when .claude/ folder exists.
         This ensures Claude Code users get skills while not polluting projects
         that don't use Claude.
-        
+
         Copies:
         - SKILL.md (required)
         - scripts/ (optional)
         - references/ (optional)
         - assets/ (optional)
         - Any other subdirectories the package contains
-        
+
         Args:
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
             source_skill_md: Path to the source SKILL.md file
-            
+
         Returns:
             SkillIntegrationResult: Results of the integration operation
         """
         package_path = package_info.install_path
-        
+
         # Use the source folder name as the skill name
         # e.g., apm_modules/ComposioHQ/awesome-claude-skills/mcp-builder → mcp-builder
         raw_skill_name = package_path.name
-        
+
         # Validate skill name per agentskills.io spec
         is_valid, error_msg = validate_skill_name(raw_skill_name)
         if is_valid:
@@ -568,87 +611,100 @@ class SkillIntegrator(BaseIntegrator):
             # Log warning about name normalization (import here to avoid circular import)
             try:
                 from apm_cli.cli import _rich_warning
+
                 _rich_warning(
                     f"Skill name '{raw_skill_name}' normalized to '{skill_name}' ({error_msg})"
                 )
             except ImportError:
                 pass  # CLI not available in tests
-        
-        # Primary target: .github/skills/
-        github_skill_dir = project_root / ".github" / "skills" / skill_name
-        github_skill_md = github_skill_dir / "SKILL.md"
-        
+
+        target_roots = self._resolve_target_skill_roots(project_root, destinations)
+        if not target_roots:
+            return SkillIntegrationResult(
+                skill_created=False,
+                skill_updated=False,
+                skill_skipped=True,
+                skill_path=None,
+                references_copied=0,
+                links_resolved=0,
+                sub_skills_promoted=0,
+                target_paths=[],
+            )
+
+        if "github" in target_roots:
+            primary_skill_dir = target_roots["github"] / skill_name
+        else:
+            primary_skill_dir = next(iter(target_roots.values())) / skill_name
+        primary_skill_md = primary_skill_dir / "SKILL.md"
+
         # Always copy — source integrity is preserved, orphan detection uses apm.lock
-        skill_created = not github_skill_dir.exists()
+        skill_created = not primary_skill_dir.exists()
         skill_updated = not skill_created
-        
+
         files_copied = 0
-        claude_skill_dir: Path | None = None
-        
-        # === Copy to .github/skills/ (primary) ===
-        if github_skill_dir.exists():
-            shutil.rmtree(github_skill_dir)
-        
-        github_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(package_path, github_skill_dir,
-                        ignore=shutil.ignore_patterns('.apm'))
-        
-        files_copied = sum(1 for _ in github_skill_dir.rglob('*') if _.is_file())
-        
-        # Track deployed paths
-        all_target_paths = [github_skill_dir]
-        
-        # === Promote sub-skills to top-level entries ===
-        # Packages may contain sub-skills in .apm/skills/*/ subdirectories.
-        # Copilot only discovers .github/skills/<name>/SKILL.md (direct children),
-        # so we promote each sub-skill to an independent top-level entry.
+
+        all_target_paths: list[Path] = []
+        for destination, skills_root in target_roots.items():
+            skill_dir = skills_root / skill_name
+            if skill_dir.exists():
+                shutil.rmtree(skill_dir)
+
+            skill_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(
+                package_path,
+                skill_dir,
+                ignore=shutil.ignore_patterns(".apm"),
+            )
+            all_target_paths.append(skill_dir)
+
+            if destination == "github":
+                files_copied = sum(1 for _ in skill_dir.rglob("*") if _.is_file())
+
+        if files_copied == 0:
+            files_copied = sum(1 for _ in primary_skill_dir.rglob("*") if _.is_file())
+
         sub_skills_dir = package_path / ".apm" / "skills"
-        github_skills_root = project_root / ".github" / "skills"
-        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True)
-        all_target_paths.extend(sub_deployed)
-        
-        # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
-        claude_dir = project_root / ".claude"
-        if claude_dir.exists() and claude_dir.is_dir():
-            claude_skill_dir = claude_dir / "skills" / skill_name
-            
-            if claude_skill_dir.exists():
-                shutil.rmtree(claude_skill_dir)
-            
-            claude_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(package_path, claude_skill_dir,
-                            ignore=shutil.ignore_patterns('.apm'))
-            all_target_paths.append(claude_skill_dir)
-            
-            # Promote sub-skills for Claude too
-            claude_skills_root = claude_dir / "skills"
-            _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False)
-            all_target_paths.extend(claude_sub_deployed)
-        
+        sub_skills_count = 0
+        for destination, skills_root in target_roots.items():
+            promoted, deployed = self._promote_sub_skills(
+                sub_skills_dir,
+                skills_root,
+                skill_name,
+                warn=destination == "github",
+            )
+            if destination == "github":
+                sub_skills_count = promoted
+            all_target_paths.extend(deployed)
+
         return SkillIntegrationResult(
             skill_created=skill_created,
             skill_updated=skill_updated,
             skill_skipped=False,
-            skill_path=github_skill_md,
+            skill_path=primary_skill_md,
             references_copied=files_copied,
             links_resolved=0,
             sub_skills_promoted=sub_skills_count,
-            target_paths=all_target_paths
+            target_paths=all_target_paths,
         )
 
-    def integrate_package_skill(self, package_info, project_root: Path) -> SkillIntegrationResult:
+    def integrate_package_skill(
+        self,
+        package_info,
+        project_root: Path,
+        destinations: Iterable[SkillDestination] | None = None,
+    ) -> SkillIntegrationResult:
         """Integrate a package's skill into .github/skills/ directory.
-        
+
         Copies native skills (packages with SKILL.md at root) to .github/skills/
         and optionally .claude/skills/. Also promotes any sub-skills from .apm/skills/.
-        
+
         Packages without SKILL.md at root are not installed as skills — only their
         sub-skills (if any) are promoted.
-        
+
         Args:
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
-            
+
         Returns:
             SkillIntegrationResult: Results of the integration operation
         """
@@ -659,7 +715,9 @@ class SkillIntegrator(BaseIntegrator):
             # Even non-skill packages may ship sub-skills under .apm/skills/.
             # Promote them so Copilot can discover them independently.
             sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-                package_info, project_root
+                package_info,
+                project_root,
+                destinations,
             )
             return SkillIntegrationResult(
                 skill_created=False,
@@ -669,9 +727,9 @@ class SkillIntegrator(BaseIntegrator):
                 references_copied=0,
                 links_resolved=0,
                 sub_skills_promoted=sub_skills_count,
-                target_paths=sub_deployed
+                target_paths=sub_deployed,
             )
-        
+
         # Skip virtual FILE and COLLECTION packages - they're individual files, not full packages
         # Multiple virtual files from the same repo would collide on skill name
         # BUT: subdirectory packages (like Claude Skills) SHOULD generate skills
@@ -684,20 +742,27 @@ class SkillIntegrator(BaseIntegrator):
                     skill_skipped=True,
                     skill_path=None,
                     references_copied=0,
-                    links_resolved=0
+                    links_resolved=0,
                 )
-        
+
         package_path = package_info.install_path
-        
+
         # Check if this is a native Skill (already has SKILL.md at root)
         source_skill_md = package_path / "SKILL.md"
         if source_skill_md.exists():
-            return self._integrate_native_skill(package_info, project_root, source_skill_md)
-        
+            return self._integrate_native_skill(
+                package_info,
+                project_root,
+                source_skill_md,
+                destinations,
+            )
+
         # No SKILL.md at root — not a skill package.
         # Still promote any sub-skills shipped under .apm/skills/.
         sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-            package_info, project_root
+            package_info,
+            project_root,
+            destinations,
         )
         return SkillIntegrationResult(
             skill_created=False,
@@ -707,22 +772,27 @@ class SkillIntegrator(BaseIntegrator):
             references_copied=0,
             links_resolved=0,
             sub_skills_promoted=sub_skills_count,
-            target_paths=sub_deployed
+            target_paths=sub_deployed,
         )
-    
-    def sync_integration(self, apm_package, project_root: Path,
-                          managed_files: set = None) -> Dict[str, int]:
+
+    def sync_integration(
+        self,
+        apm_package,
+        project_root: Path,
+        managed_files: set | None = None,
+        destinations: Iterable[SkillDestination] | None = None,
+    ) -> Dict[str, int]:
         """Sync .github/skills/ and .claude/skills/ with currently installed packages.
-        
+
         When *managed_files* is provided, only removes skill directories whose
         paths appear in the set.  Otherwise falls back to npm-style orphan
         detection (derives expected names from installed dependencies).
-        
+
         Args:
             apm_package: APMPackage with current dependencies
             project_root: Root directory of the project
             managed_files: Set of relative paths known to be APM-managed
-            
+
         Returns:
             Dict with cleanup statistics
         """
@@ -735,6 +805,7 @@ class SkillIntegrator(BaseIntegrator):
                 is_skill = (
                     rel_path.startswith(".github/skills/")
                     or rel_path.startswith(".claude/skills/")
+                    or rel_path.startswith(".opencode/skills/")
                 )
                 if not is_skill or ".." in rel_path:
                     continue
@@ -748,7 +819,7 @@ class SkillIntegrator(BaseIntegrator):
                     except Exception:
                         stats['errors'] += 1
             return stats
-        
+
         # Legacy fallback: npm-style orphan detection
         # Build set of expected skill directory names from installed packages
         installed_skill_names = set()
@@ -759,49 +830,53 @@ class SkillIntegrator(BaseIntegrator):
             is_valid, _ = validate_skill_name(raw_name)
             skill_name = raw_name if is_valid else normalize_skill_name(raw_name)
             installed_skill_names.add(skill_name)
-            
+
             # Also include promoted sub-skills from installed packages
             install_path = dep.get_install_path(project_root / "apm_modules")
             sub_skills_dir = install_path / ".apm" / "skills"
             if sub_skills_dir.is_dir():
                 for sub_skill_path in sub_skills_dir.iterdir():
-                    if sub_skill_path.is_dir() and (sub_skill_path / "SKILL.md").exists():
+                    if (
+                        sub_skill_path.is_dir()
+                        and (sub_skill_path / "SKILL.md").exists()
+                    ):
                         raw_sub = sub_skill_path.name
                         is_valid, _ = validate_skill_name(raw_sub)
-                        installed_skill_names.add(raw_sub if is_valid else normalize_skill_name(raw_sub))
-        
-        # Clean .github/skills/ (primary)
-        github_skills_dir = project_root / ".github" / "skills"
-        if github_skills_dir.exists():
-            result = self._clean_orphaned_skills(github_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .claude/skills/ (secondary - T7 compatibility)
-        claude_skills_dir = project_root / ".claude" / "skills"
-        if claude_skills_dir.exists():
-            result = self._clean_orphaned_skills(claude_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
+                        installed_skill_names.add(
+                            raw_sub if is_valid else normalize_skill_name(raw_sub)
+                        )
+
+        target_roots = self._resolve_target_skill_roots(project_root, destinations)
+        for skills_dir in target_roots.values():
+            if not skills_dir.exists():
+                continue
+            result = self._clean_orphaned_skills(
+                skills_dir,
+                installed_skill_names,
+            )
+            stats["files_removed"] += result["files_removed"]
+            stats["errors"] += result["errors"]
+
         return stats
-    
-    def _clean_orphaned_skills(self, skills_dir: Path, installed_skill_names: set) -> Dict[str, int]:
+
+    def _clean_orphaned_skills(
+        self, skills_dir: Path, installed_skill_names: set
+    ) -> Dict[str, int]:
         """Clean orphaned skills from a skills directory.
-        
+
         Uses npm-style approach: any skill directory not matching an installed
         package name is considered orphaned and removed.
-        
+
         Args:
             skills_dir: Path to skills directory (.github/skills/ or .claude/skills/)
             installed_skill_names: Set of expected skill directory names
-            
+
         Returns:
             Dict with cleanup statistics
         """
         files_removed = 0
         errors = 0
-        
+
         for skill_subdir in skills_dir.iterdir():
             if skill_subdir.is_dir():
                 if skill_subdir.name not in installed_skill_names:
@@ -810,7 +885,5 @@ class SkillIntegrator(BaseIntegrator):
                         files_removed += 1
                     except Exception:
                         errors += 1
-        
-        return {'files_removed': files_removed, 'errors': errors}
-    
 
+        return {"files_removed": files_removed, "errors": errors}
