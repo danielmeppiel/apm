@@ -505,8 +505,9 @@ This is a skill, not an agent.""")
         assert "SKILL.md" not in found_names
         assert "skill.md" not in found_names
 
-    def test_find_agent_files_excludes_non_agent_md(self):
-        """Plain .md scan in .apm/agents/ excludes README, CHANGELOG, etc."""
+    def test_find_agent_files_includes_all_md(self):
+        """All .md files in .apm/agents/ are discovered — the directory
+        already implies type, so no name-based filtering."""
         package_dir = self.project_root / "package"
         apm_agents = package_dir / ".apm" / "agents"
         apm_agents.mkdir(parents=True)
@@ -521,12 +522,10 @@ This is a skill, not an agent.""")
         agents = self.integrator.find_agent_files(package_dir)
         names = {a.name for a in agents}
 
-        assert "planner.md" in names
-        assert "coder.md" in names
-        assert "README.md" not in names
-        assert "CHANGELOG.md" not in names
-        assert "LICENSE.md" not in names
-        assert "CONTRIBUTING.md" not in names
+        assert names == {
+            "planner.md", "coder.md", "README.md",
+            "CHANGELOG.md", "LICENSE.md", "CONTRIBUTING.md",
+        }
 
     def test_find_agent_files_discovers_nested_subdirectories(self):
         """find_agent_files uses rglob so agents in subdirs are found."""
