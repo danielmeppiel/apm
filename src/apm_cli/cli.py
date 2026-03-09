@@ -1612,7 +1612,7 @@ def uninstall(ctx, packages, dry_run):
                     MCPIntegrator.remove_stale(stale_servers)
                 MCPIntegrator.update_lockfile(new_mcp_servers, lockfile_path)
         except Exception:
-            pass  # best-effort MCP cleanup
+            logger.debug("MCP cleanup during uninstall failed", exc_info=True)
 
         # Final summary
         summary_lines = []

@@ -503,8 +503,11 @@ class MCPIntegrator:
         shared_env_vars: dict = None,
         server_info_cache: dict = None,
         shared_runtime_vars: dict = None,
-    ):
-        """Install MCP dependencies for a specific runtime."""
+    ) -> bool:
+        """Install MCP dependencies for a specific runtime.
+
+        Returns True if all deps were configured successfully, False otherwise.
+        """
         try:
             from apm_cli.core.operations import install_package
             from apm_cli.factory import ClientFactory
@@ -512,6 +515,7 @@ class MCPIntegrator:
             # Get the appropriate client for the runtime
             client = ClientFactory.create_client(runtime)
 
+            all_ok = True
             for dep in mcp_deps:
                 click.echo(f"  Installing {dep}...")
                 try:
@@ -524,6 +528,7 @@ class MCPIntegrator:
                     )
                     if result["failed"]:
                         click.echo(f"  ✗ Failed to install {dep}")
+                        all_ok = False
                 except Exception as install_error:
                     logger.debug(
                         "Failed to install MCP dep %s for runtime %s",
@@ -532,18 +537,23 @@ class MCPIntegrator:
                         exc_info=True,
                     )
                     click.echo(f"  ✗ Failed to install {dep}: {install_error}")
+                    all_ok = False
+            return all_ok
 
         except ImportError as e:
             _rich_warning(f"Core operations not available for runtime {runtime}: {e}")
             _rich_info(f"Dependencies for {runtime}: {', '.join(mcp_deps)}")
+            return False
         except ValueError as e:
             _rich_warning(f"Runtime {runtime} not supported: {e}")
             _rich_info("Supported runtimes: vscode, copilot, codex, llm")
+            return False
         except Exception as e:
             logger.debug(
                 "Unexpected error installing for runtime %s", runtime, exc_info=True
             )
             _rich_error(f"Error installing for runtime {runtime}: {e}")
+            return False
 
     # ------------------------------------------------------------------
     # Main orchestrator
@@ -625,7 +635,7 @@ class MCPIntegrator:
 
                     apm_yml = Path("apm.yml")
                     if apm_yml.exists():
-                        with open(apm_yml, "r") as f:
+                        with open(apm_yml, "r", encoding="utf-8") as f:
                             apm_config = yaml.safe_load(f)
                 except Exception:
                     apm_config = None
@@ -717,6 +727,14 @@ class MCPIntegrator:
             # Apply exclusions
             if exclude:
                 target_runtimes = [r for r in target_runtimes if r != exclude]
+
+            # All runtimes excluded — nothing to configure
+            if not target_runtimes and installed_runtimes:
+                _rich_warning(
+                    f"All installed runtimes excluded (--exclude {exclude}), "
+                    "skipping MCP configuration"
+                )
+                return 0
 
             # Fall back to VS Code only if no runtimes are installed at all
             if not target_runtimes and not installed_runtimes:
@@ -832,23 +850,31 @@ class MCPIntegrator:
                                     f"{', '.join([rt.title() for rt in target_runtimes])}..."
                                 )
 
+                            any_ok = False
                             for rt in target_runtimes:
                                 if verbose:
                                     _rich_info(f"Configuring {rt}...")
-                                MCPIntegrator._install_for_runtime(
+                                if MCPIntegrator._install_for_runtime(
                                     rt,
                                     [dep],
                                     shared_env_vars,
                                     server_info_cache,
                                     shared_runtime_vars,
-                                )
+                                ):
+                                    any_ok = True
 
-                            if console:
+                            if any_ok:
+                                if console:
+                                    console.print(
+                                        f"│  [green]✓[/green]  {dep} → "
+                                        f"{', '.join([rt.title() for rt in target_runtimes])}"
+                                    )
+                                configured_count += 1
+                            elif console:
                                 console.print(
-                                    f"│  [green]✓[/green]  {dep} → "
-                                    f"{', '.join([rt.title() for rt in target_runtimes])}"
+                                    f"│  [red]✗[/red]  {dep} — "
+                                    f"failed for all runtimes"
                                 )
-                            configured_count += 1
 
             except ImportError:
                 _rich_warning("Registry operations not available")
@@ -877,22 +903,30 @@ class MCPIntegrator:
                         f"{', '.join([rt.title() for rt in target_runtimes])}..."
                     )
 
+                any_ok = False
                 for rt in target_runtimes:
                     if verbose:
                         _rich_info(f"Configuring {dep.name} for {rt}...")
-                    MCPIntegrator._install_for_runtime(
+                    if MCPIntegrator._install_for_runtime(
                         rt,
                         [dep.name],
                         self_defined_env,
                         self_defined_cache,
-                    )
+                    ):
+                        any_ok = True
 
-                if console:
+                if any_ok:
+                    if console:
+                        console.print(
+                            f"│  [green]✓[/green]  {dep.name} → "
+                            f"{', '.join([rt.title() for rt in target_runtimes])}"
+                        )
+                    configured_count += 1
+                elif console:
                     console.print(
-                        f"│  [green]✓[/green]  {dep.name} → "
-                        f"{', '.join([rt.title() for rt in target_runtimes])}"
+                        f"│  [red]✗[/red]  {dep.name} — "
+                        f"failed for all runtimes"
                     )
-                configured_count += 1
 
         # Close the panel
         if console:
