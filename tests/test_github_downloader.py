@@ -1,10 +1,12 @@
 """Tests for GitHub package downloader."""
 
+import io
 import os
 import pytest
 import tempfile
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch, MagicMock
 from urllib.parse import urlparse
 
@@ -996,6 +998,246 @@ class TestSubdirectoryPackageCommitSHA:
             target = self.temp_dir / 'my-skill'
             with pytest.raises(RuntimeError, match="Failed to checkout commit"):
                 downloader.download_subdirectory_package(dep_ref, target)
+
+    @patch('apm_cli.deps.github_downloader.Repo')
+    @patch('apm_cli.deps.github_downloader.validate_apm_package')
+    def test_subdirectory_download_passes_progress_context_to_sparse_checkout(self, mock_validate, mock_repo_class):
+        """Subdirectory downloads should pass the active progress context into sparse checkout."""
+        dep_ref = self._make_dep_ref(ref='main')
+
+        mock_repo = Mock()
+        mock_repo.head.commit.hexsha = 'abc123'
+        mock_repo_class.return_value = mock_repo
+
+        mock_validation = ValidationResult()
+        mock_validation.is_valid = True
+        mock_validation.package = APMPackage(name='my-skill', version='1.0.0')
+        mock_validate.return_value = mock_validation
+
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+        progress_obj = Mock()
+
+        def sparse_success(dep_arg, clone_path, subdir_path, ref_arg, progress_task_id=None, progress_obj=None):
+            subdir = clone_path / 'packages' / 'my-skill'
+            subdir.mkdir(parents=True)
+            (subdir / 'apm.yml').write_text('name: my-skill\nversion: 1.0.0\n')
+            return True
+
+        with patch.object(downloader, '_try_sparse_checkout', side_effect=sparse_success) as mock_sparse, \
+             patch.object(downloader, '_clone_with_fallback') as mock_clone:
+            target = self.temp_dir / 'my-skill'
+            downloader.download_subdirectory_package(dep_ref, target, progress_task_id=17, progress_obj=progress_obj)
+
+        assert mock_sparse.call_args.args[0] is dep_ref
+        assert mock_sparse.call_args.args[2] == 'packages/my-skill'
+        assert mock_sparse.call_args.args[3] == 'main'
+        assert mock_sparse.call_args.kwargs == {
+            'progress_task_id': 17,
+            'progress_obj': progress_obj,
+        }
+        mock_clone.assert_not_called()
+
+
+class TestDownloadProgressReporting:
+    """Regression tests for install/update progress sequencing."""
+
+    def setup_method(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def teardown_method(self):
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_sparse_dep_ref(self, ref='main'):
+        return DependencyReference(
+            repo_url='owner/monorepo',
+            host='github.com',
+            reference=ref,
+            virtual_path='packages/my-skill',
+            is_virtual=True,
+        )
+
+    def test_parse_git_fetch_progress_handles_known_and_unknown_lines(self):
+        """Git fetch progress parsing should recognize known stages and ignore noise."""
+        downloader = GitHubPackageDownloader()
+
+        assert downloader._parse_git_fetch_progress('remote: Counting objects: 50% (5/10)') == 2
+        assert downloader._parse_git_fetch_progress('Receiving objects: 50% (5/10)') == 52
+        assert downloader._parse_git_fetch_progress('Resolving deltas: 100% (5/5), done.') == 100
+        assert downloader._parse_git_fetch_progress('Total 10 (delta 0), reused 0 (delta 0)') is None
+
+    @patch('subprocess.run')
+    def test_try_sparse_checkout_uses_native_fetch_mode_by_default(self, mock_run):
+        """Unset sparse fetch mode should use native git fetch parsing."""
+        mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
+
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+        with patch.object(downloader, '_build_repo_url', return_value='https://github.com/owner/monorepo.git'), \
+             patch.object(downloader, '_run_sparse_fetch_with_progress', return_value=SimpleNamespace(returncode=0, stderr='')) as mock_native, \
+             patch.object(downloader, '_run_sparse_fetch_with_spinner') as mock_spinner:
+            sparse_ok = downloader._try_sparse_checkout(
+                self._make_sparse_dep_ref(),
+                self.temp_dir / 'repo-default-native',
+                'packages/my-skill',
+                'main',
+            )
+
+        assert sparse_ok is True
+        mock_native.assert_called_once()
+        mock_spinner.assert_not_called()
+
+    @patch('subprocess.run')
+    def test_try_sparse_checkout_invalid_mode_falls_back_to_native(self, mock_run):
+        """Invalid sparse fetch mode values should fall back to native parsing."""
+        mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
+
+        with patch.dict(os.environ, {'APM_SPARSE_FETCH_PROGRESS_MODE': 'bogus'}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+        with patch.object(downloader, '_build_repo_url', return_value='https://github.com/owner/monorepo.git'), \
+             patch.object(downloader, '_run_sparse_fetch_with_progress', return_value=SimpleNamespace(returncode=0, stderr='')) as mock_native, \
+             patch.object(downloader, '_run_sparse_fetch_with_spinner') as mock_spinner:
+            sparse_ok = downloader._try_sparse_checkout(
+                self._make_sparse_dep_ref(),
+                self.temp_dir / 'repo-invalid-native',
+                'packages/my-skill',
+                'main',
+            )
+
+        assert sparse_ok is True
+        mock_native.assert_called_once()
+        mock_spinner.assert_not_called()
+
+    @patch('subprocess.run')
+    def test_try_sparse_checkout_spinner_mode_keeps_fetch_indeterminate(self, mock_run):
+        """Spinner mode should avoid determinate fetch percentages until fetch completes."""
+        progress_obj = Mock()
+
+        def run_side_effect(cmd, **kwargs):
+            return SimpleNamespace(returncode=0, stderr='')
+
+        mock_run.side_effect = run_side_effect
+
+        with patch.dict(os.environ, {'APM_SPARSE_FETCH_PROGRESS_MODE': 'spinner'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            with patch.object(downloader, '_build_repo_url', return_value='https://github.com/owner/monorepo.git'):
+                sparse_ok = downloader._try_sparse_checkout(
+                    self._make_sparse_dep_ref(),
+                    self.temp_dir / 'repo-spinner',
+                    'packages/my-skill',
+                    'main',
+                    progress_task_id=9,
+                    progress_obj=progress_obj,
+                )
+
+        assert sparse_ok is True
+        assert [call.kwargs for call in progress_obj.update.call_args_list] == [
+            {'completed': 28, 'total': 100},
+            {'completed': 36, 'total': 100},
+            {'completed': 45, 'total': 100},
+            {'completed': 53, 'total': 100},
+            {'completed': 53, 'total': None},
+            {'completed': 61, 'total': 100},
+            {'completed': 70, 'total': 100},
+        ]
+
+    @patch('subprocess.Popen')
+    @patch('subprocess.run')
+    def test_try_sparse_checkout_streams_fetch_progress_within_sparse_slice(self, mock_run, mock_popen):
+        """Sparse checkout should stream native git fetch progress inside the fetch step."""
+        downloader = GitHubPackageDownloader()
+        dep_ref = self._make_sparse_dep_ref()
+        progress_obj = Mock()
+        temp_clone_path = self.temp_dir / 'repo'
+
+        mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
+
+        fetch_output = (
+            'remote: Counting objects: 100% (10/10)\r'
+            'Receiving objects: 50% (5/10)\r'
+            'Resolving deltas: 100% (2/2), done.\n'
+        )
+        mock_popen.return_value = SimpleNamespace(
+            stderr=io.StringIO(fetch_output),
+            returncode=0,
+            wait=Mock(return_value=0),
+            kill=Mock(),
+        )
+
+        with patch.object(downloader, '_build_repo_url', return_value='https://github.com/owner/monorepo.git'):
+            sparse_ok = downloader._try_sparse_checkout(
+                dep_ref,
+                temp_clone_path,
+                'packages/my-skill',
+                'main',
+                progress_task_id=9,
+                progress_obj=progress_obj,
+            )
+
+        assert sparse_ok is True
+        assert [call.args[0] for call in mock_run.call_args_list] == [
+            ['git', 'init'],
+            ['git', 'remote', 'add', 'origin', 'https://github.com/owner/monorepo.git'],
+            ['git', 'sparse-checkout', 'init', '--cone'],
+            ['git', 'sparse-checkout', 'set', 'packages/my-skill'],
+            ['git', 'checkout', 'FETCH_HEAD'],
+        ]
+        assert mock_popen.call_args.args[0] == ['git', 'fetch', '--progress', 'origin', 'main', '--depth=1']
+
+        actual_progress = [call.kwargs['completed'] for call in progress_obj.update.call_args_list]
+        assert actual_progress == [28, 36, 45, 53, 57, 61, 70]
+
+    def test_collection_download_updates_progress_after_each_item_completion(self):
+        """Collection progress should advance only after each item finishes downloading."""
+        downloader = GitHubPackageDownloader()
+        dep_ref = DependencyReference(
+            repo_url='owner/collection-repo',
+            host='github.com',
+            reference='main',
+            virtual_path='collections/team-kit',
+            is_virtual=True,
+        )
+        progress_obj = Mock()
+        target = self.temp_dir / 'team-kit'
+        events = []
+
+        manifest = SimpleNamespace(
+            description='Team kit',
+            tags=['team'],
+            item_count=2,
+            items=[
+                SimpleNamespace(path='skills/first.skill.md', subdirectory='skills'),
+                SimpleNamespace(path='prompts/second.prompt.md', subdirectory='prompts'),
+            ],
+        )
+
+        def progress_update(task_id, completed, total):
+            events.append(('progress', completed))
+
+        def download_raw_file(dep_arg, path, ref_arg):
+            events.append(('download', path))
+            if path.endswith('.collection.yml'):
+                return b'collection manifest'
+            return path.encode('utf-8')
+
+        progress_obj.update.side_effect = progress_update
+
+        with patch.object(downloader, 'download_raw_file', side_effect=download_raw_file), \
+             patch('apm_cli.deps.collection_parser.parse_collection_yml', return_value=manifest):
+            downloader.download_collection_package(dep_ref, target, progress_task_id=3, progress_obj=progress_obj)
+
+        assert events == [
+            ('progress', 10),
+            ('download', 'collections/team-kit.collection.yml'),
+            ('download', 'skills/first.skill.md'),
+            ('progress', 55),
+            ('download', 'prompts/second.prompt.md'),
+            ('progress', 90),
+        ]
 
 
 if __name__ == '__main__':
