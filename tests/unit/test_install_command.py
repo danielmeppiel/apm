@@ -1,12 +1,18 @@
 """Tests for the apm install command auto-bootstrap feature."""
 
 import pytest
+import re
 import tempfile
 import os
 import yaml
 from pathlib import Path
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
+
+
+def _strip_ansi(text: str) -> str:
+    """Strip ANSI escape codes from text."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 from apm_cli.cli import cli
 
@@ -38,10 +44,11 @@ class TestInstallCommandAutoBootstrap:
 
             result = self.runner.invoke(cli, ["install"])
 
+            output = _strip_ansi(result.output)
             assert result.exit_code == 1
-            assert "No apm.yml found" in result.output
-            assert "apm init" in result.output
-            assert "apm install <org/repo>" in result.output
+            assert "No apm.yml found" in output
+            assert "apm init" in output
+            assert "apm install <org/repo>" in output
 
     @patch("apm_cli.cli._validate_package_exists")
     @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
