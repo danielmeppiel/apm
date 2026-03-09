@@ -8,29 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Plugin support: auto-detect `plugin.json` manifests and normalize into APM packages (#83, #208)
-- Plugin security: skip symlinks during artifact mapping to prevent content exfiltration
-- Plugin validation: require plugin evidence (plugin.json or component directories)
-- E2E tests for plugin lifecycle and plugin_parser unit tests
-
-### Fixed
-
-- Dynamic package type detection in synthesized `apm.yml` based on actual component directories
-- Plugin name validation with warning when `name` field missing from `plugin.json`
-- Fragile `.prompt.md` rename logic for files already correctly named
-- Install counter now includes cached/plugin packages
-- Package type persisted in lockfile for accurate dependency metadata
-- `deps info` sub-path resolution for virtual packages
-- Lockfile merge preserving entries from sequential installs
-- Agent scatter picks up plain `.md` files in `.apm/agents/`
-- Custom component path arrays in `plugin.json` for non-standard directory layouts
-
-### Changed
-
-- Documentation: added plugin support to README, manifest-schema, dependencies, and primitives docs
-
 ## [0.7.4] - 2025-03-03
 
 ### Added
