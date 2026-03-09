@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-08T01:07:15Z",
-  "last_run_tasks": ["task3", "task7"],
+  "last_updated": "2026-03-09T01:06:34Z",
+  "last_run_tasks": ["task4", "task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -9,11 +9,11 @@
     "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'"
   },
   "coverage_baseline": {
-    "total": "55%",
-    "run_date": "2026-03-08",
-    "test_count": 1339,
+    "total": "54%",
+    "run_date": "2026-03-09",
+    "test_count": 1307,
     "pre_existing_failures": 0,
-    "notes": "Previous run had 1 ANSI failure (now fixed), 1284 passing. This run: 1339 passing, 0 failing."
+    "notes": "workflow/runner.py: 22%->100%. Fixed recurring ANSI test failure (test_install_command.py)."
   },
   "monthly_activity_issue": "open-2026-03",
   "testing_backlog": [
@@ -21,15 +21,21 @@
     {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
     {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"},
     {"id": "injector", "file": "src/apm_cli/compilation/injector.py", "coverage": "44%", "priority": "low", "notes": "Awaiting PR merge (test-assist/constitution-injector-coverage)"},
-    {"id": "agents-compiler", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "69%", "priority": "medium"}
+    {"id": "agents-compiler", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "69%", "priority": "medium"},
+    {"id": "workflow-runner", "file": "src/apm_cli/workflow/runner.py", "coverage": "100%", "priority": "done"}
   ],
   "backlog_cursor": "agents-compiler",
   "pending_branches": [
-    "test-assist/apm-resolver-coverage",
-    "test-assist/collection-parser-ansi-fix",
-    "test-assist/distributed-compiler-coverage"
+    "test-assist/fix-ansi-install-test"
   ],
   "completed_work": [
+    {
+      "run": "2026-03-09T01:06:34Z",
+      "tasks": ["task4", "task3", "task7"],
+      "branch": "test-assist/fix-ansi-install-test",
+      "pr_status": "pr_created",
+      "description": "Fixed ANSI test failure in test_install_command.py (recurring issue - strip_ansi helper). Added 22 tests for workflow/runner.py (22%->100%): find_workflow_by_name (7 tests), run_workflow (7 tests), preview_workflow (4 tests), collect_parameters missing-params branch (3 tests). 1307 tests pass."
+    },
     {
       "run": "2026-03-08T01:07:15Z",
       "tasks": ["task3", "task7"],
