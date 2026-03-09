@@ -211,6 +211,119 @@ class TestMapPluginArtifacts:
         copied_linked = apm_dir / "agents" / "linked"
         assert not copied_linked.exists(), "Symlinked directory should be skipped entirely by _ignore_symlinks"
 
+    # ---- Custom component paths from plugin.json ----
+
+    def test_custom_agents_path_string(self, tmp_path):
+        """Manifest agents field as a string redirects agent discovery."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        custom = plugin_dir / "src" / "my-agents"
+        custom.mkdir(parents=True)
+        (custom / "bot.agent.md").write_text("# Bot")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(plugin_dir, apm_dir, manifest={"agents": "src/my-agents"})
+
+        assert (apm_dir / "agents" / "bot.agent.md").exists()
+
+    def test_custom_skills_path_array(self, tmp_path):
+        """Manifest skills field as an array merges multiple directories."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        s1 = plugin_dir / "skills"
+        s1.mkdir()
+        (s1 / "a.md").write_text("# A")
+        s2 = plugin_dir / "extra-skills"
+        s2.mkdir()
+        (s2 / "b.md").write_text("# B")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir, apm_dir,
+            manifest={"skills": ["skills/", "extra-skills/"]},
+        )
+
+        assert (apm_dir / "skills" / "a.md").exists()
+        assert (apm_dir / "skills" / "b.md").exists()
+
+    def test_custom_commands_path(self, tmp_path):
+        """Manifest commands field redirects command discovery."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        cmds = plugin_dir / "my-cmds"
+        cmds.mkdir()
+        (cmds / "deploy.md").write_text("# Deploy")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(plugin_dir, apm_dir, manifest={"commands": "my-cmds"})
+
+        assert (apm_dir / "prompts" / "deploy.prompt.md").exists()
+
+    def test_hooks_file_path(self, tmp_path):
+        """Manifest hooks as a file path copies it to .apm/hooks/hooks.json."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        hooks_data = {"hooks": {"PreToolUse": [{"matcher": "bash", "hooks": [{"type": "command", "command": "echo ok"}]}]}}
+        (plugin_dir / "my-hooks.json").write_text(json.dumps(hooks_data))
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(plugin_dir, apm_dir, manifest={"hooks": "my-hooks.json"})
+
+        target = apm_dir / "hooks" / "hooks.json"
+        assert target.exists()
+        assert json.loads(target.read_text()) == hooks_data
+
+    def test_hooks_inline_object(self, tmp_path):
+        """Manifest hooks as an inline object writes .apm/hooks/hooks.json."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        hooks_obj = {"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "echo done"}]}]}}
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(plugin_dir, apm_dir, manifest={"hooks": hooks_obj})
+
+        target = apm_dir / "hooks" / "hooks.json"
+        assert target.exists()
+        assert json.loads(target.read_text()) == hooks_obj
+
+    def test_hooks_directory_path(self, tmp_path):
+        """Manifest hooks as a custom directory path copies the directory."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        custom_hooks = plugin_dir / "my-hooks"
+        custom_hooks.mkdir()
+        (custom_hooks / "hooks.json").write_text('{"hooks": {}}')
+        scripts = custom_hooks / "scripts"
+        scripts.mkdir()
+        (scripts / "lint.sh").write_text("#!/bin/sh\necho lint")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(plugin_dir, apm_dir, manifest={"hooks": "my-hooks"})
+
+        assert (apm_dir / "hooks" / "hooks.json").exists()
+        assert (apm_dir / "hooks" / "scripts" / "lint.sh").exists()
+
+    def test_nonexistent_custom_path_ignored(self, tmp_path):
+        """Custom paths that don't exist are silently ignored."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir, apm_dir,
+            manifest={"agents": "does-not-exist/", "skills": ["also-missing/"]},
+        )
+
+        assert not (apm_dir / "agents").exists()
+        assert not (apm_dir / "skills").exists()
+
 
 class TestGenerateApmYml:
     def test_generate_full_metadata(self):

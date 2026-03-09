@@ -130,7 +130,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
     - agents/     → .apm/agents/
     - skills/     → .apm/skills/
     - commands/   → .apm/prompts/  (*.md normalized to *.prompt.md)
-    - hooks/      → .apm/hooks/
+    - hooks/      → .apm/hooks/    (directory, config file, or inline object)
     - .mcp.json   → .apm/.mcp.json  (MCP-based plugins need this to function)
     - .lsp.json   → .apm/.lsp.json
     - settings.json → .apm/settings.json
@@ -206,15 +206,33 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_path)
 
-    # Map hooks/
-    hook_sources = _resolve_sources("hooks", "hooks")
-    if hook_sources:
+    # Map hooks/ — the spec allows a directory path, a config file path,
+    # or an inline object.  Handle all three forms.
+    hooks_value = manifest.get("hooks")
+    if isinstance(hooks_value, dict):
+        # Inline hooks object → write as .apm/hooks/hooks.json
         target_hooks = apm_dir / "hooks"
-        if target_hooks.exists():
-            shutil.rmtree(target_hooks)
-        shutil.copytree(hook_sources[0], target_hooks, ignore=_ignore_symlinks)
-        for extra in hook_sources[1:]:
-            shutil.copytree(extra, target_hooks, dirs_exist_ok=True, ignore=_ignore_symlinks)
+        target_hooks.mkdir(parents=True, exist_ok=True)
+        (target_hooks / "hooks.json").write_text(
+            json.dumps(hooks_value, indent=2)
+        )
+    elif isinstance(hooks_value, str) and (plugin_path / hooks_value).is_file():
+        # Config file path (e.g. "hooks": "hooks.json")
+        target_hooks = apm_dir / "hooks"
+        target_hooks.mkdir(parents=True, exist_ok=True)
+        src_file = plugin_path / hooks_value
+        if not src_file.is_symlink():
+            shutil.copy2(src_file, target_hooks / "hooks.json")
+    else:
+        # Directory path(s) — standard flow
+        hook_sources = _resolve_sources("hooks", "hooks")
+        if hook_sources:
+            target_hooks = apm_dir / "hooks"
+            if target_hooks.exists():
+                shutil.rmtree(target_hooks)
+            shutil.copytree(hook_sources[0], target_hooks, ignore=_ignore_symlinks)
+            for extra in hook_sources[1:]:
+                shutil.copytree(extra, target_hooks, dirs_exist_ok=True, ignore=_ignore_symlinks)
 
     # Pass-through files required for MCP/LSP plugins to function
     for passthrough in (".mcp.json", ".lsp.json", "settings.json"):
