@@ -290,7 +290,7 @@ mcp:
 - `url` — required for `http`, `sse`, `streamable-http` transports
 - `command` — required for `stdio` transport
 
-⚠️ **Transitive trust rule:** Self-defined servers from transitive APM packages are skipped with a warning by default. You can either re-declare them in your own `apm.yml`, or use `--trust-transitive-mcp` to trust all self-defined servers from upstream packages:
+⚠️ **Transitive trust rule:** Self-defined servers from direct dependencies (depth=1 in the lockfile) are auto-trusted. Self-defined servers from transitive dependencies (depth > 1) are skipped with a warning by default. You can either re-declare them in your own `apm.yml`, or use `--trust-transitive-mcp` to trust all self-defined servers from upstream packages:
 
 ```bash
 apm install --trust-transitive-mcp

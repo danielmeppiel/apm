@@ -166,7 +166,7 @@ def _extract_mcp_servers(plugin_path: Path, manifest: Dict[str, Any]) -> Dict[st
         elif isinstance(mcp_value, str):
             servers = _read_mcp_file(plugin_path, mcp_value, logger)
         elif isinstance(mcp_value, list):
-            servers: Dict[str, Any] = {}
+            servers = {}
             for entry in mcp_value:
                 if isinstance(entry, str):
                     servers.update(_read_mcp_file(plugin_path, entry, logger))
