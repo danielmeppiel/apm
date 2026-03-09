@@ -436,7 +436,7 @@ class SkillIntegrator(BaseIntegrator):
         return context_files
     
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True) -> tuple[int, list[Path]]:
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None) -> tuple[int, list[Path]]:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -444,6 +444,8 @@ class SkillIntegrator(BaseIntegrator):
             target_skills_root: Root skills directory (e.g. .github/skills/ or .claude/skills/).
             parent_name: Name of the parent skill (used in warning messages).
             warn: Whether to emit a warning on name collisions.
+            owned_by: Map of skill_name → owner_package_name from the lockfile.
+                When provided, warnings are suppressed for self-overwrites.
 
         Returns:
             tuple[int, list[Path]]: (count of promoted sub-skills, list of deployed dir paths)
@@ -462,7 +464,9 @@ class SkillIntegrator(BaseIntegrator):
             sub_name = raw_sub_name if is_valid else normalize_skill_name(raw_sub_name)
             target = target_skills_root / sub_name
             if target.exists():
-                if warn:
+                prev_owner = (owned_by or {}).get(sub_name)
+                is_self_overwrite = prev_owner is not None and prev_owner == parent_name
+                if warn and not is_self_overwrite:
                     try:
                         from apm_cli.cli import _rich_warning
                         _rich_warning(
@@ -476,6 +480,27 @@ class SkillIntegrator(BaseIntegrator):
             promoted += 1
             deployed.append(target)
         return promoted, deployed
+
+    @staticmethod
+    def _build_skill_ownership_map(project_root: Path) -> dict[str, str]:
+        """Build a map of skill_name → owner_package_name from the lockfile.
+
+        Used to distinguish self-overwrites (no warning) from cross-package
+        conflicts (warning) when promoting sub-skills.
+        """
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+
+        owned_by: dict[str, str] = {}
+        lockfile = LockFile.read(get_lockfile_path(project_root))
+        if not lockfile:
+            return owned_by
+        for dep in lockfile.get_all_dependencies():
+            owner = (dep.virtual_path or dep.repo_url).rsplit("/", 1)[-1]
+            for deployed_path in dep.deployed_files:
+                # e.g. ".github/skills/context-map" → "context-map"
+                skill_name = deployed_path.rstrip("/").rsplit("/", 1)[-1]
+                owned_by[skill_name] = owner
+        return owned_by
 
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path
@@ -502,8 +527,9 @@ class SkillIntegrator(BaseIntegrator):
         parent_name = package_path.name
         github_skills_root = project_root / ".github" / "skills"
         github_skills_root.mkdir(parents=True, exist_ok=True)
+        owned_by = self._build_skill_ownership_map(project_root)
         count, deployed = self._promote_sub_skills(
-            sub_skills_dir, github_skills_root, parent_name, warn=True
+            sub_skills_dir, github_skills_root, parent_name, warn=True, owned_by=owned_by
         )
         all_deployed = list(deployed)
 
@@ -604,7 +630,8 @@ class SkillIntegrator(BaseIntegrator):
         # so we promote each sub-skill to an independent top-level entry.
         sub_skills_dir = package_path / ".apm" / "skills"
         github_skills_root = project_root / ".github" / "skills"
-        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True)
+        owned_by = self._build_skill_ownership_map(project_root)
+        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True, owned_by=owned_by)
         all_target_paths.extend(sub_deployed)
         
         # === T7: Copy to .claude/skills/ (secondary - compatibility) ===

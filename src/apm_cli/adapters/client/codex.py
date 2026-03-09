@@ -173,6 +173,15 @@ class CodexClientAdapter(MCPClientAdapter):
             "env": {},
             "id": server_info.get("id", "")  # Add registry UUID for conflict detection
         }
+
+        # Self-defined stdio deps carry raw command/args — use directly
+        raw = server_info.get("_raw_stdio")
+        if raw:
+            config["command"] = raw["command"]
+            config["args"] = raw["args"]
+            if raw.get("env"):
+                config["env"] = raw["env"]
+            return config
         
         # Note: Remote servers (SSE type) are handled in configure_mcp_server and rejected early
         # This method only handles local servers with packages

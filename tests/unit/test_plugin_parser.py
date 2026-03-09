@@ -8,8 +8,10 @@ import pytest
 import yaml
 
 from apm_cli.deps.plugin_parser import (
+    _extract_mcp_servers,
     _generate_apm_yml,
     _map_plugin_artifacts,
+    _mcp_servers_to_apm_deps,
     normalize_plugin_directory,
     parse_plugin_manifest,
     synthesize_apm_yml_from_plugin,
@@ -541,3 +543,298 @@ class TestValidatePluginPackage:
         (plugin_dir / "README.md").write_text("# Hello")
 
         assert validate_plugin_package(plugin_dir) is False
+
+
+class TestExtractMCPServers:
+    """Tests for _extract_mcp_servers() — Phase 1, Step 1."""
+
+    def test_mcpservers_inline_object(self, tmp_path):
+        """Dict in manifest → extracted directly."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "test",
+            "mcpServers": {
+                "my-server": {"command": "npx", "args": ["-y", "my-server"]},
+            },
+        }
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert "my-server" in result
+        assert result["my-server"]["command"] == "npx"
+
+    def test_mcpservers_string_path(self, tmp_path):
+        """File path → reads file, extracts servers."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        mcp_data = {"mcpServers": {"file-srv": {"command": "node", "args": ["index.js"]}}}
+        (plugin_dir / "mcp-config.json").write_text(json.dumps(mcp_data))
+        manifest = {"name": "test", "mcpServers": "mcp-config.json"}
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert "file-srv" in result
+        assert result["file-srv"]["command"] == "node"
+
+    def test_mcpservers_array_paths(self, tmp_path):
+        """Multiple file paths → merges, last-wins."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        file1 = {"mcpServers": {"srv-a": {"command": "a"}, "srv-b": {"command": "b1"}}}
+        file2 = {"mcpServers": {"srv-b": {"command": "b2"}, "srv-c": {"command": "c"}}}
+        (plugin_dir / "mcp1.json").write_text(json.dumps(file1))
+        (plugin_dir / "mcp2.json").write_text(json.dumps(file2))
+        manifest = {"name": "test", "mcpServers": ["mcp1.json", "mcp2.json"]}
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert result["srv-a"]["command"] == "a"
+        assert result["srv-b"]["command"] == "b2"  # last-wins
+        assert result["srv-c"]["command"] == "c"
+
+    def test_default_mcp_json(self, tmp_path):
+        """No mcpServers field, but .mcp.json exists → auto-discovered."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        mcp_data = {"mcpServers": {"default-srv": {"command": "echo"}}}
+        (plugin_dir / ".mcp.json").write_text(json.dumps(mcp_data))
+        manifest = {"name": "test"}
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert "default-srv" in result
+
+    def test_github_mcp_json_fallback(self, tmp_path):
+        """No .mcp.json but .github/.mcp.json → discovered."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        gh_dir = plugin_dir / ".github"
+        gh_dir.mkdir()
+        mcp_data = {"mcpServers": {"gh-srv": {"url": "https://example.com"}}}
+        (gh_dir / ".mcp.json").write_text(json.dumps(mcp_data))
+        manifest = {"name": "test"}
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert "gh-srv" in result
+
+    def test_manifest_wins_over_default(self, tmp_path):
+        """mcpServers field takes precedence over .mcp.json file."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        # .mcp.json has different server
+        mcp_data = {"mcpServers": {"file-srv": {"command": "from-file"}}}
+        (plugin_dir / ".mcp.json").write_text(json.dumps(mcp_data))
+        manifest = {
+            "name": "test",
+            "mcpServers": {"inline-srv": {"command": "from-manifest"}},
+        }
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert "inline-srv" in result
+        assert "file-srv" not in result
+
+    def test_missing_file_graceful(self, tmp_path):
+        """String path pointing to nonexistent file → empty dict, warning."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        manifest = {"name": "test", "mcpServers": "does-not-exist.json"}
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert result == {}
+
+    def test_symlink_skipped(self, tmp_path):
+        """Symlinked file → skipped."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        external = tmp_path / "external.json"
+        external.write_text(json.dumps({"mcpServers": {"evil": {"command": "evil"}}}))
+        link = plugin_dir / "mcp.json"
+        try:
+            link.symlink_to(external)
+        except OSError:
+            pytest.skip("Symlinks not supported on this platform")
+        manifest = {"name": "test", "mcpServers": "mcp.json"}
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert result == {}
+
+    def test_empty_manifest(self, tmp_path):
+        """No mcpServers and no .mcp.json → empty dict."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        manifest = {"name": "test"}
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        assert result == {}
+
+    def test_plugin_root_substitution(self, tmp_path):
+        """${CLAUDE_PLUGIN_ROOT} replaced with absolute plugin path."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "test",
+            "mcpServers": {
+                "local-srv": {
+                    "command": "node",
+                    "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"],
+                },
+            },
+        }
+
+        result = _extract_mcp_servers(plugin_dir, manifest)
+        abs_root = str(plugin_dir.resolve())
+        assert result["local-srv"]["args"] == [f"{abs_root}/server.js"]
+
+
+class TestMCPServersToDeps:
+    """Tests for _mcp_servers_to_apm_deps() — Phase 1, Step 2."""
+
+    def test_stdio_server(self, tmp_path):
+        """command present → transport=stdio, registry=false."""
+        servers = {"my-srv": {"command": "npx", "args": ["-y", "my-server"]}}
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert len(deps) == 1
+        assert deps[0]["name"] == "my-srv"
+        assert deps[0]["transport"] == "stdio"
+        assert deps[0]["registry"] is False
+        assert deps[0]["command"] == "npx"
+        assert deps[0]["args"] == ["-y", "my-server"]
+
+    def test_http_server(self, tmp_path):
+        """url present → transport=http, registry=false."""
+        servers = {"web-srv": {"url": "https://example.com/mcp"}}
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert len(deps) == 1
+        assert deps[0]["name"] == "web-srv"
+        assert deps[0]["transport"] == "http"
+        assert deps[0]["registry"] is False
+        assert deps[0]["url"] == "https://example.com/mcp"
+
+    def test_mixed_servers(self, tmp_path):
+        """Both stdio and http in one config."""
+        servers = {
+            "stdio-srv": {"command": "node", "args": ["index.js"]},
+            "http-srv": {"url": "https://example.com"},
+        }
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert len(deps) == 2
+        names = {d["name"] for d in deps}
+        assert names == {"stdio-srv", "http-srv"}
+
+    def test_env_and_args_passthrough(self, tmp_path):
+        """env and args are passed through."""
+        servers = {
+            "srv": {
+                "command": "cmd",
+                "args": ["--flag"],
+                "env": {"KEY": "VAL"},
+            }
+        }
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert deps[0]["env"] == {"KEY": "VAL"}
+        assert deps[0]["args"] == ["--flag"]
+
+    def test_invalid_server_skipped(self, tmp_path):
+        """No command or url → skipped."""
+        servers = {"bad-srv": {"env": {"KEY": "VAL"}}}
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert len(deps) == 0
+
+    def test_sse_type_preserved(self, tmp_path):
+        """type field with valid transport is used."""
+        servers = {"sse-srv": {"url": "https://sse.example.com", "type": "sse"}}
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert deps[0]["transport"] == "sse"
+
+    def test_tools_passthrough(self, tmp_path):
+        """tools field is passed through."""
+        servers = {"srv": {"command": "cmd", "tools": ["tool1", "tool2"]}}
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert deps[0]["tools"] == ["tool1", "tool2"]
+
+    def test_headers_passthrough(self, tmp_path):
+        """headers field is passed through for http servers."""
+        servers = {
+            "srv": {
+                "url": "https://example.com",
+                "headers": {"Authorization": "Bearer token"},
+            }
+        }
+        deps = _mcp_servers_to_apm_deps(servers, tmp_path)
+        assert deps[0]["headers"] == {"Authorization": "Bearer token"}
+
+
+class TestGenerateApmYmlMCPDeps:
+    """Test _mcp_deps injection in generated apm.yml."""
+
+    def test_mcp_deps_in_generated_yml(self):
+        """_mcp_deps in manifest → dependencies.mcp in output."""
+        manifest = {
+            "name": "mcp-plugin",
+            "_mcp_deps": [
+                {"name": "my-srv", "registry": False, "transport": "stdio", "command": "echo"},
+            ],
+        }
+        yml_str = _generate_apm_yml(manifest)
+        parsed = yaml.safe_load(yml_str)
+        assert "mcp" in parsed["dependencies"]
+        assert len(parsed["dependencies"]["mcp"]) == 1
+        assert parsed["dependencies"]["mcp"][0]["name"] == "my-srv"
+
+    def test_mcp_deps_with_apm_deps(self):
+        """Both apm and mcp deps coexist."""
+        manifest = {
+            "name": "both-plugin",
+            "dependencies": {"dep-a": "^1.0"},
+            "_mcp_deps": [
+                {"name": "srv", "registry": False, "transport": "http", "url": "https://x"},
+            ],
+        }
+        yml_str = _generate_apm_yml(manifest)
+        parsed = yaml.safe_load(yml_str)
+        assert "apm" in parsed["dependencies"]
+        assert "mcp" in parsed["dependencies"]
+
+    def test_no_mcp_deps_no_section(self):
+        """No _mcp_deps → no mcp key in dependencies."""
+        manifest = {"name": "no-mcp"}
+        yml_str = _generate_apm_yml(manifest)
+        parsed = yaml.safe_load(yml_str)
+        assert "dependencies" not in parsed
+
+
+class TestSynthesizeMCPIntegration:
+    """End-to-end test: synthesize_apm_yml_from_plugin with MCP servers."""
+
+    def test_synthesize_with_mcp_json(self, tmp_path):
+        """Plugin with .mcp.json produces apm.yml with dependencies.mcp."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        mcp_data = {"mcpServers": {"test-srv": {"command": "echo", "args": ["hello"]}}}
+        (plugin_dir / ".mcp.json").write_text(json.dumps(mcp_data))
+
+        apm_yml = synthesize_apm_yml_from_plugin(plugin_dir, {"name": "test-plugin"})
+        parsed = yaml.safe_load(apm_yml.read_text())
+
+        assert "dependencies" in parsed
+        assert "mcp" in parsed["dependencies"]
+        mcp_deps = parsed["dependencies"]["mcp"]
+        assert len(mcp_deps) == 1
+        assert mcp_deps[0]["name"] == "test-srv"
+        assert mcp_deps[0]["transport"] == "stdio"
+        assert mcp_deps[0]["registry"] is False
+
+    def test_synthesize_with_inline_mcpservers(self, tmp_path):
+        """Plugin with inline mcpServers in manifest."""
+        plugin_dir = tmp_path / "plugin"
+        plugin_dir.mkdir()
+        manifest = {
+            "name": "inline-mcp",
+            "mcpServers": {
+                "web-srv": {"url": "https://api.example.com"},
+            },
+        }
+
+        apm_yml = synthesize_apm_yml_from_plugin(plugin_dir, manifest)
+        parsed = yaml.safe_load(apm_yml.read_text())
+
+        mcp_deps = parsed["dependencies"]["mcp"]
+        assert len(mcp_deps) == 1
+        assert mcp_deps[0]["name"] == "web-srv"
+        assert mcp_deps[0]["transport"] == "http"

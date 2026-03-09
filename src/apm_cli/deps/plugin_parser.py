@@ -15,7 +15,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import yaml
 
 
@@ -108,6 +108,13 @@ def synthesize_apm_yml_from_plugin(plugin_path: Path, manifest: Dict[str, Any]) 
     # Map plugin structure into .apm/ subdirectories
     _map_plugin_artifacts(plugin_path, apm_dir, manifest)
 
+    # Extract MCP servers from plugin and convert to dependency format
+    mcp_servers = _extract_mcp_servers(plugin_path, manifest)
+    if mcp_servers:
+        mcp_deps = _mcp_servers_to_apm_deps(mcp_servers, plugin_path)
+        if mcp_deps:
+            manifest['_mcp_deps'] = mcp_deps
+
     # Generate apm.yml from plugin metadata
     apm_yml_content = _generate_apm_yml(manifest)
     apm_yml_path = plugin_path / "apm.yml"
@@ -121,6 +128,182 @@ def synthesize_apm_yml_from_plugin(plugin_path: Path, manifest: Dict[str, Any]) 
 def _ignore_symlinks(directory, contents):
     """Ignore function for shutil.copytree that skips symlinks."""
     return [name for name in contents if (Path(directory) / name).is_symlink()]
+
+
+def _extract_mcp_servers(plugin_path: Path, manifest: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract MCP server definitions from a plugin manifest.
+
+    Resolves ``mcpServers`` by type (per Claude Code spec):
+    - ``str``  → read that file path relative to plugin root, parse JSON,
+      extract ``mcpServers`` key.
+    - ``list`` → read each file path, merge (last-wins on name conflict).
+    - ``dict`` → use directly as inline server definitions.
+
+    When ``mcpServers`` is absent and ``.mcp.json`` (or ``.github/.mcp.json``)
+    exists at plugin root, read it as the default (matches Claude Code
+    auto-discovery).
+
+    Security: symlinks are skipped, JSON parse errors are logged as warnings.
+
+    ``${CLAUDE_PLUGIN_ROOT}`` in string values is replaced with the absolute
+    plugin path.
+
+    Args:
+        plugin_path: Root of the plugin directory.
+        manifest: Parsed plugin.json dict.
+
+    Returns:
+        dict mapping server name → server config.  Empty on failure.
+    """
+    logger = logging.getLogger("apm")
+    mcp_value = manifest.get("mcpServers")
+
+    if mcp_value is not None:
+        # Manifest explicitly defines mcpServers
+        if isinstance(mcp_value, dict):
+            servers = dict(mcp_value)
+        elif isinstance(mcp_value, str):
+            servers = _read_mcp_file(plugin_path, mcp_value, logger)
+        elif isinstance(mcp_value, list):
+            servers = {}
+            for entry in mcp_value:
+                if isinstance(entry, str):
+                    servers.update(_read_mcp_file(plugin_path, entry, logger))
+                else:
+                    logger.warning("Ignoring non-string entry in mcpServers array: %s", entry)
+        else:
+            logger.warning("Unsupported mcpServers type %s; ignoring", type(mcp_value).__name__)
+            return {}
+    else:
+        # Fall back to auto-discovery: .mcp.json then .github/.mcp.json
+        servers = {}
+        for fallback in (".mcp.json", ".github/.mcp.json"):
+            candidate = plugin_path / fallback
+            if candidate.exists() and candidate.is_file() and not candidate.is_symlink():
+                servers = _read_mcp_json(candidate, logger)
+                if servers:
+                    break
+
+    # Substitute ${CLAUDE_PLUGIN_ROOT} in all string values
+    if servers:
+        abs_root = str(plugin_path.resolve())
+        servers = _substitute_plugin_root(servers, abs_root, logger)
+
+    return servers
+
+
+def _read_mcp_file(plugin_path: Path, rel_path: str, logger: logging.Logger) -> Dict[str, Any]:
+    """Read a JSON file relative to *plugin_path* and return its ``mcpServers`` dict."""
+    target = (plugin_path / rel_path).resolve()
+    # Security: must stay inside plugin_path and not be a symlink
+    try:
+        target.relative_to(plugin_path.resolve())
+    except ValueError:
+        logger.warning("MCP file path escapes plugin root: %s", rel_path)
+        return {}
+    candidate = plugin_path / rel_path
+    if not candidate.exists() or not candidate.is_file():
+        logger.warning("MCP file not found: %s", candidate)
+        return {}
+    if candidate.is_symlink():
+        logger.warning("Skipping symlinked MCP file: %s", candidate)
+        return {}
+    return _read_mcp_json(candidate, logger)
+
+
+def _read_mcp_json(path: Path, logger: logging.Logger) -> Dict[str, Any]:
+    """Parse a JSON file and return the ``mcpServers`` mapping."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read MCP config %s: %s", path, exc)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    servers = data.get("mcpServers", {})
+    return dict(servers) if isinstance(servers, dict) else {}
+
+
+def _substitute_plugin_root(
+    servers: Dict[str, Any], abs_root: str, logger: logging.Logger
+) -> Dict[str, Any]:
+    """Replace ``${CLAUDE_PLUGIN_ROOT}`` in server config string values."""
+    token = "${CLAUDE_PLUGIN_ROOT}"
+    substituted = False
+
+    def _walk(obj: Any) -> Any:
+        nonlocal substituted
+        if isinstance(obj, str) and token in obj:
+            substituted = True
+            return obj.replace(token, abs_root)
+        if isinstance(obj, dict):
+            return {k: _walk(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_walk(item) for item in obj]
+        return obj
+
+    result = {name: _walk(cfg) for name, cfg in servers.items()}
+    if substituted:
+        logger.info("Substituted ${CLAUDE_PLUGIN_ROOT} with %s", abs_root)
+    return result
+
+
+def _mcp_servers_to_apm_deps(
+    servers: Dict[str, Any], plugin_path: Path
+) -> List[Dict[str, Any]]:
+    """Convert raw MCP server configs to ``dependencies.mcp`` dicts.
+
+    Transport inference:
+    - ``command`` present → stdio
+    - ``url`` present → http (or ``type`` if it's a valid transport)
+    - Neither → skipped with warning
+
+    Every entry gets ``registry: false`` (self-defined, not registry lookups).
+
+    Args:
+        servers: Mapping of server name → server config dict.
+        plugin_path: Plugin root (used for log context only).
+
+    Returns:
+        List of dicts consumable by ``MCPDependency.from_dict()``.
+    """
+    logger = logging.getLogger("apm")
+    deps: List[Dict[str, Any]] = []
+
+    for name, cfg in servers.items():
+        if not isinstance(cfg, dict):
+            logger.warning("Skipping non-dict MCP server config '%s'", name)
+            continue
+
+        dep: Dict[str, Any] = {"name": name, "registry": False}
+
+        if "command" in cfg:
+            dep["transport"] = "stdio"
+            dep["command"] = cfg["command"]
+            if "args" in cfg:
+                dep["args"] = cfg["args"]
+        elif "url" in cfg:
+            raw_type = cfg.get("type", "http")
+            valid_transports = {"http", "sse", "streamable-http"}
+            dep["transport"] = raw_type if raw_type in valid_transports else "http"
+            dep["url"] = cfg["url"]
+            if "headers" in cfg:
+                dep["headers"] = cfg["headers"]
+        else:
+            logger.warning(
+                "Skipping MCP server '%s' from plugin '%s': no 'command' or 'url'",
+                name, plugin_path.name,
+            )
+            continue
+
+        if "env" in cfg:
+            dep["env"] = cfg["env"]
+        if "tools" in cfg:
+            dep["tools"] = cfg["tools"]
+
+        deps.append(dep)
+
+    return deps
 
 
 def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[Dict[str, Any]] = None) -> None:
@@ -304,6 +487,11 @@ def _generate_apm_yml(manifest: Dict[str, Any]) -> str:
 
     if manifest.get('dependencies'):
         apm_package['dependencies'] = {'apm': manifest['dependencies']}
+
+    # Inject MCP deps extracted from plugin mcpServers / .mcp.json
+    mcp_deps = manifest.get('_mcp_deps')
+    if mcp_deps:
+        apm_package.setdefault('dependencies', {})['mcp'] = mcp_deps
 
     # Install behavior is driven by file presence (SKILL.md, etc.), not this
     # field.  Default to hybrid so the standard pipeline handles all components.
