@@ -33,9 +33,9 @@ When you run `apm install owner/repo/plugin-name`:
 
 1. **Clone** - APM clones the repository to `apm_modules/`
 2. **Detect** - It searches for `plugin.json` in priority order:
-   - `.github/plugin/plugin.json` (GitHub Copilot format)
-   - `.claude-plugin/plugin.json` (Claude format)
-   - `plugin.json` (root)
+   1. `plugin.json` (root)
+   2. `.github/plugin/plugin.json` (GitHub Copilot format)
+   3. `.claude-plugin/plugin.json` (Claude format)
 3. **Map Artifacts** - Plugin primitives from the repository root are mapped into `.apm/`:
    - `agents/` → `.apm/agents/`
    - `skills/` → `.apm/skills/`
@@ -63,7 +63,7 @@ APM supports multiple plugin manifest locations to accommodate different platfor
 plugin-repo/
 ├── .github/
 │   └── plugin/
-│       └── plugin.json   # GitHub Copilot location (highest priority)
+│       └── plugin.json   # GitHub Copilot location
 ├── agents/
 │   └── agent-name.agent.md
 ├── skills/
@@ -78,22 +78,7 @@ plugin-repo/
 ```
 plugin-repo/
 ├── .claude-plugin/
-│   └── plugin.json       # Claude location (second priority)
-├── agents/
-│   └── agent-name.agent.md
-├── skills/
-│   └── skill-name/
-│       └── SKILL.md
-└── commands/
-    └── command-1.md
-    └── command-2.md
-```
-
-#### Legacy APM Format
-```
-plugin-repo/
-├── plugins/
-│   └── plugin.json       # Legacy APM location (third priority)
+│   └── plugin.json       # Claude location
 ├── agents/
 │   └── agent-name.agent.md
 ├── skills/
@@ -107,7 +92,7 @@ plugin-repo/
 #### Root Format
 ```
 plugin-repo/
-├── plugin.json           # Root location (lowest priority)
+├── plugin.json           # Root location (checked first)
 ├── agents/
 │   └── agent-name.agent.md
 ├── skills/
@@ -127,7 +112,7 @@ plugin-repo/
 
 ### plugin.json Manifest
 
-Required fields:
+Only `name` is required. `version` and `description` are optional metadata:
 
 ```json
 {
@@ -266,12 +251,12 @@ Once found, install them using the standard `apm install owner/repo/plugin-name`
 
 If APM doesn't recognize your plugin:
 
-1. Check `plugin.json` exists at the repository root or in a subdirectory:
-   - `plugin.json` (root )
+1. Check `plugin.json` exists in one of the checked locations:
+   - `plugin.json` (root)
    - `.github/plugin/plugin.json` (GitHub Copilot format)
    - `.claude-plugin/plugin.json` (Claude format)
 2. Verify JSON is valid: `cat plugin.json | jq .`
-3. Ensure required fields are present: `name`, `version`, `description`
+3. Ensure `name` field is present (only required field)
 4. Verify primitives are at the repository root (`agents/`, `skills/`, `commands/`)
 
 ### Version Resolution Issues
