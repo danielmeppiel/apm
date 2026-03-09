@@ -4,9 +4,8 @@ import tarfile
 from pathlib import Path
 
 import pytest
-import yaml
 
-from apm_cli.bundle.unpacker import unpack_bundle, UnpackResult
+from apm_cli.bundle.unpacker import unpack_bundle
 from apm_cli.deps.lockfile import LockFile, LockedDependency
 
 
@@ -182,3 +181,31 @@ class TestUnpackBundle:
 
         # apm.lock should NOT be copied to the output root
         assert not (output / "apm.lock").exists()
+
+    def test_unpack_rejects_absolute_path_in_deployed_files(self, tmp_path):
+        """unpack_bundle must reject absolute paths from bundle lockfile."""
+        bundle_dir = tmp_path / "bundle" / "test-pkg-1.0.0"
+        bundle_dir.mkdir(parents=True)
+        lockfile = LockFile()
+        dep = LockedDependency(repo_url="owner/repo", deployed_files=["/etc/passwd"])
+        lockfile.add_dependency(dep)
+        lockfile.write(bundle_dir / "apm.lock")
+        output = tmp_path / "target"
+        output.mkdir()
+
+        with pytest.raises(ValueError, match="unsafe path"):
+            unpack_bundle(bundle_dir, output, skip_verify=True)
+
+    def test_unpack_rejects_traversal_path_in_deployed_files(self, tmp_path):
+        """unpack_bundle must reject path-traversal entries from bundle lockfile."""
+        bundle_dir = tmp_path / "bundle" / "test-pkg-1.0.0"
+        bundle_dir.mkdir(parents=True)
+        lockfile = LockFile()
+        dep = LockedDependency(repo_url="owner/repo", deployed_files=["../outside.txt"])
+        lockfile.add_dependency(dep)
+        lockfile.write(bundle_dir / "apm.lock")
+        output = tmp_path / "target"
+        output.mkdir()
+
+        with pytest.raises(ValueError, match="unsafe path"):
+            unpack_bundle(bundle_dir, output, skip_verify=True)

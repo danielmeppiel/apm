@@ -1,6 +1,7 @@
 """Bundle unpacker — extracts and verifies APM bundles."""
 
 import shutil
+import sys
 import tarfile
 import tempfile
 from dataclasses import dataclass, field
@@ -58,7 +59,11 @@ def unpack_bundle(
                         raise ValueError(
                             f"Refusing to extract path-traversal entry: {member.name}"
                         )
-                tar.extractall(temp_dir, filter="data")
+                # filter="data" was added in Python 3.12; use it when available
+                if sys.version_info >= (3, 12):
+                    tar.extractall(temp_dir, filter="data")
+                else:
+                    tar.extractall(temp_dir)  # noqa: S202 — manual checks above
         except Exception:
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise
@@ -80,8 +85,12 @@ def unpack_bundle(
         lockfile_path = source_dir / "apm.lock"
         lockfile = LockFile.read(lockfile_path)
         if lockfile is None:
+            if not lockfile_path.exists():
+                raise FileNotFoundError(
+                    "apm.lock not found in the bundle — the bundle may be incomplete."
+                )
             raise FileNotFoundError(
-                "apm.lock not found in the bundle — the bundle may be corrupt."
+                "apm.lock in the bundle could not be parsed — the bundle may be corrupt."
             )
 
         # Collect all deployed_files from lockfile
@@ -116,18 +125,29 @@ def unpack_bundle(
         # Dry-run: return file list without writing
         if dry_run:
             return UnpackResult(
-                extracted_dir=source_dir,
+                extracted_dir=bundle_path,
                 files=unique_files,
                 verified=verified,
             )
 
         # 4. Copy target files to output_dir (additive, no deletes)
         output_dir = Path(output_dir)
+        output_dir_resolved = output_dir.resolve()
         for rel_path in unique_files:
+            # Guard against absolute paths or path-traversal entries in deployed_files
+            p = Path(rel_path)
+            if p.is_absolute() or ".." in p.parts:
+                raise ValueError(
+                    f"Refusing to unpack unsafe path from bundle lockfile: {rel_path!r}"
+                )
+            dest = output_dir / rel_path
+            if not dest.resolve().is_relative_to(output_dir_resolved):
+                raise ValueError(
+                    f"Refusing to unpack path that escapes output directory: {rel_path!r}"
+                )
             src = source_dir / rel_path
             if not src.exists():
                 continue  # skip_verify may allow missing files
-            dest = output_dir / rel_path
             if src.is_dir():
                 shutil.copytree(src, dest, dirs_exist_ok=True)
             else:
@@ -135,7 +155,7 @@ def unpack_bundle(
                 shutil.copy2(src, dest)
 
         return UnpackResult(
-            extracted_dir=source_dir,
+            extracted_dir=bundle_path,
             files=unique_files,
             verified=verified,
         )

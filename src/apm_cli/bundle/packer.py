@@ -105,10 +105,21 @@ def pack_bundle(
             seen.add(f)
             unique_files.append(f)
 
-    # 5. Verify each file exists on disk
+    # 5. Verify each path is safe (no traversal) and exists on disk
+    project_root_resolved = project_root.resolve()
     missing: List[str] = []
     for rel_path in unique_files:
+        # Guard against absolute paths or path-traversal entries in deployed_files
+        p = Path(rel_path)
+        if p.is_absolute() or ".." in p.parts:
+            raise ValueError(
+                f"Refusing to pack unsafe path from lockfile: {rel_path!r}"
+            )
         abs_path = project_root / rel_path
+        if not abs_path.resolve().is_relative_to(project_root_resolved):
+            raise ValueError(
+                f"Refusing to pack path that escapes project root: {rel_path!r}"
+            )
         # deployed_files may reference directories (ending with /)
         if not abs_path.exists():
             missing.append(rel_path)

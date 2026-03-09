@@ -211,3 +211,32 @@ class TestPackBundle:
         pack_bundle(project, out)
 
         assert (project / "apm.lock").read_text() == original_content
+
+    def test_pack_rejects_embedded_traversal_in_deployed_path(self, tmp_path):
+        """pack_bundle must reject path-traversal entries embedded in deployed_files."""
+        project = _setup_project(tmp_path, [])
+        # A path that looks like it starts with .github/ but traverses out
+        lockfile = LockFile.read(project / "apm.lock")
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            deployed_files=[".github/../../../etc/passwd"],
+        )
+        lockfile.add_dependency(dep)
+        lockfile.write(project / "apm.lock")
+
+        with pytest.raises(ValueError, match="unsafe path"):
+            pack_bundle(project, tmp_path / "out")
+
+    def test_pack_rejects_traversal_deployed_path(self, tmp_path):
+        """pack_bundle must reject path-traversal entries in deployed_files."""
+        project = _setup_project(tmp_path, [])
+        lockfile = LockFile.read(project / "apm.lock")
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            deployed_files=[".github/agents/../../../../../../tmp/evil.sh"],
+        )
+        lockfile.add_dependency(dep)
+        lockfile.write(project / "apm.lock")
+
+        with pytest.raises(ValueError, match="unsafe path"):
+            pack_bundle(project, tmp_path / "out")

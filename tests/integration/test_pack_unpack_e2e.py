@@ -10,7 +10,6 @@ import shutil
 import subprocess
 
 import pytest
-import yaml
 from pathlib import Path
 
 
