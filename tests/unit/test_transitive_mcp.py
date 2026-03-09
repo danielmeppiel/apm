@@ -1,12 +1,11 @@
 """Tests for transitive MCP dependency collection and deduplication."""
 
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import yaml
 
-from apm_cli.models.apm_package import APMPackage, MCPDependency
 from apm_cli.integration.mcp_integrator import MCPIntegrator
+from apm_cli.models.apm_package import APMPackage, MCPDependency
 
 
 # ---------------------------------------------------------------------------
@@ -425,4 +424,198 @@ class TestInstallMCPDependencies:
             str(call.args[0]) for call in mock_console.print.call_args_list if call.args
         )
         assert "ghcr.io/org/already" in printed_lines
+        assert "already configured" in printed_lines
+
+
+# ---------------------------------------------------------------------------
+# _check_self_defined_servers_needing_installation
+# ---------------------------------------------------------------------------
+class TestCheckSelfDefinedServersNeeding:
+
+    @patch("apm_cli.core.conflict_detector.MCPConflictDetector")
+    @patch("apm_cli.factory.ClientFactory")
+    def test_all_servers_need_installation_when_none_configured(
+        self, mock_factory_cls, mock_detector_cls
+    ):
+        """All servers need installation when config is empty."""
+        mock_client = MagicMock()
+        mock_factory_cls.create_client.return_value = mock_client
+        mock_detector = MagicMock()
+        mock_detector.get_existing_server_configs.return_value = {}
+        mock_detector_cls.return_value = mock_detector
+
+        result = MCPIntegrator._check_self_defined_servers_needing_installation(
+            ["atlassian", "zephyr"], ["copilot", "vscode"]
+        )
+        assert sorted(result) == ["atlassian", "zephyr"]
+
+    @patch("apm_cli.core.conflict_detector.MCPConflictDetector")
+    @patch("apm_cli.factory.ClientFactory")
+    def test_no_servers_need_installation_when_all_configured(
+        self, mock_factory_cls, mock_detector_cls
+    ):
+        """No servers need installation when all are present in all runtimes."""
+        mock_client = MagicMock()
+        mock_factory_cls.create_client.return_value = mock_client
+        mock_detector = MagicMock()
+        mock_detector.get_existing_server_configs.return_value = {
+            "atlassian": {"type": "http"},
+            "zephyr": {"type": "http"},
+        }
+        mock_detector_cls.return_value = mock_detector
+
+        result = MCPIntegrator._check_self_defined_servers_needing_installation(
+            ["atlassian", "zephyr"], ["copilot", "vscode"]
+        )
+        assert result == []
+
+    @patch("apm_cli.core.conflict_detector.MCPConflictDetector")
+    @patch("apm_cli.factory.ClientFactory")
+    def test_server_needs_installation_when_missing_in_one_runtime(
+        self, mock_factory_cls, mock_detector_cls
+    ):
+        """Server needs install if missing from at least one target runtime."""
+        mock_client = MagicMock()
+        mock_factory_cls.create_client.return_value = mock_client
+
+        # First runtime has it, second does not
+        copilot_config = {"atlassian": {"type": "http"}}
+        vscode_config = {}
+
+        mock_detector = MagicMock()
+        mock_detector.get_existing_server_configs.side_effect = [
+            copilot_config, vscode_config,
+        ]
+        mock_detector_cls.return_value = mock_detector
+
+        result = MCPIntegrator._check_self_defined_servers_needing_installation(
+            ["atlassian"], ["copilot", "vscode"]
+        )
+        assert result == ["atlassian"]
+
+    @patch("apm_cli.factory.ClientFactory")
+    def test_config_read_failure_assumes_needs_installation(
+        self, mock_factory_cls
+    ):
+        """If config read fails, assume server needs installation."""
+        mock_factory_cls.create_client.side_effect = Exception("config error")
+
+        result = MCPIntegrator._check_self_defined_servers_needing_installation(
+            ["atlassian"], ["copilot"]
+        )
+        assert result == ["atlassian"]
+
+    def test_empty_runtimes_returns_empty(self):
+        """With no target runtimes, no server is found missing."""
+        result = MCPIntegrator._check_self_defined_servers_needing_installation(
+            ["a", "b"], []
+        )
+        # With no runtimes to check, no server is found missing → none need install
+        assert result == []
+
+    @patch("apm_cli.core.conflict_detector.MCPConflictDetector")
+    @patch("apm_cli.factory.ClientFactory")
+    def test_reads_each_runtime_config_once_for_multiple_servers(
+        self, mock_factory_cls, mock_detector_cls
+    ):
+        """Runtime config reads are cached instead of repeated per server."""
+        mock_factory_cls.create_client.side_effect = [MagicMock(), MagicMock()]
+
+        mock_copilot_detector = MagicMock()
+        mock_copilot_detector.get_existing_server_configs.return_value = {}
+        mock_vscode_detector = MagicMock()
+        mock_vscode_detector.get_existing_server_configs.return_value = {}
+        mock_detector_cls.side_effect = [mock_copilot_detector, mock_vscode_detector]
+
+        result = MCPIntegrator._check_self_defined_servers_needing_installation(
+            ["atlassian", "zephyr"], ["copilot", "vscode"]
+        )
+
+        assert sorted(result) == ["atlassian", "zephyr"]
+        assert [
+            call.args[0] for call in mock_factory_cls.create_client.call_args_list
+        ] == ["copilot", "vscode"]
+        assert mock_copilot_detector.get_existing_server_configs.call_count == 1
+        assert mock_vscode_detector.get_existing_server_configs.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# _install_mcp_dependencies – self-defined skip logic
+# ---------------------------------------------------------------------------
+class TestInstallSelfDefinedSkipLogic:
+
+    @patch("apm_cli.integration.mcp_integrator._rich_success")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._check_self_defined_servers_needing_installation")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
+    def test_already_configured_self_defined_servers_skipped(
+        self, _console, mock_install_runtime, mock_check, mock_rich_success
+    ):
+        """Self-defined servers already configured should not trigger _install_for_runtime."""
+        mock_check.return_value = []  # none need installation
+
+        dep = MCPDependency(
+            name="atlassian", transport="http", url="https://atlassian.example.com",
+            registry=False,
+        )
+        count = MCPIntegrator.install([dep], runtime="vscode")
+
+        assert count == 0
+        mock_install_runtime.assert_not_called()
+        mock_rich_success.assert_called_once()
+        assert "already configured" in mock_rich_success.call_args.args[0]
+
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._check_self_defined_servers_needing_installation")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
+    def test_new_self_defined_server_installed(
+        self, _console, mock_install_runtime, mock_check
+    ):
+        """Self-defined servers NOT already configured should be installed."""
+        mock_check.return_value = ["atlassian"]
+        mock_install_runtime.return_value = True
+
+        dep = MCPDependency(
+            name="atlassian", transport="http", url="https://atlassian.example.com",
+            registry=False,
+        )
+        count = MCPIntegrator.install([dep], runtime="vscode")
+
+        assert count == 1
+        assert mock_install_runtime.call_count == 1
+
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._check_self_defined_servers_needing_installation")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    def test_mixed_self_defined_shows_already_configured(
+        self, mock_install_runtime, mock_check
+    ):
+        """Mix of new and existing self-defined servers: only new ones installed, existing shown as configured."""
+        mock_check.return_value = ["new-srv"]
+        mock_install_runtime.return_value = True
+        mock_console = MagicMock()
+
+        deps = [
+            MCPDependency(
+                name="existing-srv", transport="http",
+                url="https://existing.example.com", registry=False,
+            ),
+            MCPDependency(
+                name="new-srv", transport="http",
+                url="https://new.example.com", registry=False,
+            ),
+        ]
+
+        with patch(
+            "apm_cli.integration.mcp_integrator._get_console",
+            return_value=mock_console,
+        ):
+            count = MCPIntegrator.install(deps, runtime="vscode")
+
+        assert count == 1
+        assert mock_install_runtime.call_count == 1
+
+        printed_lines = "\n".join(
+            str(call.args[0]) for call in mock_console.print.call_args_list if call.args
+        )
+        assert "existing-srv" in printed_lines
         assert "already configured" in printed_lines

@@ -293,6 +293,45 @@ class MCPIntegrator:
                 names.add(dep)
         return names
 
+    @staticmethod
+    def _check_self_defined_servers_needing_installation(
+        dep_names: list,
+        target_runtimes: list,
+    ) -> list:
+        """Return self-defined MCP servers missing from at least one runtime.
+
+        Self-defined servers have no registry UUID, so installation checks use
+        the runtime config keys directly. Runtime config reads are cached per
+        runtime to avoid repeating the same client setup for every dependency.
+        """
+        try:
+            from apm_cli.core.conflict_detector import MCPConflictDetector
+            from apm_cli.factory import ClientFactory
+        except ImportError:
+            return list(dep_names)
+
+        runtime_existing = {}
+        runtime_failures = []
+        for runtime in target_runtimes:
+            try:
+                client = ClientFactory.create_client(runtime)
+                detector = MCPConflictDetector(client)
+                runtime_existing[runtime] = detector.get_existing_server_configs()
+            except Exception:
+                runtime_failures.append(runtime)
+
+        servers_needing_installation = []
+        for dep_name in dep_names:
+            if runtime_failures:
+                servers_needing_installation.append(dep_name)
+                continue
+            for runtime in target_runtimes:
+                if dep_name not in runtime_existing.get(runtime, {}):
+                    servers_needing_installation.append(dep_name)
+                    break
+
+        return servers_needing_installation
+
     # ------------------------------------------------------------------
     # Stale server cleanup
     # ------------------------------------------------------------------
@@ -887,7 +926,40 @@ class MCPIntegrator:
 
         # --- Self-defined deps (registry: false) ---
         if self_defined_deps:
+            self_defined_names = [dep.name for dep in self_defined_deps]
+            self_defined_to_install = (
+                MCPIntegrator._check_self_defined_servers_needing_installation(
+                    self_defined_names,
+                    target_runtimes,
+                )
+            )
+            already_configured_self_defined = [
+                name
+                for name in self_defined_names
+                if name not in self_defined_to_install
+            ]
+
+            if already_configured_self_defined:
+                if console:
+                    for name in already_configured_self_defined:
+                        console.print(
+                            f"│  [green]✓[/green] {name} "
+                            f"[dim](already configured)[/dim]"
+                        )
+                elif verbose:
+                    for name in already_configured_self_defined:
+                        _rich_info(f"{name} already configured, skipping")
+                else:
+                    names_str = ", ".join(already_configured_self_defined)
+                    _rich_success(
+                        f"{len(already_configured_self_defined)} self-defined "
+                        f"server(s) already configured, skipping: {names_str}"
+                    )
+
             for dep in self_defined_deps:
+                if dep.name not in self_defined_to_install:
+                    continue
+
                 synthetic_info = MCPIntegrator._build_self_defined_info(dep)
                 self_defined_cache = {dep.name: synthetic_info}
                 self_defined_env = dep.env or {}
