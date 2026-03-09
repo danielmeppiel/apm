@@ -12,9 +12,10 @@ from ..core.target_detection import detect_target
 from .lockfile_enrichment import enrich_lockfile_for_pack
 
 
-# Target prefix mapping
+# Target prefix mapping ("agents" is an alias for "vscode")
 _TARGET_PREFIXES = {
     "vscode": [".github/"],
+    "agents": [".github/"],
     "claude": [".claude/"],
     "all": [".github/", ".claude/"],
 }

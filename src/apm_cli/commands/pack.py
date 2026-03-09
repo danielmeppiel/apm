@@ -20,9 +20,10 @@ from ..utils.console import _rich_success, _rich_error, _rich_info, _rich_warnin
 )
 @click.option(
     "--target",
-    type=click.Choice(["vscode", "claude", "all"]),
+    "-t",
+    type=click.Choice(["vscode", "agents", "claude", "all"]),
     default=None,
-    help="Filter files by target (default: auto-detect).",
+    help="Filter files by target. 'agents' is an alias for 'vscode'. Auto-detects if not specified.",
 )
 @click.option("--archive", is_flag=True, default=False, help="Produce a .tar.gz archive.")
 @click.option(
