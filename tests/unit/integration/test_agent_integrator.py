@@ -528,6 +528,30 @@ This is a skill, not an agent.""")
         assert "LICENSE.md" not in names
         assert "CONTRIBUTING.md" not in names
 
+    def test_find_agent_files_discovers_nested_subdirectories(self):
+        """find_agent_files uses rglob so agents in subdirs are found."""
+        package_dir = self.project_root / "package"
+        apm_agents = package_dir / ".apm" / "agents"
+        nested = apm_agents / "subdir"
+        nested.mkdir(parents=True)
+
+        (apm_agents / "top-level.agent.md").write_text("# Top")
+        (nested / "nested.agent.md").write_text("# Nested agent.md")
+        (nested / "plain-nested.md").write_text("# Nested plain")
+
+        agents = self.integrator.find_agent_files(package_dir)
+        names = {a.name for a in agents}
+
+        assert "top-level.agent.md" in names
+        assert "nested.agent.md" in names
+        assert "plain-nested.md" in names
+
+    def test_get_target_filename_plain_md(self):
+        """Plain .md files get renamed to .agent.md for .github/agents/."""
+        source = Path("/package/.apm/agents/context-architect.md")
+        result = self.integrator.get_target_filename(source, "my-plugin")
+        assert result == "context-architect.agent.md"
+
 
 class TestAgentSuffixPattern:
     """Test clean naming pattern edge cases for agents."""

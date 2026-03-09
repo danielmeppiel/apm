@@ -167,6 +167,9 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
         return [default] if default.exists() and default.is_dir() else []
 
     # Map agents/
+    # Unlike skills (which are named directories containing SKILL.md), agents
+    # are flat files — each .md is one agent.  So we always merge directory
+    # contents directly into .apm/agents/ (no nesting by dir name).
     agent_sources = _resolve_sources("agents", "agents")
     if agent_sources:
         target_agents = apm_dir / "agents"
@@ -174,17 +177,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
             shutil.rmtree(target_agents)
         agent_dirs = [s for s in agent_sources if s.is_dir()]
         agent_files = [s for s in agent_sources if s.is_file()]
-        # Array of directories → each is a named component; preserve dir name.
-        # Single/default directories → copy contents as root.
-        is_custom_list = isinstance(manifest.get("agents"), list)
-        if is_custom_list and agent_dirs:
-            target_agents.mkdir(parents=True, exist_ok=True)
-            for d in agent_dirs:
-                shutil.copytree(
-                    d, target_agents / d.name,
-                    ignore=_ignore_symlinks, dirs_exist_ok=True,
-                )
-        elif agent_dirs:
+        if agent_dirs:
             shutil.copytree(agent_dirs[0], target_agents, ignore=_ignore_symlinks)
             for extra in agent_dirs[1:]:
                 shutil.copytree(extra, target_agents, dirs_exist_ok=True, ignore=_ignore_symlinks)

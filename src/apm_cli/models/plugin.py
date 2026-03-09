@@ -118,7 +118,13 @@ class Plugin:
         
         # Discover plugin components in plugins/ subdirectory (including subdirectories)
         commands = list((base_dir / "commands").rglob("*.py")) if (base_dir / "commands").exists() else []
-        agents = list((base_dir / "agents").rglob("*.agent.md")) if (base_dir / "agents").exists() else []
+        # Agents: include both .agent.md and plain .md (plugins may omit the
+        # .agent.md convention). 
+        agents = []
+        if (base_dir / "agents").exists():
+            agents = [
+                f for f in (base_dir / "agents").rglob("*.md")
+            ]
         hooks = list((base_dir / "hooks").rglob("*.py")) if (base_dir / "hooks").exists() else []
         
         # Skills: each subdirectory in skills/ must contain a SKILL.md
