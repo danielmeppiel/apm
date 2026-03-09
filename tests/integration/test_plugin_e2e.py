@@ -258,11 +258,11 @@ class TestPluginHeroScenarios:
     # ---- Test 6: deps info virtual subpath ------------------------------
 
     def test_deps_info_virtual_subpath(self, tmp_path):
-        """Direct-path match in deps info() finds subdirectory packages."""
+        """Direct-path lookup in deps info() resolves deep sub-path packages."""
         project_root = tmp_path / "project"
         apm_modules = project_root / "apm_modules"
 
-        # Set up a virtual subpath package
+        # Set up a virtual subpath package (4-level deep)
         pkg_path = apm_modules / "github" / "awesome-copilot" / "plugins" / "context-engineering"
         pkg_path.mkdir(parents=True)
         (pkg_path / "apm.yml").write_text(
@@ -272,13 +272,17 @@ class TestPluginHeroScenarios:
         )
         (pkg_path / "SKILL.md").write_text("---\nname: context-engineering\n---\n# Skill")
 
-        # Verify direct path match works
-        direct = apm_modules / "github/awesome-copilot/plugins/context-engineering"
-        assert direct.is_dir()
-        assert (direct / "apm.yml").exists()
+        # Exercise the same direct_match lookup that deps info() uses
+        package = "github/awesome-copilot/plugins/context-engineering"
+        direct_match = apm_modules / package
+        assert direct_match.is_dir()
+        assert (
+            (direct_match / "apm.yml").exists()
+            or (direct_match / "SKILL.md").exists()
+        ), "direct_match lookup must find deep sub-path package"
 
-        # Parse the package
-        pkg = APMPackage.from_apm_yml(direct / "apm.yml")
+        # Parse the resolved package
+        pkg = APMPackage.from_apm_yml(direct_match / "apm.yml")
         assert pkg.name == "context-engineering"
         assert pkg.version == "2.0.0"
 

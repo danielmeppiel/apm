@@ -2429,8 +2429,9 @@ def _install_apm_dependencies(
                     if dep_key in lockfile.dependencies:
                         lockfile.dependencies[dep_key].package_type = pkg_type
                 # Merge with existing lockfile to preserve entries for packages
-                # not processed in this run (e.g. `apm install X` only installs X)
-                if existing_lockfile:
+                # not processed in this run (e.g. `apm install X` only installs X).
+                # Skip merge when update_refs is set — stale entries must not survive.
+                if existing_lockfile and not update_refs:
                     for dep_key, dep in existing_lockfile.dependencies.items():
                         if dep_key not in lockfile.dependencies:
                             lockfile.dependencies[dep_key] = dep

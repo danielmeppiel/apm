@@ -207,12 +207,9 @@ class TestMapPluginArtifacts:
 
         # Real file is copied
         assert (apm_dir / "agents" / "real.md").exists()
-        # Symlinked directory is NOT followed (symlinks=False makes it a regular copy, not follow)
+        # _ignore_symlinks callback causes copytree to skip symlinks entirely
         copied_linked = apm_dir / "agents" / "linked"
-        if copied_linked.exists():
-            # With symlinks=False, copytree copies the symlink as a directory
-            # but doesn't follow it — the key thing is it's not a symlink
-            assert not copied_linked.is_symlink()
+        assert not copied_linked.exists(), "Symlinked directory should be skipped entirely by _ignore_symlinks"
 
 
 class TestGenerateApmYml:
