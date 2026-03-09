@@ -547,9 +547,27 @@ class TestVirtualPathMCPCollection:
 # ---------------------------------------------------------------------------
 class TestSelfDefinedMCPTrustGating:
     """Self-defined (non-registry) MCP servers from transitive packages are
-    gated behind trust_private."""
+    gated behind trust_private.  Direct dependencies (depth=1) are auto-trusted."""
 
-    def test_self_defined_skipped_by_default(self, tmp_path):
+    def test_self_defined_skipped_for_transitive(self, tmp_path):
+        apm_modules = tmp_path / "apm_modules"
+        _make_pkg_dir(apm_modules, "acme/infra-cloud", mcp=[
+            "ghcr.io/acme/mcp-registry-server",
+            {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
+        ])
+
+        lock_path = tmp_path / "apm.lock"
+        _write_lockfile(lock_path, [
+            LockedDependency(repo_url="acme/infra-cloud", depth=2, resolved_by="some-dep"),
+        ])
+
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path, trust_private=False)
+        names = [d.name for d in result]
+        assert "ghcr.io/acme/mcp-registry-server" in names
+        assert "private-srv" not in names
+
+    def test_direct_dep_self_defined_auto_trusted(self, tmp_path):
+        """Depth=1 packages have their self-defined MCPs auto-trusted."""
         apm_modules = tmp_path / "apm_modules"
         _make_pkg_dir(apm_modules, "acme/infra-cloud", mcp=[
             "ghcr.io/acme/mcp-registry-server",
@@ -564,7 +582,7 @@ class TestSelfDefinedMCPTrustGating:
         result = MCPIntegrator.collect_transitive(apm_modules, lock_path, trust_private=False)
         names = [d.name for d in result]
         assert "ghcr.io/acme/mcp-registry-server" in names
-        assert "private-srv" not in names
+        assert "private-srv" in names
 
     def test_self_defined_included_when_trusted(self, tmp_path):
         apm_modules = tmp_path / "apm_modules"

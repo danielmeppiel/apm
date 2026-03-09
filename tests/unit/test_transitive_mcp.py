@@ -310,6 +310,95 @@ class TestCollectTransitiveMCPDeps:
         result = MCPIntegrator.collect_transitive(tmp_path, trust_private=False)
         assert len(result) == 0
 
+    def test_direct_dep_self_defined_auto_trusted(self, tmp_path):
+        """Depth=1 package with self-defined MCP → collected without flag."""
+        apm_modules = tmp_path / "apm_modules"
+        pkg_dir = apm_modules / "org" / "direct-pkg"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "apm.yml").write_text(yaml.dump({
+            "name": "direct-pkg",
+            "version": "1.0.0",
+            "dependencies": {"mcp": [
+                {"name": "private-srv", "registry": False,
+                 "transport": "http", "url": "https://private.example.com"},
+            ]},
+        }))
+        lock_path = tmp_path / "apm.lock"
+        lock_path.write_text(yaml.dump({
+            "lockfile_version": "1",
+            "dependencies": [
+                {"repo_url": "org/direct-pkg", "host": "github.com", "depth": 1},
+            ],
+        }))
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
+        assert len(result) == 1
+        assert result[0].name == "private-srv"
+
+    def test_transitive_dep_self_defined_still_skipped(self, tmp_path):
+        """Depth=2 package with self-defined MCP → skipped without flag."""
+        apm_modules = tmp_path / "apm_modules"
+        pkg_dir = apm_modules / "org" / "transitive-pkg"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "apm.yml").write_text(yaml.dump({
+            "name": "transitive-pkg",
+            "version": "1.0.0",
+            "dependencies": {"mcp": [
+                {"name": "private-srv", "registry": False,
+                 "transport": "http", "url": "https://private.example.com"},
+            ]},
+        }))
+        lock_path = tmp_path / "apm.lock"
+        lock_path.write_text(yaml.dump({
+            "lockfile_version": "1",
+            "dependencies": [
+                {"repo_url": "org/transitive-pkg", "host": "github.com", "depth": 2},
+            ],
+        }))
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
+        assert len(result) == 0
+
+    def test_transitive_dep_trusted_with_flag(self, tmp_path):
+        """Depth=2 + trust_private=True → collected."""
+        apm_modules = tmp_path / "apm_modules"
+        pkg_dir = apm_modules / "org" / "transitive-pkg"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "apm.yml").write_text(yaml.dump({
+            "name": "transitive-pkg",
+            "version": "1.0.0",
+            "dependencies": {"mcp": [
+                {"name": "private-srv", "registry": False,
+                 "transport": "http", "url": "https://private.example.com"},
+            ]},
+        }))
+        lock_path = tmp_path / "apm.lock"
+        lock_path.write_text(yaml.dump({
+            "lockfile_version": "1",
+            "dependencies": [
+                {"repo_url": "org/transitive-pkg", "host": "github.com", "depth": 2},
+            ],
+        }))
+        result = MCPIntegrator.collect_transitive(apm_modules, lock_path, trust_private=True)
+        assert len(result) == 1
+        assert result[0].name == "private-srv"
+
+    def test_no_lockfile_conservative(self, tmp_path):
+        """No lockfile → all self-defined skipped (conservative)."""
+        pkg_dir = tmp_path / "org" / "pkg-a"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "apm.yml").write_text(yaml.dump({
+            "name": "pkg-a",
+            "version": "1.0.0",
+            "dependencies": {"mcp": [
+                "ghcr.io/registry/server",
+                {"name": "private-srv", "registry": False,
+                 "transport": "http", "url": "https://private.example.com"},
+            ]},
+        }))
+        # No lock_path provided
+        result = MCPIntegrator.collect_transitive(tmp_path)
+        assert len(result) == 1
+        assert result[0].name == "ghcr.io/registry/server"
+
 
 # ---------------------------------------------------------------------------
 # _deduplicate_mcp_deps
