@@ -1,8 +1,10 @@
 """Tests for helper utility functions."""
 
+import json
 import unittest
 import sys
-from apm_cli.utils.helpers import is_tool_available, detect_platform, get_available_package_managers
+from pathlib import Path
+from apm_cli.utils.helpers import is_tool_available, detect_platform, get_available_package_managers, find_plugin_json
 
 
 class TestHelpers(unittest.TestCase):
@@ -51,6 +53,66 @@ class TestHelpers(unittest.TestCase):
             # On Unix systems, we expect at least one package manager
             self.assertGreater(len(managers), 0, 
                              "Expected at least one package manager on Unix systems")
+
+
+class TestFindPluginJson(unittest.TestCase):
+    """Test cases for find_plugin_json deterministic location check."""
+
+    def test_finds_root_plugin_json(self, tmp_path=None):
+        """Root plugin.json is returned when present."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            pj = root / "plugin.json"
+            pj.write_text(json.dumps({"name": "test"}))
+            assert find_plugin_json(root) == pj
+
+    def test_finds_github_plugin_json(self):
+        """plugin.json under .github/plugin/ is found."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            target = root / ".github" / "plugin" / "plugin.json"
+            target.parent.mkdir(parents=True)
+            target.write_text(json.dumps({"name": "gh"}))
+            assert find_plugin_json(root) == target
+
+    def test_finds_claude_plugin_json(self):
+        """plugin.json under .claude-plugin/ is found."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            target = root / ".claude-plugin" / "plugin.json"
+            target.parent.mkdir(parents=True)
+            target.write_text(json.dumps({"name": "claude"}))
+            assert find_plugin_json(root) == target
+
+    def test_priority_order(self):
+        """Root wins over .github/plugin/ which wins over .claude-plugin/."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for sub in ["plugin.json", ".github/plugin/plugin.json", ".claude-plugin/plugin.json"]:
+                p = root / sub
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(json.dumps({"name": sub}))
+            assert find_plugin_json(root) == root / "plugin.json"
+
+    def test_ignores_unrelated_locations(self):
+        """plugin.json buried in node_modules or other dirs is NOT found."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            hidden = root / "node_modules" / "evil" / "plugin.json"
+            hidden.parent.mkdir(parents=True)
+            hidden.write_text(json.dumps({"name": "evil"}))
+            assert find_plugin_json(root) is None
+
+    def test_returns_none_when_absent(self):
+        """None is returned when no plugin.json exists anywhere."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            assert find_plugin_json(Path(d)) is None
 
 
 if __name__ == '__main__':
