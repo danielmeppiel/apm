@@ -345,7 +345,7 @@ apm pack [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output directory (default: `./build/`)
-- `-t, --target [vscode|agents|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified
+- `-t, --target [vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
 - `--format [apm|plugin]` - Bundle format (default: `apm`)
