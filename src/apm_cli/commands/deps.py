@@ -22,7 +22,7 @@ def deps():
     pass
 
 
-@deps.command(name="list", help="📋 List installed APM dependencies")
+@deps.command(name="list", help="List installed APM dependencies")
 def list_packages():
     """Show all installed APM dependencies with context files and agent workflows."""
     try:
@@ -229,7 +229,7 @@ def list_packages():
         sys.exit(1)
 
 
-@deps.command(help="🌳 Show dependency tree structure")  
+@deps.command(help="Show dependency tree structure")  
 def tree():
     """Display dependencies in hierarchical tree format using lockfile."""
     try:
@@ -389,7 +389,7 @@ def tree():
         sys.exit(1)
 
 
-@deps.command(help="🧹 Remove all APM dependencies")
+@deps.command(help="Remove all APM dependencies")
 def clean():
     """Remove entire apm_modules/ directory."""
     project_root = Path(".")
@@ -423,7 +423,7 @@ def clean():
         sys.exit(1)
 
 
-@deps.command(help="🔄 Update APM dependencies")
+@deps.command(help="Update APM dependencies")
 @click.argument('package', required=False)
 def update(package: Optional[str]):
     """Update specific package or all if no package specified."""
@@ -461,7 +461,7 @@ def update(package: Optional[str]):
         _update_all_packages(project_deps, apm_modules_path)
 
 
-@deps.command(help="ℹ️ Show detailed package information")
+@deps.command(help="Show detailed package information")
 @click.argument('package', required=True)
 def info(package: str):
     """Show detailed information about a specific package including context files and workflows."""

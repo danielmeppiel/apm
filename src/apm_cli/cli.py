@@ -310,7 +310,7 @@ def cli(ctx):
 cli.add_command(deps)
 
 
-@cli.command(help="🚀 Initialize a new APM project")
+@cli.command(help="Initialize a new APM project")
 @click.argument("project_name", required=False)
 @click.option(
     "--yes", "-y", is_flag=True, help="Skip interactive prompts and use auto-detected defaults"
@@ -635,7 +635,7 @@ def _validate_package_exists(package):
 
 
 @cli.command(
-    help="📦 Install APM and MCP dependencies (auto-creates apm.yml when installing packages)"
+    help="Install APM and MCP dependencies (auto-creates apm.yml when installing packages)"
 )
 @click.argument("packages", nargs=-1)
 @click.option("--runtime", help="Target specific runtime only (copilot, codex, vscode)")
@@ -972,7 +972,7 @@ def prune(ctx, dry_run):
         sys.exit(1)
 
 
-@cli.command(help="⬆️  Update APM to the latest version")
+@cli.command(help="Update APM to the latest version")
 @click.option("--check", is_flag=True, help="Only check for updates without installing")
 def update(check):
     """Update APM CLI to the latest version (like npm update -g npm).
@@ -1099,7 +1099,7 @@ def update(check):
         sys.exit(1)
 
 
-@cli.command(help="Remove APM packages from apm.yml and apm_modules")
+@cli.command(help="Remove APM packages, their integrated files, and apm.yml entries")
 @click.argument("packages", nargs=-1, required=True)
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be removed without removing"
@@ -3899,7 +3899,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         sys.exit(1)
 
 
-@cli.command(help="🚀 Compile APM context into distributed AGENTS.md files")
+@cli.command(help="Compile APM context into distributed AGENTS.md files")
 @click.option(
     "--output",
     "-o",
@@ -3916,7 +3916,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="🔍 Preview compilation without writing files (shows placement decisions)",
+    help="Preview compilation without writing files (shows placement decisions)",
 )
 @click.option("--no-links", is_flag=True, help="Skip markdown link resolution")
 @click.option("--chatmode", help="Chatmode to prepend to AGENTS.md files")
@@ -3932,23 +3932,23 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 @click.option(
     "--single-agents",
     is_flag=True,
-    help="📄 Force single-file compilation (legacy mode)",
+    help="Force single-file compilation (legacy mode)",
 )
 @click.option(
     "--verbose",
     "-v",
     is_flag=True,
-    help="🔍 Show detailed source attribution and optimizer analysis",
+    help="Show detailed source attribution and optimizer analysis",
 )
 @click.option(
     "--local-only",
     is_flag=True,
-    help="🏠 Ignore dependencies, compile only local primitives",
+    help="Ignore dependencies, compile only local primitives",
 )
 @click.option(
     "--clean",
     is_flag=True,
-    help="🧹 Remove orphaned AGENTS.md files that are no longer generated",
+    help="Remove orphaned AGENTS.md files that are no longer generated",
 )
 @click.pass_context
 def compile(
@@ -4398,7 +4398,7 @@ def compile(
         sys.exit(1)
 
 
-@cli.group(help="Configure APM CLI")
+@cli.group(help="Configure APM CLI", invoke_without_command=True)
 @click.pass_context
 def config(ctx):
     """Configure APM CLI settings."""
@@ -4683,7 +4683,7 @@ def list():
 
 @runtime.command(help="Remove an installed runtime")
 @click.argument("runtime_name", type=click.Choice(["copilot", "codex", "llm"]))
-@click.confirmation_option(prompt="Are you sure you want to remove this runtime?")
+@click.confirmation_option(prompt="Are you sure you want to remove this runtime?", help="Confirm the action without prompting")
 def remove(runtime_name):
     """Remove an installed runtime from APM management."""
     try:
