@@ -42,14 +42,6 @@ _GIT_FETCH_PROGRESS_RE = re.compile(
     r"(?:remote:\s*)?(Counting objects|Compressing objects|Receiving objects|Resolving deltas):\s+(\d+)%"
 )
 
-_SPARSE_FETCH_PROGRESS_MODE_ENV = 'APM_SPARSE_FETCH_PROGRESS_MODE'
-_SPARSE_FETCH_PROGRESS_MODE_NATIVE = 'native'
-_SPARSE_FETCH_PROGRESS_MODE_SPINNER = 'spinner'
-_SPARSE_FETCH_PROGRESS_MODES = {
-    _SPARSE_FETCH_PROGRESS_MODE_NATIVE,
-    _SPARSE_FETCH_PROGRESS_MODE_SPINNER,
-}
-
 _GIT_FETCH_STAGE_RANGES = {
     'Counting objects': (0, 5),
     'Compressing objects': (5, 15),
@@ -1115,8 +1107,6 @@ author: {dep_ref.repo_url.split('/')[0]}
             temp_clone_path.mkdir(parents=True, exist_ok=True)
             env = {**os.environ, **(self.git_env or {})}
             auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
-            fetch_progress_mode = self._get_sparse_fetch_progress_mode()
-
             cmds = [
                 ['git', 'init'],
                 ['git', 'remote', 'add', 'origin', auth_url],
@@ -1134,31 +1124,19 @@ author: {dep_ref.repo_url.split('/')[0]}
                 if is_fetch_step:
                     fetch_start = self._get_sparse_checkout_progress_checkpoint(idx - 1, len(cmds))
                     fetch_end = self._get_sparse_checkout_progress_checkpoint(idx, len(cmds))
-                    if fetch_progress_mode == _SPARSE_FETCH_PROGRESS_MODE_SPINNER:
-                        result = self._run_sparse_fetch_with_spinner(
-                            cmd,
-                            temp_clone_path,
-                            env,
-                            fetch_start,
-                            fetch_end,
-                            progress_task_id=progress_task_id,
-                            progress_obj=progress_obj,
-                        )
-                    else:
-                        result = self._run_sparse_fetch_with_progress(
-                            cmd,
-                            temp_clone_path,
-                            env,
-                            fetch_start,
-                            fetch_end,
-                            progress_task_id=progress_task_id,
-                            progress_obj=progress_obj,
-                        )
+                    result = self._run_sparse_fetch_with_progress(
+                        cmd,
+                        temp_clone_path,
+                        env,
+                        fetch_start,
+                        fetch_end,
+                        progress_task_id=progress_task_id,
+                        progress_obj=progress_obj,
+                    )
                 else:
                     if progress_obj and progress_task_id is not None:
-                        if fetch_progress_mode != _SPARSE_FETCH_PROGRESS_MODE_SPINNER:
-                            progress_percent = self._get_sparse_checkout_progress_checkpoint(idx, len(cmds))
-                            progress_obj.update(progress_task_id, completed=progress_percent, total=100)
+                        progress_percent = self._get_sparse_checkout_progress_checkpoint(idx, len(cmds))
+                        progress_obj.update(progress_task_id, completed=progress_percent, total=100)
 
                     result = subprocess.run(
                         cmd, cwd=str(temp_clone_path), env=env,
@@ -1168,10 +1146,6 @@ author: {dep_ref.repo_url.split('/')[0]}
                     _debug(f"Sparse-checkout step failed ({' '.join(cmd)}): {result.stderr.strip()}")
                     return False
 
-            if fetch_progress_mode == _SPARSE_FETCH_PROGRESS_MODE_SPINNER and progress_obj and progress_task_id is not None:
-                final_checkpoint = self._get_sparse_checkout_progress_checkpoint(len(cmds), len(cmds))
-                progress_obj.update(progress_task_id, completed=final_checkpoint, total=100)
-
             return True
         except Exception as e:
             _debug(f"Sparse-checkout failed: {e}")
@@ -1180,14 +1154,6 @@ author: {dep_ref.repo_url.split('/')[0]}
     def _get_sparse_checkout_progress_checkpoint(self, step_index: int, total_steps: int) -> int:
         """Map sparse-checkout step boundaries into the install progress range."""
         return 20 + int((step_index / total_steps) * 50)
-
-    def _get_sparse_fetch_progress_mode(self) -> str:
-        """Return the sparse fetch progress mode, defaulting to native."""
-        raw_mode = os.environ.get(_SPARSE_FETCH_PROGRESS_MODE_ENV, _SPARSE_FETCH_PROGRESS_MODE_NATIVE)
-        normalized_mode = raw_mode.strip().lower() if raw_mode else _SPARSE_FETCH_PROGRESS_MODE_NATIVE
-        if normalized_mode not in _SPARSE_FETCH_PROGRESS_MODES:
-            return _SPARSE_FETCH_PROGRESS_MODE_NATIVE
-        return normalized_mode
 
     def _parse_git_fetch_progress(self, line: str) -> Optional[int]:
         """Parse a git fetch progress line into a monotonic 0-100 fetch percentage."""
@@ -1283,28 +1249,6 @@ author: {dep_ref.repo_url.split('/')[0]}
             progress_obj.update(progress_task_id, completed=fetch_end, total=100)
 
         return subprocess.CompletedProcess(cmd, process.returncode, stdout='', stderr=stderr_text)
-
-    def _run_sparse_fetch_with_spinner(
-        self,
-        cmd: list[str],
-        temp_clone_path: Path,
-        env: Dict[str, str],
-        fetch_start: int,
-        fetch_end: int,
-        progress_task_id=None,
-        progress_obj=None,
-    ):
-        """Run `git fetch` without progress updates (spinner mode)."""
-        import subprocess
-
-        return subprocess.run(
-            cmd,
-            cwd=str(temp_clone_path),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
 
     def download_subdirectory_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a subdirectory from a repo as an APM package.

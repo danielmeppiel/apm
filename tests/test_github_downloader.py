@@ -1069,16 +1069,15 @@ class TestDownloadProgressReporting:
         assert downloader._parse_git_fetch_progress('Total 10 (delta 0), reused 0 (delta 0)') is None
 
     @patch('subprocess.run')
-    def test_try_sparse_checkout_uses_native_fetch_mode_by_default(self, mock_run):
-        """Unset sparse fetch mode should use native git fetch parsing."""
+    def test_try_sparse_checkout_always_uses_native_fetch_progress(self, mock_run):
+        """Sparse checkout should always use native git fetch progress parsing."""
         mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
 
         with patch.dict(os.environ, {}, clear=True):
             downloader = GitHubPackageDownloader()
 
         with patch.object(downloader, '_build_repo_url', return_value='https://github.com/owner/monorepo.git'), \
-             patch.object(downloader, '_run_sparse_fetch_with_progress', return_value=SimpleNamespace(returncode=0, stderr='')) as mock_native, \
-             patch.object(downloader, '_run_sparse_fetch_with_spinner') as mock_spinner:
+             patch.object(downloader, '_run_sparse_fetch_with_progress', return_value=SimpleNamespace(returncode=0, stderr='')) as mock_native:
             sparse_ok = downloader._try_sparse_checkout(
                 self._make_sparse_dep_ref(),
                 self.temp_dir / 'repo-default-native',
@@ -1088,57 +1087,6 @@ class TestDownloadProgressReporting:
 
         assert sparse_ok is True
         mock_native.assert_called_once()
-        mock_spinner.assert_not_called()
-
-    @patch('subprocess.run')
-    def test_try_sparse_checkout_invalid_mode_falls_back_to_native(self, mock_run):
-        """Invalid sparse fetch mode values should fall back to native parsing."""
-        mock_run.return_value = SimpleNamespace(returncode=0, stderr='')
-
-        with patch.dict(os.environ, {'APM_SPARSE_FETCH_PROGRESS_MODE': 'bogus'}, clear=True):
-            downloader = GitHubPackageDownloader()
-
-        with patch.object(downloader, '_build_repo_url', return_value='https://github.com/owner/monorepo.git'), \
-             patch.object(downloader, '_run_sparse_fetch_with_progress', return_value=SimpleNamespace(returncode=0, stderr='')) as mock_native, \
-             patch.object(downloader, '_run_sparse_fetch_with_spinner') as mock_spinner:
-            sparse_ok = downloader._try_sparse_checkout(
-                self._make_sparse_dep_ref(),
-                self.temp_dir / 'repo-invalid-native',
-                'packages/my-skill',
-                'main',
-            )
-
-        assert sparse_ok is True
-        mock_native.assert_called_once()
-        mock_spinner.assert_not_called()
-
-    @patch('subprocess.run')
-    def test_try_sparse_checkout_spinner_mode_keeps_fetch_indeterminate(self, mock_run):
-        """Spinner mode should avoid determinate fetch percentages until fetch completes."""
-        progress_obj = Mock()
-
-        def run_side_effect(cmd, **kwargs):
-            return SimpleNamespace(returncode=0, stderr='')
-
-        mock_run.side_effect = run_side_effect
-
-        with patch.dict(os.environ, {'APM_SPARSE_FETCH_PROGRESS_MODE': 'spinner'}, clear=True):
-            downloader = GitHubPackageDownloader()
-            with patch.object(downloader, '_build_repo_url', return_value='https://github.com/owner/monorepo.git'):
-                sparse_ok = downloader._try_sparse_checkout(
-                    self._make_sparse_dep_ref(),
-                    self.temp_dir / 'repo-spinner',
-                    'packages/my-skill',
-                    'main',
-                    progress_task_id=9,
-                    progress_obj=progress_obj,
-                )
-
-        assert sparse_ok is True
-        # Spinner mode: no intermediate updates, just a final snap to 70%
-        assert progress_obj.update.call_args_list == [
-            call(9, completed=70, total=100),
-        ]
 
     @patch('subprocess.Popen')
     @patch('subprocess.run')
