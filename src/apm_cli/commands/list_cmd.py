@@ -96,14 +96,6 @@ def list(ctx):
                 click.echo(
                     f"\n{STATUS_SYMBOLS['info']} {STATUS_SYMBOLS['default']} = default script"
                 )
-            # Fallback to simple output
-            _rich_info("Available scripts:")
-            for name, command in scripts.items():
-                prefix = "📍 " if name == default_script else "   "
-                click.echo(f"{prefix}{HIGHLIGHT}{name}{RESET}: {command}")
-
-            if default_script:
-                _rich_info("📍 = default script (runs when no script name specified)")
 
     except Exception as e:
         _rich_error(f"Error listing scripts: {e}")

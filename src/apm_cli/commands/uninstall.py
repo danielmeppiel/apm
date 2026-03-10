@@ -70,6 +70,15 @@ def uninstall(ctx, packages, dry_run):
         packages_to_remove = []
         packages_not_found = []
 
+        def _parse_dependency_entry(dep_entry):
+            if isinstance(dep_entry, DependencyReference):
+                return dep_entry
+            if isinstance(dep_entry, str):
+                return DependencyReference.parse(dep_entry)
+            if isinstance(dep_entry, dict):
+                return DependencyReference.parse_from_dict(dep_entry)
+            raise ValueError(f"Unsupported dependency entry type: {type(dep_entry).__name__}")
+
         # Validate which packages can be removed
         for package in packages:
             # Validate package format (should be owner/repo or a git URL)
@@ -90,12 +99,7 @@ def uninstall(ctx, packages, dry_run):
 
             for dep_entry in current_deps:
                 try:
-                    if isinstance(dep_entry, str):
-                        dep_ref = DependencyReference.parse(dep_entry)
-                    elif isinstance(dep_entry, dict):
-                        dep_ref = DependencyReference.parse_from_dict(dep_entry)
-                    else:
-                        continue
+                    dep_ref = _parse_dependency_entry(dep_entry)
                     if dep_ref.get_identity() == pkg_identity:
                         matched_dep = dep_entry  # preserve original entry for removal
                         break
@@ -125,10 +129,11 @@ def uninstall(ctx, packages, dry_run):
                 _rich_info(f"  - {pkg} from apm.yml")
                 # Check if package exists in apm_modules
                 try:
-                    dep_ref = DependencyReference.parse(pkg)
+                    dep_ref = _parse_dependency_entry(pkg)
                     package_path = dep_ref.get_install_path(apm_modules_dir)
-                except ValueError:
-                    package_path = apm_modules_dir / pkg.split("/")[-1]
+                except (ValueError, TypeError, AttributeError, KeyError):
+                    pkg_str = pkg if isinstance(pkg, str) else str(pkg)
+                    package_path = apm_modules_dir / pkg_str.split("/")[-1]
                 if apm_modules_dir.exists() and package_path.exists():
                     _rich_info(f"  - {pkg} from apm_modules/")
 
@@ -140,9 +145,9 @@ def uninstall(ctx, packages, dry_run):
                 removed_repo_urls = builtins.set()
                 for pkg in packages_to_remove:
                     try:
-                        ref = DependencyReference.parse(pkg)
+                        ref = _parse_dependency_entry(pkg)
                         removed_repo_urls.add(ref.repo_url)
-                    except ValueError:
+                    except (ValueError, TypeError, AttributeError, KeyError):
                         removed_repo_urls.add(pkg)
                 # Find transitive orphans
                 queue = builtins.list(removed_repo_urls)
@@ -203,15 +208,16 @@ def uninstall(ctx, packages, dry_run):
                 # This correctly handles virtual packages (owner/repo-packagename) vs
                 # regular packages (owner/repo) and ADO paths (org/project/repo)
                 try:
-                    dep_ref = DependencyReference.parse(package)
+                    dep_ref = _parse_dependency_entry(package)
                     package_path = dep_ref.get_install_path(apm_modules_dir)
-                except ValueError:
+                except (ValueError, TypeError, AttributeError, KeyError):
                     # Fallback for invalid format: use raw path segments
-                    repo_parts = package.split("/")
+                    package_str = package if isinstance(package, str) else str(package)
+                    repo_parts = package_str.split("/")
                     if len(repo_parts) >= 2:
                         package_path = apm_modules_dir.joinpath(*repo_parts)
                     else:
-                        package_path = apm_modules_dir / package
+                        package_path = apm_modules_dir / package_str
 
                 if package_path.exists():
                     try:
@@ -238,9 +244,9 @@ def uninstall(ctx, packages, dry_run):
             removed_repo_urls = builtins.set()
             for pkg in packages_to_remove:
                 try:
-                    ref = DependencyReference.parse(pkg)
+                    ref = _parse_dependency_entry(pkg)
                     removed_repo_urls.add(ref.repo_url)
-                except ValueError:
+                except (ValueError, TypeError, AttributeError, KeyError):
                     removed_repo_urls.add(pkg)
 
             # Find all transitive deps resolved_by any removed package (recursive)
@@ -271,9 +277,9 @@ def uninstall(ctx, packages, dry_run):
                         updated_data = yaml.safe_load(f) or {}
                     for dep_str in updated_data.get("dependencies", {}).get("apm", []) or []:
                         try:
-                            ref = DependencyReference.parse(dep_str)
+                            ref = _parse_dependency_entry(dep_str)
                             remaining_deps.add(ref.get_unique_key())
-                        except ValueError:
+                        except (ValueError, TypeError, AttributeError, KeyError):
                             remaining_deps.add(dep_str)
                 except Exception:
                     pass
@@ -317,9 +323,9 @@ def uninstall(ctx, packages, dry_run):
         removed_keys = builtins.set()
         for pkg in packages_to_remove:
             try:
-                ref = DependencyReference.parse(pkg)
+                ref = _parse_dependency_entry(pkg)
                 removed_keys.add(ref.get_unique_key())
-            except ValueError:
+            except (ValueError, TypeError, AttributeError, KeyError):
                 removed_keys.add(pkg)
         if 'actual_orphans' in locals():
             removed_keys.update(actual_orphans)
@@ -339,9 +345,9 @@ def uninstall(ctx, packages, dry_run):
             lockfile_updated = False
             for pkg in packages_to_remove:
                 try:
-                    ref = DependencyReference.parse(pkg)
+                    ref = _parse_dependency_entry(pkg)
                     key = ref.get_unique_key()
-                except ValueError:
+                except (ValueError, TypeError, AttributeError, KeyError):
                     key = pkg
                 if key in lockfile.dependencies:
                     del lockfile.dependencies[key]
@@ -460,10 +466,7 @@ def uninstall(ctx, packages, dry_run):
                 dep_ref = dep if hasattr(dep, 'repo_url') else None
                 if not dep_ref:
                     continue
-                # Build install path
-                install_path = Path("apm_modules") / dep_ref.repo_url
-                if dep_ref.is_virtual and dep_ref.virtual_path:
-                    install_path = Path("apm_modules") / dep_ref.repo_url / dep_ref.virtual_path
+                install_path = dep_ref.get_install_path(Path("apm_modules"))
                 if not install_path.exists():
                     continue
 
@@ -532,7 +535,7 @@ def uninstall(ctx, packages, dry_run):
                     MCPIntegrator.remove_stale(stale_servers)
                 MCPIntegrator.update_lockfile(new_mcp_servers, lockfile_path)
         except Exception:
-            logger.debug("MCP cleanup during uninstall failed", exc_info=True)
+            _rich_warning("MCP cleanup during uninstall failed")
 
         # Final summary
         summary_lines = []
