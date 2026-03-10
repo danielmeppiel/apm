@@ -31,17 +31,10 @@ case $OS in
     Darwin)
         PLATFORM="darwin"
         BINARY_NAME="apm-darwin-$ARCH"
-        EXECUTABLE_NAME="apm"
         ;;
     Linux)
         PLATFORM="linux"
         BINARY_NAME="apm-linux-$ARCH"
-        EXECUTABLE_NAME="apm"
-        ;;
-    MINGW*|MSYS*|CYGWIN*)
-        PLATFORM="windows"
-        BINARY_NAME="apm-windows-$ARCH"
-        EXECUTABLE_NAME="apm.exe"
         ;;
     *)
         echo -e "${RED}Unsupported operating system: $OS${NC}"
@@ -83,8 +76,8 @@ fi
 echo -e "${YELLOW}Building binary with PyInstaller...${NC}"
 uv run pyinstaller build/apm.spec
 
-# Check if build was successful (onedir mode creates dist/apm/<binary>)
-if [ ! -f "dist/apm/$EXECUTABLE_NAME" ]; then
+# Check if build was successful (onedir mode creates dist/apm/apm)
+if [ ! -f "dist/apm/apm" ]; then
     echo -e "${RED}Build failed - binary not found${NC}"
     exit 1
 fi
@@ -92,14 +85,12 @@ fi
 # Rename the directory to have the platform-specific name
 mv "dist/apm" "dist/$BINARY_NAME"
 
-# Make binary executable on Unix
-if [ "$PLATFORM" != "windows" ]; then
-    chmod +x "dist/$BINARY_NAME/$EXECUTABLE_NAME"
-fi
+# Make binary executable
+chmod +x "dist/$BINARY_NAME/apm"
 
 # Test the binary
 echo -e "${YELLOW}Testing binary...${NC}"
-if "./dist/$BINARY_NAME/$EXECUTABLE_NAME" --version; then
+if "./dist/$BINARY_NAME/apm" --version; then
     echo -e "${GREEN}✓ Binary test successful${NC}"
 else
     echo -e "${RED}✗ Binary test failed${NC}"
@@ -108,15 +99,15 @@ fi
 
 # Show binary info
 echo -e "${GREEN}✓ Build complete!${NC}"
-echo -e "${BLUE}Binary: ./dist/$BINARY_NAME/$EXECUTABLE_NAME${NC}"
+echo -e "${BLUE}Binary: ./dist/$BINARY_NAME/apm${NC}"
 echo -e "${BLUE}Size: $(du -h "dist/$BINARY_NAME" | tail -1 | cut -f1)${NC}"
 
 # Create checksum for the binary directory (as expected by CI workflow)
 if command -v sha256sum &> /dev/null; then
-    sha256sum "dist/$BINARY_NAME/$EXECUTABLE_NAME" > "dist/$BINARY_NAME.sha256"
+    sha256sum "dist/$BINARY_NAME/apm" > "dist/$BINARY_NAME.sha256"
     echo -e "${BLUE}Checksum: ./dist/$BINARY_NAME.sha256${NC}"
 elif command -v shasum &> /dev/null; then
-    shasum -a 256 "dist/$BINARY_NAME/$EXECUTABLE_NAME" > "dist/$BINARY_NAME.sha256"
+    shasum -a 256 "dist/$BINARY_NAME/apm" > "dist/$BINARY_NAME.sha256"
     echo -e "${BLUE}Checksum: ./dist/$BINARY_NAME.sha256${NC}"
 fi
 
