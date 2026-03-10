@@ -1,4 +1,7 @@
-# Core Concepts
+---
+title: "How It Works"
+description: "Understand APM's architecture, the three-layer AI-Native Development framework, and how primitives compile into portable agent context."
+---
 
 APM implements the complete [AI-Native Development framework](https://danielmeppiel.github.io/awesome-ai-native/docs/concepts/) - a systematic approach to making AI coding assistants reliable, scalable, and team-friendly.
 
@@ -274,4 +277,4 @@ APM implements concepts from the broader [AI-Native Development Guide](https://d
 - **Team Scaling Methods** - Organizational AI adoption
 - **Tool Integration** - Connecting AI with development workflows
 
-Ready to see these concepts in action? Check out [Examples & Use Cases](examples.md) next!
+Ready to see these concepts in action? Check out [Examples & Use Cases](/apm/reference/examples/) next!

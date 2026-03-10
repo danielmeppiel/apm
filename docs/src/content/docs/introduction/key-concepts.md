@@ -1,4 +1,7 @@
-# Context Guide
+---
+title: "Key Concepts"
+description: "Learn about APM's core building blocks — instructions, prompts, agents, skills, context files, and hooks."
+---
 
 Context components are the configurable tools that deploy proven prompt engineering and context engineering techniques. APM implements these as the core building blocks for reliable, reusable AI development workflows.
 
@@ -41,7 +44,7 @@ apm compile  # Generate optimized AGENTS.md files
 apm compile --verbose  # See optimization decisions
 ```
 
-**[Learn more about the Context Optimization Engine →](compilation.md)**
+**[Learn more about the Context Optimization Engine →](/apm/guides/compilation/)**
 
 ## Packaging & Distribution
 
@@ -193,7 +196,7 @@ When asked about branding, apply these standards...
 - Provides AI agents with quick understanding of package purpose
 - Resources (scripts, references) stay in `apm_modules/`
 
-→ [Complete Skills Guide](skills.md)
+→ [Complete Skills Guide](/apm/guides/skills-and-prompts/)
 
 ### Context (.context.md)
 **Knowledge Management Layer** - Optimized project information for AI consumption

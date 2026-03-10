@@ -1,4 +1,7 @@
-# Plugins
+---
+title: "Plugins"
+description: "Install and manage plugins via plugin.json — GitHub Copilot extensions, Claude plugins, and more."
+---
 
 APM supports plugins through the `plugin.json` format. Plugins are automatically detected and integrated into your project as standard APM dependencies.
 
@@ -188,7 +191,7 @@ When `mcpServers` is absent, APM auto-discovers `.mcp.json` at the plugin root (
 
 Servers with `command` are configured as `stdio` transport; servers with `url` use `http` (or the `type` field if it specifies `sse` or `streamable-http`). All plugin-defined MCP servers are treated as self-defined (`registry: false`).
 
-**Trust model**: Self-defined MCP servers from direct dependencies (depth=1) are auto-trusted. Transitive dependencies require `--trust-transitive-mcp`. See [dependencies.md](./dependencies.md#self-defined-servers) for details.
+**Trust model**: Self-defined MCP servers from direct dependencies (depth=1) are auto-trusted. Transitive dependencies require `--trust-transitive-mcp`. See [Dependencies & Lockfile](/apm/guides/dependencies/) for details.
 
 ## Examples
 
@@ -311,8 +314,8 @@ If APM doesn't recognize your plugin:
 
 ### Version Resolution Issues
 
-See the [concepts.md](./concepts.md) guide on dependency resolution.
+See the [How It Works](/apm/introduction/how-it-works/) guide on dependency resolution.
 
 ### Custom Hosts / Private Repositories
 
-See [integration-testing.md](./integration-testing.md) for enterprise setup.
+See the [Development Guide](/apm/contributing/development-guide/) for enterprise setup.

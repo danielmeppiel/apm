@@ -55,6 +55,9 @@ coverage.xml
 # Documentation
 docs/_build/
 docs/wip/
+docs/node_modules/
+docs/dist/
+docs/.astro/
 
 # Local development
 *.log

@@ -1,4 +1,7 @@
-# APM CLI Reference
+---
+title: "CLI Commands"
+description: "Complete reference for all APM CLI commands, options, and usage examples."
+---
 
 Complete command-line interface reference for Agent Package Manager (APM).
 

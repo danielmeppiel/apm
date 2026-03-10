@@ -1,4 +1,7 @@
-# Getting Started with APM
+---
+title: "Installation"
+description: "Install APM and set up your first project with AI agent instructions."
+---
 
 Welcome to APM - the AI Package Manager that transforms any project into reliable AI-Native Development. This guide will walk you through setup, installation, and creating your first AI-native project.
 
@@ -582,7 +585,7 @@ apm run github/awesome-copilot/code-review
 apm run acme/standards/code-review
 ```
 
-See [Prompts Guide](prompts.md#running-prompts) for complete auto-discovery documentation.
+See [Skills & Prompts](/apm/guides/skills-and-prompts/#running-prompts) for complete auto-discovery documentation.
 
 ### 5. Run Your First Workflow
 
@@ -652,11 +655,11 @@ curl -H "Authorization: token $GITHUB_CLI_PAT" https://api.github.com/user
 
 Now that you have APM set up:
 
-1. **Learn the concepts**: Read [Core Concepts](concepts.md) to understand the AI-Native Development framework
-2. **Study examples**: Check [Examples & Use Cases](examples.md) for real-world patterns  
-3. **Build workflows**: See [Context Guide](primitives.md) to create advanced workflows
-4. **Explore dependencies**: See [Dependency Management](dependencies.md) for sharing context across projects
-5. **Explore integrations**: Review [Integrations Guide](integrations.md) for tool compatibility
+1. **Learn the concepts**: Read [Core Concepts](/apm/introduction/how-it-works/) to understand the AI-Native Development framework
+2. **Study examples**: Check [Examples & Use Cases](/apm/reference/examples/) for real-world patterns  
+3. **Build workflows**: See [Context Guide](/apm/introduction/key-concepts/) to create advanced workflows
+4. **Explore dependencies**: See [Dependency Management](/apm/guides/dependencies/) for sharing context across projects
+5. **Explore integrations**: Review [Integrations Guide](/apm/integrations/ide-tools/) for tool compatibility
 
 ## Quick Reference
 
@@ -682,4 +685,4 @@ apm deps list         # 🔗 Show installed APM dependencies
 - `apm_modules/` - Installed APM dependencies
 - `*.prompt.md` - Executable agent workflows
 
-Ready to build reliable AI workflows? Let's explore the [core concepts](concepts.md) next!
+Ready to build reliable AI workflows? Let's explore the [core concepts](/apm/introduction/how-it-works/) next!

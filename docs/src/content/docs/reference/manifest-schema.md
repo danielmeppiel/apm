@@ -1,4 +1,7 @@
-# APM Manifest Format Specification
+---
+title: "Manifest Schema"
+description: "Formal specification for the apm.yml manifest format, fields, and lockfile structure."
+---
 
 <dl>
 <dt>Version</dt><dd>0.1 (Working Draft)</dd>
