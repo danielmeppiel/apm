@@ -334,7 +334,8 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                 hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
             instruction_integrator_reint.integrate_package_instructions(pkg_info, project_root)
         except Exception:
-            pass  # Best effort re-integration
+            pkg_id = dep_ref.get_identity() if hasattr(dep_ref, "get_identity") else str(dep_ref)
+            _rich_warning(f"Best-effort re-integration skipped for {pkg_id}")
 
     return counts
 

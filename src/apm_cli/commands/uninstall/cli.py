@@ -157,7 +157,7 @@ def uninstall(ctx, packages, dry_run):
                     else:
                         lockfile_path.unlink(missing_ok=True)
                 except Exception:
-                    pass
+                    _rich_warning("Failed to update lockfile — it may be out of sync with uninstalled packages.")
 
         # Step 9: Sync integrations
         cleaned = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
