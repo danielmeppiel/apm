@@ -199,12 +199,12 @@ def _check_orphaned_packages():
             declared_deps = apm_package.get_apm_dependencies()
             lockfile = LockFile.read(Path.cwd() / APM_LOCK_FILENAME)
             expected = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
-        except (OSError, ValueError, ImportError):
+        except Exception:
             return []
 
         installed = _scan_installed_packages(apm_modules_dir)
         return [p for p in installed if p not in expected]
-    except (OSError, ValueError):
+    except Exception:
         return []
 
 
@@ -263,7 +263,7 @@ def _check_and_notify_updates():
 
             # Add a blank line for visual separation
             click.echo()
-    except (OSError, ValueError):
+    except Exception:
         # Silently fail - version checking should never block CLI usage
         pass
 
@@ -294,7 +294,7 @@ def _update_gitignore_for_apm_modules():
         try:
             with open(gitignore_path, "r", encoding="utf-8") as f:
                 current_content = [line.rstrip("\n\r") for line in f.readlines()]
-        except OSError as e:
+        except Exception as e:
             _rich_warning(f"Could not read .gitignore: {e}")
             return
 
@@ -311,7 +311,7 @@ def _update_gitignore_for_apm_modules():
             f.write(f"\n# APM dependencies\n{apm_modules_pattern}\n")
 
         _rich_info(f"Added {apm_modules_pattern} to .gitignore")
-    except OSError as e:
+    except Exception as e:
         _rich_warning(f"Could not update .gitignore: {e}")
 
 
@@ -358,7 +358,7 @@ def _auto_detect_author():
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-    except (subprocess.SubprocessError, OSError):
+    except Exception:
         pass
     return "Developer"
 
@@ -379,7 +379,7 @@ def _auto_detect_description(project_name):
             # We have a git repo, but description is typically not set
             # Just use a sensible default
             pass
-    except (subprocess.SubprocessError, OSError):
+    except Exception:
         pass
     return f"APM project for {project_name}"
 

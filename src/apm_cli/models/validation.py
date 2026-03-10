@@ -281,7 +281,7 @@ def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: Vali
         )
         result.package = package
         
-    except (OSError, ValueError) as e:
+    except Exception as e:
         result.add_error(f"Failed to process {SKILL_MD_FILENAME}: {e}")
         return result
     
@@ -315,7 +315,7 @@ def _validate_marketplace_plugin(package_path: Path, plugin_json_path: Optional[
         result.package = package
         result.package_type = PackageType.MARKETPLACE_PLUGIN
 
-    except (OSError, ValueError, KeyError) as e:
+    except Exception as e:
         result.add_error(f"Failed to process Claude plugin: {e}")
         return result
 
@@ -370,7 +370,7 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
                         content = md_file.read_text(encoding='utf-8')
                         if not content.strip():
                             result.add_warning(f"Empty primitive file: {md_file.relative_to(package_path)}")
-                    except OSError as e:
+                    except Exception as e:
                         result.add_warning(f"Could not read primitive file {md_file.relative_to(package_path)}: {e}")
     
     # Also check for hooks (JSON files in .apm/hooks/ or hooks/)

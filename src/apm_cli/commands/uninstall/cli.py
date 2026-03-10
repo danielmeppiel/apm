@@ -66,7 +66,7 @@ def uninstall(ctx, packages, dry_run):
         try:
             with open(apm_yml_path, "r") as f:
                 data = yaml.safe_load(f) or {}
-        except (OSError, yaml.YAMLError) as e:
+        except Exception as e:
             _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
@@ -97,7 +97,7 @@ def uninstall(ctx, packages, dry_run):
             with open(apm_yml_path, "w") as f:
                 yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
             _rich_success(f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))")
-        except OSError as e:
+        except Exception as e:
             _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 

@@ -64,7 +64,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     try:
         with open(apm_yml_path, "r") as f:
             data = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError) as e:
+    except Exception as e:
         _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
@@ -152,7 +152,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
         with open(apm_yml_path, "w") as f:
             yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
         _rich_success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
-    except OSError as e:
+    except Exception as e:
         _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
@@ -236,10 +236,10 @@ def _validate_package_exists(package):
 
             except subprocess.TimeoutExpired:
                 return False
-            except (subprocess.SubprocessError, OSError):
+            except Exception:
                 return False
 
-    except (ValueError, ImportError, OSError):  # TODO: narrow further once error paths are clearer
+    except Exception:
         # If parsing fails, assume it's a regular GitHub package
         package_url = (
             f"https://{package}.git"
@@ -262,7 +262,7 @@ def _validate_package_exists(package):
 
             except subprocess.TimeoutExpired:
                 return False
-            except (subprocess.SubprocessError, OSError):
+            except Exception:
                 return False
 
 

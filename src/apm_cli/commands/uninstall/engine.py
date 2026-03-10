@@ -43,7 +43,7 @@ def _validate_uninstall_packages(packages, current_deps):
         try:
             pkg_ref = DependencyReference.parse(package)
             pkg_identity = pkg_ref.get_identity()
-        except (ValueError, TypeError):
+        except Exception:
             pkg_identity = package
 
         for dep_entry in current_deps:
@@ -137,7 +137,7 @@ def _remove_packages_from_disk(packages_to_remove, apm_modules_dir):
                 _rich_info(f"\u2713 Removed {package} from apm_modules/")
                 removed += 1
                 deleted_pkg_paths.append(package_path)
-            except OSError as e:
+            except Exception as e:
                 _rich_error(f"\u2717 Failed to remove {package} from apm_modules/: {e}")
         else:
             _rich_warning(f"Package {package} not found in apm_modules/")
@@ -189,7 +189,7 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
                 remaining_deps.add(ref.get_unique_key())
             except (ValueError, TypeError, AttributeError, KeyError):
                 remaining_deps.add(dep_str)
-    except (OSError, yaml.YAMLError):
+    except Exception:
         pass
 
     for dep in lockfile.get_all_dependencies():
@@ -217,7 +217,7 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
                 _rich_info(f"\u2713 Removed transitive dependency {orphan_key} from apm_modules/")
                 removed += 1
                 deleted_orphan_paths.append(orphan_path)
-            except OSError as e:
+            except Exception as e:
                 _rich_error(f"\u2717 Failed to remove transitive dep {orphan_key}: {e}")
 
     from ...integration.base_integrator import BaseIntegrator as _BI

@@ -104,7 +104,7 @@ def list_packages():
                         declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"] = source
                     elif is_gh:
                         declared_sources[f"{repo_parts[0]}/{package_name}"] = source
-        except (OSError, ValueError):
+        except Exception:
             pass  # Continue without orphan detection if apm.yml parsing fails
         
         # Also load lockfile deps to avoid false orphan flags on transitive deps
@@ -118,7 +118,7 @@ def list_packages():
                     dep_key = dep.get_unique_key()
                     if dep_key and dep_key not in declared_sources:
                         declared_sources[dep_key] = 'github'
-        except (OSError, ValueError, KeyError):
+        except Exception:
             pass  # Continue without lockfile if it can't be read
         
         # Scan for installed packages in org-namespaced structure
@@ -263,7 +263,7 @@ def tree():
             if apm_yml_path.exists():
                 root_package = APMPackage.from_apm_yml(apm_yml_path)
                 project_name = root_package.name
-        except (OSError, ValueError):
+        except Exception:
             pass
         
         # Try to load lockfile for accurate tree with depth/parent info
@@ -275,7 +275,7 @@ def tree():
                 lockfile = LockFile.read(lockfile_path)
                 if lockfile:
                     lockfile_deps = lockfile.get_all_dependencies()
-        except (OSError, ValueError, KeyError):
+        except Exception:
             pass
         
         if lockfile_deps:
@@ -428,7 +428,7 @@ def clean():
     try:
         shutil.rmtree(apm_modules_path)
         _rich_success("Successfully removed apm_modules/ directory")
-    except OSError as e:
+    except Exception as e:
         _rich_error(f"Error removing apm_modules/: {e}")
         sys.exit(1)
 

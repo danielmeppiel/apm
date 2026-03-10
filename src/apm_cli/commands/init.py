@@ -66,7 +66,7 @@ def init(ctx, project_name, yes):
                 if Confirm:
                     try:
                         confirm = Confirm.ask("Continue and overwrite?")
-                    except (EOFError, KeyboardInterrupt):
+                    except Exception:
                         confirm = click.confirm("Continue and overwrite?")
                 else:
                     confirm = click.confirm("Continue and overwrite?")

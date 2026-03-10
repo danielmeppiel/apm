@@ -51,7 +51,7 @@ def prune(ctx, dry_run):
             declared_deps = apm_package.get_apm_dependencies()
             lockfile = LockFile.read(Path.cwd() / APM_LOCK_FILENAME)
             expected_installed = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
-        except (OSError, ValueError, yaml.YAMLError) as e:
+        except Exception as e:
             _rich_error(f"Failed to parse {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
@@ -87,7 +87,7 @@ def prune(ctx, dry_run):
                 removed_count += 1
                 pruned_keys.append(org_repo_name)
                 deleted_pkg_paths.append(pkg_path)
-            except OSError as e:
+            except Exception as e:
                 _rich_error(f"✗ Failed to remove {org_repo_name}: {e}")
 
         # Batch parent cleanup — single bottom-up pass
@@ -135,7 +135,7 @@ def prune(ctx, dry_run):
                         lockfile.write(lockfile_path)
                     else:
                         lockfile_path.unlink(missing_ok=True)
-                except OSError:
+                except Exception:
                     pass
 
         # Final summary

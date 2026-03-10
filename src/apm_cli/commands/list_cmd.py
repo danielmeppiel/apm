@@ -76,7 +76,7 @@ def list(ctx):
                         f"\n[muted]{STATUS_SYMBOLS['info']} {STATUS_SYMBOLS['default']} = default script (runs when no script name specified)[/muted]"
                     )
 
-            except (ImportError, NameError):
+            except Exception:
                 # Fallback to simple output
                 _rich_info("Available scripts:")
                 for name, command in scripts.items():

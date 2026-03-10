@@ -97,7 +97,7 @@ def search(ctx, query, limit):
                 f"[muted]   Use [bold cyan]--limit {limit * 2}[/bold cyan] to see more results[/muted]"
             )
 
-    except (ImportError, ConnectionError, ValueError) as e:
+    except Exception as e:
         _rich_error(f"Error searching registry: {e}")
         sys.exit(1)
 
@@ -282,7 +282,7 @@ def show(ctx, server_name):
 
         console.print(install_table)
 
-    except (ImportError, ConnectionError, ValueError) as e:
+    except Exception as e:
         _rich_error(f"Error getting server details: {e}")
         sys.exit(1)
 
@@ -368,6 +368,6 @@ def list(ctx, limit):
             f"[muted]   Use [bold cyan]apm mcp search <query>[/bold cyan] to find specific servers[/muted]"
         )
 
-    except (ImportError, ConnectionError, ValueError) as e:
+    except Exception as e:
         _rich_error(f"Error listing servers: {e}")
         sys.exit(1)
