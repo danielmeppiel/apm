@@ -126,6 +126,22 @@ mkdir -p ~/bin
 # then install the binary to ~/bin/apm and add ~/bin to PATH
 ```
 
+### Windows Runtime Setup
+
+Runtime setup works natively on Windows. No WSL is required:
+
+```powershell
+apm runtime setup copilot
+apm runtime setup codex
+apm runtime setup llm
+```
+
+APM automatically uses PowerShell scripts on Windows and bash scripts on macOS and Linux.
+
+### Verify Installation
+
+Check what runtimes are available:
+
 ### Authentication errors when installing packages
 
 If `apm install` fails with authentication errors for private repositories, ensure you have a valid GitHub token configured:

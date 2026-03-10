@@ -1036,6 +1036,11 @@ apm runtime setup codex
 apm runtime setup llm
 ```
 
+**Windows support:**
+- On Windows, APM runs the setup scripts through PowerShell automatically
+- No special flags are required
+- Platform detection is automatic
+
 **Default Behavior:**
 - Installs runtime binary from official sources
 - Configures with GitHub Models (free) as APM default

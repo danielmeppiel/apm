@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+import sys
 import time
 import yaml
 from pathlib import Path
@@ -186,6 +187,7 @@ class ScriptRunner:
                 )
             else:
                 # Use regular shell execution for other commands
+                # (shell=True works cross-platform: bash on Unix, cmd.exe on Windows)
                 result = subprocess.run(
                     compiled_command, shell=True, check=True, env=env
                 )
@@ -433,7 +435,12 @@ class ScriptRunner:
         import shlex
 
         # Parse the command into arguments
-        args = shlex.split(command.strip())
+        if sys.platform == "win32":
+            # On Windows, shlex.split() doesn't understand cmd.exe/PowerShell syntax.
+            # Use simple whitespace splitting (arguments are well-formed from our code).
+            args = command.strip().split()
+        else:
+            args = shlex.split(command.strip())
 
         # Handle environment variables at the beginning of the command
         # Extract environment variables (key=value pairs) from the beginning of args

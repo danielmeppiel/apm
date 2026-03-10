@@ -48,6 +48,9 @@ jobs:
           - os: macos-latest
             arch: arm64
             platform: darwin
+          - os: windows-latest
+            arch: x86_64
+            platform: windows
     
     steps:
     - uses: actions/checkout@v4
@@ -70,10 +73,18 @@ jobs:
         # Wait for installation to complete
         until xcode-select -p >/dev/null 2>&1; do sleep 5; done
     
-    - name: Install uv
+    - name: Install uv (Unix)
+      if: matrix.platform != 'windows'
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Install uv (Windows)
+      if: matrix.platform == 'windows'
+      shell: pwsh
+      run: |
+        irm https://astral.sh/uv/install.ps1 | iex
+        echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     
     - name: Cache uv environments
       uses: actions/cache@v3
@@ -81,6 +92,7 @@ jobs:
         path: |
           ~/.cache/uv
           ~/.local/share/uv
+          ~\AppData\Local\uv\cache
         key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-uv-
@@ -184,7 +196,9 @@ jobs:
             ./dist/${{ matrix.binary_name }}
             ./dist/${{ matrix.binary_name }}.sha256
             ./scripts/test-release-validation.sh
+            ./scripts/test-release-validation.ps1
             ./scripts/github-token-helper.sh
+            ./scripts/github-token-helper.ps1
           include-hidden-files: true  # Required to include .apm directories
           retention-days: 30
           if-no-files-found: error
@@ -215,6 +229,10 @@ jobs:
             arch: arm64
             platform: darwin
             binary_name: apm-darwin-arm64
+          - os: windows-latest
+            arch: x86_64
+            platform: windows
+            binary_name: apm-windows-x86_64
     
     runs-on: ${{ matrix.os }}
     permissions:
@@ -249,15 +267,24 @@ jobs:
           # Wait for installation to complete
           until xcode-select -p >/dev/null 2>&1; do sleep 5; done
       
-      - name: Install uv
+      - name: Install uv (Unix)
+        if: matrix.platform != 'windows'
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install uv (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          irm https://astral.sh/uv/install.ps1 | iex
+          echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       
       - name: Install test dependencies
         run: uv sync --extra dev
       
-      - name: Run integration tests
+      - name: Run integration tests (Unix)
+        if: matrix.platform != 'windows'
         env:
           APM_E2E_TESTS: "1"
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}    # Models access
@@ -266,6 +293,18 @@ jobs:
         run: |
           chmod +x scripts/test-integration.sh
           uv run ./scripts/test-integration.sh
+        timeout-minutes: 20
+
+      - name: Run integration tests (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          uv run pytest tests/integration/ -v --timeout=120
         timeout-minutes: 20
 
 # Release validation tests - Final pre-release validation of shipped binary
@@ -292,6 +331,10 @@ jobs:
             arch: arm64
             platform: darwin
             binary_name: apm-darwin-arm64
+          - os: windows-latest
+            arch: x86_64
+            platform: windows
+            binary_name: apm-windows-x86_64
     
     runs-on: ${{ matrix.os }}
     permissions:
@@ -321,9 +364,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.binary_name }}
-          path: /tmp/apm-isolated-test/
+          path: ${{ matrix.platform == 'windows' && 'D:\apm-isolated-test' || '/tmp/apm-isolated-test/' }}
       
-      - name: Make binary executable and verify isolation
+      - name: Make binary executable and verify isolation (Unix)
+        if: matrix.platform != 'windows'
         run: |
           cd /tmp/apm-isolated-test
           
@@ -335,22 +379,52 @@ jobs:
           # Make the binary executable
           chmod +x ./dist/${{ matrix.binary_name }}/apm
       
-      - name: Create APM symlink for testing
+      - name: Create APM symlink for testing (Unix)
+        if: matrix.platform != 'windows'
         run: |
           cd /tmp/apm-isolated-test
           ln -s "$(pwd)/dist/${{ matrix.binary_name }}/apm" "$(pwd)/apm"
           echo "/tmp/apm-isolated-test" >> $GITHUB_PATH
+
+      - name: Verify binary and add to PATH (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          cd D:\apm-isolated-test
+          
+          # Debug: List the downloaded structure
+          Write-Host "Downloaded structure:"
+          Get-ChildItem -Recurse -Filter "apm.exe"
+          Get-ChildItem .\dist\
+          
+          # Add binary directory to PATH
+          $binDir = "D:\apm-isolated-test\dist\${{ matrix.binary_name }}"
+          echo $binDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       
-      - name: Run release validation tests
+      - name: Run release validation tests (Unix)
+        if: matrix.platform != 'windows'
         env:
-          APM_E2E_TESTS: "1"                           # Avoids interactive prompts for MCP env values with apm install
+          APM_E2E_TESTS: "1"
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
-          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}    # Primary: APM module access
-          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}      # Azure DevOps module access
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
         run: |
           cd /tmp/apm-isolated-test
           chmod +x scripts/test-release-validation.sh
           ./scripts/test-release-validation.sh
+        timeout-minutes: 20
+
+      - name: Run release validation tests (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          cd D:\apm-isolated-test
+          .\scripts\test-release-validation.ps1
         timeout-minutes: 20
 
 
