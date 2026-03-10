@@ -30,17 +30,16 @@ def _watch_mode(output, chatmode, no_links, dry_run):
             def on_modified(self, event):
                 if event.is_directory:
                     return
+                # Only react to relevant files
+                if not event.src_path.endswith(".md") and not event.src_path.endswith(APM_YML_FILENAME):
+                    return
+                # Debounce rapid changes
+                current_time = time.time()
+                if current_time - self.last_compile < self.debounce_delay:
+                    return
 
-                # Check if it's a relevant file
-                if event.src_path.endswith(".md") or event.src_path.endswith(APM_YML_FILENAME):
-
-                    # Debounce rapid changes
-                    current_time = time.time()
-                    if current_time - self.last_compile < self.debounce_delay:
-                        return
-
-                    self.last_compile = current_time
-                    self._recompile(event.src_path)
+                self.last_compile = current_time
+                self._recompile(event.src_path)
 
             def _recompile(self, changed_file):
                 """Recompile after file change."""

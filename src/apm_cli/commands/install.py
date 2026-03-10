@@ -8,6 +8,7 @@ from typing import List
 import click
 
 from ..constants import APM_LOCK_FILENAME, APM_MODULES_DIR, APM_YML_FILENAME, GITHUB_DIR, CLAUDE_DIR, SKILL_MD_FILENAME, InstallMode
+from ..models.results import InstallResult
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ..utils.github_host import default_host, is_valid_fqdn
 from ._helpers import (
@@ -420,10 +421,13 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 # If specific packages were requested, only install those
                 # Otherwise install all from apm.yml
                 only_pkgs = builtins.list(packages) if packages else None
-                apm_count, prompt_count, agent_count = _install_apm_dependencies(
+                install_result = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                 )
+                apm_count = install_result.installed_count
+                prompt_count = install_result.prompts_integrated
+                agent_count = install_result.agents_integrated
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
@@ -853,7 +857,7 @@ def _install_apm_dependencies(
 
     apm_deps = apm_package.get_apm_dependencies()
     if not apm_deps:
-        return 0, 0, 0
+        return InstallResult()
 
     _rich_info(f"Installing APM dependencies ({len(apm_deps)})...")
 
@@ -986,7 +990,7 @@ def _install_apm_dependencies(
 
         if not deps_to_install:
             _rich_info("No APM dependencies to install", symbol="check")
-            return 0, 0, 0
+            return InstallResult()
 
         # apm_modules directory already created above
 
@@ -1206,106 +1210,109 @@ def _install_apm_dependencies(
                     _rich_info(f"✓ {display_name}{ref_str} (cached)")
                     installed_count += 1
 
-                    # Still need to integrate prompts for cached packages (zero-config behavior)
-                    if integrate_vscode or integrate_claude:
-                        try:
-                            # Create PackageInfo from cached package
-                            from apm_cli.models.apm_package import (
-                                APMPackage,
-                                PackageInfo,
-                                PackageType,
-                                ResolvedReference,
-                                GitReferenceType,
-                            )
-                            from datetime import datetime
+                    # Skip integration if not needed
+                    if not (integrate_vscode or integrate_claude):
+                        continue
 
-                            # Load package from apm.yml in install path
-                            apm_yml_path = install_path / APM_YML_FILENAME
-                            if apm_yml_path.exists():
-                                cached_package = APMPackage.from_apm_yml(apm_yml_path)
-                                # Ensure source is set to the repo URL for sync matching
-                                if not cached_package.source:
-                                    cached_package.source = dep_ref.repo_url
-                            else:
-                                # Virtual package or no apm.yml - create minimal package
-                                cached_package = APMPackage(
-                                    name=dep_ref.repo_url.split("/")[-1],
-                                    version="unknown",
-                                    package_path=install_path,
-                                    source=dep_ref.repo_url,
-                                )
+                    # Integrate prompts for cached packages (zero-config behavior)
+                    try:
+                        # Create PackageInfo from cached package
+                        from apm_cli.models.apm_package import (
+                            APMPackage,
+                            PackageInfo,
+                            PackageType,
+                            ResolvedReference,
+                            GitReferenceType,
+                        )
+                        from datetime import datetime
 
-                            # Create basic resolved reference for cached packages
-                            resolved_ref = ResolvedReference(
-                                original_ref=dep_ref.reference or "default",
-                                ref_type=GitReferenceType.BRANCH,
-                                resolved_commit="cached",  # Mark as cached since we don't know exact commit
-                                ref_name=dep_ref.reference or "default",
+                        # Load package from apm.yml in install path
+                        apm_yml_path = install_path / APM_YML_FILENAME
+                        if apm_yml_path.exists():
+                            cached_package = APMPackage.from_apm_yml(apm_yml_path)
+                            # Ensure source is set to the repo URL for sync matching
+                            if not cached_package.source:
+                                cached_package.source = dep_ref.repo_url
+                        else:
+                            # Virtual package or no apm.yml - create minimal package
+                            cached_package = APMPackage(
+                                name=dep_ref.repo_url.split("/")[-1],
+                                version="unknown",
+                                package_path=install_path,
+                                source=dep_ref.repo_url,
                             )
 
-                            cached_package_info = PackageInfo(
-                                package=cached_package,
-                                install_path=install_path,
-                                resolved_reference=resolved_ref,
-                                installed_at=datetime.now().isoformat(),
-                                dependency_ref=dep_ref,  # Store for canonical dependency string
-                            )
+                        # Create basic resolved reference for cached packages
+                        resolved_ref = ResolvedReference(
+                            original_ref=dep_ref.reference or "default",
+                            ref_type=GitReferenceType.BRANCH,
+                            resolved_commit="cached",  # Mark as cached since we don't know exact commit
+                            ref_name=dep_ref.reference or "default",
+                        )
 
-                            # Detect package_type from disk contents so
-                            # skill integration is not silently skipped
-                            skill_md_exists = (install_path / SKILL_MD_FILENAME).exists()
-                            apm_yml_exists = (install_path / APM_YML_FILENAME).exists()
-                            from apm_cli.utils.helpers import find_plugin_json
-                            plugin_json_exists = find_plugin_json(install_path) is not None
-                            if plugin_json_exists and not apm_yml_exists:
-                                cached_package_info.package_type = PackageType.MARKETPLACE_PLUGIN
-                            elif skill_md_exists and apm_yml_exists:
-                                cached_package_info.package_type = PackageType.HYBRID
-                            elif skill_md_exists:
-                                cached_package_info.package_type = PackageType.CLAUDE_SKILL
-                            elif apm_yml_exists:
-                                cached_package_info.package_type = PackageType.APM_PACKAGE
+                        cached_package_info = PackageInfo(
+                            package=cached_package,
+                            install_path=install_path,
+                            resolved_reference=resolved_ref,
+                            installed_at=datetime.now().isoformat(),
+                            dependency_ref=dep_ref,  # Store for canonical dependency string
+                        )
 
-                            # Collect for lockfile (cached packages still need to be tracked)
-                            node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
-                            depth = node.depth if node else 1
-                            resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
-                            # Get commit SHA: callback capture > existing lockfile > explicit reference
-                            dep_key = dep_ref.get_unique_key()
-                            cached_commit = callback_downloaded.get(dep_key)
-                            if not cached_commit and existing_lockfile:
-                                locked_dep = existing_lockfile.get_dependency(dep_key)
-                                if locked_dep:
-                                    cached_commit = locked_dep.resolved_commit
-                            if not cached_commit:
-                                cached_commit = dep_ref.reference
-                            installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
+                        # Detect package_type from disk contents so
+                        # skill integration is not silently skipped
+                        skill_md_exists = (install_path / SKILL_MD_FILENAME).exists()
+                        apm_yml_exists = (install_path / APM_YML_FILENAME).exists()
+                        from apm_cli.utils.helpers import find_plugin_json
+                        plugin_json_exists = find_plugin_json(install_path) is not None
+                        if plugin_json_exists and not apm_yml_exists:
+                            cached_package_info.package_type = PackageType.MARKETPLACE_PLUGIN
+                        elif skill_md_exists and apm_yml_exists:
+                            cached_package_info.package_type = PackageType.HYBRID
+                        elif skill_md_exists:
+                            cached_package_info.package_type = PackageType.CLAUDE_SKILL
+                        elif apm_yml_exists:
+                            cached_package_info.package_type = PackageType.APM_PACKAGE
 
-                            # Track package type for lockfile
-                            if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
-                                package_types[dep_key] = cached_package_info.package_type.value
+                        # Collect for lockfile (cached packages still need to be tracked)
+                        node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
+                        depth = node.depth if node else 1
+                        resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+                        # Get commit SHA: callback capture > existing lockfile > explicit reference
+                        dep_key = dep_ref.get_unique_key()
+                        cached_commit = callback_downloaded.get(dep_key)
+                        if not cached_commit and existing_lockfile:
+                            locked_dep = existing_lockfile.get_dependency(dep_key)
+                            if locked_dep:
+                                cached_commit = locked_dep.resolved_commit
+                        if not cached_commit:
+                            cached_commit = dep_ref.reference
+                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
 
-                            int_result = _integrate_package_artifacts(
-                                cached_package_info, project_root, force,
-                                integrate_vscode, integrate_claude, managed_files,
-                                prompt_integrator, agent_integrator, skill_integrator,
-                                instruction_integrator, command_integrator, hook_integrator,
-                            )
-                            total_prompts_integrated += int_result.prompts
-                            total_agents_integrated += int_result.agents
-                            total_skills_integrated += int_result.skills
-                            total_sub_skills_promoted += int_result.sub_skills_promoted
-                            total_instructions_integrated += int_result.instructions
-                            total_commands_integrated += int_result.commands
-                            total_hooks_integrated += int_result.hooks
-                            total_links_resolved += int_result.links_resolved
-                            dep_deployed = int_result.deployed_paths
-                            package_deployed_files[dep_key] = dep_deployed
-                        except Exception as e:
-                            # Don't fail installation if integration fails
-                            _rich_warning(
-                                f"  ⚠ Failed to integrate primitives from cached package: {e}"
-                            )
+                        # Track package type for lockfile
+                        if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
+                            package_types[dep_key] = cached_package_info.package_type.value
+
+                        int_result = _integrate_package_artifacts(
+                            cached_package_info, project_root, force,
+                            integrate_vscode, integrate_claude, managed_files,
+                            prompt_integrator, agent_integrator, skill_integrator,
+                            instruction_integrator, command_integrator, hook_integrator,
+                        )
+                        total_prompts_integrated += int_result.prompts
+                        total_agents_integrated += int_result.agents
+                        total_skills_integrated += int_result.skills
+                        total_sub_skills_promoted += int_result.sub_skills_promoted
+                        total_instructions_integrated += int_result.instructions
+                        total_commands_integrated += int_result.commands
+                        total_hooks_integrated += int_result.hooks
+                        total_links_resolved += int_result.links_resolved
+                        dep_deployed = int_result.deployed_paths
+                        package_deployed_files[dep_key] = dep_deployed
+                    except Exception as e:
+                        # Don't fail installation if integration fails
+                        _rich_warning(
+                            f"  ⚠ Failed to integrate primitives from cached package: {e}"
+                        )
 
                     continue
 
@@ -1481,7 +1488,7 @@ def _install_apm_dependencies(
 
         _rich_success(f"Installed {installed_count} APM dependencies")
 
-        return installed_count, total_prompts_integrated, total_agents_integrated
+        return InstallResult(installed_count, total_prompts_integrated, total_agents_integrated)
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")

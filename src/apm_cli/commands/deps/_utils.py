@@ -37,17 +37,14 @@ def _count_primitives(package_path: Path) -> Dict[str, int]:
     
     apm_dir = package_path / APM_DIR
     if apm_dir.exists():
-        prompts_path = apm_dir / "prompts"
-        if prompts_path.exists() and prompts_path.is_dir():
-            counts['prompts'] += len(list(prompts_path.glob("*.prompt.md")))
-        
-        instructions_path = apm_dir / "instructions"
-        if instructions_path.exists() and instructions_path.is_dir():
-            counts['instructions'] += len(list(instructions_path.glob("*.md")))
-        
-        agents_path = apm_dir / "agents"
-        if agents_path.exists() and agents_path.is_dir():
-            counts['agents'] += len(list(agents_path.glob("*.md")))
+        for subdir, key, pattern in [
+            ("prompts", "prompts", "*.prompt.md"),
+            ("instructions", "instructions", "*.md"),
+            ("agents", "agents", "*.md"),
+        ]:
+            path = apm_dir / subdir
+            if path.exists() and path.is_dir():
+                counts[key] += len(list(path.glob(pattern)))
         
         skills_path = apm_dir / "skills"
         if skills_path.exists() and skills_path.is_dir():

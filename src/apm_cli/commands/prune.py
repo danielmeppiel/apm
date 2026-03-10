@@ -105,19 +105,23 @@ def prune(ctx, dry_run):
                 deleted_targets: list = []
                 for dep_key in pruned_keys:
                     dep = lockfile.get_dependency(dep_key)
-                    if dep and dep.deployed_files:
-                        for rel_path in dep.deployed_files:
-                            if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
-                                continue
-                            target = project_root / rel_path
-                            if target.is_file():
-                                target.unlink()
-                                deployed_cleaned += 1
-                                deleted_targets.append(target)
-                            elif target.is_dir():
-                                shutil.rmtree(target)
-                                deployed_cleaned += 1
-                                deleted_targets.append(target)
+                    if not dep or not dep.deployed_files:
+                        # No deployed files to clean — just remove lockfile entry
+                        if dep_key in lockfile.dependencies:
+                            del lockfile.dependencies[dep_key]
+                        continue
+                    for rel_path in dep.deployed_files:
+                        if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
+                            continue
+                        target = project_root / rel_path
+                        if target.is_file():
+                            target.unlink()
+                            deployed_cleaned += 1
+                            deleted_targets.append(target)
+                        elif target.is_dir():
+                            shutil.rmtree(target)
+                            deployed_cleaned += 1
+                            deleted_targets.append(target)
                     # Remove from lockfile
                     if dep_key in lockfile.dependencies:
                         del lockfile.dependencies[dep_key]

@@ -26,6 +26,90 @@ from .._helpers import (
 from .watcher import _watch_mode
 
 
+def _display_single_file_summary(stats, c_status, c_hash, output_path, dry_run):
+    """Display compilation summary table for single-file mode."""
+    try:
+        console = _get_console()
+        if not console:
+            _rich_info(f"Processed {stats.get('primitives_found', 0)} primitives:")
+            _rich_info(f"  • {stats.get('instructions', 0)} instructions")
+            _rich_info(f"  • {stats.get('contexts', 0)} contexts")
+            _rich_info(f"Constitution status: {c_status} hash={c_hash or '-'}")
+            return
+
+        import os
+        from rich.table import Table
+
+        table = Table(
+            title="Compilation Summary",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Component", style="bold white", min_width=15)
+        table.add_column("Count", style="cyan", min_width=8)
+        table.add_column("Details", style="white", min_width=20)
+
+        constitution_details = f"Hash: {c_hash or '-'}"
+        table.add_row("Spec-kit Constitution", c_status, constitution_details)
+
+        table.add_row(
+            "Instructions",
+            str(stats.get("instructions", 0)),
+            "✅ All validated",
+        )
+        table.add_row(
+            "Contexts",
+            str(stats.get("contexts", 0)),
+            "✅ All validated",
+        )
+        table.add_row(
+            "Chatmodes",
+            str(stats.get("chatmodes", 0)),
+            "✅ All validated",
+        )
+
+        try:
+            file_size = os.path.getsize(output_path) if not dry_run else 0
+            size_str = f"{file_size/1024:.1f}KB" if file_size > 0 else "Preview"
+            output_details = f"{output_path.name} ({size_str})"
+        except Exception:
+            output_details = f"{output_path.name}"
+
+        table.add_row("Output", "✨ SUCCESS", output_details)
+        console.print(table)
+    except Exception:
+        _rich_info(f"Processed {stats.get('primitives_found', 0)} primitives:")
+        _rich_info(f"  • {stats.get('instructions', 0)} instructions")
+        _rich_info(f"  • {stats.get('contexts', 0)} contexts")
+        _rich_info(f"Constitution status: {c_status} hash={c_hash or '-'}")
+
+
+def _display_next_steps(output):
+    """Display next steps panel after successful single-file compilation."""
+    next_steps = [
+        f"Review the generated {output} file",
+        "Install MCP dependencies: apm install",
+        "Execute agentic workflows: apm run <script> --param key=value",
+    ]
+    try:
+        console = _get_console()
+        if console:
+            from rich.panel import Panel
+
+            steps_content = "\n".join(f"• {step}" for step in next_steps)
+            console.print(
+                Panel(steps_content, title="💡 Next Steps", border_style="blue")
+            )
+        else:
+            _rich_info("Next steps:")
+            for step in next_steps:
+                click.echo(f"  • {step}")
+    except (ImportError, NameError):
+        _rich_info("Next steps:")
+        for step in next_steps:
+            click.echo(f"  • {step}")
+
+
 def _display_validation_errors(errors):
     """Display validation errors in a Rich table with actionable feedback."""
     try:
@@ -421,87 +505,7 @@ def compile(
                     # Add spacing before summary table
                     _rich_blank_line()
 
-                    # Single comprehensive compilation summary table
-                    try:
-                        console = _get_console()
-                        if console:
-                            import os
-
-                            from rich.table import Table
-
-                            table = Table(
-                                title="Compilation Summary",
-                                show_header=True,
-                                header_style="bold cyan",
-                            )
-                            table.add_column(
-                                "Component", style="bold white", min_width=15
-                            )
-                            table.add_column("Count", style="cyan", min_width=8)
-                            table.add_column("Details", style="white", min_width=20)
-
-                            # Constitution row
-                            constitution_details = f"Hash: {c_hash or '-'}"
-                            table.add_row(
-                                "Spec-kit Constitution", c_status, constitution_details
-                            )
-
-                            # Primitives rows
-                            table.add_row(
-                                "Instructions",
-                                str(stats.get("instructions", 0)),
-                                "✅ All validated",
-                            )
-                            table.add_row(
-                                "Contexts",
-                                str(stats.get("contexts", 0)),
-                                "✅ All validated",
-                            )
-                            table.add_row(
-                                "Chatmodes",
-                                str(stats.get("chatmodes", 0)),
-                                "✅ All validated",
-                            )
-
-                            # Output row with file size
-                            try:
-                                file_size = (
-                                    os.path.getsize(output_path) if not dry_run else 0
-                                )
-                                size_str = (
-                                    f"{file_size/1024:.1f}KB"
-                                    if file_size > 0
-                                    else "Preview"
-                                )
-                                output_details = f"{output_path.name} ({size_str})"
-                            except:
-                                output_details = f"{output_path.name}"
-
-                            table.add_row("Output", "✨ SUCCESS", output_details)
-
-                            console.print(table)
-                        else:
-                            # Fallback for no Rich console
-                            _rich_info(
-                                f"Processed {stats.get('primitives_found', 0)} primitives:"
-                            )
-                            _rich_info(
-                                f"  • {stats.get('instructions', 0)} instructions"
-                            )
-                            _rich_info(f"  • {stats.get('contexts', 0)} contexts")
-                            _rich_info(
-                                f"Constitution status: {c_status} hash={c_hash or '-'}"
-                            )
-                    except Exception:
-                        # Fallback for any errors
-                        _rich_info(
-                            f"Processed {stats.get('primitives_found', 0)} primitives:"
-                        )
-                        _rich_info(f"  • {stats.get('instructions', 0)} instructions")
-                        _rich_info(f"  • {stats.get('contexts', 0)} contexts")
-                        _rich_info(
-                            f"Constitution status: {c_status} hash={c_hash or '-'}"
-                        )
+                    _display_single_file_summary(stats, c_status, c_hash, output_path, dry_run)
 
                     if dry_run:
                         preview = final_content[:500] + (
@@ -511,34 +515,7 @@ def compile(
                             preview, title="📋 Generated Content Preview", style="cyan"
                         )
                     else:
-                        next_steps = [
-                            f"Review the generated {output} file",
-                            "Install MCP dependencies: apm install",
-                            "Execute agentic workflows: apm run <script> --param key=value",
-                        ]
-                        try:
-                            console = _get_console()
-                            if console:
-                                from rich.panel import Panel
-
-                                steps_content = "\n".join(
-                                    f"• {step}" for step in next_steps
-                                )
-                                console.print(
-                                    Panel(
-                                        steps_content,
-                                        title="💡 Next Steps",
-                                        border_style="blue",
-                                    )
-                                )
-                            else:
-                                _rich_info("Next steps:")
-                                for step in next_steps:
-                                    click.echo(f"  • {step}")
-                        except (ImportError, NameError):
-                            _rich_info("Next steps:")
-                            for step in next_steps:
-                                click.echo(f"  • {step}")
+                        _display_next_steps(output)
 
         # Common error handling for both compilation modes
         # Note: Warnings are handled by professional formatters for distributed mode

@@ -75,36 +75,35 @@ def list_packages():
                     # Build the expected installed package name
                     repo_parts = dep.repo_url.split('/')
                     source = 'azure-devops' if dep.is_azure_devops() else 'github'
-                    if dep.is_virtual:
-                        if dep.is_virtual_subdirectory() and dep.virtual_path:
-                            # Virtual subdirectory packages keep natural path structure.
-                            # GitHub: owner/repo/subdir
-                            # ADO: org/project/repo/subdir
-                            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                                declared_sources[
-                                    f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
-                                ] = source
-                            elif len(repo_parts) >= 2:
-                                declared_sources[
-                                    f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
-                                ] = source
-                        else:
-                            # Virtual file/collection packages are flattened.
-                            package_name = dep.get_virtual_package_name()
-                            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                                # ADO structure: org/project/virtual-pkg-name
-                                declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"] = source
-                            elif len(repo_parts) >= 2:
-                                # GitHub structure: owner/virtual-pkg-name
-                                declared_sources[f"{repo_parts[0]}/{package_name}"] = source
-                    else:
+                    is_ado = dep.is_azure_devops() and len(repo_parts) >= 3
+                    is_gh = len(repo_parts) >= 2
+
+                    if not dep.is_virtual:
                         # Regular package: use full repo_url path
-                        if dep.is_azure_devops() and len(repo_parts) >= 3:
-                            # ADO structure: org/project/repo
+                        if is_ado:
                             declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}"] = source
-                        elif len(repo_parts) >= 2:
-                            # GitHub structure: owner/repo
+                        elif is_gh:
                             declared_sources[f"{repo_parts[0]}/{repo_parts[1]}"] = source
+                        continue
+
+                    if dep.is_virtual_subdirectory() and dep.virtual_path:
+                        # Virtual subdirectory packages keep natural path structure.
+                        if is_ado:
+                            declared_sources[
+                                f"{repo_parts[0]}/{repo_parts[1]}/{repo_parts[2]}/{dep.virtual_path}"
+                            ] = source
+                        elif is_gh:
+                            declared_sources[
+                                f"{repo_parts[0]}/{repo_parts[1]}/{dep.virtual_path}"
+                            ] = source
+                        continue
+
+                    # Virtual file/collection packages are flattened.
+                    package_name = dep.get_virtual_package_name()
+                    if is_ado:
+                        declared_sources[f"{repo_parts[0]}/{repo_parts[1]}/{package_name}"] = source
+                    elif is_gh:
+                        declared_sources[f"{repo_parts[0]}/{package_name}"] = source
         except (OSError, ValueError):
             pass  # Continue without orphan detection if apm.yml parsing fails
         
@@ -145,9 +144,8 @@ def list_packages():
 
             # Skip skill sub-dirs nested inside another package (e.g. plugin
             # skills/ directories that are deployment artifacts, not packages).
-            if has_skill_md and not has_apm_yml:
-                if _is_nested_under_package(candidate, apm_modules_path):
-                    continue
+            if has_skill_md and not has_apm_yml and _is_nested_under_package(candidate, apm_modules_path):
+                continue
 
             try:
                 version = 'unknown'
