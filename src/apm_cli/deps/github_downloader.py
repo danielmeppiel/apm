@@ -1156,8 +1156,9 @@ author: {dep_ref.repo_url.split('/')[0]}
                         )
                 else:
                     if progress_obj and progress_task_id is not None:
-                        progress_percent = self._get_sparse_checkout_progress_checkpoint(idx, len(cmds))
-                        progress_obj.update(progress_task_id, completed=progress_percent, total=100)
+                        if fetch_progress_mode != _SPARSE_FETCH_PROGRESS_MODE_SPINNER:
+                            progress_percent = self._get_sparse_checkout_progress_checkpoint(idx, len(cmds))
+                            progress_obj.update(progress_task_id, completed=progress_percent, total=100)
 
                     result = subprocess.run(
                         cmd, cwd=str(temp_clone_path), env=env,
@@ -1166,6 +1167,10 @@ author: {dep_ref.repo_url.split('/')[0]}
                 if result.returncode != 0:
                     _debug(f"Sparse-checkout step failed ({' '.join(cmd)}): {result.stderr.strip()}")
                     return False
+
+            if fetch_progress_mode == _SPARSE_FETCH_PROGRESS_MODE_SPINNER and progress_obj and progress_task_id is not None:
+                final_checkpoint = self._get_sparse_checkout_progress_checkpoint(len(cmds), len(cmds))
+                progress_obj.update(progress_task_id, completed=final_checkpoint, total=100)
 
             return True
         except Exception as e:
@@ -1289,13 +1294,10 @@ author: {dep_ref.repo_url.split('/')[0]}
         progress_task_id=None,
         progress_obj=None,
     ):
-        """Run `git fetch` with an indeterminate progress state until completion."""
+        """Run `git fetch` without progress updates (spinner mode)."""
         import subprocess
 
-        if progress_obj and progress_task_id is not None:
-            progress_obj.update(progress_task_id, completed=fetch_start, total=None)
-
-        result = subprocess.run(
+        return subprocess.run(
             cmd,
             cwd=str(temp_clone_path),
             env=env,
@@ -1303,11 +1305,6 @@ author: {dep_ref.repo_url.split('/')[0]}
             text=True,
             timeout=120,
         )
-
-        if result.returncode == 0 and progress_obj and progress_task_id is not None:
-            progress_obj.update(progress_task_id, completed=fetch_end, total=100)
-
-        return result
 
     def download_subdirectory_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a subdirectory from a repo as an APM package.

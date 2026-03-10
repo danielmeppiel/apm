@@ -7,7 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, call, patch, MagicMock
 from urllib.parse import urlparse
 
 import requests as requests_lib
@@ -1135,14 +1135,9 @@ class TestDownloadProgressReporting:
                 )
 
         assert sparse_ok is True
-        assert [call.kwargs for call in progress_obj.update.call_args_list] == [
-            {'completed': 28, 'total': 100},
-            {'completed': 36, 'total': 100},
-            {'completed': 45, 'total': 100},
-            {'completed': 53, 'total': 100},
-            {'completed': 53, 'total': None},
-            {'completed': 61, 'total': 100},
-            {'completed': 70, 'total': 100},
+        # Spinner mode: no intermediate updates, just a final snap to 70%
+        assert progress_obj.update.call_args_list == [
+            call(9, completed=70, total=100),
         ]
 
     @patch('subprocess.Popen')
