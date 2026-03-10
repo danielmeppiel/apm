@@ -468,7 +468,7 @@ class SkillIntegrator(BaseIntegrator):
                 is_self_overwrite = prev_owner is not None and prev_owner == parent_name
                 if warn and not is_self_overwrite:
                     try:
-                        from apm_cli.cli import _rich_warning
+                        from apm_cli.utils.console import _rich_warning
                         _rich_warning(
                             f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill at {target_skills_root.name}/{sub_name}/"
                         )
@@ -593,7 +593,7 @@ class SkillIntegrator(BaseIntegrator):
             skill_name = normalize_skill_name(raw_skill_name)
             # Log warning about name normalization (import here to avoid circular import)
             try:
-                from apm_cli.cli import _rich_warning
+                from apm_cli.utils.console import _rich_warning
                 _rich_warning(
                     f"Skill name '{raw_skill_name}' normalized to '{skill_name}' ({error_msg})"
                 )

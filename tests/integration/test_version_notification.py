@@ -13,7 +13,7 @@ class TestVersionNotificationIntegration(unittest.TestCase):
         """Set up test fixtures."""
         self.runner = CliRunner()
 
-    @patch("apm_cli.cli.check_for_updates")
+    @patch("apm_cli.commands._helpers.check_for_updates")
     @patch.dict("os.environ", {"APM_E2E_TESTS": ""}, clear=False)
     def test_version_notification_on_init(self, mock_check):
         """Test that version notification appears on init command."""
@@ -30,7 +30,7 @@ class TestVersionNotificationIntegration(unittest.TestCase):
             self.assertIn("0.7.0", result.output)
             self.assertIn("apm update", result.output)
 
-    @patch("apm_cli.cli.check_for_updates")
+    @patch("apm_cli.commands._helpers.check_for_updates")
     def test_no_notification_when_up_to_date(self, mock_check):
         """Test that no notification appears when version is up to date."""
         # Mock that no update is available
@@ -45,7 +45,7 @@ class TestVersionNotificationIntegration(unittest.TestCase):
             self.assertNotIn("A new version", result.output)
             self.assertNotIn("apm update", result.output)
 
-    @patch("apm_cli.cli.check_for_updates")
+    @patch("apm_cli.commands._helpers.check_for_updates")
     def test_notification_does_not_block_command(self, mock_check):
         """Test that version check errors don't block command execution."""
         # Mock that check raises an exception

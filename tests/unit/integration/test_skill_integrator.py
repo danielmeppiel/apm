@@ -2133,7 +2133,7 @@ class TestSubSkillPromotion:
         )
         pkg_info = self._create_package_info(name="modernisation", install_path=package_dir)
 
-        with patch("apm_cli.cli._rich_warning") as mock_warning:
+        with patch("apm_cli.utils.console._rich_warning") as mock_warning:
             self.integrator.integrate_package_skill(pkg_info, self.project_root)
 
         # Warning should have been emitted about the collision

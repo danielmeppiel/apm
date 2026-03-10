@@ -1,23 +1,38 @@
 """Models for APM CLI data structures."""
 
-from .apm_package import (
-    APMPackage,
+from .apm_package import APMPackage, PackageInfo, clear_apm_yml_cache
+from .dependency import (
     DependencyReference,
-    ValidationResult,
-    ValidationError,
-    ResolvedReference,
-    PackageInfo,
     GitReferenceType,
+    MCPDependency,
+    ResolvedReference,
+    parse_git_reference,
+)
+from .validation import (
+    InvalidVirtualPackageExtensionError,
     PackageContentType,
+    PackageType,
+    ValidationError,
+    ValidationResult,
+    validate_apm_package,
 )
 
 __all__ = [
+    # Core
     "APMPackage",
-    "DependencyReference", 
-    "ValidationResult",
-    "ValidationError",
-    "ResolvedReference",
     "PackageInfo",
+    "clear_apm_yml_cache",
+    # Dependency
+    "DependencyReference",
     "GitReferenceType",
+    "MCPDependency",
+    "ResolvedReference",
+    "parse_git_reference",
+    # Validation
+    "InvalidVirtualPackageExtensionError",
     "PackageContentType",
+    "PackageType",
+    "ValidationError",
+    "ValidationResult",
+    "validate_apm_package",
 ]
