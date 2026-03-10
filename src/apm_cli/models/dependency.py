@@ -24,6 +24,13 @@ class GitReferenceType(Enum):
     COMMIT = "commit"
 
 
+class VirtualPackageType(Enum):
+    """Type of virtual package."""
+    FILE = "file"                 # Individual file (*.prompt.md, etc.)
+    COLLECTION = "collection"     # Collection virtual package
+    SUBDIRECTORY = "subdirectory"  # Subdirectory package
+
+
 @dataclass
 class ResolvedReference:
     """Represents a resolved Git reference."""
@@ -62,18 +69,24 @@ class DependencyReference:
         from ..utils.github_host import is_azure_devops_hostname
         return self.host is not None and is_azure_devops_hostname(self.host)
     
+    @property
+    def virtual_type(self) -> 'Optional[VirtualPackageType]':
+        """Return the type of virtual package, or None if not virtual."""
+        if not self.is_virtual or not self.virtual_path:
+            return None
+        if any(self.virtual_path.endswith(ext) for ext in self.VIRTUAL_FILE_EXTENSIONS):
+            return VirtualPackageType.FILE
+        if '/collections/' in self.virtual_path or self.virtual_path.startswith('collections/'):
+            return VirtualPackageType.COLLECTION
+        return VirtualPackageType.SUBDIRECTORY
+
     def is_virtual_file(self) -> bool:
         """Check if this is a virtual file package (individual file)."""
-        if not self.is_virtual or not self.virtual_path:
-            return False
-        return any(self.virtual_path.endswith(ext) for ext in self.VIRTUAL_FILE_EXTENSIONS)
+        return self.virtual_type == VirtualPackageType.FILE
     
     def is_virtual_collection(self) -> bool:
         """Check if this is a virtual collection package."""
-        if not self.is_virtual or not self.virtual_path:
-            return False
-        # Collections have /collections/ in their path or start with collections/
-        return '/collections/' in self.virtual_path or self.virtual_path.startswith('collections/')
+        return self.virtual_type == VirtualPackageType.COLLECTION
     
     def is_virtual_subdirectory(self) -> bool:
         """Check if this is a virtual subdirectory package (e.g., Claude Skill).
@@ -88,10 +101,7 @@ class DependencyReference:
             - owner/repo/prompts/file.prompt.md → False (is_virtual_file)
             - owner/repo/collections/name → False (is_virtual_collection)
         """
-        if not self.is_virtual or not self.virtual_path:
-            return False
-        # Not a file and not a collection = subdirectory
-        return not self.is_virtual_file() and not self.is_virtual_collection()
+        return self.virtual_type == VirtualPackageType.SUBDIRECTORY
     
     def get_virtual_package_name(self) -> str:
         """Generate a package name for this virtual package.

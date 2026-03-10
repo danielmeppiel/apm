@@ -7,7 +7,7 @@ from typing import List
 
 import click
 
-from ..constants import APM_LOCK_FILENAME, APM_MODULES_DIR, APM_YML_FILENAME, GITHUB_DIR, CLAUDE_DIR, SKILL_MD_FILENAME
+from ..constants import APM_LOCK_FILENAME, APM_MODULES_DIR, APM_YML_FILENAME, GITHUB_DIR, CLAUDE_DIR, SKILL_MD_FILENAME, InstallMode
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ..utils.github_host import default_host, is_valid_fqdn
 from ._helpers import (
@@ -309,6 +309,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
     MCP servers for all detected and available runtimes. It also installs APM package
     dependencies from GitHub repositories.
 
+    The --only flag filters by dependency type (apm or mcp). Internally converted
+    to an InstallMode enum for type-safe dispatch.
+
     Examples:
         apm install                             # Install existing deps from apm.yml
         apm install org/pkg1                    # Add package to apm.yml and install
@@ -359,9 +362,15 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm_deps = apm_package.get_apm_dependencies()
         mcp_deps = apm_package.get_mcp_dependencies()
 
-        # Determine what to install based on --only flag
-        should_install_apm = only != "mcp"
-        should_install_mcp = only != "apm"
+        # Convert --only string to InstallMode enum
+        if only is None:
+            install_mode = InstallMode.ALL
+        else:
+            install_mode = InstallMode(only)
+
+        # Determine what to install based on install mode
+        should_install_apm = install_mode != InstallMode.MCP
+        should_install_mcp = install_mode != InstallMode.APM
 
         # Show what will be installed if dry run
         if dry_run:
@@ -463,15 +472,15 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Show beautiful post-install summary
         _rich_blank_line()
-        if not only:
+        if install_mode == InstallMode.ALL:
             # Load apm.yml config for summary
             apm_config = _load_apm_config()
             _show_install_summary(
                 apm_count, prompt_count, agent_count, mcp_count, apm_config
             )
-        elif only == "apm":
+        elif install_mode == InstallMode.APM:
             _rich_success(f"Installed {apm_count} APM dependencies")
-        elif only == "mcp":
+        elif install_mode == InstallMode.MCP:
             _rich_success(f"Configured {mcp_count} MCP servers")
 
     except Exception as e:
