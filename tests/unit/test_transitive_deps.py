@@ -183,7 +183,7 @@ class TestOrphanDetectionWithTransitiveDeps:
 
         monkeypatch.chdir(tmp_path)
 
-        from apm_cli.cli import _check_orphaned_packages
+        from apm_cli.commands._helpers import _check_orphaned_packages
         orphans = _check_orphaned_packages()
         assert orphans == [], f"Transitive deps should not be orphaned, got: {orphans}"
 
@@ -200,7 +200,7 @@ class TestOrphanDetectionWithTransitiveDeps:
 
         monkeypatch.chdir(tmp_path)
 
-        from apm_cli.cli import _check_orphaned_packages
+        from apm_cli.commands._helpers import _check_orphaned_packages
         orphans = _check_orphaned_packages()
         assert "owner/stale" in orphans
 
@@ -215,6 +215,6 @@ class TestOrphanDetectionWithTransitiveDeps:
 
         monkeypatch.chdir(tmp_path)
 
-        from apm_cli.cli import _check_orphaned_packages
+        from apm_cli.commands._helpers import _check_orphaned_packages
         orphans = _check_orphaned_packages()
         assert "owner/stale" in orphans
