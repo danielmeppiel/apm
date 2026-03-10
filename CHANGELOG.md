@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-03-10
+
+### Added
+
+- `apm pack` and `apm unpack` commands for portable bundle creation and extraction with target filtering, archive support, and verification (#218)
+- Plugin MCP Server installation — extract, convert, and deploy MCP servers defined in plugin packages (#217)
+
+### Fixed
+
+- Plugin agents not deployed due to directory nesting in custom agent paths (#214)
+- Skip already-configured self-defined MCP servers on re-install (#191)
+- CLI consistency: remove emojis from help strings, fix `apm config` bare invocation, update descriptions (#212)
+
+### Changed
+
+- Extract `MCPIntegrator` from `cli.py` — move MCP lifecycle orchestration (~760 lines) into standalone module with hardened error handling (#215)
+
 ## [0.7.5] - 2026-03-09
 
 ### Added
