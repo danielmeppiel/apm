@@ -20,8 +20,11 @@ are accepted as aliases and map to the same internal value.
 from pathlib import Path
 from typing import Literal, Optional, Tuple
 
-# Valid target values
+# Valid target values (internal canonical form)
 TargetType = Literal["vscode", "claude", "all", "minimal"]
+
+# User-facing target values (includes aliases accepted by CLI)
+UserTargetType = Literal["copilot", "vscode", "agents", "claude", "all", "minimal"]
 
 
 def detect_target(
@@ -125,20 +128,23 @@ def should_compile_claude_md(target: TargetType) -> bool:
     return target in ("claude", "all")
 
 
-def get_target_description(target: TargetType) -> str:
+def get_target_description(target: UserTargetType) -> str:
     """Get a human-readable description of what will be generated for a target.
     
+    Accepts both internal target types and user-facing aliases.
+    
     Args:
-        target: The target type
+        target: The target type (internal or user-facing alias)
         
     Returns:
         str: Description of output files
     """
+    # Normalize aliases to internal value for lookup
+    normalized = "vscode" if target in ("copilot", "agents") else target
     descriptions = {
-        "copilot": "AGENTS.md + .github/prompts/ + .github/agents/",
         "vscode": "AGENTS.md + .github/prompts/ + .github/agents/",
         "claude": "CLAUDE.md + .claude/commands/ + .claude/agents/ + .claude/skills/",
         "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/",
         "minimal": "AGENTS.md only (create .github/ or .claude/ for full integration)",
     }
-    return descriptions.get(target, "unknown target")
+    return descriptions.get(normalized, "unknown target")
