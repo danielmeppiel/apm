@@ -126,8 +126,6 @@ apm install [PACKAGES...] [OPTIONS]
 - `--verbose` - Show detailed installation information
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 
-**Environment:**
-- `APM_SPARSE_FETCH_PROGRESS_MODE` - Controls sparse-checkout fetch progress for subdirectory installs. Supported values: `native` (default; also used for unset/invalid values) and `spinner`.
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
