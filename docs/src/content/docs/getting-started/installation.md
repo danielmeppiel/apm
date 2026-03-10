@@ -30,6 +30,29 @@ This script automatically:
 - Installs under `%LOCALAPPDATA%\Programs\apm\` on Windows and adds a user-level `apm` shim to `PATH`
 - Verifies installation
 
+### Windows Package Managers
+
+APM is available through popular Windows package managers:
+
+#### Scoop
+
+```powershell
+scoop bucket add apm https://github.com/microsoft/scoop-apm
+scoop install apm
+```
+
+#### Chocolatey
+
+```powershell
+choco install apm
+```
+
+#### winget
+
+```powershell
+winget install Microsoft.APM
+```
+
 ## pip install
 
 ```bash
