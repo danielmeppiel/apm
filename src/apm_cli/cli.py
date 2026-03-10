@@ -19,6 +19,7 @@ list = builtins.list
 dict = builtins.dict
 
 from apm_cli.commands.deps import deps
+from apm_cli.commands.pack import pack_cmd, unpack_cmd
 from apm_cli.compilation import AgentsCompiler, CompilationConfig
 from apm_cli.primitives.discovery import discover_primitives
 from apm_cli.utils.console import (
@@ -309,6 +310,8 @@ def cli(ctx):
 
 # Register command groups
 cli.add_command(deps)
+cli.add_command(pack_cmd, name="pack")
+cli.add_command(unpack_cmd, name="unpack")
 
 
 @cli.command(help="Initialize a new APM project")

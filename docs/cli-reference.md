@@ -335,6 +335,81 @@ apm prune --dry-run
 - Removes deployed integration files (prompts, agents, hooks, etc.) for pruned packages using the `deployed_files` manifest in `apm.lock`
 - Updates `apm.lock` to reflect the pruned state
 
+### `apm pack` - Create a portable bundle
+
+Create a self-contained bundle from installed APM dependencies using the `deployed_files` recorded in `apm.lock` as the source of truth.
+
+```bash
+apm pack [OPTIONS]
+```
+
+**Options:**
+- `-o, --output TEXT` - Output directory (default: `./build/`)
+- `-t, --target [vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified
+- `--archive` - Produce a `.tar.gz` archive instead of a directory
+- `--dry-run` - List files that would be packed without writing anything
+- `--format [apm|plugin]` - Bundle format (default: `apm`)
+
+**Examples:**
+```bash
+# Pack to ./build/<name>-<version>/
+apm pack
+
+# Pack as a .tar.gz archive
+apm pack --archive
+
+# Pack only VS Code / Copilot files
+apm pack --target vscode
+
+# Preview what would be packed
+apm pack --dry-run
+
+# Custom output directory
+apm pack -o dist/
+```
+
+**Behavior:**
+- Reads `apm.lock` to enumerate all `deployed_files` from installed dependencies
+- Copies files preserving directory structure
+- Writes an enriched `apm.lock` inside the bundle with a `pack:` metadata section
+- The project's own `apm.lock` is never modified
+
+### `apm unpack` - Extract a bundle
+
+Extract an APM bundle into the current project with optional completeness verification.
+
+```bash
+apm unpack BUNDLE_PATH [OPTIONS]
+```
+
+**Arguments:**
+- `BUNDLE_PATH` - Path to a `.tar.gz` archive or an unpacked bundle directory
+
+**Options:**
+- `--output TEXT` - Target project directory (default: current directory)
+- `--skip-verify` - Skip completeness verification against the bundle lockfile
+- `--dry-run` - Show what would be extracted without writing anything
+
+**Examples:**
+```bash
+# Unpack an archive into the current directory
+apm unpack ./build/my-pkg-1.0.0.tar.gz
+
+# Unpack into a specific directory
+apm unpack bundle.tar.gz --output /path/to/project
+
+# Skip verification (useful for partial bundles)
+apm unpack bundle.tar.gz --skip-verify
+
+# Preview what would be extracted
+apm unpack bundle.tar.gz --dry-run
+```
+
+**Behavior:**
+- Additive-only: only writes files listed in the bundle's `apm.lock`; never deletes existing files
+- If a local file has the same path as a bundle file, the bundle file wins (overwrite)
+- Verification checks that all `deployed_files` from the bundle lockfile are present in the bundle
+
 ### `apm update` - Update APM to the latest version
 
 Update the APM CLI to the latest version available on GitHub releases.

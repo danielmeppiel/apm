@@ -1,0 +1,174 @@
+"""Bundle packer — creates self-contained APM bundles from the resolved dependency tree."""
+
+import shutil
+import tarfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional
+
+from ..deps.lockfile import LockFile
+from ..models.apm_package import APMPackage
+from ..core.target_detection import detect_target
+from .lockfile_enrichment import enrich_lockfile_for_pack
+
+
+# Target prefix mapping
+_TARGET_PREFIXES = {
+    "vscode": [".github/"],
+    "claude": [".claude/"],
+    "all": [".github/", ".claude/"],
+}
+
+
+@dataclass
+class PackResult:
+    """Result of a pack operation."""
+
+    bundle_path: Path
+    files: List[str] = field(default_factory=list)
+    lockfile_enriched: bool = False
+
+
+def _filter_files_by_target(deployed_files: List[str], target: str) -> List[str]:
+    """Filter deployed file paths by target prefix."""
+    prefixes = _TARGET_PREFIXES.get(target, _TARGET_PREFIXES["all"])
+    return [f for f in deployed_files if any(f.startswith(p) for p in prefixes)]
+
+
+def pack_bundle(
+    project_root: Path,
+    output_dir: Path,
+    fmt: str = "apm",
+    target: Optional[str] = None,
+    archive: bool = False,
+    dry_run: bool = False,
+) -> PackResult:
+    """Create a self-contained bundle from installed APM dependencies.
+
+    Args:
+        project_root: Root of the project containing ``apm.lock`` and ``apm.yml``.
+        output_dir: Directory where the bundle will be created.
+        fmt: Bundle format — ``"apm"`` (default) or ``"plugin"``.
+        target: Target filter — ``"vscode"``, ``"claude"``, ``"all"``, or *None*
+            (auto-detect from apm.yml / project structure).
+        archive: If *True*, produce a ``.tar.gz`` and remove the directory.
+        dry_run: If *True*, resolve the file list but write nothing to disk.
+
+    Returns:
+        :class:`PackResult` describing what was (or would be) produced.
+
+    Raises:
+        FileNotFoundError: If ``apm.lock`` is missing.
+        ValueError: If deployed files referenced in the lockfile are missing on disk.
+    """
+    # 1. Read lockfile
+    lockfile_path = project_root / "apm.lock"
+    lockfile = LockFile.read(lockfile_path)
+    if lockfile is None:
+        raise FileNotFoundError(
+            "apm.lock not found — run 'apm install' first to resolve dependencies."
+        )
+
+    # 2. Read apm.yml for name / version / config target
+    apm_yml_path = project_root / "apm.yml"
+    try:
+        package = APMPackage.from_apm_yml(apm_yml_path)
+        pkg_name = package.name
+        pkg_version = package.version or "0.0.0"
+        config_target = package.target
+    except (FileNotFoundError, ValueError):
+        pkg_name = project_root.resolve().name
+        pkg_version = "0.0.0"
+        config_target = None
+
+    # 3. Resolve effective target
+    effective_target, _reason = detect_target(
+        project_root,
+        explicit_target=target,
+        config_target=config_target,
+    )
+    # For packing purposes, "minimal" means nothing to pack — treat as "all"
+    if effective_target == "minimal":
+        effective_target = "all"
+
+    # 4. Collect deployed_files from all dependencies, filtered by target
+    all_deployed: List[str] = []
+    for dep in lockfile.get_all_dependencies():
+        all_deployed.extend(dep.deployed_files)
+
+    filtered_files = _filter_files_by_target(all_deployed, effective_target)
+    # Deduplicate while preserving order
+    seen = set()
+    unique_files: List[str] = []
+    for f in filtered_files:
+        if f not in seen:
+            seen.add(f)
+            unique_files.append(f)
+
+    # 5. Verify each path is safe (no traversal) and exists on disk
+    project_root_resolved = project_root.resolve()
+    missing: List[str] = []
+    for rel_path in unique_files:
+        # Guard against absolute paths or path-traversal entries in deployed_files
+        p = Path(rel_path)
+        if p.is_absolute() or ".." in p.parts:
+            raise ValueError(
+                f"Refusing to pack unsafe path from lockfile: {rel_path!r}"
+            )
+        abs_path = project_root / rel_path
+        if not abs_path.resolve().is_relative_to(project_root_resolved):
+            raise ValueError(
+                f"Refusing to pack path that escapes project root: {rel_path!r}"
+            )
+        # deployed_files may reference directories (ending with /)
+        if not abs_path.exists():
+            missing.append(rel_path)
+    if missing:
+        raise ValueError(
+            f"The following deployed files are missing on disk — "
+            f"run 'apm install' to restore them:\n"
+            + "\n".join(f"  - {m}" for m in missing)
+        )
+
+    # Dry-run: return file list without writing anything
+    if dry_run:
+        bundle_dir = output_dir / f"{pkg_name}-{pkg_version}"
+        return PackResult(
+            bundle_path=bundle_dir,
+            files=unique_files,
+            lockfile_enriched=True,
+        )
+
+    # 6. Build output directory
+    bundle_dir = output_dir / f"{pkg_name}-{pkg_version}"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    # 7. Copy files preserving directory structure
+    for rel_path in unique_files:
+        src = project_root / rel_path
+        dest = bundle_dir / rel_path
+        if src.is_dir():
+            shutil.copytree(src, dest, dirs_exist_ok=True)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+
+    # 8. Enrich lockfile copy and write to bundle
+    enriched_yaml = enrich_lockfile_for_pack(lockfile, fmt, effective_target)
+    (bundle_dir / "apm.lock").write_text(enriched_yaml, encoding="utf-8")
+
+    result = PackResult(
+        bundle_path=bundle_dir,
+        files=unique_files,
+        lockfile_enriched=True,
+    )
+
+    # 10. Archive if requested
+    if archive:
+        archive_path = output_dir / f"{pkg_name}-{pkg_version}.tar.gz"
+        with tarfile.open(archive_path, "w:gz") as tar:
+            tar.add(bundle_dir, arcname=bundle_dir.name)
+        shutil.rmtree(bundle_dir)
+        result.bundle_path = archive_path
+
+    return result
