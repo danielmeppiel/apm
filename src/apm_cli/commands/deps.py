@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 # Import existing APM components
+from ..constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
 from ..models.apm_package import APMPackage, ValidationResult, validate_apm_package
 from ..utils.console import _rich_success, _rich_error, _rich_info, _rich_warning
 
@@ -39,7 +40,7 @@ def list_packages():
     
     try:
         project_root = Path(".")
-        apm_modules_path = project_root / "apm_modules"
+        apm_modules_path = project_root / APM_MODULES_DIR
         
         # Check if apm_modules exists
         if not apm_modules_path.exists():
@@ -56,7 +57,7 @@ def list_packages():
         # Azure DevOps: org/project/repo or org/project/virtual-pkg-name (3 levels)
         declared_sources = {}  # dep_path → 'github' | 'azure-devops'
         try:
-            apm_yml_path = project_root / "apm.yml"
+            apm_yml_path = project_root / APM_YML_FILENAME
             if apm_yml_path.exists():
                 project_package = APMPackage.from_apm_yml(apm_yml_path)
                 for dep in project_package.get_apm_dependencies():
@@ -93,7 +94,7 @@ def list_packages():
                         elif len(repo_parts) >= 2:
                             # GitHub structure: owner/repo
                             declared_sources[f"{repo_parts[0]}/{repo_parts[1]}"] = source
-        except Exception:
+        except (OSError, ValueError):
             pass  # Continue without orphan detection if apm.yml parsing fails
         
         # Also load lockfile deps to avoid false orphan flags on transitive deps
@@ -107,7 +108,7 @@ def list_packages():
                     dep_key = dep.get_unique_key()
                     if dep_key and dep_key not in declared_sources:
                         declared_sources[dep_key] = 'github'
-        except Exception:
+        except (OSError, ValueError, KeyError):
             pass  # Continue without lockfile if it can't be read
         
         # Scan for installed packages in org-namespaced structure
@@ -118,8 +119,8 @@ def list_packages():
         for candidate in apm_modules_path.rglob("*"):
             if not candidate.is_dir() or candidate.name.startswith('.'):
                 continue
-            has_apm_yml = (candidate / "apm.yml").exists()
-            has_skill_md = (candidate / "SKILL.md").exists()
+            has_apm_yml = (candidate / APM_YML_FILENAME).exists()
+            has_skill_md = (candidate / SKILL_MD_FILENAME).exists()
             if not has_apm_yml and not has_skill_md:
                 continue
             rel_parts = candidate.relative_to(apm_modules_path).parts
@@ -140,7 +141,7 @@ def list_packages():
             try:
                 version = 'unknown'
                 if has_apm_yml:
-                    package = APMPackage.from_apm_yml(candidate / "apm.yml")
+                    package = APMPackage.from_apm_yml(candidate / APM_YML_FILENAME)
                     version = package.version or 'unknown'
                 primitives = _count_primitives(candidate)
                 
@@ -244,16 +245,16 @@ def tree():
     
     try:
         project_root = Path(".")
-        apm_modules_path = project_root / "apm_modules"
+        apm_modules_path = project_root / APM_MODULES_DIR
         
         # Load project info
         project_name = "my-project"
         try:
-            apm_yml_path = project_root / "apm.yml"
+            apm_yml_path = project_root / APM_YML_FILENAME
             if apm_yml_path.exists():
                 root_package = APMPackage.from_apm_yml(apm_yml_path)
                 project_name = root_package.name
-        except Exception:
+        except (OSError, ValueError):
             pass
         
         # Try to load lockfile for accurate tree with depth/parent info
@@ -265,7 +266,7 @@ def tree():
                 lockfile = LockFile.read(lockfile_path)
                 if lockfile:
                     lockfile_deps = lockfile.get_all_dependencies()
-        except Exception:
+        except (OSError, ValueError, KeyError):
             pass
         
         if lockfile_deps:
@@ -356,8 +357,8 @@ def tree():
                     for candidate in sorted(apm_modules_path.rglob("*")):
                         if not candidate.is_dir() or candidate.name.startswith('.'):
                             continue
-                        has_apm = (candidate / "apm.yml").exists()
-                        has_skill = (candidate / "SKILL.md").exists()
+                        has_apm = (candidate / APM_YML_FILENAME).exists()
+                        has_skill = (candidate / SKILL_MD_FILENAME).exists()
                         if not has_apm and not has_skill:
                             continue
                         rel_parts = candidate.relative_to(apm_modules_path).parts
@@ -393,7 +394,7 @@ def tree():
 def clean():
     """Remove entire apm_modules/ directory."""
     project_root = Path(".")
-    apm_modules_path = project_root / "apm_modules"
+    apm_modules_path = project_root / APM_MODULES_DIR
     
     if not apm_modules_path.exists():
         _rich_info("No apm_modules/ directory found - already clean")
@@ -418,7 +419,7 @@ def clean():
     try:
         shutil.rmtree(apm_modules_path)
         _rich_success("Successfully removed apm_modules/ directory")
-    except Exception as e:
+    except OSError as e:
         _rich_error(f"Error removing apm_modules/: {e}")
         sys.exit(1)
 
@@ -429,7 +430,7 @@ def update(package: Optional[str]):
     """Update specific package or all if no package specified."""
     
     project_root = Path(".")
-    apm_modules_path = project_root / "apm_modules"
+    apm_modules_path = project_root / APM_MODULES_DIR
     
     if not apm_modules_path.exists():
         _rich_info("No apm_modules/ directory found - no packages to update")
@@ -437,9 +438,9 @@ def update(package: Optional[str]):
     
     # Get project dependencies to validate updates
     try:
-        apm_yml_path = project_root / "apm.yml"
+        apm_yml_path = project_root / APM_YML_FILENAME
         if not apm_yml_path.exists():
-            _rich_error("No apm.yml found in current directory")
+            _rich_error(f"No {APM_YML_FILENAME} found in current directory")
             return
             
         project_package = APMPackage.from_apm_yml(apm_yml_path)
@@ -450,7 +451,7 @@ def update(package: Optional[str]):
             return
             
     except Exception as e:
-        _rich_error(f"Error reading apm.yml: {e}")
+        _rich_error(f"Error reading {APM_YML_FILENAME}: {e}")
         return
     
     if package:
@@ -466,7 +467,7 @@ def update(package: Optional[str]):
 def info(package: str):
     """Show detailed information about a specific package including context files and workflows."""
     project_root = Path(".")
-    apm_modules_path = project_root / "apm_modules"
+    apm_modules_path = project_root / APM_MODULES_DIR
     
     if not apm_modules_path.exists():
         _rich_error("No apm_modules/ directory found")
@@ -478,7 +479,7 @@ def info(package: str):
     # First try direct path match (handles any depth: org/repo, org/repo/subdir/pkg)
     direct_match = apm_modules_path / package
     if direct_match.is_dir() and (
-        (direct_match / "apm.yml").exists() or (direct_match / "SKILL.md").exists()
+        (direct_match / APM_YML_FILENAME).exists() or (direct_match / SKILL_MD_FILENAME).exists()
     ):
         package_path = direct_match
     else:
@@ -600,7 +601,7 @@ def _is_nested_under_package(candidate: Path, apm_modules_path: Path) -> bool:
     """
     parent = candidate.parent
     while parent != apm_modules_path and parent != parent.parent:
-        if (parent / "apm.yml").exists():
+        if (parent / APM_YML_FILENAME).exists():
             return True
         parent = parent.parent
     return False
@@ -614,7 +615,7 @@ def _count_primitives(package_path: Path) -> Dict[str, int]:
     """
     counts = {'prompts': 0, 'instructions': 0, 'agents': 0, 'skills': 0, 'hooks': 0}
     
-    apm_dir = package_path / ".apm"
+    apm_dir = package_path / APM_DIR
     if apm_dir.exists():
         prompts_path = apm_dir / "prompts"
         if prompts_path.exists() and prompts_path.is_dir():
@@ -631,13 +632,13 @@ def _count_primitives(package_path: Path) -> Dict[str, int]:
         skills_path = apm_dir / "skills"
         if skills_path.exists() and skills_path.is_dir():
             counts['skills'] += len([d for d in skills_path.iterdir() 
-                                     if d.is_dir() and (d / "SKILL.md").exists()])
+                                     if d.is_dir() and (d / SKILL_MD_FILENAME).exists()])
     
     # Also count root-level .prompt.md files
     counts['prompts'] += len(list(package_path.glob("*.prompt.md")))
     
     # Count root-level SKILL.md as a skill
-    if (package_path / "SKILL.md").exists():
+    if (package_path / SKILL_MD_FILENAME).exists():
         counts['skills'] += 1
     
     # Count hooks (.json files in hooks/ or .apm/hooks/)
@@ -654,7 +655,7 @@ def _count_package_files(package_path: Path) -> tuple[int, int]:
     Returns:
         tuple: (context_count, workflow_count)
     """
-    apm_dir = package_path / ".apm"
+    apm_dir = package_path / APM_DIR
     if not apm_dir.exists():
         # Also check root directory for .prompt.md files
         workflow_count = len(list(package_path.glob("*.prompt.md")))
@@ -688,7 +689,7 @@ def _count_workflows(package_path: Path) -> int:
 
 def _get_detailed_context_counts(package_path: Path) -> Dict[str, int]:
     """Get detailed context file counts by type."""
-    apm_dir = package_path / ".apm"
+    apm_dir = package_path / APM_DIR
     if not apm_dir.exists():
         return {'instructions': 0, 'chatmodes': 0, 'contexts': 0}
     
@@ -713,7 +714,7 @@ def _get_detailed_context_counts(package_path: Path) -> Dict[str, int]:
 def _get_package_display_info(package_path: Path) -> Dict[str, str]:
     """Get package display information."""
     try:
-        apm_yml_path = package_path / "apm.yml"
+        apm_yml_path = package_path / APM_YML_FILENAME
         if apm_yml_path.exists():
             package = APMPackage.from_apm_yml(apm_yml_path)
             version_info = f"@{package.version}" if package.version else "@unknown"
@@ -739,7 +740,7 @@ def _get_package_display_info(package_path: Path) -> Dict[str, str]:
 def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
     """Get detailed package information for the info command."""
     try:
-        apm_yml_path = package_path / "apm.yml"
+        apm_yml_path = package_path / APM_YML_FILENAME
         if apm_yml_path.exists():
             package = APMPackage.from_apm_yml(apm_yml_path)
             context_count, workflow_count = _count_package_files(package_path)

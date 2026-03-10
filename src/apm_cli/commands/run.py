@@ -48,7 +48,7 @@ def run(ctx, script_name, param):
                             table.add_row("  ", name, command)
 
                         console.print(table)
-                    except Exception:
+                    except (ImportError, NameError):
                         for name, command in scripts.items():
                             click.echo(f"  - {HIGHLIGHT}{name}{RESET}: {command}")
                 else:
@@ -82,7 +82,7 @@ def run(ctx, script_name, param):
             _rich_warning("Script runner not available yet")
             _rich_info(f"Import error: {ie}")
             _rich_info(f"Would run script: {script_name} with params {params}")
-        except Exception as ee:
+        except (RuntimeError, OSError) as ee:
             _rich_error(f"Script execution error: {ee}")
             sys.exit(1)
 

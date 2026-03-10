@@ -100,7 +100,7 @@ def update(check):
             # Clean up temp file
             try:
                 os.unlink(temp_script)
-            except Exception:
+            except OSError:
                 # Non-fatal: failed to delete temp install script
                 pass
 
@@ -123,7 +123,7 @@ def update(check):
                 "  curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
             )
             sys.exit(1)
-        except Exception as e:
+        except (requests.RequestException, subprocess.SubprocessError, OSError) as e:
             _rich_error(f"Update failed: {e}")
             _rich_info("Please update manually using:")
             click.echo(

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import click
 
+from ..constants import AGENTS_MD_FILENAME, APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME
 from ..compilation import AgentsCompiler, CompilationConfig
 from ..primitives.discovery import discover_primitives
 from ..utils.console import (
@@ -102,7 +103,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
                     return
 
                 # Check if it's a relevant file
-                if event.src_path.endswith(".md") or event.src_path.endswith("apm.yml"):
+                if event.src_path.endswith(".md") or event.src_path.endswith(APM_YML_FILENAME):
 
                     # Debounce rapid changes
                     current_time = time.time()
@@ -120,7 +121,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 
                     # Create configuration from apm.yml with overrides
                     config = CompilationConfig.from_apm_yml(
-                        output_path=self.output if self.output != "AGENTS.md" else None,
+                        output_path=self.output if self.output != AGENTS_MD_FILENAME else None,
                         chatmode=self.chatmode,
                         resolve_links=not self.no_links if self.no_links else None,
                         dry_run=self.dry_run,
@@ -155,9 +156,9 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         watch_paths = []
 
         # Check for .apm directory
-        if Path(".apm").exists():
-            observer.schedule(event_handler, ".apm", recursive=True)
-            watch_paths.append(".apm/")
+        if Path(APM_DIR).exists():
+            observer.schedule(event_handler, APM_DIR, recursive=True)
+            watch_paths.append(f"{APM_DIR}/")
 
         # Check for .github/instructions and agents/chatmodes
         if Path(".github/instructions").exists():
@@ -175,9 +176,9 @@ def _watch_mode(output, chatmode, no_links, dry_run):
             watch_paths.append(".github/chatmodes/")
 
         # Watch apm.yml if it exists
-        if Path("apm.yml").exists():
+        if Path(APM_YML_FILENAME).exists():
             observer.schedule(event_handler, ".", recursive=False)
-            watch_paths.append("apm.yml")
+            watch_paths.append(APM_YML_FILENAME)
 
         if not watch_paths:
             _rich_warning("No APM directories found to watch")
@@ -195,7 +196,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         _rich_info("Performing initial compilation...", symbol="gear")
 
         config = CompilationConfig.from_apm_yml(
-            output_path=output if output != "AGENTS.md" else None,
+            output_path=output if output != AGENTS_MD_FILENAME else None,
             chatmode=chatmode,
             resolve_links=not no_links if no_links else None,
             dry_run=dry_run,
@@ -244,7 +245,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 @click.option(
     "--output",
     "-o",
-    default="AGENTS.md",
+    default=AGENTS_MD_FILENAME,
     help="Output file path (for single-file mode)",
 )
 @click.option(
@@ -329,7 +330,7 @@ def compile(
         # Check if this is an APM project first
         from pathlib import Path
 
-        if not Path("apm.yml").exists():
+        if not Path(APM_YML_FILENAME).exists():
             _rich_error("❌ Not an APM project - no apm.yml found")
             _rich_info("💡 To initialize an APM project, run:")
             _rich_info("   apm init")
@@ -338,11 +339,11 @@ def compile(
         # Check if there are any instruction files to compile
         from ..compilation.constitution import find_constitution
 
-        apm_modules_exists = Path("apm_modules").exists()
+        apm_modules_exists = Path(APM_MODULES_DIR).exists()
         constitution_exists = find_constitution(Path(".")).exists()
 
         # Check if .apm directory has actual content
-        apm_dir = Path(".apm")
+        apm_dir = Path(APM_DIR)
         local_apm_has_content = apm_dir.exists() and (
             any(apm_dir.rglob("*.instructions.md"))
             or any(apm_dir.rglob("*.chatmode.md"))
@@ -401,7 +402,7 @@ def compile(
             # Show MCP dependency validation count
             try:
                 from ..models.apm_package import APMPackage
-                apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
+                apm_pkg = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
                 mcp_count = len(apm_pkg.get_mcp_dependencies())
                 if mcp_count > 0:
                     _rich_info(f"  • {mcp_count} MCP dependencies")
@@ -424,7 +425,7 @@ def compile(
         try:
             from ..models.apm_package import APMPackage
 
-            apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
+            apm_pkg = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             config_target = apm_pkg.target
         except Exception:
             # No apm.yml or parsing error - proceed with auto-detection
@@ -441,7 +442,7 @@ def compile(
 
         # Build config with distributed compilation flags (Task 7)
         config = CompilationConfig.from_apm_yml(
-            output_path=output if output != "AGENTS.md" else None,
+            output_path=output if output != AGENTS_MD_FILENAME else None,
             chatmode=chatmode,
             resolve_links=not no_links if no_links else None,
             dry_run=dry_run,

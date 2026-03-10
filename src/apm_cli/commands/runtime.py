@@ -47,7 +47,7 @@ def setup(runtime_name, version, vanilla):
         else:
             _rich_success(f"{runtime_name} runtime setup complete!", symbol="sparkles")
 
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _rich_error(f"Error setting up runtime: {e}")
         sys.exit(1)
 
@@ -117,7 +117,7 @@ def list():
 
                 click.echo()
 
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _rich_error(f"Error listing runtimes: {e}")
         sys.exit(1)
 
@@ -142,7 +142,7 @@ def remove(runtime_name):
                 f"{runtime_name} runtime removed successfully!", symbol="sparkles"
             )
 
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _rich_error(f"Error removing runtime: {e}")
         sys.exit(1)
 
@@ -183,6 +183,6 @@ Active runtime: {available_runtime if available_runtime else 'None available'}""
                     "Run 'apm runtime setup copilot' to install the primary runtime"
                 )
 
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _rich_error(f"Error checking runtime status: {e}")
         sys.exit(1)

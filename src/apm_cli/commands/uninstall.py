@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from ..constants import APM_MODULES_DIR, APM_YML_FILENAME
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 
 # APM Dependencies
@@ -39,8 +40,8 @@ def uninstall(ctx, packages, dry_run):
     """
     try:
         # Check if apm.yml exists
-        if not Path("apm.yml").exists():
-            _rich_error("No apm.yml found. Run 'apm init' first.")
+        if not Path(APM_YML_FILENAME).exists():
+            _rich_error(f"No {APM_YML_FILENAME} found. Run 'apm init' first.")
             sys.exit(1)
 
         if not packages:
@@ -52,12 +53,12 @@ def uninstall(ctx, packages, dry_run):
         # Read current apm.yml
         import yaml
 
-        apm_yml_path = Path("apm.yml")
+        apm_yml_path = Path(APM_YML_FILENAME)
         try:
             with open(apm_yml_path, "r") as f:
                 data = yaml.safe_load(f) or {}
-        except Exception as e:
-            _rich_error(f"Failed to read apm.yml: {e}")
+        except (OSError, yaml.YAMLError) as e:
+            _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         # Ensure dependencies structure exists
@@ -94,7 +95,7 @@ def uninstall(ctx, packages, dry_run):
             try:
                 pkg_ref = DependencyReference.parse(package)
                 pkg_identity = pkg_ref.get_identity()
-            except Exception:
+            except (ValueError, TypeError):
                 pkg_identity = package
 
             for dep_entry in current_deps:
@@ -124,7 +125,7 @@ def uninstall(ctx, packages, dry_run):
 
         if dry_run:
             _rich_info(f"Dry run: Would remove {len(packages_to_remove)} package(s):")
-            apm_modules_dir = Path("apm_modules")
+            apm_modules_dir = Path(APM_MODULES_DIR)
             for pkg in packages_to_remove:
                 _rich_info(f"  - {pkg} from apm.yml")
                 # Check if package exists in apm_modules
@@ -182,14 +183,14 @@ def uninstall(ctx, packages, dry_run):
             with open(apm_yml_path, "w") as f:
                 yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
             _rich_success(
-                f"Updated apm.yml (removed {len(packages_to_remove)} package(s))"
+                f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))"
             )
-        except Exception as e:
-            _rich_error(f"Failed to write apm.yml: {e}")
+        except OSError as e:
+            _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         # Remove packages from apm_modules/
-        apm_modules_dir = Path("apm_modules")
+        apm_modules_dir = Path(APM_MODULES_DIR)
         removed_from_modules = 0
 
         # npm-style transitive dep cleanup: use lockfile to find orphaned transitive deps
@@ -225,7 +226,7 @@ def uninstall(ctx, packages, dry_run):
                         _rich_info(f"✓ Removed {package} from apm_modules/")
                         removed_from_modules += 1
                         deleted_pkg_paths.append(package_path)
-                    except Exception as e:
+                    except OSError as e:
                         _rich_error(
                             f"✗ Failed to remove {package} from apm_modules/: {e}"
                         )
@@ -281,7 +282,7 @@ def uninstall(ctx, packages, dry_run):
                             remaining_deps.add(ref.get_unique_key())
                         except (ValueError, TypeError, AttributeError, KeyError):
                             remaining_deps.add(dep_str)
-                except Exception:
+                except (OSError, yaml.YAMLError):
                     pass
 
                 # Also check remaining lockfile deps that are NOT orphaned
@@ -310,7 +311,7 @@ def uninstall(ctx, packages, dry_run):
                             _rich_info(f"✓ Removed transitive dependency {orphan_key} from apm_modules/")
                             removed_from_modules += 1
                             deleted_orphan_paths.append(orphan_path)
-                        except Exception as e:
+                        except OSError as e:
                             _rich_error(f"✗ Failed to remove transitive dep {orphan_key}: {e}")
 
                 # Batch parent cleanup — single bottom-up pass
@@ -384,7 +385,7 @@ def uninstall(ctx, packages, dry_run):
             from ..integration.hook_integrator import HookIntegrator
             from ..integration.instruction_integrator import InstructionIntegrator
 
-            apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             project_root = Path(".")
 
             # Use pre-collected deployed_files (captured before lockfile entries were deleted)
@@ -466,7 +467,7 @@ def uninstall(ctx, packages, dry_run):
                 dep_ref = dep if hasattr(dep, 'repo_url') else None
                 if not dep_ref:
                     continue
-                install_path = dep_ref.get_install_path(Path("apm_modules"))
+                install_path = dep_ref.get_install_path(Path(APM_MODULES_DIR))
                 if not install_path.exists():
                     continue
 
@@ -521,7 +522,7 @@ def uninstall(ctx, packages, dry_run):
             old_mcp_servers = _pre_uninstall_mcp_servers
             if old_mcp_servers:
                 # Recompute MCP deps from remaining packages
-                apm_modules_path = Path.cwd() / "apm_modules"
+                apm_modules_path = Path.cwd() / APM_MODULES_DIR
                 remaining_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lockfile_path, trust_private=True)
                 # Also include root-level MCP deps from apm.yml
                 try:
