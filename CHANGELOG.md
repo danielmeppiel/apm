@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-03-10
+
+### Added
+
+- `copilot` as the primary user-facing target name for GitHub Copilot / Cursor / Codex / Gemini output format; `vscode` and `agents` remain as aliases (#228)
+
+### Changed
+
+- Consolidate pack/unpack documentation into cli-reference, rename Key Commands section
+
 ## [0.7.6] - 2026-03-10
 
 ### Added
