@@ -1,0 +1,68 @@
+---
+title: APM — Agent Package Manager
+description: Dependency management for AI agent instructions, skills, prompts, and tools.
+template: splash
+hero:
+  title: Agent Package Manager
+  tagline: Declare, share, and manage AI agent instructions as packages — like npm for AI context.
+  actions:
+    - text: Get Started
+      link: /apm/getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/microsoft/apm
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## Why APM?
+
+AI agents are only as good as their instructions. Today, teams copy-paste prompts across repos, instructions drift out of sync, and there's no way to version, share, or compose agent context.
+
+**APM fixes this.** It brings the same dependency management patterns you know from npm, pip, and Cargo to the world of AI agent instructions.
+
+<CardGrid>
+  <Card title="Declare" icon="document">
+    Define your agent's skills, prompts, and instructions in a simple `apm.yml`
+    manifest.
+  </Card>
+  <Card title="Install" icon="add-document">
+    Pull packages from any Git host — GitHub, GitLab, Bitbucket, Azure DevOps —
+    with a single command.
+  </Card>
+  <Card title="Compile" icon="setting">
+    Optimize and deduplicate instructions across packages into clean, scoped
+    AGENTS.md files.
+  </Card>
+  <Card title="Share" icon="open-book">
+    Publish reusable instruction packages that any team or project can install.
+  </Card>
+</CardGrid>
+
+## Before & After
+
+**Before APM** — Copy-paste instructions between repos, manually maintain AGENTS.md, no versioning, no sharing.
+
+**After APM** — Declare dependencies, install with one command, compile optimized context, share across teams.
+
+```yaml
+# apm.yml — declare your agent's dependencies
+name: my-project
+version: 1.0.0
+dependencies:
+  code-review: github/user/code-review-instructions
+  testing: github/user/testing-best-practices
+  security: github/user/security-guidelines
+```
+
+```bash
+apm install   # fetch and deploy all instruction packages
+apm compile   # optimize into scoped AGENTS.md files
+```
+
+## Works With Your Tools
+
+APM is runtime-agnostic. It works with GitHub Copilot, Claude, Cursor, Codex, Gemini, and any agent that reads markdown instructions.
