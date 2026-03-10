@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-09T01:06:34Z",
-  "last_run_tasks": ["task4", "task3", "task7"],
+  "last_updated": "2026-03-10T01:06:43Z",
+  "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -10,87 +10,52 @@
   },
   "coverage_baseline": {
     "total": "54%",
-    "run_date": "2026-03-09",
-    "test_count": 1307,
-    "pre_existing_failures": 0,
-    "notes": "workflow/runner.py: 22%->100%. Fixed recurring ANSI test failure (test_install_command.py)."
+    "run_date": "2026-03-10",
+    "test_count": 1456,
+    "pre_existing_failures": 1,
+    "notes": "Pre-existing failure: test_install_command.py ANSI escape codes. agents_compiler.py 65%->82%. 34 new tests added."
   },
   "monthly_activity_issue": "open-2026-03",
   "testing_backlog": [
+    {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
     {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "18%", "priority": "low", "notes": "Heavy network dependency"},
     {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
     {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"},
-    {"id": "injector", "file": "src/apm_cli/compilation/injector.py", "coverage": "44%", "priority": "low", "notes": "Awaiting PR merge (test-assist/constitution-injector-coverage)"},
-    {"id": "agents-compiler", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "69%", "priority": "medium"},
+    {"id": "injector", "file": "src/apm_cli/compilation/injector.py", "coverage": "44%", "priority": "low", "notes": "Was target of test-assist/constitution-injector-coverage (not merged)"},
     {"id": "workflow-runner", "file": "src/apm_cli/workflow/runner.py", "coverage": "100%", "priority": "done"}
   ],
-  "backlog_cursor": "agents-compiler",
+  "backlog_cursor": "agents-compiler-display",
   "pending_branches": [
-    "test-assist/fix-ansi-install-test"
+    "test-assist/agents-compiler-coverage-1773105017"
   ],
   "completed_work": [
+    {
+      "run": "2026-03-10T01:06:43Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/agents-compiler-coverage-1773105017",
+      "pr_status": "pr_created",
+      "description": "Added 34 unit tests for agents_compiler.py (65%->82%). Covered: CompilationConfig.from_apm_yml() additional fields, exception handling, validate_primitives errors, _write_distributed_file, summary generation methods, _merge_results, compile_agents_md error path. 964 tests pass (1 pre-existing ANSI failure)."
+    },
     {
       "run": "2026-03-09T01:06:34Z",
       "tasks": ["task4", "task3", "task7"],
       "branch": "test-assist/fix-ansi-install-test",
-      "pr_status": "pr_created",
-      "description": "Fixed ANSI test failure in test_install_command.py (recurring issue - strip_ansi helper). Added 22 tests for workflow/runner.py (22%->100%): find_workflow_by_name (7 tests), run_workflow (7 tests), preview_workflow (4 tests), collect_parameters missing-params branch (3 tests). 1307 tests pass."
+      "pr_status": "pr_closed",
+      "description": "Fixed ANSI test failure in test_install_command.py (recurring issue - strip_ansi helper). Added 22 tests for workflow/runner.py (22%->100%). All PRs closed without merge."
     },
     {
       "run": "2026-03-08T01:07:15Z",
       "tasks": ["task3", "task7"],
       "branch": "test-assist/distributed-compiler-coverage",
-      "pr_status": "pr_created",
-      "description": "Added 55 unit tests for distributed_compiler.py (50%->97%). Fixed ANSI test failure in test_install_command.py. All 1339 tests pass (was 1284 passing + 1 failing). Constitution path is '.specify/memory/constitution.md', NOT '.apm/constitution.md'."
+      "pr_status": "pr_closed",
+      "description": "Added 55 unit tests for distributed_compiler.py (50%->97%). PR closed."
     },
     {
       "run": "2026-03-07T01:06:50Z",
       "tasks": ["task3", "task7"],
       "branch": "test-assist/collection-parser-ansi-fix",
-      "pr_status": "pr_created",
-      "description": "Added 32 unit tests for collection_parser.py (0%->100%). Fixed ANSI test failure in test_install_command.py by stripping ANSI escape codes before asserting. All 1307 tests pass (was 1271 passing + 1 failing)."
-    },
-    {
-      "run": "2026-03-06T01:08:37Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/apm-resolver-coverage",
-      "pr_status": "pr_created",
-      "description": "Added 65 unit tests: apm_resolver.py (9%->98%), dependency_graph.py (59%->100%). Tests cover all public methods including _try_load_dependency_package (11 scenarios) and all data structures. Note: tests/test_apm_resolver.py already existed in tests/ root (not run by CI) with 23 tests using src. import prefix; new file in tests/unit/ uses correct imports."
-    },
-    {
-      "run": "2026-03-05T01:07:00Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/token-manager-coverage",
-      "pr_status": "pr_created",
-      "description": "Added 53 unit tests for GitHubTokenManager: coverage 20%->99%. Covers __init__, get_token_for_purpose (all 4 purposes, precedence, empty-string guard), validate_tokens, setup_environment (preserve_existing), _setup_copilot/codex/llm_tokens, _get_available_tokens, convenience functions. Also documented dead code in validate_tokens warning branch (line 126 unreachable)."
-    },
-    {
-      "run": "2026-03-04T01:07:00Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/core-operations-runtime-manager-coverage",
-      "pr_status": "pr_created",
-      "description": "Added 52 unit tests: core/operations.py (0%->100%, 15 tests), runtime/manager.py (17%->84%, 37 tests). Overall coverage 51%->52%."
-    },
-    {
-      "run": "2026-03-03T19:54:00Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/registry-operations-coverage",
-      "pr_status": "pr_created",
-      "description": "Added 41 unit tests: registry/operations.py (6%->88%). Overall coverage 51%->52%."
-    },
-    {
-      "run": "2026-03-03T16:56:00Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/package-validator-coverage",
-      "pr_status": "pr_created",
-      "description": "Added 37 unit tests: package_validator.py (10%->100%). Also fixed UnboundLocalError bug in get_package_info_summary()."
-    },
-    {
-      "run": "2026-03-03T10:55:00Z",
-      "tasks": ["task1", "task2", "task3", "task7"],
-      "branch": "test-assist/constitution-injector-coverage",
-      "pr_status": "branch_ready_pr_creation_failed",
-      "description": "Added 41 unit tests: constitution_block.py (53%->100%), injector.py (44%->93%)"
+      "pr_status": "pr_closed",
+      "description": "Added 32 unit tests for collection_parser.py (0%->100%). PR closed."
     }
   ]
 }
