@@ -21,6 +21,345 @@ except ImportError:
     APM_DEPS_AVAILABLE = False
 
 
+def _parse_dependency_entry(dep_entry):
+    """Parse a dependency entry from apm.yml into a DependencyReference."""
+    if isinstance(dep_entry, DependencyReference):
+        return dep_entry
+    if isinstance(dep_entry, str):
+        return DependencyReference.parse(dep_entry)
+    if isinstance(dep_entry, builtins.dict):
+        return DependencyReference.parse_from_dict(dep_entry)
+    raise ValueError(f"Unsupported dependency entry type: {type(dep_entry).__name__}")
+
+
+def _validate_uninstall_packages(packages, current_deps):
+    """Validate which packages can be removed and return matched/unmatched lists."""
+    packages_to_remove = []
+    packages_not_found = []
+
+    for package in packages:
+        if "/" not in package:
+            _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
+            continue
+
+        matched_dep = None
+        try:
+            pkg_ref = DependencyReference.parse(package)
+            pkg_identity = pkg_ref.get_identity()
+        except (ValueError, TypeError):
+            pkg_identity = package
+
+        for dep_entry in current_deps:
+            try:
+                dep_ref = _parse_dependency_entry(dep_entry)
+                if dep_ref.get_identity() == pkg_identity:
+                    matched_dep = dep_entry
+                    break
+            except (ValueError, TypeError, AttributeError, KeyError):
+                dep_str = dep_entry if isinstance(dep_entry, str) else str(dep_entry)
+                if dep_str == package:
+                    matched_dep = dep_entry
+                    break
+
+        if matched_dep is not None:
+            packages_to_remove.append(matched_dep)
+            _rich_info(f"\u2713 {package} - found in apm.yml")
+        else:
+            packages_not_found.append(package)
+            _rich_warning(f"\u2717 {package} - not found in apm.yml")
+
+    return packages_to_remove, packages_not_found
+
+
+def _dry_run_uninstall(packages_to_remove, apm_modules_dir):
+    """Show what would be removed without making changes."""
+    _rich_info(f"Dry run: Would remove {len(packages_to_remove)} package(s):")
+    for pkg in packages_to_remove:
+        _rich_info(f"  - {pkg} from apm.yml")
+        try:
+            dep_ref = _parse_dependency_entry(pkg)
+            package_path = dep_ref.get_install_path(apm_modules_dir)
+        except (ValueError, TypeError, AttributeError, KeyError):
+            pkg_str = pkg if isinstance(pkg, str) else str(pkg)
+            package_path = apm_modules_dir / pkg_str.split("/")[-1]
+        if apm_modules_dir.exists() and package_path.exists():
+            _rich_info(f"  - {pkg} from apm_modules/")
+
+    from ..deps.lockfile import LockFile, get_lockfile_path
+    lockfile_path = get_lockfile_path(Path("."))
+    lockfile = LockFile.read(lockfile_path)
+    if lockfile:
+        removed_repo_urls = builtins.set()
+        for pkg in packages_to_remove:
+            try:
+                ref = _parse_dependency_entry(pkg)
+                removed_repo_urls.add(ref.repo_url)
+            except (ValueError, TypeError, AttributeError, KeyError):
+                removed_repo_urls.add(pkg)
+        queue = builtins.list(removed_repo_urls)
+        potential_orphans = builtins.set()
+        while queue:
+            parent_url = queue.pop()
+            for dep in lockfile.get_all_dependencies():
+                key = dep.get_unique_key()
+                if key in potential_orphans:
+                    continue
+                if dep.resolved_by and dep.resolved_by == parent_url:
+                    potential_orphans.add(key)
+                    queue.append(dep.repo_url)
+        if potential_orphans:
+            _rich_info(f"  Transitive dependencies that would be removed:")
+            for orphan_key in sorted(potential_orphans):
+                _rich_info(f"    - {orphan_key}")
+
+    _rich_success("Dry run complete - no changes made")
+
+
+def _remove_packages_from_disk(packages_to_remove, apm_modules_dir):
+    """Remove direct packages from apm_modules/ and return removal count."""
+    removed = 0
+    if not apm_modules_dir.exists():
+        return removed
+
+    deleted_pkg_paths = []
+    for package in packages_to_remove:
+        try:
+            dep_ref = _parse_dependency_entry(package)
+            package_path = dep_ref.get_install_path(apm_modules_dir)
+        except (ValueError, TypeError, AttributeError, KeyError):
+            package_str = package if isinstance(package, str) else str(package)
+            repo_parts = package_str.split("/")
+            if len(repo_parts) >= 2:
+                package_path = apm_modules_dir.joinpath(*repo_parts)
+            else:
+                package_path = apm_modules_dir / package_str
+
+        if package_path.exists():
+            try:
+                shutil.rmtree(package_path)
+                _rich_info(f"\u2713 Removed {package} from apm_modules/")
+                removed += 1
+                deleted_pkg_paths.append(package_path)
+            except OSError as e:
+                _rich_error(f"\u2717 Failed to remove {package} from apm_modules/: {e}")
+        else:
+            _rich_warning(f"Package {package} not found in apm_modules/")
+
+    from ..integration.base_integrator import BaseIntegrator as _BI2
+    _BI2.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
+    return removed
+
+
+def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, apm_yml_path):
+    """Remove orphaned transitive deps and return (removed_count, actual_orphan_keys)."""
+    import yaml
+
+    if not lockfile or not apm_modules_dir.exists():
+        return 0, builtins.set()
+
+    removed_repo_urls = builtins.set()
+    for pkg in packages_to_remove:
+        try:
+            ref = _parse_dependency_entry(pkg)
+            removed_repo_urls.add(ref.repo_url)
+        except (ValueError, TypeError, AttributeError, KeyError):
+            removed_repo_urls.add(pkg)
+
+    # Find transitive orphans recursively
+    orphans = builtins.set()
+    queue = builtins.list(removed_repo_urls)
+    while queue:
+        parent_url = queue.pop()
+        for dep in lockfile.get_all_dependencies():
+            key = dep.get_unique_key()
+            if key in orphans:
+                continue
+            if dep.resolved_by and dep.resolved_by == parent_url:
+                orphans.add(key)
+                queue.append(dep.repo_url)
+
+    if not orphans:
+        return 0, builtins.set()
+
+    # Determine remaining deps to avoid removing still-needed packages
+    remaining_deps = builtins.set()
+    try:
+        with open(apm_yml_path, "r") as f:
+            updated_data = yaml.safe_load(f) or {}
+        for dep_str in updated_data.get("dependencies", {}).get("apm", []) or []:
+            try:
+                ref = _parse_dependency_entry(dep_str)
+                remaining_deps.add(ref.get_unique_key())
+            except (ValueError, TypeError, AttributeError, KeyError):
+                remaining_deps.add(dep_str)
+    except (OSError, yaml.YAMLError):
+        pass
+
+    for dep in lockfile.get_all_dependencies():
+        key = dep.get_unique_key()
+        if key not in orphans and dep.repo_url not in removed_repo_urls:
+            remaining_deps.add(key)
+
+    actual_orphans = orphans - remaining_deps
+    removed = 0
+    deleted_orphan_paths = []
+    for orphan_key in actual_orphans:
+        orphan_dep = lockfile.get_dependency(orphan_key)
+        if not orphan_dep:
+            continue
+        try:
+            orphan_ref = DependencyReference.parse(orphan_key)
+            orphan_path = orphan_ref.get_install_path(apm_modules_dir)
+        except ValueError:
+            parts = orphan_key.split("/")
+            orphan_path = apm_modules_dir.joinpath(*parts) if len(parts) >= 2 else apm_modules_dir / orphan_key
+
+        if orphan_path.exists():
+            try:
+                shutil.rmtree(orphan_path)
+                _rich_info(f"\u2713 Removed transitive dependency {orphan_key} from apm_modules/")
+                removed += 1
+                deleted_orphan_paths.append(orphan_path)
+            except OSError as e:
+                _rich_error(f"\u2717 Failed to remove transitive dep {orphan_key}: {e}")
+
+    from ..integration.base_integrator import BaseIntegrator as _BI
+    _BI.cleanup_empty_parents(deleted_orphan_paths, stop_at=apm_modules_dir)
+    return removed, actual_orphans
+
+
+def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files):
+    """Remove deployed files and re-integrate from remaining packages."""
+    from ..integration.base_integrator import BaseIntegrator
+    from ..models.apm_package import PackageInfo, validate_apm_package
+    from ..integration.prompt_integrator import PromptIntegrator
+    from ..integration.agent_integrator import AgentIntegrator
+    from ..integration.skill_integrator import SkillIntegrator
+    from ..integration.command_integrator import CommandIntegrator
+    from ..integration.hook_integrator import HookIntegrator
+    from ..integration.instruction_integrator import InstructionIntegrator
+
+    sync_managed = all_deployed_files if all_deployed_files else None
+    if sync_managed is not None:
+        _buckets = BaseIntegrator.partition_managed_files(sync_managed)
+    else:
+        _buckets = None
+
+    counts = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
+
+    # Phase 1: Remove all APM-deployed files
+    if Path(".github/prompts").exists():
+        integrator = PromptIntegrator()
+        result = integrator.sync_integration(apm_package, project_root,
+                                             managed_files=_buckets["prompts"] if _buckets else None)
+        counts["prompts"] = result.get("files_removed", 0)
+
+    if Path(".github/agents").exists():
+        integrator = AgentIntegrator()
+        result = integrator.sync_integration(apm_package, project_root,
+                                             managed_files=_buckets["agents_github"] if _buckets else None)
+        counts["agents"] = result.get("files_removed", 0)
+
+    if Path(".claude/agents").exists():
+        integrator = AgentIntegrator()
+        result = integrator.sync_integration_claude(apm_package, project_root,
+                                                    managed_files=_buckets["agents_claude"] if _buckets else None)
+        counts["agents"] += result.get("files_removed", 0)
+
+    if Path(".github/skills").exists() or Path(".claude/skills").exists():
+        integrator = SkillIntegrator()
+        result = integrator.sync_integration(apm_package, project_root,
+                                             managed_files=_buckets["skills"] if _buckets else None)
+        counts["skills"] = result.get("files_removed", 0)
+
+    if Path(".claude/commands").exists():
+        integrator = CommandIntegrator()
+        result = integrator.sync_integration(apm_package, project_root,
+                                             managed_files=_buckets["commands"] if _buckets else None)
+        counts["commands"] = result.get("files_removed", 0)
+
+    hook_integrator_cleanup = HookIntegrator()
+    result = hook_integrator_cleanup.sync_integration(apm_package, project_root,
+                                                      managed_files=_buckets["hooks"] if _buckets else None)
+    counts["hooks"] = result.get("files_removed", 0)
+
+    if Path(".github/instructions").exists():
+        integrator = InstructionIntegrator()
+        result = integrator.sync_integration(apm_package, project_root,
+                                             managed_files=_buckets["instructions"] if _buckets else None)
+        counts["instructions"] = result.get("files_removed", 0)
+
+    # Phase 2: Re-integrate from remaining installed packages
+    from ..core.target_detection import detect_target, should_integrate_claude
+    config_target = apm_package.target
+    detected_target, _ = detect_target(
+        project_root=project_root, explicit_target=None, config_target=config_target,
+    )
+    integrate_claude = should_integrate_claude(detected_target)
+
+    prompt_integrator = PromptIntegrator()
+    agent_integrator = AgentIntegrator()
+    skill_integrator = SkillIntegrator()
+    command_integrator = CommandIntegrator()
+    hook_integrator_reint = HookIntegrator()
+    instruction_integrator_reint = InstructionIntegrator()
+
+    for dep in apm_package.get_apm_dependencies():
+        dep_ref = dep if hasattr(dep, 'repo_url') else None
+        if not dep_ref:
+            continue
+        install_path = dep_ref.get_install_path(Path(APM_MODULES_DIR))
+        if not install_path.exists():
+            continue
+
+        result = validate_apm_package(install_path)
+        pkg = result.package if result and result.package else None
+        if not pkg:
+            continue
+        pkg_info = PackageInfo(
+            package=pkg, install_path=install_path,
+            dependency_ref=dep_ref,
+            package_type=result.package_type if result else None,
+        )
+
+        try:
+            if prompt_integrator.should_integrate(project_root):
+                prompt_integrator.integrate_package_prompts(pkg_info, project_root)
+            if agent_integrator.should_integrate(project_root):
+                agent_integrator.integrate_package_agents(pkg_info, project_root)
+                if integrate_claude:
+                    agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
+            skill_integrator.integrate_package_skill(pkg_info, project_root)
+            if integrate_claude:
+                command_integrator.integrate_package_commands(pkg_info, project_root)
+            hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
+            if integrate_claude:
+                hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
+            instruction_integrator_reint.integrate_package_instructions(pkg_info, project_root)
+        except Exception:
+            pass  # Best effort re-integration
+
+    return counts
+
+
+def _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, old_mcp_servers):
+    """Remove MCP servers that are no longer needed after uninstall."""
+    if not old_mcp_servers:
+        return
+    apm_modules_path = Path.cwd() / APM_MODULES_DIR
+    remaining_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lockfile_path, trust_private=True)
+    try:
+        remaining_root_mcp = apm_package.get_mcp_dependencies()
+    except Exception:
+        remaining_root_mcp = []
+    all_remaining_mcp = MCPIntegrator.deduplicate(remaining_root_mcp + remaining_mcp)
+    new_mcp_servers = MCPIntegrator.get_server_names(all_remaining_mcp)
+    stale_servers = old_mcp_servers - new_mcp_servers
+    if stale_servers:
+        MCPIntegrator.remove_stale(stale_servers)
+    MCPIntegrator.update_lockfile(new_mcp_servers, lockfile_path)
+
+
 @click.command(help="Remove APM packages, their integrated files, and apm.yml entries")
 @click.argument("packages", nargs=-1, required=True)
 @click.option(
@@ -61,265 +400,54 @@ def uninstall(ctx, packages, dry_run):
             _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
-        # Ensure dependencies structure exists
         if "dependencies" not in data:
             data["dependencies"] = {}
         if "apm" not in data["dependencies"]:
             data["dependencies"]["apm"] = []
 
         current_deps = data["dependencies"]["apm"] or []
-        packages_to_remove = []
-        packages_not_found = []
 
-        def _parse_dependency_entry(dep_entry):
-            if isinstance(dep_entry, DependencyReference):
-                return dep_entry
-            if isinstance(dep_entry, str):
-                return DependencyReference.parse(dep_entry)
-            if isinstance(dep_entry, dict):
-                return DependencyReference.parse_from_dict(dep_entry)
-            raise ValueError(f"Unsupported dependency entry type: {type(dep_entry).__name__}")
-
-        # Validate which packages can be removed
-        for package in packages:
-            # Validate package format (should be owner/repo or a git URL)
-            if "/" not in package:
-                _rich_error(
-                    f"Invalid package format: {package}. Use 'owner/repo' format."
-                )
-                continue
-
-            # Match by identity: parse the user input and each apm.yml entry,
-            # compare using get_identity() which normalizes host differences.
-            matched_dep = None
-            try:
-                pkg_ref = DependencyReference.parse(package)
-                pkg_identity = pkg_ref.get_identity()
-            except (ValueError, TypeError):
-                pkg_identity = package
-
-            for dep_entry in current_deps:
-                try:
-                    dep_ref = _parse_dependency_entry(dep_entry)
-                    if dep_ref.get_identity() == pkg_identity:
-                        matched_dep = dep_entry  # preserve original entry for removal
-                        break
-                except (ValueError, TypeError, AttributeError, KeyError):
-                    # Fallback: exact string match
-                    dep_str = dep_entry if isinstance(dep_entry, str) else str(dep_entry)
-                    if dep_str == package:
-                        matched_dep = dep_entry
-                        break
-                    pass
-
-            if matched_dep is not None:
-                packages_to_remove.append(matched_dep)
-                _rich_info(f"✓ {package} - found in apm.yml")
-            else:
-                packages_not_found.append(package)
-                _rich_warning(f"✗ {package} - not found in apm.yml")
-
+        # Step 1: Validate packages
+        packages_to_remove, packages_not_found = _validate_uninstall_packages(packages, current_deps)
         if not packages_to_remove:
             _rich_warning("No packages found in apm.yml to remove")
             return
 
+        # Step 2: Dry run
         if dry_run:
-            _rich_info(f"Dry run: Would remove {len(packages_to_remove)} package(s):")
-            apm_modules_dir = Path(APM_MODULES_DIR)
-            for pkg in packages_to_remove:
-                _rich_info(f"  - {pkg} from apm.yml")
-                # Check if package exists in apm_modules
-                try:
-                    dep_ref = _parse_dependency_entry(pkg)
-                    package_path = dep_ref.get_install_path(apm_modules_dir)
-                except (ValueError, TypeError, AttributeError, KeyError):
-                    pkg_str = pkg if isinstance(pkg, str) else str(pkg)
-                    package_path = apm_modules_dir / pkg_str.split("/")[-1]
-                if apm_modules_dir.exists() and package_path.exists():
-                    _rich_info(f"  - {pkg} from apm_modules/")
-
-            # Show transitive deps that would be removed
-            from ..deps.lockfile import LockFile, get_lockfile_path
-            lockfile_path = get_lockfile_path(Path("."))
-            lockfile = LockFile.read(lockfile_path)
-            if lockfile:
-                removed_repo_urls = builtins.set()
-                for pkg in packages_to_remove:
-                    try:
-                        ref = _parse_dependency_entry(pkg)
-                        removed_repo_urls.add(ref.repo_url)
-                    except (ValueError, TypeError, AttributeError, KeyError):
-                        removed_repo_urls.add(pkg)
-                # Find transitive orphans
-                queue = builtins.list(removed_repo_urls)
-                potential_orphans = builtins.set()
-                while queue:
-                    parent_url = queue.pop()
-                    for dep in lockfile.get_all_dependencies():
-                        key = dep.get_unique_key()
-                        if key in potential_orphans:
-                            continue
-                        if dep.resolved_by and dep.resolved_by == parent_url:
-                            potential_orphans.add(key)
-                            queue.append(dep.repo_url)
-                if potential_orphans:
-                    _rich_info(f"  Transitive dependencies that would be removed:")
-                    for orphan_key in sorted(potential_orphans):
-                        _rich_info(f"    - {orphan_key}")
-
-            _rich_success("Dry run complete - no changes made")
+            _dry_run_uninstall(packages_to_remove, Path(APM_MODULES_DIR))
             return
 
-        # Remove packages from apm.yml
+        # Step 3: Remove from apm.yml
         for package in packages_to_remove:
             current_deps.remove(package)
             _rich_info(f"Removed {package} from apm.yml")
-
-        # Update dependencies in apm.yml
         data["dependencies"]["apm"] = current_deps
-
-        # Write back to apm.yml
         try:
             with open(apm_yml_path, "w") as f:
                 yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
-            _rich_success(
-                f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))"
-            )
+            _rich_success(f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))")
         except OSError as e:
             _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
-        # Remove packages from apm_modules/
+        # Step 4: Load lockfile and capture pre-uninstall MCP state
         apm_modules_dir = Path(APM_MODULES_DIR)
-        removed_from_modules = 0
-
-        # npm-style transitive dep cleanup: use lockfile to find orphaned transitive deps
         from ..deps.lockfile import LockFile, get_lockfile_path
         lockfile_path = get_lockfile_path(Path("."))
         lockfile = LockFile.read(lockfile_path)
-
-        # Capture MCP servers from lockfile *before* it is mutated/deleted so
-        # that stale-MCP cleanup can compute the diff even when all deps are removed.
         _pre_uninstall_mcp_servers = builtins.set(lockfile.mcp_servers) if lockfile else builtins.set()
 
-        if apm_modules_dir.exists():
-            deleted_pkg_paths: list = []
-            for package in packages_to_remove:
-                # Parse package into DependencyReference to get canonical install path
-                # This correctly handles virtual packages (owner/repo-packagename) vs
-                # regular packages (owner/repo) and ADO paths (org/project/repo)
-                try:
-                    dep_ref = _parse_dependency_entry(package)
-                    package_path = dep_ref.get_install_path(apm_modules_dir)
-                except (ValueError, TypeError, AttributeError, KeyError):
-                    # Fallback for invalid format: use raw path segments
-                    package_str = package if isinstance(package, str) else str(package)
-                    repo_parts = package_str.split("/")
-                    if len(repo_parts) >= 2:
-                        package_path = apm_modules_dir.joinpath(*repo_parts)
-                    else:
-                        package_path = apm_modules_dir / package_str
+        # Step 5: Remove packages from disk
+        removed_from_modules = _remove_packages_from_disk(packages_to_remove, apm_modules_dir)
 
-                if package_path.exists():
-                    try:
-                        shutil.rmtree(package_path)
-                        _rich_info(f"✓ Removed {package} from apm_modules/")
-                        removed_from_modules += 1
-                        deleted_pkg_paths.append(package_path)
-                    except OSError as e:
-                        _rich_error(
-                            f"✗ Failed to remove {package} from apm_modules/: {e}"
-                        )
-                else:
-                    _rich_warning(f"Package {package} not found in apm_modules/")
+        # Step 6: Cleanup transitive orphans
+        orphan_removed, actual_orphans = _cleanup_transitive_orphans(
+            lockfile, packages_to_remove, apm_modules_dir, apm_yml_path
+        )
+        removed_from_modules += orphan_removed
 
-            # Batch parent cleanup — single bottom-up pass
-            from ..integration.base_integrator import BaseIntegrator as _BI2
-            _BI2.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
-
-        # npm-style transitive dependency cleanup: remove orphaned transitive deps
-        # After removing the direct packages, check if they had transitive deps that
-        # are no longer needed by any remaining package.
-        if lockfile and apm_modules_dir.exists():
-            # Collect the repo_urls of removed packages
-            removed_repo_urls = builtins.set()
-            for pkg in packages_to_remove:
-                try:
-                    ref = _parse_dependency_entry(pkg)
-                    removed_repo_urls.add(ref.repo_url)
-                except (ValueError, TypeError, AttributeError, KeyError):
-                    removed_repo_urls.add(pkg)
-
-            # Find all transitive deps resolved_by any removed package (recursive)
-            def _find_transitive_orphans(lockfile, removed_urls):
-                """Recursively find all transitive deps that are no longer needed."""
-                orphans = builtins.set()
-                queue = builtins.list(removed_urls)
-                while queue:
-                    parent_url = queue.pop()
-                    for dep in lockfile.get_all_dependencies():
-                        key = dep.get_unique_key()
-                        if key in orphans:
-                            continue
-                        if dep.resolved_by and dep.resolved_by == parent_url:
-                            orphans.add(key)
-                            # This orphan's own transitives are also orphaned
-                            queue.append(dep.repo_url)
-                return orphans
-
-            potential_orphans = _find_transitive_orphans(lockfile, removed_repo_urls)
-
-            if potential_orphans:
-                # Check which orphans are still needed by remaining packages
-                # Re-read updated apm.yml to get remaining deps
-                remaining_deps = builtins.set()
-                try:
-                    with open(apm_yml_path, "r") as f:
-                        updated_data = yaml.safe_load(f) or {}
-                    for dep_str in updated_data.get("dependencies", {}).get("apm", []) or []:
-                        try:
-                            ref = _parse_dependency_entry(dep_str)
-                            remaining_deps.add(ref.get_unique_key())
-                        except (ValueError, TypeError, AttributeError, KeyError):
-                            remaining_deps.add(dep_str)
-                except (OSError, yaml.YAMLError):
-                    pass
-
-                # Also check remaining lockfile deps that are NOT orphaned
-                for dep in lockfile.get_all_dependencies():
-                    key = dep.get_unique_key()
-                    if key not in potential_orphans and dep.repo_url not in removed_repo_urls:
-                        remaining_deps.add(key)
-
-                # Remove only true orphans (not needed by remaining deps)
-                actual_orphans = potential_orphans - remaining_deps
-                deleted_orphan_paths: list = []
-                for orphan_key in actual_orphans:
-                    orphan_dep = lockfile.get_dependency(orphan_key)
-                    if not orphan_dep:
-                        continue
-                    try:
-                        orphan_ref = DependencyReference.parse(orphan_key)
-                        orphan_path = orphan_ref.get_install_path(apm_modules_dir)
-                    except ValueError:
-                        parts = orphan_key.split("/")
-                        orphan_path = apm_modules_dir.joinpath(*parts) if len(parts) >= 2 else apm_modules_dir / orphan_key
-
-                    if orphan_path.exists():
-                        try:
-                            shutil.rmtree(orphan_path)
-                            _rich_info(f"✓ Removed transitive dependency {orphan_key} from apm_modules/")
-                            removed_from_modules += 1
-                            deleted_orphan_paths.append(orphan_path)
-                        except OSError as e:
-                            _rich_error(f"✗ Failed to remove transitive dep {orphan_key}: {e}")
-
-                # Batch parent cleanup — single bottom-up pass
-                from ..integration.base_integrator import BaseIntegrator as _BI
-                _BI.cleanup_empty_parents(deleted_orphan_paths, stop_at=apm_modules_dir)
-
-        # Collect deployed_files only for REMOVED packages (direct + transitive)
-        # so sync_integration doesn't iterate paths from packages still installed.
+        # Step 7: Collect deployed files for removed packages (before lockfile mutation)
         from ..integration.base_integrator import BaseIntegrator
         removed_keys = builtins.set()
         for pkg in packages_to_remove:
@@ -328,20 +456,15 @@ def uninstall(ctx, packages, dry_run):
                 removed_keys.add(ref.get_unique_key())
             except (ValueError, TypeError, AttributeError, KeyError):
                 removed_keys.add(pkg)
-        if 'actual_orphans' in locals():
-            removed_keys.update(actual_orphans)
+        removed_keys.update(actual_orphans)
         all_deployed_files = builtins.set()
         if lockfile:
             for dep_key, dep in lockfile.dependencies.items():
                 if dep_key in removed_keys:
                     all_deployed_files.update(dep.deployed_files)
-        # Normalize path separators once
         all_deployed_files = BaseIntegrator.normalize_managed_files(all_deployed_files) or builtins.set()
 
-        # Update lockfile: remove entries for all removed packages (direct + transitive)
-        removed_orphan_keys = builtins.set()
-        if lockfile and apm_modules_dir.exists() and 'actual_orphans' in locals():
-            removed_orphan_keys = actual_orphans
+        # Step 8: Update lockfile
         if lockfile:
             lockfile_updated = False
             for pkg in packages_to_remove:
@@ -353,8 +476,7 @@ def uninstall(ctx, packages, dry_run):
                 if key in lockfile.dependencies:
                     del lockfile.dependencies[key]
                     lockfile_updated = True
-            # Also remove orphaned transitive deps from lockfile
-            for orphan_key in removed_orphan_keys:
+            for orphan_key in actual_orphans:
                 if orphan_key in lockfile.dependencies:
                     del lockfile.dependencies[orphan_key]
                     lockfile_updated = True
@@ -363,197 +485,38 @@ def uninstall(ctx, packages, dry_run):
                     if lockfile.dependencies:
                         lockfile.write(lockfile_path)
                     else:
-                        # No deps left — remove lockfile
                         lockfile_path.unlink(missing_ok=True)
                 except Exception:
                     pass
 
-        # Sync integrations: remove all deployed files and re-integrate from remaining packages
-        prompts_cleaned = 0
-        agents_cleaned = 0
-        commands_cleaned = 0
-        skills_cleaned = 0
-        hooks_cleaned = 0
-        instructions_cleaned = 0
-
+        # Step 9: Sync integrations
+        cleaned = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
         try:
-            from ..models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
-            from ..integration.prompt_integrator import PromptIntegrator
-            from ..integration.agent_integrator import AgentIntegrator
-            from ..integration.skill_integrator import SkillIntegrator
-            from ..integration.command_integrator import CommandIntegrator
-            from ..integration.hook_integrator import HookIntegrator
-            from ..integration.instruction_integrator import InstructionIntegrator
-
             apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             project_root = Path(".")
-
-            # Use pre-collected deployed_files (captured before lockfile entries were deleted)
-            sync_managed = all_deployed_files if all_deployed_files else None
-
-            # Pre-partition managed files by integration type — single O(M)
-            # pass instead of 6× O(M) prefix scans inside each integrator.
-            if sync_managed is not None:
-                _buckets = BaseIntegrator.partition_managed_files(sync_managed)
-            else:
-                _buckets = None
-
-            # Phase 1: Remove all APM-deployed files
-            if Path(".github/prompts").exists():
-                integrator = PromptIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["prompts"] if _buckets else None)
-                prompts_cleaned = result.get("files_removed", 0)
-
-            if Path(".github/agents").exists():
-                integrator = AgentIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["agents_github"] if _buckets else None)
-                agents_cleaned = result.get("files_removed", 0)
-
-            if Path(".claude/agents").exists():
-                integrator = AgentIntegrator()
-                result = integrator.sync_integration_claude(apm_package, project_root,
-                                                            managed_files=_buckets["agents_claude"] if _buckets else None)
-                agents_cleaned += result.get("files_removed", 0)
-
-            if Path(".github/skills").exists() or Path(".claude/skills").exists():
-                integrator = SkillIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["skills"] if _buckets else None)
-                skills_cleaned = result.get("files_removed", 0)
-
-            if Path(".claude/commands").exists():
-                integrator = CommandIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["commands"] if _buckets else None)
-                commands_cleaned = result.get("files_removed", 0)
-
-            # Clean hooks (.github/hooks/ and .claude/settings.json)
-            hook_integrator_cleanup = HookIntegrator()
-            result = hook_integrator_cleanup.sync_integration(apm_package, project_root,
-                                                              managed_files=_buckets["hooks"] if _buckets else None)
-            hooks_cleaned = result.get("files_removed", 0)
-
-            # Clean instructions (.github/instructions/)
-            if Path(".github/instructions").exists():
-                integrator = InstructionIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["instructions"] if _buckets else None)
-                instructions_cleaned = result.get("files_removed", 0)
-
-            # Phase 2: Re-integrate from remaining installed packages in apm_modules/
-            # Detect target so we only re-create Claude artefacts when appropriate
-            from ..core.target_detection import (
-                detect_target,
-                should_integrate_claude,
-            )
-            config_target = apm_package.target
-            detected_target, _ = detect_target(
-                project_root=project_root,
-                explicit_target=None,
-                config_target=config_target,
-            )
-            integrate_claude = should_integrate_claude(detected_target)
-
-            prompt_integrator = PromptIntegrator()
-            agent_integrator = AgentIntegrator()
-            skill_integrator = SkillIntegrator()
-            command_integrator = CommandIntegrator()
-            hook_integrator_reint = HookIntegrator()
-            instruction_integrator = InstructionIntegrator()
-
-            for dep in apm_package.get_apm_dependencies():
-                dep_ref = dep if hasattr(dep, 'repo_url') else None
-                if not dep_ref:
-                    continue
-                install_path = dep_ref.get_install_path(Path(APM_MODULES_DIR))
-                if not install_path.exists():
-                    continue
-
-                # Build minimal PackageInfo for re-integration
-                result = validate_apm_package(install_path)
-                pkg = result.package if result and result.package else None
-                if not pkg:
-                    continue
-                pkg_info = PackageInfo(
-                    package=pkg,
-                    install_path=install_path,
-                    dependency_ref=dep_ref,
-                    package_type=result.package_type if result else None,
-                )
-
-                try:
-                    if prompt_integrator.should_integrate(project_root):
-                        prompt_integrator.integrate_package_prompts(pkg_info, project_root)
-                    if agent_integrator.should_integrate(project_root):
-                        agent_integrator.integrate_package_agents(pkg_info, project_root)
-                        if integrate_claude:
-                            agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
-                    skill_integrator.integrate_package_skill(pkg_info, project_root)
-                    if integrate_claude:
-                        command_integrator.integrate_package_commands(pkg_info, project_root)
-                    hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
-                    if integrate_claude:
-                        hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
-                    instruction_integrator.integrate_package_instructions(pkg_info, project_root)
-                except Exception:
-                    pass  # Best effort re-integration
-
+            cleaned = _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files)
         except Exception:
-            pass  # Best effort cleanup — don't report false failures
+            pass  # Best effort cleanup
 
-        # Show cleanup feedback
-        if prompts_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {prompts_cleaned} integrated prompt(s)")
-        if agents_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {agents_cleaned} integrated agent(s)")
-        if skills_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {skills_cleaned} skill(s)")
-        if commands_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {commands_cleaned} command(s)")
-        if hooks_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {hooks_cleaned} hook(s)")
-        if instructions_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {instructions_cleaned} instruction(s)")
+        for label, count in cleaned.items():
+            if count > 0:
+                _rich_info(f"\u2713 Cleaned up {count} integrated {label}")
 
-        # Clean up stale MCP servers after uninstall
+        # Step 10: MCP cleanup
         try:
-            old_mcp_servers = _pre_uninstall_mcp_servers
-            if old_mcp_servers:
-                # Recompute MCP deps from remaining packages
-                apm_modules_path = Path.cwd() / APM_MODULES_DIR
-                remaining_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lockfile_path, trust_private=True)
-                # Also include root-level MCP deps from apm.yml
-                try:
-                    remaining_root_mcp = apm_package.get_mcp_dependencies()
-                except Exception:
-                    remaining_root_mcp = []
-                all_remaining_mcp = MCPIntegrator.deduplicate(remaining_root_mcp + remaining_mcp)
-                new_mcp_servers = MCPIntegrator.get_server_names(all_remaining_mcp)
-                stale_servers = old_mcp_servers - new_mcp_servers
-                if stale_servers:
-                    MCPIntegrator.remove_stale(stale_servers)
-                MCPIntegrator.update_lockfile(new_mcp_servers, lockfile_path)
+            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
+            _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, _pre_uninstall_mcp_servers)
         except Exception:
             _rich_warning("MCP cleanup during uninstall failed")
 
         # Final summary
-        summary_lines = []
-        summary_lines.append(
-            f"Removed {len(packages_to_remove)} package(s) from apm.yml"
-        )
+        summary_lines = [f"Removed {len(packages_to_remove)} package(s) from apm.yml"]
         if removed_from_modules > 0:
-            summary_lines.append(
-                f"Removed {removed_from_modules} package(s) from apm_modules/"
-            )
-
+            summary_lines.append(f"Removed {removed_from_modules} package(s) from apm_modules/")
         _rich_success("Uninstall complete: " + ", ".join(summary_lines))
 
         if packages_not_found:
-            _rich_warning(
-                f"Note: {len(packages_not_found)} package(s) were not found in apm.yml"
-            )
+            _rich_warning(f"Note: {len(packages_not_found)} package(s) were not found in apm.yml")
 
     except Exception as e:
         _rich_error(f"Error uninstalling packages: {e}")
