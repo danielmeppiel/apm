@@ -1,0 +1,80 @@
+---
+title: "GitHub Agentic Workflows"
+description: "How APM integrates with GitHub Agentic Workflows (gh-aw) for production AI agent pipelines."
+---
+
+## Overview
+
+[GitHub Agentic Workflows](https://github.github.com/gh-aw/) (gh-aw) is a framework for running AI agents in GitHub Actions. APM provides the package management layer that gh-aw uses to manage agent context.
+
+## How gh-aw uses APM
+
+GitHub Agentic Workflows natively integrates APM as its dependency manager. When you define a workflow in gh-aw, APM handles:
+
+1. **Package resolution** — resolving and fetching instruction packages
+2. **Context compilation** — generating optimized context for the agent runtime
+3. **Isolation** — ensuring each workflow step gets only relevant instructions
+
+### The three-tier model
+
+gh-aw and APM together implement a three-tier context model:
+
+| Tier | Source | Purpose |
+|------|--------|---------|
+| **Global** | Organization-level packages | Standards that apply everywhere |
+| **Repository** | Repo-level `apm.yml` | Project-specific context |
+| **Workflow** | Workflow-level overrides | Task-specific instructions |
+
+This hierarchy ensures agents get the right context at the right scope.
+
+## Setting up APM with gh-aw
+
+### 1. Define packages in your workflow
+
+```yaml
+# .github/workflows/review.yml
+name: AI Code Review
+on: pull_request
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/agentic-workflows@v1
+        with:
+          packages: |
+            microsoft/apm-code-review@v2
+            your-org/internal-standards@v1
+```
+
+### 2. Organization-level defaults
+
+Set default packages for all repositories in your organization:
+
+```yaml
+# .github/apm.yml (organization level)
+dependencies:
+  - your-org/security-standards@v1
+  - your-org/code-quality@v2
+```
+
+### 3. Repository overrides
+
+Individual repositories can extend or override organization defaults:
+
+```yaml
+# apm.yml (repository level)
+dependencies:
+  - your-org/react-patterns@v3
+  - your-org/api-guidelines@v1
+```
+
+## Benefits of the integration
+
+- **Consistency** — same packages, same agent behavior, across all workflows
+- **Versioning** — pin packages to specific versions for reproducible builds
+- **Isolation** — each workflow step gets scoped context
+- **Caching** — APM modules are cached across workflow runs
+- **Auditability** — `apm.lock` tracks exactly what versions are deployed
+

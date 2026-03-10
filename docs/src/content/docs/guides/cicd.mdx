@@ -1,0 +1,85 @@
+---
+title: "APM in CI/CD"
+description: "Using APM in continuous integration and deployment pipelines."
+---
+
+## Why APM in CI/CD?
+
+When AI coding agents run in CI/CD pipelines — automated code reviews, PR agents, deployment assistants — they need the same structured context as local development. Without it, agents see conflicting instructions from multiple packages and produce inconsistent results.
+
+This is the **instruction pollution** problem: an agent running in CI picks up every instruction from every package in the workspace, including ones meant for different contexts.
+
+## The instruction pollution problem
+
+Consider a monorepo with packages for frontend, backend, and infrastructure:
+
+```
+monorepo/
+├── packages/frontend/     # React + TypeScript instructions
+├── packages/backend/      # Python + FastAPI instructions
+└── packages/infra/        # Terraform + AWS instructions
+```
+
+An AI agent reviewing a backend PR shouldn't see frontend coding standards. Without isolation, it gets all instructions and may apply React patterns to Python code.
+
+## Using APM in GitHub Actions
+
+### Basic compilation
+
+Add APM compilation to your CI pipeline:
+
+```yaml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install APM
+        run: |
+          curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | bash
+
+      - name: Install dependencies and compile
+        run: |
+          apm install
+          apm compile
+```
+
+### Isolated mode
+
+For monorepos and multi-package workspaces, use isolated compilation to ensure each package context is self-contained:
+
+```bash
+apm compile --isolated
+```
+
+In isolated mode, APM:
+1. Scopes instructions to the current package only
+2. Excludes transitive instructions from unrelated packages
+3. Generates a focused `AGENTS.md` for the specific context
+
+### Validating agent context in PRs
+
+Add a check that ensures `AGENTS.md` stays in sync with `apm.yml`:
+
+```yaml
+- name: Validate agent context
+  run: |
+    apm compile
+    git diff --exit-code AGENTS.md || {
+      echo "AGENTS.md is out of sync. Run 'apm compile' locally."
+      exit 1
+    }
+```
+
+## Best practices
+
+1. **Pin package versions** — use exact tags (`@v1.2.3`) in CI, not branches
+2. **Cache APM modules** — cache the `apm_modules/` directory between runs
+3. **Compile in CI** — generate `AGENTS.md` in CI rather than committing it
+4. **Use isolated mode** — prevent instruction pollution in monorepos
+5. **Validate on PR** — catch configuration drift before merge
+

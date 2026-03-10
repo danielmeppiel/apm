@@ -1,0 +1,70 @@
+---
+title: "Why APM?"
+description: "The 30-second pitch for APM — why teams need structured dependency management for AI coding agents."
+---
+
+## The problem
+
+Every team using AI coding agents faces the same challenge: **configuration drift**.
+
+You start with a few lines in `AGENTS.md`. Then you add coding standards. Then project context. Then tool configurations. Soon you're copy-pasting hundreds of lines across repositories, and every repo has a slightly different version.
+
+### Before APM
+
+```
+repo-a/AGENTS.md    →  500 lines, manually maintained
+repo-b/AGENTS.md    →  480 lines, slightly different
+repo-c/AGENTS.md    →  520 lines, out of date
+```
+
+- No versioning — changes are copy-pasted manually
+- No deduplication — the same instructions appear everywhere
+- No sharing — good patterns stay locked in individual repos
+- No consistency — each repo drifts over time
+
+### After APM
+
+```yaml
+# apm.yml — declare what your project needs
+dependencies:
+  - microsoft/apm-typescript-standards@v2
+  - microsoft/apm-react-patterns@v1
+  - your-org/internal-api-guidelines@main
+```
+
+```bash
+apm install    # fetch versioned packages
+apm compile    # generate optimized AGENTS.md
+```
+
+- **Versioned** — pin exact versions, upgrade deliberately
+- **Deduplicated** — compilation removes overlapping instructions
+- **Shareable** — publish packages to any Git host
+- **Consistent** — every repo gets the same configuration
+
+## What APM does
+
+APM is a **dependency manager for AI agent configuration**. It works like npm, pip, or Cargo — but instead of managing code libraries, it manages the instructions, skills, and context that make AI coding agents effective.
+
+1. **Declare** dependencies in `apm.yml`
+2. **Install** versioned packages from Git repositories
+3. **Compile** everything into optimized output for your AI tools
+4. **Share** your own packages with the community
+
+## Who it's for
+
+- **Individual developers** who want to reuse their best AI agent configurations across projects
+- **Teams** who need consistent AI agent behavior across repositories
+- **Platform engineers** who manage AI tooling at scale
+- **Open source authors** who want to share agent configurations as packages
+
+## Universal compatibility
+
+APM works with any AI coding agent that reads markdown configuration:
+
+- GitHub Copilot (AGENTS.md, `.github/` conventions)
+- Cursor (`.cursor/` rules)
+- Claude Code (`.claude/` conventions)
+- Codex CLI
+- Any tool that supports the emerging agent configuration standards
+

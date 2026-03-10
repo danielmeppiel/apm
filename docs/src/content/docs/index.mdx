@@ -1,0 +1,76 @@
+---
+title: APM — Agent Package Manager
+description: The open-source dependency manager for AI coding agents. Manage instructions, skills, prompts, and more — like package.json for your AI workflow.
+template: splash
+hero:
+  title: APM — Agent Package Manager
+  tagline: The open-source dependency manager for AI coding agents
+  actions:
+    - text: Get started
+      link: /apm/getting-started/installation/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/microsoft/apm
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## The missing package manager for AI coding agents
+
+APM brings dependency management to AI agent configuration — the same way npm manages JavaScript packages or pip manages Python packages, APM manages the instructions, skills, prompts, and context that make AI coding agents effective.
+
+<CardGrid>
+  <Card title="Get started" icon="rocket">
+    Install APM and set up your first project in minutes.
+
+    [Installation guide](/apm/getting-started/installation/)
+  </Card>
+  <Card title="Why APM?" icon="information">
+    Learn why teams are adopting structured agent package management.
+
+    [Read the overview](/apm/introduction/overview/)
+  </Card>
+  <Card title="Key concepts" icon="open-book">
+    Understand primitives, compilation, and the APM workflow.
+
+    [Explore concepts](/apm/introduction/key-concepts/)
+  </Card>
+  <Card title="CLI reference" icon="setting">
+    Full command reference for power users.
+
+    [View commands](/apm/reference/cli/)
+  </Card>
+</CardGrid>
+
+## Quick start
+
+```bash
+# Install APM
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | bash
+
+# Initialize a project
+apm init
+
+# Add a package
+apm install microsoft/apm-samples
+
+# Compile to AGENTS.md
+apm compile
+```
+
+## What APM manages
+
+APM packages can contain any combination of **agent primitives** — the building blocks that configure AI coding agents:
+
+| Primitive | Purpose | Example |
+|-----------|---------|---------|
+| **Instructions** | Coding standards and guidelines | `.instructions.md` files |
+| **Skills** | Reusable capability descriptions | `SKILL.md` files |
+| **Prompts** | Parameterized AI task scripts | `.prompt.md` files |
+| **Agents** | AI assistant role definitions | `.agent.md` files |
+| **Hooks** | Lifecycle event handlers | Hook JSON files |
+| **Plugins** | Bundled tool packages | `plugin.json` manifests |
+| **MCP Servers** | Model Context Protocol endpoints | MCP configuration |
+

@@ -1,0 +1,122 @@
+---
+title: "Your First Package"
+description: "Create, publish, and install an APM package in 5 minutes."
+---
+
+This tutorial walks you through creating an APM package from scratch, publishing it, and installing it in another project.
+
+## Prerequisites
+
+- APM installed ([installation guide](/apm/getting-started/installation/))
+- A GitHub account
+- A repository to publish your package to
+
+## Step 1: Initialize a package
+
+Create a new directory and initialize it as an APM package:
+
+```bash
+mkdir my-coding-standards
+cd my-coding-standards
+apm init
+```
+
+APM creates an `apm.yml` manifest:
+
+```yaml
+name: my-coding-standards
+version: 0.1.0
+description: My team's coding standards for AI agents
+```
+
+## Step 2: Add instructions
+
+Create an instruction file that tells AI agents how your team writes code:
+
+```bash
+mkdir -p .apm/instructions
+```
+
+Create `.apm/instructions/code-style.instructions.md`:
+
+```markdown
+---
+applyTo: "**/*.ts"
+description: "TypeScript coding standards"
+---
+
+# TypeScript Standards
+
+- Use `const` by default, `let` only when reassignment is needed
+- Prefer `interface` over `type` for object shapes
+- Use explicit return types on exported functions
+- Handle errors with Result types, not try/catch
+```
+
+## Step 3: Add a skill
+
+Create `.apm/skills/SKILL.md` to describe what this package provides:
+
+```markdown
+---
+name: typescript-standards
+description: Enforces consistent TypeScript coding patterns
+---
+
+# TypeScript Standards
+
+This package provides coding standards for TypeScript projects,
+covering naming conventions, error handling patterns, and type usage.
+```
+
+## Step 4: Test locally
+
+Compile the package to see what it generates:
+
+```bash
+apm compile --verbose --dry-run
+```
+
+This shows you exactly what would be written to `AGENTS.md` without making changes.
+
+## Step 5: Publish
+
+Push your package to a Git repository:
+
+```bash
+git init
+git add .
+git commit -m "Initial APM package"
+git remote add origin https://github.com/your-org/my-coding-standards.git
+git push -u origin main
+```
+
+Tag a version:
+
+```bash
+git tag v0.1.0
+git push --tags
+```
+
+## Step 6: Install in another project
+
+In any other project, add your package as a dependency:
+
+```bash
+apm install your-org/my-coding-standards@v0.1.0
+```
+
+Then compile:
+
+```bash
+apm compile
+```
+
+Your AI coding agent now follows your team's standards.
+
+## What's next?
+
+- Learn about [compilation and optimization](/apm/guides/compilation/) to understand how APM merges multiple packages
+- Explore [skills and prompts](/apm/guides/skills-and-prompts/) for more primitive types
+- See [examples](/apm/reference/examples/) of real-world APM packages
+
