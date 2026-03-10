@@ -27,7 +27,7 @@ def config(ctx):
             console = _get_console()
             # Create configuration display
             config_table = Table(
-                title="⚙️  Current APM Configuration",
+                title="Current APM Configuration",
                 show_header=True,
                 header_style="bold cyan",
             )

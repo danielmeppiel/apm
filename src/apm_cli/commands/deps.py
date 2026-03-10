@@ -44,10 +44,10 @@ def list_packages():
         # Check if apm_modules exists
         if not apm_modules_path.exists():
             if has_rich:
-                console.print("💡 No APM dependencies installed yet", style="cyan")
+                console.print("No APM dependencies installed yet", style="cyan")
                 console.print("Run 'apm install' to install dependencies from apm.yml", style="dim")
             else:
-                click.echo("💡 No APM dependencies installed yet")
+                click.echo("No APM dependencies installed yet")
                 click.echo("Run 'apm install' to install dependencies from apm.yml")
             return
         
@@ -157,18 +157,18 @@ def list_packages():
                     'is_orphaned': is_orphaned
                 })
             except Exception as e:
-                click.echo(f"⚠️ Warning: Failed to read package {org_repo_name}: {e}")
+                click.echo(f"Warning: Failed to read package {org_repo_name}: {e}")
         
         if not installed_packages:
             if has_rich:
-                console.print("💡 apm_modules/ directory exists but contains no valid packages", style="cyan")
+                console.print("apm_modules/ directory exists but contains no valid packages", style="cyan")
             else:
-                click.echo("💡 apm_modules/ directory exists but contains no valid packages")
+                click.echo("apm_modules/ directory exists but contains no valid packages")
             return
         
         # Display packages in table format
         if has_rich:
-            table = Table(title="📋 APM Dependencies", show_header=True, header_style="bold cyan")
+            table = Table(title="APM Dependencies", show_header=True, header_style="bold cyan")
             table.add_column("Package", style="bold white")
             table.add_column("Version", style="yellow") 
             table.add_column("Source", style="blue")
@@ -195,13 +195,13 @@ def list_packages():
             
             # Show orphaned packages warning
             if orphaned_packages:
-                console.print(f"\n⚠️  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):", style="yellow")
+                console.print(f"\n{len(orphaned_packages)} orphaned package(s) found (not in apm.yml):", style="yellow")
                 for pkg in orphaned_packages:
                     console.print(f"  • {pkg}", style="dim yellow")
-                console.print("\n💡 Run 'apm prune' to remove orphaned packages", style="cyan")
+                console.print("\nRun 'apm prune' to remove orphaned packages", style="cyan")
         else:
             # Fallback text table
-            click.echo("📋 APM Dependencies:")
+            click.echo("APM Dependencies:")
             click.echo(f"{'Package':<30} {'Version':<10} {'Source':<12} {'Prompts':>7} {'Instr':>7} {'Agents':>7} {'Skills':>7} {'Hooks':>7}")
             click.echo("-" * 98)
             
@@ -219,10 +219,10 @@ def list_packages():
             
             # Show orphaned packages warning
             if orphaned_packages:
-                click.echo(f"\n⚠️  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):")
+                click.echo(f"\n{len(orphaned_packages)} orphaned package(s) found (not in apm.yml):")
                 for pkg in orphaned_packages:
                     click.echo(f"  • {pkg}")
-                click.echo("\n💡 Run 'apm prune' to remove orphaned packages")
+                click.echo("\nRun 'apm prune' to remove orphaned packages")
 
     except Exception as e:
         _rich_error(f"Error listing dependencies: {e}")

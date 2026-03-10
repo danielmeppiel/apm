@@ -287,7 +287,7 @@ def _validate_package_exists(package):
     "--dry-run", is_flag=True, help="Show what would be installed without installing"
 )
 @click.option("--force", is_flag=True, help="Overwrite locally-authored files on collision")
-@click.option("--verbose", is_flag=True, help="Show detailed installation information")
+@click.option("-v", "--verbose", is_flag=True, help="Show detailed installation information")
 @click.option(
     "--trust-transitive-mcp",
     is_flag=True,

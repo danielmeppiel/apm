@@ -109,7 +109,7 @@ apm init my-project --yes
 Install APM package and MCP server dependencies from `apm.yml` (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
 
 ```bash
-apm install [PACKAGES...] [OPTIONS]
+apm install [OPTIONS] [PACKAGES...]
 ```
 
 **Arguments:**
@@ -120,11 +120,11 @@ apm install [PACKAGES...] [OPTIONS]
 - `--exclude TEXT` - Exclude specific runtime from installation
 - `--only [apm|mcp]` - Install only specific dependency type
 - `--update` - Update dependencies to latest Git references  
-- `--force` - Overwrite locally-authored files on collision
 - `--dry-run` - Show what would be installed without installing
-- `--parallel-downloads INT` - Max concurrent package downloads (default: 4, 0 to disable)
+- `--force` - Overwrite locally-authored files on collision
 - `--verbose` - Show detailed installation information
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
+- `--parallel-downloads INT` - Max concurrent package downloads (default: 4, 0 to disable)
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
@@ -548,11 +548,11 @@ company-website (local)
 Display comprehensive information about a specific installed package.
 
 ```bash
-apm deps info PACKAGE_NAME
+apm deps info PACKAGE
 ```
 
 **Arguments:**
-- `PACKAGE_NAME` - Name of the package to show information about
+- `PACKAGE` - Name of the package to show information about
 
 **Examples:**
 ```bash
@@ -595,11 +595,11 @@ apm deps clean
 Update installed APM dependencies to their latest versions.
 
 ```bash
-apm deps update [PACKAGE_NAME]
+apm deps update [PACKAGE]
 ```
 
 **Arguments:**
-- `PACKAGE_NAME` - Optional. Update specific package only
+- `PACKAGE` - Optional. Update specific package only
 
 **Examples:**
 ```bash
@@ -627,7 +627,7 @@ apm mcp list [OPTIONS]
 ```
 
 **Options:**
-- `--limit INTEGER` - Number of results to show
+- `--limit INTEGER` - Number of results to show (default: 20)
 
 **Examples:**
 ```bash
@@ -1087,7 +1087,7 @@ apm runtime remove RUNTIME_NAME
 **Options:**
 - `--yes` - Confirm the action without prompting
 
-#### `apm runtime status` - Show runtime status
+#### `apm runtime status` - Check which runtime will be used
 
 Display which runtime APM will use for execution and runtime preference order.
 
