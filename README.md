@@ -147,7 +147,7 @@ git add . && git commit -m "Initial standards" && git push
 
 Anyone can now `apm install you/my-standards`.
 
-## All Commands
+## Key Commands
 
 | Command | What it does |
 |---------|--------------|
@@ -156,8 +156,10 @@ Anyone can now `apm install you/my-standards`.
 | `apm init [name]` | Scaffold a new APM project or package |
 | `apm run <prompt>` | Execute a prompt workflow via AI runtime |
 | `apm uninstall <pkg>` | Remove a package from apm.yml and clean up its files |
+| `apm pack` | Bundle resolved dependencies for offline distribution |
 | `apm deps list` | Show installed packages and versions |
-| `apm compile --target` | Target a specific agent (`vscode`, `claude`, `all`) |
+
+→ [Full CLI Reference](docs/cli-reference.md)
 
 ## Configuration
 

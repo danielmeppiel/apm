@@ -371,8 +371,28 @@ apm pack -o dist/
 **Behavior:**
 - Reads `apm.lock` to enumerate all `deployed_files` from installed dependencies
 - Copies files preserving directory structure
-- Writes an enriched `apm.lock` inside the bundle with a `pack:` metadata section
-- The project's own `apm.lock` is never modified
+- Writes an enriched `apm.lock` inside the bundle with a `pack:` metadata section (the project's own `apm.lock` is never modified)
+
+**Target filtering:**
+
+| Target | Includes paths starting with |
+|--------|------------------------------|
+| `vscode` | `.github/` |
+| `claude` | `.claude/` |
+| `all` | both |
+
+**Enriched lockfile example:**
+```yaml
+pack:
+  format: apm
+  target: vscode
+  packed_at: '2026-03-09T12:00:00+00:00'
+lockfile_version: '1'
+generated_at: ...
+dependencies:
+  - repo_url: owner/repo
+    ...
+```
 
 ### `apm unpack` - Extract a bundle
 
@@ -406,9 +426,10 @@ apm unpack bundle.tar.gz --dry-run
 ```
 
 **Behavior:**
-- Additive-only: only writes files listed in the bundle's `apm.lock`; never deletes existing files
+- **Additive-only**: only writes files listed in the bundle's `apm.lock`; never deletes existing files
 - If a local file has the same path as a bundle file, the bundle file wins (overwrite)
 - Verification checks that all `deployed_files` from the bundle lockfile are present in the bundle
+- The bundle's `apm.lock` is metadata only — it is **not** copied to the output directory
 
 ### `apm update` - Update APM to the latest version
 
