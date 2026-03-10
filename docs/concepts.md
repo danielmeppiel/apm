@@ -253,7 +253,7 @@ Lifecycle event handlers that run scripts at specific points during AI operation
 
 APM generates context files for all major coding agents:
 
-**VSCode/GitHub Target** (AGENTS.md + .github/):
+**Copilot Target** (AGENTS.md + .github/):
 - **GitHub Copilot** - VSCode integration, chat, and CLI
 - **Cursor** - AI-first code editor  
 - **Codex CLI** - OpenAI's development tool

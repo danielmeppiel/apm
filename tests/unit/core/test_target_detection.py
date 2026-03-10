@@ -28,6 +28,16 @@ class TestDetectTarget:
         assert target == "vscode"
         assert reason == "explicit --target flag"
 
+    def test_explicit_target_copilot_maps_to_vscode(self, tmp_path):
+        """Explicit --target copilot maps to vscode."""
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target="copilot",
+        )
+        
+        assert target == "vscode"
+        assert reason == "explicit --target flag"
+
     def test_explicit_target_agents_maps_to_vscode(self, tmp_path):
         """Explicit --target agents maps to vscode."""
         target, reason = detect_target(
@@ -59,6 +69,17 @@ class TestDetectTarget:
         
         assert target == "all"
         assert reason == "explicit --target flag"
+
+    def test_config_target_copilot(self, tmp_path):
+        """Config target copilot maps to vscode."""
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target=None,
+            config_target="copilot",
+        )
+        
+        assert target == "vscode"
+        assert reason == "apm.yml target"
 
     def test_config_target_vscode(self, tmp_path):
         """Config target vscode is used when no explicit target."""
@@ -227,6 +248,12 @@ class TestShouldCompileClaudeMd:
 
 class TestGetTargetDescription:
     """Tests for get_target_description function."""
+
+    def test_copilot_description(self):
+        """Description for copilot target."""
+        desc = get_target_description("copilot")
+        assert "AGENTS.md" in desc
+        assert ".github/" in desc
 
     def test_vscode_description(self):
         """Description for vscode target."""
