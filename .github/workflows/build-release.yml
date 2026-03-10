@@ -120,6 +120,10 @@ jobs:
             platform: darwin
             arch: arm64
             binary_name: apm-darwin-arm64
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
+            binary_name: apm-windows-x86_64
     
     runs-on: ${{ matrix.os }}
     permissions:
@@ -149,16 +153,25 @@ jobs:
           until xcode-select -p >/dev/null 2>&1; do sleep 5; done
           brew install upx
       
-      - name: Install uv
+      - name: Install uv (Unix)
+        if: matrix.platform != 'windows'
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install uv (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          irm https://astral.sh/uv/install.ps1 | iex
+          "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       
       - name: Install Python dependencies
         run: |
           uv sync --extra dev --extra build
       
       - name: Build binary
+        shell: bash
         run: |
           chmod +x scripts/build-binary.sh
           uv run ./scripts/build-binary.sh
@@ -395,6 +408,32 @@ jobs:
               exit 1
             fi
           done
+
+          binary="apm-windows-x86_64"
+          artifact_dir="${binary}"
+          binary_dir="${artifact_dir}/dist/${binary}"
+          if [ -d "$binary_dir" ] && [ -f "$binary_dir/apm.exe" ]; then
+            echo "Processing $binary_dir directory..."
+            (
+              cd "${artifact_dir}/dist"
+              zip -qr "../../${binary}.zip" "${binary}"
+            )
+            if command -v sha256sum &> /dev/null; then
+              sha256sum "${binary}.zip" > "${binary}.zip.sha256"
+            elif command -v shasum &> /dev/null; then
+              shasum -a 256 "${binary}.zip" > "${binary}.zip.sha256"
+            fi
+            echo "Created ${binary}.zip"
+          else
+            echo "ERROR: Binary directory $binary_dir not found or $binary_dir/apm.exe missing"
+            echo "Artifact directory contents:"
+            ls -la "$artifact_dir/" || echo "Directory $artifact_dir does not exist"
+            if [ -d "$artifact_dir/dist" ]; then
+              echo "Dist directory contents:"
+              ls -la "$artifact_dir/dist/"
+            fi
+            exit 1
+          fi
       
       - name: Determine release type
         id: release_type
@@ -430,6 +469,8 @@ jobs:
             ./dist/apm-darwin-x86_64.tar.gz.sha256
             ./dist/apm-darwin-arm64.tar.gz
             ./dist/apm-darwin-arm64.tar.gz.sha256
+            ./dist/apm-windows-x86_64.zip
+            ./dist/apm-windows-x86_64.zip.sha256
 
   # Publish to PyPI (only stable releases from public repo)  
   publish-pypi:

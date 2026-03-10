@@ -50,6 +50,12 @@ apm install    # every agent is configured
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
+```
+
+Native release binaries are published for macOS, Linux, and Windows x86_64. `apm update` reuses the matching platform installer.
+
 <details>
 <summary>Other install methods</summary>
 

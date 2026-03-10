@@ -17,7 +17,18 @@ sidebar:
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
-The install script detects your platform, downloads the latest binary, and installs it to `/usr/local/bin/`.
+On Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
+```
+
+This script automatically:
+- Detects your platform (macOS/Linux/Windows, Intel/ARM)
+- Downloads the latest binary
+- Installs to `/usr/local/bin/` on macOS/Linux
+- Installs under `%LOCALAPPDATA%\Programs\apm\` on Windows and adds a user-level `apm` shim to `PATH`
+- Verifies installation
 
 ## pip install
 
@@ -31,6 +42,14 @@ Requires Python 3.10+.
 
 Download the archive for your platform from [GitHub Releases](https://github.com/microsoft/apm/releases/latest) and install manually:
 
+#### Windows x86_64
+Use the PowerShell installer for the supported Windows install path:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
+```
+
+#### macOS / Linux
 ```bash
 # Example: macOS Apple Silicon
 curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-arm64.tar.gz | tar -xz
