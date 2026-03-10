@@ -83,20 +83,22 @@ class BaseIntegrator:
         return True
 
     @staticmethod
-    def normalize_managed_files(managed_files: Optional[Set[str]]) -> Optional[Set[str]]:
+    def normalize_managed_files(
+        managed_files: Optional[Set[str]],
+    ) -> Optional[Set[str]]:
         """Normalize path separators once for O(1) lookups."""
         if managed_files is None:
             return None
         return {p.replace("\\", "/") for p in managed_files}
 
     # Known integration prefixes that APM is allowed to deploy/remove under
-    INTEGRATION_PREFIXES = (".github/", ".claude/")
+    INTEGRATION_PREFIXES = (".github/", ".claude/", ".opencode/")
 
     @staticmethod
     def validate_deploy_path(
         rel_path: str,
         project_root: Path,
-        allowed_prefixes: tuple = (".github/", ".claude/"),
+        allowed_prefixes: tuple = (".github/", ".claude/", ".opencode/"),
     ) -> bool:
         """Return True if *rel_path* is safe for APM to deploy or remove.
 
@@ -143,9 +145,11 @@ class BaseIntegrator:
                 buckets["agents_github"].add(p)
             elif p.startswith(".claude/agents/"):
                 buckets["agents_claude"].add(p)
-            elif p.startswith(".claude/commands/"):
+            elif p.startswith((".claude/commands/", ".opencode/commands/")):
                 buckets["commands"].add(p)
-            elif p.startswith((".github/skills/", ".claude/skills/")):
+            elif p.startswith(
+                (".github/skills/", ".claude/skills/", ".opencode/skills/")
+            ):
                 buckets["skills"].add(p)
             elif p.startswith((".github/hooks/", ".claude/hooks/")):
                 buckets["hooks"].add(p)
@@ -216,7 +220,7 @@ class BaseIntegrator:
         if resolved == content:
             return content, 0
 
-        link_pattern = re.compile(r'\]\(([^)]+)\)')
+        link_pattern = re.compile(r"\]\(([^)]+)\)")
         original_links = set(link_pattern.findall(content))
         resolved_links = set(link_pattern.findall(resolved))
         return resolved, len(original_links - resolved_links)

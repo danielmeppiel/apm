@@ -24,94 +24,94 @@ class TestCommandIntegratorSyncIntegration:
 
     @pytest.fixture
     def temp_project(self):
-        """Create a temporary project with .claude/commands directory."""
+        """Create a temporary project with .opencode/commands directory."""
         temp_dir = tempfile.mkdtemp()
         temp_path = Path(temp_dir)
-        
+
         # Create commands directory
-        commands_dir = temp_path / ".claude" / "commands"
+        commands_dir = temp_path / ".opencode" / "commands"
         commands_dir.mkdir(parents=True)
-        
+
         yield temp_path
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_sync_removes_all_apm_commands(self, temp_project):
         """Test that sync_integration removes all *-apm.md files."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
+        commands_dir = temp_project / ".opencode" / "commands"
+
         # Create command files for two packages
         pkg1_command = commands_dir / "audit-apm.md"
         pkg1_command.write_text("# Audit Command\n")
-        
+
         pkg2_command = commands_dir / "review-apm.md"
         pkg2_command.write_text("# Review Command\n")
-        
+
         integrator = CommandIntegrator()
         result = integrator.sync_integration(None, temp_project)
-        
-        assert result['files_removed'] == 2
+
+        assert result["files_removed"] == 2
         assert not pkg1_command.exists()
         assert not pkg2_command.exists()
 
     def test_sync_handles_empty_dependencies(self, temp_project):
         """Test sync removes all apm commands regardless of dependencies."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
+        commands_dir = temp_project / ".opencode" / "commands"
+
         command1 = commands_dir / "cmd1-apm.md"
         command1.write_text("# Command 1\n")
-        
+
         command2 = commands_dir / "cmd2-apm.md"
         command2.write_text("# Command 2\n")
-        
+
         mock_package = MagicMock()
-        mock_package.dependencies = {'apm': []}
-        
+        mock_package.dependencies = {"apm": []}
+
         integrator = CommandIntegrator()
         result = integrator.sync_integration(mock_package, temp_project)
-        
-        assert result['files_removed'] == 2
+
+        assert result["files_removed"] == 2
         assert not command1.exists()
         assert not command2.exists()
 
     def test_sync_ignores_non_apm_command_files(self, temp_project):
         """Test that sync_integration ignores command files without -apm suffix."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
+        commands_dir = temp_project / ".opencode" / "commands"
+
         # Create a non-APM command file (user-created)
         user_command = commands_dir / "my-custom-command.md"
         user_command.write_text("# My Custom Command\n")
-        
+
         integrator = CommandIntegrator()
         result = integrator.sync_integration(None, temp_project)
-        
-        assert result['files_removed'] == 0
+
+        assert result["files_removed"] == 0
         assert user_command.exists()
 
     def test_sync_handles_nonexistent_commands_dir(self):
-        """Test sync handles missing .claude/commands directory."""
+        """Test sync handles missing .opencode/commands directory."""
         temp_dir = tempfile.mkdtemp()
         temp_path = Path(temp_dir)
-        
+
         try:
             integrator = CommandIntegrator()
             result = integrator.sync_integration(None, temp_path)
-            assert result['files_removed'] == 0
-            assert result['errors'] == 0
+            assert result["files_removed"] == 0
+            assert result["errors"] == 0
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_sync_apm_package_param_is_unused(self, temp_project):
         """Test that sync works regardless of what apm_package is passed."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
+        commands_dir = temp_project / ".opencode" / "commands"
+
         cmd = commands_dir / "test-apm.md"
         cmd.write_text("# Test\n")
-        
+
         integrator = CommandIntegrator()
-        
+
         # Works with None
         result = integrator.sync_integration(None, temp_project)
-        assert result['files_removed'] == 1
+        assert result["files_removed"] == 1
 
 
 class TestRemovePackageCommands:
@@ -119,32 +119,32 @@ class TestRemovePackageCommands:
 
     @pytest.fixture
     def temp_project(self):
-        """Create a temporary project with .claude/commands directory."""
+        """Create a temporary project with .opencode/commands directory."""
         temp_dir = tempfile.mkdtemp()
         temp_path = Path(temp_dir)
-        
-        commands_dir = temp_path / ".claude" / "commands"
+
+        commands_dir = temp_path / ".opencode" / "commands"
         commands_dir.mkdir(parents=True)
-        
+
         yield temp_path
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_removes_all_apm_commands(self, temp_project):
         """Test that remove_package_commands removes all *-apm.md files."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
+        commands_dir = temp_project / ".opencode" / "commands"
+
         cmd1 = commands_dir / "audit-apm.md"
         cmd1.write_text("# Audit\n")
-        
+
         cmd2 = commands_dir / "review-apm.md"
         cmd2.write_text("# Review\n")
-        
+
         cmd3 = commands_dir / "design-apm.md"
         cmd3.write_text("# Design\n")
-        
+
         integrator = CommandIntegrator()
         removed = integrator.remove_package_commands("any/package", temp_project)
-        
+
         assert removed == 3
         assert not cmd1.exists()
         assert not cmd2.exists()
@@ -152,26 +152,26 @@ class TestRemovePackageCommands:
 
     def test_returns_zero_when_no_commands_dir(self, temp_project):
         """Test that remove_package_commands returns 0 when no commands directory exists."""
-        shutil.rmtree(temp_project / ".claude" / "commands")
-        
+        shutil.rmtree(temp_project / ".opencode" / "commands")
+
         integrator = CommandIntegrator()
         removed = integrator.remove_package_commands("any/package", temp_project)
-        
+
         assert removed == 0
 
     def test_preserves_non_apm_files(self, temp_project):
         """Test that non-APM files are preserved."""
-        commands_dir = temp_project / ".claude" / "commands"
-        
+        commands_dir = temp_project / ".opencode" / "commands"
+
         user_cmd = commands_dir / "my-command.md"
         user_cmd.write_text("# User command\n")
-        
+
         apm_cmd = commands_dir / "test-apm.md"
         apm_cmd.write_text("# APM command\n")
-        
+
         integrator = CommandIntegrator()
         removed = integrator.remove_package_commands("any/package", temp_project)
-        
+
         assert removed == 1
         assert not apm_cmd.exists()
         assert user_cmd.exists()
@@ -185,10 +185,10 @@ class TestIntegrateCommandNoMetadata:
         """Create temporary project with source and target dirs."""
         temp_dir = tempfile.mkdtemp()
         temp_path = Path(temp_dir)
-        
+
         (temp_path / "source").mkdir()
-        (temp_path / ".claude" / "commands").mkdir(parents=True)
-        
+        (temp_path / ".opencode" / "commands").mkdir(parents=True)
+
         yield temp_path
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -201,9 +201,9 @@ description: Run audit checks
 # Audit Command
 Run compliance audit.
 """)
-        
-        target = temp_project / ".claude" / "commands" / "audit-apm.md"
-        
+
+        target = temp_project / ".opencode" / "commands" / "audit-apm.md"
+
         mock_info = MagicMock()
         mock_info.package.name = "test/pkg"
         mock_info.package.version = "1.0.0"
@@ -212,57 +212,60 @@ Run compliance audit.
         mock_info.install_path = temp_project / "source"
         mock_info.installed_at = "2024-01-01"
         mock_info.get_canonical_dependency_string.return_value = "test/pkg"
-        
+
         integrator = CommandIntegrator()
         integrator.integrate_command(source, target, mock_info, source)
-        
+
         # Verify no APM metadata
         post = frontmatter.load(target)
-        assert 'apm' not in post.metadata
-        
+        assert "apm" not in post.metadata
+
         # Verify legitimate metadata IS preserved
-        assert post.metadata.get('description') == 'Run audit checks'
+        assert post.metadata.get("description") == "Run audit checks"
 
     def test_content_preserved_verbatim(self, temp_project):
         """Test that command content is preserved without modification."""
         content = "# My Command\nDo something useful.\n\n## Steps\n1. First\n2. Second"
         source = temp_project / "source" / "test.prompt.md"
         source.write_text(f"---\ndescription: Test\n---\n{content}\n")
-        
-        target = temp_project / ".claude" / "commands" / "test-apm.md"
-        
+
+        target = temp_project / ".opencode" / "commands" / "test-apm.md"
+
         mock_info = MagicMock()
         mock_info.resolved_reference = None
-        
+
         integrator = CommandIntegrator()
         integrator.integrate_command(source, target, mock_info, source)
-        
+
         post = frontmatter.load(target)
         assert content in post.content
 
-    def test_claude_metadata_mapping(self, temp_project):
-        """Test that Claude-specific frontmatter fields are mapped correctly."""
+    def test_opencode_metadata_mapping(self, temp_project):
+        """Test OpenCode frontmatter field mapping."""
         source = temp_project / "source" / "cmd.prompt.md"
         source.write_text("""---
 description: A command
+agent: reviewer
 allowed-tools: ["bash", "edit"]
 model: claude-sonnet
 argument-hint: "file path"
 ---
 # Command
 """)
-        
-        target = temp_project / ".claude" / "commands" / "cmd-apm.md"
-        
+
+        target = temp_project / ".opencode" / "commands" / "cmd.md"
+
         mock_info = MagicMock()
         mock_info.resolved_reference = None
-        
+
         integrator = CommandIntegrator()
         integrator.integrate_command(source, target, mock_info, source)
-        
+
         post = frontmatter.load(target)
-        assert post.metadata['description'] == 'A command'
-        assert post.metadata['allowed-tools'] == ['bash', 'edit']
-        assert post.metadata['model'] == 'claude-sonnet'
-        assert post.metadata['argument-hint'] == 'file path'
-        assert 'apm' not in post.metadata
+        assert post.metadata["description"] == "A command"
+        assert post.metadata["agent"] == "reviewer"
+        assert post.metadata["model"] == "claude-sonnet"
+        assert post.metadata["subtask"] == "file path"
+        assert "allowed-tools" not in post.metadata
+        assert "argument-hint" not in post.metadata
+        assert "apm" not in post.metadata

@@ -77,7 +77,9 @@ def uninstall(ctx, packages, dry_run):
                 return DependencyReference.parse(dep_entry)
             if isinstance(dep_entry, dict):
                 return DependencyReference.parse_from_dict(dep_entry)
-            raise ValueError(f"Unsupported dependency entry type: {type(dep_entry).__name__}")
+            raise ValueError(
+                f"Unsupported dependency entry type: {type(dep_entry).__name__}"
+            )
 
         # Validate which packages can be removed
         for package in packages:
@@ -105,7 +107,9 @@ def uninstall(ctx, packages, dry_run):
                         break
                 except (ValueError, TypeError, AttributeError, KeyError):
                     # Fallback: exact string match
-                    dep_str = dep_entry if isinstance(dep_entry, str) else str(dep_entry)
+                    dep_str = (
+                        dep_entry if isinstance(dep_entry, str) else str(dep_entry)
+                    )
                     if dep_str == package:
                         matched_dep = dep_entry
                         break
@@ -139,6 +143,7 @@ def uninstall(ctx, packages, dry_run):
 
             # Show transitive deps that would be removed
             from ..deps.lockfile import LockFile, get_lockfile_path
+
             lockfile_path = get_lockfile_path(Path("."))
             lockfile = LockFile.read(lockfile_path)
             if lockfile:
@@ -194,12 +199,15 @@ def uninstall(ctx, packages, dry_run):
 
         # npm-style transitive dep cleanup: use lockfile to find orphaned transitive deps
         from ..deps.lockfile import LockFile, get_lockfile_path
+
         lockfile_path = get_lockfile_path(Path("."))
         lockfile = LockFile.read(lockfile_path)
 
         # Capture MCP servers from lockfile *before* it is mutated/deleted so
         # that stale-MCP cleanup can compute the diff even when all deps are removed.
-        _pre_uninstall_mcp_servers = builtins.set(lockfile.mcp_servers) if lockfile else builtins.set()
+        _pre_uninstall_mcp_servers = (
+            builtins.set(lockfile.mcp_servers) if lockfile else builtins.set()
+        )
 
         if apm_modules_dir.exists():
             deleted_pkg_paths: list = []
@@ -234,6 +242,7 @@ def uninstall(ctx, packages, dry_run):
 
             # Batch parent cleanup — single bottom-up pass
             from ..integration.base_integrator import BaseIntegrator as _BI2
+
             _BI2.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
 
         # npm-style transitive dependency cleanup: remove orphaned transitive deps
@@ -275,7 +284,9 @@ def uninstall(ctx, packages, dry_run):
                 try:
                     with open(apm_yml_path, "r") as f:
                         updated_data = yaml.safe_load(f) or {}
-                    for dep_str in updated_data.get("dependencies", {}).get("apm", []) or []:
+                    for dep_str in (
+                        updated_data.get("dependencies", {}).get("apm", []) or []
+                    ):
                         try:
                             ref = _parse_dependency_entry(dep_str)
                             remaining_deps.add(ref.get_unique_key())
@@ -287,7 +298,10 @@ def uninstall(ctx, packages, dry_run):
                 # Also check remaining lockfile deps that are NOT orphaned
                 for dep in lockfile.get_all_dependencies():
                     key = dep.get_unique_key()
-                    if key not in potential_orphans and dep.repo_url not in removed_repo_urls:
+                    if (
+                        key not in potential_orphans
+                        and dep.repo_url not in removed_repo_urls
+                    ):
                         remaining_deps.add(key)
 
                 # Remove only true orphans (not needed by remaining deps)
@@ -302,24 +316,34 @@ def uninstall(ctx, packages, dry_run):
                         orphan_path = orphan_ref.get_install_path(apm_modules_dir)
                     except ValueError:
                         parts = orphan_key.split("/")
-                        orphan_path = apm_modules_dir.joinpath(*parts) if len(parts) >= 2 else apm_modules_dir / orphan_key
+                        orphan_path = (
+                            apm_modules_dir.joinpath(*parts)
+                            if len(parts) >= 2
+                            else apm_modules_dir / orphan_key
+                        )
 
                     if orphan_path.exists():
                         try:
                             shutil.rmtree(orphan_path)
-                            _rich_info(f"✓ Removed transitive dependency {orphan_key} from apm_modules/")
+                            _rich_info(
+                                f"✓ Removed transitive dependency {orphan_key} from apm_modules/"
+                            )
                             removed_from_modules += 1
                             deleted_orphan_paths.append(orphan_path)
                         except Exception as e:
-                            _rich_error(f"✗ Failed to remove transitive dep {orphan_key}: {e}")
+                            _rich_error(
+                                f"✗ Failed to remove transitive dep {orphan_key}: {e}"
+                            )
 
                 # Batch parent cleanup — single bottom-up pass
                 from ..integration.base_integrator import BaseIntegrator as _BI
+
                 _BI.cleanup_empty_parents(deleted_orphan_paths, stop_at=apm_modules_dir)
 
         # Collect deployed_files only for REMOVED packages (direct + transitive)
         # so sync_integration doesn't iterate paths from packages still installed.
         from ..integration.base_integrator import BaseIntegrator
+
         removed_keys = builtins.set()
         for pkg in packages_to_remove:
             try:
@@ -327,7 +351,7 @@ def uninstall(ctx, packages, dry_run):
                 removed_keys.add(ref.get_unique_key())
             except (ValueError, TypeError, AttributeError, KeyError):
                 removed_keys.add(pkg)
-        if 'actual_orphans' in locals():
+        if "actual_orphans" in locals():
             removed_keys.update(actual_orphans)
         all_deployed_files = builtins.set()
         if lockfile:
@@ -335,11 +359,13 @@ def uninstall(ctx, packages, dry_run):
                 if dep_key in removed_keys:
                     all_deployed_files.update(dep.deployed_files)
         # Normalize path separators once
-        all_deployed_files = BaseIntegrator.normalize_managed_files(all_deployed_files) or builtins.set()
+        all_deployed_files = (
+            BaseIntegrator.normalize_managed_files(all_deployed_files) or builtins.set()
+        )
 
         # Update lockfile: remove entries for all removed packages (direct + transitive)
         removed_orphan_keys = builtins.set()
-        if lockfile and apm_modules_dir.exists() and 'actual_orphans' in locals():
+        if lockfile and apm_modules_dir.exists() and "actual_orphans" in locals():
             removed_orphan_keys = actual_orphans
         if lockfile:
             lockfile_updated = False
@@ -376,7 +402,12 @@ def uninstall(ctx, packages, dry_run):
         instructions_cleaned = 0
 
         try:
-            from ..models.apm_package import APMPackage, PackageInfo, PackageType, validate_apm_package
+            from ..models.apm_package import (
+                APMPackage,
+                PackageInfo,
+                PackageType,
+                validate_apm_package,
+            )
             from ..integration.prompt_integrator import PromptIntegrator
             from ..integration.agent_integrator import AgentIntegrator
             from ..integration.skill_integrator import SkillIntegrator
@@ -400,45 +431,66 @@ def uninstall(ctx, packages, dry_run):
             # Phase 1: Remove all APM-deployed files
             if Path(".github/prompts").exists():
                 integrator = PromptIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["prompts"] if _buckets else None)
+                result = integrator.sync_integration(
+                    apm_package,
+                    project_root,
+                    managed_files=_buckets["prompts"] if _buckets else None,
+                )
                 prompts_cleaned = result.get("files_removed", 0)
 
             if Path(".github/agents").exists():
                 integrator = AgentIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["agents_github"] if _buckets else None)
+                result = integrator.sync_integration(
+                    apm_package,
+                    project_root,
+                    managed_files=_buckets["agents_github"] if _buckets else None,
+                )
                 agents_cleaned = result.get("files_removed", 0)
 
             if Path(".claude/agents").exists():
                 integrator = AgentIntegrator()
-                result = integrator.sync_integration_claude(apm_package, project_root,
-                                                            managed_files=_buckets["agents_claude"] if _buckets else None)
+                result = integrator.sync_integration_claude(
+                    apm_package,
+                    project_root,
+                    managed_files=_buckets["agents_claude"] if _buckets else None,
+                )
                 agents_cleaned += result.get("files_removed", 0)
 
             if Path(".github/skills").exists() or Path(".claude/skills").exists():
                 integrator = SkillIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["skills"] if _buckets else None)
+                result = integrator.sync_integration(
+                    apm_package,
+                    project_root,
+                    managed_files=_buckets["skills"] if _buckets else None,
+                )
                 skills_cleaned = result.get("files_removed", 0)
 
-            if Path(".claude/commands").exists():
+            if Path(".claude/commands").exists() or Path(".opencode/commands").exists():
                 integrator = CommandIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["commands"] if _buckets else None)
+                result = integrator.sync_integration(
+                    apm_package,
+                    project_root,
+                    managed_files=_buckets["commands"] if _buckets else None,
+                )
                 commands_cleaned = result.get("files_removed", 0)
 
             # Clean hooks (.github/hooks/ and .claude/settings.json)
             hook_integrator_cleanup = HookIntegrator()
-            result = hook_integrator_cleanup.sync_integration(apm_package, project_root,
-                                                              managed_files=_buckets["hooks"] if _buckets else None)
+            result = hook_integrator_cleanup.sync_integration(
+                apm_package,
+                project_root,
+                managed_files=_buckets["hooks"] if _buckets else None,
+            )
             hooks_cleaned = result.get("files_removed", 0)
 
             # Clean instructions (.github/instructions/)
             if Path(".github/instructions").exists():
                 integrator = InstructionIntegrator()
-                result = integrator.sync_integration(apm_package, project_root,
-                                                     managed_files=_buckets["instructions"] if _buckets else None)
+                result = integrator.sync_integration(
+                    apm_package,
+                    project_root,
+                    managed_files=_buckets["instructions"] if _buckets else None,
+                )
                 instructions_cleaned = result.get("files_removed", 0)
 
             # Phase 2: Re-integrate from remaining installed packages in apm_modules/
@@ -446,7 +498,9 @@ def uninstall(ctx, packages, dry_run):
             from ..core.target_detection import (
                 detect_target,
                 should_integrate_claude,
+                should_integrate_opencode,
             )
+
             config_target = apm_package.target
             detected_target, _ = detect_target(
                 project_root=project_root,
@@ -454,6 +508,7 @@ def uninstall(ctx, packages, dry_run):
                 config_target=config_target,
             )
             integrate_claude = should_integrate_claude(detected_target)
+            integrate_opencode = should_integrate_opencode(detected_target)
 
             prompt_integrator = PromptIntegrator()
             agent_integrator = AgentIntegrator()
@@ -463,7 +518,7 @@ def uninstall(ctx, packages, dry_run):
             instruction_integrator = InstructionIntegrator()
 
             for dep in apm_package.get_apm_dependencies():
-                dep_ref = dep if hasattr(dep, 'repo_url') else None
+                dep_ref = dep if hasattr(dep, "repo_url") else None
                 if not dep_ref:
                     continue
                 install_path = dep_ref.get_install_path(Path("apm_modules"))
@@ -484,18 +539,32 @@ def uninstall(ctx, packages, dry_run):
 
                 try:
                     if prompt_integrator.should_integrate(project_root):
-                        prompt_integrator.integrate_package_prompts(pkg_info, project_root)
+                        prompt_integrator.integrate_package_prompts(
+                            pkg_info, project_root
+                        )
                     if agent_integrator.should_integrate(project_root):
-                        agent_integrator.integrate_package_agents(pkg_info, project_root)
+                        agent_integrator.integrate_package_agents(
+                            pkg_info, project_root
+                        )
                         if integrate_claude:
-                            agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
+                            agent_integrator.integrate_package_agents_claude(
+                                pkg_info, project_root
+                            )
                     skill_integrator.integrate_package_skill(pkg_info, project_root)
+                    if integrate_claude or integrate_opencode:
+                        command_integrator.integrate_package_commands(
+                            pkg_info, project_root
+                        )
+                    hook_integrator_reint.integrate_package_hooks(
+                        pkg_info, project_root
+                    )
                     if integrate_claude:
-                        command_integrator.integrate_package_commands(pkg_info, project_root)
-                    hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
-                    if integrate_claude:
-                        hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
-                    instruction_integrator.integrate_package_instructions(pkg_info, project_root)
+                        hook_integrator_reint.integrate_package_hooks_claude(
+                            pkg_info, project_root
+                        )
+                    instruction_integrator.integrate_package_instructions(
+                        pkg_info, project_root
+                    )
                 except Exception:
                     pass  # Best effort re-integration
 
@@ -522,13 +591,17 @@ def uninstall(ctx, packages, dry_run):
             if old_mcp_servers:
                 # Recompute MCP deps from remaining packages
                 apm_modules_path = Path.cwd() / "apm_modules"
-                remaining_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lockfile_path, trust_private=True)
+                remaining_mcp = MCPIntegrator.collect_transitive(
+                    apm_modules_path, lockfile_path, trust_private=True
+                )
                 # Also include root-level MCP deps from apm.yml
                 try:
                     remaining_root_mcp = apm_package.get_mcp_dependencies()
                 except Exception:
                     remaining_root_mcp = []
-                all_remaining_mcp = MCPIntegrator.deduplicate(remaining_root_mcp + remaining_mcp)
+                all_remaining_mcp = MCPIntegrator.deduplicate(
+                    remaining_root_mcp + remaining_mcp
+                )
                 new_mcp_servers = MCPIntegrator.get_server_names(all_remaining_mcp)
                 stale_servers = old_mcp_servers - new_mcp_servers
                 if stale_servers:

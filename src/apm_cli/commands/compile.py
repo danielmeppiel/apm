@@ -103,7 +103,6 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 
                 # Check if it's a relevant file
                 if event.src_path.endswith(".md") or event.src_path.endswith("apm.yml"):
-
                     # Debounce rapid changes
                     current_time = time.time()
                     if current_time - self.last_compile < self.debounce_delay:
@@ -231,9 +230,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
     except ImportError:
         _rich_error("Watch mode requires the 'watchdog' library")
         _rich_info("Install it with: uv pip install watchdog")
-        _rich_info(
-            "Or reinstall APM: uv pip install -e . (from the apm directory)"
-        )
+        _rich_info("Or reinstall APM: uv pip install -e . (from the apm directory)")
         sys.exit(1)
     except Exception as e:
         _rich_error(f"Error in watch mode: {e}")
@@ -250,9 +247,9 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["vscode", "agents", "claude", "all"]),
+    type=click.Choice(["vscode", "agents", "claude", "opencode", "all"]),
     default=None,
-    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), or all. Auto-detects if not specified.",
+    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), opencode (AGENTS.md + .opencode/), or all. Auto-detects if not specified.",
 )
 @click.option(
     "--dry-run",
@@ -317,6 +314,7 @@ def compile(
     Target platforms:
     • vscode/agents: Generates AGENTS.md + .github/ structure (VSCode/GitHub Copilot)
     • claude: Generates CLAUDE.md + .claude/ structure (Claude Code)
+    • opencode: Generates AGENTS.md + .opencode/ structure (OpenCode)
     • all: Generates both targets (default)
 
     Advanced options:
@@ -401,6 +399,7 @@ def compile(
             # Show MCP dependency validation count
             try:
                 from ..models.apm_package import APMPackage
+
                 apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
                 mcp_count = len(apm_pkg.get_mcp_dependencies())
                 if mcp_count > 0:
@@ -470,6 +469,10 @@ def compile(
             elif detected_target == "claude":
                 _rich_info(
                     f"Compiling for CLAUDE.md (Claude Code) - {detection_reason}"
+                )
+            elif detected_target == "opencode":
+                _rich_info(
+                    f"Compiling for AGENTS.md + OpenCode integration - {detection_reason}"
                 )
             else:  # "all"
                 _rich_info(f"Compiling for AGENTS.md + CLAUDE.md - {detection_reason}")
@@ -628,7 +631,7 @@ def compile(
                                     os.path.getsize(output_path) if not dry_run else 0
                                 )
                                 size_str = (
-                                    f"{file_size/1024:.1f}KB"
+                                    f"{file_size / 1024:.1f}KB"
                                     if file_size > 0
                                     else "Preview"
                                 )

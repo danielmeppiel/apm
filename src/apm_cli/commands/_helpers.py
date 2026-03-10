@@ -106,7 +106,10 @@ def _lazy_confirm():
 # Shared orphan-detection helpers
 # ------------------------------------------------------------------
 
-def _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir: Path) -> set:
+
+def _build_expected_install_paths(
+    declared_deps, lockfile, apm_modules_dir: Path
+) -> set:
     """Build expected package paths under *apm_modules_dir*.
 
     Combines direct deps (from ``apm.yml``) with transitive deps
@@ -190,7 +193,9 @@ def _check_orphaned_packages():
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
             lockfile = LockFile.read(Path.cwd() / "apm.lock")
-            expected = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
+            expected = _build_expected_install_paths(
+                declared_deps, lockfile, apm_modules_dir
+            )
         except Exception:
             return []
 
@@ -198,6 +203,15 @@ def _check_orphaned_packages():
         return [p for p in installed if p not in expected]
     except Exception:
         return []
+
+
+def _should_auto_create_github_dir(project_root: Path) -> bool:
+    """Return True when install should bootstrap a .github/ directory."""
+    return (
+        not (project_root / ".github").exists()
+        and not (project_root / ".claude").exists()
+        and not (project_root / ".opencode").exists()
+    )
 
 
 def print_version(ctx, param, value):
@@ -311,6 +325,7 @@ def _update_gitignore_for_apm_modules():
 # Script / config helpers (shared by run, list, config commands)
 # ------------------------------------------------------------------
 
+
 def _load_apm_config():
     """Load configuration from apm.yml."""
     if Path("apm.yml").exists():
@@ -339,6 +354,7 @@ def _list_available_scripts():
 # ------------------------------------------------------------------
 # Init helpers (shared by init and install commands)
 # ------------------------------------------------------------------
+
 
 def _auto_detect_author():
     """Auto-detect author from git config."""
