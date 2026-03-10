@@ -8,10 +8,13 @@ Detection priority (highest to lowest):
 1. Explicit --target flag (always wins)
 2. apm.yml target setting (top-level field)
 3. Auto-detect from existing folders:
-   - .github/ exists AND .claude/ doesn't → vscode
+   - .github/ exists AND .claude/ doesn't → copilot (internal: "vscode")
    - .claude/ exists AND .github/ doesn't → claude
    - Both exist → all
    - Neither exists → minimal (AGENTS.md only, no folder integration)
+
+"copilot" is the recommended user-facing target name. "vscode" and "agents"
+are accepted as aliases and map to the same internal value.
 """
 
 from pathlib import Path
@@ -40,7 +43,7 @@ def detect_target(
     """
     # Priority 1: Explicit --target flag
     if explicit_target:
-        if explicit_target in ("vscode", "agents"):
+        if explicit_target in ("copilot", "vscode", "agents"):
             return "vscode", "explicit --target flag"
         elif explicit_target == "claude":
             return "claude", "explicit --target flag"
@@ -49,7 +52,7 @@ def detect_target(
     
     # Priority 2: apm.yml target setting
     if config_target:
-        if config_target in ("vscode", "agents"):
+        if config_target in ("copilot", "vscode", "agents"):
             return "vscode", "apm.yml target"
         elif config_target == "claude":
             return "claude", "apm.yml target"
@@ -132,6 +135,7 @@ def get_target_description(target: TargetType) -> str:
         str: Description of output files
     """
     descriptions = {
+        "copilot": "AGENTS.md + .github/prompts/ + .github/agents/",
         "vscode": "AGENTS.md + .github/prompts/ + .github/agents/",
         "claude": "CLAUDE.md + .claude/commands/ + .claude/agents/ + .claude/skills/",
         "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/",

@@ -12,8 +12,9 @@ from ..core.target_detection import detect_target
 from .lockfile_enrichment import enrich_lockfile_for_pack
 
 
-# Target prefix mapping
+# Target prefix mapping ("copilot" and "vscode" both map to .github/)
 _TARGET_PREFIXES = {
+    "copilot": [".github/"],
     "vscode": [".github/"],
     "claude": [".claude/"],
     "all": [".github/", ".claude/"],

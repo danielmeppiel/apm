@@ -3176,9 +3176,9 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["vscode", "agents", "claude", "all"]),
+    type=click.Choice(["copilot", "vscode", "agents", "claude", "all"]),
     default=None,
-    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), or all. Auto-detects if not specified.",
+    help="Target platform: copilot (AGENTS.md + .github/), claude (CLAUDE.md), or all. 'vscode' and 'agents' are aliases for 'copilot'. Auto-detects if not specified.",
 )
 @click.option(
     "--dry-run",

@@ -37,7 +37,7 @@ Claude Skills are packages with a `SKILL.md` file that describe capabilities for
 # Install a Claude Skill
 apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 
-# For VSCode target: generates .github/agents/brand-guidelines.agent.md
+# For copilot target: generates .github/agents/brand-guidelines.agent.md
 # For Claude target: keeps native SKILL.md format
 ```
 

@@ -335,7 +335,7 @@ apm compile --target claude
 # Creates: CLAUDE.md (instructions only)
 
 # Generate only VSCode/Copilot formats  
-apm compile --target vscode
+apm compile --target copilot
 # Creates: AGENTS.md (instructions only)
 ```
 

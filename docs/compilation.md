@@ -14,14 +14,14 @@ When you run `apm compile` without specifying a target, APM automatically detect
 
 | Project Structure | Target | What Gets Generated |
 |-------------------|--------|---------------------|
-| `.github/` folder only | `vscode` | AGENTS.md (instructions only) |
+| `.github/` folder only | `copilot` | AGENTS.md (instructions only) |
 | `.claude/` folder only | `claude` | CLAUDE.md (instructions only) |
 | Both folders exist | `all` | Both AGENTS.md and CLAUDE.md |
 | Neither folder exists | `minimal` | AGENTS.md only (universal format) |
 
 ```bash
 apm compile                    # Auto-detects target from project structure
-apm compile --target vscode    # Force GitHub Copilot, Cursor, Codex, Gemini
+apm compile --target copilot   # Force GitHub Copilot, Cursor, Codex, Gemini
 apm compile --target claude    # Force Claude Code, Claude Desktop
 ```
 
@@ -29,17 +29,19 @@ You can set a persistent target in `apm.yml`:
 ```yaml
 name: my-project
 version: 1.0.0
-target: vscode  # or claude, or all
+target: copilot  # or vscode, claude, or all
 ```
 
 ### Output Files
 
 | Target | Files Generated | Consumers |
 |--------|-----------------|-----------|
-| `vscode` | `AGENTS.md` | GitHub Copilot, Cursor, Codex, Gemini |
+| `copilot` | `AGENTS.md` | GitHub Copilot, Cursor, Codex, Gemini |
 | `claude` | `CLAUDE.md` | Claude Code, Claude Desktop |
 | `all` | Both `AGENTS.md` and `CLAUDE.md` | Universal compatibility |
 | `minimal` | `AGENTS.md` only | Works everywhere, no folder integration |
+
+> **Aliases**: `vscode` and `agents` are accepted as aliases for `copilot`.
 
 > **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](integrations.md) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, and `.claude/commands/`.
 
