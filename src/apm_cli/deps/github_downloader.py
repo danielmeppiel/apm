@@ -2,7 +2,9 @@
 
 import os
 import shutil
+import stat
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +63,46 @@ def _debug(message: str) -> None:
     """Print debug message if APM_DEBUG environment variable is set."""
     if os.environ.get('APM_DEBUG'):
         print(f"[DEBUG] {message}", file=sys.stderr)
+
+
+def _close_repo(repo) -> None:
+    """Release GitPython handles so directories can be deleted on Windows."""
+    if repo is None:
+        return
+    try:
+        repo.git.clear_cache()
+    except Exception:
+        pass
+    try:
+        repo.close()
+    except Exception:
+        pass
+
+
+def _rmtree(path) -> None:
+    """Remove a directory tree, handling read-only files and brief Windows locks.
+
+    Git pack/index files are often read-only, and on Windows git processes may
+    hold brief locks even after the Repo object is closed.  This wrapper uses
+    an onerror callback for read-only files and a single retry for lock races.
+    """
+    def _on_readonly(func, fpath, _exc_info):
+        """onerror callback: make read-only files writable and retry."""
+        try:
+            os.chmod(fpath, stat.S_IWRITE)
+            func(fpath)
+        except OSError:
+            pass
+
+    try:
+        shutil.rmtree(path, onerror=_on_readonly)
+    except PermissionError:
+        if sys.platform == 'win32':
+            # Single retry after a brief wait for lingering git handles
+            time.sleep(0.5)
+            shutil.rmtree(path, ignore_errors=True)
+        # On all platforms: don't raise from cleanup — just leave the
+        # temp dir behind (the OS will clean it up eventually).
 
 
 class GitProgressReporter(RemoteProgress):
@@ -439,7 +481,6 @@ class GitHubPackageDownloader:
         # Create a temporary directory for Git operations
         temp_dir = None
         try:
-            import tempfile
             temp_dir = Path(tempfile.mkdtemp())
             
             if is_likely_commit:
@@ -512,7 +553,6 @@ class GitHubPackageDownloader:
                             raise RuntimeError(f"Failed to clone repository {dep_ref.repo_url}: {sanitized_error}")
                     
         finally:
-            # Clean up temporary directory
             if temp_dir and temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
         
@@ -1149,29 +1189,36 @@ author: {dep_ref.repo_url.split('/')[0]}
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=10, total=100)
         
-        # Clone to a temporary directory first
-        import tempfile
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_clone_path = Path(temp_dir) / "repo"
-            
+        # Use mkdtemp + explicit cleanup so we control when rmtree runs.
+        # tempfile.TemporaryDirectory().__exit__ calls shutil.rmtree without our
+        # retry logic, which raises WinError 32 when git processes still hold
+        # handles at the end of the with-block.
+        temp_dir = tempfile.mkdtemp()
+        try:
+            # Sparse checkout always targets "repo/".  If it fails we clone into
+            # "repo_clone/" so we never have to rmtree a directory that may still
+            # have live git handles from the failed subprocess.
+            sparse_clone_path = Path(temp_dir) / "repo"
+            temp_clone_path = sparse_clone_path
+
             # Update progress - cloning
             if progress_obj and progress_task_id is not None:
                 progress_obj.update(progress_task_id, completed=20, total=100)
-            
+
             # Phase 4 (#171): Try sparse-checkout first (git 2.25+), fall back to full clone
-            sparse_ok = self._try_sparse_checkout(dep_ref, temp_clone_path, subdir_path, ref)
-            
+            sparse_ok = self._try_sparse_checkout(dep_ref, sparse_clone_path, subdir_path, ref)
+
             if not sparse_ok:
-                # Full clone fallback
-                if temp_clone_path.exists():
-                    shutil.rmtree(temp_clone_path)
-                
+                # Full clone into a fresh subdirectory so we don't have to touch
+                # the (possibly locked) sparse-checkout directory at all.
+                temp_clone_path = Path(temp_dir) / "repo_clone"
+
                 package_display_name = subdir_path.split('/')[-1]
                 progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
-                
+
                 # Detect if ref is a commit SHA (can't be used with --branch in shallow clones)
                 is_commit_sha = ref and re.match(r'^[a-f0-9]{7,40}$', ref) is not None
-                
+
                 clone_kwargs = {
                     'dep_ref': dep_ref,
                 }
@@ -1183,7 +1230,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                     clone_kwargs['depth'] = 1
                     if ref:
                         clone_kwargs['branch'] = ref
-                
+
                 try:
                     self._clone_with_fallback(
                         dep_ref.repo_url,
@@ -1193,38 +1240,41 @@ author: {dep_ref.repo_url.split('/')[0]}
                     )
                 except Exception as e:
                     raise RuntimeError(f"Failed to clone repository: {e}") from e
-                
+
                 if is_commit_sha:
+                    repo_obj = None
                     try:
                         repo_obj = Repo(temp_clone_path)
                         repo_obj.git.checkout(ref)
                     except Exception as e:
                         raise RuntimeError(f"Failed to checkout commit {ref}: {e}") from e
-                
+                    finally:
+                        _close_repo(repo_obj)
+
                 # Disable progress reporter after clone
                 if progress_reporter:
                     progress_reporter.disabled = True
-            
+
             # Update progress - extracting subdirectory
             if progress_obj and progress_task_id is not None:
                 progress_obj.update(progress_task_id, completed=70, total=100)
-            
+
             # Check if subdirectory exists
             source_subdir = temp_clone_path / subdir_path
             if not source_subdir.exists():
                 raise RuntimeError(f"Subdirectory '{subdir_path}' not found in repository")
-            
+
             if not source_subdir.is_dir():
                 raise RuntimeError(f"Path '{subdir_path}' is not a directory")
-            
+
             # Create target directory
             target_path.mkdir(parents=True, exist_ok=True)
-            
+
             # If target exists and has content, remove it
             if target_path.exists() and any(target_path.iterdir()):
                 shutil.rmtree(target_path)
                 target_path.mkdir(parents=True, exist_ok=True)
-            
+
             # Copy subdirectory contents to target
             for item in source_subdir.iterdir():
                 src = source_subdir / item.name
@@ -1233,17 +1283,24 @@ author: {dep_ref.repo_url.split('/')[0]}
                     shutil.copytree(src, dst)
                 else:
                     shutil.copy2(src, dst)
-            
-            # Capture commit SHA before temp dir is destroyed
+
+            # Capture commit SHA; close the Repo object immediately so its file
+            # handles are released before _rmtree() runs in the finally block.
+            repo = None
             try:
                 repo = Repo(temp_clone_path)
                 resolved_commit = repo.head.commit.hexsha
             except Exception:
                 resolved_commit = "unknown"
-            
+            finally:
+                _close_repo(repo)
+
             # Update progress - validating
             if progress_obj and progress_task_id is not None:
                 progress_obj.update(progress_task_id, completed=90, total=100)
+
+        finally:
+            _rmtree(temp_dir)
         
         # Validate the extracted package (after temp dir is cleaned up)
         validation_result = validate_apm_package(target_path)
