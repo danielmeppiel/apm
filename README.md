@@ -6,7 +6,7 @@ Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent c
 
 GitHub Copilot · Claude Code
 
-**[Documentation](https://microsoft.github.io/apm/)** · **[Quick Start](https://microsoft.github.io/apm/getting-started/quick-start/)** · **[CLI Reference](https://microsoft.github.io/apm/reference/cli/)**
+**[Documentation](https://microsoft.github.io/apm/)** · **[Quick Start](https://microsoft.github.io/apm/getting-started/quick-start/)** · **[CLI Reference](https://microsoft.github.io/apm/reference/cli-commands/)**
 
 ## Why APM
 
