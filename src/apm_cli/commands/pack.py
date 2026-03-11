@@ -82,7 +82,7 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
 def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run):
     """Extract an APM bundle into the project."""
     try:
-        _rich_info(f"Unpacking {bundle_path} -> {output}")
+        _rich_info(f"Unpacking {bundle_path} → {output}")
 
         result = unpack_bundle(
             bundle_path=Path(bundle_path),
@@ -92,7 +92,7 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run):
         )
 
         if dry_run:
-            _rich_info("Dry run -- no files written")
+            _rich_info("Dry run — no files written")
             if result.files:
                 _rich_info(f"Would unpack {len(result.files)} file(s):")
                 _log_unpack_file_list(result)

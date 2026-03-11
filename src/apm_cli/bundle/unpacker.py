@@ -103,10 +103,10 @@ def unpack_bundle(
             dep_key = dep.repo_url or "unknown"
             dep_files: list[str] = []
             for f in dep.deployed_files:
+                dep_files.append(f)
                 if f not in seen:
                     seen.add(f)
                     unique_files.append(f)
-                    dep_files.append(f)
             if dep_files:
                 dep_file_map[dep_key] = dep_files
 
