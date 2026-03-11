@@ -64,13 +64,18 @@ try {
     # Rename the directory to have the platform-specific name
     Rename-Item "dist/apm" $BinaryName
 
-    # Test the binary
+    # Test the binary (temporarily relax error preference so stderr from native
+    # commands does not throw under $ErrorActionPreference = "Stop")
     Write-Host "Testing binary..." -ForegroundColor Yellow
-    $version = & "dist/$BinaryName/apm.exe" --version 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Binary test successful: $version" -ForegroundColor Green
+    $savedPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & "dist/$BinaryName/apm.exe" --version
+    $testExit = $LASTEXITCODE
+    $ErrorActionPreference = $savedPref
+    if ($testExit -eq 0) {
+        Write-Host "Binary test successful" -ForegroundColor Green
     } else {
-        Write-Host "Binary test failed" -ForegroundColor Red
+        Write-Host "Binary test failed with exit code $testExit" -ForegroundColor Red
         exit 1
     }
 

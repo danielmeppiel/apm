@@ -436,9 +436,9 @@ class ScriptRunner:
 
         # Parse the command into arguments
         if sys.platform == "win32":
-            # On Windows, shlex.split() doesn't understand cmd.exe/PowerShell syntax.
-            # Use simple whitespace splitting (arguments are well-formed from our code).
-            args = command.strip().split()
+            # On Windows, use posix=False to preserve Windows quoting semantics
+            # (e.g., paths with spaces, quoted arguments like --model "gpt-4o mini")
+            args = shlex.split(command.strip(), posix=False)
         else:
             args = shlex.split(command.strip())
 

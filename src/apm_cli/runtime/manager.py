@@ -196,12 +196,18 @@ class RuntimeManager:
             script_content = self.get_embedded_script(script_name)
             common_content = self.get_common_script()
             
-            # Prepare arguments
+            # Prepare arguments (PowerShell scripts use named params like -Version/-Vanilla)
             script_args = []
             if version:
-                script_args.append(version)
+                if self._is_windows:
+                    script_args.extend(["-Version", version])
+                else:
+                    script_args.append(version)
             if vanilla:
-                script_args.append("--vanilla")
+                if self._is_windows:
+                    script_args.append("-Vanilla")
+                else:
+                    script_args.append("--vanilla")
             
             # Run setup script
             success = self.run_embedded_script(script_content, common_content, script_args)

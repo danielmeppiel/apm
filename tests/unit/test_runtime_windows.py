@@ -149,17 +149,46 @@ class TestRuntimeManagerExecution:
              patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run, \
              patch("shutil.which", return_value=r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"), \
              patch.object(manager, "get_token_helper_script", return_value=""):
-            manager.run_embedded_script("# script", "# common", ["--vanilla"])
+            manager.run_embedded_script("# script", "# common", ["-Vanilla"])
 
         cmd = mock_run.call_args[0][0]
-        assert "--vanilla" in cmd
+        assert "-Vanilla" in cmd
+
+    def test_setup_runtime_uses_ps_args_on_windows(self):
+        """Verify setup_runtime translates args to PowerShell style on Windows."""
+        manager = _make_manager("win32")
+        with patch("sys.platform", "win32"), \
+             patch.object(manager, "get_embedded_script", return_value="# ps1"), \
+             patch.object(manager, "get_common_script", return_value="# common"), \
+             patch.object(manager, "run_embedded_script", return_value=True) as mock_run:
+            manager.setup_runtime("codex", version="0.1.0", vanilla=True)
+
+        args = mock_run.call_args[0][2]  # script_args is the 3rd positional arg
+        assert "-Version" in args
+        assert "0.1.0" in args
+        assert "-Vanilla" in args
+        assert "--vanilla" not in args
+
+    def test_setup_runtime_uses_unix_args_on_linux(self):
+        """Verify setup_runtime keeps Unix-style args on Linux."""
+        manager = _make_manager("linux")
+        with patch("sys.platform", "linux"), \
+             patch.object(manager, "get_embedded_script", return_value="# bash"), \
+             patch.object(manager, "get_common_script", return_value="# common"), \
+             patch.object(manager, "run_embedded_script", return_value=True) as mock_run:
+            manager.setup_runtime("codex", version="0.1.0", vanilla=True)
+
+        args = mock_run.call_args[0][2]
+        assert "0.1.0" in args
+        assert "--vanilla" in args
+        assert "-Vanilla" not in args
 
 
 class TestScriptRunnerWindowsParsing:
     """Test ScriptRunner handles Windows command parsing."""
 
-    def test_execute_runtime_command_uses_simple_split_on_windows(self):
-        """On Windows, _execute_runtime_command should use str.split() not shlex."""
+    def test_execute_runtime_command_uses_shlex_on_windows(self):
+        """On Windows, _execute_runtime_command should use shlex.split(posix=False)."""
         runner = ScriptRunner()
         env = {"PATH": "/usr/bin"}
 
@@ -169,6 +198,21 @@ class TestScriptRunnerWindowsParsing:
             call_args = mock_run.call_args[0][0]
             assert "codex" in call_args
             assert "--quiet" in call_args
+
+    def test_execute_runtime_command_preserves_quotes_on_windows(self):
+        """On Windows, quoted arguments should be preserved by shlex.split(posix=False)."""
+        runner = ScriptRunner()
+        env = {"PATH": "/usr/bin"}
+
+        with patch("sys.platform", "win32"), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+            runner._execute_runtime_command(
+                'codex --model "gpt-4o mini"', "prompt content", env
+            )
+            call_args = mock_run.call_args[0][0]
+            assert "codex" in call_args
+            # shlex.split(posix=False) keeps the quotes around the value
+            assert any("gpt-4o mini" in arg or '"gpt-4o mini"' in arg for arg in call_args)
 
     def test_execute_runtime_command_uses_shlex_on_unix(self):
         """On Unix, _execute_runtime_command should use shlex.split()."""
