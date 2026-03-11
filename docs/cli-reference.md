@@ -345,7 +345,7 @@ apm pack [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output directory (default: `./build/`)
-- `-t, --target [vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified
+- `-t, --target [copilot|vscode|claude|all]` - Filter files by target. `vscode` is an alias for `copilot`. Auto-detects from `apm.yml` if not specified
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
 - `--format [apm|plugin]` - Bundle format (default: `apm`)
@@ -358,8 +358,8 @@ apm pack
 # Pack as a .tar.gz archive
 apm pack --archive
 
-# Pack only VS Code / Copilot files
-apm pack --target vscode
+# Pack only GitHub Copilot / VS Code files
+apm pack --target copilot
 
 # Preview what would be packed
 apm pack --dry-run
@@ -375,11 +375,12 @@ apm pack -o dist/
 
 **Target filtering:**
 
-| Target | Includes paths starting with |
-|--------|------------------------------|
-| `vscode` | `.github/` |
-| `claude` | `.claude/` |
-| `all` | both |
+| Target | Includes paths starting with | Notes |
+|--------|------------------------------|-------|
+| `copilot` | `.github/` | Primary name for GitHub Copilot / Cursor / Codex / Gemini |
+| `vscode` | `.github/` | Alias for `copilot` |
+| `claude` | `.claude/` | |
+| `all` | both | |
 
 **Enriched lockfile example:**
 ```yaml

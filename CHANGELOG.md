@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Refactor `cli.py` and `apm_package.py` into focused modules — `cli.py` is now a thin 80-line wiring layer; all command logic lives in `apm_cli.commands.*` modules (#224)
+
 ## [0.7.7] - 2026-03-10
 
 ### Added
