@@ -7,6 +7,8 @@ remaining package still needs them.
 
 import os
 import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -15,6 +17,8 @@ from pathlib import Path
 
 from apm_cli.cli import cli
 from apm_cli.deps.lockfile import LockFile, LockedDependency
+from apm_cli.models.apm_package import APMPackage
+from apm_cli.models.dependency import DependencyReference
 
 
 def _write_apm_yml(path: Path, deps: list[str]):
@@ -229,3 +233,98 @@ class TestUninstallTransitiveDependencyCleanup:
 
             assert result.exit_code == 0
             assert not (root / "apm_modules" / "acme" / "pkg-a").exists()
+
+    def test_uninstall_dry_run_supports_object_style_dependency_entries(self):
+        """Dry-run accepts dict dependency entries without crashing."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            root = Path(tmp_dir)
+
+            data = {
+                "name": "test-project",
+                "version": "1.0.0",
+                "dependencies": {
+                    "apm": [{"git": "acme/pkg-a"}],
+                },
+            }
+            (root / "apm.yml").write_text(
+                yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+            )
+            _make_apm_modules_dir(root, "acme/pkg-a")
+
+            result = self.runner.invoke(cli, ["uninstall", "acme/pkg-a", "--dry-run"])
+
+            assert result.exit_code == 0
+            assert "Dry run complete" in result.output
+            assert (root / "apm_modules" / "acme" / "pkg-a").exists()
+
+    def test_uninstall_reintegrates_remaining_object_style_dependency_from_canonical_path(self):
+        """Remaining dict-style deps re-integrate from DependencyReference install paths."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            root = Path(tmp_dir)
+
+            remaining_dep_entry = {
+                "git": "acme/pkg-b",
+                "path": "prompts/review.prompt.md",
+            }
+            data = {
+                "name": "test-project",
+                "version": "1.0.0",
+                "dependencies": {
+                    "apm": [
+                        {"git": "acme/pkg-a"},
+                        remaining_dep_entry,
+                    ],
+                },
+            }
+            (root / "apm.yml").write_text(
+                yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+            )
+
+            _make_apm_modules_dir(root, "acme/pkg-a")
+            remaining_ref = DependencyReference.parse_from_dict(remaining_dep_entry)
+            remaining_install_path = remaining_ref.get_install_path(Path("apm_modules"))
+            (root / remaining_install_path).mkdir(parents=True, exist_ok=True)
+
+            observed_paths = []
+
+            def _capture_validate(path: Path):
+                observed_paths.append(path)
+                return SimpleNamespace(
+                    package=APMPackage(name="pkg-b-review", version="1.0.0"),
+                    package_type=None,
+                )
+
+            with patch(
+                "apm_cli.models.apm_package.validate_apm_package",
+                side_effect=_capture_validate,
+            ), patch(
+                "apm_cli.core.target_detection.detect_target",
+                return_value=(None, None),
+            ), patch(
+                "apm_cli.core.target_detection.should_integrate_claude",
+                return_value=False,
+            ), patch(
+                "apm_cli.integration.prompt_integrator.PromptIntegrator.should_integrate",
+                return_value=False,
+            ), patch(
+                "apm_cli.integration.agent_integrator.AgentIntegrator.should_integrate",
+                return_value=False,
+            ), patch(
+                "apm_cli.integration.skill_integrator.SkillIntegrator.integrate_package_skill",
+                return_value=None,
+            ), patch(
+                "apm_cli.integration.command_integrator.CommandIntegrator.integrate_package_commands",
+                return_value=None,
+            ), patch(
+                "apm_cli.integration.hook_integrator.HookIntegrator.integrate_package_hooks",
+                return_value=None,
+            ), patch(
+                "apm_cli.integration.instruction_integrator.InstructionIntegrator.integrate_package_instructions",
+                return_value=None,
+            ):
+                result = self.runner.invoke(cli, ["uninstall", "acme/pkg-a"])
+
+            assert result.exit_code == 0
+            assert remaining_install_path in observed_paths
