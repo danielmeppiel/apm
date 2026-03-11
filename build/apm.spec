@@ -206,6 +206,9 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=None)
 
+# GNU strip corrupts Windows PE/COFF binaries; only enable on Unix
+_strip = sys.platform != 'win32'
+
 # Switch to --onedir for directory-based deployment (faster startup with --onedir)
 exe = EXE(
     pyz,
@@ -215,7 +218,7 @@ exe = EXE(
     name='apm',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,  # Strip debug symbols for smaller size
+    strip=_strip,  # Strip debug symbols (Unix only; corrupts Windows DLLs)
     upx=is_upx_available(),  # Enable UPX compression only if available
     upx_exclude=[],
     runtime_tmpdir=None,
@@ -232,7 +235,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=True,
+    strip=_strip,
     upx=is_upx_available(),
     upx_exclude=[],
     name='apm'
