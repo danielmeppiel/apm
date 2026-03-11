@@ -5,7 +5,9 @@ sidebar:
   order: 5
 ---
 
-GitHub Rulesets and branch protection rules can require status checks before merging. APM's `apm audit --ci` integrates as a required status check to enforce agent configuration governance, ensuring that changes to agent context go through the manifest and lock file rather than being made ad hoc.
+> **Roadmap:** `apm audit --ci` is not yet available. This page describes the planned integration between APM and GitHub Rulesets for a future release. The workflow examples below are provided for planning purposes.
+
+GitHub Rulesets and branch protection rules can require status checks before merging. APM's `apm audit --ci` will integrate as a required status check to enforce agent configuration governance, ensuring that changes to agent context go through the manifest and lock file rather than being made ad hoc.
 
 ## How It Works
 
@@ -75,7 +77,7 @@ APM's integration with GitHub governance is evolving:
 
 | Level | Description | Status |
 |-------|-------------|--------|
-| 1 | `apm audit --ci` as a required status check | Available now |
+| 1 | `apm audit --ci` as a required status check | Planned |
 | 2 | GitHub recommends apm-action for agent governance | Future |
 | 3 | Native Rulesets UI for agent configuration policy | Future |
 

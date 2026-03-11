@@ -35,7 +35,7 @@ An internal advocacy toolkit for APM. Each section is self-contained and designe
 ### For Platform Teams
 
 - **Standardize AI configuration across N repos.** Publish a shared APM package with your organization's coding standards, approved MCP servers, and prompt templates. Every repo that depends on it stays in sync.
-- **Enforce standards via CI gates.** Add `apm install --check` to your CI pipeline. Builds fail if agent configuration has drifted from the declared manifest.
+- **Enforce standards via CI gates.** Add `apm audit --ci` _(roadmap)_ to your CI pipeline. Once available, builds will fail if agent configuration has drifted from the declared manifest.
 - **Version-controlled standards updates.** When standards change, update the shared package and bump the version. Teams adopt updates through normal dependency management, not ad-hoc communication.
 
 ### For Individual Developers
@@ -54,7 +54,7 @@ Plugins handle single-tool installation for a single AI platform. APM adds capab
 
 - **Cross-tool composition.** One manifest manages configuration for Copilot, Claude, Cursor, and any other agent runtime simultaneously.
 - **Consumer-side lock files.** Plugins install the latest version. APM pins exact versions so your team stays synchronized.
-- **CI enforcement.** There is no plugin equivalent of `apm install --check` in a CI pipeline.
+- **CI enforcement.** There is no plugin equivalent of `apm audit --ci` _(roadmap)_ in a CI pipeline.
 - **Multi-source dependency resolution.** APM resolves transitive dependencies across packages from multiple git hosts.
 - **Shared organizational packages.** Plugins are published by tool vendors. APM packages are published by your own teams, containing your own standards and configurations.
 
@@ -129,7 +129,7 @@ For stakeholders familiar with existing tools, this comparison clarifies where A
 | Version pinning | None | Vendor-controlled | Consumer-side lock file |
 | Cross-tool support | N separate processes | Single tool only | Unified manifest |
 | Dependency resolution | Manual | None | Automatic, transitive |
-| CI enforcement | Custom scripts | Not available | Built-in (`--check` flag) |
+| CI enforcement | Custom scripts | Not available | Planned (`apm audit --ci`) |
 | Shared org standards | Wiki pages, copy-paste | Not available | Versioned packages |
 | Audit trail | Implicit via git | Varies by vendor | Explicit via `apm.lock` |
 | Lock-in | To manual process | To specific vendor | None (native output files) |
@@ -197,4 +197,4 @@ With APM, setup reduces to `apm install` (under 30 seconds). Standards updates r
 1. Review the [Adoption Playbook](../adoption-playbook/) for a phased rollout plan.
 2. Start with a single team or repository as a pilot.
 3. Publish a shared package with your organization's standards using the [APM for Teams](../teams/) guide.
-4. Add `apm install --check` to CI and measure drift reduction over 30 days.
+4. Add `apm install` to CI and measure drift reduction over 30 days. Plan to add `apm audit --ci` _(roadmap)_ once it ships.

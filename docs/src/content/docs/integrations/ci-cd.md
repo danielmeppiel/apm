@@ -85,6 +85,8 @@ apm compile --verbose
 
 ## Governance with `apm audit`
 
+> **Roadmap:** `apm audit --ci` is not yet available. This section describes the planned CI governance workflow for a future release. Today, commit `apm.lock` and review its diff in pull requests to detect configuration drift manually.
+
 Run `apm audit --ci` in pull requests to verify the lock file matches the installed state. This catches configuration drift before it reaches your default branch.
 
 ```yaml

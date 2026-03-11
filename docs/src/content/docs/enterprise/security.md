@@ -51,7 +51,7 @@ The `resolved_commit` field is a full 40-character SHA, not a branch name or tag
 
 ### No registry
 
-APM does not use a package registry. Dependencies are specified as git repository URLs in `apm.yaml`. This eliminates the registry compromise vector entirely — there is no centralized service that can be poisoned to redirect installs.
+APM does not use a package registry. Dependencies are specified as git repository URLs in `apm.yml`. This eliminates the registry compromise vector entirely — there is no centralized service that can be poisoned to redirect installs.
 
 ### Reproducible installs
 
@@ -105,7 +105,7 @@ APM integrates MCP (Model Context Protocol) server configurations from packages.
 
 ### Direct dependencies
 
-MCP servers declared by your direct dependencies (packages listed in your `apm.yaml`) are auto-trusted. You explicitly chose to depend on these packages, so their MCP server declarations are accepted.
+MCP servers declared by your direct dependencies (packages listed in your `apm.yml`) are auto-trusted. You explicitly chose to depend on these packages, so their MCP server declarations are accepted.
 
 ### Transitive dependencies
 
@@ -113,7 +113,7 @@ MCP servers declared by transitive dependencies (dependencies of your dependenci
 
 To allow transitive MCP servers, you must either:
 
-- **Re-declare the dependency** in your own `apm.yaml`, promoting it to a direct dependency.
+- **Re-declare the dependency** in your own `apm.yml`, promoting it to a direct dependency.
 - **Pass `--trust-transitive-mcp`** to explicitly opt in to transitive MCP servers for that install.
 
 ### Design rationale
@@ -133,7 +133,7 @@ APM authenticates to git hosts using personal access tokens (PATs) read from env
 
 ### Security properties
 
-- **Never stored in files.** Tokens are read from the environment at runtime. They are never written to `apm.yaml`, `apm.lock`, or any generated file.
+- **Never stored in files.** Tokens are read from the environment at runtime. They are never written to `apm.yml`, `apm.lock`, or any generated file.
 - **Never logged.** Token values are not included in console output, error messages, or debug logs.
 - **Scoped to their git host.** A GitHub token is only sent to GitHub. An Azure DevOps token is only sent to Azure DevOps. Tokens are never transmitted to any other endpoint.
 

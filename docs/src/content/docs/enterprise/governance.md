@@ -33,6 +33,8 @@ apm.yml (declare) -> apm.lock (pin) -> apm audit (verify) -> CI gate (enforce)
 | **Verify** | Confirm on-disk state matches the lock file | `apm audit` output |
 | **Enforce** | Block merges when verification fails | Required status check |
 
+> **Roadmap:** The `apm audit` command (Verify and Enforce stages) is planned but not yet available. The lock file and git history already provide a full audit trail today; automated drift detection via `apm audit` is on the roadmap.
+
 Each stage builds on the previous one. The lock file provides the audit trail, the audit command detects drift, and the CI gate prevents unapproved changes from reaching protected branches.
 
 ---
@@ -102,6 +104,8 @@ No additional tooling is required. The lock file turns git into an agent configu
 
 ## CI enforcement with `apm audit --ci`
 
+> **Roadmap:** `apm audit --ci` is not yet available. This section describes the planned behavior for a future release. Use `git diff apm.lock` and the git history of `apm.lock` for current CI verification approaches.
+
 The `apm audit --ci` command is designed to run as a required status check in your CI pipeline. It verifies that the lock file is in sync with the declared manifest and that deployed files match expectations.
 
 ### What it catches
@@ -151,6 +155,8 @@ This ensures every merge to a protected branch has a verified, consistent agent 
 
 ## Drift detection with `apm audit --drift`
 
+> **Roadmap:** `apm audit --drift` is not yet available. This section describes the planned behavior for a future release.
+
 Drift occurs when the on-disk state of agent configuration diverges from what the lock file declares. The `apm audit --drift` command detects this divergence.
 
 ### What drift detection catches
@@ -195,13 +201,14 @@ Restrict dependencies to packages from specific organizations or repositories. R
 
 ```yaml
 # apm.yml — all sources from approved org
-packages:
-  - name: code-review-standards
-    source: https://github.com/contoso/agent-standards.git
-    ref: v2.1.0
-  - name: security-policies
-    source: https://github.com/contoso/security-agents.git
-    ref: v1.3.0
+dependencies:
+  apm:
+    - name: code-review-standards
+      source: github:contoso/agent-standards
+      ref: v2.1.0
+    - name: security-policies
+      source: github:contoso/security-agents
+      ref: v1.3.0
 ```
 
 Combine with GitHub's CODEOWNERS to require security team approval for changes to `apm.yml`:
@@ -274,7 +281,9 @@ This ensures that organizational rules are consistently applied across all teams
 
 GitHub Rulesets provide a scalable way to enforce APM governance across multiple repositories.
 
-### Level 1: Required status check (available now)
+### Level 1: Required status check (planned)
+
+> **Roadmap:** `apm audit --ci` is not yet available. Once it ships, you will be able to configure it as a required status check through Rulesets as described below.
 
 Configure `apm audit --ci` as a required status check through Rulesets:
 
@@ -325,7 +334,7 @@ APM enforces change management by design:
 1. **Declaration.** Changes start in `apm.yml`, which is a committed, reviewable file.
 2. **Resolution.** `apm install` resolves declarations to exact commits in `apm.lock`.
 3. **Review.** Both files are included in the PR diff for peer review.
-4. **Verification.** `apm audit --ci` confirms consistency before merge.
+4. **Verification.** `apm audit --ci` _(planned)_ will confirm consistency before merge. Today, reviewing `apm.lock` diffs in the PR fulfills this step.
 5. **Traceability.** Git history provides a permanent record of who changed what and when.
 
 No agent configuration change can reach a protected branch without passing through this pipeline.

@@ -33,15 +33,16 @@ APM applies the same model that package managers brought to application dependen
 A single `apm.yml` file in the repository root declares all agent configuration dependencies:
 
 ```yaml
-packages:
-  - name: org-security-rules
-    source: github:your-org/apm-packages
-    version: "^2.0"
-  - name: team-coding-standards
-    source: github:your-org/team-packages
-    version: "~1.3"
-  - name: project-context
-    source: ./local-packages/context
+dependencies:
+  apm:
+    - name: org-security-rules
+      source: github:your-org/apm-packages
+      version: "^2.0"
+    - name: team-coding-standards
+      source: github:your-org/team-packages
+      version: "~1.3"
+    - name: project-context
+      source: ./local-packages/context
 ```
 
 This file is version-controlled, reviewed in pull requests, and readable by anyone on the team.
@@ -96,18 +97,19 @@ A mid-size organization maintains three layers of configuration: organization-wi
 APM composes these layers through its dependency model. The organization publishes shared packages. Each team's `apm.yml` references the org packages it needs alongside team and project packages. Compilation merges them in the correct order.
 
 ```yaml
-packages:
-  # Organization layer
-  - name: org-security-rules
-    source: github:acme-corp/apm-packages
-    version: "^2.0"
-  # Team layer
-  - name: backend-standards
-    source: github:acme-corp/backend-team
-    version: "~1.0"
-  # Project layer
-  - name: service-context
-    source: ./packages/context
+dependencies:
+  apm:
+    # Organization layer
+    - name: org-security-rules
+      source: github:acme-corp/apm-packages
+      version: "^2.0"
+    # Team layer
+    - name: backend-standards
+      source: github:acme-corp/backend-team
+      version: "~1.0"
+    # Project layer
+    - name: service-context
+      source: ./packages/context
 ```
 
 A new developer joining the team runs `apm install` and gets the full, correct configuration stack. There is nothing to forget.

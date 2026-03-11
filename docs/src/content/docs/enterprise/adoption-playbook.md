@@ -36,11 +36,10 @@ Confirm these prerequisites before kicking off Phase 1:
 4. Add the selected packages as dependencies:
 
    ```bash
-   apm add org/lint-standards org/agent-instructions org/prompt-library
+   apm install github:org/lint-standards github:org/agent-instructions github:org/prompt-library
    ```
 
-5. Run `apm install` to deploy files.
-6. Commit `apm.yml` and `apm.lock` to the repository.
+5. Commit `apm.yml` and `apm.lock` to the repository.
 
 ### Verification
 
@@ -83,8 +82,7 @@ consumes.
 4. Add it to the pilot project:
 
    ```bash
-   apm add myorg/apm-standards
-   apm install
+   apm install github:myorg/apm-standards
    ```
 
 5. Verify that the pilot team receives the new files on their next
@@ -122,13 +120,15 @@ reach production.
    - name: Compile configuration
      run: apm compile
 
-   - name: Audit for drift
-     run: apm audit --ci
+   # Planned: audit for drift (not yet available)
+   # - name: Audit for drift
+   #   run: apm audit --ci
    ```
 
-2. Make the audit step a **required status check** on pull requests.
-3. Ensure `apm.lock` is committed. Any version drift will cause the audit
-   to fail, surfacing the problem before merge.
+   > **Roadmap:** `apm audit --ci` is not yet available. Until it ships, ensure `apm.lock` is committed and reviewed in PRs to catch drift manually.
+
+2. Make the `apm install` step a **required status check** on pull requests.
+3. Ensure `apm.lock` is committed. Any version drift will be visible in PR diffs.
 
 ### Success Metric
 
@@ -194,8 +194,7 @@ tool configuration across the organization.
 
 ### Success Metric
 
-80% or more of active repositories contain an `apm.yml` and pass
-`apm audit` in CI.
+80% or more of active repositories contain an `apm.yml` with committed `apm.lock` files. Once `apm audit` ships, CI enforcement will become the measurable gate.
 
 ### What to Watch
 

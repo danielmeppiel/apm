@@ -219,7 +219,7 @@ git show v4.2.1:apm.lock
 git log -1 --format='%an <%ae> %ai' -- apm.lock
 ```
 
-In CI pipelines, `apm audit --ci` verifies the lock file is in sync with the
+In CI pipelines, `apm audit --ci` _(planned — not yet available)_ will verify the lock file is in sync with the
 manifest and that all deployed files are present.
 
 ## 10. Example: Complete Lock File
