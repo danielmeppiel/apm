@@ -62,7 +62,7 @@ try {
     }
 
     # Rename the directory to have the platform-specific name
-    Rename-Item "dist/apm" "dist/$BinaryName"
+    Rename-Item "dist/apm" $BinaryName
 
     # Test the binary
     Write-Host "Testing binary..." -ForegroundColor Yellow
