@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from apm_cli.bundle.unpacker import unpack_bundle
+from apm_cli.bundle.unpacker import unpack_bundle, UnpackResult
 from apm_cli.deps.lockfile import LockFile, LockedDependency
 
 
@@ -209,3 +209,228 @@ class TestUnpackBundle:
 
         with pytest.raises(ValueError, match="unsafe path"):
             unpack_bundle(bundle_dir, output, skip_verify=True)
+
+    def test_unpack_dependency_files_single_dep(self, tmp_path):
+        """dependency_files maps repo_url to its deployed files."""
+        deployed = [".github/agents/a.md", ".github/prompts/b.md"]
+        bundle = _build_bundle_dir(tmp_path, deployed)
+        output = tmp_path / "target"
+        output.mkdir()
+
+        result = unpack_bundle(bundle, output)
+
+        assert "owner/repo" in result.dependency_files
+        assert set(result.dependency_files["owner/repo"]) == set(deployed)
+
+    def test_unpack_dependency_files_multiple_deps(self, tmp_path):
+        """dependency_files tracks files per dependency when bundle has many."""
+        bundle_dir = tmp_path / "bundle" / "multi-pkg"
+        bundle_dir.mkdir(parents=True)
+
+        files_a = [".github/agents/a.md"]
+        files_b = [".github/prompts/b.md", ".github/instructions/c.md"]
+        for f in files_a + files_b:
+            p = bundle_dir / f
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f"content of {f}")
+
+        lockfile = LockFile()
+        lockfile.add_dependency(
+            LockedDependency(repo_url="org/repo-a", deployed_files=files_a)
+        )
+        lockfile.add_dependency(
+            LockedDependency(repo_url="org/repo-b", deployed_files=files_b)
+        )
+        lockfile.write(bundle_dir / "apm.lock")
+
+        output = tmp_path / "target"
+        output.mkdir()
+        result = unpack_bundle(bundle_dir, output)
+
+        assert result.dependency_files["org/repo-a"] == files_a
+        assert set(result.dependency_files["org/repo-b"]) == set(files_b)
+        assert len(result.files) == 3
+
+    def test_unpack_dependency_files_dry_run(self, tmp_path):
+        """dependency_files is populated even in dry-run mode."""
+        deployed = [".github/agents/a.md"]
+        bundle = _build_bundle_dir(tmp_path, deployed)
+        output = tmp_path / "target"
+        output.mkdir()
+
+        result = unpack_bundle(bundle, output, dry_run=True)
+
+        assert "owner/repo" in result.dependency_files
+        assert result.dependency_files["owner/repo"] == deployed
+
+    def test_unpack_skipped_count(self, tmp_path):
+        """skipped_count tracks files missing from bundle when skip_verify."""
+        deployed = [".github/agents/a.md", ".github/agents/missing.md"]
+        bundle_dir = tmp_path / "bundle" / "test-pkg"
+        bundle_dir.mkdir(parents=True)
+
+        (bundle_dir / ".github" / "agents").mkdir(parents=True)
+        (bundle_dir / ".github" / "agents" / "a.md").write_text("ok")
+
+        lockfile = LockFile()
+        lockfile.add_dependency(
+            LockedDependency(repo_url="owner/repo", deployed_files=deployed)
+        )
+        lockfile.write(bundle_dir / "apm.lock")
+
+        output = tmp_path / "target"
+        output.mkdir()
+
+        result = unpack_bundle(bundle_dir, output, skip_verify=True)
+
+        assert result.skipped_count == 1
+        assert (output / ".github" / "agents" / "a.md").exists()
+
+    def test_unpack_skipped_count_zero_when_all_present(self, tmp_path):
+        """skipped_count is zero when all files are present."""
+        deployed = [".github/agents/a.md"]
+        bundle = _build_bundle_dir(tmp_path, deployed)
+        output = tmp_path / "target"
+        output.mkdir()
+
+        result = unpack_bundle(bundle, output)
+
+        assert result.skipped_count == 0
+
+
+class TestUnpackCmdLogging:
+    """Verify CLI output for the unpack command."""
+
+    def test_unpack_cmd_logs_file_list(self, tmp_path):
+        """unpack command outputs each file under its dependency name."""
+        from click.testing import CliRunner
+        from apm_cli.commands.pack import unpack_cmd
+        import os
+
+        deployed = [".github/agents/a.md", ".github/prompts/b.md"]
+        bundle = _build_bundle_dir(tmp_path, deployed)
+        output = tmp_path / "target"
+        output.mkdir()
+
+        runner = CliRunner()
+        original_dir = os.getcwd()
+        try:
+            result = runner.invoke(
+                unpack_cmd, [str(bundle), "-o", str(output)], catch_exceptions=False
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.exit_code == 0
+        assert "Unpacking" in result.output
+        assert "owner/repo" in result.output
+        assert ".github/agents/a.md" in result.output
+        assert ".github/prompts/b.md" in result.output
+        assert "Unpacked 2 file(s)" in result.output
+
+    def test_unpack_cmd_dry_run_logs_files(self, tmp_path):
+        """Dry-run output includes per-dependency file listing."""
+        from click.testing import CliRunner
+        from apm_cli.commands.pack import unpack_cmd
+        import os
+
+        deployed = [".github/agents/a.md"]
+        bundle = _build_bundle_dir(tmp_path, deployed)
+        output = tmp_path / "target"
+        output.mkdir()
+
+        runner = CliRunner()
+        original_dir = os.getcwd()
+        try:
+            result = runner.invoke(
+                unpack_cmd,
+                [str(bundle), "-o", str(output), "--dry-run"],
+                catch_exceptions=False,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.exit_code == 0
+        assert "Dry run" in result.output
+        assert "Would unpack 1 file(s)" in result.output
+        assert ".github/agents/a.md" in result.output
+
+    def test_unpack_cmd_logs_skipped_files(self, tmp_path):
+        """Skipped files warning appears when skip_verify allows missing files."""
+        from click.testing import CliRunner
+        from apm_cli.commands.pack import unpack_cmd
+        import os
+
+        deployed = [".github/agents/a.md", ".github/agents/missing.md"]
+        bundle_dir = tmp_path / "bundle" / "test-pkg"
+        bundle_dir.mkdir(parents=True)
+
+        (bundle_dir / ".github" / "agents").mkdir(parents=True)
+        (bundle_dir / ".github" / "agents" / "a.md").write_text("ok")
+
+        lockfile = LockFile()
+        lockfile.add_dependency(
+            LockedDependency(repo_url="owner/repo", deployed_files=deployed)
+        )
+        lockfile.write(bundle_dir / "apm.lock")
+
+        output = tmp_path / "target"
+        output.mkdir()
+
+        runner = CliRunner()
+        original_dir = os.getcwd()
+        try:
+            result = runner.invoke(
+                unpack_cmd,
+                [str(bundle_dir), "-o", str(output), "--skip-verify"],
+                catch_exceptions=False,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.exit_code == 0
+        assert "1 file(s) skipped" in result.output
+
+    def test_unpack_cmd_multi_dep_logging(self, tmp_path):
+        """Multiple dependencies are each logged with their file lists."""
+        from click.testing import CliRunner
+        from apm_cli.commands.pack import unpack_cmd
+        import os
+
+        bundle_dir = tmp_path / "bundle" / "multi-pkg"
+        bundle_dir.mkdir(parents=True)
+
+        files_a = [".github/agents/a.md"]
+        files_b = [".github/prompts/b.md"]
+        for f in files_a + files_b:
+            p = bundle_dir / f
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f"content of {f}")
+
+        lockfile = LockFile()
+        lockfile.add_dependency(
+            LockedDependency(repo_url="org/repo-a", deployed_files=files_a)
+        )
+        lockfile.add_dependency(
+            LockedDependency(repo_url="org/repo-b", deployed_files=files_b)
+        )
+        lockfile.write(bundle_dir / "apm.lock")
+
+        output = tmp_path / "target"
+        output.mkdir()
+
+        runner = CliRunner()
+        original_dir = os.getcwd()
+        try:
+            result = runner.invoke(
+                unpack_cmd, [str(bundle_dir), "-o", str(output)], catch_exceptions=False
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.exit_code == 0
+        assert "org/repo-a" in result.output
+        assert "org/repo-b" in result.output
+        assert ".github/agents/a.md" in result.output
+        assert ".github/prompts/b.md" in result.output
+        assert "Unpacked 2 file(s)" in result.output
