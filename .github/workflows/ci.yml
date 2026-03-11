@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  # Linux-only for fast PR feedback. Full platform matrix runs post-merge in build-release.yml.
+  # Linux + Windows for PR feedback. Full platform matrix (incl. macOS) runs post-merge in build-release.yml.
   test:
     runs-on: ubuntu-24.04
     permissions:
@@ -55,10 +55,47 @@ jobs:
     - name: Test with pytest
       run: uv run pytest tests/unit tests/test_console.py
 
+  test-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install uv
+      run: |
+        irm https://astral.sh/uv/install.ps1 | iex
+
+    - name: Cache uv environments
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~\AppData\Local\uv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+
+    - name: Install dependencies
+      run: uv sync --extra dev
+
+    - name: Test with pytest
+      run: uv run pytest tests/unit tests/test_console.py
+
   # Linux-only binary build for PR validation. Full platform builds run post-merge.
   build:
     name: Build APM Binary
-    needs: [test]
+    needs: [test, test-windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
