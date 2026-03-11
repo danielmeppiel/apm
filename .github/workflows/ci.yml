@@ -168,10 +168,9 @@ jobs:
           uv sync --extra dev --extra build
 
       - name: Build binary
-        shell: bash
+        shell: pwsh
         run: |
-          chmod +x scripts/build-binary.sh
-          uv run ./scripts/build-binary.sh
+          uv run pwsh scripts/build-binary.ps1
 
       - name: Upload binary as workflow artifact
         uses: actions/upload-artifact@v4

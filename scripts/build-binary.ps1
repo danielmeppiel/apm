@@ -1,0 +1,95 @@
+# Build APM binary for Windows using PyInstaller
+# PowerShell equivalent of build-binary.sh
+
+$ErrorActionPreference = "Stop"
+
+# Platform detection
+$arch = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+switch ($arch) {
+    "X64"   { $Arch = "x86_64" }
+    "Arm64" { $Arch = "x86_64" }  # x86_64 emulation on ARM64
+    default {
+        Write-Host "Unsupported architecture: $arch" -ForegroundColor Red
+        exit 1
+    }
+}
+
+$BinaryName = "apm-windows-$Arch"
+
+Write-Host "Building APM binary for windows-$Arch" -ForegroundColor Blue
+Write-Host "Output binary: $BinaryName" -ForegroundColor Blue
+
+# Clean previous builds
+Write-Host "Cleaning previous builds..." -ForegroundColor Yellow
+if (Test-Path "build/build") { Remove-Item -Recurse -Force "build/build" }
+if (Test-Path "dist")        { Remove-Item -Recurse -Force "dist" }
+
+# Check if PyInstaller is available
+try {
+    uv run pyinstaller --version | Out-Null
+} catch {
+    Write-Host "PyInstaller not found. Make sure dependencies are installed with: uv sync --extra build" -ForegroundColor Red
+    exit 1
+}
+
+# Check if UPX is available (optional)
+if (Get-Command upx -ErrorAction SilentlyContinue) {
+    Write-Host "UPX found - binary will be compressed" -ForegroundColor Green
+} else {
+    Write-Host "UPX not found - binary will not be compressed" -ForegroundColor Yellow
+}
+
+# Inject build SHA into version.py
+$VersionFile = "src/apm_cli/version.py"
+$originalContent = Get-Content $VersionFile -Raw
+$BuildSHA = git rev-parse --short HEAD 2>$null
+if ($BuildSHA) {
+    Write-Host "Injecting build SHA: $BuildSHA" -ForegroundColor Yellow
+    $newContent = $originalContent -replace '^__BUILD_SHA__ = None$', "__BUILD_SHA__ = `"$BuildSHA`""
+    Set-Content -Path $VersionFile -Value $newContent -NoNewline
+}
+
+try {
+    # Build binary
+    Write-Host "Building binary with PyInstaller..." -ForegroundColor Yellow
+    uv run pyinstaller build/apm.spec --noconfirm
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
+
+    # Check if build was successful (onedir mode creates dist/apm/apm.exe)
+    if (-not (Test-Path "dist/apm/apm.exe")) {
+        Write-Host "Build failed - binary not found" -ForegroundColor Red
+        exit 1
+    }
+
+    # Rename the directory to have the platform-specific name
+    Rename-Item "dist/apm" "dist/$BinaryName"
+
+    # Test the binary
+    Write-Host "Testing binary..." -ForegroundColor Yellow
+    $version = & "dist/$BinaryName/apm.exe" --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Binary test successful: $version" -ForegroundColor Green
+    } else {
+        Write-Host "Binary test failed" -ForegroundColor Red
+        exit 1
+    }
+
+    # Show binary info
+    Write-Host "Build complete!" -ForegroundColor Green
+    $size = (Get-ChildItem "dist/$BinaryName" -Recurse | Measure-Object -Property Length -Sum).Sum
+    $sizeMB = [math]::Round($size / 1MB, 1)
+    Write-Host "Binary: dist/$BinaryName/apm.exe" -ForegroundColor Blue
+    Write-Host "Size: ${sizeMB}MB" -ForegroundColor Blue
+
+    # Create checksum
+    $hash = (Get-FileHash "dist/$BinaryName/apm.exe" -Algorithm SHA256).Hash.ToLower()
+    "$hash  dist/$BinaryName/apm.exe" | Set-Content "dist/$BinaryName.sha256"
+    Write-Host "Checksum: dist/$BinaryName.sha256" -ForegroundColor Blue
+
+    Write-Host "Ready for release!" -ForegroundColor Green
+} finally {
+    # Restore version.py
+    if ($BuildSHA) {
+        Set-Content -Path $VersionFile -Value $originalContent -NoNewline
+    }
+}
