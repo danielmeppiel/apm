@@ -81,14 +81,14 @@ def prune(ctx, dry_run):
             pkg_path = apm_modules_dir.joinpath(*path_parts)
             try:
                 shutil.rmtree(pkg_path)
-                _rich_info(f"✓ Removed {org_repo_name}")
+                _rich_info(f"+ Removed {org_repo_name}")
                 removed_count += 1
                 pruned_keys.append(org_repo_name)
                 deleted_pkg_paths.append(pkg_path)
             except Exception as e:
-                _rich_error(f"✗ Failed to remove {org_repo_name}: {e}")
+                _rich_error(f"x Failed to remove {org_repo_name}: {e}")
 
-        # Batch parent cleanup — single bottom-up pass
+        # Batch parent cleanup  -- single bottom-up pass
         from ..integration.base_integrator import BaseIntegrator
         BaseIntegrator.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
 
@@ -119,10 +119,10 @@ def prune(ctx, dry_run):
                     # Remove from lockfile
                     if dep_key in lockfile.dependencies:
                         del lockfile.dependencies[dep_key]
-                # Batch parent cleanup — single bottom-up pass
+                # Batch parent cleanup  -- single bottom-up pass
                 BaseIntegrator.cleanup_empty_parents(deleted_targets, stop_at=project_root)
                 if deployed_cleaned > 0:
-                    _rich_info(f"✓ Cleaned {deployed_cleaned} deployed integration file(s)")
+                    _rich_info(f"+ Cleaned {deployed_cleaned} deployed integration file(s)")
                 # Write updated lockfile (or remove if empty)
                 try:
                     if lockfile.dependencies:

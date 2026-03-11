@@ -122,7 +122,7 @@ class CodexClientAdapter(MCPClientAdapter):
             
             # If server has only remote endpoints and no packages, it's a remote-only server
             if remotes and not packages:
-                print(f"⚠️  Warning: MCP server '{server_url}' is a remote server (SSE type)")
+                print(f"[!]  Warning: MCP server '{server_url}' is a remote server (SSE type)")
                 print("   Codex CLI only supports local servers with command/args configuration")
                 print("   Remote servers are not supported by Codex CLI")
                 print("   Skipping installation for Codex CLI")
@@ -174,7 +174,7 @@ class CodexClientAdapter(MCPClientAdapter):
             "id": server_info.get("id", "")  # Add registry UUID for conflict detection
         }
 
-        # Self-defined stdio deps carry raw command/args — use directly
+        # Self-defined stdio deps carry raw command/args  -- use directly
         raw = server_info.get("_raw_stdio")
         if raw:
             config["command"] = raw["command"]
@@ -218,10 +218,16 @@ class CodexClientAdapter(MCPClientAdapter):
                 # Generate command and args based on package type
                 if registry_name == "npm":
                     config["command"] = runtime_hint or "npx"
+                    # Use versioned package name when available
+                    version = package.get("version", "")
+                    versioned_name = f"{package_name}@{version}" if version else package_name
                     # Always include package name; filter duplicates from legacy runtime_arguments
                     all_args = processed_runtime_args + processed_package_args
-                    extra_args = [a for a in all_args if a != package_name] if all_args else []
-                    config["args"] = ["-y", package_name] + extra_args
+                    # Remove -y, package_name (both versioned/unversioned) to avoid duplicates
+                    extra_args = [a for a in all_args
+                                  if a != package_name and a != versioned_name and a != "-y"
+                                  ] if all_args else []
+                    config["args"] = ["-y", versioned_name] + extra_args
                     # For NPM packages, also use env block for environment variables
                     if resolved_env:
                         config["env"] = resolved_env
@@ -328,7 +334,7 @@ class CodexClientAdapter(MCPClientAdapter):
         # Check for CI/automated environment via APM_E2E_TESTS flag (more reliable than TTY detection)
         if os.getenv('APM_E2E_TESTS') == '1':
             skip_prompting = True
-            print(f"💡 APM_E2E_TESTS detected, will skip environment variable prompts")
+            print(f" APM_E2E_TESTS detected, will skip environment variable prompts")
         
         # Also skip prompting if we're in a non-interactive environment (fallback)
         is_interactive = sys.stdin.isatty() and sys.stdout.isatty()

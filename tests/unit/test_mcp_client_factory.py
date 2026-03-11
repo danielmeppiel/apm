@@ -144,7 +144,7 @@ class TestCodexClientAdapter(unittest.TestCase):
         mock_find_server.assert_called_once_with("remote-server")
         
         # Verify warning message was printed
-        mock_print.assert_any_call("⚠️  Warning: MCP server 'remote-server' is a remote server (SSE type)")
+        mock_print.assert_any_call("[!]  Warning: MCP server 'remote-server' is a remote server (SSE type)")
         mock_print.assert_any_call("   Codex CLI only supports local servers with command/args configuration")
         
         # Verify no config was updated

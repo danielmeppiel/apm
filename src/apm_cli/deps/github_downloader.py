@@ -185,7 +185,7 @@ class GitHubPackageDownloader:
         env = self.token_manager.setup_environment()
         
         # Get tokens for modules (APM package access)
-        # GitHub: GITHUB_APM_PAT → GITHUB_TOKEN
+        # GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN
         self.github_token = self.token_manager.get_token_for_purpose('modules', env)
         self.has_github_token = self.github_token is not None
         
@@ -199,7 +199,7 @@ class GitHubPackageDownloader:
         env['GIT_TERMINAL_PROMPT'] = '0'
         env['GIT_ASKPASS'] = 'echo'  # Prevent interactive credential prompts
         env['GIT_CONFIG_NOSYSTEM'] = '1'
-        env['GIT_CONFIG_GLOBAL'] = '/dev/null'
+        env['GIT_CONFIG_GLOBAL'] = 'NUL' if sys.platform == 'win32' else '/dev/null'
         
         return env
     
@@ -387,7 +387,7 @@ class GitHubPackageDownloader:
         
         # When APM has a token for this host, use the locked-down env (APM manages auth).
         # When no token is available, relax the env so git credential helpers (gh auth,
-        # macOS Keychain, etc.) can provide credentials — regardless of host.
+        # macOS Keychain, etc.) can provide credentials  -- regardless of host.
         if has_token:
             clone_env = self.git_env
         else:
@@ -732,7 +732,7 @@ class GitHubPackageDownloader:
                     )
             elif e.response.status_code == 401 or e.response.status_code == 403:
                 # Token may lack SSO/SAML authorization for this org.
-                # Retry without auth — the repo might be public.
+                # Retry without auth  -- the repo might be public.
                 # Applies to github.com and GHES (custom domains can have public repos).
                 # Excluded: *.ghe.com (Enterprise Cloud Data Residency has no public repos).
                 if self.github_token and not host.lower().endswith(".ghe.com"):
@@ -829,9 +829,9 @@ class GitHubPackageDownloader:
                 except RuntimeError:
                     continue
 
-            # Last resort: README.md — any well-formed directory should have one.
+            # Last resort: README.md  -- any well-formed directory should have one.
             # A directory that follows the Claude plugin spec (agents/, commands/,
-            # skills/ …) with no manifest files is still a valid plugin.
+            # skills/ ...) with no manifest files is still a valid plugin.
             try:
                 self.download_raw_file(dep_ref, f"{dep_ref.virtual_path}/README.md", ref)
                 return True
@@ -1518,8 +1518,8 @@ author: {dep_ref.repo_url.split('/')[0]}
             """Progress callback for Git operations."""
             if max_count:
                 percentage = int((cur_count / max_count) * 100)
-                print(f"\r🚀 Cloning: {percentage}% ({cur_count}/{max_count}) {message}", end='', flush=True)
+                print(f"\r Cloning: {percentage}% ({cur_count}/{max_count}) {message}", end='', flush=True)
             else:
-                print(f"\r🚀 Cloning: {message} ({cur_count})", end='', flush=True)
+                print(f"\r Cloning: {message} ({cur_count})", end='', flush=True)
         
         return progress_callback

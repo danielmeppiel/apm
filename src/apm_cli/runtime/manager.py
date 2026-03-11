@@ -65,7 +65,7 @@ class RuntimeManager:
             
             raise FileNotFoundError(f"Script not found: {script_name}")
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Failed to load embedded script {script_name}: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Failed to load embedded script {script_name}: {e}{Style.RESET_ALL}", err=True)
             raise RuntimeError(f"Could not load setup script: {script_name}")
     
     def get_common_script(self) -> str:
@@ -97,7 +97,7 @@ class RuntimeManager:
             
             raise FileNotFoundError("github-token-helper.sh not found")
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Failed to load github-token-helper.sh: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Failed to load github-token-helper.sh: {e}{Style.RESET_ALL}", err=True)
             raise RuntimeError("Could not load token helper script")
     
     def run_embedded_script(self, script_content: str, common_content: str, 
@@ -135,7 +135,7 @@ class RuntimeManager:
                     token_helper_script.write_text(token_helper_content)
                     token_helper_script.chmod(0o755)
                 except Exception as e:
-                    click.echo(f"{Fore.YELLOW}⚠️  Token helper not available, scripts may use fallback authentication: {e}{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}[!]  Token helper not available, scripts may use fallback authentication: {e}{Style.RESET_ALL}")
                 
                 # Write main script as bash
                 main_script = temp_path / "setup-script.sh"
@@ -170,26 +170,26 @@ class RuntimeManager:
                 )
                 return result.returncode == 0
             except Exception as e:
-                click.echo(f"{Fore.RED}❌ Failed to execute setup script: {e}{Style.RESET_ALL}", err=True)
+                click.echo(f"{Fore.RED}[x] Failed to execute setup script: {e}{Style.RESET_ALL}", err=True)
                 return False
     
     def setup_runtime(self, runtime_name: str, version: Optional[str] = None, vanilla: bool = False) -> bool:
         """Set up a specific runtime."""
         if runtime_name not in self.supported_runtimes:
-            click.echo(f"{Fore.RED}❌ Unsupported runtime: {runtime_name}{Style.RESET_ALL}", err=True)
-            click.echo(f"{Fore.BLUE}ℹ️  Supported runtimes: {', '.join(self.supported_runtimes.keys())}{Style.RESET_ALL}")
+            click.echo(f"{Fore.RED}[x] Unsupported runtime: {runtime_name}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.BLUE}[i]  Supported runtimes: {', '.join(self.supported_runtimes.keys())}{Style.RESET_ALL}")
             return False
         
         runtime_info = self.supported_runtimes[runtime_name]
         script_name = runtime_info["script"]
         description = runtime_info["description"]
         
-        click.echo(f"{Fore.BLUE}🔧 Setting up {runtime_name} runtime: {description}{Style.RESET_ALL}")
+        click.echo(f"{Fore.BLUE} Setting up {runtime_name} runtime: {description}{Style.RESET_ALL}")
         
         if vanilla:
-            click.echo(f"{Fore.YELLOW}⚠️  Installing in vanilla mode - no APM configuration will be applied{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}[!]  Installing in vanilla mode - no APM configuration will be applied{Style.RESET_ALL}")
         else:
-            click.echo(f"{Fore.BLUE}ℹ️  Installing with APM defaults (GitHub Models for free access){Style.RESET_ALL}")
+            click.echo(f"{Fore.BLUE}[i]  Installing with APM defaults (GitHub Models for free access){Style.RESET_ALL}")
         
         try:
             # Get scripts
@@ -207,14 +207,14 @@ class RuntimeManager:
             success = self.run_embedded_script(script_content, common_content, script_args)
             
             if success:
-                click.echo(f"{Fore.GREEN}✅ Successfully set up {runtime_name} runtime{Style.RESET_ALL}")
+                click.echo(f"{Fore.GREEN}[+] Successfully set up {runtime_name} runtime{Style.RESET_ALL}")
                 return True
             else:
-                click.echo(f"{Fore.RED}❌ Failed to set up {runtime_name} runtime{Style.RESET_ALL}", err=True)
+                click.echo(f"{Fore.RED}[x] Failed to set up {runtime_name} runtime{Style.RESET_ALL}", err=True)
                 return False
                 
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Error setting up {runtime_name}: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Error setting up {runtime_name}: {e}{Style.RESET_ALL}", err=True)
             return False
     
     def list_runtimes(self) -> Dict[str, Dict[str, str]]:
@@ -278,7 +278,7 @@ class RuntimeManager:
     def remove_runtime(self, runtime_name: str) -> bool:
         """Remove an installed runtime."""
         if runtime_name not in self.supported_runtimes:
-            click.echo(f"{Fore.RED}❌ Unknown runtime: {runtime_name}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Unknown runtime: {runtime_name}{Style.RESET_ALL}", err=True)
             return False
         
         # Handle copilot runtime (npm-based, global install)
@@ -290,13 +290,13 @@ class RuntimeManager:
                     text=True
                 )
                 if result.returncode == 0:
-                    click.echo(f"{Fore.GREEN}✅ Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
+                    click.echo(f"{Fore.GREEN}[+] Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
                     return True
                 else:
-                    click.echo(f"{Fore.RED}❌ Failed to remove {runtime_name}: {result.stderr}{Style.RESET_ALL}", err=True)
+                    click.echo(f"{Fore.RED}[x] Failed to remove {runtime_name}: {result.stderr}{Style.RESET_ALL}", err=True)
                     return False
             except Exception as e:
-                click.echo(f"{Fore.RED}❌ Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
+                click.echo(f"{Fore.RED}[x] Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
                 return False
         
         # Handle other runtimes (installed in APM runtime directory)
@@ -304,7 +304,7 @@ class RuntimeManager:
         binary_path = self.runtime_dir / binary_name
         
         if not binary_path.exists():
-            click.echo(f"{Fore.YELLOW}⚠️  Runtime {runtime_name} is not installed in APM runtime directory{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}[!]  Runtime {runtime_name} is not installed in APM runtime directory{Style.RESET_ALL}")
             return False
         
         try:
@@ -319,11 +319,11 @@ class RuntimeManager:
                 if venv_path.exists():
                     shutil.rmtree(venv_path)
             
-            click.echo(f"{Fore.GREEN}✅ Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
+            click.echo(f"{Fore.GREEN}[+] Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
             return True
             
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
             return False
     
     def get_runtime_preference(self) -> List[str]:

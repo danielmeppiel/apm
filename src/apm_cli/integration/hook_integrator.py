@@ -4,7 +4,7 @@ Integrates hook JSON files and their referenced scripts during package
 installation. Supports both VSCode Copilot (.github/hooks/) and Claude Code
 (.claude/settings.json) targets.
 
-Hook JSON format (Claude Code — nested matcher groups):
+Hook JSON format (Claude Code  -- nested matcher groups):
     {
         "hooks": {
             "PreToolUse": [
@@ -17,7 +17,7 @@ Hook JSON format (Claude Code — nested matcher groups):
         }
     }
 
-Hook JSON format (GitHub Copilot — flat arrays with bash/powershell keys):
+Hook JSON format (GitHub Copilot  -- flat arrays with bash/powershell keys):
     {
         "version": 1,
         "hooks": {
@@ -28,9 +28,9 @@ Hook JSON format (GitHub Copilot — flat arrays with bash/powershell keys):
     }
 
 Script path handling:
-    - ${CLAUDE_PLUGIN_ROOT}/path → resolved relative to package root, rewritten for target
-    - ./path → relative path, resolved from hook file's parent directory, rewritten for target
-    - System commands (no path separators) → passed through unchanged
+    - ${CLAUDE_PLUGIN_ROOT}/path -> resolved relative to package root, rewritten for target
+    - ./path -> relative path, resolved from hook file's parent directory, rewritten for target
+    - System commands (no path separators) -> passed through unchanged
 """
 
 import json
@@ -418,7 +418,7 @@ class HookIntegrator(BaseIntegrator):
         with open(settings_path, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=2)
             f.write('\n')
-        # Don't track settings.json in target_paths — it's a shared file
+        # Don't track settings.json in target_paths  -- it's a shared file
         # cleaned via _apm_source markers, not file-level deletion
 
         return HookIntegrationResult(
@@ -443,13 +443,15 @@ class HookIntegrator(BaseIntegrator):
         stats: Dict[str, int] = {'files_removed': 0, 'errors': 0}
 
         if managed_files is not None:
-            # Manifest-based removal — only remove tracked files
+            # Manifest-based removal  -- only remove tracked files
             deleted: list = []
             for rel_path in managed_files:
+                # Normalize path separators for cross-platform compatibility
+                normalized = rel_path.replace("\\", "/")
                 # Only handle hook-related paths
                 is_hook = (
-                    rel_path.startswith(".github/hooks/")
-                    or rel_path.startswith(".claude/hooks/")
+                    normalized.startswith(".github/hooks/")
+                    or normalized.startswith(".claude/hooks/")
                 )
                 if not is_hook or ".." in rel_path:
                     continue
@@ -461,10 +463,10 @@ class HookIntegrator(BaseIntegrator):
                         deleted.append(target)
                     except Exception:
                         stats['errors'] += 1
-            # Batch parent cleanup — single bottom-up pass
+            # Batch parent cleanup  -- single bottom-up pass
             self.cleanup_empty_parents(deleted, stop_at=project_root)
         else:
-            # Legacy fallback — glob for old -apm suffix files
+            # Legacy fallback  -- glob for old -apm suffix files
             hooks_dir = project_root / ".github" / "hooks"
             if hooks_dir.exists():
                 for hook_file in hooks_dir.glob("*-apm.json"):
@@ -474,7 +476,7 @@ class HookIntegrator(BaseIntegrator):
                     except Exception:
                         stats['errors'] += 1
 
-        # Clean APM entries from .claude/settings.json (safe — uses _apm_source marker)
+        # Clean APM entries from .claude/settings.json (safe  -- uses _apm_source marker)
         settings_path = project_root / ".claude" / "settings.json"
         if settings_path.exists():
             try:

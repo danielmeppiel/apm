@@ -67,7 +67,7 @@ def list():
             console = _get_console()
             # Create a nice table for runtimes
             table = Table(
-                title="🤖 Available Runtimes",
+                title=" Available Runtimes",
                 show_header=True,
                 header_style="bold cyan",
             )
@@ -103,7 +103,7 @@ def list():
             click.echo()
 
             for name, info in runtimes.items():
-                status_icon = "✅" if info["installed"] else "❌"
+                status_icon = "[+]" if info["installed"] else "[x]"
                 status_text = "Installed" if info["installed"] else "Not installed"
 
                 click.echo(f"{status_icon} {HIGHLIGHT}{name}{RESET}")
@@ -159,21 +159,21 @@ def status():
 
         try:
             # Create a nice status display
-            status_content = f"""Preference order: {' → '.join(preference)}
+            status_content = f"""Preference order: {' -> '.join(preference)}
 
 Active runtime: {available_runtime if available_runtime else 'None available'}"""
 
             if not available_runtime:
                 status_content += f"\n\n{STATUS_SYMBOLS['info']} Run 'apm runtime setup copilot' to install the primary runtime"
 
-            _rich_panel(status_content, title="📊 Runtime Status", style="cyan")
+            _rich_panel(status_content, title=" Runtime Status", style="cyan")
 
         except (ImportError, NameError):
             # Fallback display
             _rich_info("Runtime Status:")
             click.echo()
 
-            click.echo(f"Preference order: {' → '.join(preference)}")
+            click.echo(f"Preference order: {' -> '.join(preference)}")
 
             if available_runtime:
                 _rich_success(f"Active runtime: {available_runtime}")

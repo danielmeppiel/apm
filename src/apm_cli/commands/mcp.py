@@ -48,17 +48,17 @@ def search(ctx, query, limit):
 
         if not servers:
             console.print(
-                f"\n[yellow]⚠[/yellow] No MCP servers found matching '[bold]{query}[/bold]'"
+                f"\n[yellow][!][/yellow] No MCP servers found matching '[bold]{query}[/bold]'"
             )
             console.print(
-                "\n[muted]💡 Try broader search terms or check the spelling[/muted]"
+                "\n[muted] Try broader search terms or check the spelling[/muted]"
             )
             return
 
         # Results summary
         total_shown = len(servers)
         console.print(
-            f"\n[green]✓[/green] Found [bold]{total_shown}[/bold] MCP server{'s' if total_shown != 1 else ''}"
+            f"\n[green]+[/green] Found [bold]{total_shown}[/bold] MCP server{'s' if total_shown != 1 else ''}"
         )
 
         # Professional results table
@@ -72,7 +72,7 @@ def search(ctx, query, limit):
         for server in servers:
             name = server.get("name", "Unknown")
             desc = server.get("description", "No description available")
-            version = server.get("version", "—")
+            version = server.get("version", " --")
 
             # Intelligent description truncation
             if len(desc) > 80:
@@ -90,7 +90,7 @@ def search(ctx, query, limit):
 
         # Helpful next steps
         console.print(
-            f"\n[muted]💡 Use [bold cyan]apm mcp show <name>[/bold cyan] for detailed information[/muted]"
+            f"\n[muted] Use [bold cyan]apm mcp show <name>[/bold cyan] for detailed information[/muted]"
         )
         if total_shown == limit:
             console.print(
@@ -138,10 +138,10 @@ def show(ctx, server_name):
             server_info = registry.get_package_info(server_name)
         except ValueError:
             console.print(
-                f"\n[red]✗[/red] MCP server '[bold]{server_name}[/bold]' not found in registry"
+                f"\n[red]x[/red] MCP server '[bold]{server_name}[/bold]' not found in registry"
             )
             console.print(
-                f"\n[muted]💡 Use [bold cyan]apm mcp search <query>[/bold cyan] to find available servers[/muted]"
+                f"\n[muted] Use [bold cyan]apm mcp search <query>[/bold cyan] to find available servers[/muted]"
             )
             sys.exit(1)
 
@@ -165,7 +165,7 @@ def show(ctx, server_name):
 
         # Main server information table
         info_table = Table(
-            title=f"📦 MCP Server: {name}",
+            title=f" MCP Server: {name}",
             show_header=True,
             header_style="bold cyan",
             border_style="cyan",
@@ -189,9 +189,9 @@ def show(ctx, server_name):
             for remote in remotes:
                 transport_type = remote.get("transport_type", "unknown")
                 if transport_type == "sse":
-                    deployment_info.append("🌐 Remote SSE Endpoint")
+                    deployment_info.append(" Remote SSE Endpoint")
         if packages:
-            deployment_info.append("📦 Local Package")
+            deployment_info.append(" Local Package")
 
         if deployment_info:
             info_table.add_row("Deployment Type", " + ".join(deployment_info))
@@ -201,7 +201,7 @@ def show(ctx, server_name):
         # Show remote endpoints if available
         if remotes:
             remote_table = Table(
-                title="🌐 Remote Endpoints",
+                title=" Remote Endpoints",
                 show_header=True,
                 header_style="bold cyan",
                 border_style="cyan",
@@ -226,7 +226,7 @@ def show(ctx, server_name):
         # Installation packages in consistent table format
         if packages:
             pkg_table = Table(
-                title="📦 Local Packages",
+                title=" Local Packages",
                 show_header=True,
                 header_style="bold cyan",
                 border_style="cyan",
@@ -239,7 +239,7 @@ def show(ctx, server_name):
             for pkg in packages:
                 registry_name = pkg.get("registry_name", "unknown")
                 pkg_name = pkg.get("name", "unknown")
-                runtime_hint = pkg.get("runtime_hint", "—")
+                runtime_hint = pkg.get("runtime_hint", " --")
 
                 # Describe features of local packages
                 features = "Full configuration control"
@@ -257,7 +257,7 @@ def show(ctx, server_name):
         # Installation instructions in structured table format
         install_name = server_info.get("name", server_name)
         install_table = Table(
-            title="✨ Installation Guide",
+            title="* Installation Guide",
             show_header=True,
             header_style="bold cyan",
             border_style="green",
@@ -317,16 +317,16 @@ def list(ctx, limit):
         servers = registry.list_available_packages()[:limit]
 
         if not servers:
-            console.print(f"\n[yellow]⚠[/yellow] No MCP servers found in registry")
+            console.print(f"\n[yellow][!][/yellow] No MCP servers found in registry")
             console.print(
-                f"\n[muted]💡 The registry might be temporarily unavailable[/muted]"
+                f"\n[muted] The registry might be temporarily unavailable[/muted]"
             )
             return
 
         # Results summary with pagination info
         total_shown = len(servers)
         console.print(
-            f"\n[green]✓[/green] Showing [bold]{total_shown}[/bold] MCP servers"
+            f"\n[green]+[/green] Showing [bold]{total_shown}[/bold] MCP servers"
         )
         if total_shown == limit:
             console.print(
@@ -344,7 +344,7 @@ def list(ctx, limit):
         for server in servers:
             name = server.get("name", "Unknown")
             desc = server.get("description", "No description available")
-            version = server.get("version", "—")
+            version = server.get("version", " --")
 
             # Intelligent description truncation
             if len(desc) > 80:
@@ -362,7 +362,7 @@ def list(ctx, limit):
 
         # Helpful navigation
         console.print(
-            f"\n[muted]💡 Use [bold cyan]apm mcp show <name>[/bold cyan] for detailed information[/muted]"
+            f"\n[muted] Use [bold cyan]apm mcp show <name>[/bold cyan] for detailed information[/muted]"
         )
         console.print(
             f"[muted]   Use [bold cyan]apm mcp search <query>[/bold cyan] to find specific servers[/muted]"

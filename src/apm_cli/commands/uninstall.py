@@ -113,10 +113,10 @@ def uninstall(ctx, packages, dry_run):
 
             if matched_dep is not None:
                 packages_to_remove.append(matched_dep)
-                _rich_info(f"✓ {package} - found in apm.yml")
+                _rich_info(f"+ {package} - found in apm.yml")
             else:
                 packages_not_found.append(package)
-                _rich_warning(f"✗ {package} - not found in apm.yml")
+                _rich_warning(f"x {package} - not found in apm.yml")
 
         if not packages_to_remove:
             _rich_warning("No packages found in apm.yml to remove")
@@ -222,17 +222,17 @@ def uninstall(ctx, packages, dry_run):
                 if package_path.exists():
                     try:
                         shutil.rmtree(package_path)
-                        _rich_info(f"✓ Removed {package} from apm_modules/")
+                        _rich_info(f"+ Removed {package} from apm_modules/")
                         removed_from_modules += 1
                         deleted_pkg_paths.append(package_path)
                     except Exception as e:
                         _rich_error(
-                            f"✗ Failed to remove {package} from apm_modules/: {e}"
+                            f"x Failed to remove {package} from apm_modules/: {e}"
                         )
                 else:
                     _rich_warning(f"Package {package} not found in apm_modules/")
 
-            # Batch parent cleanup — single bottom-up pass
+            # Batch parent cleanup  -- single bottom-up pass
             from ..integration.base_integrator import BaseIntegrator as _BI2
             _BI2.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
 
@@ -307,13 +307,13 @@ def uninstall(ctx, packages, dry_run):
                     if orphan_path.exists():
                         try:
                             shutil.rmtree(orphan_path)
-                            _rich_info(f"✓ Removed transitive dependency {orphan_key} from apm_modules/")
+                            _rich_info(f"+ Removed transitive dependency {orphan_key} from apm_modules/")
                             removed_from_modules += 1
                             deleted_orphan_paths.append(orphan_path)
                         except Exception as e:
-                            _rich_error(f"✗ Failed to remove transitive dep {orphan_key}: {e}")
+                            _rich_error(f"x Failed to remove transitive dep {orphan_key}: {e}")
 
-                # Batch parent cleanup — single bottom-up pass
+                # Batch parent cleanup  -- single bottom-up pass
                 from ..integration.base_integrator import BaseIntegrator as _BI
                 _BI.cleanup_empty_parents(deleted_orphan_paths, stop_at=apm_modules_dir)
 
@@ -362,7 +362,7 @@ def uninstall(ctx, packages, dry_run):
                     if lockfile.dependencies:
                         lockfile.write(lockfile_path)
                     else:
-                        # No deps left — remove lockfile
+                        # No deps left  -- remove lockfile
                         lockfile_path.unlink(missing_ok=True)
                 except Exception:
                     pass
@@ -390,8 +390,8 @@ def uninstall(ctx, packages, dry_run):
             # Use pre-collected deployed_files (captured before lockfile entries were deleted)
             sync_managed = all_deployed_files if all_deployed_files else None
 
-            # Pre-partition managed files by integration type — single O(M)
-            # pass instead of 6× O(M) prefix scans inside each integrator.
+            # Pre-partition managed files by integration type  -- single O(M)
+            # pass instead of 6x O(M) prefix scans inside each integrator.
             if sync_managed is not None:
                 _buckets = BaseIntegrator.partition_managed_files(sync_managed)
             else:
@@ -500,21 +500,21 @@ def uninstall(ctx, packages, dry_run):
                     pass  # Best effort re-integration
 
         except Exception:
-            pass  # Best effort cleanup — don't report false failures
+            pass  # Best effort cleanup  -- don't report false failures
 
         # Show cleanup feedback
         if prompts_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {prompts_cleaned} integrated prompt(s)")
+            _rich_info(f"+ Cleaned up {prompts_cleaned} integrated prompt(s)")
         if agents_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {agents_cleaned} integrated agent(s)")
+            _rich_info(f"+ Cleaned up {agents_cleaned} integrated agent(s)")
         if skills_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {skills_cleaned} skill(s)")
+            _rich_info(f"+ Cleaned up {skills_cleaned} skill(s)")
         if commands_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {commands_cleaned} command(s)")
+            _rich_info(f"+ Cleaned up {commands_cleaned} command(s)")
         if hooks_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {hooks_cleaned} hook(s)")
+            _rich_info(f"+ Cleaned up {hooks_cleaned} hook(s)")
         if instructions_cleaned > 0:
-            _rich_info(f"✓ Cleaned up {instructions_cleaned} instruction(s)")
+            _rich_info(f"+ Cleaned up {instructions_cleaned} instruction(s)")
 
         # Clean up stale MCP servers after uninstall
         try:

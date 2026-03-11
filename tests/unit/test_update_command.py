@@ -78,7 +78,8 @@ class TestUpdateCommand(unittest.TestCase):
         mock_get.return_value = mock_response
         mock_run.return_value = Mock(returncode=0)
 
-        with patch.object(update_module.sys, "platform", "darwin"):
+        with patch.object(update_module.sys, "platform", "darwin"), \
+             patch("apm_cli.commands.update.os.path.exists", return_value=True):
             result = self.runner.invoke(cli, ["update"])
 
         self.assertEqual(result.exit_code, 0)

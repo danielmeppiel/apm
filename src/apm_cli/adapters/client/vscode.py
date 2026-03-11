@@ -187,7 +187,7 @@ class VSCodeClientAdapter(MCPClientAdapter):
         server_config = {}
         input_vars = []
 
-        # Self-defined stdio deps carry raw command/args — use directly
+        # Self-defined stdio deps carry raw command/args  -- use directly
         raw = server_info.get("_raw_stdio")
         if raw:
             server_config = {

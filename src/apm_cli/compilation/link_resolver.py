@@ -29,7 +29,7 @@ class LinkResolutionContext:
     source_location: Path  # Original location (directory)
     target_location: Path  # Where file will live (directory or file)
     base_dir: Path  # Project root
-    available_contexts: Dict[str, Path]  # Map of context name → actual path
+    available_contexts: Dict[str, Path]  # Map of context name -> actual path
 
 
 class UnifiedLinkResolver:
@@ -60,8 +60,8 @@ class UnifiedLinkResolver:
         """Build registry of all available context files.
         
         Registers contexts by:
-        1. Simple filename: "api-standards.context.md" → path
-        2. Qualified name (for dependencies): "company/standards:api.context.md" → path
+        1. Simple filename: "api-standards.context.md" -> path
+        2. Qualified name (for dependencies): "company/standards:api.context.md" -> path
         
         Args:
             primitives: Collection of discovered primitives (PrimitiveCollection)
@@ -259,7 +259,8 @@ class UnifiedLinkResolver:
         # Use os.path.relpath to support ../ for paths outside target directory
         try:
             relative_path = os.path.relpath(actual_file, ctx.target_location)
-            return relative_path
+            # Normalize to forward slashes for markdown link compatibility
+            return relative_path.replace(os.sep, '/')
         except Exception:
             return None
     

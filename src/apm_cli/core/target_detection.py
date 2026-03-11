@@ -8,10 +8,10 @@ Detection priority (highest to lowest):
 1. Explicit --target flag (always wins)
 2. apm.yml target setting (top-level field)
 3. Auto-detect from existing folders:
-   - .github/ exists AND .claude/ doesn't → copilot (internal: "vscode")
-   - .claude/ exists AND .github/ doesn't → claude
-   - Both exist → all
-   - Neither exists → minimal (AGENTS.md only, no folder integration)
+   - .github/ exists AND .claude/ doesn't -> copilot (internal: "vscode")
+   - .claude/ exists AND .github/ doesn't -> claude
+   - Both exist -> all
+   - Neither exists -> minimal (AGENTS.md only, no folder integration)
 
 "copilot" is the recommended user-facing target name. "vscode" and "agents"
 are accepted as aliases and map to the same internal value.

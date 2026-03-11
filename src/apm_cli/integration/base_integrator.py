@@ -34,7 +34,7 @@ class BaseIntegrator:
         self.link_resolver: Optional[UnifiedLinkResolver] = None
 
     # ------------------------------------------------------------------
-    # Common behaviour — subclasses inherit directly
+    # Common behaviour  -- subclasses inherit directly
     # ------------------------------------------------------------------
 
     def should_integrate(self, project_root: Path) -> bool:  # noqa: ARG002
@@ -58,7 +58,7 @@ class BaseIntegrator:
         A collision exists when **all** of these are true:
         1. ``managed_files`` is not ``None`` (manifest mode)
         2. ``target_path`` already exists on disk
-        3. ``rel_path`` is **not** in the managed set (→ user-authored)
+        3. ``rel_path`` is **not** in the managed set (-> user-authored)
         4. ``force`` is ``False``
 
         When *diagnostics* is provided the skip is recorded there;
@@ -71,7 +71,7 @@ class BaseIntegrator:
             return False
         if not target_path.exists():
             return False
-        # managed_files is pre-normalized at the call site — O(1) lookup
+        # managed_files is pre-normalized at the call site  -- O(1) lookup
         if rel_path.replace("\\", "/") in managed_files:
             return False
         if force:
@@ -165,8 +165,8 @@ class BaseIntegrator:
         """Remove empty parent directories in a single bottom-up pass.
 
         Collects all parent directories of *deleted_paths*, sorts by
-        depth descending, and removes each if empty — O(H+D) syscalls
-        instead of the per-file O(H×D) approach.
+        depth descending, and removes each if empty  -- O(H+D) syscalls
+        instead of the per-file O(HxD) approach.
 
         Args:
             deleted_paths: Paths that were deleted (files or dirs).
@@ -257,7 +257,7 @@ class BaseIntegrator:
 
         if managed_files is not None:
             for rel_path in managed_files:
-                # managed_files is pre-normalized — no .replace() needed
+                # managed_files is pre-normalized  -- no .replace() needed
                 if not rel_path.startswith(prefix):
                     continue
                 if not BaseIntegrator.validate_deploy_path(rel_path, project_root):

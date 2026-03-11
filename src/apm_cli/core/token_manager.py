@@ -11,7 +11,7 @@ Token Architecture:
 - GITHUB_TOKEN: User-scoped PAT for GitHub Models API access
 
 Platform Token Selection:
-- GitHub: GITHUB_APM_PAT → GITHUB_TOKEN → GH_TOKEN
+- GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN
 - Azure DevOps: ADO_APM_PAT
 
 Runtime Requirements:

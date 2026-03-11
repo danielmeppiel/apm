@@ -42,7 +42,7 @@ class AgentIntegrator(BaseIntegrator):
         if apm_agents.exists():
             agent_files.extend(apm_agents.rglob("*.agent.md"))
             # Also pick up plain .md files in agents/; plugins may not use
-            # the .agent.md convention — the directory name already implies type
+            # the .agent.md convention  -- the directory name already implies type
             for md_file in apm_agents.rglob("*.md"):
                 if (
                     not md_file.name.endswith(".agent.md")

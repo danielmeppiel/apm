@@ -120,7 +120,7 @@ def _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir: Path
         install_path = dep.get_install_path(apm_modules_dir)
         try:
             relative_path = install_path.relative_to(apm_modules_dir)
-            expected.add(str(relative_path))
+            expected.add(relative_path.as_posix())
         except ValueError:
             expected.add(str(install_path))
 
@@ -136,7 +136,7 @@ def _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir: Path
                 install_path = dep_ref.get_install_path(apm_modules_dir)
                 try:
                     relative_path = install_path.relative_to(apm_modules_dir)
-                    expected.add(str(relative_path))
+                    expected.add(relative_path.as_posix())
                 except ValueError:
                     pass
     return expected

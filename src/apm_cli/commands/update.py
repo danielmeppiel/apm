@@ -101,7 +101,7 @@ def update(check):
         _rich_info(f"Latest version available: {latest_version}", symbol="sparkles")
 
         if check:
-            _rich_warning(f"Update available: {current_version} → {latest_version}")
+            _rich_warning(f"Update available: {current_version} -> {latest_version}")
             _rich_info("Run 'apm update' (without --check) to install", symbol="info")
             return
 

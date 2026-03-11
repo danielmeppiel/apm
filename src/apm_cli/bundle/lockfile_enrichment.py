@@ -12,7 +12,7 @@ def enrich_lockfile_for_pack(
 ) -> str:
     """Create an enriched copy of the lockfile YAML with a ``pack:`` section.
 
-    Does NOT mutate the original *lockfile* object — serialises a copy and
+    Does NOT mutate the original *lockfile* object  -- serialises a copy and
     prepends the pack metadata.
 
     Args:

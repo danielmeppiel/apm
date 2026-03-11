@@ -35,15 +35,15 @@ class InstallationSummary:
     def log_summary(self):
         """Log a summary of installation results."""
         if self.installed:
-            _rich_success(f"✅ Installed: {', '.join(self.installed)}")
+            _rich_success(f"[+] Installed: {', '.join(self.installed)}")
         
         if self.skipped:
             for item in self.skipped:
-                _rich_warning(f"⚠️  Skipped {item['server']}: {item['reason']}")
+                _rich_warning(f"[!]  Skipped {item['server']}: {item['reason']}")
         
         if self.failed:
             for item in self.failed:
-                _rich_error(f"❌ Failed {item['server']}: {item['reason']}")
+                _rich_error(f"[x] Failed {item['server']}: {item['reason']}")
 
 
 class SafeMCPInstaller:
@@ -109,15 +109,15 @@ class SafeMCPInstaller:
     
     def _log_success(self, server_ref: str):
         """Log successful server installation."""
-        _rich_success(f"  ✓ {server_ref}")
+        _rich_success(f"  + {server_ref}")
     
     def _log_failure(self, server_ref: str):
         """Log failed server installation."""
-        _rich_warning(f"  ✗ {server_ref} installation failed")
+        _rich_warning(f"  x {server_ref} installation failed")
     
     def _log_error(self, server_ref: str, error: Exception):
         """Log error during server installation."""
-        _rich_error(f"  ✗ {server_ref}: {error}")
+        _rich_error(f"  x {server_ref}: {error}")
     
     def check_conflicts_only(self, server_references: List[str]) -> Dict[str, Any]:
         """Check for conflicts without installing.

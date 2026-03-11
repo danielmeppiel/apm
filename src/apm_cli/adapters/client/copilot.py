@@ -166,7 +166,7 @@ class CopilotClientAdapter(MCPClientAdapter):
             "id": server_info.get("id", "")  # Add registry UUID for conflict detection
         }
 
-        # Self-defined stdio deps carry raw command/args — use directly
+        # Self-defined stdio deps carry raw command/args  -- use directly
         raw = server_info.get("_raw_stdio")
         if raw:
             config["command"] = raw["command"]
@@ -331,7 +331,7 @@ class CopilotClientAdapter(MCPClientAdapter):
         # Check for CI/automated environment via APM_E2E_TESTS flag (more reliable than TTY detection)
         if os.getenv('APM_E2E_TESTS') == '1':
             skip_prompting = True
-            print(f"💡 APM_E2E_TESTS detected, will skip environment variable prompts")
+            print(f" APM_E2E_TESTS detected, will skip environment variable prompts")
         
         # Also skip prompting if we're in a non-interactive environment (fallback)
         is_interactive = sys.stdin.isatty() and sys.stdout.isatty()
