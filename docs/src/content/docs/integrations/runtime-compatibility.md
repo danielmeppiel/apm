@@ -1,4 +1,8 @@
-# Runtime Integration Guide
+---
+title: "Runtime Compatibility"
+sidebar:
+  order: 2
+---
 
 APM manages LLM runtime installation and configuration automatically. This guide covers the supported runtimes, how to use them, and how to extend APM with additional runtimes.
 
@@ -50,7 +54,7 @@ This automatically:
 
 ### Usage
 
-APM executes scripts defined in your `apm.yml`. When scripts reference `.prompt.md` files, APM compiles them with parameter substitution. See [Prompts Guide](prompts.md) for details.
+APM executes scripts defined in your `apm.yml`. When scripts reference `.prompt.md` files, APM compiles them with parameter substitution. See [Prompts Guide](../../guides/prompts/) for details.
 
 ```bash
 # Run scripts (from apm.yml) with parameters
@@ -132,7 +136,7 @@ llm keys set anthropic  # Anthropic API key
 
 ### Usage
 
-APM executes scripts defined in your `apm.yml`. See [Prompts Guide](prompts.md) for details on prompt compilation.
+APM executes scripts defined in your `apm.yml`. See [Prompts Guide](../../guides/prompts/) for details on prompt compilation.
 
 ```bash
 # Run scripts that use LLM runtime

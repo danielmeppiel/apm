@@ -1,4 +1,8 @@
-# Examples & Use Cases
+---
+title: "Examples"
+sidebar:
+  order: 4
+---
 
 This guide showcases real-world APM workflows, from simple automation to enterprise-scale AI development patterns. Learn through practical examples that demonstrate the power of structured AI workflows.
 
@@ -33,12 +37,12 @@ input: [auth_method, session_duration]
 # Secure Authentication Implementation
 
 ## Context Loading
-Review [security standards](../context/security-standards.md) and [existing auth patterns](../context/auth-patterns.md).
+Review `security standards` and `existing auth patterns`.
 
 ## Implementation Requirements
 - Use ${input:auth_method} authentication 
 - Session duration: ${input:session_duration}
-- Follow [security checklist](../specs/auth-security.spec.md)
+- Follow `security checklist`
 
 ## Validation Gates
 🚨 **STOP**: Confirm security review before implementation
@@ -105,9 +109,9 @@ Generate a comprehensive technical specification for: ${input:feature}
 8. **Deployment Plan** - Rollout strategy and monitoring
 
 ## Context Sources
-- Review [existing architecture](../context/architecture.context.md)
-- Follow [API design standards](../context/api-standards.context.md)
-- Apply [security guidelines](../context/security.context.md)
+- Review `existing architecture`
+- Follow `API design standards`
+- Apply `security guidelines`
 
 ## Output Format
 Create `specs/${input:feature}.spec.md` following our specification template.
@@ -335,9 +339,9 @@ Let me guide you through setting up your development environment:
 
 ## Step 2: Codebase Tour
 I'll walk you through our architecture:
-- [Company Standards](../context/company-standards.context.md)
-- [API Patterns](../context/api-patterns.context.md) 
-- [Testing Guidelines](../context/testing-standards.context.md)
+- `Company Standards`
+- `API Patterns` 
+- `Testing Guidelines`
 
 ## Step 3: First Tasks
 Based on your experience level, here are your starter tasks:
@@ -500,8 +504,8 @@ apm run quality-gate --param threshold="A" --param coverage_min="85%" --param se
 
 Ready to build your own workflows? Check out:
 
-- **[Context Guide](primitives.md)** - Learn to build custom workflows
-- **[Integrations Guide](integrations.md)** - Connect with your existing tools
-- **[Getting Started](getting-started.md)** - Set up your first project
+- **[Context Guide](../../introduction/key-concepts/)** - Learn to build custom workflows
+- **[Integrations Guide](../../integrations/ide-tool-integration/)** - Connect with your existing tools
+- **[Getting Started](../../getting-started/installation/)** - Set up your first project
 
 Or explore the complete framework at [AI-Native Development Guide](https://danielmeppiel.github.io/awesome-ai-native/)!

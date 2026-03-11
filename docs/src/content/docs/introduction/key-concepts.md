@@ -1,4 +1,8 @@
-# Context Guide
+---
+title: "Key Concepts"
+sidebar:
+  order: 4
+---
 
 Context components are the configurable tools that deploy proven prompt engineering and context engineering techniques. APM implements these as the core building blocks for reliable, reusable AI development workflows.
 
@@ -41,7 +45,7 @@ apm compile  # Generate optimized AGENTS.md files
 apm compile --verbose  # See optimization decisions
 ```
 
-**[Learn more about the Context Optimization Engine →](compilation.md)**
+**[Learn more about the Context Optimization Engine →](../../guides/compilation/)**
 
 ## Packaging & Distribution
 
@@ -154,7 +158,7 @@ input: [auth_method, session_duration]
 ---
 # Secure Authentication Implementation
 Use ${input:auth_method} with ${input:session_duration} sessions
-Review [security standards](../context/security.context.md) before implementation
+Review `security standards` before implementation
 ```
 
 ### Agents (.agent.md, legacy: .chatmode.md)
@@ -193,7 +197,7 @@ When asked about branding, apply these standards...
 - Provides AI agents with quick understanding of package purpose
 - Resources (scripts, references) stay in `apm_modules/`
 
-→ [Complete Skills Guide](skills.md)
+→ [Complete Skills Guide](../../guides/skills/)
 
 ### Context (.context.md)
 **Knowledge Management Layer** - Optimized project information for AI consumption
@@ -405,8 +409,8 @@ applyTo: "backend/**/*.py"
 description: API development guidelines
 ---
 
-Follow [our API standards](../context/api-standards.context.md) and ensure
-[GDPR compliance](../context/gdpr-compliance.context.md) for all endpoints.
+Follow `our API standards` and ensure
+`GDPR compliance` for all endpoints.
 ```
 
 ### Linking from Agents
@@ -417,7 +421,7 @@ Follow [our API standards](../context/api-standards.context.md) and ensure
 description: Backend development expert
 ---
 
-You are a backend expert. Always reference [our architecture patterns](../context/architecture.context.md)
+You are a backend expert. Always reference `our architecture patterns`
 when designing systems.
 ```
 
@@ -438,14 +442,14 @@ Links are rewritten to point to actual source locations:
 
 **From installed prompts/agents** (`.github/` directory):
 ```markdown
-[API Standards](../context/api.context.md)
-→ [API Standards](../../apm_modules/company/standards/.apm/context/api.context.md)
+`API Standards`
+→ `API Standards`
 ```
 
 **From compiled AGENTS.md**:
 ```markdown
-[Architecture](../context/architecture.context.md)
-→ [Architecture](.apm/context/architecture.context.md)
+`Architecture`
+→ `Architecture`
 ```
 
 ## Best Practices

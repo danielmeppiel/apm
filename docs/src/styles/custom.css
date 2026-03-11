@@ -1,0 +1,15 @@
+.hero h1 {
+	white-space: nowrap;
+}
+
+[data-site-title] {
+	font-size: 0.7rem !important;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	font-weight: 500;
+	opacity: 0.85;
+}
+
+.sl-container .card-grid {
+	margin-top: 2.5rem;
+}

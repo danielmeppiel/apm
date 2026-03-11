@@ -1,4 +1,8 @@
-# APM Manifest Format Specification
+---
+title: "Manifest Schema"
+sidebar:
+  order: 2
+---
 
 <dl>
 <dt>Version</dt><dd>0.1 (Working Draft)</dd>

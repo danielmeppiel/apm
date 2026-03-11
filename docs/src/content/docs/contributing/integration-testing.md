@@ -1,4 +1,8 @@
-# Integration Testing
+---
+title: "Integration Testing"
+sidebar:
+  order: 3
+---
 
 This document describes APM's integration testing strategy to ensure runtime setup scripts work correctly and the golden scenario from the README functions as expected.
 

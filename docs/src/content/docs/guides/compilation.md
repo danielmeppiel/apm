@@ -1,4 +1,8 @@
-# APM Compilation: Mathematical Context Optimization
+---
+title: "Compilation"
+sidebar:
+  order: 1
+---
 
 **Solving the AI agent scalability problem through constraint satisfaction optimization**
 
@@ -43,7 +47,7 @@ target: copilot  # or vscode, claude, or all
 
 > **Aliases**: `vscode` and `agents` are accepted as aliases for `copilot`.
 
-> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](integrations.md) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, and `.claude/commands/`.
+> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](../../integrations/ide-tool-integration/) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, and `.claude/commands/`.
 
 ### How It Works
 
@@ -495,5 +499,5 @@ apm compile --verbose
 apm init my-project && cd my-project && apm compile
 ```
 
-**Technical Implementation**: [`src/apm_cli/compilation/`](../src/apm_cli/compilation/)  
-**Mathematical Core**: [`context_optimizer.py`](../src/apm_cli/compilation/context_optimizer.py)
+**Technical Implementation**: ``src/apm_cli/compilation/``  
+**Mathematical Core**: ``context_optimizer.py``

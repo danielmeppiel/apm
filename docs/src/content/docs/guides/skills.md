@@ -1,4 +1,8 @@
-# Skills Guide
+---
+title: "Skills"
+sidebar:
+  order: 2
+---
 
 Skills (`SKILL.md`) are package meta-guides that help AI agents quickly understand what an APM package does and how to leverage its content. They provide a concise summary optimized for AI consumption.
 
@@ -385,7 +389,7 @@ If skill lacks APM metadata:
 
 ## Related Documentation
 
-- [Core Concepts](concepts.md) - Understanding APM architecture
-- [Primitives Guide](primitives.md) - All primitive types
-- [CLI Reference](cli-reference.md) - Full command documentation
-- [Dependencies](dependencies.md) - Package management
+- [Core Concepts](../../introduction/how-it-works/) - Understanding APM architecture
+- [Primitives Guide](../../introduction/key-concepts/) - All primitive types
+- [CLI Reference](../../reference/cli-commands/) - Full command documentation
+- [Dependencies](../dependencies/) - Package management

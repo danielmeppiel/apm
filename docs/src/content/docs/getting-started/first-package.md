@@ -1,0 +1,120 @@
+---
+title: "Your First Package"
+description: "Create, publish, and install your first APM package in minutes."
+sidebar:
+  order: 3
+---
+
+This tutorial walks you through creating an APM package from scratch, publishing it, and installing it in another project.
+
+## Prerequisites
+
+- APM installed ([Installation guide](/apm/getting-started/installation/))
+- A GitHub account and a repository to publish to
+
+## 1. Scaffold the Package
+
+```bash
+apm init my-coding-standards
+cd my-coding-standards
+```
+
+This creates:
+
+```
+my-coding-standards/
+├── apm.yml              # Package manifest
+└── .apm/
+    ├── instructions/    # Coding standards (.instructions.md)
+    ├── prompts/         # Slash commands (.prompt.md)
+    ├── skills/          # Agent skills (SKILL.md)
+    ├── agents/          # Personas (.agent.md)
+    └── hooks/           # Event handlers (.json)
+```
+
+## 2. Add an Instruction
+
+Create a coding standard that applies to all Python files:
+
+```bash
+cat > .apm/instructions/python.instructions.md << 'EOF'
+---
+applyTo: "**/*.py"
+---
+# Python Standards
+- Use type hints for all function parameters and return values
+- Follow PEP 8 style guidelines
+- Write docstrings for all public functions
+- Prefer `pathlib.Path` over `os.path`
+EOF
+```
+
+## 3. Add a Prompt
+
+Create a reusable slash command:
+
+```bash
+cat > .apm/prompts/security-audit.prompt.md << 'EOF'
+---
+description: Run a security audit on the current file
+---
+Review this code for common security issues:
+1. Input validation and sanitization
+2. Authentication and authorization checks
+3. Sensitive data exposure
+4. SQL injection and XSS vulnerabilities
+Provide specific line numbers and suggested fixes.
+EOF
+```
+
+## 4. Update the Manifest
+
+Edit `apm.yml` to describe your package:
+
+```yaml
+name: my-coding-standards
+version: 1.0.0
+description: Team coding standards and security prompts
+```
+
+## 5. Publish
+
+Push to a git repository:
+
+```bash
+git init
+git add .
+git commit -m "Initial APM package"
+git remote add origin https://github.com/you/my-coding-standards.git
+git push -u origin main
+```
+
+## 6. Install in Another Project
+
+In any project:
+
+```bash
+apm install you/my-coding-standards
+```
+
+APM automatically:
+- Downloads the package to `apm_modules/`
+- Copies instructions to `.github/instructions/`
+- Copies prompts to `.github/prompts/`
+- Updates `apm.yml` with the dependency
+
+## 7. Compile
+
+Generate the compiled context files:
+
+```bash
+apm compile
+```
+
+This produces `AGENTS.md` (for Copilot, Cursor, Codex) and `CLAUDE.md` (for Claude) with all your instructions optimized for each agent.
+
+## Next Steps
+
+- Add [skills](/apm/guides/skills/) to your package
+- Set up [dependencies](/apm/guides/dependencies/) on other packages
+- Explore the [CLI reference](/apm/reference/cli-commands/) for more commands
