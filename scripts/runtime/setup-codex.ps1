@@ -66,7 +66,7 @@ function Install-Codex {
     if ($Version -eq "latest") {
         Write-Info "Fetching latest Codex release information..."
         $releaseUrl = "https://api.github.com/repos/$CodexRepo/releases/latest"
-        $params = @{ Uri = $releaseUrl; UseBasicParsing = $true }
+        $params = @{ Uri = $releaseUrl }
         if ($authHeaders.Count -gt 0) { $params["Headers"] = $authHeaders }
 
         try {

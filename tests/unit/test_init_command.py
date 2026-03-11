@@ -50,7 +50,7 @@ class TestInitCommand:
                 assert not Path("README.md").exists()
                 assert not Path(".apm").exists()
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_explicit_current_directory(self):
         """Test initialization with explicit '.' argument (minimal mode)."""
@@ -66,7 +66,7 @@ class TestInitCommand:
                 # Minimal mode: no template files created
                 assert not Path("hello-world.prompt.md").exists()
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_new_directory(self):
         """Test initialization in new directory (minimal mode)."""
@@ -88,7 +88,7 @@ class TestInitCommand:
                 assert not (project_path / "README.md").exists()
                 assert not (project_path / ".apm").exists()
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_existing_project_without_force(self):
         """Test initialization over existing apm.yml without --force (removed flag)."""
@@ -106,7 +106,7 @@ class TestInitCommand:
                 assert "apm.yml already exists" in result.output
                 assert "--yes specified, overwriting apm.yml..." in result.output
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_existing_project_with_force(self):
         """Test initialization over existing apm.yml (--force flag removed, behavior same as --yes)."""
@@ -130,7 +130,7 @@ class TestInitCommand:
                     assert "scripts" in config
                     assert config["scripts"] == {}
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_preserves_existing_config(self):
         """Test that init with --yes overwrites existing apm.yml (no merge in minimal mode)."""
@@ -154,7 +154,7 @@ class TestInitCommand:
                 # Minimal mode: overwrites with auto-detected values
                 assert "apm.yml already exists" in result.output
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_interactive_mode(self):
         """Test interactive mode with user input."""
@@ -182,7 +182,7 @@ class TestInitCommand:
                     assert config["description"] == "Test description"
                     assert config["author"] == "Test Author"
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_interactive_mode_abort(self):
         """Test aborting interactive mode."""
@@ -199,7 +199,7 @@ class TestInitCommand:
                 assert "Aborted" in result.output
                 assert not Path("apm.yml").exists()
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_existing_project_interactive_cancel(self):
         """Test cancelling when existing apm.yml detected in interactive mode."""
@@ -217,7 +217,7 @@ class TestInitCommand:
                 assert "apm.yml already exists" in result.output
                 assert "Initialization cancelled" in result.output
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_validates_project_structure(self):
         """Test that init creates minimal project structure."""
@@ -247,7 +247,7 @@ class TestInitCommand:
                 assert not (project_path / "README.md").exists()
                 assert not (project_path / ".apm").exists()
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_auto_detection(self):
         """Test auto-detection of project metadata."""
@@ -279,7 +279,7 @@ class TestInitCommand:
                     # Should auto-detect description
                     assert "APM project" in config["description"]
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_does_not_create_skill_md(self):
         """Test that init does not create SKILL.md (only apm.yml)."""
@@ -293,4 +293,4 @@ class TestInitCommand:
                 assert Path("apm.yml").exists()
                 assert not Path("SKILL.md").exists()
             finally:
-                os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
