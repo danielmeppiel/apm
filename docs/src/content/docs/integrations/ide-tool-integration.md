@@ -51,36 +51,53 @@ apm run implement-feature --param spec="user-auth" --param approach="sdd"
 
 APM manages AI runtime installation and provides seamless integration with multiple coding agents:
 
-### ⚡ OpenAI Codex CLI
+### OpenAI Codex CLI
 
-Direct integration with OpenAI's development-focused models:
+Terminal-native coding agent with GitHub Models support:
 
 ```bash
-# Install and configure  
-apm runtime setup copilot
-
-# Features
-- GitHub Models API backend
-- Terminal-native workflow
-- Customizable model parameters
-- Advanced prompt engineering support
-- Multi-model switching
+# Install and configure
+apm runtime setup codex
 ```
 
+Codex reads primitives from `.github/` (instructions, agents, prompts, skills) the same way GitHub Copilot does. APM also configures MCP servers for Codex at `~/.codex/config.toml`.
+
+**Features**:
+- GitHub Models API backend
+- Terminal-native workflow
+- Real-time streaming output
+- Native MCP server support
+- Automatic `.github/` primitive discovery
+
 **Best for**: Teams preferring terminal workflows, custom model configurations
+
+### GitHub Copilot CLI
+
+GitHub's Copilot agent for the terminal:
+
+```bash
+# Install and configure
+apm runtime setup copilot
+```
+
+**Features**:
+- Native MCP server integration via `~/.copilot/mcp-config.json`
+- Multi-model switching
+- Advanced prompt engineering support
+- `--allow-all-tools` and `--add-dir` options
+
+**Best for**: Teams using GitHub Copilot across IDE and terminal
 
 **Configuration**:
 ```yaml
 runtime:
-  codex:
+  copilot:
     model: "github/gpt-4o-mini"
     provider: "github-models"
     api_base: "https://models.github.ai"
-    temperature: 0.2
-    max_tokens: 8000
 ```
 
-### 🔧 LLM Library
+### LLM Library
 
 Flexible runtime supporting multiple model providers:
 
@@ -135,11 +152,12 @@ APM works natively with VSCode's GitHub Copilot implementation.
 
 ### Native VSCode Primitives
 
-VSCode already implements core primitives for GitHub Copilot:
+VSCode implements core primitives for GitHub Copilot that APM integrates with:
 
 - **Agents**: AI personas and workflows with `.agent.md` files in `.github/agents/` (legacy: `.chatmode.md` in `.github/chatmodes/`)
 - **Instructions Files**: Modular instructions with `copilot-instructions.md` and `.instructions.md` files
 - **Prompt Files**: Reusable task templates with `.prompt.md` files in `.github/prompts/`
+- **Skills**: Structured capabilities with `SKILL.md` in `.github/skills/`
 
 > **Note**: APM supports both the new `.agent.md` format and legacy `.chatmode.md` format. VSCode provides Quick Fix actions to migrate from `.chatmode.md` to `.agent.md`.
 
@@ -221,6 +239,21 @@ apm install microsoft/apm-sample-package
 - File-pattern based instruction application
 - Agent support for different personas and workflows
 
+### Compiled Context with AGENTS.md
+
+In addition to file-level integration, `apm compile` produces an `AGENTS.md` file that provides comprehensive project context. This is useful for older Copilot versions or IDEs that do not support granular `.github/` primitive discovery.
+
+```bash
+# Compile all local and dependency instructions into AGENTS.md
+apm compile --target copilot
+
+# Default distributed compilation creates focused AGENTS.md files per directory
+# Use --single-agents for a single monolithic file (legacy mode)
+apm compile --single-agents
+```
+
+AGENTS.md aggregates instructions, context, and optionally the Spec-kit constitution into a single document that GitHub Copilot reads as project-level guidance.
+
 ## Claude Integration
 
 APM provides first-class support for Claude Code and Claude Desktop through native format generation.
@@ -232,7 +265,7 @@ APM provides first-class support for Claude Code and Claude Desktop through nati
 When you run `apm compile`, APM generates Claude-native files:
 
 | File | Purpose |
-|------|---------||
+|------|---------|
 | `CLAUDE.md` | Project instructions for Claude (instructions only, using `@import` syntax) |
 
 When you run `apm install`, APM integrates package primitives into Claude's native structure:
@@ -296,8 +329,10 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 
 **How skill integration works:**
 1. `apm install` checks if the package contains a `SKILL.md` file
-2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/`
-3. `apm uninstall` removes the skill folder
+2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/` (primary location)
+3. If a `.claude/` directory exists: also copies to `.claude/skills/{folder-name}/` for Claude compatibility
+4. Sub-skills inside `.apm/skills/` are promoted to top-level `.github/skills/` entries
+5. `apm uninstall` removes the skill folder from both locations
 
 ### Automatic Hook Integration
 
@@ -380,7 +415,9 @@ apm compile --target claude
 
 ### Claude Desktop Integration
 
-Skills installed to `.claude/skills/` are automatically available for Claude Code. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
+Skills installed to `.github/skills/` are the primary location; when a `.claude/` directory exists, APM also copies skills to `.claude/skills/` for compatibility. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
+
+Claude Desktop can use `CLAUDE.md` as its project instructions file. Run `apm compile --target claude` to generate `CLAUDE.md` with `@import` syntax for organized instruction loading.
 
 ### Cleanup and Sync
 
@@ -502,21 +539,96 @@ apm install microsoft/apm-sample-package
 
 #### Cursor
 
-Cursor does not follow the VSCode/GitHub Copilot `.github/` structure. Use APM's context compilation instead:
+Cursor does not follow the VSCode/GitHub Copilot `.github/` primitive structure. APM supports Cursor through compiled context output:
 
 ```bash
-# Compile APM context into AGENTS.md
-apm compile
+# Compile APM context into AGENTS.md (Cursor reads this format)
+apm compile --target copilot
+```
 
-# Then use AGENTS.md with Cursor:
-# 1. Open Cursor settings
-# 2. Reference or copy AGENTS.md content into your cursor rules
-# 3. AGENTS.md works with any agent supporting the AGENTS.md format
+Cursor reads `AGENTS.md` as project-level context. The `copilot` compilation target (also aliased as `agents`) produces the format Cursor expects.
+
+**Setup options**:
+
+1. **AGENTS.md (recommended)**: Run `apm compile` to generate `AGENTS.md` at the project root. Cursor discovers it automatically as project instructions.
+
+2. **Cursor Rules**: Reference APM-managed instructions from `.cursor-rules` if your project uses Cursor's native rules format. Point your rules at specific instruction files in `.apm/instructions/` or at the compiled `AGENTS.md`.
+
+3. **Distributed compilation**: APM's default distributed strategy places focused `AGENTS.md` files in subdirectories, giving Cursor scoped context per area of the codebase.
+
+```bash
+# Preview what will be compiled
+apm compile --dry-run
+
+# Compile with source attribution for traceability
+apm compile --verbose
+
+# Watch mode: auto-recompile when primitives change
+apm compile --watch
 ```
 
 ## MCP (Model Context Protocol) Integration
 
 APM provides first-class support for MCP servers, including registry-based servers that publish stdio packages (npm, pypi, docker) or HTTP/SSE remote endpoints.
+
+### Auto-Discovery from Packages
+
+APM auto-discovers MCP server declarations from packages during `apm install`:
+
+- **apm.yml dependencies**: MCP servers listed under `dependencies.mcp` in a package's `apm.yml` are collected automatically.
+- **plugin.json**: Packages with a `plugin.json` (at the root, `.github/plugin/`, or `.claude-plugin/`) are recognized as marketplace plugins. APM synthesizes an `apm.yml` from `plugin.json` metadata when no `apm.yml` exists.
+- **Transitive collection**: APM walks the dependency tree and collects MCP servers from all transitive packages.
+
+### Trust Model
+
+APM enforces a trust boundary for MCP servers to prevent packages from silently injecting arbitrary server processes:
+
+| Dependency Type | Registry Servers | Self-Defined Servers |
+|----------------|-----------------|---------------------|
+| Direct (depth 1) | Auto-trusted | Auto-trusted |
+| Transitive (depth > 1) | Auto-trusted | Skipped with warning |
+
+**Self-defined servers** are those declared with `registry: false` in `apm.yml` -- they run arbitrary commands rather than resolving through the official MCP registry.
+
+To trust self-defined servers from transitive dependencies, either:
+1. Re-declare the server in your root `apm.yml` (recommended), or
+2. Use the `--trust-transitive-mcp` flag:
+
+```bash
+# Trust self-defined MCP servers from transitive packages
+apm install --trust-transitive-mcp
+```
+
+### Client Configuration
+
+APM configures MCP servers in the native config format for each supported client:
+
+| Client | Config Location | Format |
+|--------|----------------|--------|
+| VS Code | `.vscode/mcp.json` | JSON `servers` object |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json` | JSON `mcpServers` object |
+| Codex CLI | `~/.codex/config.toml` | TOML `mcp_servers` section |
+
+**Runtime targeting**: APM detects which runtimes are installed and configures MCP servers for all of them. Use `--runtime <name>` or `--exclude <name>` to control which clients receive configuration.
+
+```bash
+# Install MCP dependencies for all detected runtimes
+apm install
+
+# Target only VS Code
+apm install --runtime vscode
+
+# Skip Codex configuration
+apm install --exclude codex
+
+# Install only MCP dependencies (skip APM packages)
+apm install --only mcp
+
+# Preview MCP configuration without writing
+apm install --dry-run
+```
+
+APM also handles stale server cleanup: when a package is uninstalled or an MCP dependency is removed, APM removes the corresponding entries from all client configs.
 
 ### Package Type Inference
 
@@ -530,14 +642,14 @@ The MCP registry API may return empty `registry_name` fields for packages. APM i
 
 When installing registry MCP servers, APM selects the best available package for each runtime:
 
-| Package Registry | VS Code | Copilot CLI |
-|-----------------|---------|-------------|
-| npm | Yes (npx) | Yes (npx) |
-| pypi | Yes (uvx/python3) | Yes (uvx) |
-| docker | Yes | Yes |
-| homebrew | — | Yes |
-| Other (with runtime_hint) | Yes (generic) | Yes (generic) |
-| HTTP/SSE remotes | Yes | Yes |
+| Package Registry | VS Code | Copilot CLI | Codex CLI |
+|-----------------|---------|-------------|-----------|
+| npm | Yes (npx) | Yes (npx) | Yes (npx) |
+| pypi | Yes (uvx/python3) | Yes (uvx) | Yes (uvx) |
+| docker | Yes | Yes | Yes |
+| homebrew | -- | Yes | Yes |
+| Other (with runtime_hint) | Yes (generic) | Yes (generic) | Yes (generic) |
+| HTTP/SSE remotes | Yes | Yes | Yes |
 
 ### MCP Server Management
 
@@ -545,21 +657,38 @@ When installing registry MCP servers, APM selects the best available package for
 # apm.yml - MCP dependencies
 dependencies:
   mcp:
-    # Registry references
+    # Simple registry references (resolved via MCP registry)
     - ghcr.io/github/github-mcp-server
     - ghcr.io/modelcontextprotocol/filesystem-server
-    - ghcr.io/modelcontextprotocol/postgres-server
+
+    # Registry server with overlays
+    - name: ghcr.io/modelcontextprotocol/postgres-server
+      transport: stdio
+      package: npm
+      args: ["--connection-string", "postgresql://localhost/mydb"]
+
+    # Self-defined server (not in registry)
+    - name: my-internal-server
+      registry: false
+      transport: stdio
+      command: python
+      args: ["-m", "my_server"]
+      env:
+        PORT: "3000"
 ```
 
 ```bash
 # Install MCP dependencies
 apm install
 
-# List available MCP tools
-apm tools list
+# Search the MCP registry
+apm mcp search github
 
-# Test MCP server connectivity
-apm tools test github-mcp-server
+# Show server details
+apm mcp info ghcr.io/github/github-mcp-server
+
+# List available MCP servers
+apm mcp list
 ```
 
 ### MCP Tool Usage in Workflows
