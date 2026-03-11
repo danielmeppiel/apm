@@ -1,7 +1,7 @@
 ---
 title: "Authentication"
 sidebar:
-  order: 3
+  order: 4
 ---
 
 APM works without any tokens for public packages. Authentication is only needed for private repositories and enterprise hosts.

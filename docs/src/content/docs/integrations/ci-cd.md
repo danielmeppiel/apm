@@ -83,6 +83,67 @@ apm install
 apm compile --verbose
 ```
 
+## Governance with `apm audit`
+
+Run `apm audit --ci` in pull requests to verify the lock file matches the installed state. This catches configuration drift before it reaches your default branch.
+
+```yaml
+# .github/workflows/apm-audit.yml
+name: APM Audit
+on: [pull_request]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/apm-action@v1
+        with:
+          commands: |
+            apm install
+            apm audit --ci
+        env:
+          GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
+```
+
+Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce config drift. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
+
+## Pack & Distribute
+
+Use `apm pack` in CI to build a distributable bundle once, then consume it in downstream jobs without needing APM installed.
+
+### Pack in CI (build once)
+
+```yaml
+- uses: microsoft/apm-action@v1
+  with:
+    commands: |
+      apm install
+      apm pack --archive --target all
+- uses: actions/upload-artifact@v4
+  with:
+    name: agent-config
+    path: build/*.tar.gz
+```
+
+### Consume in another job (no APM needed)
+
+```yaml
+- uses: actions/download-artifact@v4
+  with:
+    name: agent-config
+- run: tar xzf build/*.tar.gz -C ./
+```
+
+Or use the apm-action restore mode to unpack a bundle directly:
+
+```yaml
+- uses: microsoft/apm-action@v1
+  with:
+    bundle: ./agent-config.tar.gz
+```
+
+See the [Pack & Distribute guide](../../guides/pack-distribute/) for the full workflow.
+
 ## Best Practices
 
 - **Pin APM version** in CI to avoid unexpected changes: `pip install apm-cli==0.7.7`

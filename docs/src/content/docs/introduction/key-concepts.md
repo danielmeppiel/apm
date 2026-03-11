@@ -1,7 +1,7 @@
 ---
 title: "Key Concepts"
 sidebar:
-  order: 3
+  order: 4
 ---
 
 Context components are the configurable tools that deploy proven prompt engineering and context engineering techniques. APM implements these as the core building blocks for reliable, reusable AI development workflows.

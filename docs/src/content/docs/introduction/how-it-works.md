@@ -1,7 +1,7 @@
 ---
 title: "How It Works"
 sidebar:
-  order: 2
+  order: 3
 ---
 
 APM implements the complete [AI-Native Development framework](https://danielmeppiel.github.io/awesome-ai-native/docs/concepts/) - a systematic approach to making AI coding assistants reliable, scalable, and team-friendly.

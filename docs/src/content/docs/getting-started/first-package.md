@@ -2,7 +2,7 @@
 title: "Your First Package"
 description: "Create, publish, and install your first APM package in minutes."
 sidebar:
-  order: 2
+  order: 3
 ---
 
 This tutorial walks you through creating an APM package from scratch, publishing it, and installing it in another project.

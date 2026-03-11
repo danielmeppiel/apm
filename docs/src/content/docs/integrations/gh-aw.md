@@ -56,8 +56,95 @@ gh extension install github/gh-aw
 
 2. Configure your project with APM packages, then add gh-aw workflows that reference the compiled context.
 
+## Integration Tiers
+
+APM integrates with GitHub Agentic Workflows at three levels of depth.
+
+### Tier 1: Pre-Step with apm-action (Works Today)
+
+The minimum viable integration. Zero changes to gh-aw. Uses the `steps:` frontmatter field:
+
+```yaml
+---
+on:
+  issues:
+    types: [opened]
+engine: copilot
+
+steps:
+  - name: Install agent primitives
+    uses: microsoft/apm-action@v1
+    with:
+      script: install
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+---
+
+# Issue Triage
+
+Triage this issue using the installed compliance rules and security skills.
+```
+
+The repo has an `apm.yml` with dependencies and `apm.lock` for reproducibility. The APM action runs `apm install && apm compile` as a pre-agent step. Primitives deploy to `.github/`. The coding agent discovers them naturally.
+
+### Tier 2: Inline Dependencies (APM Enhancement)
+
+Declare dependencies directly in workflow frontmatter -- no separate `apm.yml` needed:
+
+```yaml
+---
+on:
+  issues:
+    types: [opened]
+engine: copilot
+
+steps:
+  - uses: microsoft/apm-action@v1
+    with:
+      dependencies: |
+        microsoft/compliance-rules@v2.1.0
+        myorg/security-skill@v1.0.0
+      isolated: true
+---
+
+# Issue Triage
+Analyze the opened issue for security implications.
+```
+
+`isolated: true` means: install packages to a clean workspace, ignore the repo's existing `.github/instructions/`. The agent sees only APM-managed context.
+
+### Tier 3: Native Frontmatter Integration (Future Vision)
+
+The endgame: gh-aw recognizes APM as a dependency manager natively via an `apm:` frontmatter field. No `steps:` boilerplate. Subject to gh-aw team collaboration.
+
+## Using APM Bundles with gh-aw
+
+For sandboxed environments where network access is restricted, use pre-built APM bundles:
+
+```yaml
+---
+on: pull_request
+engine: copilot
+imports:
+  - .github/agents/code-reviewer.md     # produced by APM bundle
+  - .github/agents/security-auditor.md   # produced by APM bundle
+---
+
+# Code Review
+Review the PR using team standards.
+```
+
+Bundles complement gh-aw's native `imports:` -- resolving full dependency trees rather than individual files, with zero network required at workflow runtime.
+
+See the [CI/CD Integration guide](/apm/integrations/ci-cd/) for details on building and distributing bundles.
+
+## Solving Instruction Pollution
+
+When a gh-aw workflow runs in a repo with developer-focused instructions (like "use 4-space tabs"), those instructions become noise for an automated triage bot. APM's `--isolated` mode (Tier 2) addresses this by creating a clean execution context with only the workflow's declared dependencies.
+
 ## Learn More
 
 - [gh-aw Documentation](https://github.github.com/gh-aw/)
 - [APM Compilation Guide](/apm/guides/compilation/)
 - [APM CLI Reference](/apm/reference/cli-commands/)
+- [CI/CD Integration](/apm/integrations/ci-cd/)

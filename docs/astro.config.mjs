@@ -40,8 +40,9 @@ export default defineConfig({
 			],
 			sidebar: [
 				{
-					label: 'Introduction',
+					label: 'Understanding APM',
 					items: [
+						{ label: 'What is APM?', slug: 'introduction/what-is-apm' },
 						{ label: 'Why APM?', slug: 'introduction/why-apm' },
 						{ label: 'How It Works', slug: 'introduction/how-it-works' },
 						{ label: 'Key Concepts', slug: 'introduction/key-concepts' },
@@ -51,8 +52,10 @@ export default defineConfig({
 					label: 'Getting Started',
 					items: [
 						{ label: 'Installation', slug: 'getting-started/installation' },
+						{ label: 'Quick Start', slug: 'getting-started/quick-start' },
 						{ label: 'Your First Package', slug: 'getting-started/first-package' },
 						{ label: 'Authentication', slug: 'getting-started/authentication' },
+						{ label: 'Migrating Projects', slug: 'getting-started/migration' },
 					],
 				},
 				{
@@ -63,15 +66,28 @@ export default defineConfig({
 						{ label: 'Prompts', slug: 'guides/prompts' },
 						{ label: 'Plugins', slug: 'guides/plugins' },
 						{ label: 'Dependencies & Lockfile', slug: 'guides/dependencies' },
+						{ label: 'Pack & Distribute', slug: 'guides/pack-distribute' },
+						{ label: 'Org-Wide Packages', slug: 'guides/org-packages' },
+					],
+				},
+				{
+					label: 'Enterprise',
+					items: [
+						{ label: 'APM for Teams', slug: 'enterprise/teams' },
+						{ label: 'Governance & Compliance', slug: 'enterprise/governance' },
+						{ label: 'Security Model', slug: 'enterprise/security' },
+						{ label: 'Adoption Playbook', slug: 'enterprise/adoption-playbook' },
+						{ label: 'Making the Case', slug: 'enterprise/making-the-case' },
 					],
 				},
 				{
 					label: 'Integrations',
 					items: [
+						{ label: 'CI/CD Pipelines', slug: 'integrations/ci-cd' },
 						{ label: 'GitHub Agentic Workflows', slug: 'integrations/gh-aw' },
-						{ label: 'APM in CI/CD', slug: 'integrations/ci-cd' },
-						{ label: 'AI Runtime Compatibility', slug: 'integrations/runtime-compatibility' },
 						{ label: 'IDE & Tool Integration', slug: 'integrations/ide-tool-integration' },
+						{ label: 'AI Runtime Compatibility', slug: 'integrations/runtime-compatibility' },
+						{ label: 'GitHub Rulesets', slug: 'integrations/github-rulesets' },
 					],
 				},
 				{

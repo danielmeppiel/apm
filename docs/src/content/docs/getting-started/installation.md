@@ -6,6 +6,28 @@ sidebar:
 
 Get APM running in seconds. No tokens, no configuration — just install and go.
 
+## Try APM in 60 Seconds
+
+See APM in action before reading anything else:
+
+```bash
+# Install APM
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+
+# Install a sample package into any project
+cd your-project
+apm install microsoft/apm-sample-package
+
+# See what was installed
+apm deps list
+```
+
+That's it — your project now has agent instructions, prompts, and skills configured. Open it in VS Code or Claude to see the difference.
+
+Ready for a deeper walkthrough? See the [Quick Start guide](../quick-start/).
+
+---
+
 ## Quick Install (Recommended)
 
 The fastest way to get APM running:

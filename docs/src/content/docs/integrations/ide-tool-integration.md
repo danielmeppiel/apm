@@ -10,7 +10,7 @@ APM is designed to work seamlessly with your existing development tools and work
 
 APM manages the **context foundation** and provides **advanced context management** for software projects. It works exceptionally well alongside [Spec-kit](https://github.com/github/spec-kit) for specification-driven development, as well as with other AI Native Development methodologies like vibe coding.
 
-### 🔧 APM: Context Foundation
+### APM: Context Foundation
 
 APM provides the infrastructure layer for AI development:
 
@@ -19,7 +19,7 @@ APM provides the infrastructure layer for AI development:
 - **Performance Optimization**: Optimized context delivery for large, complex projects
 - **Memory Management**: Strategic LLM token usage across conversations
 
-### 📋 Spec-kit: Specification Layer
+### Spec-kit: Specification Layer
 
 When using Spec-kit for Specification-Driven Development (SDD), APM automatically integrates the Spec-kit constitution:
 
@@ -28,7 +28,7 @@ When using Spec-kit for Specification-Driven Development (SDD), APM automaticall
 - **Contextual Augmentation**: APM embeds your team's context modules into `AGENTS.md` after Spec-kit's constitution
 - **SDD Enhancement**: Augments the Spec Driven Development process with additional context curated by your teams
 
-### 🚀 Integrated Workflow
+### Integrated Workflow
 
 ```bash
 # 1. Set up APM contextual foundation
@@ -144,26 +144,26 @@ apm runtime test codex
 apm runtime test llm
 ```
 
-## VSCode Integration
+## VS Code Integration
 
-APM works natively with VSCode's GitHub Copilot implementation.
+APM works natively with VS Code's GitHub Copilot implementation.
 
-> **Auto-Detection**: VSCode integration is automatically enabled when a `.github/` folder exists in your project. If neither `.github/` nor `.claude/` exists, `apm install` skips folder integration (packages are still installed to `apm_modules/`).
+> **Auto-Detection**: VS Code integration is automatically enabled when a `.github/` folder exists in your project. If neither `.github/` nor `.claude/` exists, `apm install` skips folder integration (packages are still installed to `apm_modules/`).
 
-### Native VSCode Primitives
+### Native VS Code Primitives
 
-VSCode implements core primitives for GitHub Copilot that APM integrates with:
+VS Code implements core primitives for GitHub Copilot that APM integrates with:
 
 - **Agents**: AI personas and workflows with `.agent.md` files in `.github/agents/` (legacy: `.chatmode.md` in `.github/chatmodes/`)
 - **Instructions Files**: Modular instructions with `copilot-instructions.md` and `.instructions.md` files
 - **Prompt Files**: Reusable task templates with `.prompt.md` files in `.github/prompts/`
 - **Skills**: Structured capabilities with `SKILL.md` in `.github/skills/`
 
-> **Note**: APM supports both the new `.agent.md` format and legacy `.chatmode.md` format. VSCode provides Quick Fix actions to migrate from `.chatmode.md` to `.agent.md`.
+> **Note**: APM supports both the new `.agent.md` format and legacy `.chatmode.md` format. VS Code provides Quick Fix actions to migrate from `.chatmode.md` to `.agent.md`.
 
 ### Automatic Prompt and Agent Integration
 
-APM automatically integrates prompts and agents from installed packages into VSCode's native structure:
+APM automatically integrates prompts and agents from installed packages into VS Code's native structure:
 
 ```bash
 # Install APM packages - integration happens automatically when .github/ exists
@@ -186,7 +186,7 @@ apm install microsoft/apm-sample-package
 - **Zero-Config**: Always enabled, works automatically with no configuration needed
 - **Auto-Cleanup**: Removes integrated files when you uninstall or prune packages (tracked via `deployed_files` in `apm.lock`)
 - **Collision Detection**: If a local file has the same name as a package file, APM skips it with a warning (use `--force` to overwrite)
-- **Always Overwrite**: Package-owned files are always copied fresh — no version comparison
+- **Always Overwrite**: Package-owned files are always copied fresh -- no version comparison
 - **Link Resolution**: Context links are resolved during integration
 
 **Integration Flow**:
@@ -199,13 +199,13 @@ apm install microsoft/apm-sample-package
 7. Copies hooks to `.github/hooks/` with their original filename and copies referenced scripts
 8. If a local file already exists with the same name, skips with a warning (use `--force` to overwrite)
 9. Records all deployed files in `apm.lock` under `deployed_files` per package
-10. VSCode automatically loads all prompts, agents, instructions, and hooks for your coding agents
+10. VS Code automatically loads all prompts, agents, instructions, and hooks for your coding agents
 11. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
 
 **Intent-First Discovery**:
-Files keep their original names for natural autocomplete in VSCode:
-- Type `/design` → VSCode shows `design-review.prompt.md`
-- Type `/accessibility` → VSCode shows `accessibility-audit.prompt.md`
+Files keep their original names for natural autocomplete in VS Code:
+- Type `/design` -- VS Code shows `design-review.prompt.md`
+- Type `/accessibility` -- VS Code shows `accessibility-audit.prompt.md`
 - Search by what you want to do, not where it comes from
 
 **Example**: 
@@ -213,27 +213,27 @@ Files keep their original names for natural autocomplete in VSCode:
 # Install package with auto-integration
 apm install microsoft/apm-sample-package
 
-# Result in VSCode:
+# Result in VS Code:
 # Prompts:
-# .github/prompts/accessibility-audit.prompt.md  ✓ Available in chat
-# .github/prompts/design-review.prompt.md        ✓ Available in chat
-# .github/prompts/style-guide-check.prompt.md    ✓ Available in chat
+# .github/prompts/accessibility-audit.prompt.md  - Available in chat
+# .github/prompts/design-review.prompt.md        - Available in chat
+# .github/prompts/style-guide-check.prompt.md    - Available in chat
 
 # Agents:
-# .github/agents/design-reviewer.agent.md        ✓ Available as chat mode
-# .github/agents/accessibility-expert.agent.md   ✓ Available as chat mode
+# .github/agents/design-reviewer.agent.md        - Available as chat mode
+# .github/agents/accessibility-expert.agent.md   - Available as chat mode
 
 # Instructions:
-# .github/instructions/python.instructions.md         ✓ Applied to matching files
+# .github/instructions/python.instructions.md    - Applied to matching files
 
 # Use with natural autocomplete:
 # Type: /design
-# VSCode suggests: design-review.prompt.md ✨
+# VS Code suggests: design-review.prompt.md
 ```
 
-**VSCode Native Features**:
-- All integrated prompts appear in VSCode's prompt picker
-- All integrated agents appear in VSCode's chat mode selector
+**VS Code Native Features**:
+- All integrated prompts appear in VS Code's prompt picker
+- All integrated agents appear in VS Code's chat mode selector
 - Native chat integration with primitives
 - Seamless `/prompt` command support
 - File-pattern based instruction application
@@ -286,7 +286,7 @@ APM automatically deploys agent files from installed packages into `.claude/agen
 apm install danielmeppiel/design-guidelines
 
 # Result:
-# .claude/agents/security.md    → Sub-agent available for Claude Code
+# .claude/agents/security.md -- Sub-agent available for Claude Code
 ```
 
 **How it works:**
@@ -303,8 +303,8 @@ APM automatically converts `.prompt.md` files from installed packages into Claud
 apm install microsoft/apm-sample-package
 
 # Result:
-# .claude/commands/accessibility-audit.md   → /accessibility-audit
-# .claude/commands/design-review.md         → /design-review
+# .claude/commands/accessibility-audit.md -- /accessibility-audit
+# .claude/commands/design-review.md       -- /design-review
 ```
 
 **How it works:**
@@ -321,8 +321,8 @@ APM automatically integrates skills from installed packages into `.github/skills
 apm install ComposioHQ/awesome-claude-skills/mcp-builder
 
 # Result:
-# .github/skills/mcp-builder/SKILL.md    → Skill available for agents
-# .github/skills/mcp-builder/...         → Full skill folder copied
+# .github/skills/mcp-builder/SKILL.md -- Skill available for agents
+# .github/skills/mcp-builder/...      -- Full skill folder copied
 ```
 
 **Skill Folder Naming**: Uses the source folder name directly (e.g., `mcp-builder`, `design-guidelines`), not flattened paths.
@@ -336,7 +336,7 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 
 ### Automatic Hook Integration
 
-APM automatically integrates hooks from installed packages. Hooks define lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`) supported by both VSCode Copilot and Claude Code.
+APM automatically integrates hooks from installed packages. Hooks define lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`) supported by both VS Code Copilot and Claude Code.
 
 > **Note:** Hook packages must be authored in the target platform's native format. APM handles path rewriting and file placement but does not translate between hook schema formats (e.g., Claude's `command` key vs GitHub Copilot's `bash`/`powershell` keys, or event name casing differences).
 
@@ -344,9 +344,9 @@ APM automatically integrates hooks from installed packages. Hooks define lifecyc
 # Install a package with hooks
 apm install anthropics/claude-plugins-official/plugins/hookify
 
-# VSCode result (.github/hooks/):
-# .github/hooks/hookify-hooks.json       → Hook definitions
-# .github/hooks/scripts/hookify/hooks/*.py   → Referenced scripts
+# VS Code result (.github/hooks/):
+# .github/hooks/hookify-hooks.json            -- Hook definitions
+# .github/hooks/scripts/hookify/hooks/*.py    -- Referenced scripts
 
 # Claude result (.claude/settings.json):
 # Hooks merged into .claude/settings.json hooks key
@@ -355,7 +355,7 @@ apm install anthropics/claude-plugins-official/plugins/hookify
 
 **How hook integration works:**
 1. `apm install` discovers hook JSON files in `.apm/hooks/` or `hooks/` directories
-2. For VSCode: copies hook JSON to `.github/hooks/` and rewrites script paths
+2. For VS Code: copies hook JSON to `.github/hooks/` and rewrites script paths
 3. For Claude: merges hook definitions into `.claude/settings.json` under the `hooks` key
 4. Copies referenced scripts to the target location
 5. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
@@ -373,7 +373,7 @@ apm compile
 apm compile --target claude
 # Creates: CLAUDE.md (instructions only)
 
-# Generate only VSCode/Copilot formats  
+# Generate only VS Code/Copilot formats  
 apm compile --target copilot
 # Creates: AGENTS.md (instructions only)
 ```
@@ -405,8 +405,8 @@ apm install github/awesome-copilot/skills/review-and-refactor
 apm compile --target claude
 
 # 3. In Claude Code, use:
-#    /code-review     → Runs the code review workflow
-#    /gdpr-assessment → Runs GDPR compliance check
+#    /code-review     -- Runs the code review workflow
+#    /gdpr-assessment -- Runs GDPR compliance check
 
 # 4. CLAUDE.md provides project instructions automatically
 # 5. Agents in .claude/agents/ are available as sub-agents
@@ -428,118 +428,26 @@ APM maintains synchronization between packages and Claude primitives:
 - **Update**: Refreshes agents, commands, and skills when package version changes
 - **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked via `apm.lock` and removed correctly on uninstall
 
-## Development Tool Integrations
+## Other IDE Support
 
-### Git Integration
+### IDEs with GitHub Copilot
 
-APM integrates with Git workflows for context-aware development:
-
-```yaml
-# .apm/prompts/git-workflow.prompt.md
----
-description: Git-aware development workflow
-mode: developer
-tools: ["git"]
----
-
-# Git-Aware Development
-
-## Current Branch Analysis
-Analyze current branch: `git branch --show-current`
-Recent commits: `git log --oneline -10`
-
-## Context-Aware Changes  
-Based on Git history, understand:
-- Feature branch purpose
-- Related file changes
-- Commit message patterns
-- Code review feedback
-```
-
-### CI/CD Integration
-
-Integrate APM workflows into your CI/CD pipelines:
-
-```yaml
-# .github/workflows/apm-quality-gate.yml
-name: APM Quality Gate
-on: [pull_request]
-
-jobs:
-  apm-review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup APM
-        run: curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
-      - name: Code Review
-        run: |
-          apm compile
-          apm run code-review --param files="${{ github.event.pull_request.changed_files }}"
-      - name: Security Scan  
-        run: apm run security-review --param severity="high"
-      - name: Performance Check
-        run: apm run performance-review --param threshold="200ms"
-```
-
-### Docker Integration
-
-Containerize APM workflows for consistent environments:
-
-```dockerfile
-# Dockerfile.apm
-FROM python:3.12-slim
-
-# Install APM
-RUN curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
-
-# Install runtimes
-RUN apm runtime setup copilot
-
-# Copy project
-COPY . /workspace
-WORKDIR /workspace
-
-# Compile primitives
-RUN apm compile
-
-ENTRYPOINT ["apm"]
-```
+Any IDE with GitHub Copilot support works with APM's file-level integration. APM deploys primitives to `.github/`, which Copilot discovers automatically:
 
 ```bash
-# Use in CI/CD
-docker run --rm -v $(pwd):/workspace apm run code-review
-```
-
-### IDE Integration
-
-Beyond VSCode, APM works with other popular IDEs:
-
-#### Other IDEs with GitHub Copilot
-
-Any IDE with GitHub Copilot support (JetBrains, Visual Studio, etc.) works with APM's prompt integration:
-
-```bash
-# Install APM packages
 apm install microsoft/apm-sample-package
 
-# GitHub Copilot automatically picks up:
-# .github/prompts/*.prompt.md (integrated prompts)
-# .github/agents/*.agent.md (integrated agents)
-# .github/agents/ or .github/chatmodes/ (AI personas - both formats supported)
-# .github/instructions/*.instructions.md (file-pattern rules from packages)
-# .github/instructions/ (file-pattern rules)
+# GitHub Copilot picks up:
+# .github/prompts/*.prompt.md
+# .github/agents/*.agent.md
+# .github/instructions/*.instructions.md
 ```
 
-**Supported IDEs**:
-- JetBrains (IntelliJ, PyCharm, WebStorm, etc.)
-- Visual Studio
-- VS Code
-- Any IDE with GitHub Copilot integration
+**Supported IDEs**: JetBrains (IntelliJ, PyCharm, WebStorm, etc.), Visual Studio, VS Code, and any IDE with GitHub Copilot integration.
 
-#### Cursor
+### Cursor
 
-Cursor does not follow the VSCode/GitHub Copilot `.github/` primitive structure. APM supports Cursor through compiled context output:
+Cursor does not follow the `.github/` primitive structure. APM supports Cursor through compiled context output:
 
 ```bash
 # Compile APM context into AGENTS.md (Cursor reads this format)
@@ -635,8 +543,8 @@ APM also handles stale server cleanup: when a package is uninstalled or an MCP d
 The MCP registry API may return empty `registry_name` fields for packages. APM infers the package type from:
 
 1. Explicit `registry_name` (when provided)
-2. `runtime_hint` (e.g. `npx` → npm, `uvx` → pypi)
-3. Package name patterns (e.g. `@scope/name` → npm, `ghcr.io/…` → docker, `PascalCase.Name` → nuget)
+2. `runtime_hint` (e.g. `npx` to npm, `uvx` to pypi)
+3. Package name patterns (e.g. `@scope/name` to npm, `ghcr.io/...` to docker, `PascalCase.Name` to nuget)
 
 ### Supported Package Types
 
@@ -651,7 +559,7 @@ When installing registry MCP servers, APM selects the best available package for
 | Other (with runtime_hint) | Yes (generic) | Yes (generic) | Yes (generic) |
 | HTTP/SSE remotes | Yes | Yes | Yes |
 
-### MCP Server Management
+### MCP Server Declaration
 
 ```yaml
 # apm.yml - MCP dependencies
@@ -691,241 +599,19 @@ apm mcp info ghcr.io/github/github-mcp-server
 apm mcp list
 ```
 
-### MCP Tool Usage in Workflows
+## Roadmap
 
-```yaml
-# .apm/prompts/github-integration.prompt.md
----
-description: GitHub-aware development workflow
-mode: developer
-mcp:
-  - ghcr.io/github/github-mcp-server
----
+The following IDE integrations are planned for future releases:
 
-# GitHub Integration Workflow
+- **JetBrains IDE support**: Native integration with IntelliJ, PyCharm, WebStorm, and other JetBrains IDEs
+- **Windsurf support**: Integration with the Windsurf AI coding environment
+- **Cursor deeper integration**: Enhanced support beyond AGENTS.md, including native Cursor rules generation
 
-## Available Tools
-- `github_create_issue` - Create GitHub issues
-- `github_list_prs` - List pull requests  
-- `github_get_file` - Read repository files
-- `github_search_code` - Search code across repositories
+## Related Resources
 
-## Example Usage
-Create an issue for the bug we just identified:
-```
-github_create_issue(
-  title="Performance regression in /api/users endpoint", 
-  body="Response time increased from 100ms to 500ms",
-  labels=["bug", "performance"]
-)
-```
-```
-
-## API and Webhook Integration
-
-### REST API Integration
-
-APM can generate workflows that integrate with existing APIs:
-
-```yaml  
-# .apm/context/api-endpoints.context.md
-
-# Company API Endpoints
-
-## Internal APIs
-- **User Service**: https://api.internal.com/users/v1
-- **Payment Service**: https://api.internal.com/payments/v1  
-- **Analytics Service**: https://api.internal.com/analytics/v1
-
-## External APIs
-- **Stripe**: https://api.stripe.com/v1
-- **SendGrid**: https://api.sendgrid.com/v3
-- **Twilio**: https://api.twilio.com/2010-04-01
-```
-
-### Webhook-Driven Workflows
-
-```yaml
-# .apm/prompts/webhook-handler.prompt.md
----
-description: Process incoming webhooks and trigger appropriate actions
-mode: integration-developer
-input: [webhook_source, event_type, payload]
----
-
-# Webhook Event Handler
-
-## Event Processing
-Source: ${input:webhook_source}
-Event: ${input:event_type}  
-Payload: ${input:payload}
-
-## Processing Rules
-Based on the webhook source and event type:
-1. Validate payload signature
-2. Parse event data
-3. Trigger appropriate business logic
-4. Send confirmation response
-5. Log event for audit trail
-```
-
-## Database and ORM Integration
-
-### Database-Aware Development
-
-```yaml
-# .apm/context/database-schema.context.md
-
-# Database Schema Context
-
-## Core Tables
-- **users**: User accounts and profiles
-- **organizations**: Company/team structures  
-- **projects**: Development projects
-- **permissions**: Role-based access control
-
-## Relationships
-- users belong to organizations
-- projects belong to organizations
-- permissions link users to resources
-
-## Conventions
-- All tables have created_at/updated_at timestamps
-- Use UUIDs for primary keys
-- Soft deletes with deleted_at column
-```
-
-### ORM-Specific Patterns
-
-```yaml
-# .apm/instructions/sqlalchemy.instructions.md
----
-applyTo: "**/*models*.py"
----
-
-# SQLAlchemy Best Practices
-
-## Model Definition Standards
-- Use declarative base for all models
-- Include __tablename__ explicitly  
-- Add proper relationships with lazy loading
-- Include validation at the model level
-
-## Query Patterns
-- Use select() for new code (SQLAlchemy 2.0 style)
-- Implement proper connection pooling
-- Use transactions for multi-table operations
-- Add query optimization with proper indexing hints
-```
-
-## Security Tool Integration
-
-### Security Scanning Integration
-
-```bash
-# Integrate security tools into APM workflows
-apm run security-audit --param tools="bandit,safety,semgrep" --param scope="all"
-```
-
-```yaml
-# .apm/prompts/security-audit.prompt.md
----
-description: Comprehensive security audit using multiple tools
-mode: security-engineer
-input: [tools, scope]
----
-
-# Security Audit Workflow
-
-## Tools Integration
-Run security analysis using: ${input:tools}
-Scope: ${input:scope}
-
-## Automated Scanning
-1. **Bandit**: Python security linter
-2. **Safety**: Python dependency vulnerability scanner  
-3. **Semgrep**: Multi-language static analysis
-4. **Custom Rules**: Company-specific security patterns
-
-## Report Generation
-Consolidate findings into prioritized security report:
-- Critical vulnerabilities requiring immediate action
-- High-priority issues for next sprint
-- Medium/low priority items for backlog
-- False positives and exceptions
-```
-
-## Monitoring and Observability
-
-### APT Integration with Observability Stack
-
-```yaml
-# .apm/prompts/add-monitoring.prompt.md
----
-description: Add comprehensive monitoring to services
-mode: sre-engineer  
-input: [service_name, monitoring_level]
----
-
-# Service Monitoring Setup
-
-## Service: ${input:service_name}
-## Level: ${input:monitoring_level}
-
-## Monitoring Components
-1. **Metrics**: Application and business metrics
-2. **Logging**: Structured logging with correlation IDs
-3. **Tracing**: Distributed tracing for request flows  
-4. **Alerting**: SLO-based alerting rules
-
-## Implementation Steps
-- Add Prometheus metrics endpoints
-- Configure structured logging with correlation
-- Implement OpenTelemetry tracing
-- Create Grafana dashboards
-- Set up PagerDuty alerting rules
-```
-
-## Team Workflow Integration
-
-### Agile/Scrum Integration
-
-```yaml
-# .apm/prompts/sprint-planning.prompt.md
----
-description: AI-assisted sprint planning and task breakdown
-mode: scrum-master
-input: [epic, team_capacity, sprint_duration]
----
-
-# Sprint Planning Assistant
-
-## Epic Breakdown
-Epic: ${input:epic}
-Team Capacity: ${input:team_capacity}
-Sprint Duration: ${input:sprint_duration}
-
-## Task Analysis
-1. **Epic Decomposition**: Break epic into implementable stories
-2. **Effort Estimation**: Use team velocity for story points
-3. **Dependency Mapping**: Identify cross-team dependencies
-4. **Risk Assessment**: Highlight potential blockers
-5. **Capacity Planning**: Match tasks to team member skills
-
-## Sprint Goal
-Generate clear, measurable sprint goal aligned with epic objectives.
-```
-
-## Next Steps
-
-Ready to integrate APM with your existing tools? 
-
-- **[Getting Started](../../getting-started/installation/)** - Set up APM in your environment
-- **[Context Guide](../../introduction/key-concepts/)** - Build custom integration workflows  
-- **[Examples & Use Cases](../../reference/examples/)** - See integration patterns in action
-- **[CLI Reference](../../reference/cli-commands/)** - Complete command documentation
-
-Or explore specific integration patterns:
+- **[Getting Started](../../getting-started/installation/)** -- Set up APM in your environment
+- **[Key Concepts](../../introduction/key-concepts/)** -- Core APM concepts and terminology
+- **[CLI Reference](../../reference/cli-commands/)** -- Complete command documentation
 - Review the [VSCode Copilot Customization Guide](https://code.visualstudio.com/docs/copilot/copilot-customization) for VSCode-specific features
 - Check the [Spec-kit documentation](https://github.com/github/spec-kit) for SDD integration details
 - Explore [MCP servers](https://modelcontextprotocol.io/servers) for tool integration options
