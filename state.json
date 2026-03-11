@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-03-10T01:06:43Z",
+  "last_updated": "2026-03-11T01:06:53Z",
   "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
@@ -9,26 +9,34 @@
     "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'"
   },
   "coverage_baseline": {
-    "total": "54%",
-    "run_date": "2026-03-10",
-    "test_count": 1456,
+    "total": "55%",
+    "run_date": "2026-03-11",
+    "test_count": 1445,
     "pre_existing_failures": 1,
-    "notes": "Pre-existing failure: test_install_command.py ANSI escape codes. agents_compiler.py 65%->82%. 34 new tests added."
+    "notes": "Pre-existing failure: test_install_command.py ANSI escape codes. primitives/models.py 78%->100%. 17 new tests added."
   },
   "monthly_activity_issue": "open-2026-03",
   "testing_backlog": [
+    {"id": "primitives-discovery", "file": "src/apm_cli/primitives/discovery.py", "coverage": "75%", "priority": "medium", "notes": "Uncovered: discover_skill_md (77-78), discover_dependency_primitives (141-142), discover_all paths (211, 222, 224-250)"},
+    {"id": "primitives-parser", "file": "src/apm_cli/primitives/parser.py", "coverage": "84%", "priority": "medium", "notes": "Uncovered: lines 42, 52-53, 90, 204-249"},
     {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
     {"id": "github-downloader", "file": "src/apm_cli/deps/github_downloader.py", "coverage": "18%", "priority": "low", "notes": "Heavy network dependency"},
     {"id": "copilot-client", "file": "src/apm_cli/adapters/client/copilot.py", "coverage": "8%", "priority": "low"},
     {"id": "commands-deps", "file": "src/apm_cli/commands/deps.py", "coverage": "6%", "priority": "low", "notes": "Large file, complex deps"},
-    {"id": "injector", "file": "src/apm_cli/compilation/injector.py", "coverage": "44%", "priority": "low", "notes": "Was target of test-assist/constitution-injector-coverage (not merged)"},
-    {"id": "workflow-runner", "file": "src/apm_cli/workflow/runner.py", "coverage": "100%", "priority": "done"}
+    {"id": "injector", "file": "src/apm_cli/compilation/injector.py", "coverage": "44%", "priority": "low", "notes": "Was target of test-assist/constitution-injector-coverage (not merged)"}
   ],
-  "backlog_cursor": "agents-compiler-display",
+  "backlog_cursor": "primitives-discovery",
   "pending_branches": [
-    "test-assist/agents-compiler-coverage-1773105017"
+    "test-assist/primitives-model-coverage-1773191453"
   ],
   "completed_work": [
+    {
+      "run": "2026-03-11T01:06:53Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/primitives-model-coverage-1773191453",
+      "pr_status": "pr_created",
+      "description": "Added 17 unit tests for primitives/models.py (78%->100%). Covered: Instruction.validate() missing description/content, Skill.validate() all branches, PrimitiveConflict.__str__(), PrimitiveCollection conflict detection (local wins, first dep wins), has_conflicts, get_conflicts_by_type, get_primitives_by_source. 1445 tests pass (1 pre-existing ANSI failure)."
+    },
     {
       "run": "2026-03-10T01:06:43Z",
       "tasks": ["task3", "task7"],
