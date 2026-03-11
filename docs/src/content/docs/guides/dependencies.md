@@ -1,4 +1,8 @@
-# APM Package Dependencies Guide
+---
+title: "Dependencies"
+sidebar:
+  order: 5
+---
 
 Complete guide to APM package dependency management - share and reuse context collections across projects for consistent, scalable AI-native development.
 
@@ -61,7 +65,7 @@ Skill folders use the **source folder name directly** (not flattened paths):
 └── apm-sample-package/     # From microsoft/apm-sample-package
 ```
 
-→ See [Skills Guide](skills.md) for complete documentation.
+→ See [Skills Guide](../skills/) for complete documentation.
 
 ## Quick Start
 
@@ -719,9 +723,9 @@ apm run design-review --param component="login-form"
 
 ## Next Steps
 
-- **[CLI Reference](cli-reference.md)** - Complete command documentation
-- **[Getting Started](getting-started.md)** - Basic APM usage
-- **[Context Guide](concepts.md)** - Understanding the AI-Native Development framework
-- **[Creating Packages](primitives.md)** - Build your own APM packages
+- **[CLI Reference](../../reference/cli-commands/)** - Complete command documentation
+- **[Getting Started](../../getting-started/installation/)** - Basic APM usage
+- **[Context Guide](../../introduction/how-it-works/)** - Understanding the AI-Native Development framework
+- **[Creating Packages](../../introduction/key-concepts/)** - Build your own APM packages
 
-Ready to create your own APM packages? See the [Context Guide](primitives.md) for detailed instructions on building reusable context collections and agent workflows.
+Ready to create your own APM packages? See the [Context Guide](../../introduction/key-concepts/) for detailed instructions on building reusable context collections and agent workflows.

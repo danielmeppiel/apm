@@ -1,4 +1,8 @@
-# Enhanced Primitive Discovery System
+---
+title: "Primitive Types"
+sidebar:
+  order: 3
+---
 
 This document describes the enhanced primitive discovery system implemented for APM CLI, providing dependency support with source tracking and conflict detection.
 

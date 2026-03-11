@@ -1,4 +1,8 @@
-# Prompts Guide
+---
+title: "Prompts"
+sidebar:
+  order: 3
+---
 
 Prompts are the building blocks of APM - focused, reusable AI instructions that accomplish specific tasks. They are executed through scripts defined in your `apm.yml` configuration.
 
@@ -129,7 +133,7 @@ Please analyze the Kubernetes cluster by:
 [Include relevant data in the prompt or as context]
 ```
 
-See [MCP Integration](integrations.md#mcp-model-context-protocol-integration) for MCP server configuration and usage.
+See [MCP Integration](../../integrations/ide-tool-integration/#mcp-model-context-protocol-integration) for MCP server configuration and usage.
 
 ## Writing Effective Prompts
 
@@ -389,6 +393,6 @@ Keep prompts in version control alongside scripts. Use semantic versioning for b
 
 ## Next Steps
 
-- Learn about [Runtime Integration](runtime-integration.md) to setup and use different AI runtimes
-- See [CLI Reference](cli-reference.md) for complete script execution commands
-- Check [Development Guide](development.md) for local development setup
+- Learn about [Runtime Integration](../../integrations/runtime-compatibility/) to setup and use different AI runtimes
+- See [CLI Reference](../../reference/cli-commands/) for complete script execution commands
+- Check [Development Guide](../../contributing/development-guide/) for local development setup
