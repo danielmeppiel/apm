@@ -313,7 +313,7 @@ class TestCLIIntegration(unittest.TestCase):
     
     def test_validate_mode_with_valid_primitives(self):
         """Test validation mode with valid primitives."""
-        from apm_cli.cli import _display_validation_errors, _get_validation_suggestion
+        from apm_cli.commands.compile import _display_validation_errors, _get_validation_suggestion
         
         # Test validation suggestion function
         suggestion = _get_validation_suggestion("Missing 'description' in frontmatter")
@@ -327,7 +327,7 @@ class TestCLIIntegration(unittest.TestCase):
     
     def test_validation_error_display(self):
         """Test validation error display functionality."""
-        from apm_cli.cli import _display_validation_errors
+        from apm_cli.commands.compile import _display_validation_errors, _get_validation_suggestion
         
         # Test with mock errors
         errors = [

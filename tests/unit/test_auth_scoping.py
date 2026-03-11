@@ -421,7 +421,7 @@ class TestDictIdentityDuplicateDetection:
         yml_file.write_text(content, encoding="utf-8")
         return yml_file
 
-    @patch("apm_cli.cli._validate_package_exists", return_value=True)
+    @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
     def test_dict_dep_with_path_not_duplicate_of_base(self, mock_validate, tmp_path):
         """A dict dep {git: X, path: Y} should not block adding the base repo X."""
         import yaml
@@ -433,7 +433,7 @@ dependencies:
     - git: https://gitlab.com/acme/rules.git
       path: instructions/security
 """)
-        with patch("apm_cli.cli.Path") as MockPath:
+        with patch("apm_cli.commands.install.Path") as MockPath:
             # Make Path("apm.yml") return our test file
             MockPath.return_value.exists.return_value = True
             # We test the identity-building logic directly
@@ -490,7 +490,7 @@ class TestValidatePackageExistsEnv:
     @patch.dict(os.environ, {}, clear=True)
     def test_generic_host_validation_allows_credential_helpers(self, mock_run):
         """git ls-remote for a generic host should NOT have GIT_ASKPASS=echo."""
-        from apm_cli.cli import _validate_package_exists
+        from apm_cli.commands.install import _validate_package_exists
 
         mock_run.return_value = Mock(returncode=0)
         _validate_package_exists("gitlab.com/acme/rules")
@@ -513,7 +513,7 @@ class TestValidatePackageExistsEnv:
     @patch.dict(os.environ, {"ADO_APM_PAT": "test-ado-token"}, clear=True)
     def test_ado_host_validation_uses_locked_env(self, mock_run):
         """git ls-remote for ADO should use the locked-down env (APM manages auth)."""
-        from apm_cli.cli import _validate_package_exists
+        from apm_cli.commands.install import _validate_package_exists
 
         mock_run.return_value = Mock(returncode=0)
         _validate_package_exists("dev.azure.com/myorg/myproject/myrepo")

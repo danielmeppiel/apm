@@ -43,10 +43,10 @@ class TestInstallCommandAutoBootstrap:
             assert "apm init" in result.output
             assert "apm install <org/repo>" in result.output
 
-    @patch("apm_cli.cli._validate_package_exists")
-    @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
-    @patch("apm_cli.cli.APMPackage")
-    @patch("apm_cli.cli._install_apm_dependencies")
+    @patch("apm_cli.commands.install._validate_package_exists")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
     def test_install_no_apm_yml_with_packages_creates_minimal_apm_yml(
         self, mock_install_apm, mock_apm_package, mock_validate, monkeypatch
     ):
@@ -83,10 +83,10 @@ class TestInstallCommandAutoBootstrap:
                 assert "test/package" in config["dependencies"]["apm"]
                 assert config["dependencies"]["mcp"] == []
 
-    @patch("apm_cli.cli._validate_package_exists")
-    @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
-    @patch("apm_cli.cli.APMPackage")
-    @patch("apm_cli.cli._install_apm_dependencies")
+    @patch("apm_cli.commands.install._validate_package_exists")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
     def test_install_no_apm_yml_with_multiple_packages(
         self, mock_install_apm, mock_apm_package, mock_validate, monkeypatch
     ):
@@ -120,9 +120,9 @@ class TestInstallCommandAutoBootstrap:
                 assert "org1/pkg1" in config["dependencies"]["apm"]
                 assert "org2/pkg2" in config["dependencies"]["apm"]
 
-    @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
-    @patch("apm_cli.cli.APMPackage")
-    @patch("apm_cli.cli._install_apm_dependencies")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
     def test_install_existing_apm_yml_preserves_behavior(
         self, mock_install_apm, mock_apm_package
     ):
@@ -162,10 +162,10 @@ class TestInstallCommandAutoBootstrap:
                 assert config["name"] == "test-project"
                 assert config["author"] == "Test Author"
 
-    @patch("apm_cli.cli._validate_package_exists")
-    @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
-    @patch("apm_cli.cli.APMPackage")
-    @patch("apm_cli.cli._install_apm_dependencies")
+    @patch("apm_cli.commands.install._validate_package_exists")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
     def test_install_auto_created_apm_yml_has_correct_metadata(
         self, mock_install_apm, mock_apm_package, mock_validate
     ):
@@ -201,7 +201,7 @@ class TestInstallCommandAutoBootstrap:
                 assert "description" in config
                 assert "APM project" in config["description"]
 
-    @patch("apm_cli.cli._validate_package_exists")
+    @patch("apm_cli.commands.install._validate_package_exists")
     def test_install_invalid_package_format_with_no_apm_yml(self, mock_validate):
         """Test that invalid package format fails gracefully even with auto-bootstrap."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -214,10 +214,10 @@ class TestInstallCommandAutoBootstrap:
             assert Path("apm.yml").exists()
             assert "Invalid package format" in result.output
 
-    @patch("apm_cli.cli._validate_package_exists")
-    @patch("apm_cli.cli.APM_DEPS_AVAILABLE", True)
-    @patch("apm_cli.cli.APMPackage")
-    @patch("apm_cli.cli._install_apm_dependencies")
+    @patch("apm_cli.commands.install._validate_package_exists")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
     def test_install_dry_run_with_no_apm_yml_shows_what_would_be_created(
         self, mock_install_apm, mock_apm_package, mock_validate
     ):

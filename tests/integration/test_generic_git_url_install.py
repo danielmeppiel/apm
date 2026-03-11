@@ -207,8 +207,8 @@ class TestNormalizeOnWriteRoundtrip:
         from unittest.mock import patch
         self._write_apm_yml()
 
-        with patch("apm_cli.cli._validate_package_exists", return_value=True):
-            from apm_cli.cli import _validate_and_add_packages_to_apm_yml
+        with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
+            from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
             result = _validate_and_add_packages_to_apm_yml(
                 ["https://github.com/microsoft/apm-sample-package.git"]
             )
@@ -228,8 +228,8 @@ class TestNormalizeOnWriteRoundtrip:
         from unittest.mock import patch
         self._write_apm_yml()
 
-        with patch("apm_cli.cli._validate_package_exists", return_value=True):
-            from apm_cli.cli import _validate_and_add_packages_to_apm_yml
+        with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
+            from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
             result = _validate_and_add_packages_to_apm_yml(
                 ["git@github.com:microsoft/apm-sample-package.git"]
             )
@@ -247,8 +247,8 @@ class TestNormalizeOnWriteRoundtrip:
         from unittest.mock import patch
         self._write_apm_yml(["microsoft/apm-sample-package"])
 
-        with patch("apm_cli.cli._validate_package_exists", return_value=True):
-            from apm_cli.cli import _validate_and_add_packages_to_apm_yml
+        with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
+            from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
             result = _validate_and_add_packages_to_apm_yml(
                 ["microsoft/apm-sample-package"]
             )
@@ -262,8 +262,8 @@ class TestNormalizeOnWriteRoundtrip:
         from unittest.mock import patch
         self._write_apm_yml(["microsoft/apm-sample-package"])
 
-        with patch("apm_cli.cli._validate_package_exists", return_value=True):
-            from apm_cli.cli import _validate_and_add_packages_to_apm_yml
+        with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
+            from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
             result = _validate_and_add_packages_to_apm_yml(
                 ["https://github.com/microsoft/apm-sample-package.git"]
             )
