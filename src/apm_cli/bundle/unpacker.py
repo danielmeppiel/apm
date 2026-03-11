@@ -100,7 +100,7 @@ def unpack_bundle(
         seen: set[str] = set()
         unique_files: list[str] = []
         for dep in lockfile.get_all_dependencies():
-            dep_key = dep.repo_url or "unknown"
+            dep_key = dep.get_unique_key()
             dep_files: list[str] = []
             for f in dep.deployed_files:
                 dep_files.append(f)

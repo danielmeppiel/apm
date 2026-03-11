@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from apm_cli.bundle.unpacker import unpack_bundle, UnpackResult
+from apm_cli.bundle.unpacker import unpack_bundle
 from apm_cli.deps.lockfile import LockFile, LockedDependency
 
 
@@ -250,6 +250,47 @@ class TestUnpackBundle:
         assert result.dependency_files["org/repo-a"] == files_a
         assert set(result.dependency_files["org/repo-b"]) == set(files_b)
         assert len(result.files) == 3
+
+    def test_unpack_dependency_files_virtual_deps(self, tmp_path):
+        """Virtual deps from the same repo are tracked separately."""
+        bundle_dir = tmp_path / "bundle" / "virtual-pkg"
+        bundle_dir.mkdir(parents=True)
+
+        files_a = [".github/agents/a.md"]
+        files_b = [".github/prompts/b.md"]
+        for f in files_a + files_b:
+            p = bundle_dir / f
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f"content of {f}")
+
+        lockfile = LockFile()
+        lockfile.add_dependency(
+            LockedDependency(
+                repo_url="org/monorepo",
+                virtual_path="packages/alpha",
+                is_virtual=True,
+                deployed_files=files_a,
+            )
+        )
+        lockfile.add_dependency(
+            LockedDependency(
+                repo_url="org/monorepo",
+                virtual_path="packages/beta",
+                is_virtual=True,
+                deployed_files=files_b,
+            )
+        )
+        lockfile.write(bundle_dir / "apm.lock")
+
+        output = tmp_path / "target"
+        output.mkdir()
+        result = unpack_bundle(bundle_dir, output)
+
+        assert "org/monorepo/packages/alpha" in result.dependency_files
+        assert "org/monorepo/packages/beta" in result.dependency_files
+        assert result.dependency_files["org/monorepo/packages/alpha"] == files_a
+        assert result.dependency_files["org/monorepo/packages/beta"] == files_b
+        assert len(result.files) == 2
 
     def test_unpack_dependency_files_dry_run(self, tmp_path):
         """dependency_files is populated even in dry-run mode."""
