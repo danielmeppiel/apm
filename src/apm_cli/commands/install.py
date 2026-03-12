@@ -647,6 +647,17 @@ def _install_apm_dependencies(
             _rich_info("No APM dependencies to install", symbol="check")
             return 0, 0, 0
 
+        # ------------------------------------------------------------------
+        # Orphan detection: packages in lockfile no longer in the manifest.
+        # Only relevant for a full install (not apm install <pkg>).
+        # We compute this NOW, before the download loop, so we know which old
+        # lockfile entries to remove from the merge and which deployed files
+        # to clean up after the loop.
+        # ------------------------------------------------------------------
+        intended_dep_keys: builtins.set = builtins.set(
+            d.get_unique_key() for d in deps_to_install
+        )
+
         # apm_modules directory already created above
 
         # Auto-detect target for integration (same logic as compile)
@@ -720,6 +731,15 @@ def _install_apm_dependencies(
         from apm_cli.integration.base_integrator import BaseIntegrator
         managed_files = BaseIntegrator.normalize_managed_files(managed_files)
 
+        # Collect deployed files for packages that are no longer in the manifest.
+        # Only applies to full installs; partial installs (only_packages) preserve
+        # existing lockfile entries.
+        orphaned_deployed_files: builtins.set = builtins.set()
+        if not only_packages and existing_lockfile:
+            for _orphan_key, _orphan_dep in existing_lockfile.dependencies.items():
+                if _orphan_key not in intended_dep_keys:
+                    orphaned_deployed_files.update(_orphan_dep.deployed_files)
+
         # Install each dependency with Rich progress display
         from rich.progress import (
             Progress,
@@ -745,8 +765,22 @@ def _install_apm_dependencies(
             # Skip if already downloaded during BFS resolution
             if _pd_key in callback_downloaded:
                 continue
+            # Detect if manifest ref changed from what's recorded in the lockfile.
+            # When the ref changes we must re-download, so we must NOT skip.
+            _pd_locked_chk = (
+                existing_lockfile.get_dependency(_pd_key)
+                if existing_lockfile and not update_refs
+                else None
+            )
+            _pd_ref_changed = bool(
+                _pd_ref.reference
+                and _pd_locked_chk is not None
+                and _pd_locked_chk.resolved_ref
+                and _pd_ref.reference != _pd_locked_chk.resolved_ref
+            )
             # Skip if lockfile SHA matches local HEAD (Phase 5 check)
-            if _pd_path.exists() and existing_lockfile and not update_refs:
+            # — but only if the ref itself has not changed in the manifest.
+            if _pd_path.exists() and existing_lockfile and not update_refs and not _pd_ref_changed:
                 _pd_locked = existing_lockfile.get_dependency(_pd_key)
                 if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
                     try:
@@ -755,9 +789,10 @@ def _install_apm_dependencies(
                             continue
                     except Exception:
                         pass
-            # Build download ref (use locked commit for reproducibility)
+            # Build download ref (use locked commit for reproducibility).
+            # When the ref has changed, use the new ref from the manifest instead.
             _pd_dlref = str(_pd_ref)
-            if existing_lockfile and not update_refs:
+            if existing_lockfile and not update_refs and not _pd_ref_changed:
                 _pd_locked = existing_lockfile.get_dependency(_pd_key)
                 if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
                     _pd_base = _pd_ref.repo_url
@@ -841,9 +876,23 @@ def _install_apm_dependencies(
                 ]
                 # Skip download if: already fetched by resolver callback, or cached tag/commit
                 already_resolved = dep_ref.get_unique_key() in callback_downloaded
+                # Detect if manifest ref changed vs what the lockfile recorded.
+                # When the ref changes, the lockfile_match shortcut must NOT fire.
+                _dep_locked_chk = (
+                    existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                    if existing_lockfile and not update_refs
+                    else None
+                )
+                ref_changed = bool(
+                    dep_ref.reference
+                    and _dep_locked_chk is not None
+                    and _dep_locked_chk.resolved_ref
+                    and dep_ref.reference != _dep_locked_chk.resolved_ref
+                )
                 # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
+                # — but not when the manifest ref has changed (user wants different version).
                 lockfile_match = False
-                if install_path.exists() and existing_lockfile and not update_refs:
+                if install_path.exists() and existing_lockfile and not update_refs and not ref_changed:
                     locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
                     if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
                         try:
@@ -1126,9 +1175,10 @@ def _install_apm_dependencies(
                         total=None,  # Indeterminate initially; git will update with actual counts
                     )
 
-                    # T5: Build download ref - use locked commit if available
+                    # T5: Build download ref - use locked commit if available.
+                    # Skip the lockfile override if the manifest ref has changed.
                     download_ref = str(dep_ref)
-                    if existing_lockfile and not update_refs:
+                    if existing_lockfile and not update_refs and not ref_changed:
                         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
                         if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
                             # Override with locked commit for reproducible install
@@ -1368,6 +1418,28 @@ def _install_apm_dependencies(
         # Update .gitignore
         _update_gitignore_for_apm_modules()
 
+        # ------------------------------------------------------------------
+        # Orphan cleanup: remove deployed files for packages that were
+        # removed from the manifest.  This happens on every full install
+        # (no only_packages), making apm install idempotent with the manifest.
+        # ------------------------------------------------------------------
+        if orphaned_deployed_files:
+            _removed_orphan_count = 0
+            for _orphan_path in sorted(orphaned_deployed_files):
+                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
+                    _target = project_root / _orphan_path
+                    if _target.exists():
+                        try:
+                            _target.unlink()
+                            _removed_orphan_count += 1
+                        except Exception:
+                            pass
+            if _removed_orphan_count > 0:
+                _rich_info(
+                    f"Removed {_removed_orphan_count} file(s) from packages "
+                    "no longer in apm.yml"
+                )
+
         # Generate apm.lock for reproducible installs (T4: lockfile generation)
         if installed_packages:
             try:
@@ -1379,13 +1451,22 @@ def _install_apm_dependencies(
                 for dep_key, pkg_type in package_types.items():
                     if dep_key in lockfile.dependencies:
                         lockfile.dependencies[dep_key].package_type = pkg_type
-                # Merge with existing lockfile to preserve entries for packages
-                # not processed in this run (e.g. `apm install X` only installs X).
-                # Skip merge when update_refs is set — stale entries must not survive.
+                # Selectively merge entries from the existing lockfile:
+                #   - For partial installs (only_packages): preserve all old entries
+                #     (sequential install — only the specified package was processed).
+                #   - For full installs: only preserve entries for packages still in
+                #     the manifest that failed to download (in intended_dep_keys but
+                #     not in the new lockfile due to a download error).
+                #   - Orphaned entries (not in intended_dep_keys) are intentionally
+                #     dropped so the lockfile matches the manifest.
+                # Skip merge entirely when update_refs is set — stale entries must not survive.
                 if existing_lockfile and not update_refs:
                     for dep_key, dep in existing_lockfile.dependencies.items():
                         if dep_key not in lockfile.dependencies:
-                            lockfile.dependencies[dep_key] = dep
+                            if only_packages or dep_key in intended_dep_keys:
+                                # Preserve: partial install OR still in manifest (failed download)
+                                lockfile.dependencies[dep_key] = dep
+                            # else: orphan — package removed from manifest, don't preserve
                 lockfile_path = get_lockfile_path(project_root)
 
                 # When installing a subset of packages (apm install <pkg>),

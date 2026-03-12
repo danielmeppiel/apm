@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Diff-aware `apm install` — detects when MCP server configuration changes in `apm.yml` and re-applies without `--force`. CLI output distinguishes "already configured" vs "updated" (#261)
+- Diff-aware `apm install` — packages removed from `apm.yml` have their deployed files cleaned up on the next `apm install` (manifest as source of truth)
+- Diff-aware `apm install` — packages whose ref/version changes in `apm.yml` are re-downloaded without needing `--update`
 
 ## [0.7.7] - 2026-03-10
 
