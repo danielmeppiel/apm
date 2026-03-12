@@ -8,6 +8,7 @@ from typing import List
 import click
 
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
 from ._helpers import (
     _create_minimal_apm_yml,
@@ -400,6 +401,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         if _existing_lock:
             old_mcp_servers = builtins.set(_existing_lock.mcp_servers)
 
+        apm_diagnostics = None
         if should_install_apm and apm_deps:
             if not APM_DEPS_AVAILABLE:
                 _rich_error("APM dependency system not available")
@@ -410,7 +412,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 # If specific packages were requested, only install those
                 # Otherwise install all from apm.yml
                 only_pkgs = builtins.list(packages) if packages else None
-                apm_count, prompt_count, agent_count = _install_apm_dependencies(
+                apm_count, prompt_count, agent_count, apm_diagnostics = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                 )
@@ -462,6 +464,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Show beautiful post-install summary
         _rich_blank_line()
+        if apm_diagnostics and apm_diagnostics.has_diagnostics:
+            apm_diagnostics.render_summary()
         if not only:
             # Load apm.yml config for summary
             apm_config = _load_apm_config()
@@ -689,6 +693,7 @@ def _install_apm_dependencies(
         command_integrator = CommandIntegrator()
         hook_integrator = HookIntegrator()
         instruction_integrator = InstructionIntegrator()
+        diagnostics = DiagnosticCollector(verbose=verbose)
         total_prompts_integrated = 0
         total_agents_integrated = 0
         total_skills_integrated = 0
@@ -946,6 +951,7 @@ def _install_apm_dependencies(
                                     prompt_integrator.integrate_package_prompts(
                                         cached_package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if prompt_result.files_integrated > 0:
@@ -969,6 +975,7 @@ def _install_apm_dependencies(
                                     agent_integrator.integrate_package_agents(
                                         cached_package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if agent_result.files_integrated > 0:
@@ -1012,6 +1019,7 @@ def _install_apm_dependencies(
                                     instruction_integrator.integrate_package_instructions(
                                         cached_package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if instruction_result.files_integrated > 0:
@@ -1032,6 +1040,7 @@ def _install_apm_dependencies(
                                     agent_integrator.integrate_package_agents_claude(
                                         cached_package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if claude_agent_result.files_integrated > 0:
@@ -1050,6 +1059,7 @@ def _install_apm_dependencies(
                                     command_integrator.integrate_package_commands(
                                         cached_package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if command_result.files_integrated > 0:
@@ -1072,6 +1082,7 @@ def _install_apm_dependencies(
                                 hook_result = hook_integrator.integrate_package_hooks(
                                     cached_package_info, project_root,
                                     force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
                                 )
                                 if hook_result.hooks_integrated > 0:
                                     total_hooks_integrated += hook_result.hooks_integrated
@@ -1084,6 +1095,7 @@ def _install_apm_dependencies(
                                 hook_result_claude = hook_integrator.integrate_package_hooks_claude(
                                     cached_package_info, project_root,
                                     force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
                                 )
                                 if hook_result_claude.hooks_integrated > 0:
                                     total_hooks_integrated += hook_result_claude.hooks_integrated
@@ -1097,8 +1109,9 @@ def _install_apm_dependencies(
                             package_deployed_files[dep_key] = dep_deployed
                         except Exception as e:
                             # Don't fail installation if integration fails
-                            _rich_warning(
-                                f"  ⚠ Failed to integrate primitives from cached package: {e}"
+                            diagnostics.error(
+                                f"Failed to integrate primitives from cached package: {e}",
+                                package=dep_key,
                             )
 
                     continue
@@ -1195,6 +1208,7 @@ def _install_apm_dependencies(
                                 prompt_integrator.integrate_package_prompts(
                                     package_info, project_root,
                                     force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
                                 )
                             )
                             if prompt_result.files_integrated > 0:
@@ -1218,6 +1232,7 @@ def _install_apm_dependencies(
                                 agent_integrator.integrate_package_agents(
                                     package_info, project_root,
                                     force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
                                 )
                             )
                             if agent_result.files_integrated > 0:
@@ -1261,6 +1276,7 @@ def _install_apm_dependencies(
                                     instruction_integrator.integrate_package_instructions(
                                         package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if instruction_result.files_integrated > 0:
@@ -1281,6 +1297,7 @@ def _install_apm_dependencies(
                                     agent_integrator.integrate_package_agents_claude(
                                         package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if claude_agent_result.files_integrated > 0:
@@ -1299,6 +1316,7 @@ def _install_apm_dependencies(
                                     command_integrator.integrate_package_commands(
                                         package_info, project_root,
                                         force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
                                     )
                                 )
                                 if command_result.files_integrated > 0:
@@ -1321,6 +1339,7 @@ def _install_apm_dependencies(
                                 hook_result = hook_integrator.integrate_package_hooks(
                                     package_info, project_root,
                                     force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
                                 )
                                 if hook_result.hooks_integrated > 0:
                                     total_hooks_integrated += hook_result.hooks_integrated
@@ -1333,6 +1352,7 @@ def _install_apm_dependencies(
                                 hook_result_claude = hook_integrator.integrate_package_hooks_claude(
                                     package_info, project_root,
                                     force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
                                 )
                                 if hook_result_claude.hooks_integrated > 0:
                                     total_hooks_integrated += hook_result_claude.hooks_integrated
@@ -1346,7 +1366,10 @@ def _install_apm_dependencies(
                             package_deployed_files[dep_ref.get_unique_key()] = dep_deployed_fresh
                         except Exception as e:
                             # Don't fail installation if integration fails
-                            _rich_warning(f"  ⚠ Failed to integrate primitives: {e}")
+                            diagnostics.error(
+                                f"Failed to integrate primitives: {e}",
+                                package=dep_ref.get_unique_key(),
+                            )
 
                 except Exception as e:
                     display_name = (
@@ -1355,7 +1378,10 @@ def _install_apm_dependencies(
                     # Remove the progress task on error
                     if "task_id" in locals():
                         progress.remove_task(task_id)
-                    _rich_error(f"❌ Failed to install {display_name}: {e}")
+                    diagnostics.error(
+                        f"Failed to install {display_name}: {e}",
+                        package=dep_ref.get_unique_key(),
+                    )
                     # Continue with other packages instead of failing completely
                     continue
 
@@ -1415,7 +1441,7 @@ def _install_apm_dependencies(
 
         _rich_success(f"Installed {installed_count} APM dependencies")
 
-        return installed_count, total_prompts_integrated, total_agents_integrated
+        return installed_count, total_prompts_integrated, total_agents_integrated, diagnostics
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
