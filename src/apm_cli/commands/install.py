@@ -1425,6 +1425,7 @@ def _install_apm_dependencies(
         # ------------------------------------------------------------------
         if orphaned_deployed_files:
             _removed_orphan_count = 0
+            _failed_orphan_count = 0
             for _orphan_path in sorted(orphaned_deployed_files):
                 if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
                     _target = project_root / _orphan_path
@@ -1432,8 +1433,11 @@ def _install_apm_dependencies(
                         try:
                             _target.unlink()
                             _removed_orphan_count += 1
-                        except Exception:
-                            pass
+                        except Exception as _orphan_err:
+                            _rich_warning(
+                                f"  └─ Could not remove orphaned file {_orphan_path}: {_orphan_err}"
+                            )
+                            _failed_orphan_count += 1
             if _removed_orphan_count > 0:
                 _rich_info(
                     f"Removed {_removed_orphan_count} file(s) from packages "
@@ -1464,9 +1468,12 @@ def _install_apm_dependencies(
                     for dep_key, dep in existing_lockfile.dependencies.items():
                         if dep_key not in lockfile.dependencies:
                             if only_packages or dep_key in intended_dep_keys:
-                                # Preserve: partial install OR still in manifest (failed download)
+                                # Preserve: partial install (sequential install support)
+                                # OR package still in manifest but failed to download.
                                 lockfile.dependencies[dep_key] = dep
-                            # else: orphan — package removed from manifest, don't preserve
+                            # else: orphan — package was in lockfile but is no longer in
+                            # the manifest (full install only). Don't preserve so the
+                            # lockfile stays in sync with what apm.yml declares.
                 lockfile_path = get_lockfile_path(project_root)
 
                 # When installing a subset of packages (apm install <pkg>),

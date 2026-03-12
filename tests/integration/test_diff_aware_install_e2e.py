@@ -196,8 +196,6 @@ class TestPackageRemovedFromManifest:
         )
 
         # ── apm-sample-package files should be gone ──
-        for rel_path in _collect_deployed_files(temp_project, sample_dep):
-            pass  # already checked before; now check on disk
         for rel_path in (sample_dep.get("deployed_files") or []):
             # The files that were deployed should no longer exist
             assert not (temp_project / rel_path).exists(), (
