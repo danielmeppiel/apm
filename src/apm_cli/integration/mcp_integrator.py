@@ -508,13 +508,20 @@ class MCPIntegrator:
     @staticmethod
     def update_lockfile(
         mcp_server_names: builtins.set,
-        mcp_configs: builtins.dict = None,
         lock_path: Optional[Path] = None,
+        *,
+        mcp_configs: Optional[builtins.dict] = None,
     ) -> None:
         """Update the lockfile with the current set of APM-managed MCP server names.
 
         Accepts the lock path directly to avoid a redundant disk read when the
         caller already has it.
+
+        Args:
+            mcp_server_names: Set of MCP server names to persist.
+            lock_path: Path to the lockfile.  Defaults to ``apm.lock`` in CWD.
+            mcp_configs: Keyword-only.  When provided, overwrites ``mcp_configs``
+                         in the lockfile (used for drift-detection baseline).
         """
         if lock_path is None:
             lock_path = Path.cwd() / "apm.lock"
@@ -709,6 +716,9 @@ class MCPIntegrator:
         console = _get_console()
         # Track servers that were re-applied due to config drift
         servers_to_update: builtins.set = builtins.set()
+        # Track successful updates separately so the summary counts are accurate
+        # even when some drift-detected servers fail to install.
+        successful_updates: builtins.set = builtins.set()
         if stored_mcp_configs is None:
             stored_mcp_configs = {}
 
@@ -900,9 +910,11 @@ class MCPIntegrator:
                         )
                         if drifted:
                             servers_to_update.update(drifted)
-                            servers_to_install = builtins.list(
-                                builtins.set(servers_to_install) | drifted
-                            )
+                            # Append drifted servers to install list preserving order
+                            _existing_set = builtins.set(servers_to_install)
+                            for _drifted_name in builtins.sorted(drifted):
+                                if _drifted_name not in _existing_set:
+                                    servers_to_install.append(_drifted_name)
                     already_configured_servers = [
                         dep
                         for dep in already_configured_candidates
@@ -1000,6 +1012,8 @@ class MCPIntegrator:
                                         f" [dim]({label})[/dim]"
                                     )
                                 configured_count += 1
+                                if is_update:
+                                    successful_updates.add(dep)
                             elif console:
                                 console.print(
                                     f"│  [red]✗[/red]  {dep} — "
@@ -1041,9 +1055,11 @@ class MCPIntegrator:
                 )
                 if drifted_sd:
                     servers_to_update.update(drifted_sd)
-                    self_defined_to_install = builtins.list(
-                        builtins.set(self_defined_to_install) | drifted_sd
-                    )
+                    # Append drifted servers to install list preserving order
+                    _existing_sd_set = builtins.set(self_defined_to_install)
+                    for _drifted_name in builtins.sorted(drifted_sd):
+                        if _drifted_name not in _existing_sd_set:
+                            self_defined_to_install.append(_drifted_name)
             already_configured_self_defined = [
                 name
                 for name in already_configured_candidates_sd
@@ -1109,6 +1125,8 @@ class MCPIntegrator:
                             f" [dim]({label})[/dim]"
                         )
                     configured_count += 1
+                    if is_update:
+                        successful_updates.add(dep.name)
                 elif console:
                     console.print(
                         f"│  [red]✗[/red]  {dep.name} — "
@@ -1118,7 +1136,10 @@ class MCPIntegrator:
         # Close the panel
         if console:
             if configured_count > 0:
-                update_count = builtins.len(servers_to_update)
+                # Use successful_updates (not servers_to_update) for accurate counts.
+                # servers_to_update = all drift-detected servers (some may have failed).
+                # successful_updates = servers that were re-applied AND succeeded.
+                update_count = builtins.len(successful_updates)
                 new_count = configured_count - update_count
                 parts = []
                 if new_count > 0:

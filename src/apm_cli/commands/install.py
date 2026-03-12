@@ -7,6 +7,7 @@ from typing import List
 
 import click
 
+from ..drift import build_download_ref, detect_orphans, detect_ref_change
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ..utils.github_host import default_host, is_valid_fqdn
 from ._helpers import (
@@ -454,17 +455,17 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 MCPIntegrator.remove_stale(stale_servers, runtime, exclude)
 
             # Persist the new MCP server set and configs in the lockfile
-            MCPIntegrator.update_lockfile(new_mcp_servers, new_mcp_configs)
+            MCPIntegrator.update_lockfile(new_mcp_servers, mcp_configs=new_mcp_configs)
         elif should_install_mcp and not mcp_deps:
             # No MCP deps at all — remove any old APM-managed servers
             if old_mcp_servers:
                 MCPIntegrator.remove_stale(old_mcp_servers, runtime, exclude)
-                MCPIntegrator.update_lockfile(builtins.set(), {})
+                MCPIntegrator.update_lockfile(builtins.set(), mcp_configs={})
             _rich_warning("No MCP dependencies found in apm.yml")
         elif not should_install_mcp and old_mcp_servers:
             # --only=apm: APM install regenerated the lockfile and dropped
             # mcp_servers.  Restore the previous set so it is not lost.
-            MCPIntegrator.update_lockfile(old_mcp_servers, old_mcp_configs)
+            MCPIntegrator.update_lockfile(old_mcp_servers, mcp_configs=old_mcp_configs)
 
         # Show beautiful post-install summary
         _rich_blank_line()
@@ -731,14 +732,13 @@ def _install_apm_dependencies(
         from apm_cli.integration.base_integrator import BaseIntegrator
         managed_files = BaseIntegrator.normalize_managed_files(managed_files)
 
-        # Collect deployed files for packages that are no longer in the manifest.
-        # Only applies to full installs; partial installs (only_packages) preserve
-        # existing lockfile entries.
-        orphaned_deployed_files: builtins.set = builtins.set()
-        if not only_packages and existing_lockfile:
-            for _orphan_key, _orphan_dep in existing_lockfile.dependencies.items():
-                if _orphan_key not in intended_dep_keys:
-                    orphaned_deployed_files.update(_orphan_dep.deployed_files)
+        # Collect deployed file paths for packages that are no longer in the manifest.
+        # detect_orphans() returns an empty set for partial installs automatically.
+        orphaned_deployed_files = detect_orphans(
+            existing_lockfile,
+            intended_dep_keys,
+            only_packages=only_packages,
+        )
 
         # Install each dependency with Rich progress display
         from rich.progress import (
@@ -766,17 +766,14 @@ def _install_apm_dependencies(
             if _pd_key in callback_downloaded:
                 continue
             # Detect if manifest ref changed from what's recorded in the lockfile.
-            # When the ref changes we must re-download, so we must NOT skip.
+            # detect_ref_change() handles all transitions including None→ref.
             _pd_locked_chk = (
                 existing_lockfile.get_dependency(_pd_key)
                 if existing_lockfile and not update_refs
                 else None
             )
-            _pd_ref_changed = bool(
-                _pd_ref.reference
-                and _pd_locked_chk is not None
-                and _pd_locked_chk.resolved_ref
-                and _pd_ref.reference != _pd_locked_chk.resolved_ref
+            _pd_ref_changed = detect_ref_change(
+                _pd_ref, _pd_locked_chk, update_refs=update_refs
             )
             # Skip if lockfile SHA matches local HEAD (Phase 5 check)
             # — but only if the ref itself has not changed in the manifest.
@@ -790,15 +787,10 @@ def _install_apm_dependencies(
                     except Exception:
                         pass
             # Build download ref (use locked commit for reproducibility).
-            # When the ref has changed, use the new ref from the manifest instead.
-            _pd_dlref = str(_pd_ref)
-            if existing_lockfile and not update_refs and not _pd_ref_changed:
-                _pd_locked = existing_lockfile.get_dependency(_pd_key)
-                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
-                    _pd_base = _pd_ref.repo_url
-                    if _pd_ref.virtual_path:
-                        _pd_base = f"{_pd_base}/{_pd_ref.virtual_path}"
-                    _pd_dlref = f"{_pd_base}#{_pd_locked.resolved_commit}"
+            # build_download_ref() uses the manifest ref when ref_changed is True.
+            _pd_dlref = build_download_ref(
+                _pd_ref, existing_lockfile, update_refs=update_refs, ref_changed=_pd_ref_changed
+            )
             _need_download.append((_pd_ref, _pd_path, _pd_dlref))
 
         if _need_download and parallel_downloads > 0:
@@ -877,17 +869,14 @@ def _install_apm_dependencies(
                 # Skip download if: already fetched by resolver callback, or cached tag/commit
                 already_resolved = dep_ref.get_unique_key() in callback_downloaded
                 # Detect if manifest ref changed vs what the lockfile recorded.
-                # When the ref changes, the lockfile_match shortcut must NOT fire.
+                # detect_ref_change() handles all transitions including None→ref.
                 _dep_locked_chk = (
                     existing_lockfile.get_dependency(dep_ref.get_unique_key())
                     if existing_lockfile and not update_refs
                     else None
                 )
-                ref_changed = bool(
-                    dep_ref.reference
-                    and _dep_locked_chk is not None
-                    and _dep_locked_chk.resolved_ref
-                    and dep_ref.reference != _dep_locked_chk.resolved_ref
+                ref_changed = detect_ref_change(
+                    dep_ref, _dep_locked_chk, update_refs=update_refs
                 )
                 # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
                 # — but not when the manifest ref has changed (user wants different version).
@@ -1176,16 +1165,10 @@ def _install_apm_dependencies(
                     )
 
                     # T5: Build download ref - use locked commit if available.
-                    # Skip the lockfile override if the manifest ref has changed.
-                    download_ref = str(dep_ref)
-                    if existing_lockfile and not update_refs and not ref_changed:
-                        locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
-                        if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                            # Override with locked commit for reproducible install
-                            base_ref = dep_ref.repo_url
-                            if dep_ref.virtual_path:
-                                base_ref = f"{base_ref}/{dep_ref.virtual_path}"
-                            download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
+                    # build_download_ref() uses manifest ref when ref_changed is True.
+                    download_ref = build_download_ref(
+                        dep_ref, existing_lockfile, update_refs=update_refs, ref_changed=ref_changed
+                    )
 
                     # Phase 4 (#171): Use pre-downloaded result if available
                     _dep_key = dep_ref.get_unique_key()
@@ -1422,22 +1405,32 @@ def _install_apm_dependencies(
         # Orphan cleanup: remove deployed files for packages that were
         # removed from the manifest.  This happens on every full install
         # (no only_packages), making apm install idempotent with the manifest.
+        # Handles both regular files and directory entries (e.g., legacy skills).
         # ------------------------------------------------------------------
         if orphaned_deployed_files:
+            import shutil as _shutil
             _removed_orphan_count = 0
             _failed_orphan_count = 0
+            _deleted_orphan_paths: builtins.list = []
             for _orphan_path in sorted(orphaned_deployed_files):
                 if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
                     _target = project_root / _orphan_path
                     if _target.exists():
                         try:
-                            _target.unlink()
+                            if _target.is_dir():
+                                _shutil.rmtree(_target)
+                            else:
+                                _target.unlink()
+                            _deleted_orphan_paths.append(_target)
                             _removed_orphan_count += 1
                         except Exception as _orphan_err:
                             _rich_warning(
-                                f"  └─ Could not remove orphaned file {_orphan_path}: {_orphan_err}"
+                                f"  └─ Could not remove orphaned path {_orphan_path}: {_orphan_err}"
                             )
                             _failed_orphan_count += 1
+            # Clean up empty parent directories left after file removal
+            if _deleted_orphan_paths:
+                BaseIntegrator.cleanup_empty_parents(_deleted_orphan_paths, project_root)
             if _removed_orphan_count > 0:
                 _rich_info(
                     f"Removed {_removed_orphan_count} file(s) from packages "

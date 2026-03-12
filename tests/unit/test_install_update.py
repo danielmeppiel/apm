@@ -2,10 +2,16 @@
 
 Verifies that `apm install --update` bypasses lockfile-pinned SHAs
 and re-fetches the latest content, especially for subdirectory packages.
+
+Also tests the drift detection helpers in ``apm_cli/drift.py``:
+- ``detect_ref_change()`` covers all ref transition cases (None→value, etc.)
+- ``detect_orphans()`` covers full vs partial install
+- ``build_download_ref()`` validates locked-SHA vs manifest-ref selection
 """
 
 from unittest.mock import Mock
 
+from apm_cli.drift import build_download_ref, detect_config_drift, detect_orphans, detect_ref_change
 from apm_cli.models.apm_package import DependencyReference
 
 
@@ -239,39 +245,13 @@ class TestPreDownloadRefLockfileOverride:
 
 
 class TestRefChangedDetection:
-    """Tests for ref-change detection (manifest ref vs lockfile resolved_ref).
+    """Tests for detect_ref_change() in drift.py.
 
     When the user changes the ref pin in apm.yml (e.g., from v1.0.0 to v2.0.0),
     apm install should detect the drift and re-download without --update.
+
+    Key improvement over the old inline logic: handles all None transitions.
     """
-
-    @staticmethod
-    def _is_ref_changed(dep_ref, existing_lockfile, update_refs):
-        """Reproduce the ref_changed logic from install.py."""
-        _locked_chk = (
-            existing_lockfile.get_dependency(dep_ref.get_unique_key())
-            if existing_lockfile and not update_refs
-            else None
-        )
-        return bool(
-            dep_ref.reference
-            and _locked_chk is not None
-            and _locked_chk.resolved_ref
-            and dep_ref.reference != _locked_chk.resolved_ref
-        )
-
-    @staticmethod
-    def _build_download_ref_with_ref_change(dep_ref, existing_lockfile, update_refs, ref_changed):
-        """Reproduce the download_ref logic that respects ref_changed."""
-        download_ref = str(dep_ref)
-        if existing_lockfile and not update_refs and not ref_changed:
-            locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
-            if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                base_ref = dep_ref.repo_url
-                if dep_ref.virtual_path:
-                    base_ref = f"{base_ref}/{dep_ref.virtual_path}"
-                download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
-        return download_ref
 
     def _make_dep(self, reference):
         return DependencyReference(
@@ -280,93 +260,90 @@ class TestRefChangedDetection:
             reference=reference,
         )
 
-    def _mock_lockfile(self, resolved_ref, resolved_commit="abc123"):
-        lockfile = Mock()
+    def _mock_locked_dep(self, resolved_ref, resolved_commit="abc123"):
         locked_dep = Mock()
         locked_dep.resolved_ref = resolved_ref
         locked_dep.resolved_commit = resolved_commit
-        lockfile.get_dependency = Mock(return_value=locked_dep)
-        return lockfile
+        return locked_dep
 
     def test_no_drift_when_refs_match(self):
         """No drift when manifest ref matches lockfile resolved_ref."""
         dep = self._make_dep("v1.0.0")
-        lockfile = self._mock_lockfile("v1.0.0")
-        assert self._is_ref_changed(dep, lockfile, update_refs=False) is False
+        locked = self._mock_locked_dep("v1.0.0")
+        assert detect_ref_change(dep, locked) is False
 
     def test_drift_when_ref_changed(self):
         """Drift detected when manifest ref changed from v1.0.0 to v2.0.0."""
         dep = self._make_dep("v2.0.0")
-        lockfile = self._mock_lockfile("v1.0.0")
-        assert self._is_ref_changed(dep, lockfile, update_refs=False) is True
+        locked = self._mock_locked_dep("v1.0.0")
+        assert detect_ref_change(dep, locked) is True
 
-    def test_no_drift_when_dep_has_no_explicit_ref(self):
-        """No drift when dep has no explicit ref (using default branch)."""
-        dep = self._make_dep(None)  # no explicit ref
-        lockfile = self._mock_lockfile("main")
-        assert self._is_ref_changed(dep, lockfile, update_refs=False) is False
+    def test_drift_when_ref_added(self):
+        """Drift detected when ref added (None → 'v1.0.0').
 
-    def test_no_drift_when_no_lockfile(self):
-        """No drift when there is no lockfile (first install)."""
+        This was a false-negative in the old inline logic because of the
+        ``and locked_dep.resolved_ref`` guard. drift.py removes that guard.
+        """
         dep = self._make_dep("v1.0.0")
-        assert self._is_ref_changed(dep, None, update_refs=False) is False
+        locked = self._mock_locked_dep(None)  # package was installed without a ref
+        assert detect_ref_change(dep, locked) is True
+
+    def test_drift_when_ref_removed(self):
+        """Drift detected when ref removed ('main' → None)."""
+        dep = self._make_dep(None)
+        locked = self._mock_locked_dep("main")
+        assert detect_ref_change(dep, locked) is True
+
+    def test_no_drift_when_both_refs_none(self):
+        """No drift when both manifest and lockfile have no ref."""
+        dep = self._make_dep(None)
+        locked = self._mock_locked_dep(None)
+        assert detect_ref_change(dep, locked) is False
+
+    def test_no_drift_when_no_locked_dep(self):
+        """No drift when locked_dep is None (new package, first install)."""
+        dep = self._make_dep("v1.0.0")
+        assert detect_ref_change(dep, None) is False
 
     def test_no_drift_when_update_refs(self):
-        """With --update, ref_changed is always False (update mode bypasses lockfile)."""
+        """With update_refs=True, always returns False (--update mode)."""
         dep = self._make_dep("v2.0.0")
-        lockfile = self._mock_lockfile("v1.0.0")
-        assert self._is_ref_changed(dep, lockfile, update_refs=True) is False
+        locked = self._mock_locked_dep("v1.0.0")
+        assert detect_ref_change(dep, locked, update_refs=True) is False
 
-    def test_no_drift_when_locked_dep_has_no_resolved_ref(self):
-        """No drift when locked dep has no resolved_ref (old lockfile format)."""
+    def test_build_download_ref_uses_new_ref_when_changed(self):
+        """When ref changed, build_download_ref does NOT use locked commit SHA."""
         dep = self._make_dep("v2.0.0")
         lockfile = Mock()
-        locked_dep = Mock()
-        locked_dep.resolved_ref = None
-        locked_dep.resolved_commit = "abc123"
+        locked_dep = self._mock_locked_dep("v1.0.0", "abc123")
         lockfile.get_dependency = Mock(return_value=locked_dep)
-        assert self._is_ref_changed(dep, lockfile, update_refs=False) is False
-
-    def test_download_ref_uses_new_ref_when_changed(self):
-        """When ref changed, download_ref should NOT use locked commit SHA."""
-        dep = self._make_dep("v2.0.0")
-        lockfile = self._mock_lockfile("v1.0.0", resolved_commit="abc123")
-        ref_changed = self._is_ref_changed(dep, lockfile, update_refs=False)
+        ref_changed = detect_ref_change(dep, locked_dep)
         assert ref_changed is True
-        download_ref = self._build_download_ref_with_ref_change(
+        download_ref = build_download_ref(
             dep, lockfile, update_refs=False, ref_changed=ref_changed
         )
         assert "#abc123" not in download_ref
-        assert "v2.0.0" in download_ref or str(dep) == download_ref
 
-    def test_download_ref_uses_locked_sha_when_no_change(self):
-        """When ref unchanged, download_ref SHOULD use locked commit SHA."""
+    def test_build_download_ref_uses_locked_sha_when_no_change(self):
+        """When ref unchanged, build_download_ref uses the locked commit SHA."""
         dep = self._make_dep("v1.0.0")
-        lockfile = self._mock_lockfile("v1.0.0", resolved_commit="abc123")
-        ref_changed = self._is_ref_changed(dep, lockfile, update_refs=False)
+        lockfile = Mock()
+        locked_dep = self._mock_locked_dep("v1.0.0", "abc123")
+        lockfile.get_dependency = Mock(return_value=locked_dep)
+        ref_changed = detect_ref_change(dep, locked_dep)
         assert ref_changed is False
-        download_ref = self._build_download_ref_with_ref_change(
+        download_ref = build_download_ref(
             dep, lockfile, update_refs=False, ref_changed=ref_changed
         )
         assert "#abc123" in download_ref
 
 
 class TestOrphanDeployedFilesDetection:
-    """Tests for detecting deployed files of packages removed from manifest.
+    """Tests for detect_orphans() in drift.py.
 
     When packages are removed from apm.yml and apm install is run (full install),
     the deployed files should be identified for cleanup.
     """
-
-    @staticmethod
-    def _detect_orphans(existing_lockfile, intended_dep_keys, only_packages):
-        """Reproduce orphan detection logic from install.py."""
-        orphaned_deployed_files = set()
-        if not only_packages and existing_lockfile:
-            for dep_key, dep in existing_lockfile.dependencies.items():
-                if dep_key not in intended_dep_keys:
-                    orphaned_deployed_files.update(dep.deployed_files)
-        return orphaned_deployed_files
 
     @staticmethod
     def _should_merge_lockfile_entry(dep_key, lockfile_dependencies, only_packages, intended_dep_keys):
@@ -398,7 +375,7 @@ class TestOrphanDeployedFilesDetection:
             "owner/pkg-b": [".github/prompts/b.prompt.md"],
         })
         intended = {"owner/pkg-a", "owner/pkg-b"}
-        orphans = self._detect_orphans(lockfile, intended, only_packages=None)
+        orphans = detect_orphans(lockfile, intended, only_packages=None)
         assert orphans == set()
 
     def test_orphaned_files_when_package_removed(self):
@@ -411,7 +388,7 @@ class TestOrphanDeployedFilesDetection:
             ],
         })
         intended = {"owner/pkg-a"}  # pkg-removed not in new manifest
-        orphans = self._detect_orphans(lockfile, intended, only_packages=None)
+        orphans = detect_orphans(lockfile, intended, only_packages=None)
         assert orphans == {
             ".github/prompts/removed.prompt.md",
             ".github/instructions/removed.instructions.md",
@@ -424,12 +401,12 @@ class TestOrphanDeployedFilesDetection:
             "owner/pkg-removed": [".github/prompts/removed.prompt.md"],
         })
         intended = {"owner/pkg-a"}
-        orphans = self._detect_orphans(lockfile, intended, only_packages=["owner/pkg-a"])
+        orphans = detect_orphans(lockfile, intended, only_packages=["owner/pkg-a"])
         assert orphans == set()
 
     def test_no_orphans_when_no_lockfile(self):
         """No orphaned files when there is no existing lockfile."""
-        orphans = self._detect_orphans(None, {"owner/pkg-a"}, only_packages=None)
+        orphans = detect_orphans(None, {"owner/pkg-a"}, only_packages=None)
         assert orphans == set()
 
     def test_lockfile_merge_drops_orphan_in_full_install(self):
@@ -462,3 +439,51 @@ class TestOrphanDeployedFilesDetection:
         assert self._should_merge_lockfile_entry(
             "owner/pkg-removed", new_lockfile_deps, only_packages=["owner/pkg-a"], intended_dep_keys=intended
         )
+
+
+class TestDetectConfigDrift:
+    """Tests for detect_config_drift() in drift.py.
+
+    Config drift means an already-installed item's serialized config
+    in apm.yml differs from the stored baseline in the lockfile.
+    """
+
+    def test_no_drift_when_configs_match(self):
+        """No drift when current config is identical to stored config."""
+        current = {"name": "my-server", "url": "http://example.com"}
+        stored = {"my-server": {"name": "my-server", "url": "http://example.com"}}
+        assert detect_config_drift({"my-server": current}, stored) == set()
+
+    def test_drift_when_config_changed(self):
+        """Drift detected when config value changed."""
+        current = {"name": "my-server", "url": "http://new.example.com"}
+        stored = {"my-server": {"name": "my-server", "url": "http://old.example.com"}}
+        assert detect_config_drift({"my-server": current}, stored) == {"my-server"}
+
+    def test_no_drift_for_new_entry_without_baseline(self):
+        """Brand-new entry without a stored baseline is NOT drift — it's a first install."""
+        current = {"name": "brand-new", "url": "http://example.com"}
+        assert detect_config_drift({"brand-new": current}, {}) == set()
+
+    def test_drift_when_env_changed(self):
+        """Drift detected when env variables change."""
+        current = {"name": "s", "env": {"TOKEN": "new"}}
+        stored = {"s": {"name": "s", "env": {"TOKEN": "old"}}}
+        assert detect_config_drift({"s": current}, stored) == {"s"}
+
+    def test_no_drift_when_stored_configs_empty(self):
+        """No drift when no stored baseline exists (backward compat)."""
+        current = {"name": "s", "url": "http://x.com"}
+        assert detect_config_drift({"s": current}, {}) == set()
+
+    def test_multiple_entries_partial_drift(self):
+        """Only changed entries are reported."""
+        current_configs = {
+            "unchanged": {"url": "http://a.com"},
+            "changed": {"url": "http://new.com"},
+        }
+        stored = {
+            "unchanged": {"url": "http://a.com"},
+            "changed": {"url": "http://old.com"},
+        }
+        assert detect_config_drift(current_configs, stored) == {"changed"}

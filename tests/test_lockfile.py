@@ -148,6 +148,16 @@ class TestLockFile:
         assert lock.mcp_servers == ["github"]
         assert lock.mcp_configs == {}
 
+    def test_mcp_configs_backward_compat_null(self):
+        """Lockfiles with mcp_configs: (null) should get an empty dict, not raise TypeError."""
+        yaml_str = (
+            'lockfile_version: "1"\n'
+            'dependencies: []\n'
+            'mcp_configs:\n'  # YAML null value
+        )
+        lock = LockFile.from_yaml(yaml_str)
+        assert lock.mcp_configs == {}
+
     def test_read_nonexistent(self, tmp_path):
         loaded = LockFile.read(tmp_path / "apm.lock")
         assert loaded is None

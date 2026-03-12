@@ -2,7 +2,7 @@
 
 Tests the complete manifest-as-source-of-truth lifecycle with real packages:
 - Package removed from apm.yml: apm install cleans up deployed files and lockfile
-- Package ref/version changed in apm.yml: apm install re-downloads without --force
+- Package ref/version changed in apm.yml: apm install re-downloads without --update
 - MCP config drift: apm install re-applies changed MCP server config (unit-tested;
   omitted from e2e since it requires a real runtime to be configured)
 

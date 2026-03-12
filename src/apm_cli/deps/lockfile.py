@@ -176,7 +176,7 @@ class LockFile:
         for dep_data in data.get("dependencies", []):
             lock.add_dependency(LockedDependency.from_dict(dep_data))
         lock.mcp_servers = list(data.get("mcp_servers", []))
-        lock.mcp_configs = dict(data.get("mcp_configs", {}))
+        lock.mcp_configs = dict(data.get("mcp_configs") or {})
         return lock
 
     def write(self, path: Path) -> None:
