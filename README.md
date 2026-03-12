@@ -1,214 +1,86 @@
 # APM – Agent Package Manager
 
-[![PyPI version](https://badge.fury.io/py/apm-cli.svg)](https://badge.fury.io/py/apm-cli)
-[![CI/CD Pipeline](https://github.com/microsoft/apm/actions/workflows/build-release.yml/badge.svg)](https://github.com/microsoft/apm/actions/workflows/build-release.yml)
-[![Downloads](https://img.shields.io/pypi/dm/apm-cli.svg)](https://pypi.org/project/apm-cli/)
-[![GitHub stars](https://img.shields.io/github/stars/microsoft/apm.svg?style=social&label=Star)](https://github.com/microsoft/apm/stargazers)
-
-**An open-source, community-driven dependency manager for AI agents.** `apm.yml` declares the skills, prompts, instructions, and tools your project needs — so every developer gets the same agent setup. Packages can depend on packages, and APM resolves the full tree.
+**An open-source, community-driven dependency manager for AI agents.**
 
 Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent configuration.
 
-GitHub Copilot · Cursor · Claude · Codex · Gemini
+GitHub Copilot · Claude Code
+
+**[Documentation](https://microsoft.github.io/apm/)** · **[Quick Start](https://microsoft.github.io/apm/getting-started/quick-start/)** · **[CLI Reference](https://microsoft.github.io/apm/reference/cli-commands/)**
 
 ## Why APM
 
-AI coding agents need context to be useful: what standards to follow, what prompts to use, what skills to leverage. Today this is manual — each developer installs things one by one, writes instructions from scratch, copies files around. None of it is portable. There's no manifest for it.
+AI coding agents need context to be useful — standards, prompts, skills, plugins — but today every developer sets this up manually. Nothing is portable nor reproducible. There's no manifest for it.
 
-**APM fixes this.** You declare your project's agentic dependencies once, and every developer who clones your repo gets a fully configured agent setup in seconds. Packages can depend on other packages — APM resolves transitive dependencies automatically, just like npm or pip.
-
-## See It in Action
+**APM fixes this.** Declare your project's agentic dependencies once in `apm.yml`, and every developer who clones your repo gets a fully configured agent setup in seconds — with transitive dependency resolution, just like npm or pip.
 
 ```yaml
-# apm.yml — ships with your project, like package.json
-name: your project
+# apm.yml — ships with your project
+name: your-project
 version: 1.0.0
 dependencies:
   apm:
     # Skills from any repository
     - anthropics/skills/skills/frontend-design
-    - microsoft/GitHub-Copilot-for-Azure/plugin/skills/azure-compliance
-    # A full APM package with rules, skills, prompts, hooks...
-    - microsoft/apm-sample-package
-    # Specific agent primitives from any repository
-    - github/awesome-copilot/skills/review-and-refactor
-    - github/awesome-copilot/agents/api-architect.agent.md
-    # Plugins (auto-detected from plugin.json)
+    # Plugins
     - github/awesome-copilot/plugins/context-engineering
+    # Specific agent primitives from any repository
+    - github/awesome-copilot/agents/api-architect.agent.md
+    # A full APM package with instructions, skills, prompts, hooks...
+    - microsoft/apm-sample-package
 ```
-
-New developer joins the team:
 
 ```bash
-git clone <org/repo>
-cd <repo>
-apm install
+git clone <org/repo> && cd <repo>
+apm install    # every agent is configured
 ```
 
-**That's it.** Copilot, Claude, Cursor — every agent is configured with the right skills, prompts, and coding standards.
+## Highlights
 
-→ [View the full example project](https://github.com/microsoft/apm-sample-package)
-
-## Not Just Skills
-
-Skill registries install skills. APM manages **every primitive** your AI agents need:
-
-| Primitive | What it does | Example |
-|-----------|-------------|---------|
-| **Instructions** | Coding standards, guardrails | "Use type hints in all Python files" |
-| **Skills** | AI capabilities, workflows | Form builder, code reviewer |
-| **Prompts** | Reusable slash commands | `/security-audit`, `/design-review` |
-| **Agents** | Specialized personas | Accessibility auditor, API designer |
-| **Hooks** | Lifecycle event handlers | Pre-tool validation, post-tool linting |
-| **Plugins** | Pre-packaged agent bundles | Context engineering, commit helpers |
-| **MCP Servers** | Tool integrations | Database access, API connectors |
-
-All declared in one manifest. All installed with one command — including transitive dependencies:
-
-**`apm install`** → installs prompts, agents, skills, and instructions under `.github/instructions/` when editor integration (e.g., VS Code) is enabled
-**`apm compile`** → compiles instructions into `AGENTS.md` (Copilot, Cursor, Codex) and `CLAUDE.md` (Claude)
+- **One manifest for everything** — instructions, skills, prompts, agents, hooks, plugins, MCP servers
+- **Install from anywhere** — GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, any git host
+- **Transitive dependencies** — packages can depend on packages; APM resolves the full tree
+- **Compile to standards** — `apm compile` produces `AGENTS.md` (GitHub Copilot) and `CLAUDE.md` (Claude Code)
+- **Create & share** — `apm pack` bundles your current configuration as a zipped package
+- **CI/CD ready** — [GitHub Action](https://github.com/microsoft/apm-action) for automated workflows
 
 ## Get Started
-
-**1. Install APM**
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
 <details>
-<summary>Homebrew or pip</summary>
+<summary>Other install methods</summary>
 
 ```bash
+# Homebrew
 brew install microsoft/apm/apm
-# or
+# pip
 pip install apm-cli
 ```
+
 </details>
 
-**2. Add APM packages to your project**
+Then start adding packages:
 
 ```bash
 apm install microsoft/apm-sample-package
-apm install anthropics/skills/skills/frontend-design
-apm install github/awesome-copilot/agents/api-architect.agent.md
-apm install github/awesome-copilot/plugins/context-engineering
 ```
 
-**Done.** Open your project in VS Code or Claude and your AI tools are ready.
+See the **[Getting Started guide](https://microsoft.github.io/apm/getting-started/quick-start/)** for the full walkthrough.
 
-## Install From Anywhere
+## Community
 
-```bash
-# GitHub (shorthand)
-apm install owner/repo
-apm install owner/repo/path
-# GitLab / Bitbucket / any git host
-apm install https://gitlab.com/acme/coding-standards.git
-apm install git@bitbucket.org:team/security-rules.git
-apm install gitlab.com/acme/repo
-# GitHub Enterprise Server
-apm install ghe.company.com/owner/repo
-# Azure DevOps
-apm install dev.azure.com/org/project/repo
-```
+Created and maintained by [@danielmeppiel](https://github.com/danielmeppiel).
 
-## Create & Share Packages
-
-```bash
-apm init my-standards && cd my-standards
-```
-
-```
-my-standards/
-├── apm.yml              # Package manifest
-└── .apm/
-    ├── instructions/    # Guardrails (.instructions.md)
-    ├── prompts/         # Slash commands (.prompt.md)
-    ├── skills/          # Agent Skills (SKILL.md)
-    ├── agents/          # Personas (.agent.md)
-    └── hooks/           # Event handlers (.json)
-```
-
-Add a guardrail and publish:
-
-```bash
-cat > .apm/instructions/python.instructions.md << 'EOF'
----
-applyTo: "**/*.py"
----
-# Python Standards
-- Use type hints for all functions
-- Follow PEP 8 style guidelines
-EOF
-
-git add . && git commit -m "Initial standards" && git push
-```
-
-Anyone can now `apm install you/my-standards`.
-
-## Key Commands
-
-| Command | What it does |
-|---------|--------------|
-| `apm install <pkg>` | Add a package and integrate its primitives |
-| `apm compile` | Compile instructions into AGENTS.md / CLAUDE.md |
-| `apm init [name]` | Scaffold a new APM project or package |
-| `apm run <prompt>` | Execute a prompt workflow via AI runtime |
-| `apm uninstall <pkg>` | Remove a package from apm.yml and clean up its files |
-| `apm pack` | Bundle resolved dependencies for offline distribution |
-| `apm deps list` | Show installed packages and versions |
-
-→ [Full CLI Reference](docs/cli-reference.md)
-
-## Configuration
-
-For private repos or Azure DevOps, set a token. For other hosts (GitLab, Bitbucket, etc.), configure SSH keys or use `git credential-manager`:
-
-| Token | When you need it |
-|-------|-----------------|
-| `GITHUB_APM_PAT` | Private GitHub packages |
-| `ADO_APM_PAT` | Azure DevOps packages |
-| `GITHUB_COPILOT_PAT` | Running prompts via `apm run` |
-
-→ [Complete setup guide](docs/getting-started.md)
-
----
-
-## APM Packages
-
-An APM package is anything you can point `apm install` at: a full package with an `apm.yml` manifest and `.apm/` folder, a plugin with `plugin.json`, a single primitive file (`.instructions.md`, `.prompt.md`, `.agent.md`), a skill folder, or any subtree inside a repository. Hooks are auto-discovered when a package contains them. See [Primitives](docs/primitives.md) for details on each type.
-
-APM installs from **any git host** — GitHub, GitLab, Bitbucket, self-hosted servers, GitHub Enterprise, and Azure DevOps. Use HTTPS or SSH git URLs, or the `owner/repo` shorthand for GitHub. See [Package Sources](docs/getting-started.md#package-sources) for host configuration.
-
-Popular sources to get you started:
-
-| Package | What you get |
-|---------|-------------|
-| [github/awesome-copilot](https://github.com/github/awesome-copilot) | Community prompts, agents & instructions for GitHub Copilot |
-| [anthropics/skills](https://github.com/anthropics/skills) | Anthropic's official agent skills |
-| [microsoft/GitHub-Copilot-for-Azure](https://github.com/microsoft/GitHub-Copilot-for-Azure/tree/main/plugin/skills) | Azure Skills |
-
----
-
-## Roadmap
-
-See the [APM Roadmap](https://github.com/microsoft/apm/discussions/116) for what's coming next.
-
-## Documentation
-
-| | |
-|---|---|
-| **Get Started** | [Quick Start](docs/getting-started.md) · [Core Concepts](docs/concepts.md) · [Examples](docs/examples.md) |
-| **Reference** | [CLI Reference](docs/cli-reference.md) · [Compilation Engine](docs/compilation.md) · [Skills](docs/skills.md) · [Plugins](docs/plugins.md) · [Integrations](docs/integrations.md) |
-| **Advanced** | [Dependencies](docs/dependencies.md) · [Primitives](docs/primitives.md) · [Contributing](CONTRIBUTING.md) |
+- [Roadmap & Discussions](https://github.com/microsoft/apm/discussions/116)
+- [Contributing](CONTRIBUTING.md)
+- [AI Native Development guide](https://danielmeppiel.github.io/awesome-ai-native) — a practical learning path for AI-native development
 
 ---
 
 **Built on open standards:** [AGENTS.md](https://agents.md) · [Agent Skills](https://agentskills.io) · [MCP](https://modelcontextprotocol.io)
-
-**Learn AI-Native Development** → [Awesome AI Native](https://danielmeppiel.github.io/awesome-ai-native)
-A practical learning path for AI-Native Development, leveraging APM along the way.
 
 ## Trademarks
 

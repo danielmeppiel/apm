@@ -67,7 +67,8 @@ class PromptIntegrator(BaseIntegrator):
     
     def integrate_package_prompts(self, package_info, project_root: Path,
                                     force: bool = False,
-                                    managed_files: set = None) -> IntegrationResult:
+                                    managed_files: set = None,
+                                    diagnostics=None) -> IntegrationResult:
         """Integrate all prompts from a package into .github/prompts/.
         
         Deploys with clean filenames. Skips files that exist locally and
@@ -111,7 +112,7 @@ class PromptIntegrator(BaseIntegrator):
             target_path = prompts_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            if self.check_collision(target_path, rel_path, managed_files, force):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
                 continue
             

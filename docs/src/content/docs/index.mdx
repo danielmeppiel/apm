@@ -1,0 +1,95 @@
+---
+title: APM – Agent Package Manager
+description: An open-source dependency manager for AI agents. Declare the skills, prompts, instructions, and tools your project needs in one manifest.
+template: splash
+hero:
+  title: Agent Package Manager
+  tagline: <strong>Same AI coding superpowers. Every developer. By default.</strong>
+  actions:
+    - text: Get Started
+      link: /apm/getting-started/quick-start/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/microsoft/apm
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+**An open-source dependency manager for AI agents.** Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent configuration.
+
+AI coding agents need context and capabilities to be useful — instructions, skills, prompts, plugins, MCP servers. But today, every developer configures theirs differently. Copying files, writing instructions from scratch, sharing knowledge in Slack threads. None of it is portable. None of it is versioned.
+
+APM fixes this. You declare your project's agent configuration once in `apm.yml` — skills, prompts, instructions, agents, hooks, plugins, MCP servers — and every developer who clones your repo gets a fully configured agent setup in seconds. New developer joins the team? `git clone`, `cd`, `apm install`. Done.
+
+<CardGrid>
+  <Card title="One Manifest, Every Primitive" icon="document">
+    `apm.yml` declares skills, instructions, prompts, agents, hooks, plugins, and MCP servers. Like `package.json` for agent configuration.
+  </Card>
+  <Card title="Dependencies That Resolve" icon="random">
+    Packages depend on packages. APM resolves the full tree — transitive dependencies just work, like npm or pip.
+  </Card>
+  <Card title="Any Git Host" icon="github">
+    Install from GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, or any self-hosted git server.
+  </Card>
+  <Card title="Copilot & Claude Ready" icon="rocket">
+    Works with GitHub Copilot and Claude today. The same manifest, the same setup, across agents.
+  </Card>
+</CardGrid>
+
+## Quick Start
+
+```bash
+# Install APM
+curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+
+# Add packages to your project
+apm install microsoft/apm-sample-package
+apm install anthropics/skills/skills/frontend-design
+```
+
+## Example: apm.yml
+
+```yaml
+# apm.yml — ships with your project, like package.json
+name: your project
+version: 1.0.0
+dependencies:
+  apm:
+    # Skills from any GitHub repository
+    - anthropics/skills/skills/frontend-design
+    - microsoft/GitHub-Copilot-for-Azure/plugin/skills/azure-compliance
+    # A full package with rules, skills, prompts, hooks...
+    - microsoft/apm-sample-package
+    # Plugins
+    - github/awesome-copilot/plugins/context-engineering#v2.1
+    # Agents
+    - github/awesome-copilot/agents/api-architect.agent.md
+    # GitLab, Azure DevOps, any git host — with version pinning
+    - git: https://gitlab.com/acme/coding-standards.git
+      path: instructions/security
+      ref: v2.0
+    - git: dev.azure.com/org/project/repo
+      path: prompts/review.prompt.md
+```
+
+New developer joins the team:
+
+```bash
+git clone <org/repo> && cd <repo> && apm install
+```
+
+**That's it.** Copilot, Claude — every harness is configured with the right context and capabilities. The manifest defines the project's custom and portable Agentic SDLC setup installable in a single command.
+
+## Open Source & Community
+
+APM is an open-source, MIT-licensed community project under the [`microsoft`](https://github.com/microsoft) org. It's early days — the tool is evolving fast, shaped by developers building real agent workflows. We ship frequently, welcome contributions, and value feedback over perfection.
+
+Built on the standards the community has already adopted:
+[AGENTS.md](https://agents.md) · [Agent Skills](https://agentskills.io) · [MCP](https://modelcontextprotocol.io)
+
+---
+
+*We've enforced dependency management on code for decades. It was only a matter of time before AI agents needed it too.*

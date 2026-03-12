@@ -2,6 +2,7 @@
 
 import os
 import pytest
+import stat
 import tempfile
 import shutil
 from pathlib import Path
@@ -996,6 +997,133 @@ class TestSubdirectoryPackageCommitSHA:
             target = self.temp_dir / 'my-skill'
             with pytest.raises(RuntimeError, match="Failed to checkout commit"):
                 downloader.download_subdirectory_package(dep_ref, target)
+
+
+class TestWindowsCleanupHelpers:
+    """Test _rmtree and _close_repo helpers for Windows compatibility."""
+
+    def test_rmtree_removes_normal_directory(self):
+        from apm_cli.deps.github_downloader import _rmtree
+        d = Path(tempfile.mkdtemp())
+        (d / "file.txt").write_text("hello")
+        _rmtree(d)
+        assert not d.exists()
+
+    def test_rmtree_handles_readonly_files(self):
+        from apm_cli.deps.github_downloader import _rmtree
+        d = Path(tempfile.mkdtemp())
+        f = d / "readonly.txt"
+        f.write_text("locked")
+        os.chmod(str(f), stat.S_IREAD)
+        _rmtree(d)
+        assert not d.exists()
+
+    def test_close_repo_none_is_safe(self):
+        from apm_cli.deps.github_downloader import _close_repo
+        # Must not raise when passed None
+        _close_repo(None)
+
+    def test_close_repo_releases_gitpython_handles(self):
+        from apm_cli.deps.github_downloader import _close_repo
+        repo = MagicMock()
+        _close_repo(repo)
+        repo.git.clear_cache.assert_called_once()
+        repo.close.assert_called_once()
+
+    def test_close_repo_swallows_exceptions(self):
+        from apm_cli.deps.github_downloader import _close_repo
+        repo = MagicMock()
+        repo.git.clear_cache.side_effect = RuntimeError("git gone")
+        # Must not propagate
+        _close_repo(repo)
+        # Even if clear_cache fails, we must still attempt it and close the repo
+        repo.git.clear_cache.assert_called_once()
+        repo.close.assert_called_once()
+
+
+class TestDownloadSubdirectoryPackageWindowsCleanup:
+    """Verify that WinError 32 file-lock races don't surface to the caller.
+
+    The root issue on Windows is that TemporaryDirectory.__exit__ calls
+    shutil.rmtree without retry logic, and git subprocess handles may still
+    be alive when the cleanup runs.  The fix: manual mkdtemp + try/finally
+    + _rmtree, plus _close_repo() before cleanup.
+    """
+
+    def _make_dep_ref(self):
+        """Return a minimal DependencyReference for a subdirectory package."""
+        # owner/repo/skills/test-pkg → virtual subdirectory reference
+        return DependencyReference.parse("owner/repo/skills/test-pkg")
+
+    def test_sparse_checkout_success_closes_sha_repo_before_rmtree(self, tmp_path):
+        """When sparse checkout succeeds the SHA-capture Repo is closed before _rmtree."""
+        from apm_cli.deps.github_downloader import _close_repo  # noqa
+        downloader = GitHubPackageDownloader()
+        dep = self._make_dep_ref()
+        target = tmp_path / "out"
+
+        call_order = []
+
+        def fake_close_repo(repo):
+            if repo is not None:
+                call_order.append(("close_repo", repo))
+
+        def fake_rmtree(path):
+            call_order.append(("rmtree", path))
+
+        fake_repo = MagicMock()
+        fake_repo.head.commit.hexsha = "abc1234"
+
+        def fake_sparse(dep_ref, clone_path, subdir, ref):
+            # Simulate sparse checkout writing the subdir
+            (clone_path / subdir).mkdir(parents=True, exist_ok=True)
+            (clone_path / subdir / "apm.yml").write_text("name: test-pkg\nversion: 1.0.0\n")
+            return True
+
+        with patch("apm_cli.deps.github_downloader._close_repo", side_effect=fake_close_repo), \
+             patch("apm_cli.deps.github_downloader._rmtree", side_effect=fake_rmtree), \
+             patch.object(downloader, "_try_sparse_checkout", side_effect=fake_sparse), \
+             patch("apm_cli.deps.github_downloader.Repo", return_value=fake_repo), \
+             patch("apm_cli.deps.github_downloader.validate_apm_package") as mock_validate:
+            mock_validate.return_value = MagicMock(is_valid=True, errors=[])
+            downloader.download_subdirectory_package(dep, target)
+
+        # Verify both _close_repo and _rmtree were called
+        assert any(op == "close_repo" for op, _ in call_order), "_close_repo was not called"
+        assert any(op == "rmtree" for op, _ in call_order), "_rmtree was not called"
+        # Verify _close_repo was called before _rmtree
+        close_repo_idx = next(i for i, (op, _) in enumerate(call_order) if op == "close_repo")
+        rmtree_idx = next(i for i, (op, _) in enumerate(call_order) if op == "rmtree")
+        assert close_repo_idx < rmtree_idx, "_close_repo must be called before _rmtree"
+
+    def test_sparse_checkout_failure_uses_fresh_clone_path(self, tmp_path):
+        """When sparse checkout fails the full clone goes to a fresh path (repo_clone/)."""
+        downloader = GitHubPackageDownloader()
+        dep = self._make_dep_ref()
+        target = tmp_path / "out"
+
+        cloned_paths = []
+
+        def fake_clone_with_fallback(url, path, progress_reporter=None, **kwargs):
+            cloned_paths.append(path)
+            # Simulate clone writing the subdir
+            (path / dep.virtual_path).mkdir(parents=True, exist_ok=True)
+            (path / dep.virtual_path / "apm.yml").write_text("name: test-pkg\nversion: 1.0.0\n")
+
+        fake_repo = MagicMock()
+        fake_repo.head.commit.hexsha = "abc1234"
+
+        with patch.object(downloader, "_try_sparse_checkout", return_value=False), \
+             patch.object(downloader, "_clone_with_fallback", side_effect=fake_clone_with_fallback), \
+             patch("apm_cli.deps.github_downloader.Repo", return_value=fake_repo), \
+             patch("apm_cli.deps.github_downloader._close_repo"), \
+             patch("apm_cli.deps.github_downloader.validate_apm_package") as mock_validate:
+            mock_validate.return_value = MagicMock(is_valid=True, errors=[])
+            downloader.download_subdirectory_package(dep, target)
+
+        # Full clone must NOT reuse the sparse-checkout path "repo/"
+        assert len(cloned_paths) == 1
+        assert cloned_paths[0].name == "repo_clone"
 
 
 if __name__ == '__main__':
