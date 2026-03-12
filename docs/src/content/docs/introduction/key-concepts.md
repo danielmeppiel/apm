@@ -10,13 +10,13 @@ Context components are the configurable tools that deploy proven prompt engineer
 
 APM implements Context - the configurable tools that deploy prompt engineering and context engineering techniques to transform unreliable AI interactions into engineered systems.
 
-### 🏗️ Initialize a project with AI-Native structure
+### Initialize a project with AI-Native structure
 
 ```bash
 apm init my-project  # Creates complete Context scaffolding + apm.yml
 ```
 
-### ⚙️ Generated Project Structure
+### Generated Project Structure
 
 ```yaml
 my-project/
@@ -36,7 +36,7 @@ my-project/
         └── architecture.context.md     # Project patterns and decisions
 ```
 
-### 🔄 Intelligent Compilation
+### Intelligent Compilation
 
 APM automatically compiles your primitives into optimized AGENTS.md files using mathematical optimization:
 
@@ -66,9 +66,8 @@ dependencies:
 
 **Share and reuse across projects:**
 ```bash
-apm install                    # Install MCP dependencies
-apm run impl-copilot --param feature="user-auth"
-apm run review-copilot --param files="src/auth/"
+apm install                    # Install dependencies and deploy primitives
+apm compile                    # Generate optimized AGENTS.md files
 ```
 
 ## Overview
@@ -434,7 +433,7 @@ APM automatically resolves context file links during installation and compilatio
 3. **Direct Linking**: Links point to files in `apm_modules/` and `.apm/` directories
 4. **Persistence**: Commit `apm_modules/` for link availability, or run `apm install` in CI/CD
 
-**Result**: Links work everywhere—IDE, GitHub, all coding agents—pointing directly to source files.
+**Result**: Links work in IDE and GitHub, pointing directly to source files. Copilot and Claude resolve links natively via `apm install`; other tools pick them up through `apm compile`.
 
 ### Link Resolution Examples
 

@@ -12,7 +12,7 @@ APM works without any tokens for public packages. Authentication is only needed 
 |----------|---------|-------------|
 | `GITHUB_APM_PAT` | Private GitHub/GHE repos | Private GitHub packages |
 | `ADO_APM_PAT` | Private Azure DevOps repos | Private ADO packages |
-| `GITHUB_COPILOT_PAT` | Copilot runtime | `apm run` with Copilot |
+| `GITHUB_COPILOT_PAT` | Copilot runtime | Runtime features (see [Agent Workflows](../../guides/agent-workflows/)) |
 | `GITHUB_HOST` | Default host for bare package names | GitHub Enterprise setups |
 
 ### GITHUB_APM_PAT
@@ -41,7 +41,7 @@ export ADO_APM_PAT=your_ado_pat
 export GITHUB_COPILOT_PAT=ghp_copilot_token
 ```
 
-- **Purpose**: Authentication for `apm run` with Copilot runtime
+- **Purpose**: Authentication for runtime features (see [Agent Workflows guide](../../guides/agent-workflows/))
 - **Type**: Personal Access Token with Copilot access
 - **Fallback**: Falls back to `GITHUB_TOKEN` if not set
 
@@ -87,7 +87,9 @@ export GITHUB_APM_PAT=ghp_enterprise_token
 apm install team/package  # → github.company.com/team/package
 ```
 
-#### Running Prompts
+#### Runtime Features
+
+Authentication may be needed for runtime features. See the [Agent Workflows guide](../../guides/agent-workflows/) for details.
 
 ```bash
 export GITHUB_COPILOT_PAT=ghp_copilot_token
@@ -159,6 +161,6 @@ apm install dev.azure.com/myorg/myproject/myrepo/prompts/code-review.prompt.md
    - Go to `https://dev.azure.com/{org}/_usersSettings/tokens`
    - Create PAT with **Code (Read)** scope
 
-3. **GITHUB_COPILOT_PAT** (Running prompts):
+3. **GITHUB_COPILOT_PAT** (Runtime features -- see [Agent Workflows](../../guides/agent-workflows/)):
    - Go to [github.com/settings/tokens](https://github.com/settings/tokens)
    - Create token with Copilot access

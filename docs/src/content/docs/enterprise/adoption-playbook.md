@@ -119,8 +119,10 @@ reach production.
    - name: Install APM packages
      run: apm install
 
-   - name: Compile configuration
-     run: apm compile
+   # Optional: only needed if targeting Cursor, Codex, Gemini, or other
+   # tools without native APM integration
+   # - name: Compile configuration
+   #   run: apm compile
 
    - name: Audit for drift
      run: apm audit --ci

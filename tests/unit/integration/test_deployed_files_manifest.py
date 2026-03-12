@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from apm_cli.deps.lockfile import LockedDependency, LockFile
+from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.integration.prompt_integrator import PromptIntegrator
 from apm_cli.integration.agent_integrator import AgentIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
@@ -29,6 +30,7 @@ from apm_cli.models.apm_package import (
     ResolvedReference,
     GitReferenceType,
 )
+from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_COLLISION
 
 
 def _make_package_info(tmp_path: Path, name: str = "test-pkg",
@@ -821,7 +823,7 @@ class TestCollisionWarningOutput:
     """Verify collision detection emits warning message to stderr."""
 
     def test_prompt_collision_warns_on_stderr(self, tmp_path: Path, capsys):
-        """Prompt collision should print warning to stderr."""
+        """Prompt collision should print warning via _rich_warning."""
         prompts_dir = tmp_path / ".github" / "prompts"
         prompts_dir.mkdir(parents=True)
         (prompts_dir / "review.prompt.md").write_text("# user")
@@ -833,11 +835,12 @@ class TestCollisionWarningOutput:
             info, tmp_path, force=False, managed_files=set()
         )
         captured = capsys.readouterr()
-        assert "Skipping" in captured.err
-        assert "--force" in captured.err or "apm install --force" in captured.err
+        output = captured.out + captured.err
+        assert "Skipping" in output
+        assert "--force" in output or "apm install --force" in output
 
     def test_agent_collision_warns_on_stderr(self, tmp_path: Path, capsys):
-        """Agent collision should print warning to stderr."""
+        """Agent collision should print warning via _rich_warning."""
         agents_dir = tmp_path / ".github" / "agents"
         agents_dir.mkdir(parents=True)
         (agents_dir / "security.agent.md").write_text("# user")
@@ -849,11 +852,12 @@ class TestCollisionWarningOutput:
             info, tmp_path, force=False, managed_files=set()
         )
         captured = capsys.readouterr()
-        assert "Skipping" in captured.err
-        assert "--force" in captured.err or "apm install --force" in captured.err
+        output = captured.out + captured.err
+        assert "Skipping" in output
+        assert "--force" in output or "apm install --force" in output
 
     def test_command_collision_warns_on_stderr(self, tmp_path: Path, capsys):
-        """Command collision should print warning to stderr."""
+        """Command collision should print warning via _rich_warning."""
         cmds_dir = tmp_path / ".claude" / "commands"
         cmds_dir.mkdir(parents=True)
         (cmds_dir / "review.md").write_text("# user")
@@ -865,11 +869,12 @@ class TestCollisionWarningOutput:
             info, tmp_path, force=False, managed_files=set()
         )
         captured = capsys.readouterr()
-        assert "Skipping" in captured.err
-        assert "--force" in captured.err or "apm install --force" in captured.err
+        output = captured.out + captured.err
+        assert "Skipping" in output
+        assert "--force" in output or "apm install --force" in output
 
     def test_hook_collision_warns_on_stderr(self, tmp_path: Path, capsys):
-        """Hook collision should print warning to stderr."""
+        """Hook collision should print warning via _rich_warning."""
         hooks_dir = tmp_path / ".github" / "hooks"
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "test-pkg-hooks.json").write_text('{"user": true}')
@@ -881,8 +886,127 @@ class TestCollisionWarningOutput:
             info, tmp_path, force=False, managed_files=set()
         )
         captured = capsys.readouterr()
-        assert "Skipping" in captured.err
-        assert "--force" in captured.err or "apm install --force" in captured.err
+        output = captured.out + captured.err
+        assert "Skipping" in output
+        assert "--force" in output or "apm install --force" in output
+
+
+# ---------------------------------------------------------------------------
+# 11b. check_collision() diagnostics parameter
+# ---------------------------------------------------------------------------
+
+
+class TestCheckCollisionDiagnostics:
+    """Verify check_collision() routes output to DiagnosticCollector when provided."""
+
+    def test_collision_recorded_in_diagnostics(self, tmp_path: Path):
+        """When diagnostics is provided, collision is recorded via skip()."""
+        target = tmp_path / "review.prompt.md"
+        target.write_text("# user version")
+        diag = DiagnosticCollector()
+
+        result = BaseIntegrator.check_collision(
+            target, ".github/prompts/review.prompt.md",
+            managed_files=set(), force=False, diagnostics=diag,
+        )
+
+        assert result is True
+        entries = diag.by_category().get(CATEGORY_COLLISION, [])
+        assert len(entries) == 1
+        assert entries[0].message == ".github/prompts/review.prompt.md"
+
+    def test_collision_no_stdout_when_diagnostics_provided(self, tmp_path: Path, capsys):
+        """When diagnostics is provided, nothing is printed to stdout/stderr."""
+        target = tmp_path / "agent.md"
+        target.write_text("# user")
+        diag = DiagnosticCollector()
+
+        BaseIntegrator.check_collision(
+            target, ".github/agents/agent.md",
+            managed_files=set(), force=False, diagnostics=diag,
+        )
+
+        captured = capsys.readouterr()
+        assert "Skipping" not in captured.out + captured.err
+
+    def test_fallback_warning_when_diagnostics_none(self, tmp_path: Path, capsys):
+        """When diagnostics is None, _rich_warning() fallback fires."""
+        target = tmp_path / "hook.json"
+        target.write_text("{}")
+
+        result = BaseIntegrator.check_collision(
+            target, ".github/hooks/hook.json",
+            managed_files=set(), force=False, diagnostics=None,
+        )
+
+        assert result is True
+        captured = capsys.readouterr()
+        output = captured.out + captured.err
+        assert "Skipping" in output
+        assert "--force" in output or "apm install --force" in output
+
+    def test_no_collision_no_diagnostic_recorded(self, tmp_path: Path):
+        """When there is no collision, diagnostics remains empty."""
+        target = tmp_path / "missing.md"  # does not exist on disk
+        diag = DiagnosticCollector()
+
+        result = BaseIntegrator.check_collision(
+            target, ".github/prompts/missing.md",
+            managed_files=set(), force=False, diagnostics=diag,
+        )
+
+        assert result is False
+        assert not diag.has_diagnostics
+
+    def test_force_bypasses_diagnostics(self, tmp_path: Path):
+        """force=True skips collision even when diagnostics is provided."""
+        target = tmp_path / "cmd.md"
+        target.write_text("# user")
+        diag = DiagnosticCollector()
+
+        result = BaseIntegrator.check_collision(
+            target, ".claude/commands/cmd.md",
+            managed_files=set(), force=True, diagnostics=diag,
+        )
+
+        assert result is False
+        assert not diag.has_diagnostics
+
+    def test_managed_file_bypasses_diagnostics(self, tmp_path: Path):
+        """File in managed_files is not a collision — no diagnostic recorded."""
+        target = tmp_path / "review.prompt.md"
+        target.write_text("# managed")
+        diag = DiagnosticCollector()
+
+        result = BaseIntegrator.check_collision(
+            target, ".github/prompts/review.prompt.md",
+            managed_files={".github/prompts/review.prompt.md"},
+            force=False, diagnostics=diag,
+        )
+
+        assert result is False
+        assert not diag.has_diagnostics
+
+    def test_multiple_collisions_accumulate(self, tmp_path: Path):
+        """Multiple collisions accumulate in the same collector."""
+        diag = DiagnosticCollector()
+        paths = [
+            ".github/prompts/a.prompt.md",
+            ".github/agents/b.agent.md",
+            ".claude/commands/c.md",
+        ]
+        for rel in paths:
+            target = tmp_path / Path(rel).name
+            target.write_text("# user")
+            BaseIntegrator.check_collision(
+                target, rel, managed_files=set(),
+                force=False, diagnostics=diag,
+            )
+
+        entries = diag.by_category().get(CATEGORY_COLLISION, [])
+        assert len(entries) == 3
+        recorded_paths = {e.message for e in entries}
+        assert recorded_paths == set(paths)
 
 
 # ---------------------------------------------------------------------------

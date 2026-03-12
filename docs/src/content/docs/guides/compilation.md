@@ -4,6 +4,8 @@ sidebar:
   order: 1
 ---
 
+Compilation is **optional for most users**. If your team uses GitHub Copilot or Claude, `apm install` deploys all primitives in their native format -- you can skip this guide entirely. `apm compile` is for teams that use Cursor, Codex, Gemini, or other tools that read single-root-file formats like `AGENTS.md` or `CLAUDE.md`. It is also useful when you want a consolidated view of all instructions in one file.
+
 **Solving the AI agent scalability problem through constraint satisfaction optimization**
 
 APM's compilation system implements a mathematically rigorous solution to the **context pollution problem** that degrades AI agent performance as projects grow. Through constraint satisfaction optimization and hierarchical coverage guarantees, `apm compile` transforms scattered primitives into optimized context files for every major AI coding agent.
@@ -221,9 +223,9 @@ def _calculate_hierarchical_coverage(self, placements: List[Path], target_direct
 apm compile
 
 # Example output:
-📊 Analyzing 247 files across 12 directories...
-🎯 Optimizing instruction placement...
-✅ Generated 4 AGENTS.md files with guaranteed coverage
+Analyzing 247 files across 12 directories...
+Optimizing instruction placement...
+Generated 4 AGENTS.md files with guaranteed coverage
 ```
 
 ### Mathematical Analysis Mode
@@ -233,14 +235,14 @@ apm compile
 apm compile --verbose
 
 # Example detailed output:
-🔬 Mathematical Analysis:
-├─ Distribution Scores:
-│  ├─ **/*.py: 0.23 → Single-Point Strategy
-│  ├─ **/*.tsx: 0.67 → Selective Multi Strategy  
-│  └─ **/*.md: 0.81 → Distributed Strategy
-├─ Coverage Verification: ✓ Complete (100%)
-├─ Constraint Satisfaction: All 8 constraints satisfied
-└─ Generation Time: 127ms
+Mathematical Analysis:
+|- Distribution Scores:
+|  |- **/*.py: 0.23 -> Single-Point Strategy
+|  |- **/*.tsx: 0.67 -> Selective Multi Strategy  
+|  +- **/*.md: 0.81 -> Distributed Strategy
+|- Coverage Verification: Complete (100%)
+|- Constraint Satisfaction: All 8 constraints satisfied
++- Generation Time: 127ms
 ```
 
 ### Performance Analysis
@@ -251,8 +253,8 @@ apm compile --dry-run
 
 # Timing instrumentation
 apm compile --verbose
-# Shows: ⏱️ Project Analysis: 45.2ms
-#        ⏱️ Instruction Processing: 82.1ms
+# Shows: Project Analysis: 45.2ms
+#        Instruction Processing: 82.1ms
 ```
 
 ### Configuration Control
@@ -421,16 +423,19 @@ The optimization engine implements:
 - **Performance-optimized caching strategies**
 - **Deterministic reproducible results**
 
-## Universal Compatibility
+## Tool Compatibility
 
-Generated AGENTS.md files work seamlessly across all major coding agents:
+Different AI tools get different levels of support from `apm install` vs `apm compile`:
 
-- ✅ **GitHub Copilot** (All variations)
-- ✅ **Cursor** (Native AGENTS.md support)
-- ✅ **Continue** (VS Code & JetBrains)
-- ✅ **Codeium** (Universal compatibility)
-- ✅ **Claude** (Anthropic's implementation)
-- ✅ **Any AGENTS.md standard compliant tool**
+| AI Tool | What `apm install` deploys | What `apm compile` adds | Support level |
+|---------|--------------------------|------------------------|---------------|
+| GitHub Copilot | `.github/instructions/`, `.github/prompts/`, agents, hooks, plugins, MCP | `AGENTS.md` (optional) | **Full** |
+| Claude | `.claude/` commands, skills, MCP | `CLAUDE.md` | **Full** |
+| Cursor | -- | `.cursor/rules/` | Instructions via compile |
+| Codex CLI | -- | `AGENTS.md` | Instructions via compile |
+| Gemini | -- | `GEMINI.md` | Instructions via compile |
+
+For Copilot and Claude users, `apm install` handles everything natively. Compilation is the bridge that brings instruction support to tools that do not yet have first-class APM integration.
 
 ## Theoretical Foundations
 

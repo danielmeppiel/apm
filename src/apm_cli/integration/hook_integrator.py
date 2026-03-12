@@ -254,7 +254,8 @@ class HookIntegrator(BaseIntegrator):
 
     def integrate_package_hooks(self, package_info, project_root: Path,
                                  force: bool = False,
-                                 managed_files: set = None) -> HookIntegrationResult:
+                                 managed_files: set = None,
+                                 diagnostics=None) -> HookIntegrationResult:
         """Integrate hooks from a package into .github/hooks/ (VSCode target).
 
         Deploys hook JSON files with clean filenames and copies referenced
@@ -302,7 +303,7 @@ class HookIntegrator(BaseIntegrator):
             target_path = hooks_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
 
-            if self.check_collision(target_path, rel_path, managed_files, force):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 continue
 
             # Write rewritten JSON
@@ -316,7 +317,7 @@ class HookIntegrator(BaseIntegrator):
             # Copy referenced scripts (individual file tracking)
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
-                if self.check_collision(target_script, target_rel, managed_files, force):
+                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
                     continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
@@ -331,7 +332,8 @@ class HookIntegrator(BaseIntegrator):
 
     def integrate_package_hooks_claude(self, package_info, project_root: Path,
                                         force: bool = False,
-                                        managed_files: set = None) -> HookIntegrationResult:
+                                        managed_files: set = None,
+                                        diagnostics=None) -> HookIntegrationResult:
         """Integrate hooks from a package into .claude/settings.json (Claude target).
 
         Merges hook definitions into the Claude settings file and copies
@@ -404,7 +406,7 @@ class HookIntegrator(BaseIntegrator):
             # Copy referenced scripts
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
-                if self.check_collision(target_script, target_rel, managed_files, force):
+                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
                     continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)

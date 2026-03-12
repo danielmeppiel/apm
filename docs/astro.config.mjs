@@ -55,7 +55,7 @@ export default defineConfig({
 						{ label: 'Quick Start', slug: 'getting-started/quick-start' },
 						{ label: 'Your First Package', slug: 'getting-started/first-package' },
 						{ label: 'Authentication', slug: 'getting-started/authentication' },
-						{ label: 'Migrating Projects', slug: 'getting-started/migration' },
+						{ label: 'Existing Projects', slug: 'getting-started/migration' },
 					],
 				},
 				{
@@ -68,6 +68,7 @@ export default defineConfig({
 						{ label: 'Dependencies & Lockfile', slug: 'guides/dependencies' },
 						{ label: 'Pack & Distribute', slug: 'guides/pack-distribute' },
 						{ label: 'Org-Wide Packages', slug: 'guides/org-packages' },
+						{ label: 'Agent Workflows (Experimental)', slug: 'guides/agent-workflows' },
 					],
 				},
 				{

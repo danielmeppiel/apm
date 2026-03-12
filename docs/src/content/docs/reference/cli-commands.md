@@ -4,53 +4,11 @@ sidebar:
   order: 1
 ---
 
-Complete command-line interface reference for Agent Package Manager (APM).
+Complete reference for all APM CLI commands and options.
 
-## Quick Start
-
-```bash
-# 1. Set your GitHub tokens (minimal setup)
-export GITHUB_APM_PAT=your_fine_grained_token_here
-# Optional: export GITHUB_TOKEN=your_models_token           # For Codex CLI with GitHub Models
-
-# 2. Install APM CLI (GitHub org members)
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
-
-# 3. Setup runtime
-apm runtime setup copilot  
-
-# 4. Create project
-apm init my-project && cd my-project
-
-# 5. Run your first workflow
-apm compile && apm run start --param name="<YourGitHubHandle>"
-```
-
-## Installation
-
-### Quick Install (Recommended)
-```bash
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
-```
-
-### Manual Download
-Download from [GitHub Releases](https://github.com/microsoft/apm/releases/latest):
-```bash
-# Linux x86_64
-curl -L https://github.com/microsoft/apm/releases/latest/download/apm-linux-x86_64 -o apm && chmod +x apm
-
-# macOS Intel
-curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-x86_64 -o apm && chmod +x apm
-
-# macOS Apple Silicon  
-curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-arm64 -o apm && chmod +x apm
-```
-
-### From Source (Developers)
-```bash
-git clone https://github.com/microsoft/apm.git
-cd apm && pip install -e .
-```
+:::tip[New to APM?]
+See [Installation](../../getting-started/installation/) and [Quick Start](../../getting-started/quick-start/) to get up and running.
+:::
 
 ## Global Options
 
@@ -126,8 +84,8 @@ apm install [PACKAGES...] [OPTIONS]
 - `--update` - Update dependencies to latest Git references  
 - `--force` - Overwrite locally-authored files on collision
 - `--dry-run` - Show what would be installed without installing
-- `--parallel-downloads INT` - Max concurrent package downloads (default: 4, 0 to disable)
-- `--verbose` - Show detailed installation information
+- `--parallel-downloads INTEGER` - Max concurrent package downloads (default: 4, 0 to disable)
+- `--verbose` - Show individual file paths and full error details in the diagnostic summary
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 
 **Behavior:**
@@ -235,7 +193,19 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
 - **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
-- **Collision detection**: Skips local files with a warning; use `--force` to overwrite
+- **Collision detection**: Skips local files that aren't managed by APM; use `--force` to overwrite
+
+**Diagnostic Summary:**
+
+After installation completes, APM prints a grouped diagnostic summary instead of inline warnings. Categories include collisions (skipped files), sub-skill overwrites, warnings, and errors.
+
+- **Normal mode**: Shows counts and actionable tips (e.g., "9 files skipped -- use `apm install --force` to overwrite")
+- **Verbose mode** (`--verbose`): Additionally lists individual file paths grouped by package, and full error details
+
+```bash
+# See exactly which files were skipped or had issues
+apm install --verbose
+```
 
 **Claude Integration (`.claude/` present):**
 
@@ -348,8 +318,8 @@ apm pack [OPTIONS]
 ```
 
 **Options:**
-- `-o, --output TEXT` - Output directory (default: `./build/`)
-- `-t, --target [vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified
+- `-o, --output PATH` - Output directory (default: `./build`)
+- `-t, --target [copilot|vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
 - `--format [apm|plugin]` - Bundle format (default: `apm`)
@@ -410,7 +380,7 @@ apm unpack BUNDLE_PATH [OPTIONS]
 - `BUNDLE_PATH` - Path to a `.tar.gz` archive or an unpacked bundle directory
 
 **Options:**
-- `--output TEXT` - Target project directory (default: current directory)
+- `-o, --output PATH` - Target project directory (default: current directory)
 - `--skip-verify` - Skip completeness verification against the bundle lockfile
 - `--dry-run` - Show what would be extracted without writing anything
 
@@ -695,9 +665,11 @@ apm mcp show a5e8a7f0-d4e4-4a1d-b12f-2896a23fd4f1
 - Available installation packages
 - Installation instructions
 
-### `apm run` - Execute prompts
+### `apm run` (Experimental) - Execute prompts
 
 Execute a script defined in your apm.yml with parameters and real-time output streaming.
+
+> See the [Agent Workflows guide](../../guides/agent-workflows/) for usage details.
 
 ```bash
 apm run [SCRIPT_NAME] [OPTIONS]
@@ -1012,11 +984,13 @@ apm config set auto-integrate yes
 apm config set auto-integrate 1
 ```
 
-## Runtime Management
+## Runtime Management (Experimental)
 
-### `apm runtime` - Manage AI runtimes
+### `apm runtime` (Experimental) - Manage AI runtimes
 
 APM manages AI runtime installation and configuration automatically. Currently supports three runtimes: `copilot`, `codex`, and `llm`.
+
+> See the [Agent Workflows guide](../../guides/agent-workflows/) for usage details.
 
 ```bash
 apm runtime COMMAND [OPTIONS]
@@ -1032,11 +1006,11 @@ apm runtime COMMAND [OPTIONS]
 Download and configure an AI runtime from official sources.
 
 ```bash
-apm runtime setup RUNTIME_NAME [OPTIONS]
+apm runtime setup [OPTIONS] {copilot|codex|llm}
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to install: `copilot`, `codex`, or `llm`
+- `{copilot|codex|llm}` - Runtime to install
 
 **Options:**
 - `--version TEXT` - Specific version to install
@@ -1082,11 +1056,11 @@ apm runtime list
 Remove an installed runtime and its configuration.
 
 ```bash
-apm runtime remove RUNTIME_NAME
+apm runtime remove [OPTIONS] {copilot|codex|llm}
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to remove: `copilot`, `codex`, or `llm`
+- `{copilot|codex|llm}` - Runtime to remove
 
 **Options:**
 - `--yes` - Confirm the action without prompting
@@ -1104,136 +1078,3 @@ apm runtime status
 - Currently active runtime
 - Next steps if no runtime is available
 
-## File Formats
-
-### APM Project Configuration (`apm.yml`)
-```yaml
-name: my-project
-version: 1.0.0
-description: My APM application
-author: Your Name
-scripts:
-  start: "codex hello-world.prompt.md"
-  llm: "llm hello-world.prompt.md -m github/gpt-4o-mini"
-  debug: "RUST_LOG=debug codex hello-world.prompt.md"
-
-dependencies:
-  mcp:
-    - ghcr.io/github/github-mcp-server
-```
-
-### Prompt Format (`.prompt.md`)
-```markdown
----
-description: Brief description of what this prompt does
-mcp:
-  - ghcr.io/github/github-mcp-server
-input:
-  - param1
-  - param2
----
-
-# Prompt Title
-
-Your prompt content here with ${input:param1} substitution.
-```
-
-### Supported Prompt Locations
-APM discovers `.prompt.md` files anywhere in your project:
-- `./hello-world.prompt.md`
-- `./prompts/my-prompt.prompt.md`
-- `./.github/prompts/workflow.prompt.md` 
-- `./docs/prompts/helper.prompt.md`
-
-## Quick Start Workflow
-
-```bash
-# 1. Initialize new project (like npm init)
-apm init my-hello-world
-
-# 2. Navigate to project
-cd my-hello-world
-
-# 3. Discover MCP servers (optional)
-apm mcp search filesystem
-apm mcp show @modelcontextprotocol/servers/src/filesystem
-
-# 4. Install dependencies (like npm install)
-apm install
-
-# 5. Run the hello world prompt
-apm run start --param name="<YourGitHubHandle>"
-
-# 6. Preview before execution
-apm preview start --param name="<YourGitHubHandle>"
-
-# 7. List available prompts
-apm list
-```
-
-## Tips & Best Practices
-
-1. **Start with runtime setup**: Run `apm runtime setup copilot` 
-2. **Use GitHub Models for free tier**: Set `GITHUB_TOKEN` (user-scoped with Models read permission) for free Codex access
-3. **Discover MCP servers**: Use `apm mcp search` to find available MCP servers before adding to apm.yml
-4. **Preview before running**: Use `apm preview` to check parameter substitution
-5. **Organize prompts**: Use descriptive names and place in logical directories
-6. **Version control**: Include `.prompt.md` files and `apm.yml` in your git repository
-7. **Parameter naming**: Use clear, descriptive parameter names in prompts
-8. **Error handling**: Always check return codes in scripts and CI/CD
-9. **MCP integration**: Declare MCP dependencies in both `apm.yml` and prompt frontmatter
-
-## Integration Examples
-
-### In CI/CD (GitHub Actions)
-```yaml
-- name: Setup APM runtime
-  run: |
-    apm runtime setup codex  
-    # Purpose-specific authentication
-    export GITHUB_APM_PAT=${{ secrets.GITHUB_APM_PAT }}          # Private modules + fallback
-    export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}              # Optional: Codex CLI with GitHub Models
-    
-- name: Setup APM project
-  run: apm install
-    
-- name: Run code review
-  run: |
-    apm run code-review \
-      --param pr_number=${{ github.event.number }}
-```
-
-### In Development Scripts
-```bash
-#!/bin/bash
-# Setup and run APM project
-apm runtime setup codex  
-# Fine-grained token preferred
-export GITHUB_APM_PAT=your_fine_grained_token      # Private modules + fallback auth
-export GITHUB_TOKEN=your_models_token              # Codex CLI with GitHub Models
-
-cd my-apm-project
-apm install
-
-# Run documentation analysis
-if apm run document --param project_name=$(basename $PWD); then
-    echo "Documentation analysis completed"
-else
-    echo "Documentation analysis failed" 
-    exit 1
-fi
-```
-
-### Project Structure Example
-```
-my-apm-project/
-├── apm.yml                           # Project configuration
-├── README.md                         # Project documentation  
-├── hello-world.prompt.md             # Main prompt file
-├── prompts/
-│   ├── code-review.prompt.md         # Code review prompt
-│   └── documentation.prompt.md       # Documentation prompt
-└── .github/
-    └── workflows/
-        └── apm-ci.yml                # CI using APM prompts
-```

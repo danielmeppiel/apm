@@ -4,26 +4,24 @@ sidebar:
   order: 3
 ---
 
-Prompts are the building blocks of APM - focused, reusable AI instructions that accomplish specific tasks. They are executed through scripts defined in your `apm.yml` configuration.
+Prompts are the building blocks of APM -- focused, reusable AI instructions that accomplish specific tasks. They follow the `.prompt.md` convention and are distributed as shareable packages.
 
 ## How Prompts Work in APM
 
-APM uses a script-based architecture:
+APM treats prompts as deployable artifacts:
 
-1. **Scripts** are defined in `apm.yml` and specify which runtime and prompt to use
-2. **Prompts** (`.prompt.md` files) contain the AI instructions with parameter placeholders
-3. **Compilation** happens when scripts reference `.prompt.md` files - APM compiles them with parameter substitution
-4. **Execution** runs the compiled prompt through the specified runtime
+1. **Prompts** (`.prompt.md` files) contain AI instructions with parameter placeholders
+2. **Packages** bundle prompts for sharing via `apm publish` and `apm install`
+3. **Deployment** places prompts into well-known directories (e.g., `.github/prompts/`) where tools like GitHub Copilot can discover and use them
+4. **Compilation** resolves parameter placeholders, cross-file references, and link transforms at install time
 
 ```bash
-# Script execution flow
-apm run start --param key=value
+# Deployment flow
+apm install owner/my-prompt-package
   ↓
-Script: "codex my-prompt.prompt.md"
+APM compiles .prompt.md files (parameter defaults, link resolution)
   ↓
-APM compiles my-prompt.prompt.md with parameters
-  ↓
-Codex executes the compiled prompt
+Prompts land in .github/prompts/ for Copilot to discover
 ```
 
 ## What are Prompts?
@@ -103,7 +101,7 @@ Reference script inputs using the `${input:name}` syntax:
 
 ## MCP Tool Integration (Phase 2 - Coming Soon)
 
-> **⚠️ Note**: MCP integration is planned work. Currently, prompts work with natural language instructions only.
+> **Note**: MCP integration is planned work. Currently, prompts work with natural language instructions only.
 
 **Future capability** - Prompts will be able to use MCP servers for external tools:
 
@@ -230,142 +228,12 @@ Verify the successful deployment of ${input:service_name} version ${input:deploy
 
 ## Running Prompts
 
-APM provides two ways to run prompts: **explicit scripts** (configured in `apm.yml`) and **auto-discovery** (zero configuration).
+Prompts can be executed locally using APM's experimental agent workflow system.
+Define scripts in your `apm.yml` or let APM auto-discover `.prompt.md` files as
+runnable workflows.
 
-### Auto-Discovery (Zero Configuration)
-
-Starting with v0.5.0, APM can automatically discover and run prompts without manual script configuration:
-
-```bash
-# Install a prompt from any repository
-apm install github/awesome-copilot/skills/review-and-refactor
-
-# Run it immediately - no apm.yml configuration needed!
-apm run review-and-refactor
-```
-
-**How it works:**
-
-1. APM searches for prompts with matching names in this priority order:
-   - Local root: `./prompt-name.prompt.md`
-   - APM prompts directory: `.apm/prompts/prompt-name.prompt.md`
-   - GitHub convention: `.github/prompts/prompt-name.prompt.md`
-   - Dependencies: `apm_modules/**/.apm/prompts/prompt-name.prompt.md`
-
-2. When found, APM automatically:
-   - Detects installed runtime (GitHub Copilot CLI or Codex)
-   - Generates appropriate command with recommended flags
-   - Compiles prompt with parameters
-   - Executes through the runtime
-
-**Qualified paths for disambiguation:**
-
-If you have multiple prompts with the same name from different sources:
-
-```bash
-# Collision detected - APM shows all matches with guidance
-apm run code-review
-# Error: Multiple prompts found for 'code-review':
-#   - owner/test-repo (apm_modules/owner/test-repo-code-review/...)
-#   - acme/standards (apm_modules/acme/standards/...)
-# 
-# Use qualified path:
-#   apm run github/awesome-copilot/code-review
-#   apm run acme/standards/code-review
-
-# Run specific version using qualified path
-apm run github/awesome-copilot/code-review --param pr_url=...
-```
-
-**Local prompts always take precedence** over dependency prompts with the same name.
-
-### Explicit Scripts (Power Users)
-
-For advanced use cases, define scripts explicitly in `apm.yml`:
-
-```yaml
-scripts:
-  # Custom runtime flags
-  start: "copilot --full-auto -p analyze-logs.prompt.md"
-  
-  # Specific model selection
-  llm: "llm analyze-logs.prompt.md -m github/gpt-4o-mini"
-  
-  # Environment variables
-  debug: "RUST_LOG=debug codex analyze-logs.prompt.md"
-  
-  # Friendly aliases
-  review: "copilot -p code-review.prompt.md"
-```
-
-**Explicit scripts always take precedence** over auto-discovery. This gives power users full control while maintaining zero-config convenience for simple cases.
-
-### Running Scripts
-
-```bash
-# With auto-discovery (no apm.yml scripts needed)
-apm run code-review --param pull_request_url="https://github.com/org/repo/pull/123"
-
-# With explicit scripts
-apm run start --param service_name=api-gateway --param time_window="1h"
-apm run llm --param service_name=api-gateway --param time_window="1h"
-apm run debug --param service_name=api-gateway --param time_window="1h"
-
-# Preview compiled prompts before execution
-apm preview start --param service_name=api-gateway --param time_window="1h"
-```
-
-### Example Project Structure
-
-```
-my-devops-project/
-├── apm.yml                              # Project configuration
-├── README.md                            # Project documentation
-├── analyze-logs.prompt.md               # Main log analysis prompt
-├── prompts/
-│   ├── code-review.prompt.md           # Code review prompt
-│   └── health-check.prompt.md          # Deployment health check
-└── .github/
-    └── workflows/
-        └── apm-ci.yml                  # CI using APM scripts
-```
-
-### Corresponding apm.yml
-
-```yaml
-name: my-devops-project
-version: 1.0.0
-description: DevOps automation prompts for log analysis and system monitoring
-author: Platform Team
-
-scripts:
-  # Default script using Codex runtime
-  start: "codex analyze-logs.prompt.md"
-  
-  # LLM script with GitHub Models
-  llm: "llm analyze-logs.prompt.md -m github/gpt-4o-mini"
-  
-  # Debug script with environment variables
-  debug: "RUST_LOG=debug codex analyze-logs.prompt.md"
-  
-  # Code review script
-  review: "codex prompts/code-review.prompt.md"
-  
-  # Health check script
-  health: "llm prompts/health-check.prompt.md -m github/gpt-4o"
-
-dependencies:
-  mcp:
-    - ghcr.io/github/github-mcp-server
-    - ghcr.io/kubernetes/k8s-mcp-server
-```
-
-This structure allows you to run any prompt via scripts:
-```bash
-apm run start --param service_name=api-gateway --param time_window="1h"
-apm run review --param pull_request_url=https://github.com/org/repo/pull/123
-apm run health --param service_name=frontend --param deployment_version=v2.1.0
-```
+See the [Agent Workflows guide](../agent-workflows/) for setup instructions,
+runtime configuration, and execution examples.
 
 ## Best Practices
 
@@ -393,6 +261,6 @@ Keep prompts in version control alongside scripts. Use semantic versioning for b
 
 ## Next Steps
 
-- Learn about [Runtime Integration](../../integrations/runtime-compatibility/) to setup and use different AI runtimes
-- See [CLI Reference](../../reference/cli-commands/) for complete script execution commands
+- Learn about [Agent Workflows](../agent-workflows/) to run prompts locally with AI runtimes
+- See [CLI Reference](../../reference/cli-commands/) for complete command documentation
 - Check [Development Guide](../../contributing/development-guide/) for local development setup

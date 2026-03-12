@@ -667,6 +667,10 @@ curl -H "Authorization: token $GITHUB_CLI_PAT" https://api.github.com/user
 - Remove circular references
 - Consider merging closely related packages
 
+#### "File conflicts during installation"
+**Problem**: Local files collide with package files during `apm install`
+**Resolution**: APM skips files that exist locally and aren't managed by APM. The diagnostic summary at the end of install shows how many files were skipped. Use `--verbose` to see which files, or `--force` to overwrite.
+
 #### "File conflicts during compilation"
 **Problem**: Multiple packages or local files have same names
 **Resolution**: Local files automatically override dependency files with same names
@@ -683,7 +687,10 @@ apm deps tree
 # Preview installation without changes
 apm install --dry-run
 
-# Enable verbose logging
+# See detailed diagnostics (skipped files, errors)
+apm install --verbose
+
+# Enable verbose logging for compilation
 apm compile --verbose
 ```
 
@@ -718,7 +725,6 @@ apm install
 apm compile
 
 # Now all team contexts and workflows are available
-apm run design-review --param component="login-form"
 ```
 
 ## Next Steps
