@@ -317,6 +317,53 @@ class MCPIntegrator:
         return names
 
     @staticmethod
+    def get_server_configs(mcp_deps: list) -> builtins.dict:
+        """Extract server configs as {name: config_dict} from MCP dependencies."""
+        configs: builtins.dict = {}
+        for dep in mcp_deps:
+            if hasattr(dep, "to_dict") and hasattr(dep, "name"):
+                configs[dep.name] = dep.to_dict()
+            elif isinstance(dep, str):
+                configs[dep] = {"name": dep}
+        return configs
+
+    @staticmethod
+    def _append_drifted_to_install_list(
+        install_list: builtins.list,
+        drifted: builtins.set,
+    ) -> None:
+        """Append drifted server names to *install_list* without duplicates.
+
+        Appends in sorted order to guarantee deterministic CLI output.
+        Names already present in *install_list* are skipped.
+        """
+        existing = builtins.set(install_list)
+        for name in builtins.sorted(drifted):
+            if name not in existing:
+                install_list.append(name)
+
+    @staticmethod
+    def _detect_mcp_config_drift(
+        mcp_deps: list,
+        stored_configs: builtins.dict,
+    ) -> builtins.set:
+        """Return names of MCP deps whose manifest config differs from stored.
+
+        Compares each dependency's current serialized config against the
+        previously stored config in the lockfile.  Only dependencies that
+        have a stored baseline *and* whose config has changed are returned.
+        """
+        drifted: builtins.set = builtins.set()
+        for dep in mcp_deps:
+            if not hasattr(dep, "to_dict") or not hasattr(dep, "name"):
+                continue
+            current_config = dep.to_dict()
+            stored = stored_configs.get(dep.name)
+            if stored is not None and stored != current_config:
+                drifted.add(dep.name)
+        return drifted
+
+    @staticmethod
     def _check_self_defined_servers_needing_installation(
         dep_names: list,
         target_runtimes: list,
@@ -477,11 +524,19 @@ class MCPIntegrator:
     def update_lockfile(
         mcp_server_names: builtins.set,
         lock_path: Optional[Path] = None,
+        *,
+        mcp_configs: Optional[builtins.dict] = None,
     ) -> None:
         """Update the lockfile with the current set of APM-managed MCP server names.
 
         Accepts the lock path directly to avoid a redundant disk read when the
         caller already has it.
+
+        Args:
+            mcp_server_names: Set of MCP server names to persist.
+            lock_path: Path to the lockfile.  Defaults to ``apm.lock`` in CWD.
+            mcp_configs: Keyword-only.  When provided, overwrites ``mcp_configs``
+                         in the lockfile (used for drift-detection baseline).
         """
         if lock_path is None:
             lock_path = Path.cwd() / "apm.lock"
@@ -492,6 +547,8 @@ class MCPIntegrator:
             if lockfile is None:
                 return
             lockfile.mcp_servers = sorted(mcp_server_names)
+            if mcp_configs is not None:
+                lockfile.mcp_configs = mcp_configs
             lockfile.save(lock_path)
         except Exception:
             logger.debug(
@@ -628,6 +685,7 @@ class MCPIntegrator:
         exclude: str = None,
         verbose: bool = False,
         apm_config: dict = None,
+        stored_mcp_configs: dict = None,
     ) -> int:
         """Install MCP dependencies.
 
@@ -639,9 +697,12 @@ class MCPIntegrator:
             verbose: Show detailed installation information.
             apm_config: The parsed apm.yml configuration dict (optional).
                 When not provided, the method loads it from disk.
+            stored_mcp_configs: Previously stored MCP configs from lockfile
+                for diff-aware installation.  When provided, servers whose
+                manifest config has changed are re-applied automatically.
 
         Returns:
-            Number of MCP servers newly configured.
+            Number of MCP servers newly configured or updated.
         """
         if not mcp_deps:
             _rich_warning("No MCP dependencies found in apm.yml")
@@ -668,6 +729,13 @@ class MCPIntegrator:
         }
 
         console = _get_console()
+        # Track servers that were re-applied due to config drift
+        servers_to_update: builtins.set = builtins.set()
+        # Track successful updates separately so the summary counts are accurate
+        # even when some drift-detected servers fail to install.
+        successful_updates: builtins.set = builtins.set()
+        if stored_mcp_configs is None:
+            stored_mcp_configs = {}
 
         # Start MCP section with clean header
         if console:
@@ -839,10 +907,29 @@ class MCPIntegrator:
                             target_runtimes, valid_servers
                         )
                     )
-                    already_configured_servers = [
+                    already_configured_candidates = [
                         dep
                         for dep in valid_servers
                         if dep not in servers_to_install
+                    ]
+
+                    # Detect config drift for "already configured" servers
+                    if stored_mcp_configs and already_configured_candidates:
+                        drifted_reg_deps = [
+                            registry_dep_map[n]
+                            for n in already_configured_candidates
+                            if n in registry_dep_map
+                        ]
+                        drifted = MCPIntegrator._detect_mcp_config_drift(
+                            drifted_reg_deps, stored_mcp_configs,
+                        )
+                        if drifted:
+                            servers_to_update.update(drifted)
+                            MCPIntegrator._append_drifted_to_install_list(servers_to_install, drifted)
+                    already_configured_servers = [
+                        dep
+                        for dep in already_configured_candidates
+                        if dep not in servers_to_update
                     ]
 
                     if not servers_to_install:
@@ -905,10 +992,12 @@ class MCPIntegrator:
 
                         # Install for each target runtime
                         for dep in servers_to_install:
+                            is_update = dep in servers_to_update
                             if console:
-                                console.print(f"│  [cyan]⬇️[/cyan]  {dep}")
+                                action = "↻" if is_update else "⬇️"
+                                console.print(f"│  [cyan]{action}[/cyan]  {dep}")
                                 console.print(
-                                    f"│     └─ Configuring for "
+                                    f"│     └─ {'Updating' if is_update else 'Configuring'} for "
                                     f"{', '.join([rt.title() for rt in target_runtimes])}..."
                                 )
 
@@ -927,11 +1016,15 @@ class MCPIntegrator:
 
                             if any_ok:
                                 if console:
+                                    label = "updated" if is_update else "configured"
                                     console.print(
                                         f"│  [green]✓[/green]  {dep} → "
                                         f"{', '.join([rt.title() for rt in target_runtimes])}"
+                                        f" [dim]({label})[/dim]"
                                     )
                                 configured_count += 1
+                                if is_update:
+                                    successful_updates.add(dep)
                             elif console:
                                 console.print(
                                     f"│  [red]✗[/red]  {dep} — "
@@ -956,10 +1049,28 @@ class MCPIntegrator:
                     target_runtimes,
                 )
             )
-            already_configured_self_defined = [
+            already_configured_candidates_sd = [
                 name
                 for name in self_defined_names
                 if name not in self_defined_to_install
+            ]
+
+            # Detect config drift for "already configured" self-defined servers
+            if stored_mcp_configs and already_configured_candidates_sd:
+                drifted_sd_deps = [
+                    dep for dep in self_defined_deps
+                    if dep.name in already_configured_candidates_sd
+                ]
+                drifted_sd = MCPIntegrator._detect_mcp_config_drift(
+                    drifted_sd_deps, stored_mcp_configs,
+                )
+                if drifted_sd:
+                    servers_to_update.update(drifted_sd)
+                    MCPIntegrator._append_drifted_to_install_list(self_defined_to_install, drifted_sd)
+            already_configured_self_defined = [
+                name
+                for name in already_configured_candidates_sd
+                if name not in servers_to_update
             ]
 
             if already_configured_self_defined:
@@ -983,18 +1094,20 @@ class MCPIntegrator:
                 if dep.name not in self_defined_to_install:
                     continue
 
+                is_update = dep.name in servers_to_update
                 synthetic_info = MCPIntegrator._build_self_defined_info(dep)
                 self_defined_cache = {dep.name: synthetic_info}
                 self_defined_env = dep.env or {}
 
                 if console:
                     transport_label = dep.transport or "stdio"
+                    action = "↻" if is_update else "⬇️"
                     console.print(
-                        f"│  [cyan]⬇️[/cyan]  {dep.name} "
+                        f"│  [cyan]{action}[/cyan]  {dep.name} "
                         f"[dim](self-defined, {transport_label})[/dim]"
                     )
                     console.print(
-                        f"│     └─ Configuring for "
+                        f"│     └─ {'Updating' if is_update else 'Configuring'} for "
                         f"{', '.join([rt.title() for rt in target_runtimes])}..."
                     )
 
@@ -1012,11 +1125,15 @@ class MCPIntegrator:
 
                 if any_ok:
                     if console:
+                        label = "updated" if is_update else "configured"
                         console.print(
                             f"│  [green]✓[/green]  {dep.name} → "
                             f"{', '.join([rt.title() for rt in target_runtimes])}"
+                            f" [dim]({label})[/dim]"
                         )
                     configured_count += 1
+                    if is_update:
+                        successful_updates.add(dep.name)
                 elif console:
                     console.print(
                         f"│  [red]✗[/red]  {dep.name} — "
@@ -1026,10 +1143,23 @@ class MCPIntegrator:
         # Close the panel
         if console:
             if configured_count > 0:
-                console.print(
-                    f"└─ [green]Configured {configured_count} "
-                    f"server{'s' if configured_count != 1 else ''}[/green]"
-                )
+                # Use successful_updates (not servers_to_update) for accurate counts.
+                # servers_to_update = all drift-detected servers (some may have failed).
+                # successful_updates = servers that were re-applied AND succeeded.
+                update_count = builtins.len(successful_updates)
+                new_count = configured_count - update_count
+                parts = []
+                if new_count > 0:
+                    parts.append(
+                        f"configured {new_count} "
+                        f"server{'s' if new_count != 1 else ''}"
+                    )
+                if update_count > 0:
+                    parts.append(
+                        f"updated {update_count} "
+                        f"server{'s' if update_count != 1 else ''}"
+                    )
+                console.print(f"└─ [green]{', '.join(parts).capitalize()}[/green]")
             else:
                 console.print("└─ [green]All servers up to date[/green]")
 
