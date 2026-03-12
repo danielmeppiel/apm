@@ -304,7 +304,9 @@ class TestParseFromDict:
     # --- Error cases ---
 
     def test_missing_git_field(self):
-        with pytest.raises(ValueError, match="'git' field"):
+        # With local path support, {"path": "foo"} is treated as a local path attempt.
+        # Since "foo" is not a valid local or remote dependency, it raises ValueError.
+        with pytest.raises(ValueError):
             DependencyReference.parse_from_dict({"path": "foo"})
 
     def test_empty_git_field(self):
@@ -400,7 +402,7 @@ dependencies:
   apm:
     - path: foo/bar
 """)
-        with pytest.raises(ValueError, match="'git' field"):
+        with pytest.raises(ValueError, match="'git' field|local filesystem path"):
             APMPackage.from_apm_yml(yml)
 
 

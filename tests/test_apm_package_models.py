@@ -391,7 +391,6 @@ class TestDependencyReference:
     def test_parse_control_characters_rejected(self):
         """Test that control characters are rejected."""
         invalid_formats = [
-            "/repo",
             "user//repo",
             "user repo",
         ]
@@ -399,6 +398,12 @@ class TestDependencyReference:
         for invalid_format in invalid_formats:
             with pytest.raises(ValueError, match="Invalid Git host|Empty dependency string|Invalid repository|Use 'user/repo'|path component"):
                 DependencyReference.parse(invalid_format)
+
+    def test_parse_absolute_path_as_local(self):
+        """Test that an absolute path like /repo is parsed as a local dependency."""
+        dep = DependencyReference.parse("/repo")
+        assert dep.is_local is True
+        assert dep.local_path == "/repo"
     
     def test_to_github_url(self):
         """Test converting to GitHub URL."""

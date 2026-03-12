@@ -169,6 +169,8 @@ class TestLockFile:
         dep_ref.reference = "main"
         dep_ref.virtual_path = None
         dep_ref.is_virtual = False
+        dep_ref.is_local = False
+        dep_ref.local_path = None
         installed = [(dep_ref, "commit123", 1, None)]
         lock = LockFile.from_installed_packages(installed, Mock())
         assert lock.has_dependency("owner/repo")

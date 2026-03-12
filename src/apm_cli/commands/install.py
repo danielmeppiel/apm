@@ -160,7 +160,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
 
 
 def _validate_package_exists(package):
-    """Validate that a package exists and is accessible on GitHub or Azure DevOps."""
+    """Validate that a package exists and is accessible on GitHub, Azure DevOps, or locally."""
     import os
     import subprocess
     import tempfile
@@ -171,6 +171,17 @@ def _validate_package_exists(package):
         from apm_cli.deps.github_downloader import GitHubPackageDownloader
 
         dep_ref = DependencyReference.parse(package)
+
+        # For local packages, validate directory exists and has valid package content
+        if dep_ref.is_local and dep_ref.local_path:
+            local = Path(dep_ref.local_path).expanduser()
+            if not local.is_absolute():
+                local = Path.cwd() / local
+            local = local.resolve()
+            if not local.is_dir():
+                return False
+            # Must contain apm.yml or SKILL.md
+            return (local / "apm.yml").exists() or (local / "SKILL.md").exists()
 
         # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
@@ -494,6 +505,43 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 # ---------------------------------------------------------------------------
 
 
+def _copy_local_package(dep_ref, install_path, project_root):
+    """Copy a local package to apm_modules/.
+
+    Args:
+        dep_ref: DependencyReference with is_local=True
+        install_path: Target path under apm_modules/
+        project_root: Project root for resolving relative paths
+
+    Returns:
+        install_path on success, None on failure
+    """
+    import shutil
+
+    local = Path(dep_ref.local_path).expanduser()
+    if not local.is_absolute():
+        local = (project_root / local).resolve()
+    else:
+        local = local.resolve()
+
+    if not local.is_dir():
+        _rich_error(f"Local package path does not exist: {dep_ref.local_path}")
+        return None
+    if not (local / "apm.yml").exists() and not (local / "SKILL.md").exists():
+        _rich_error(
+            f"Local package is not a valid APM package (no apm.yml or SKILL.md): {dep_ref.local_path}"
+        )
+        return None
+
+    # Ensure parent exists and clean target (always re-copy for local deps)
+    install_path.parent.mkdir(parents=True, exist_ok=True)
+    if install_path.exists():
+        shutil.rmtree(install_path)
+
+    shutil.copytree(local, install_path, dirs_exist_ok=False)
+    return install_path
+
+
 def _install_apm_dependencies(
     apm_package: "APMPackage",
     update_refs: bool = False,
@@ -553,6 +601,14 @@ def _install_apm_dependencies(
         if install_path.exists():
             return install_path
         try:
+            # Handle local packages: copy instead of git clone
+            if dep_ref.is_local and dep_ref.local_path:
+                result_path = _copy_local_package(dep_ref, install_path, project_root)
+                if result_path:
+                    callback_downloaded[dep_ref.get_unique_key()] = None
+                    return result_path
+                return None
+
             # Build repo_ref string - include host for GHE/ADO, plus reference if specified
             repo_ref = dep_ref.repo_url
             if dep_ref.host and dep_ref.host not in ("github.com", None):
@@ -767,6 +823,9 @@ def _install_apm_dependencies(
         for _pd_ref in deps_to_install:
             _pd_key = _pd_ref.get_unique_key()
             _pd_path = (apm_modules_dir / _pd_ref.alias) if _pd_ref.alias else _pd_ref.get_install_path(apm_modules_dir)
+            # Skip local packages — they are copied, not downloaded
+            if _pd_ref.is_local:
+                continue
             # Skip if already downloaded during BFS resolution
             if _pd_key in callback_downloaded:
                 continue
@@ -852,6 +911,191 @@ def _install_apm_dependencies(
                 else:
                     # Use the canonical install path from DependencyReference
                     install_path = dep_ref.get_install_path(apm_modules_dir)
+
+                # --- Local package: copy from filesystem (no git download) ---
+                if dep_ref.is_local and dep_ref.local_path:
+                    result_path = _copy_local_package(dep_ref, install_path, project_root)
+                    if not result_path:
+                        diagnostics.error(
+                            f"Failed to copy local package: {dep_ref.local_path}",
+                            package=dep_ref.local_path,
+                        )
+                        continue
+
+                    installed_count += 1
+                    _rich_success(f"✓ {dep_ref.local_path} (local)")
+
+                    # Build minimal PackageInfo for integration
+                    from apm_cli.models.apm_package import (
+                        APMPackage as _LAPMPackage,
+                        PackageInfo as _LPackageInfo,
+                        PackageType as _LPackageType,
+                        ResolvedReference as _LResolvedRef,
+                        GitReferenceType as _LGitRefType,
+                    )
+                    from datetime import datetime as _ldt
+
+                    _l_apm_yml = install_path / "apm.yml"
+                    if _l_apm_yml.exists():
+                        _l_pkg = _LAPMPackage.from_apm_yml(_l_apm_yml)
+                        if not _l_pkg.source:
+                            _l_pkg.source = dep_ref.local_path
+                    else:
+                        _l_pkg = _LAPMPackage(
+                            name=Path(dep_ref.local_path).name,
+                            version="0.0.0",
+                            package_path=install_path,
+                            source=dep_ref.local_path,
+                        )
+
+                    _l_ref = _LResolvedRef(
+                        original_ref="local",
+                        ref_type=_LGitRefType.BRANCH,
+                        resolved_commit="local",
+                        ref_name="local",
+                    )
+                    _l_info = _LPackageInfo(
+                        package=_l_pkg,
+                        install_path=install_path,
+                        resolved_reference=_l_ref,
+                        installed_at=_ldt.now().isoformat(),
+                        dependency_ref=dep_ref,
+                    )
+
+                    # Detect package type
+                    _l_skill = (install_path / "SKILL.md").exists()
+                    _l_apm = (install_path / "apm.yml").exists()
+                    from apm_cli.utils.helpers import find_plugin_json as _l_find_plugin
+                    _l_plugin = _l_find_plugin(install_path) is not None
+                    if _l_plugin and not _l_apm:
+                        _l_info.package_type = _LPackageType.MARKETPLACE_PLUGIN
+                    elif _l_skill and _l_apm:
+                        _l_info.package_type = _LPackageType.HYBRID
+                    elif _l_skill:
+                        _l_info.package_type = _LPackageType.CLAUDE_SKILL
+                    elif _l_apm:
+                        _l_info.package_type = _LPackageType.APM_PACKAGE
+
+                    # Record for lockfile
+                    node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
+                    depth = node.depth if node else 1
+                    resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+                    installed_packages.append((dep_ref, None, depth, resolved_by))
+                    dep_key = dep_ref.get_unique_key()
+                    dep_deployed_local: builtins.list = []
+
+                    if hasattr(_l_info, 'package_type') and _l_info.package_type:
+                        package_types[dep_key] = _l_info.package_type.value
+
+                    # Use the same variable name as the rest of the loop
+                    package_info = _l_info
+
+                    # === Fall through to integration below ===
+                    # (The integration code after the download block is shared
+                    # between cached, downloaded, and local packages, so we
+                    # re-use it by NOT calling ``continue`` here.)
+
+                    # Integration: same block as fresh-download path (prompts, agents, skills, etc.)
+                    if integrate_vscode or integrate_claude:
+                        try:
+                            prompt_result = prompt_integrator.integrate_package_prompts(
+                                package_info, project_root,
+                                force=force, managed_files=managed_files,
+                                diagnostics=diagnostics,
+                            )
+                            if prompt_result.files_integrated > 0:
+                                total_prompts_integrated += prompt_result.files_integrated
+                                _rich_info(f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/")
+                            total_links_resolved += prompt_result.links_resolved
+                            for tp in prompt_result.target_paths:
+                                dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+
+                            agent_result = agent_integrator.integrate_package_agents(
+                                package_info, project_root,
+                                force=force, managed_files=managed_files,
+                                diagnostics=diagnostics,
+                            )
+                            if agent_result.files_integrated > 0:
+                                total_agents_integrated += agent_result.files_integrated
+                                _rich_info(f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/")
+                            total_links_resolved += agent_result.links_resolved
+                            for tp in agent_result.target_paths:
+                                dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+
+                            if integrate_vscode or integrate_claude:
+                                skill_result = skill_integrator.integrate_package_skill(package_info, project_root)
+                                if skill_result.skill_created:
+                                    total_skills_integrated += 1
+                                    _rich_info(f"  └─ Skill integrated → .github/skills/")
+                                if skill_result.sub_skills_promoted > 0:
+                                    total_sub_skills_promoted += skill_result.sub_skills_promoted
+                                for tp in skill_result.target_paths:
+                                    dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+
+                            if integrate_vscode:
+                                instruction_result = instruction_integrator.integrate_package_instructions(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                                if instruction_result.files_integrated > 0:
+                                    total_instructions_integrated += instruction_result.files_integrated
+                                    _rich_info(f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/")
+                                total_links_resolved += instruction_result.links_resolved
+                                for tp in instruction_result.target_paths:
+                                    dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+
+                            if integrate_claude:
+                                claude_agent_result = agent_integrator.integrate_package_agents_claude(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                                if claude_agent_result.files_integrated > 0:
+                                    total_agents_integrated += claude_agent_result.files_integrated
+                                total_links_resolved += claude_agent_result.links_resolved
+                                for tp in claude_agent_result.target_paths:
+                                    dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+
+                                command_result = command_integrator.integrate_package_commands(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                                if command_result.files_integrated > 0:
+                                    total_commands_integrated += command_result.files_integrated
+                                total_links_resolved += command_result.links_resolved
+                                for tp in command_result.target_paths:
+                                    dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+
+                            if integrate_vscode:
+                                hook_result = hook_integrator.integrate_package_hooks(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                                if hook_result.hooks_integrated > 0:
+                                    total_hooks_integrated += hook_result.hooks_integrated
+                                for tp in hook_result.target_paths:
+                                    dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+                            if integrate_claude:
+                                hook_result_claude = hook_integrator.integrate_package_hooks_claude(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                                if hook_result_claude.hooks_integrated > 0:
+                                    total_hooks_integrated += hook_result_claude.hooks_integrated
+                                for tp in hook_result_claude.target_paths:
+                                    dep_deployed_local.append(tp.relative_to(project_root).as_posix())
+                        except Exception as e:
+                            diagnostics.error(
+                                f"Failed to integrate primitives from local package: {e}",
+                                package=dep_ref.local_path,
+                            )
+
+                    package_deployed_files[dep_key] = dep_deployed_local
+                    continue
 
                 # npm-like behavior: Branches always fetch latest, only tags/commits use cache
                 # Resolve git reference to determine type

@@ -54,6 +54,10 @@ class DependencyReference:
     ado_project: Optional[str] = None       # e.g., "market-js-app"
     ado_repo: Optional[str] = None          # e.g., "compliance-rules"
     
+    # Local path dependency fields
+    is_local: bool = False  # True if this is a local filesystem dependency
+    local_path: Optional[str] = None  # Original local path string (e.g., "./packages/my-pkg")
+    
     # Supported file extensions for virtual packages
     VIRTUAL_FILE_EXTENSIONS = ('.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md')
     
@@ -131,15 +135,31 @@ class DependencyReference:
                     break
             return f"{repo_name}-{filename}"
     
+    @staticmethod
+    def is_local_path(dep_str: str) -> bool:
+        """Check if a dependency string looks like a local filesystem path.
+        
+        Local paths start with './', '../', '/', or '~'.
+        Protocol-relative URLs ('//...') are explicitly excluded.
+        """
+        s = dep_str.strip()
+        # Reject protocol-relative URLs ('//...')
+        if s.startswith('//'):
+            return False
+        return s.startswith(('./','../', '/', '~/', '~\\', '.\\', '..\\'))
+
     def get_unique_key(self) -> str:
         """Get a unique key for this dependency for deduplication.
         
         For regular packages: repo_url
         For virtual packages: repo_url + virtual_path to ensure uniqueness
+        For local packages: the local_path
         
         Returns:
             str: Unique key for this dependency
         """
+        if self.is_local and self.local_path:
+            return self.local_path
         if self.is_virtual and self.virtual_path:
             return f"{self.repo_url}/{self.virtual_path}"
         return self.repo_url
@@ -153,12 +173,16 @@ class DependencyReference:
         - Virtual paths are appended              →  owner/repo/path/to/thing
         - Refs are appended with #                →  owner/repo#v1.0
         - Aliases are appended with @             →  owner/repo@my-alias
+        - Local paths are returned as-is          →  ./packages/my-pkg
         
         No .git suffix, no https://, no git@ — just the canonical identifier.
         
         Returns:
             str: Canonical dependency string
         """
+        if self.is_local and self.local_path:
+            return self.local_path
+
         host = self.host or default_host()
         is_default = host.lower() == default_host().lower()
         
@@ -191,6 +215,9 @@ class DependencyReference:
         Returns:
             str: Identity string (e.g., "owner/repo" or "gitlab.com/owner/repo/path")
         """
+        if self.is_local and self.local_path:
+            return self.local_path
+
         host = self.host or default_host()
         is_default = host.lower() == default_host().lower()
         
@@ -249,12 +276,19 @@ class DependencyReference:
             - GitHub: apm_modules/owner/repo/subdir/path/
             - ADO: apm_modules/org/project/repo/subdir/path/
         
+        For local packages:
+            - apm_modules/_local/<directory-name>/
+        
         Args:
             apm_modules_dir: Path to the apm_modules directory
             
         Returns:
             Path: Absolute path to the package installation directory
         """
+        if self.is_local and self.local_path:
+            pkg_dir_name = Path(self.local_path).name
+            return apm_modules_dir / "_local" / pkg_dir_name
+
         repo_parts = self.repo_url.split("/")
         
         if self.is_virtual:
@@ -343,8 +377,12 @@ class DependencyReference:
             - git: git@bitbucket.org:team/rules.git
               path: prompts/review.prompt.md
         
+        Also supports local path entries:
+        
+            - path: ./packages/my-shared-skills
+        
         Args:
-            entry: Dictionary with 'git' (required), 'path' (optional), 'ref' (optional)
+            entry: Dictionary with 'git' or 'path' (required), plus optional fields
             
         Returns:
             DependencyReference: Parsed dependency reference
@@ -352,8 +390,22 @@ class DependencyReference:
         Raises:
             ValueError: If the entry is missing required fields or has invalid format
         """
+        # Support dict-form local path: { path: ./local/dir }
+        if 'path' in entry and 'git' not in entry:
+            local = entry['path']
+            if not isinstance(local, str) or not local.strip():
+                raise ValueError("'path' field must be a non-empty string")
+            local = local.strip()
+            if not cls.is_local_path(local):
+                raise ValueError(
+                    f"Object-style dependency must have a 'git' field, "
+                    f"or 'path' must be a local filesystem path "
+                    f"(starting with './', '../', '/', or '~')"
+                )
+            return cls.parse(local)
+
         if 'git' not in entry:
-            raise ValueError("Object-style dependency must have a 'git' field")
+            raise ValueError("Object-style dependency must have a 'git' or 'path' field")
         
         git_url = entry['git']
         if not isinstance(git_url, str) or not git_url.strip():
@@ -407,6 +459,9 @@ class DependencyReference:
         - https://gitlab.com/owner/repo.git (generic HTTPS git URL)
         - git@gitlab.com:owner/repo.git (SSH git URL)
         - ssh://git@gitlab.com/owner/repo.git (SSH protocol URL)
+        - ./local/path (local filesystem path)
+        - /absolute/path (local filesystem path)
+        - ../relative/path (local filesystem path)
         
         Any valid FQDN is accepted as a git host (GitHub, GitLab, Bitbucket,
         self-hosted instances, etc.).
@@ -422,6 +477,17 @@ class DependencyReference:
         """
         if not dependency_str.strip():
             raise ValueError("Empty dependency string")
+
+        # --- Local path detection (must run before URL/host parsing) ---
+        if cls.is_local_path(dependency_str):
+            local = dependency_str.strip()
+            # Use the directory basename as repo_url fallback
+            pkg_name = Path(local).name
+            return cls(
+                repo_url=f"_local/{pkg_name}",
+                is_local=True,
+                local_path=local,
+            )
 
         # Decode percent-encoded characters (e.g., %20 for spaces in ADO project names)
         dependency_str = urllib.parse.unquote(dependency_str)
@@ -828,7 +894,11 @@ class DependencyReference:
         
         For Azure DevOps, generates: https://dev.azure.com/org/project/_git/repo
         For GitHub, generates: https://github.com/owner/repo
+        For local packages, returns the local path.
         """
+        if self.is_local and self.local_path:
+            return self.local_path
+
         host = self.host or default_host()
         
         if self.is_azure_devops():
@@ -847,12 +917,16 @@ class DependencyReference:
         """Get display name for this dependency (alias or repo name)."""
         if self.alias:
             return self.alias
+        if self.is_local and self.local_path:
+            return self.local_path
         if self.is_virtual:
             return self.get_virtual_package_name()
         return self.repo_url  # Full repo URL for disambiguation
 
     def __str__(self) -> str:
         """String representation of the dependency reference."""
+        if self.is_local and self.local_path:
+            return self.local_path
         if self.host:
             result = f"{self.host}/{self.repo_url}"
         else:

@@ -77,6 +77,17 @@ def pack_bundle(
         pkg_name = package.name
         pkg_version = package.version or "0.0.0"
         config_target = package.target
+
+        # Guard: reject local-path dependencies (non-portable)
+        from ..models.apm_package import DependencyReference
+        for dep_ref in package.get_apm_dependencies():
+            if dep_ref.is_local:
+                raise ValueError(
+                    f"Cannot pack — apm.yml contains local path dependency: "
+                    f"{dep_ref.local_path}\n"
+                    f"Local dependencies are for development only. Replace them with "
+                    f"remote references (e.g., 'owner/repo') before packing."
+                )
     except (FileNotFoundError, ValueError):
         pkg_name = project_root.resolve().name
         pkg_version = "0.0.0"
