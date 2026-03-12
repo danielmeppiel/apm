@@ -708,3 +708,255 @@ class TestInstallSelfDefinedSkipLogic:
         )
         assert "existing-srv" in printed_lines
         assert "already configured" in printed_lines
+
+
+# ---------------------------------------------------------------------------
+# _detect_mcp_config_drift
+# ---------------------------------------------------------------------------
+class TestDetectMCPConfigDrift:
+    """Tests for config drift detection between manifest and lockfile."""
+
+    def test_no_drift_when_configs_match(self):
+        """No drift when manifest config matches stored config."""
+        dep = MCPDependency(name="github", transport="stdio")
+        stored = {"github": {"name": "github", "transport": "stdio"}}
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == set()
+
+    def test_drift_detected_when_env_changes(self):
+        """Drift detected when env vars change."""
+        dep = MCPDependency(
+            name="github", transport="stdio", env={"TOKEN": "new-value"}
+        )
+        stored = {
+            "github": {"name": "github", "transport": "stdio", "env": {"TOKEN": "old-value"}}
+        }
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == {"github"}
+
+    def test_drift_detected_when_url_changes(self):
+        """Drift detected when URL changes for self-defined server."""
+        dep = MCPDependency(
+            name="internal-kb", registry=False, transport="http",
+            url="https://new-kb.example.com",
+        )
+        stored = {
+            "internal-kb": {
+                "name": "internal-kb", "registry": False,
+                "transport": "http", "url": "https://old-kb.example.com",
+            }
+        }
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == {"internal-kb"}
+
+    def test_drift_detected_when_transport_changes(self):
+        """Drift detected when transport type changes."""
+        dep = MCPDependency(name="github", transport="stdio")
+        stored = {"github": {"name": "github", "transport": "sse"}}
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == {"github"}
+
+    def test_drift_detected_when_args_change(self):
+        """Drift detected when args change."""
+        dep = MCPDependency(
+            name="github", transport="stdio", args=["--new-flag"]
+        )
+        stored = {"github": {"name": "github", "transport": "stdio", "args": ["--old-flag"]}}
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == {"github"}
+
+    def test_drift_detected_when_tools_change(self):
+        """Drift detected when tools list changes."""
+        dep = MCPDependency(name="github", tools=["repos", "issues"])
+        stored = {"github": {"name": "github", "tools": ["repos"]}}
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == {"github"}
+
+    def test_no_drift_when_server_not_in_stored(self):
+        """No drift when server has no stored baseline."""
+        dep = MCPDependency(name="new-server", transport="stdio")
+        stored = {"other-server": {"name": "other-server"}}
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == set()
+
+    def test_no_drift_with_empty_stored_configs(self):
+        """No drift when stored configs are empty (first install)."""
+        dep = MCPDependency(name="github", transport="stdio")
+        result = MCPIntegrator._detect_mcp_config_drift([dep], {})
+        assert result == set()
+
+    def test_multiple_deps_mixed_drift(self):
+        """Only drifted deps are returned in a mixed set."""
+        deps = [
+            MCPDependency(name="unchanged", transport="stdio"),
+            MCPDependency(name="changed", transport="http", url="https://new.example.com"),
+        ]
+        stored = {
+            "unchanged": {"name": "unchanged", "transport": "stdio"},
+            "changed": {
+                "name": "changed", "transport": "http",
+                "url": "https://old.example.com",
+            },
+        }
+        result = MCPIntegrator._detect_mcp_config_drift(deps, stored)
+        assert result == {"changed"}
+
+    def test_plain_strings_are_skipped(self):
+        """Plain string deps (no to_dict) are ignored by drift detection."""
+        result = MCPIntegrator._detect_mcp_config_drift(
+            ["ghcr.io/org/server"], {"ghcr.io/org/server": {"name": "ghcr.io/org/server"}}
+        )
+        assert result == set()
+
+
+# ---------------------------------------------------------------------------
+# get_server_configs
+# ---------------------------------------------------------------------------
+class TestGetServerConfigs:
+    """Tests for extracting server configs from MCP dependencies."""
+
+    def test_extracts_configs_from_mcp_deps(self):
+        deps = [
+            MCPDependency(name="github", transport="stdio"),
+            MCPDependency(
+                name="internal-kb", registry=False, transport="http",
+                url="https://kb.example.com",
+            ),
+        ]
+        configs = MCPIntegrator.get_server_configs(deps)
+        assert configs == {
+            "github": {"name": "github", "transport": "stdio"},
+            "internal-kb": {
+                "name": "internal-kb", "registry": False,
+                "transport": "http", "url": "https://kb.example.com",
+            },
+        }
+
+    def test_extracts_configs_from_plain_strings(self):
+        configs = MCPIntegrator.get_server_configs(["ghcr.io/org/server"])
+        assert configs == {"ghcr.io/org/server": {"name": "ghcr.io/org/server"}}
+
+    def test_empty_list(self):
+        assert MCPIntegrator.get_server_configs([]) == {}
+
+
+# ---------------------------------------------------------------------------
+# Diff-aware install — self-defined servers with config drift
+# ---------------------------------------------------------------------------
+class TestDiffAwareSelfDefinedInstall:
+
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._check_self_defined_servers_needing_installation")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
+    def test_config_drift_triggers_reinstall(
+        self, _console, mock_install_runtime, mock_check
+    ):
+        """Self-defined server with config drift should be re-installed."""
+        # Server is already configured (check returns empty)
+        mock_check.return_value = []
+        mock_install_runtime.return_value = True
+
+        dep = MCPDependency(
+            name="internal-kb", transport="http",
+            url="https://new-kb.example.com", registry=False,
+        )
+        stored_configs = {
+            "internal-kb": {
+                "name": "internal-kb", "transport": "http",
+                "url": "https://old-kb.example.com", "registry": False,
+            }
+        }
+
+        count = MCPIntegrator.install(
+            [dep], runtime="vscode",
+            stored_mcp_configs=stored_configs,
+        )
+
+        assert count == 1
+        mock_install_runtime.assert_called_once()
+
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._check_self_defined_servers_needing_installation")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
+    def test_no_drift_keeps_skip(
+        self, _console, mock_install_runtime, mock_check
+    ):
+        """Self-defined server with no config drift should still be skipped."""
+        mock_check.return_value = []
+
+        dep = MCPDependency(
+            name="internal-kb", transport="http",
+            url="https://kb.example.com", registry=False,
+        )
+        stored_configs = {
+            "internal-kb": {
+                "name": "internal-kb", "transport": "http",
+                "url": "https://kb.example.com", "registry": False,
+            }
+        }
+
+        count = MCPIntegrator.install(
+            [dep], runtime="vscode",
+            stored_mcp_configs=stored_configs,
+        )
+
+        assert count == 0
+        mock_install_runtime.assert_not_called()
+
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._check_self_defined_servers_needing_installation")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    def test_drift_shows_updated_label(
+        self, mock_install_runtime, mock_check
+    ):
+        """Config-drifted server should show 'updated' in CLI output."""
+        mock_check.return_value = []
+        mock_install_runtime.return_value = True
+        mock_console = MagicMock()
+
+        dep = MCPDependency(
+            name="internal-kb", transport="http",
+            url="https://new-kb.example.com", registry=False,
+        )
+        stored_configs = {
+            "internal-kb": {
+                "name": "internal-kb", "transport": "http",
+                "url": "https://old-kb.example.com", "registry": False,
+            }
+        }
+
+        with patch(
+            "apm_cli.integration.mcp_integrator._get_console",
+            return_value=mock_console,
+        ):
+            count = MCPIntegrator.install(
+                [dep], runtime="vscode",
+                stored_mcp_configs=stored_configs,
+            )
+
+        assert count == 1
+        printed_lines = "\n".join(
+            str(call.args[0]) for call in mock_console.print.call_args_list if call.args
+        )
+        assert "updated" in printed_lines
+
+    @patch("apm_cli.integration.mcp_integrator._rich_success")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._check_self_defined_servers_needing_installation")
+    @patch("apm_cli.integration.mcp_integrator.MCPIntegrator._install_for_runtime")
+    @patch("apm_cli.integration.mcp_integrator._get_console", return_value=None)
+    def test_no_stored_configs_preserves_existing_behavior(
+        self, _console, mock_install_runtime, mock_check, mock_rich_success
+    ):
+        """Without stored configs (first install), behavior unchanged."""
+        mock_check.return_value = []
+
+        dep = MCPDependency(
+            name="internal-kb", transport="http",
+            url="https://kb.example.com", registry=False,
+        )
+
+        count = MCPIntegrator.install([dep], runtime="vscode")
+
+        assert count == 0
+        mock_install_runtime.assert_not_called()
+        mock_rich_success.assert_called_once()
+        assert "already configured" in mock_rich_success.call_args.args[0]

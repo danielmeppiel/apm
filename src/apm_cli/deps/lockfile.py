@@ -123,6 +123,7 @@ class LockFile:
     apm_version: Optional[str] = None
     dependencies: Dict[str, LockedDependency] = field(default_factory=dict)
     mcp_servers: List[str] = field(default_factory=list)
+    mcp_configs: Dict[str, dict] = field(default_factory=dict)
 
     def add_dependency(self, dep: LockedDependency) -> None:
         """Add a dependency to the lock file."""
@@ -153,6 +154,8 @@ class LockFile:
         data["dependencies"] = [dep.to_dict() for dep in self.get_all_dependencies()]
         if self.mcp_servers:
             data["mcp_servers"] = sorted(self.mcp_servers)
+        if self.mcp_configs:
+            data["mcp_configs"] = dict(sorted(self.mcp_configs.items()))
         return yaml.dump(
             data, default_flow_style=False, sort_keys=False, allow_unicode=True
         )
@@ -173,6 +176,7 @@ class LockFile:
         for dep_data in data.get("dependencies", []):
             lock.add_dependency(LockedDependency.from_dict(dep_data))
         lock.mcp_servers = list(data.get("mcp_servers", []))
+        lock.mcp_configs = dict(data.get("mcp_configs", {}))
         return lock
 
     def write(self, path: Path) -> None:

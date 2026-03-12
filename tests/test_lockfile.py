@@ -99,6 +99,55 @@ class TestLockFile:
         lock = LockFile.from_yaml(yaml_str)
         assert lock.mcp_servers == ["github", "acme-kb"]
 
+    def test_mcp_configs_round_trip(self, tmp_path):
+        """mcp_configs survive a write/read cycle."""
+        lock = LockFile()
+        lock.mcp_configs = {
+            "github": {"name": "github", "transport": "stdio"},
+            "internal-kb": {
+                "name": "internal-kb",
+                "registry": False,
+                "transport": "http",
+                "url": "https://kb.example.com",
+            },
+        }
+        lock_path = tmp_path / "apm.lock"
+        lock.write(lock_path)
+
+        loaded = LockFile.read(lock_path)
+        assert loaded is not None
+        assert loaded.mcp_configs == lock.mcp_configs
+
+    def test_mcp_configs_empty_by_default(self):
+        lock = LockFile()
+        assert lock.mcp_configs == {}
+        yaml_str = lock.to_yaml()
+        assert "mcp_configs" not in yaml_str  # omitted when empty
+
+    def test_mcp_configs_from_yaml(self):
+        yaml_str = (
+            'lockfile_version: "1"\n'
+            'dependencies: []\n'
+            'mcp_configs:\n'
+            '  github:\n'
+            '    name: github\n'
+            '    transport: stdio\n'
+        )
+        lock = LockFile.from_yaml(yaml_str)
+        assert lock.mcp_configs == {"github": {"name": "github", "transport": "stdio"}}
+
+    def test_mcp_configs_backward_compat_missing(self):
+        """Old lockfiles without mcp_configs should get an empty dict."""
+        yaml_str = (
+            'lockfile_version: "1"\n'
+            'dependencies: []\n'
+            'mcp_servers:\n'
+            '  - github\n'
+        )
+        lock = LockFile.from_yaml(yaml_str)
+        assert lock.mcp_servers == ["github"]
+        assert lock.mcp_configs == {}
+
     def test_read_nonexistent(self, tmp_path):
         loaded = LockFile.read(tmp_path / "apm.lock")
         assert loaded is None
