@@ -1,7 +1,6 @@
 """Base integrator with shared collision detection and sync logic."""
 
 import re
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -9,6 +8,7 @@ from dataclasses import dataclass, field
 
 from apm_cli.compilation.link_resolver import UnifiedLinkResolver
 from apm_cli.primitives.discovery import discover_primitives
+from apm_cli.utils.console import _rich_warning
 
 
 @dataclass
@@ -51,6 +51,7 @@ class BaseIntegrator:
         rel_path: str,
         managed_files: Optional[Set[str]],
         force: bool,
+        diagnostics=None,
     ) -> bool:
         """Return True if *target_path* is a user-authored collision.
 
@@ -60,7 +61,8 @@ class BaseIntegrator:
         3. ``rel_path`` is **not** in the managed set (→ user-authored)
         4. ``force`` is ``False``
 
-        When a collision is detected a warning is emitted to *stderr*.
+        When *diagnostics* is provided the skip is recorded there;
+        otherwise a warning is emitted via ``_rich_warning``.
 
         .. note:: Callers must pre-normalize *managed_files* with
            forward-slash separators (see ``normalize_managed_files``).
@@ -75,11 +77,13 @@ class BaseIntegrator:
         if force:
             return False
 
-        print(
-            f"\u26a0\ufe0f  Skipping {rel_path} \u2014 local file exists (not managed by APM). "
-            f"Use 'apm install --force' to overwrite.",
-            file=sys.stderr,
-        )
+        if diagnostics is not None:
+            diagnostics.skip(rel_path)
+        else:
+            _rich_warning(
+                f"Skipping {rel_path} — local file exists (not managed by APM). "
+                f"Use 'apm install --force' to overwrite."
+            )
         return True
 
     @staticmethod

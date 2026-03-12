@@ -102,7 +102,8 @@ class AgentIntegrator(BaseIntegrator):
     
     def integrate_package_agents(self, package_info, project_root: Path,
                                    force: bool = False,
-                                   managed_files: set = None) -> IntegrationResult:
+                                   managed_files: set = None,
+                                   diagnostics=None) -> IntegrationResult:
         """Integrate all agents from a package into .github/agents/.
         
         Deploys with clean filenames. Skips user-authored files unless force=True.
@@ -154,7 +155,7 @@ class AgentIntegrator(BaseIntegrator):
             target_path = agents_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            if self.check_collision(target_path, rel_path, managed_files, force):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
                 continue
             
@@ -168,7 +169,7 @@ class AgentIntegrator(BaseIntegrator):
                 claude_filename = self.get_target_filename_claude(source_file, package_info.package.name)
                 claude_target = claude_agents_dir / claude_filename
                 claude_rel = str(claude_target.relative_to(project_root))
-                if not self.check_collision(claude_target, claude_rel, managed_files, force):
+                if not self.check_collision(claude_target, claude_rel, managed_files, force, diagnostics=diagnostics):
                     self.copy_agent(source_file, claude_target)
                     target_paths.append(claude_target)
         
@@ -204,7 +205,8 @@ class AgentIntegrator(BaseIntegrator):
     
     def integrate_package_agents_claude(self, package_info, project_root: Path,
                                           force: bool = False,
-                                          managed_files: set = None) -> IntegrationResult:
+                                          managed_files: set = None,
+                                          diagnostics=None) -> IntegrationResult:
         """Integrate all agents from a package into .claude/agents/.
         
         Deploys with clean filenames. Skips user-authored files unless force=True.
@@ -246,7 +248,7 @@ class AgentIntegrator(BaseIntegrator):
             target_path = agents_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            if self.check_collision(target_path, rel_path, managed_files, force):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
                 continue
             

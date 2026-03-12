@@ -85,7 +85,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--force` - Overwrite locally-authored files on collision
 - `--dry-run` - Show what would be installed without installing
 - `--parallel-downloads INTEGER` - Max concurrent package downloads (default: 4, 0 to disable)
-- `--verbose` - Show detailed installation information
+- `--verbose` - Show individual file paths and full error details in the diagnostic summary
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 
 **Behavior:**
@@ -200,7 +200,19 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Control**: Disable with `apm config set auto-integrate false`
 - **Smart updates**: Only updates when package version/commit changes
 - **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
-- **Collision detection**: Skips local files with a warning; use `--force` to overwrite
+- **Collision detection**: Skips local files that aren't managed by APM; use `--force` to overwrite
+
+**Diagnostic Summary:**
+
+After installation completes, APM prints a grouped diagnostic summary instead of inline warnings. Categories include collisions (skipped files), sub-skill overwrites, warnings, and errors.
+
+- **Normal mode**: Shows counts and actionable tips (e.g., "9 files skipped -- use `apm install --force` to overwrite")
+- **Verbose mode** (`--verbose`): Additionally lists individual file paths grouped by package, and full error details
+
+```bash
+# See exactly which files were skipped or had issues
+apm install --verbose
+```
 
 **Claude Integration (`.claude/` present):**
 

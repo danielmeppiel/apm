@@ -44,6 +44,7 @@ class InstructionIntegrator(BaseIntegrator):
         project_root: Path,
         force: bool = False,
         managed_files: Optional[Set[str]] = None,
+        diagnostics=None,
     ) -> IntegrationResult:
         """Integrate all instructions from a package into .github/instructions/.
 
@@ -74,7 +75,7 @@ class InstructionIntegrator(BaseIntegrator):
             target_path = instructions_dir / source_file.name
             rel_path = str(target_path.relative_to(project_root))
 
-            if self.check_collision(target_path, rel_path, managed_files, force):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
                 continue
 
