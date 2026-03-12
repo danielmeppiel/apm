@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve WinError 32 during sparse-checkout fallback on Windows — use retry-capable cleanup, fresh clone path for full-clone fallback, and explicit GitPython handle release (#235)
+
 ## [0.7.7] - 2026-03-10
 
 ### Added
