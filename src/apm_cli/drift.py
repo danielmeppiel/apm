@@ -9,7 +9,8 @@ Three kinds of drift are detected:
 * **Ref drift** — the ``ref`` pinned in ``apm.yml`` differs from what the
   lockfile recorded as ``resolved_ref``.  This includes transitions such as
   ``None → "v1.0.0"`` (user adds a pin), ``"main" → None`` (user removes a
-  pin), and ``"v1.0.0" → "v2.0.0"`` (user bumps the pin).
+  pin), ``"v1.0.0" → "v2.0.0"`` (user bumps the pin), and hash-based pins
+  (``None → "abc1234"`` or ``"abc1234" → "def5678"``).
 
 * **Orphan drift** — packages present in the lockfile but absent from the
   current manifest.  Their deployed files should be removed.
@@ -17,6 +18,27 @@ Three kinds of drift are detected:
 * **Config drift** — an already-installed dependency's serialised configuration
   differs from the baseline stored in the lockfile.  (Currently only MCP
   servers; extendable to other integrator types.)
+
+Scope / non-goals
+-----------------
+* **Hash-based refs** — handled identically to branch/tag refs: both
+  ``dep_ref.reference`` and ``locked_dep.resolved_ref`` store the raw ref
+  string from ``apm.yml``/lockfile respectively, so a change from
+  ``"abc1234"`` to ``"def5678"`` is detected just like ``"v1.0" → "v2.0"``.
+
+* **URL format changes** — transparent.  ``DependencyReference.parse()``
+  normalises all input formats (HTTPS, SSH, shorthand, FQDN) into the same
+  canonical ``repo_url`` before the lockfile stores them.  Changing
+  ``owner/repo`` to ``https://github.com/owner/repo.git`` in ``apm.yml`` is a
+  formatting-only change that produces the same unique key and is correctly
+  treated as no drift.
+
+* **Source/host changes** — *not* detected.  If a user changes the host of
+  an otherwise identical package (e.g. adding an enterprise FQDN prefix), the
+  unique key (``repo_url``, host-blind for the default host) may not change
+  and ``detect_ref_change()`` will not signal a re-download.  Host-level
+  changes require the user to ``apm remove`` + ``apm install`` the package, or
+  use ``--update``.
 """
 
 from __future__ import annotations
