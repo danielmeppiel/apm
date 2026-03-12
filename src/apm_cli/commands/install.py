@@ -1413,6 +1413,9 @@ def _install_apm_dependencies(
             _failed_orphan_count = 0
             _deleted_orphan_paths: builtins.list = []
             for _orphan_path in sorted(orphaned_deployed_files):
+                # validate_deploy_path() is the safety gate: it rejects path-traversal,
+                # requires .github/ or .claude/ prefix, and checks the resolved path
+                # stays within project_root — so rmtree is safe here.
                 if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
                     _target = project_root / _orphan_path
                     if _target.exists():

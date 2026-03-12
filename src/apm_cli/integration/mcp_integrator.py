@@ -328,6 +328,21 @@ class MCPIntegrator:
         return configs
 
     @staticmethod
+    def _append_drifted_to_install_list(
+        install_list: builtins.list,
+        drifted: builtins.set,
+    ) -> None:
+        """Append drifted server names to *install_list* without duplicates.
+
+        Appends in sorted order to guarantee deterministic CLI output.
+        Names already present in *install_list* are skipped.
+        """
+        existing = builtins.set(install_list)
+        for name in builtins.sorted(drifted):
+            if name not in existing:
+                install_list.append(name)
+
+    @staticmethod
     def _detect_mcp_config_drift(
         mcp_deps: list,
         stored_configs: builtins.dict,
@@ -910,11 +925,7 @@ class MCPIntegrator:
                         )
                         if drifted:
                             servers_to_update.update(drifted)
-                            # Append drifted servers to install list preserving order
-                            _existing_set = builtins.set(servers_to_install)
-                            for _drifted_name in builtins.sorted(drifted):
-                                if _drifted_name not in _existing_set:
-                                    servers_to_install.append(_drifted_name)
+                            MCPIntegrator._append_drifted_to_install_list(servers_to_install, drifted)
                     already_configured_servers = [
                         dep
                         for dep in already_configured_candidates
@@ -1055,11 +1066,7 @@ class MCPIntegrator:
                 )
                 if drifted_sd:
                     servers_to_update.update(drifted_sd)
-                    # Append drifted servers to install list preserving order
-                    _existing_sd_set = builtins.set(self_defined_to_install)
-                    for _drifted_name in builtins.sorted(drifted_sd):
-                        if _drifted_name not in _existing_sd_set:
-                            self_defined_to_install.append(_drifted_name)
+                    MCPIntegrator._append_drifted_to_install_list(self_defined_to_install, drifted_sd)
             already_configured_self_defined = [
                 name
                 for name in already_configured_candidates_sd
