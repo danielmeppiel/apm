@@ -190,9 +190,9 @@ def _extract_primitive_name(file_path: Path) -> str:
             
             # For structured directories like .apm/chatmodes/name.chatmode.md
             if (base_idx + 2 < len(path_parts) and 
-                path_parts[base_idx + 1] in ['chatmodes', 'instructions', 'context', 'memory']):
+                path_parts[base_idx + 1] in ['chatmodes', 'instructions', 'context', 'memory', 'agents']):
                 basename = file_path.name
-                # Remove the double extension (.chatmode.md, .instructions.md, etc.)
+                # Remove the double extension (.chatmode.md, .instructions.md, .agent.md, etc.)
                 if basename.endswith('.chatmode.md'):
                     return basename.replace('.chatmode.md', '')
                 elif basename.endswith('.instructions.md'):
@@ -201,6 +201,8 @@ def _extract_primitive_name(file_path: Path) -> str:
                     return basename.replace('.context.md', '')
                 elif basename.endswith('.memory.md'):
                     return basename.replace('.memory.md', '')
+                elif basename.endswith('.agent.md'):
+                    return basename.replace('.agent.md', '')
                 elif basename.endswith('.md'):
                     return basename.replace('.md', '')
         except (ValueError, IndexError):
