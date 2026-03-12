@@ -92,52 +92,6 @@ jobs:
         GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
-  # Windows smoke test
-  smoke-test-windows:
-    needs: [approve-fork, approve-internal]
-    if: always() && (needs.approve-fork.result == 'success' || needs.approve-internal.result == 'success')
-    runs-on: windows-latest
-    permissions:
-      contents: read
-      actions: read
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-
-    - name: Install uv
-      shell: pwsh
-      run: |
-        irm https://astral.sh/uv/install.ps1 | iex
-        echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-    - name: Cache uv environments
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~\AppData\Local\uv
-        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-uv-
-
-    - name: Install dependencies
-      run: uv sync --extra dev
-
-    - name: Run smoke tests
-      env:
-        GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
-        GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
-      run: uv run pytest tests/integration/test_runtime_smoke.py -v
-
   # Linux integration tests — downloads the Linux binary artifact from ci.yml.
   integration-tests:
     name: Integration Tests (Linux)
@@ -189,58 +143,6 @@ jobs:
         run: |
           chmod +x scripts/test-integration.sh
           uv run ./scripts/test-integration.sh
-        timeout-minutes: 20
-
-  # Windows integration tests — downloads the Windows binary artifact from ci.yml.
-  integration-tests-windows:
-    name: Integration Tests (Windows)
-    needs: [smoke-test-windows]
-    if: always() && needs.smoke-test-windows.result == 'success'
-    runs-on: windows-latest
-    permissions:
-      contents: read
-      actions: read
-      models: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download APM binary from CI workflow
-        uses: actions/download-artifact@v4
-        with:
-          name: apm-windows-x86_64
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        shell: pwsh
-        run: |
-          irm https://astral.sh/uv/install.ps1 | iex
-          echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Install test dependencies
-        run: uv sync --extra dev
-
-      - name: Run integration tests
-        shell: pwsh
-        env:
-          APM_E2E_TESTS: "1"
-          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
-          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
-          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
-        run: |
-          uv run pwsh scripts/test-integration.ps1 -SkipBuild
         timeout-minutes: 20
 
   # Linux release validation — validates the Linux binary in isolation.
@@ -314,74 +216,9 @@ jobs:
           ./scripts/test-release-validation.sh
         timeout-minutes: 20
 
-  # Windows release validation — validates the Windows binary in isolation.
-  release-validation-windows:
-    name: Release Validation (Windows)
-    needs: [integration-tests-windows]
-    if: always() && needs.integration-tests-windows.result == 'success'
-    runs-on: windows-latest
-    permissions:
-      contents: read
-      actions: read
-      models: read
-
-    steps:
-      - name: Checkout test scripts
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: scripts
-          path: repo
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Download APM binary from CI workflow
-        uses: actions/download-artifact@v4
-        with:
-          name: apm-windows-x86_64
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: D:\apm-isolated-test
-
-      - name: Verify binary and add to PATH
-        shell: pwsh
-        run: |
-          cd D:\apm-isolated-test
-
-          Write-Host "Downloaded structure:"
-          Get-ChildItem -Recurse -Filter "apm.exe"
-          Get-ChildItem .\dist\
-
-          $binDir = "D:\apm-isolated-test\dist\apm-windows-x86_64"
-          echo $binDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Prepare test scripts from default branch
-        shell: pwsh
-        run: |
-          Copy-Item -Recurse -Force repo\scripts D:\apm-isolated-test\scripts
-
-      - name: Run release validation tests
-        shell: pwsh
-        env:
-          APM_E2E_TESTS: "1"
-          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
-          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
-          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
-        run: |
-          cd D:\apm-isolated-test
-          .\scripts\test-release-validation.ps1
-        timeout-minutes: 20
-
   # Report integration test results back to the PR as a commit status
   report-status:
-    needs: [smoke-test, smoke-test-windows, integration-tests, integration-tests-windows, release-validation, release-validation-windows]
+    needs: [smoke-test, integration-tests, release-validation]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -392,11 +229,8 @@ jobs:
         with:
           script: |
             const success = '${{ needs.release-validation.result }}' === 'success'
-              && '${{ needs.release-validation-windows.result }}' === 'success'
               && '${{ needs.integration-tests.result }}' === 'success'
-              && '${{ needs.integration-tests-windows.result }}' === 'success'
-              && '${{ needs.smoke-test.result }}' === 'success'
-              && '${{ needs.smoke-test-windows.result }}' === 'success';
+              && '${{ needs.smoke-test.result }}' === 'success';
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,

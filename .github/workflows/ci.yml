@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  # Linux + Windows for PR feedback. Full platform matrix (incl. macOS) runs post-merge in build-release.yml.
+  # Linux-only for PR feedback. Full platform matrix (incl. macOS + Windows) runs post-merge in build-release.yml.
   test:
     runs-on: ubuntu-24.04
     permissions:
@@ -55,49 +55,10 @@ jobs:
     - name: Test with pytest
       run: uv run pytest tests/unit tests/test_console.py
 
-  test-windows:
-    runs-on: windows-latest
-    permissions:
-      contents: read
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-
-    - name: Install uv
-      shell: pwsh
-      run: |
-        irm https://astral.sh/uv/install.ps1 | iex
-        echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-    - name: Cache uv environments
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~\AppData\Local\uv
-        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-uv-
-
-    - name: Install dependencies
-      run: uv sync --extra dev
-
-    - name: Test with pytest
-      run: uv run pytest tests/unit tests/test_console.py
-
-  # Linux + Windows binary builds for PR validation. Full platform builds run post-merge.
+  # Linux-only binary build for PR validation. Full platform builds run post-merge.
   build:
     name: Build APM Binary (Linux)
-    needs: [test, test-windows]
+    needs: [test]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -139,51 +100,6 @@ jobs:
             ./dist/apm-linux-x86_64.sha256
             ./scripts/test-release-validation.sh
             ./scripts/github-token-helper.sh
-          include-hidden-files: true
-          retention-days: 30
-          if-no-files-found: error
-
-  build-windows:
-    name: Build APM Binary (Windows)
-    needs: [test, test-windows]
-    runs-on: windows-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        shell: pwsh
-        run: |
-          irm https://astral.sh/uv/install.ps1 | iex
-          echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Install Python dependencies
-        run: |
-          uv sync --extra dev --extra build
-
-      - name: Build binary
-        shell: pwsh
-        run: |
-          uv run pwsh scripts/build-binary.ps1
-
-      - name: Upload binary as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: apm-windows-x86_64
-          path: |
-            ./dist/apm-windows-x86_64
-            ./dist/apm-windows-x86_64.sha256
-            ./scripts/test-release-validation.ps1
-            ./scripts/test-dependency-integration.ps1
-            ./scripts/github-token-helper.ps1
           include-hidden-files: true
           retention-days: 30
           if-no-files-found: error

@@ -634,7 +634,7 @@ class ContextOptimizer:
         
         Implements the mathematician's objective function:
         minimize: sum(context_pollution x directory_weight) 
-        subject to: for_allinstruction -> existsplacement
+        subject to: for_all instruction -> exists placement
         
         Args:
             instruction (Instruction): Instruction to optimize placement for.

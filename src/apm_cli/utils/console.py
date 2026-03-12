@@ -32,26 +32,26 @@ except ImportError:
 
 # Status symbols for consistent iconography (ASCII-safe for Windows cp1252)
 STATUS_SYMBOLS = {
-    'success': '*',
-    'sparkles': '*',
-    'running': '>',
-    'gear': '*',
-    'info': 'i',
-    'warning': '!',
-    'error': 'x',
-    'check': '+',
-    'cross': 'x',
-    'list': '#',
-    'preview': '>',
-    'robot': '>',
-    'metrics': '#',
-    'default': '>',   # Default script marker
-    'eyes': '>',      # Watch mode
-    'folder': '>',    # Directory/folder operations
-    'cogs': '*',      # Compilation/processing
-    'plugin': '>',    # Plugin-related operations
-    'search': '>',    # Search operations
-    'download': '>',  # Download operations
+    'success': '[*]',
+    'sparkles': '[*]',
+    'running': '[>]',
+    'gear': '[*]',
+    'info': '[i]',
+    'warning': '[!]',
+    'error': '[x]',
+    'check': '[+]',
+    'cross': '[x]',
+    'list': '[#]',
+    'preview': '[>]',
+    'robot': '[>]',
+    'metrics': '[#]',
+    'default': '[>]',   # Default script marker
+    'eyes': '[>]',      # Watch mode
+    'folder': '[>]',    # Directory/folder operations
+    'cogs': '[*]',      # Compilation/processing
+    'plugin': '[>]',    # Plugin-related operations
+    'search': '[>]',    # Search operations
+    'download': '[>]',  # Download operations
 }
 
 

@@ -123,12 +123,16 @@ function Install-ViaPip {
     try {
         $pipArgs = "install --user apm-cli"
         if ($pipCmd -like "* -m pip") {
-            & $pythonCmd -m pip install --user apm-cli 2>&1 | Write-Host
+            $output = & $pythonCmd -m pip install --user apm-cli 2>&1
+            $pipExitCode = $LASTEXITCODE
+            $output | Write-Host
         } else {
-            & $pipCmd install --user apm-cli 2>&1 | Write-Host
+            $output = & $pipCmd install --user apm-cli 2>&1
+            $pipExitCode = $LASTEXITCODE
+            $output | Write-Host
         }
-        if ($LASTEXITCODE -ne 0) {
-            Write-ErrorText "pip install failed (exit code $LASTEXITCODE)."
+        if ($pipExitCode -ne 0) {
+            Write-ErrorText "pip install failed (exit code $pipExitCode)."
             return $false
         }
     } catch {
@@ -289,6 +293,34 @@ try {
         if (Install-ViaPip) { exit 0 }
         Write-ManualInstallHelp
         exit 1
+    }
+
+    # ------------------------------------------------------------------
+    # Verify checksum (if .sha256 asset is available)
+    # ------------------------------------------------------------------
+
+    $sha256AssetName = "$assetName.sha256"
+    $sha256Asset = $release.assets | Where-Object { $_.name -eq $sha256AssetName } | Select-Object -First 1
+    if ($sha256Asset) {
+        Write-Info "Verifying download checksum..."
+        $sha256Path = Join-Path $tempDir $sha256AssetName
+        try {
+            Invoke-WebRequest -Uri $sha256Asset.browser_download_url -OutFile $sha256Path -UseBasicParsing
+            $expectedHash = (Get-Content $sha256Path -Raw).Trim().Split(" ")[0]
+            $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+            if ($actualHash -ne $expectedHash) {
+                Write-ErrorText "Checksum verification FAILED."
+                Write-Host "  Expected: $expectedHash"
+                Write-Host "  Actual:   $actualHash"
+                Write-Info "Attempting automatic fallback to pip..."
+                if (Install-ViaPip) { exit 0 }
+                Write-ManualInstallHelp
+                exit 1
+            }
+            Write-Success "Checksum verified"
+        } catch {
+            Write-WarningText "Could not verify checksum (non-fatal): $_"
+        }
     }
 
     # ------------------------------------------------------------------
