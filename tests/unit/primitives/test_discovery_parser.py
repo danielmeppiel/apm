@@ -3,8 +3,6 @@
 🤖 Test Improver: automated AI assistant focused on improving test coverage.
 """
 
-import os
-import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,7 +14,6 @@ from apm_cli.primitives.discovery import (
     _is_readable,
     _is_under_directory,
     _should_skip_directory,
-    discover_primitives,
     find_primitive_files,
     get_dependency_declaration_order,
     scan_directory_with_source,
@@ -98,18 +95,17 @@ class TestExtractPrimitiveName(unittest.TestCase):
     """Tests for _extract_primitive_name with various path structures."""
 
     def test_agent_md_in_apm_agents_dir(self):
-        """Files in .apm/agents/ fall through to fallback (agents/ not in structured subdirs list).
-        The fallback strips .md giving 'myagent.agent'."""
+        """Files in .apm/agents/ are treated as structured agent primitives.
+        The '.agent.md' suffix is stripped, yielding just the agent name."""
         path = Path("/project/.apm/agents/myagent.agent.md")
         name = _extract_primitive_name(path)
-        # 'agents' is not in the structured subdirs list, so fallback strips .md only
-        self.assertEqual(name, "myagent.agent")
+        self.assertEqual(name, "myagent")
 
     def test_agent_md_in_github_agents_dir(self):
-        """Files in .github/agents/ also fall through to fallback."""
+        """.github/agents/ is also treated as a structured agent primitive directory."""
         path = Path("/project/.github/agents/reviewer.agent.md")
         name = _extract_primitive_name(path)
-        self.assertEqual(name, "reviewer.agent")
+        self.assertEqual(name, "reviewer")
 
     def test_instruction_in_structured_dir(self):
         path = Path("/project/.apm/instructions/coding-style.instructions.md")
@@ -210,8 +206,8 @@ class TestDiscoverLocalSkill(unittest.TestCase):
         _discover_local_skill(self.tmp, collection)
         self.assertEqual(len(collection.skills), 0)
 
-    def test_unreadable_skill_md_warns_and_skips(self):
-        """parse error on SKILL.md is caught, printed as warning, skipped."""
+    def test_parse_error_on_skill_md_warns_and_skips(self):
+        """A parse error on SKILL.md is caught, printed as warning, and skipped."""
         skill_path = Path(self.tmp) / "SKILL.md"
         _write(skill_path, SKILL_CONTENT)
         collection = PrimitiveCollection()
@@ -636,12 +632,10 @@ class TestIsReadable(unittest.TestCase):
     def test_unreadable_file_returns_false(self):
         path = Path(self.tmp) / "test.md"
         path.write_text("content")
-        os.chmod(path, 0o000)
-        try:
+        # Simulate unreadable file by forcing PermissionError when opening.
+        with patch("apm_cli.primitives.discovery.open", side_effect=PermissionError):
             result = _is_readable(path)
             self.assertFalse(result)
-        finally:
-            os.chmod(path, 0o644)
 
     def test_binary_file_returns_false(self):
         path = Path(self.tmp) / "test.md"
