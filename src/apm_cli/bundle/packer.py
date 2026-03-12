@@ -88,7 +88,9 @@ def pack_bundle(
                     f"Local dependencies are for development only. Replace them with "
                     f"remote references (e.g., 'owner/repo') before packing."
                 )
-    except (FileNotFoundError, ValueError):
+    except ValueError:
+        raise
+    except FileNotFoundError:
         pkg_name = project_root.resolve().name
         pkg_version = "0.0.0"
         config_target = None
