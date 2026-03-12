@@ -102,7 +102,8 @@ class CommandIntegrator(BaseIntegrator):
     
     def integrate_package_commands(self, package_info, project_root: Path,
                                     force: bool = False,
-                                    managed_files: set = None) -> IntegrationResult:
+                                    managed_files: set = None,
+                                    diagnostics=None) -> IntegrationResult:
         """Integrate all prompt files from a package as Claude commands.
         
         Deploys with clean filenames. Skips user-authored files unless force=True.
@@ -137,7 +138,7 @@ class CommandIntegrator(BaseIntegrator):
             target_path = commands_dir / f"{base_name}.md"
             rel_path = str(target_path.relative_to(project_root))
             
-            if self.check_collision(target_path, rel_path, managed_files, force):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
                 continue
             
