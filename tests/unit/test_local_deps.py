@@ -1,12 +1,4 @@
-"""Unit tests for local filesystem path dependency support.
-
-Tests cover:
-- DependencyReference.parse() with local paths
-- DependencyReference.is_local_path() detection
-- DependencyReference methods (get_unique_key, get_identity, to_canonical, get_install_path)
-- LockedDependency serialization with local source
-- Pack guard rejecting local path dependencies
-"""
+"""Unit tests for local filesystem path dependency support."""
 
 import pytest
 import yaml
