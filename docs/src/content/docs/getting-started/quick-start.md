@@ -1,194 +1,131 @@
 ---
 title: "Quick Start"
-description: "Get from zero to a fully configured AI agent setup in 5 minutes."
+description: "Get APM running and install your first package in under 3 minutes."
 sidebar:
   order: 2
 ---
 
-This walkthrough takes you from an empty directory to a fully configured AI agent setup. Every step is a command you can run right now.
+Three commands. Three minutes. Your AI agent learns your project's standards automatically.
 
-## 1. Install APM
-
-One command, no prerequisites beyond Python 3.10+:
+## Install APM
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
-Verify the installation:
+Verify it worked:
 
 ```bash
 apm --version
 ```
 
-```
-apm, version x.x.x
-```
+For Homebrew, pip, or manual install, see the [Installation guide](../installation/).
 
-For alternative methods (Homebrew, pip), see the [Installation guide](../installation/).
+## Start a project
 
-## 2. Initialize a project
-
-Create a new project and move into it:
+Create a new project:
 
 ```bash
 apm init my-project && cd my-project
 ```
 
-```
-Created project directory: my-project
-Initializing APM project: my-project
-APM project initialized successfully!
+Or initialize inside an existing repository:
 
- Created Files
- ✨  apm.yml  Project configuration
+```bash
+cd your-repo
+apm init
 ```
 
-The generated `apm.yml` is your project manifest — equivalent to `package.json` or `requirements.txt`, but for AI agent configuration:
+Either way, APM creates an `apm.yml` manifest -- your dependency file for AI agent configuration:
 
-```yaml
+```yaml title="apm.yml"
 name: my-project
 version: 1.0.0
 dependencies:
   apm: []
 ```
 
-If you already have a repository, run `apm init` (without a project name) inside it. APM detects your existing project metadata automatically.
+## Install a package
 
-## 3. Add your first dependency
-
-Install a sample package to see how APM works:
+This is where it gets interesting. Install a package and watch what happens:
 
 ```bash
 apm install microsoft/apm-sample-package
 ```
 
+APM downloads the package, resolves its dependencies, and deploys files directly into the directories your AI tools already watch:
+
 ```
-Installing APM dependencies...
-Resolving: microsoft/apm-sample-package
-Downloaded: microsoft/apm-sample-package@latest
-Deployed 3 files to .github/instructions/
+my-project/
+  apm.yml
+  apm.lock
+  apm_modules/
+    microsoft/
+      apm-sample-package/
+  .github/
+    instructions/
+      apm-sample-package/
+        design-standards.instructions.md
+    prompts/
+      apm-sample-package/
+        accessibility-audit.prompt.md
+        design-review.prompt.md
+  .claude/
+    commands/
+      apm-sample-package/
+        ...
 ```
 
-APM did three things:
+Three things happened:
 
-1. **Downloaded** the package from GitHub into `apm_modules/microsoft/apm-sample-package/`.
-2. **Resolved** any transitive dependencies the package declares.
-3. **Deployed** instruction files into `.github/instructions/` where your AI tools can find them.
+1. The package was downloaded into `apm_modules/` (like `node_modules/`).
+2. Instructions, prompts, and skills were deployed to `.github/` and `.claude/` -- the native directories that GitHub Copilot, Cursor, and Claude already read from.
+3. A lockfile (`apm.lock`) was created, pinning the exact commit so every team member gets identical configuration.
 
-Your `apm.yml` now includes the dependency:
+Your `apm.yml` now tracks the dependency:
 
-```yaml
+```yaml title="apm.yml"
+name: my-project
+version: 1.0.0
 dependencies:
   apm:
     - microsoft/apm-sample-package
 ```
 
-And a lockfile (`apm.lock`) pins the exact commit so every developer on your team gets the same version.
+## That's it
 
-## 4. See the result
+Open your editor. GitHub Copilot and Claude pick up the new context immediately -- no extra configuration, no compile step, no restart. The agent now knows your project's design standards, can run your prompt templates, and follows the conventions defined in the package.
 
-After install, your project tree looks like this:
+This is the core idea: **packages define what your AI agent knows, and `apm install` puts that knowledge exactly where your tools expect it.**
 
-```
-my-project/
-  apm.yml                          # Project manifest
-  apm.lock                         # Pinned dependency versions
-  apm_modules/                     # Downloaded packages (like node_modules/)
-    microsoft/
-      apm-sample-package/
-        apm.yml
-        .apm/
-          instructions/
-          skills/
-          prompts/
-  .github/
-    instructions/                  # Deployed instructions for Copilot/Cursor
-      apm-sample-package/
-        ...
-```
+## Day-to-day workflow
 
-The `.github/instructions/` directory is where VS Code, GitHub Copilot, and Cursor look for agent context. Open your editor — your AI agent is now configured with the skills, instructions, and prompts from the package you installed.
-
-## 5. Compile instructions
-
-For tools that read a single root file (like Claude Code or Codex), compile everything into one output:
+When a new developer joins your team:
 
 ```bash
-apm compile
-```
-
-```
-Compiling APM context...
-Target: all (auto-detected)
-Generated: AGENTS.md
-Generated: CLAUDE.md
-```
-
-By default, `apm compile` targets all platforms. You can narrow it:
-
-```bash
-# Copilot/Cursor/Codex only — produces AGENTS.md
-apm compile --target copilot
-
-# Claude Code only — produces CLAUDE.md
-apm compile --target claude
-```
-
-Use `--dry-run` to preview what would be generated without writing any files:
-
-```bash
-apm compile --dry-run
-```
-
-## 6. Check what is installed
-
-List all installed packages:
-
-```bash
-apm deps list
-```
-
-```
-Installed APM Dependencies
-
- Package                         Source   Version
- microsoft/apm-sample-package    github   abc1234
-```
-
-View the full dependency tree, including transitive dependencies:
-
-```bash
-apm deps tree
-```
-
-```
-my-project
-  microsoft/apm-sample-package@abc1234
-```
-
-## 7. Day-to-day workflow
-
-Once set up, the workflow for your team is straightforward:
-
-```bash
-# A new developer clones and installs — same as npm install
 git clone <your-repo>
 cd <your-repo>
 apm install
-
-# Add another package later
-apm install github/awesome-copilot/skills/review-and-refactor
-
-# Recompile after adding dependencies
-apm compile
 ```
 
-Commit `apm.yml` and `apm.lock` to version control. The `apm_modules/` directory should be in `.gitignore` — APM recreates it from the lockfile on `apm install`.
+The lockfile ensures everyone gets the same agent configuration. Same as `npm install` after cloning a Node project.
 
-## What's next
+Add more packages as your project evolves:
 
-- [Your First Package](../first-package/) — create and publish your own APM package.
-- [Compilation guide](../../guides/compilation/) — learn about distributed compilation, targets, and options.
-- [Dependency management](../../guides/dependencies/) — version pinning, updates, and transitive resolution.
-- [CLI reference](../../reference/cli-commands/) — full list of commands, flags, and examples.
+```bash
+apm install github/awesome-copilot/skills/review-and-refactor
+```
+
+**What to commit:**
+- `apm.yml` and `apm.lock` -- version-controlled, shared with the team.
+- `apm_modules/` -- add to `.gitignore`. Rebuilt from the lockfile on install.
+
+:::note[Using Cursor, Codex, or Gemini?]
+These tools use different configuration formats. Run `apm compile` after installing to generate their native files. See the [Compilation guide](../../guides/compilation/) for details.
+:::
+
+## Next steps
+
+- [Your First Package](../first-package/) -- create and share your own APM package.
+- [Dependency management](../../guides/dependencies/) -- version pinning, updates, and transitive resolution.
+- [CLI reference](../../reference/cli-commands/) -- full list of commands and options.

@@ -6,6 +6,8 @@ sidebar:
 
 This guide showcases real-world APM workflows, from simple automation to enterprise-scale AI development patterns. Learn through practical examples that demonstrate the power of structured AI workflows.
 
+> **Note:** Examples using `apm run` reference APM's experimental [Agent Workflows](../../guides/agent-workflows/) feature.
+
 ## Before & After: Traditional vs APM
 
 ### Traditional Approach (Unreliable)
