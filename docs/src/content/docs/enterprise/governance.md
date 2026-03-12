@@ -102,6 +102,10 @@ No additional tooling is required. The lock file turns git into an agent configu
 
 ## CI enforcement with `apm audit --ci`
 
+:::note[Planned Feature]
+`apm audit --ci` is not yet available. The following describes planned behavior and is provided to illustrate the intended workflow.
+:::
+
 The `apm audit --ci` command is designed to run as a required status check in your CI pipeline. It verifies that the lock file is in sync with the declared manifest and that deployed files match expectations.
 
 ### What it catches
@@ -150,6 +154,10 @@ This ensures every merge to a protected branch has a verified, consistent agent 
 ---
 
 ## Drift detection with `apm audit --drift`
+
+:::note[Planned Feature]
+`apm audit --drift` is not yet available. The following describes planned behavior and is provided to illustrate the intended workflow.
+:::
 
 Drift occurs when the on-disk state of agent configuration diverges from what the lock file declares. The `apm audit --drift` command detects this divergence.
 
@@ -274,9 +282,9 @@ This ensures that organizational rules are consistently applied across all teams
 
 GitHub Rulesets provide a scalable way to enforce APM governance across multiple repositories.
 
-### Level 1: Required status check (available now)
+### Level 1: Required status check
 
-Configure `apm audit --ci` as a required status check through Rulesets:
+Once `apm audit --ci` is available (see [CI enforcement](#ci-enforcement-with-apm-audit---ci) above), configure it as a required status check through Rulesets:
 
 1. Create a new Ruleset at the organization or repository level.
 2. Target the branches you want to protect (e.g., `main`, `release/*`).
@@ -325,7 +333,7 @@ APM enforces change management by design:
 1. **Declaration.** Changes start in `apm.yml`, which is a committed, reviewable file.
 2. **Resolution.** `apm install` resolves declarations to exact commits in `apm.lock`.
 3. **Review.** Both files are included in the PR diff for peer review.
-4. **Verification.** `apm audit --ci` confirms consistency before merge.
+4. **Verification.** `apm audit --ci` confirms consistency before merge (planned — currently achieved through PR review of `apm.lock` diffs).
 5. **Traceability.** Git history provides a permanent record of who changed what and when.
 
 No agent configuration change can reach a protected branch without passing through this pipeline.

@@ -126,25 +126,35 @@ running `apm install` on the same lock file get identical setups.
 
 **Build.** `apm compile` produces optimized output files for each AI tool —
 `AGENTS.md` for Copilot, Cursor, and Codex; `CLAUDE.md` for Claude.
+`apm pack` creates self-contained bundles for portable distribution.
 
 ```bash
 apm compile
+apm pack
 ```
 
 **Distribute.** Any git repository is a valid APM package. Publish by pushing
-to a git remote. No registry required.
+to a git remote — no registry required. For offline distribution, CI artifact
+pipelines, or air-gapped environments, use `apm pack` and `apm unpack` to
+create and consume portable bundles without network access.
 
 ## Supported tools
 
-APM compiles agent configuration into the native format of each supported tool:
+APM deploys and compiles agent configuration into the native format of each
+supported tool:
 
-| AI Tool | Output format | Integration |
-|---|---|---|
-| GitHub Copilot | `AGENTS.md`, `.github/instructions/`, `.github/prompts/` | Full |
-| Cursor | `.cursor/rules/`, `.cursor/prompts/` | Full |
-| Claude | `CLAUDE.md`, `.claude/commands/` | Full |
-| Codex | `AGENTS.md` | Full |
-| Gemini | `GEMINI.md` | Full |
+| AI Tool | What `apm install` deploys | What `apm compile` adds | Support level |
+|---|---|---|---|
+| GitHub Copilot | `.github/instructions/`, `.github/prompts/`, agents, hooks, plugins, MCP | `AGENTS.md` (optional) | **Full** |
+| Claude | `.claude/` commands, skills, MCP | `CLAUDE.md` | **Full** |
+| Cursor | — | `.cursor/rules/` | Instructions via compile |
+| Codex CLI | — | `AGENTS.md` | Instructions via compile |
+| Gemini | — | `GEMINI.md` | Instructions via compile |
+
+For tools with **Full** support, `apm install` deploys all primitives in their
+native format — no additional steps needed. For other tools, `apm compile`
+generates their configuration format from your instructions. See the
+[Compilation guide](../../guides/compilation/) for details.
 
 The output is native. Each tool reads its own format — APM is transparent to
 the AI agent at runtime.

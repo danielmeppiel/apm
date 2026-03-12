@@ -93,7 +93,7 @@ Configuration is ready. Updates are a pull request to `apm.yml`.
 
 A mid-size organization maintains three layers of configuration: organization-wide security rules, team-specific coding standards, and project-level context. Different teams need different combinations.
 
-APM composes these layers through its dependency model. The organization publishes shared packages. Each team's `apm.yml` references the org packages it needs alongside team and project packages. Compilation merges them in the correct order.
+APM composes these layers through its dependency model. The organization publishes shared packages. Each team's `apm.yml` references the org packages it needs alongside team and project packages. `apm install` deploys them for Copilot and Claude natively; `apm compile` can merge them into instruction files for other tools.
 
 ```yaml
 packages:
@@ -152,5 +152,5 @@ For hands-on setup and deeper topics, start here:
 
 - [Quick Start](../../getting-started/installation/) — install APM and configure your first project in five minutes.
 - [Organization-Wide Packages](../../guides/org-packages/) — publish and maintain shared configuration packages across your organization.
-- [Compilation Guide](../../guides/compilation/) — understand how APM merges and transforms configuration from multiple sources.
+- [Compilation Guide](../../guides/compilation/) — optional: generate instruction files for tools without native APM integration (Cursor, Codex, Gemini).
 - [Dependencies Guide](../../guides/dependencies/) — version constraints, lock file mechanics, and update workflows.

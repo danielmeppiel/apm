@@ -10,16 +10,16 @@ APM implements the complete [AI-Native Development framework](https://danielmepp
 
 Most developers experience AI as inconsistent and unreliable:
 
-- ❌ **Ad-hoc prompting** that produces different results each time
-- ❌ **Context overload** that confuses AI agents and wastes tokens  
-- ❌ **Vendor lock-in** to specific AI tools and platforms
-- ❌ **No knowledge persistence** across sessions and team members
+- **Ad-hoc prompting** that produces different results each time
+- **Context overload** that confuses AI agents and wastes tokens
+- **Vendor lock-in** to specific AI tools and platforms
+- **No knowledge persistence** across sessions and team members
 
 **APM solves this** by implementing the complete 3-layer AI-Native Development framework:
 
-**🔧 Layer 1: Markdown Prompt Engineering** - Structured, repeatable AI instructions  
-**⚙️ Layer 2: Context** - Configurable tools that deploy prompt + context engineering  
-**🎯 Layer 3: Context Engineering** - Strategic LLM memory management for reliability
+**Layer 1: Markdown Prompt Engineering** - Structured, repeatable AI instructions
+**Layer 2: Context** - Configurable tools that deploy prompt + context engineering
+**Layer 3: Context Engineering** - Strategic LLM memory management for reliability
 
 **Result**: Transform from supervising every AI interaction to architecting systems that delegate complete workflows to AI agents.
 
@@ -29,7 +29,7 @@ Most developers experience AI as inconsistent and unreliable:
 
 Most developers start by manually supervising every AI interaction. APM enables the transformation to AI-Native engineering:
 
-### 🔴 Before APM: Manual Agent Supervision
+### Before APM: Manual Agent Supervision
 
 The traditional approach requires constant developer attention:
 
@@ -42,7 +42,7 @@ The traditional approach requires constant developer attention:
 
 *You're the bottleneck - every AI task needs your personal attention and guidance.*
 
-### 🟢 With APM: Engineered Agent Delegation  
+### With APM: Engineered Agent Delegation
 
 APM transforms AI from a supervised tool to an engineered system:
 
@@ -76,11 +76,11 @@ Just as npm revolutionized JavaScript by creating package ecosystem infrastructu
 
 ### Key Benefits
 
-**🎯 Reliable Results** - Replace trial-and-error with proven AI-Native Development patterns  
-**🔄 Universal Portability** - Works with any coding agent through the agents.md standard  
-**📦 Knowledge Packaging** - Share AI workflows like code packages with versioning  
-**🧠 Compound Intelligence** - Primitives improve through iterative team refinement  
-**⚡ Team Scaling** - Transform any project for reliable AI-Native Development workflows
+**Reliable Results** - Replace trial-and-error with proven AI-Native Development patterns
+**Universal Portability** - Works with any coding agent through the agents.md standard
+**Knowledge Packaging** - Share AI workflows like code packages with versioning
+**Compound Intelligence** - Primitives improve through iterative team refinement
+**Team Scaling** - Transform any project for reliable AI-Native Development workflows
 
 ## Architecture Overview
 
@@ -88,18 +88,18 @@ APM implements a complete system architecture that bridges the gap between human
 
 ```mermaid
 graph TD
-    A["📝 Context<br/>.apm/ directory<br/>(.chatmode, .instructions, .prompt, .context)"] --> B["🔧 APM CLI"]
+    A["Context<br/>.apm/ directory<br/>(.chatmode, .instructions, .prompt, .context)"] --> B["APM CLI"]
     
-    B --> D["📦 APM Package Manager<br/>Dependencies<br/>Templates"]
-    B --> C["⚙️ APM Context Compiler<br/>Script Resolution<br/>Primitive Compilation"]
-    B --> E["🏗️ APM Runtime Manager<br/>Install & Configure<br/>Codex, LLM, etc."]
+    B --> D["APM Package Manager<br/>Dependencies<br/>Templates"]
+    B --> C["APM Context Compiler<br/>Script Resolution<br/>Primitive Compilation"]
+    B --> E["APM Runtime Manager<br/>Install & Configure<br/>Codex, LLM, etc."]
     
-    C --> F["📄 AGENTS.md<br/>Portable Standard<br/>Cross-Runtime Compatible"]
+    C --> F["AGENTS.md<br/>Portable Standard<br/>Cross-Runtime Compatible"]
     
-    F --> G["⚡ AI Coding Agents<br/>Codex CLI, <br/>llm, ."]
+    F --> G["AI Coding Agents<br/>Codex CLI, <br/>llm, ."]
     
-    E --> H["🛠️ MCP Servers<br/>Tool Integration"]
-    E --> I["🧠 LLM Models<br/>GitHub Models<br/>Ollama, etc."]
+    E --> H["MCP Servers<br/>Tool Integration"]
+    E --> I["LLM Models<br/>GitHub Models<br/>Ollama, etc."]
     
     style A fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
     style B fill:#f3e5f5,stroke:#7b1fa2,stroke-width:3px,color:#000
@@ -123,7 +123,7 @@ graph TD
 4. **AI Coding Agents** - Execute your compiled workflows (Copilot, Cursor, etc.)
 5. **Supporting Infrastructure** - MCP servers for tools, LLM models for execution
 
-The compiled `agents.md` file ensures your Context work with any coding agent - from GitHub Copilot to Cursor, Codex to Aider.
+GitHub Copilot and Claude read the deployed primitives natively. For other tools (Cursor, Codex, Gemini), `apm compile` generates an `agents.md` instruction file they can consume.
 
 ## The Three Layers Explained
 
@@ -131,9 +131,9 @@ The compiled `agents.md` file ensures your Context work with any coding agent - 
 
 Transform ad-hoc prompts into structured, repeatable instructions using markdown format:
 
-**❌ Traditional**: "Add authentication to the API"
+**Traditional**: "Add authentication to the API"
 
-**✅ Engineered**:
+**Engineered**:
 ```markdown
 # Secure Authentication Implementation
 
@@ -149,7 +149,7 @@ Transform ad-hoc prompts into structured, repeatable instructions using markdown
 4. Add logout functionality
 
 ## Validation Gates
-🚨 **STOP**: Security review required before deployment
+**STOP**: Security review required before deployment
 ```
 
 ### Layer 2: Context
@@ -253,21 +253,30 @@ Lifecycle event handlers that run scripts at specific points during AI operation
 }
 ```
 
-## Universal Compatibility
+## Compatibility
 
-APM generates context files for all major coding agents:
+APM supports coding agents at two levels: **native integration** for tools with rich primitive support, and **compiled instructions** for tools that consume a single instructions file.
 
-**Copilot Target** (AGENTS.md + .github/):
-- **GitHub Copilot** - VSCode integration, chat, and CLI
-- **Cursor** - AI-first code editor  
-- **Codex CLI** - OpenAI's development tool
-- **Gemini** - Google's AI assistant
+### Native integration
 
-**Claude Target** (CLAUDE.md + .claude/):
-- **Claude Code** - Anthropic's coding assistant
-- **Claude Desktop** - Desktop application
+These tools support the full set of APM primitives. Running `apm install` deploys instructions, prompts, agents, skills, context, MCP configuration, and hooks directly into each tool's native format.
 
-APM auto-detects your target based on project structure (`.github/` or `.claude/` folders) and generates the appropriate format. This ensures your investment in primitives works regardless of which AI tools your team chooses.
+- **GitHub Copilot** (AGENTS.md + .github/) - instructions, prompts, chat modes, context, hooks, MCP
+- **Claude Code** (CLAUDE.md + .claude/) - commands, skills, MCP configuration
+
+APM auto-detects the target based on project structure (`.github/` or `.claude/` folders) and deploys the appropriate primitives.
+
+### Compiled instructions
+
+For tools that read a single instructions file, `apm compile` merges your primitives into a portable document the tool can consume. This gives you instruction-level support rather than full primitive integration.
+
+- **Cursor** - compiled to `.cursor/rules/`
+- **Codex CLI** - compiled to `AGENTS.md`
+- **Gemini** - compiled to `GEMINI.md`
+
+See the [Compilation guide](../../guides/compilation/) for details on output formats and options.
+
+Your investment in primitives is portable: full primitive support for Copilot and Claude, instruction-level support for other tools via compilation.
 
 ## Learn the Complete Framework
 

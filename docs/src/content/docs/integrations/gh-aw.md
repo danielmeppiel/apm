@@ -1,73 +1,85 @@
 ---
 title: "GitHub Agentic Workflows"
-description: "Use APM packages with GitHub Agentic Workflows (gh-aw) for automated repository maintenance."
+description: "How APM integrates with GitHub Agentic Workflows for automated agent pipelines."
 sidebar:
-  order: 1
+  order: 2
 ---
 
-[GitHub Agentic Workflows](https://github.github.com/gh-aw/) (gh-aw) lets you write repository automation in markdown and run it as GitHub Actions using AI agents. APM and gh-aw complement each other naturally.
+[GitHub Agentic Workflows](https://github.github.com/gh-aw/) (gh-aw) lets you write repository automation in markdown and run it as GitHub Actions using AI agents. APM and gh-aw have a native integration: gh-aw recognizes APM packages as first-class dependencies.
 
 ## How They Work Together
 
 | Tool | Role |
 |------|------|
-| **APM** | Manages the *context* your AI agents use — skills, instructions, prompts |
-| **gh-aw** | Manages the *automation* that triggers AI agents — event-driven workflows |
+| **APM** | Manages the *context* your AI agents use -- skills, instructions, prompts, agents |
+| **gh-aw** | Manages the *automation* that triggers AI agents -- event-driven workflows |
 
 APM defines **what** agents know. gh-aw defines **when** and **how** they act.
 
-## Example: Automated Code Review
+## Integration Approaches
 
-1. **APM** installs your team's review standards:
+### Frontmatter Dependencies (Recommended)
+
+gh-aw natively supports APM through a [`dependencies:` frontmatter field](https://github.github.com/gh-aw/reference/frontmatter/#apm-dependencies-dependencies). Declare APM packages directly in your workflow's frontmatter and gh-aw handles the rest.
+
+**Simple array format:**
 
 ```yaml
-# apm.yml
+---
+on:
+  pull_request:
+    types: [opened]
+engine: copilot
+
 dependencies:
-  apm:
-    - your-org/code-review-standards
-    - github/awesome-copilot/agents/api-architect.agent.md
+  - microsoft/apm-sample-package
+  - github/awesome-copilot/skills/review-and-refactor
+---
+
+# Code Review
+
+Review the pull request using the installed coding standards and skills.
 ```
 
-2. **gh-aw** triggers a review workflow on every PR:
-
-```markdown
-<!-- .github/workflows/review.workflow.md -->
-# Code Review Workflow
-
-When a pull request is opened, review the changed files against
-the project's coding standards in AGENTS.md.
-
-Post review comments on any violations found.
-```
-
-3. The AI agent uses the context APM compiled into `AGENTS.md` to perform a standards-aware review automatically.
-
-## Setup
-
-1. Install both tools:
-
-```bash
-# APM
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
-
-# gh-aw (GitHub CLI extension)
-gh extension install github/gh-aw
-```
-
-2. Configure your project with APM packages, then add gh-aw workflows that reference the compiled context.
-
-## Integration Tiers
-
-APM integrates with GitHub Agentic Workflows at three levels of depth.
-
-### Tier 1: Pre-Step with apm-action (Works Today)
-
-The minimum viable integration. Zero changes to gh-aw. Uses the `steps:` frontmatter field:
+**Object format with options:**
 
 ```yaml
 ---
 on:
   issues:
+    types: [opened]
+engine: copilot
+
+dependencies:
+  packages:
+    - microsoft/apm-sample-package
+    - your-org/security-compliance
+  isolated: true
+---
+
+# Issue Triage
+
+Analyze the opened issue for security implications.
+```
+
+Each entry is a standard APM package reference -- either `owner/repo` for a full package or `owner/repo/path/to/skill` for an individual primitive.
+
+**How it works:**
+
+1. The gh-aw compiler detects the `dependencies:` field in your workflow frontmatter.
+2. In the **activation job**, APM resolves the full dependency tree and packs the result.
+3. In the **agent job**, the bundle is unpacked into the workspace and the agent discovers the primitives.
+
+The APM compilation target is automatically inferred from the configured `engine:` field (`copilot`, `claude`, or `all` for other engines). No manual target configuration is needed.
+
+### apm-action Pre-Step
+
+For more control over the installation process, use [`microsoft/apm-action@v1`](https://github.com/microsoft/apm-action) as an explicit workflow step. This approach runs `apm install && apm compile` directly, giving you access to the full APM CLI.
+
+```yaml
+---
+on:
+  pull_request:
     types: [opened]
 engine: copilot
 
@@ -80,71 +92,64 @@ steps:
       GITHUB_TOKEN: ${{ github.token }}
 ---
 
-# Issue Triage
+# Code Review
 
-Triage this issue using the installed compliance rules and security skills.
+Review the PR using the installed coding standards.
 ```
 
-The repo has an `apm.yml` with dependencies and `apm.lock` for reproducibility. The APM action runs `apm install && apm compile` as a pre-agent step. Primitives deploy to `.github/`. The coding agent discovers them naturally.
+The repo needs an `apm.yml` with dependencies and `apm.lock` for reproducibility. The action runs as a pre-agent step, deploying primitives to `.github/` where the agent discovers them.
 
-### Tier 2: Inline Dependencies (APM Enhancement)
+**When to use this over frontmatter dependencies:**
 
-Declare dependencies directly in workflow frontmatter -- no separate `apm.yml` needed:
+- Custom compilation options (specific targets, flags)
+- Running additional APM commands (audit, preview)
+- Workflows that need `apm.yml`-based configuration
+- Debugging dependency resolution
 
-```yaml
----
-on:
-  issues:
-    types: [opened]
-engine: copilot
+## Using APM Bundles
 
-steps:
-  - uses: microsoft/apm-action@v1
-    with:
-      dependencies: |
-        microsoft/compliance-rules@v2.1.0
-        myorg/security-skill@v1.0.0
-      isolated: true
----
+For sandboxed environments where network access is restricted during workflow execution, use pre-built APM bundles:
 
-# Issue Triage
-Analyze the opened issue for security implications.
-```
-
-`isolated: true` means: install packages to a clean workspace, ignore the repo's existing `.github/instructions/`. The agent sees only APM-managed context.
-
-### Tier 3: Native Frontmatter Integration (Future Vision)
-
-The endgame: gh-aw recognizes APM as a dependency manager natively via an `apm:` frontmatter field. No `steps:` boilerplate. Subject to gh-aw team collaboration.
-
-## Using APM Bundles with gh-aw
-
-For sandboxed environments where network access is restricted, use pre-built APM bundles:
+1. Run `apm pack` in your CI pipeline to produce a self-contained bundle.
+2. Distribute the bundle as a workflow artifact or commit it to the repository.
+3. Reference the bundled primitives in your workflow.
 
 ```yaml
 ---
 on: pull_request
 engine: copilot
 imports:
-  - .github/agents/code-reviewer.md     # produced by APM bundle
-  - .github/agents/security-auditor.md   # produced by APM bundle
+  - .github/agents/code-reviewer.md
+  - .github/agents/security-auditor.md
 ---
 
 # Code Review
 Review the PR using team standards.
 ```
 
-Bundles complement gh-aw's native `imports:` -- resolving full dependency trees rather than individual files, with zero network required at workflow runtime.
+Bundles resolve full dependency trees ahead of time, so workflows need zero network access at runtime.
 
-See the [CI/CD Integration guide](/apm/integrations/ci-cd/) for details on building and distributing bundles.
+See the [CI/CD Integration guide](../ci-cd/) for details on building and distributing bundles.
 
-## Solving Instruction Pollution
+## Isolated Mode
 
-When a gh-aw workflow runs in a repo with developer-focused instructions (like "use 4-space tabs"), those instructions become noise for an automated triage bot. APM's `--isolated` mode (Tier 2) addresses this by creating a clean execution context with only the workflow's declared dependencies.
+When a gh-aw workflow runs in a repository that already has developer-focused instructions (like "use 4-space tabs" or "prefer functional style"), those instructions become noise for an automated agent that should only follow its declared dependencies.
+
+The `isolated` flag addresses this. When set to `true` in the object format:
+
+```yaml
+dependencies:
+  packages:
+    - your-org/triage-rules
+  isolated: true
+```
+
+gh-aw clears existing `.github/` primitive directories (instructions, skills, agents) before unpacking the APM bundle. The agent sees only the context declared by the workflow, preventing instruction pollution from the host repository.
 
 ## Learn More
 
 - [gh-aw Documentation](https://github.github.com/gh-aw/)
-- [APM Compilation Guide](/apm/guides/compilation/)
-- [APM CLI Reference](/apm/reference/cli-commands/)
-- [CI/CD Integration](/apm/integrations/ci-cd/)
+- [gh-aw Frontmatter Reference](https://github.github.com/gh-aw/reference/frontmatter/)
+- [APM Compilation Guide](../../guides/compilation/)
+- [APM CLI Reference](../../reference/cli-commands/)
+- [CI/CD Integration](../ci-cd/)

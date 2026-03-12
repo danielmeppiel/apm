@@ -72,6 +72,8 @@ See the **[Getting Started guide](https://microsoft.github.io/apm/getting-starte
 
 ## Community
 
+Created and maintained by [@danielmeppiel](https://github.com/danielmeppiel).
+
 - [Roadmap & Discussions](https://github.com/microsoft/apm/discussions/116)
 - [Contributing](CONTRIBUTING.md)
 - [AI Native Development guide](https://danielmeppiel.github.io/awesome-ai-native) — a practical learning path for AI-native development
