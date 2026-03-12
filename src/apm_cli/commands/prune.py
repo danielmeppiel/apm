@@ -5,7 +5,9 @@ import sys
 from pathlib import Path
 
 import click
+import yaml
 
+from ..constants import APM_LOCK_FILENAME, APM_MODULES_DIR, APM_YML_FILENAME
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ._helpers import _build_expected_install_paths, _scan_installed_packages
 
@@ -31,12 +33,12 @@ def prune(ctx, dry_run):
     """
     try:
         # Check if apm.yml exists
-        if not Path("apm.yml").exists():
+        if not Path(APM_YML_FILENAME).exists():
             _rich_error("No apm.yml found. Run 'apm init' first.")
             sys.exit(1)
 
         # Check if apm_modules exists
-        apm_modules_dir = Path("apm_modules")
+        apm_modules_dir = Path(APM_MODULES_DIR)
         if not apm_modules_dir.exists():
             _rich_info("No apm_modules/ directory found. Nothing to prune.")
             return
@@ -45,12 +47,12 @@ def prune(ctx, dry_run):
 
         # Build expected vs installed using shared helpers
         try:
-            apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             declared_deps = apm_package.get_apm_dependencies()
-            lockfile = LockFile.read(Path.cwd() / "apm.lock")
+            lockfile = LockFile.read(Path.cwd() / APM_LOCK_FILENAME)
             expected_installed = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
         except Exception as e:
-            _rich_error(f"Failed to parse apm.yml: {e}")
+            _rich_error(f"Failed to parse {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         installed_packages = _scan_installed_packages(apm_modules_dir)
@@ -103,19 +105,23 @@ def prune(ctx, dry_run):
                 deleted_targets: list = []
                 for dep_key in pruned_keys:
                     dep = lockfile.get_dependency(dep_key)
-                    if dep and dep.deployed_files:
-                        for rel_path in dep.deployed_files:
-                            if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
-                                continue
-                            target = project_root / rel_path
-                            if target.is_file():
-                                target.unlink()
-                                deployed_cleaned += 1
-                                deleted_targets.append(target)
-                            elif target.is_dir():
-                                shutil.rmtree(target)
-                                deployed_cleaned += 1
-                                deleted_targets.append(target)
+                    if not dep or not dep.deployed_files:
+                        # No deployed files to clean — just remove lockfile entry
+                        if dep_key in lockfile.dependencies:
+                            del lockfile.dependencies[dep_key]
+                        continue
+                    for rel_path in dep.deployed_files:
+                        if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
+                            continue
+                        target = project_root / rel_path
+                        if target.is_file():
+                            target.unlink()
+                            deployed_cleaned += 1
+                            deleted_targets.append(target)
+                        elif target.is_dir():
+                            shutil.rmtree(target)
+                            deployed_cleaned += 1
+                            deleted_targets.append(target)
                     # Remove from lockfile
                     if dep_key in lockfile.dependencies:
                         del lockfile.dependencies[dep_key]

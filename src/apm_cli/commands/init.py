@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from ..constants import APM_YML_FILENAME
 from ..utils.console import (
     _create_files_table,
     _rich_echo,
@@ -54,7 +55,7 @@ def init(ctx, project_name, yes):
             final_project_name = project_dir.name
 
         # Check for existing apm.yml
-        apm_yml_exists = Path("apm.yml").exists()
+        apm_yml_exists = Path(APM_YML_FILENAME).exists()
 
         # Handle existing apm.yml in brownfield projects
         if apm_yml_exists:
@@ -95,7 +96,7 @@ def init(ctx, project_name, yes):
             console = _get_console()
             if console:
                 files_data = [
-                    ("✨", "apm.yml", "Project configuration"),
+                    ("✨", APM_YML_FILENAME, "Project configuration"),
                 ]
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
