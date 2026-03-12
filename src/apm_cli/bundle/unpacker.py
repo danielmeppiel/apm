@@ -6,7 +6,7 @@ import tarfile
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from ..deps.lockfile import LockFile
 
@@ -18,6 +18,8 @@ class UnpackResult:
     extracted_dir: Path
     files: List[str] = field(default_factory=list)
     verified: bool = False
+    dependency_files: Dict[str, List[str]] = field(default_factory=dict)
+    skipped_count: int = 0
 
 
 def unpack_bundle(
@@ -93,18 +95,20 @@ def unpack_bundle(
                 "apm.lock in the bundle could not be parsed — the bundle may be corrupt."
             )
 
-        # Collect all deployed_files from lockfile
-        all_deployed: list[str] = []
-        for dep in lockfile.get_all_dependencies():
-            all_deployed.extend(dep.deployed_files)
-
-        # Deduplicate
+        # Collect deployed_files per dependency and deduplicated global list
+        dep_file_map: Dict[str, List[str]] = {}
         seen: set[str] = set()
         unique_files: list[str] = []
-        for f in all_deployed:
-            if f not in seen:
-                seen.add(f)
-                unique_files.append(f)
+        for dep in lockfile.get_all_dependencies():
+            dep_key = dep.get_unique_key()
+            dep_files: list[str] = []
+            for f in dep.deployed_files:
+                dep_files.append(f)
+                if f not in seen:
+                    seen.add(f)
+                    unique_files.append(f)
+            if dep_files:
+                dep_file_map[dep_key] = dep_files
 
         # 3. Verify completeness
         verified = True
@@ -128,11 +132,13 @@ def unpack_bundle(
                 extracted_dir=bundle_path,
                 files=unique_files,
                 verified=verified,
+                dependency_files=dep_file_map,
             )
 
         # 4. Copy target files to output_dir (additive, no deletes)
         output_dir = Path(output_dir)
         output_dir_resolved = output_dir.resolve()
+        skipped = 0
         for rel_path in unique_files:
             # Guard against absolute paths or path-traversal entries in deployed_files
             p = Path(rel_path)
@@ -147,6 +153,7 @@ def unpack_bundle(
                 )
             src = source_dir / rel_path
             if not src.exists():
+                skipped += 1
                 continue  # skip_verify may allow missing files
             if src.is_dir():
                 shutil.copytree(src, dest, dirs_exist_ok=True)
@@ -158,6 +165,8 @@ def unpack_bundle(
             extracted_dir=bundle_path,
             files=unique_files,
             verified=verified,
+            dependency_files=dep_file_map,
+            skipped_count=skipped,
         )
     finally:
         # Clean up temp dir if we created one
