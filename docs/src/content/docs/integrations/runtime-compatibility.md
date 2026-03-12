@@ -6,6 +6,8 @@ sidebar:
 
 APM manages LLM runtime installation and configuration automatically. This guide covers the supported runtimes, how to use them, and how to extend APM with additional runtimes.
 
+> **Note:** This page covers APM's experimental runtime management. See also the [Agent Workflows guide](../../guides/agent-workflows/) for running workflows locally.
+
 ## Overview
 
 APM acts as a runtime package manager, downloading and configuring LLM runtimes from their official sources. Currently supports three runtimes:

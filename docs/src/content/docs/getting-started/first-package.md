@@ -103,15 +103,15 @@ APM automatically:
 - Copies prompts to `.github/prompts/`
 - Updates `apm.yml` with the dependency
 
-## 7. Compile
+## 7. Optional: Compile for Other Tools
 
-Generate the compiled context files:
+If you use tools beyond GitHub Copilot and Claude (which read deployed primitives natively), generate compiled instruction files:
 
 ```bash
 apm compile
 ```
 
-This produces `AGENTS.md` (for Copilot, Cursor, Codex) and `CLAUDE.md` (for Claude) with all your instructions optimized for each agent.
+This produces `AGENTS.md` (for Cursor, Codex) and `CLAUDE.md` for tools that need a single instructions file. Copilot and Claude users can skip this step.
 
 ## Next Steps
 

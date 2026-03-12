@@ -23,22 +23,22 @@ APM provides the infrastructure layer for AI development:
 
 When using Spec-kit for Specification-Driven Development (SDD), APM automatically integrates the Spec-kit constitution:
 
-- **Constitution Injection**: APM automatically injects the Spec-kit `constitution.md` into the compiled context layer (`AGENTS.md`)
+- **Constitution Injection**: When using `apm compile`, APM injects the Spec-kit `constitution.md` into the compiled instruction files (`AGENTS.md`)
 - **Rule Enforcement**: All coding agents respect the non-negotiable rules governing your project
-- **Contextual Augmentation**: APM embeds your team's context modules into `AGENTS.md` after Spec-kit's constitution
+- **Contextual Augmentation**: Compiled output embeds your team's context modules after Spec-kit's constitution
 - **SDD Enhancement**: Augments the Spec Driven Development process with additional context curated by your teams
 
 ### Integrated Workflow
 
 ```bash
 # 1. Set up APM contextual foundation
-apm init my-project && apm compile
+apm init my-project && apm install
 
-# 2. Use Spec-kit for specification-driven development
-# Spec-kit constitution is automatically included in AGENTS.md
+# 2. Optional: compile for tools without native integration (Cursor, Codex, Gemini)
+# Spec-kit constitution is automatically included in compiled AGENTS.md
+apm compile
 
-# 3. Run AI workflows with both SDD rules and team context
-apm run implement-feature --param spec="user-auth" --param approach="sdd"
+# 3. AI workflows use both SDD rules and team context
 ```
 
 **Key Benefits of Integration**:
@@ -47,102 +47,9 @@ apm run implement-feature --param spec="user-auth" --param approach="sdd"
 - **Flexible Workflows**: Also works with traditional prompting and vibe coding
 - **Team Knowledge**: Combines constitutional rules with team-specific context
 
-## Supported AI Runtimes
+## Running Agentic Workflows
 
-APM manages AI runtime installation and provides seamless integration with multiple coding agents:
-
-### OpenAI Codex CLI
-
-Terminal-native coding agent with GitHub Models support:
-
-```bash
-# Install and configure
-apm runtime setup codex
-```
-
-Codex reads primitives from `.github/` (instructions, agents, prompts, skills) the same way GitHub Copilot does. APM also configures MCP servers for Codex at `~/.codex/config.toml`.
-
-**Features**:
-- GitHub Models API backend
-- Terminal-native workflow
-- Real-time streaming output
-- Native MCP server support
-- Automatic `.github/` primitive discovery
-
-**Best for**: Teams preferring terminal workflows, custom model configurations
-
-### GitHub Copilot CLI
-
-GitHub's Copilot agent for the terminal:
-
-```bash
-# Install and configure
-apm runtime setup copilot
-```
-
-**Features**:
-- Native MCP server integration via `~/.copilot/mcp-config.json`
-- Multi-model switching
-- Advanced prompt engineering support
-- `--allow-all-tools` and `--add-dir` options
-
-**Best for**: Teams using GitHub Copilot across IDE and terminal
-
-**Configuration**:
-```yaml
-runtime:
-  copilot:
-    model: "github/gpt-4o-mini"
-    provider: "github-models"
-    api_base: "https://models.github.ai"
-```
-
-### LLM Library
-
-Flexible runtime supporting multiple model providers:
-
-```bash
-# Install and configure
-apm runtime setup llm
-
-# Features  
-- Multiple model providers (OpenAI, Anthropic, Ollama)
-- Local model support
-- Custom plugin system
-- Advanced configuration options
-- Cost optimization features
-```
-
-**Best for**: Teams needing model flexibility, local development, cost optimization, custom integrations
-
-**Configuration**:
-```yaml
-runtime:
-  llm:
-    default_model: "gpt-4"
-    providers:
-      - openai
-      - ollama  
-      - anthropic
-    local_models: 
-      - "llama3:8b"
-    cost_limits:
-      daily_max: "$50"
-```
-
-### Verify Installation
-
-Check what runtimes are available and properly configured:
-
-```bash
-# List installed runtimes
-apm runtime list
-
-# Test runtime functionality
-apm runtime test copilot
-apm runtime test codex
-apm runtime test llm
-```
+For running agentic workflows locally, see the [Agent Workflows guide](../../guides/agent-workflows/).
 
 ## VS Code Integration
 
@@ -239,9 +146,9 @@ apm install microsoft/apm-sample-package
 - File-pattern based instruction application
 - Agent support for different personas and workflows
 
-### Compiled Context with AGENTS.md
+### Optional: Compiled Context with AGENTS.md
 
-In addition to file-level integration, `apm compile` produces an `AGENTS.md` file that provides comprehensive project context. This is useful for older Copilot versions or IDEs that do not support granular `.github/` primitive discovery.
+For tools that do not support granular `.github/` primitive discovery (such as Cursor, Codex, or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot or Claude, which read deployed primitives natively.
 
 ```bash
 # Compile all local and dependency instructions into AGENTS.md
@@ -260,13 +167,13 @@ APM provides first-class support for Claude Code and Claude Desktop through nati
 
 > **Auto-Detection**: Claude integration is automatically enabled when a `.claude/` folder exists in your project. If neither `.github/` nor `.claude/` exists, `apm install` skips folder integration (packages are still installed to `apm_modules/`).
 
-### Output Files for Claude
+### Optional: Compiled Output for Claude
 
-When you run `apm compile`, APM generates Claude-native files:
+Running `apm compile` is optional for Claude Code, which reads deployed primitives natively via `apm install`. If you want a single `CLAUDE.md` instruction file (for example, for Claude Desktop), you can generate one:
 
 | File | Purpose |
 |------|---------|
-| `CLAUDE.md` | Project instructions for Claude (instructions only, using `@import` syntax) |
+| `CLAUDE.md` | Merged project instructions for Claude (instructions only, using `@import` syntax) |
 
 When you run `apm install`, APM integrates package primitives into Claude's native structure:
 
@@ -361,9 +268,9 @@ apm install anthropics/claude-plugins-official/plugins/hookify
 5. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
 6. `apm uninstall` removes hook files and cleans up merged settings
 
-### Target-Specific Compilation
+### Optional: Target-Specific Compilation
 
-Generate only Claude formats when needed:
+Compilation is optional for Copilot and Claude, which read deployed primitives natively. Use it when targeting tools like Cursor, Codex, or Gemini, or when you want a single merged instruction file:
 
 ```bash
 # Generate all formats (default)
@@ -401,8 +308,8 @@ Review the current design for accessibility and UI standards.
 apm install microsoft/apm-sample-package
 apm install github/awesome-copilot/skills/review-and-refactor
 
-# 2. Compile instructions for Claude
-apm compile --target claude
+# 2. Optional: compile instructions if not using Claude Code natively
+# apm compile --target claude
 
 # 3. In Claude Code, use:
 #    /code-review     -- Runs the code review workflow
@@ -417,7 +324,7 @@ apm compile --target claude
 
 Skills installed to `.github/skills/` are the primary location; when a `.claude/` directory exists, APM also copies skills to `.claude/skills/` for compatibility. Each skill folder contains a `SKILL.md` that defines the skill's capabilities and any supporting files.
 
-Claude Desktop can use `CLAUDE.md` as its project instructions file. Run `apm compile --target claude` to generate `CLAUDE.md` with `@import` syntax for organized instruction loading.
+Claude Desktop can use `CLAUDE.md` as its project instructions file. Optionally run `apm compile --target claude` to generate `CLAUDE.md` with `@import` syntax for organized instruction loading.
 
 ### Cleanup and Sync
 

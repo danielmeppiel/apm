@@ -35,8 +35,8 @@ dependencies:
 Run `apm install` and APM:
 
 - **Resolves transitive dependencies** — if package A depends on package B, both are installed automatically.
-- **Integrates primitives** — instructions go to `.github/instructions/`, prompts to `.github/prompts/`, skills to `.github/skills/`.
-- **Compiles context** — `apm compile` produces optimized `AGENTS.md` and `CLAUDE.md` files for every major AI coding agent.
+- **Integrates primitives** — instructions go to `.github/instructions/`, prompts to `.github/prompts/`, skills to `.github/skills/`. GitHub Copilot and Claude read these natively.
+- **Bridges other tools** — for Cursor, Codex, Gemini, and other tools without native integration, `apm compile` generates compatible instruction files (`AGENTS.md`, `CLAUDE.md`).
 
 ## APM vs. Manual Setup
 
@@ -62,7 +62,7 @@ git clone my-project && cd my-project
 ```bash
 git clone my-project && cd my-project
 apm install
-# Done. All 5 plugins resolved, installed, and compiled.
+# Done. All 5 plugins resolved and installed.
 ```
 
 | | Without APM | With APM |
@@ -100,7 +100,7 @@ All declared in one manifest. All installed with one command.
 ## Design Principles
 
 - **Familiar** — APM works like the package managers you already know.
-- **Fast** — install, compile, and run in seconds.
+- **Fast** — install and run in seconds.
 - **Open** — built on [AGENTS.md](https://agents.md), [Agent Skills](https://agentskills.io), and [MCP](https://modelcontextprotocol.io).
 - **Portable** — install from GitHub, GitLab, Bitbucket, Azure DevOps, or any git host.
 

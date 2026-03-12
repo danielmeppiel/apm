@@ -111,16 +111,17 @@ jobs:
           commands: |
             apm install
             apm audit --ci
-            apm compile
-            git diff --exit-code AGENTS.md || \
-              (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
+            # Optional: only needed if targeting Cursor, Codex, Gemini, or similar
+            # apm compile
+            # git diff --exit-code AGENTS.md || \
+            #   (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
 
 ### Separate Jobs for Granular Status
 
-If you want audit and compile as separate required checks, split them into distinct jobs:
+If your project uses `apm compile` (for Cursor, Codex, Gemini, or other tools without native APM integration), you can add audit and compile as separate required checks:
 
 ```yaml
 jobs:
@@ -147,7 +148,7 @@ jobs:
             apm compile --verbose
 ```
 
-This lets you require both `audit` and `compile` as independent status checks in your ruleset.
+This lets you require both `audit` and `compile` as independent status checks in your ruleset. The compile job is only needed if your project targets tools that require compiled instruction files.
 
 ## Troubleshooting
 

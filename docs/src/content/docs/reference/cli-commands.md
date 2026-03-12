@@ -695,9 +695,11 @@ apm mcp show a5e8a7f0-d4e4-4a1d-b12f-2896a23fd4f1
 - Available installation packages
 - Installation instructions
 
-### `apm run` - Execute prompts
+### `apm run` (Experimental) - Execute prompts
 
 Execute a script defined in your apm.yml with parameters and real-time output streaming.
+
+> See the [Agent Workflows guide](../../guides/agent-workflows/) for usage details.
 
 ```bash
 apm run [SCRIPT_NAME] [OPTIONS]
@@ -1012,11 +1014,13 @@ apm config set auto-integrate yes
 apm config set auto-integrate 1
 ```
 
-## Runtime Management
+## Runtime Management (Experimental)
 
-### `apm runtime` - Manage AI runtimes
+### `apm runtime` (Experimental) - Manage AI runtimes
 
 APM manages AI runtime installation and configuration automatically. Currently supports three runtimes: `copilot`, `codex`, and `llm`.
+
+> See the [Agent Workflows guide](../../guides/agent-workflows/) for usage details.
 
 ```bash
 apm runtime COMMAND [OPTIONS]

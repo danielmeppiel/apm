@@ -718,7 +718,6 @@ apm install
 apm compile
 
 # Now all team contexts and workflows are available
-apm run design-review --param component="login-form"
 ```
 
 ## Next Steps

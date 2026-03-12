@@ -1,11 +1,11 @@
 ---
 title: "APM in CI/CD"
-description: "Automate APM install and compile in GitHub Actions, Azure Pipelines, and other CI systems."
+description: "Automate APM install in GitHub Actions, Azure Pipelines, and other CI systems."
 sidebar:
   order: 1
 ---
 
-APM integrates into your CI/CD pipeline to ensure agent context is always up to date and compiled correctly.
+APM integrates into your CI/CD pipeline to ensure agent context is always up to date.
 
 ## GitHub Actions
 
@@ -20,17 +20,19 @@ on:
   pull_request:
 
 jobs:
-  compile:
+  install:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install APM & compile
+      - name: Install APM packages
         uses: microsoft/apm-action@v1
         with:
           commands: |
             apm install
-            apm compile --verbose
+            # Optional: only needed if targeting Cursor, Codex, Gemini, or other
+            # tools without native APM integration
+            # apm compile --verbose
 ```
 
 ### Private Dependencies
@@ -38,19 +40,18 @@ jobs:
 For private repositories, pass a GitHub token:
 
 ```yaml
-      - name: Install APM & compile
+      - name: Install APM packages
         uses: microsoft/apm-action@v1
         with:
           commands: |
             apm install
-            apm compile
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
 
-### Verify Compiled Output
+### Verify Compiled Output (Optional)
 
-Add a check to ensure `AGENTS.md` stays in sync with `apm.yml`:
+If your project uses `apm compile` to target tools like Cursor, Codex, or Gemini, add a check to ensure compiled output stays in sync:
 
 ```yaml
       - name: Check for drift
@@ -60,6 +61,8 @@ Add a check to ensure `AGENTS.md` stays in sync with `apm.yml`:
             (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
 ```
 
+This step is not needed if your team only uses GitHub Copilot and Claude, which read deployed primitives natively.
+
 ## Azure Pipelines
 
 ```yaml
@@ -67,8 +70,9 @@ steps:
   - script: |
       curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
       apm install
-      apm compile
-    displayName: 'APM Install & Compile'
+      # Optional: only if targeting Cursor, Codex, Gemini, or similar tools
+      # apm compile
+    displayName: 'APM Install'
     env:
       ADO_APM_PAT: $(ADO_PAT)
 ```
@@ -80,7 +84,8 @@ For any CI system with Python available:
 ```bash
 pip install apm-cli
 apm install
-apm compile --verbose
+# Optional: only if targeting Cursor, Codex, Gemini, or similar tools
+# apm compile --verbose
 ```
 
 ## Governance with `apm audit`
@@ -148,5 +153,5 @@ See the [Pack & Distribute guide](../../guides/pack-distribute/) for the full wo
 
 - **Pin APM version** in CI to avoid unexpected changes: `pip install apm-cli==0.7.7`
 - **Commit `apm.lock`** so CI resolves the same dependency versions as local development
-- **Run `apm compile` in CI** and fail the build if the output differs from what's committed — this catches drift early
+- **If using `apm compile`** (for Cursor, Codex, Gemini), run it in CI and fail the build if the output differs from what's committed
 - **Use `GITHUB_APM_PAT`** for private dependencies; never use the default `GITHUB_TOKEN` for cross-repo access
