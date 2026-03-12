@@ -291,6 +291,7 @@ No APM binary, no Python runtime, no network calls. The action handles extractio
 
 1. **`apm.lock`** — the resolved lockfile produced by `apm install`. Pack reads the `deployed_files` manifest from this file to know what to include.
 2. **Installed files on disk** — the actual files referenced in `deployed_files` must exist at their expected paths. Pack verifies this and fails with a clear error if files are missing.
+3. **No local path dependencies** — `apm pack` rejects packages that depend on local filesystem paths (`./path` or `/absolute/path`). Replace local dependencies with remote references before packing.
 
 The typical sequence is:
 

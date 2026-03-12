@@ -169,9 +169,10 @@ Each element MUST be one of two forms: **string** or **object**.
 Grammar (ABNF-style):
 
 ```
-dependency     = url_form / shorthand_form
+dependency     = url_form / shorthand_form / local_path_form
 url_form       = ("https://" / "http://" / "ssh://git@" / "git@") clone-url
 shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref] ["@" alias]
+local_path_form = ("./" / "../" / "/") path
 ```
 
 | Segment | Required | Pattern | Description |
@@ -208,6 +209,10 @@ dependencies:
 
     # Azure DevOps
     - dev.azure.com/org/project/_git/repo
+
+    # Local path (development only)
+    - ./packages/my-shared-skills          # relative to project root
+    - ../sibling-repo/my-package           # parent directory
 ```
 
 #### 4.1.2. Object Form
