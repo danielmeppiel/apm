@@ -7,7 +7,7 @@ name = "apm-cli"
 version = "0.7.7"
 description = "MCP configuration tool"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "Daniel Meppiel", email = "user@example.com"}
