@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Diff-aware `apm install` — manifest as source of truth: removed packages, ref/version changes, and MCP config drift in `apm.yml` all self-correct on the next `apm install` without `--update` or `--force`; introduces `drift.py` with pure helper functions (#260)
+- `DiagnosticCollector` for structured install diagnostics (#267)
+- Detailed file-level logging to `apm unpack` command (#252)
+- Astro Starlight documentation site with narrative redesign (#243)
+
+### Fixed
+
+- Resolve WinError 32 during sparse-checkout fallback on Windows — by @JanDeDobbeleer (#235)
+- CLI consistency: docs alignment, emoji removal, `show_default` flags (#266)
+
+### Changed
+
+- Minimum Python version bumped to 3.10; Black upgraded to 26.3.1 (#269)
+- Refactor `cli.py` and `apm_package.py` into focused modules — by @sergio-sisternes-epam (#224)
+- Revamp README as storefront for documentation site (#251, #256, #258)
+- Remove duplicated content from CLI reference page (#261)
+- Bump devalue 5.6.3 → 5.6.4 in docs (#263)
+- Primitives models coverage 78% → 100%; add discovery and parser coverage tests (#240, #254)
 
 ## [0.7.7] - 2026-03-10
 
