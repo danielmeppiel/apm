@@ -42,7 +42,7 @@ apm runtime list
 |---------|-------------|-------|
 | Copilot CLI | Node.js v22+, npm v10+ | Recommended. MCP config at `~/.copilot/` |
 | Codex | Node.js | Set `GITHUB_TOKEN` for GitHub Models support |
-| LLM | Python 3.9+ | Supports multiple model providers |
+| LLM | Python 3.10+ | Supports multiple model providers |
 
 **Copilot CLI** is the recommended runtime — it requires no API keys for installation and integrates with GitHub Copilot directly.
 
