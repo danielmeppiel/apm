@@ -20,7 +20,7 @@ def mcp():
 
 @mcp.command(help="Search MCP servers in registry")
 @click.argument("query", required=True)
-@click.option("--limit", default=10, help="Number of results to show")
+@click.option("--limit", default=10, show_default=True, help="Number of results to show")
 @click.pass_context
 def search(ctx, query, limit):
     """Search for MCP servers in the registry."""
