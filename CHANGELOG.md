@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-03-13
+
 ### Added
 
 - Diff-aware `apm install` — manifest as source of truth: removed packages, ref/version changes, and MCP config drift in `apm.yml` all self-correct on the next `apm install` without `--update` or `--force`; introduces `drift.py` with pure helper functions (#260)
