@@ -601,9 +601,14 @@ class SkillIntegrator(BaseIntegrator):
             # Normalize the name if validation fails
             skill_name = normalize_skill_name(raw_skill_name)
             if diagnostics is not None:
+                pkg_name = getattr(
+                    getattr(package_info, "package", None),
+                    "name",
+                    raw_skill_name,
+                )
                 diagnostics.warn(
                     f"Skill name '{raw_skill_name}' normalized to '{skill_name}' ({error_msg})",
-                    package=raw_skill_name,
+                    package=pkg_name,
                 )
             else:
                 try:

@@ -105,19 +105,25 @@ class DiagnosticCollector:
     # Query helpers
     # ------------------------------------------------------------------
 
+    def _snapshot(self) -> List[Diagnostic]:
+        """Return a consistent snapshot of diagnostics under the lock."""
+        with self._lock:
+            return list(self._diagnostics)
+
     @property
     def has_diagnostics(self) -> bool:
         """Return True if any diagnostics have been recorded."""
-        return len(self._diagnostics) > 0
+        with self._lock:
+            return len(self._diagnostics) > 0
 
     @property
     def error_count(self) -> int:
-        return sum(1 for d in self._diagnostics if d.category == CATEGORY_ERROR)
+        return sum(1 for d in self._snapshot() if d.category == CATEGORY_ERROR)
 
     def by_category(self) -> Dict[str, List[Diagnostic]]:
         """Return diagnostics grouped by category, preserving insertion order."""
         groups: Dict[str, List[Diagnostic]] = {}
-        for d in self._diagnostics:
+        for d in self._snapshot():
             groups.setdefault(d.category, []).append(d)
         return groups
 
@@ -131,10 +137,13 @@ class DiagnosticCollector:
         In normal mode, shows counts and actionable hints.
         In verbose mode, also lists individual file paths / messages.
         """
-        if not self._diagnostics:
+        snapshot = self._snapshot()
+        if not snapshot:
             return
 
-        groups = self.by_category()
+        groups: Dict[str, List[Diagnostic]] = {}
+        for d in snapshot:
+            groups.setdefault(d.category, []).append(d)
 
         console = _get_console()
         # Separator line
@@ -177,7 +186,7 @@ class DiagnosticCollector:
         count = len(items)
         noun = "file" if count == 1 else "files"
         _rich_warning(
-            f"  ⚠ {count} {noun} skipped — local files exist, not managed by APM"
+            f"  {count} {noun} skipped -- local files exist, not managed by APM"
         )
         _rich_info("    Use 'apm install --force' to overwrite")
         if not self.verbose:
@@ -195,7 +204,7 @@ class DiagnosticCollector:
         count = len(items)
         noun = "sub-skill" if count == 1 else "sub-skills"
         _rich_warning(
-            f"  ⚠ {count} {noun} overwrote existing skills"
+            f"  {count} {noun} overwrote existing skills"
         )
         if not self.verbose:
             _rich_info("    Run with --verbose to see details")
@@ -211,14 +220,14 @@ class DiagnosticCollector:
     def _render_warning_group(self, items: List[Diagnostic]) -> None:
         for d in items:
             pkg_prefix = f"[{d.package}] " if d.package else ""
-            _rich_warning(f"  ⚠ {pkg_prefix}{d.message}")
+            _rich_warning(f"  {pkg_prefix}{d.message}")
             if d.detail and self.verbose:
                 _rich_echo(f"    └─ {d.detail}", color="dim")
 
     def _render_error_group(self, items: List[Diagnostic]) -> None:
         count = len(items)
         noun = "package" if count == 1 else "packages"
-        _rich_echo(f"  ✗ {count} {noun} failed:", color="red")
+        _rich_echo(f"  {count} {noun} failed:", color="red")
         for d in items:
             pkg_prefix = f"{d.package} — " if d.package else ""
             _rich_echo(f"    └─ {pkg_prefix}{d.message}", color="red")

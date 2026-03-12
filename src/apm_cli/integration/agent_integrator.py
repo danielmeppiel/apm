@@ -155,7 +155,7 @@ class AgentIntegrator(BaseIntegrator):
             target_path = agents_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics, package=package_info.package.name):
                 files_skipped += 1
                 continue
             
@@ -169,7 +169,7 @@ class AgentIntegrator(BaseIntegrator):
                 claude_filename = self.get_target_filename_claude(source_file, package_info.package.name)
                 claude_target = claude_agents_dir / claude_filename
                 claude_rel = str(claude_target.relative_to(project_root))
-                if not self.check_collision(claude_target, claude_rel, managed_files, force, diagnostics=diagnostics):
+                if not self.check_collision(claude_target, claude_rel, managed_files, force, diagnostics=diagnostics, package=package_info.package.name):
                     self.copy_agent(source_file, claude_target)
                     target_paths.append(claude_target)
         
@@ -248,7 +248,7 @@ class AgentIntegrator(BaseIntegrator):
             target_path = agents_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics, package=package_info.package.name):
                 files_skipped += 1
                 continue
             

@@ -112,7 +112,7 @@ class PromptIntegrator(BaseIntegrator):
             target_path = prompts_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
             
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics, package=package_info.package.name):
                 files_skipped += 1
                 continue
             

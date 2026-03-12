@@ -820,7 +820,7 @@ class TestSkillSync:
 
 
 class TestCollisionWarningOutput:
-    """Verify collision detection emits warning message to stderr."""
+    """Verify collision detection emits warning message to console output."""
 
     def test_prompt_collision_warns_on_stderr(self, tmp_path: Path, capsys):
         """Prompt collision should print warning via _rich_warning."""

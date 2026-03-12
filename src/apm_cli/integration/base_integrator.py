@@ -52,6 +52,7 @@ class BaseIntegrator:
         managed_files: Optional[Set[str]],
         force: bool,
         diagnostics=None,
+        package: str = "",
     ) -> bool:
         """Return True if *target_path* is a user-authored collision.
 
@@ -78,7 +79,7 @@ class BaseIntegrator:
             return False
 
         if diagnostics is not None:
-            diagnostics.skip(rel_path)
+            diagnostics.skip(rel_path, package=package)
         else:
             _rich_warning(
                 f"Skipping {rel_path} — local file exists (not managed by APM). "

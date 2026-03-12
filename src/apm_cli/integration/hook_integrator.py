@@ -303,7 +303,7 @@ class HookIntegrator(BaseIntegrator):
             target_path = hooks_dir / target_filename
             rel_path = str(target_path.relative_to(project_root))
 
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics, package=package_info.package.name):
                 continue
 
             # Write rewritten JSON
@@ -317,7 +317,7 @@ class HookIntegrator(BaseIntegrator):
             # Copy referenced scripts (individual file tracking)
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
-                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
+                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics, package=package_info.package.name):
                     continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
@@ -406,7 +406,7 @@ class HookIntegrator(BaseIntegrator):
             # Copy referenced scripts
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
-                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
+                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics, package=package_info.package.name):
                     continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
