@@ -801,6 +801,22 @@ class TestDetectMCPConfigDrift:
         result = MCPIntegrator._detect_mcp_config_drift(deps, stored)
         assert result == {"changed"}
 
+    def test_no_drift_when_registry_field_matches(self):
+        """No drift when registry field (True/None) is the same."""
+        dep = MCPDependency(name="github")
+        stored = {"github": {"name": "github"}}
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == set()
+
+    def test_drift_when_headers_added(self):
+        """Drift detected when headers are added to existing server."""
+        dep = MCPDependency(
+            name="github", headers={"Authorization": "Bearer token"}
+        )
+        stored = {"github": {"name": "github"}}
+        result = MCPIntegrator._detect_mcp_config_drift([dep], stored)
+        assert result == {"github"}
+
     def test_plain_strings_are_skipped(self):
         """Plain string deps (no to_dict) are ignored by drift detection."""
         result = MCPIntegrator._detect_mcp_config_drift(

@@ -101,6 +101,7 @@ dependencies:
 | `apm_version` | string | MUST | Version of APM that generated this lock file. |
 | `dependencies` | array | MUST | Ordered list of resolved dependencies (see [section 4.2](#42-dependency-entries)). |
 | `mcp_servers` | array | MAY | List of MCP server identifiers registered by installed packages. |
+| `mcp_configs` | mapping | MAY | Mapping of MCP server name to its manifest configuration dict. Used for diff-aware installation — when config in `apm.yml` changes, `apm install` detects the drift and re-applies without `--force`. |
 
 ### 4.2 Dependency Entries
 
@@ -264,6 +265,11 @@ dependencies:
 
 mcp_servers:
   - security-scanner
+
+mcp_configs:
+  security-scanner:
+    name: security-scanner
+    transport: stdio
 ```
 
 ---

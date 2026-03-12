@@ -134,6 +134,11 @@ apm install [PACKAGES...] [OPTIONS]
 - `apm install` (no args): Installs **all** packages from `apm.yml`
 - `apm install <package>`: Installs **only** the specified package (adds to `apm.yml` if not present)
 
+**Diff-Aware Installation:**
+- MCP servers already configured with matching config are skipped (`already configured`)
+- MCP servers already configured but with changed manifest config are re-applied automatically (`updated`)
+- `--force` remains available for full overwrite/reset scenarios
+
 **Examples:**
 ```bash
 # Install all dependencies from apm.yml
