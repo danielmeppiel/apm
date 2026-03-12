@@ -306,7 +306,7 @@ apm pack [OPTIONS]
 ```
 
 **Options:**
-- `-o, --output TEXT` - Output directory (default: `./build/`)
+- `-o, --output PATH` - Output directory (default: `./build`)
 - `-t, --target [copilot|vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
