@@ -62,7 +62,7 @@ apm pack --dry-run
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format` | `apm` | Bundle format (`apm` or `plugin`) |
-| `-t, --target` | auto-detect | File filter: `vscode`, `claude`, `all` |
+| `-t, --target` | auto-detect | File filter: `copilot`, `vscode`, `claude`, `all`. `vscode` is an alias for `copilot` |
 | `--archive` | off | Produce `.tar.gz` instead of directory |
 | `-o, --output` | `./build` | Output directory |
 | `--dry-run` | off | List files without writing |
@@ -73,7 +73,8 @@ The target flag controls which deployed files are included based on path prefix:
 
 | Target | Includes |
 |--------|----------|
-| `vscode` | Paths starting with `.github/` |
+| `copilot` | Paths starting with `.github/` |
+| `vscode` | Alias for `copilot` |
 | `claude` | Paths starting with `.claude/` |
 | `all` | Both `.github/` and `.claude/` |
 

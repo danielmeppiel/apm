@@ -84,7 +84,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--update` - Update dependencies to latest Git references  
 - `--force` - Overwrite locally-authored files on collision
 - `--dry-run` - Show what would be installed without installing
-- `--parallel-downloads INT` - Max concurrent package downloads (default: 4, 0 to disable)
+- `--parallel-downloads INTEGER` - Max concurrent package downloads (default: 4, 0 to disable)
 - `--verbose` - Show detailed installation information
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 
@@ -306,8 +306,8 @@ apm pack [OPTIONS]
 ```
 
 **Options:**
-- `-o, --output TEXT` - Output directory (default: `./build/`)
-- `-t, --target [vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified
+- `-o, --output PATH` - Output directory (default: `./build`)
+- `-t, --target [copilot|vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
 - `--format [apm|plugin]` - Bundle format (default: `apm`)
@@ -368,7 +368,7 @@ apm unpack BUNDLE_PATH [OPTIONS]
 - `BUNDLE_PATH` - Path to a `.tar.gz` archive or an unpacked bundle directory
 
 **Options:**
-- `--output TEXT` - Target project directory (default: current directory)
+- `-o, --output PATH` - Target project directory (default: current directory)
 - `--skip-verify` - Skip completeness verification against the bundle lockfile
 - `--dry-run` - Show what would be extracted without writing anything
 
@@ -994,11 +994,11 @@ apm runtime COMMAND [OPTIONS]
 Download and configure an AI runtime from official sources.
 
 ```bash
-apm runtime setup RUNTIME_NAME [OPTIONS]
+apm runtime setup [OPTIONS] {copilot|codex|llm}
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to install: `copilot`, `codex`, or `llm`
+- `{copilot|codex|llm}` - Runtime to install
 
 **Options:**
 - `--version TEXT` - Specific version to install
@@ -1044,11 +1044,11 @@ apm runtime list
 Remove an installed runtime and its configuration.
 
 ```bash
-apm runtime remove RUNTIME_NAME
+apm runtime remove [OPTIONS] {copilot|codex|llm}
 ```
 
 **Arguments:**
-- `RUNTIME_NAME` - Runtime to remove: `copilot`, `codex`, or `llm`
+- `{copilot|codex|llm}` - Runtime to remove
 
 **Options:**
 - `--yes` - Confirm the action without prompting
