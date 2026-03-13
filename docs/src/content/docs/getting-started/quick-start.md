@@ -126,8 +126,8 @@ apm install github/awesome-copilot/skills/review-and-refactor
 
 **What to commit:**
 - `apm.yml` and `apm.lock.yaml` — version-controlled, shared with the team.
-- `.github/` deployed files (`prompts/`, `agents/`, `instructions/`, `skills/`, `hooks/`) — commit them so every contributor (and [Copilot on github.com](https://docs.github.com/en/copilot)) gets agent context without running `apm install`.
-- `.claude/` deployed files (`agents/`, `commands/`, `skills/`, `hooks/`) — same rationale, for Claude Code users.
+- `.github/` deployed files (`prompts/`, `agents/`, `instructions/`, `skills/`, `hooks/`) — commit them so every contributor (and [Copilot on github.com](https://docs.github.com/en/copilot)) gets agent context immediately after cloning, before they run `apm install` to sync and regenerate files.
+- `.claude/` deployed files (`agents/`, `commands/`, `skills/`, `hooks/`) — same rationale for Claude Code users: committed files give instant context on clone, while `apm install` remains the way to refresh them from `apm.yml`.
 - `apm_modules/` — add to `.gitignore`. Rebuilt from the lockfile on install.
 
 :::tip[Keeping deployed files in sync]
