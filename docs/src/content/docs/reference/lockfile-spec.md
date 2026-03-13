@@ -111,10 +111,10 @@ fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `repo_url` | string | MUST | Source repository URL. |
+| `repo_url` | string | MUST | Source repository URL, or `_local/<name>` for local path dependencies. |
 | `host` | string | MAY | Git host identifier (e.g., `github.com`). Omitted when inferrable from `repo_url`. |
-| `resolved_commit` | string | MUST | Full 40-character commit SHA that was checked out. |
-| `resolved_ref` | string | MUST | Git ref (tag, branch, SHA) that resolved to `resolved_commit`. |
+| `resolved_commit` | string | MUST (remote) | Full 40-character commit SHA that was checked out. Required for remote (git) dependencies; MUST be omitted for local (`source: "local"`) dependencies. |
+| `resolved_ref` | string | MUST (remote) | Git ref (tag, branch, SHA) that resolved to `resolved_commit`. Required for remote (git) dependencies; MUST be omitted for local (`source: "local"`) dependencies. |
 | `version` | string | MAY | Semantic version of the package, if declared in its manifest. |
 | `virtual_path` | string | MAY | Sub-path within the repository for virtual (monorepo) packages. |
 | `is_virtual` | boolean | MAY | `true` if the package is a virtual sub-package. Omitted when `false`. |
@@ -122,6 +122,8 @@ fields:
 | `resolved_by` | string | MAY | `repo_url` of the parent that introduced this transitive dependency. Present only when `depth >= 2`. |
 | `package_type` | string | MUST | Package type: `apm_package`, `plugin`, `virtual`, or other registered types. |
 | `deployed_files` | array of strings | MUST | Every file path APM deployed for this dependency, relative to project root. |
+| `source` | string | MAY | Dependency source. `"local"` for local path dependencies. Omitted for remote (git) dependencies. |
+| `local_path` | string | MAY | Filesystem path (relative or absolute) to the local package. Present only when `source` is `"local"`. |
 
 Fields with empty or default values (empty strings, `false` booleans, empty
 lists) SHOULD be omitted from the serialized output to keep the file concise.
@@ -129,8 +131,10 @@ lists) SHOULD be omitted from the serialized output to keep the file concise.
 ### 4.3 Unique Key
 
 Each dependency is uniquely identified by its `repo_url`, or by the
-combination of `repo_url` and `virtual_path` for virtual packages. A
-conforming lock file MUST NOT contain duplicate entries for the same key.
+combination of `repo_url` and `virtual_path` for virtual packages.
+For local path dependencies (`source: "local"`), the unique key is the
+`local_path` value. A conforming lock file MUST NOT contain duplicate
+entries for the same key.
 
 ## 5. Path Conventions
 

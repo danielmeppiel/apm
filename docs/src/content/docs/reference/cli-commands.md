@@ -75,7 +75,7 @@ apm install [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, or FQDN shorthand (`host/owner/repo`). All forms are normalized to canonical format in `apm.yml`.
+- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, FQDN shorthand (`host/owner/repo`), or local filesystem paths (`./path`, `../path`, `/absolute/path`, `~/path`). All forms are normalized to canonical format in `apm.yml`.
 
 **Options:**
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
@@ -136,6 +136,10 @@ apm install --exclude codex
 
 # Trust self-defined MCP servers from transitive packages
 apm install --trust-transitive-mcp
+
+# Install from a local path (copies to apm_modules/_local/)
+apm install ./packages/my-shared-skills
+apm install /home/user/repos/my-ai-package
 ```
 
 **Auto-Bootstrap Behavior:**
