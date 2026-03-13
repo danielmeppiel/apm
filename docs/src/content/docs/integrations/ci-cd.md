@@ -57,8 +57,10 @@ If your project uses `apm compile` to target tools like Cursor, Codex, or Gemini
       - name: Check for drift
         run: |
           apm compile
-          git diff --exit-code AGENTS.md CLAUDE.md || \
-            (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
+          if [ -n "$(git status --porcelain -- AGENTS.md CLAUDE.md)" ]; then
+            echo "Compiled output is out of date. Run 'apm compile' locally and commit."
+            exit 1
+          fi
 ```
 
 This step is not needed if your team only uses GitHub Copilot and Claude, which read deployed primitives natively.
@@ -71,8 +73,10 @@ To ensure `.github/` and `.claude/` integration files stay in sync with `apm.yml
       - name: Check APM integration drift
         run: |
           apm install
-          git diff --exit-code .github/ .claude/ || \
-            (echo "APM integration files are out of date. Run 'apm install' and commit." && exit 1)
+          if [ -n "$(git status --porcelain -- .github/ .claude/)" ]; then
+            echo "APM integration files are out of date. Run 'apm install' and commit."
+            exit 1
+          fi
 ```
 
 This catches cases where a developer updates `apm.yml` but forgets to re-run `apm install`.
