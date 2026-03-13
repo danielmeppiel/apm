@@ -8,9 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.9] - 2026-03-13
+
+### Added
+
+- Local filesystem path dependencies — install packages from relative/absolute paths with `apm install ./my-package` (#270)
+- Windows native support (Phase 1 & 2) — cross-platform runtime management, PowerShell helpers, and CI parity — by @sergio-sisternes-epam (#227)
+
+### Fixed
+
+- Resolve `UnboundLocalError` in `apm prune` crashing all prune operations (#283)
+- Restore CWD before `TemporaryDirectory` cleanup on Windows — by @sergio-sisternes-epam (#281)
+
 ### Changed
 
-- Lockfile renamed from `apm.lock` to `apm.lock.yaml` for IDE syntax highlighting; existing `apm.lock` files are automatically migrated to `apm.lock.yaml` on the next `apm install` (#280)
+- Lockfile renamed from `apm.lock` to `apm.lock.yaml` for IDE syntax highlighting; existing `apm.lock` files are automatically migrated on the next `apm install` (#280)
+- Add Windows as first-class install option across documentation site (#278)
 
 ## [0.7.8] - 2026-03-13
 
