@@ -1,18 +1,12 @@
 """Unit tests for apm_cli.bundle.unpacker."""
 
-import re
 import tarfile
 from pathlib import Path
 
 import pytest
 
 from apm_cli.bundle.unpacker import unpack_bundle
-from apm_cli.deps.lockfile import LockedDependency, LockFile
-
-
-def _strip_ansi(text: str) -> str:
-    """Remove ANSI escape codes from *text* for plain-text assertions."""
-    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+from apm_cli.deps.lockfile import LockFile, LockedDependency
 
 
 def _build_bundle_dir(tmp_path: Path, deployed_files: list[str]) -> Path:
@@ -175,9 +169,7 @@ class TestUnpackBundle:
 
         unpack_bundle(bundle, output)
 
-        assert (
-            output / ".github" / "agents" / "a.md"
-        ).read_text() == "content of .github/agents/a.md"
+        assert (output / ".github" / "agents" / "a.md").read_text() == "content of .github/agents/a.md"
 
     def test_unpack_lockfile_not_scattered(self, tmp_path):
         deployed = [".github/agents/a.md"]
@@ -352,11 +344,9 @@ class TestUnpackCmdLogging:
 
     def test_unpack_cmd_logs_file_list(self, tmp_path):
         """unpack command outputs each file under its dependency name."""
-        import os
-
         from click.testing import CliRunner
-
         from apm_cli.commands.pack import unpack_cmd
+        import os
 
         deployed = [".github/agents/a.md", ".github/prompts/b.md"]
         bundle = _build_bundle_dir(tmp_path, deployed)
@@ -372,21 +362,18 @@ class TestUnpackCmdLogging:
         finally:
             os.chdir(original_dir)
 
-        out = _strip_ansi(result.output)
         assert result.exit_code == 0
-        assert "Unpacking" in out
-        assert "owner/repo" in out
-        assert ".github/agents/a.md" in out
-        assert ".github/prompts/b.md" in out
-        assert "Unpacked 2 file(s)" in out
+        assert "Unpacking" in result.output
+        assert "owner/repo" in result.output
+        assert ".github/agents/a.md" in result.output
+        assert ".github/prompts/b.md" in result.output
+        assert "Unpacked 2 file(s)" in result.output
 
     def test_unpack_cmd_dry_run_logs_files(self, tmp_path):
         """Dry-run output includes per-dependency file listing."""
-        import os
-
         from click.testing import CliRunner
-
         from apm_cli.commands.pack import unpack_cmd
+        import os
 
         deployed = [".github/agents/a.md"]
         bundle = _build_bundle_dir(tmp_path, deployed)
@@ -404,19 +391,16 @@ class TestUnpackCmdLogging:
         finally:
             os.chdir(original_dir)
 
-        out = _strip_ansi(result.output)
         assert result.exit_code == 0
-        assert "Dry run" in out
-        assert "Would unpack 1 file(s)" in out
-        assert ".github/agents/a.md" in out
+        assert "Dry run" in result.output
+        assert "Would unpack 1 file(s)" in result.output
+        assert ".github/agents/a.md" in result.output
 
     def test_unpack_cmd_logs_skipped_files(self, tmp_path):
         """Skipped files warning appears when skip_verify allows missing files."""
-        import os
-
         from click.testing import CliRunner
-
         from apm_cli.commands.pack import unpack_cmd
+        import os
 
         deployed = [".github/agents/a.md", ".github/agents/missing.md"]
         bundle_dir = tmp_path / "bundle" / "test-pkg"
@@ -446,15 +430,13 @@ class TestUnpackCmdLogging:
             os.chdir(original_dir)
 
         assert result.exit_code == 0
-        assert "1 file(s) skipped" in _strip_ansi(result.output)
+        assert "1 file(s) skipped" in result.output
 
     def test_unpack_cmd_multi_dep_logging(self, tmp_path):
         """Multiple dependencies are each logged with their file lists."""
-        import os
-
         from click.testing import CliRunner
-
         from apm_cli.commands.pack import unpack_cmd
+        import os
 
         bundle_dir = tmp_path / "bundle" / "multi-pkg"
         bundle_dir.mkdir(parents=True)
@@ -487,10 +469,9 @@ class TestUnpackCmdLogging:
         finally:
             os.chdir(original_dir)
 
-        out = _strip_ansi(result.output)
         assert result.exit_code == 0
-        assert "org/repo-a" in out
-        assert "org/repo-b" in out
-        assert ".github/agents/a.md" in out
-        assert ".github/prompts/b.md" in out
-        assert "Unpacked 2 file(s)" in out
+        assert "org/repo-a" in result.output
+        assert "org/repo-b" in result.output
+        assert ".github/agents/a.md" in result.output
+        assert ".github/prompts/b.md" in result.output
+        assert "Unpacked 2 file(s)" in result.output
