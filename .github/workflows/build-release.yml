@@ -192,7 +192,7 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          uv run pwsh scripts/build-binary.ps1
+          uv run pwsh scripts/windows/build-binary.ps1
       
       - name: Upload binary as workflow artifact
         uses: actions/upload-artifact@v4
@@ -202,11 +202,11 @@ jobs:
             ./dist/${{ matrix.binary_name }}
             ./dist/${{ matrix.binary_name }}.sha256
             ./scripts/test-release-validation.sh
-            ./scripts/test-release-validation.ps1
+            ./scripts/windows/test-release-validation.ps1
             ./scripts/test-dependency-integration.sh
-            ./scripts/test-dependency-integration.ps1
+            ./scripts/windows/test-dependency-integration.ps1
             ./scripts/github-token-helper.sh
-            ./scripts/github-token-helper.ps1
+            ./scripts/windows/github-token-helper.ps1
           include-hidden-files: true  # Required to include .apm directories
           retention-days: 30
           if-no-files-found: error
@@ -312,7 +312,7 @@ jobs:
           GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
           ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
         run: |
-          uv run pwsh scripts/test-integration.ps1 -SkipBuild
+          uv run pwsh scripts/windows/test-integration.ps1 -SkipBuild
         timeout-minutes: 20
 
 # Release validation tests - Final pre-release validation of shipped binary
@@ -432,7 +432,7 @@ jobs:
           ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
         run: |
           cd D:\apm-isolated-test
-          .\scripts\test-release-validation.ps1
+          .\scripts\windows\test-release-validation.ps1
         timeout-minutes: 20
 
 

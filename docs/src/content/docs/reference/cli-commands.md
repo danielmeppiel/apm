@@ -451,10 +451,13 @@ This check is non-blocking and cached to avoid slowing down the CLI.
 
 **Manual Update:**
 If the automatic update fails, you can always update manually:
+
+#### Linux / macOS
 ```bash
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
+#### Windows
 ```powershell
 powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
 ```

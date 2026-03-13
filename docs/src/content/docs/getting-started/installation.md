@@ -50,10 +50,17 @@ Requires Python 3.10+.
 Download the archive for your platform from [GitHub Releases](https://github.com/microsoft/apm/releases/latest) and install manually:
 
 #### Windows x86_64
-Use the PowerShell installer for the supported Windows install path:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
+# Download and extract the Windows binary
+Invoke-WebRequest -Uri https://github.com/microsoft/apm/releases/latest/download/apm-windows-x86_64.zip -OutFile apm-windows-x86_64.zip
+Expand-Archive -Path .\apm-windows-x86_64.zip -DestinationPath .
+
+# Copy to a permanent location and add to PATH
+$installDir = "$env:LOCALAPPDATA\Programs\apm"
+New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+Copy-Item -Path .\apm-windows-x86_64\* -Destination $installDir -Recurse -Force
+[Environment]::SetEnvironmentVariable("Path", "$installDir;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")
 ```
 
 #### macOS / Linux
@@ -132,18 +139,6 @@ Use `sudo` for system-wide installation, or install to a user-writable directory
 mkdir -p ~/bin
 # then install the binary to ~/bin/apm and add ~/bin to PATH
 ```
-
-### Windows Runtime Setup
-
-Runtime setup works natively on Windows. No WSL is required:
-
-```powershell
-apm runtime setup copilot
-apm runtime setup codex
-apm runtime setup llm
-```
-
-APM automatically uses PowerShell scripts on Windows and bash scripts on macOS and Linux.
 
 ### Verify Installation
 
