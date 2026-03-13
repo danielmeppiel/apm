@@ -533,7 +533,7 @@ def _install_apm_dependencies(
     if lockfile_path.exists() and not update_refs:
         existing_lockfile = LockFile.read(lockfile_path)
         if existing_lockfile and existing_lockfile.dependencies:
-            _rich_info(f"Using apm.lock ({len(existing_lockfile.dependencies)} locked dependencies)")
+            _rich_info(f"Using apm.lock.yaml ({len(existing_lockfile.dependencies)} locked dependencies)")
 
     apm_modules_dir = project_root / "apm_modules"
     apm_modules_dir.mkdir(exist_ok=True)
@@ -1512,9 +1512,9 @@ def _install_apm_dependencies(
                         lockfile = existing
 
                 lockfile.save(lockfile_path)
-                _rich_info(f"Generated apm.lock with {len(lockfile.dependencies)} dependencies")
+                _rich_info(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
-                _rich_warning(f"Could not generate apm.lock: {e}")
+                _rich_warning(f"Could not generate apm.lock.yaml: {e}")
 
         # Show link resolution stats if any were resolved
         if total_links_resolved > 0:

@@ -534,7 +534,7 @@ class MCPIntegrator:
 
         Args:
             mcp_server_names: Set of MCP server names to persist.
-            lock_path: Path to the lockfile.  Defaults to ``apm.lock`` in CWD.
+            lock_path: Path to the lockfile.  Defaults to ``apm.lock.yaml`` in CWD.
             mcp_configs: Keyword-only.  When provided, overwrites ``mcp_configs``
                          in the lockfile (used for drift-detection baseline).
         """

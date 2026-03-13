@@ -195,11 +195,17 @@ APM MUST report an error and refuse to install until the lock file is updated.
 
 ## 8. Migration
 
-The lock file reader supports one historical migration:
+The lock file reader supports the following historical migrations:
 
 - **`deployed_skills`** — renamed to `deployed_files`. If a lock file contains
   the legacy key, it is silently migrated on read. New lock files MUST use
   `deployed_files`.
+
+- **`apm.lock` → `apm.lock.yaml`** — the lock file was renamed from `apm.lock`
+  to `apm.lock.yaml` (for IDE syntax highlighting). On the next `apm install`,
+  an existing `apm.lock` is automatically renamed to `apm.lock.yaml` when the
+  new file does not yet exist. The bundle unpacker also falls back to `apm.lock`
+  when reading older bundles.
 
 ## 9. Auditing Patterns
 

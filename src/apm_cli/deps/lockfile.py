@@ -283,7 +283,13 @@ class LockFile:
                        ordered by depth then repo_url (no duplicates).
         """
         try:
-            lockfile = cls.read(get_lockfile_path(project_root))
+            lockfile_path = get_lockfile_path(project_root)
+            if not lockfile_path.exists():
+                # Fallback to legacy lockfile for pre-migration reads
+                legacy_path = project_root / LEGACY_LOCKFILE_NAME
+                if legacy_path.exists():
+                    lockfile_path = legacy_path
+            lockfile = cls.read(lockfile_path)
             if not lockfile:
                 return []
             return lockfile.get_installed_paths(project_root / "apm_modules")
@@ -294,7 +300,7 @@ class LockFile:
 # Current lockfile filename (with .yaml extension for IDE syntax highlighting)
 LOCKFILE_NAME = "apm.lock.yaml"
 # Legacy lockfile filename used in older APM versions
-_LEGACY_LOCKFILE_NAME = "apm.lock"
+LEGACY_LOCKFILE_NAME = "apm.lock"
 
 
 def get_lockfile_path(project_root: Path) -> Path:
@@ -316,9 +322,12 @@ def migrate_lockfile_if_needed(project_root: Path) -> bool:
         True if a migration was performed, False otherwise.
     """
     new_path = get_lockfile_path(project_root)
-    legacy_path = project_root / _LEGACY_LOCKFILE_NAME
+    legacy_path = project_root / LEGACY_LOCKFILE_NAME
     if not new_path.exists() and legacy_path.exists():
-        legacy_path.rename(new_path)
+        try:
+            legacy_path.rename(new_path)
+        except OSError:
+            return False
         return True
     return False
 

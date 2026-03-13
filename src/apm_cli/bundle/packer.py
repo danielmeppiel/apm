@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-from ..deps.lockfile import LockFile, get_lockfile_path
+from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from ..models.apm_package import APMPackage
 from ..core.target_detection import detect_target
 from .lockfile_enrichment import enrich_lockfile_for_pack
@@ -62,7 +62,8 @@ def pack_bundle(
         FileNotFoundError: If ``apm.lock.yaml`` is missing.
         ValueError: If deployed files referenced in the lockfile are missing on disk.
     """
-    # 1. Read lockfile
+    # 1. Read lockfile (migrate legacy apm.lock → apm.lock.yaml if needed)
+    migrate_lockfile_if_needed(project_root)
     lockfile_path = get_lockfile_path(project_root)
     lockfile = LockFile.read(lockfile_path)
     if lockfile is None:

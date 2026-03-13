@@ -433,7 +433,7 @@ class TestPluginNetworkE2E:
         assert (pkg_path / "apm.yml").exists(), "apm.yml should be synthesized"
 
         # Lock file created
-        assert (temp_project / "apm.lock.yaml").exists(), "apm.lock should be created"
+        assert (temp_project / "apm.lock.yaml").exists(), "apm.lock.yaml should be created"
 
         # Skills scattered to .github/skills/
         skills_dir = temp_project / ".github" / "skills"
