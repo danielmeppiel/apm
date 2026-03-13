@@ -1,5 +1,6 @@
 """Tests for the apm install command auto-bootstrap feature."""
 
+import contextlib
 import pytest
 import tempfile
 import os
@@ -31,11 +32,24 @@ class TestInstallCommandAutoBootstrap:
             repo_root = Path(__file__).parent.parent.parent
             os.chdir(str(repo_root))
 
+    @contextlib.contextmanager
+    def _chdir_tmp(self):
+        """Context manager: create a temp dir, chdir into it, restore CWD on exit.
+
+        Restoring CWD *before* TemporaryDirectory.__exit__ avoids
+        PermissionError [WinError 32] on Windows when the process's current
+        directory is inside the directory being deleted.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                yield Path(tmp_dir)
+            finally:
+                os.chdir(self.original_dir)
+
     def test_install_no_apm_yml_no_packages_shows_helpful_error(self):
         """Test that install without apm.yml and without packages shows helpful error."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
+        with self._chdir_tmp():
             result = self.runner.invoke(cli, ["install"])
 
             assert result.exit_code == 1
@@ -51,9 +65,7 @@ class TestInstallCommandAutoBootstrap:
         self, mock_install_apm, mock_apm_package, mock_validate, monkeypatch
     ):
         """Test that install with packages but no apm.yml creates minimal apm.yml."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
+        with self._chdir_tmp():
             # Mock package validation to return True
             mock_validate.return_value = True
 
@@ -91,9 +103,7 @@ class TestInstallCommandAutoBootstrap:
         self, mock_install_apm, mock_apm_package, mock_validate, monkeypatch
     ):
         """Test that install with multiple packages creates apm.yml and adds all."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
+        with self._chdir_tmp():
             # Mock package validation
             mock_validate.return_value = True
 
@@ -127,9 +137,7 @@ class TestInstallCommandAutoBootstrap:
         self, mock_install_apm, mock_apm_package
     ):
         """Test that install with existing apm.yml works as before."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
+        with self._chdir_tmp():
             # Create existing apm.yml
             existing_config = {
                 "name": "test-project",
@@ -170,9 +178,9 @@ class TestInstallCommandAutoBootstrap:
         self, mock_install_apm, mock_apm_package, mock_validate
     ):
         """Test that auto-created apm.yml has correct metadata."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with self._chdir_tmp() as tmp_dir:
             # Create a directory with a specific name to test project name detection
-            project_dir = Path(tmp_dir) / "my-awesome-project"
+            project_dir = tmp_dir / "my-awesome-project"
             project_dir.mkdir()
             os.chdir(project_dir)
 
@@ -204,9 +212,7 @@ class TestInstallCommandAutoBootstrap:
     @patch("apm_cli.commands.install._validate_package_exists")
     def test_install_invalid_package_format_with_no_apm_yml(self, mock_validate):
         """Test that invalid package format fails gracefully even with auto-bootstrap."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
+        with self._chdir_tmp():
             # Don't mock validation - let it handle invalid format
             result = self.runner.invoke(cli, ["install", "invalid-package"])
 
@@ -222,9 +228,7 @@ class TestInstallCommandAutoBootstrap:
         self, mock_install_apm, mock_apm_package, mock_validate
     ):
         """Test that dry-run with no apm.yml shows what would be created."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-
+        with self._chdir_tmp():
             mock_validate.return_value = True
 
             mock_pkg_instance = MagicMock()
