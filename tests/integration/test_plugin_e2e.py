@@ -433,7 +433,7 @@ class TestPluginNetworkE2E:
         assert (pkg_path / "apm.yml").exists(), "apm.yml should be synthesized"
 
         # Lock file created
-        assert (temp_project / "apm.lock").exists(), "apm.lock should be created"
+        assert (temp_project / "apm.lock.yaml").exists(), "apm.lock should be created"
 
         # Skills scattered to .github/skills/
         skills_dir = temp_project / ".github" / "skills"
@@ -578,7 +578,7 @@ class TestPluginNetworkE2E:
 
         # Lockfile should contain BOTH entries
         import yaml
-        lockfile = yaml.safe_load((temp_project / "apm.lock").read_text())
+        lockfile = yaml.safe_load((temp_project / "apm.lock.yaml").read_text())
         dep_keys = {
             f"{d['repo_url']}/{d.get('virtual_path', '')}" for d in lockfile["dependencies"]
         }
@@ -704,7 +704,7 @@ class TestPluginNetworkE2E:
 
         import yaml
 
-        lockfile = yaml.safe_load((temp_project / "apm.lock").read_text())
+        lockfile = yaml.safe_load((temp_project / "apm.lock.yaml").read_text())
         assert "dependencies" in lockfile, "Lockfile missing dependencies"
 
         plugin_entry = None
@@ -737,7 +737,7 @@ class TestPluginNetworkE2E:
         # Capture lockfile state
         import yaml
 
-        lock1 = yaml.safe_load((temp_project / "apm.lock").read_text())
+        lock1 = yaml.safe_load((temp_project / "apm.lock.yaml").read_text())
 
         # Second install (should use cache)
         r2 = subprocess.run(
@@ -747,7 +747,7 @@ class TestPluginNetworkE2E:
         assert r2.returncode == 0, f"Second install failed:\n{r2.stderr}"
 
         # Lockfile should be identical
-        lock2 = yaml.safe_load((temp_project / "apm.lock").read_text())
+        lock2 = yaml.safe_load((temp_project / "apm.lock.yaml").read_text())
         assert len(lock1["dependencies"]) == len(lock2["dependencies"]), (
             "Reinstall changed lockfile dependency count"
         )

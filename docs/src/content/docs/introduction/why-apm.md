@@ -70,7 +70,7 @@ apm install
 | Setup steps | 5+ install commands | 1 command |
 | Version consistency | Hope-based | Lock file enforced |
 | New contributor onboarding | Read docs, follow steps, debug mismatches | `apm install` |
-| CI/CD reproducibility | Fragile or nonexistent | Deterministic via `apm.lock` |
+| CI/CD reproducibility | Fragile or nonexistent | Deterministic via `apm.lock.yaml` |
 | Cross-tool coordination | Manual per tool | Unified manifest |
 
 ## What APM Manages
@@ -93,9 +93,9 @@ All declared in one manifest. All installed with one command.
 
 **Solo / Small Team (2-5 devs)** — "I use Copilot AND Claude. The project needs 5 plugins. Without APM, every new contributor runs 5 install commands and hopes they got the right versions. With APM, they run `apm install`."
 
-**Mid-size Team (10-50 devs)** — "We have org-wide security standards, team-specific plugins, and project-level config. `apm.yml` composes all three layers through dependency resolution. `apm.lock` ensures every developer and CI runner gets the exact same setup."
+**Mid-size Team (10-50 devs)** — "We have org-wide security standards, team-specific plugins, and project-level config. `apm.yml` composes all three layers through dependency resolution. `apm.lock.yaml` ensures every developer and CI runner gets the exact same setup."
 
-**Enterprise (100+ devs)** — "When security asks 'what agent instructions were active when release 4.2.1 shipped?' — `git log apm.lock` answers that. Every change to agent configuration is versioned, auditable, and reproducible."
+**Enterprise (100+ devs)** — "When security asks 'what agent instructions were active when release 4.2.1 shipped?' — `git log apm.lock.yaml` answers that. Every change to agent configuration is versioned, auditable, and reproducible."
 
 ## Design Principles
 
@@ -126,4 +126,4 @@ APM is a dev-time tool. Run `apm install`, get your files, done. There is no run
 
 **"What if I stop using APM?"**
 
-Delete `apm.yml` and `apm.lock`. Your `.github/` and `.claude/` config files still work exactly as they did before. APM deploys standard files in standard locations. Zero lock-in by design.
+Delete `apm.yml` and `apm.lock.yaml`. Your `.github/` and `.claude/` config files still work exactly as they did before. APM deploys standard files in standard locations. Zero lock-in by design.

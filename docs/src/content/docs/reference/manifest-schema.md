@@ -343,9 +343,9 @@ compilation:
 
 ---
 
-## 6. Lockfile (`apm.lock`)
+## 6. Lockfile (`apm.lock.yaml`)
 
-After successful dependency resolution, a conforming resolver MUST write a lockfile capturing the exact resolved state. The lockfile MUST be a YAML file named `apm.lock` at the project root. It SHOULD be committed to version control.
+After successful dependency resolution, a conforming resolver MUST write a lockfile capturing the exact resolved state. The lockfile MUST be a YAML file named `apm.lock.yaml` at the project root. It SHOULD be committed to version control.
 
 ### 6.1. Structure
 
@@ -370,8 +370,8 @@ mcp_servers:       <list<string>>          # MCP dependency references managed b
 
 ### 6.2. Resolver Behaviour
 
-1. **First install** — Resolve all dependencies, write `apm.lock`.
-2. **Subsequent installs** — Read `apm.lock`, use locked commit SHAs. A resolver SHOULD skip download if local checkout already matches.
+1. **First install** — Resolve all dependencies, write `apm.lock.yaml`.
+2. **Subsequent installs** — Read `apm.lock.yaml`, use locked commit SHAs. A resolver SHOULD skip download if local checkout already matches.
 3. **`--update` flag** — Re-resolve from `apm.yml`, overwrite lockfile.
 
 ---
@@ -384,7 +384,7 @@ Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDE
 2. **Resolve `dependencies.apm`** — For each entry, clone/fetch the git repo (respecting `ref`), locate the `.apm/` directory (or virtual path), and extract primitives.
 3. **Resolve `dependencies.mcp`** — For each entry, resolve from the MCP registry or validate self-defined transport config per §4.2.3.
 4. **Transitive resolution** — Resolved packages MAY contain their own `apm.yml` with further dependencies, forming a dependency tree. Resolvers MUST resolve transitively. Conflicts are merged at instruction level (by `applyTo` pattern), not file level.
-5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock` per §6.
+5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock.yaml` per §6.
 
 ---
 

@@ -175,7 +175,7 @@ class TestCollectTransitiveMCPDeps:
             "dependencies": {"mcp": ["ghcr.io/orphan/server"]},
         }))
         # Write lock file referencing only the locked package
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         lock_path.write_text(yaml.dump({
             "lockfile_version": "1",
             "dependencies": [
@@ -206,7 +206,7 @@ class TestCollectTransitiveMCPDeps:
             "version": "1.0.0",
             "dependencies": {"mcp": ["ghcr.io/other/server"]},
         }))
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         lock_path.write_text(yaml.dump({
             "lockfile_version": "1",
             "dependencies": [
@@ -229,7 +229,7 @@ class TestCollectTransitiveMCPDeps:
             "dependencies": {"mcp": ["ghcr.io/locked/server"]},
         }))
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         lock_path.write_text(yaml.dump({
             "lockfile_version": "1",
             "dependencies": [
@@ -254,7 +254,7 @@ class TestCollectTransitiveMCPDeps:
             "dependencies": {"mcp": ["ghcr.io/a/server"]},
         }))
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         lock_path.write_text("dependencies: [")
 
         result = MCPIntegrator.collect_transitive(apm_modules, lock_path)
@@ -322,7 +322,7 @@ class TestCollectTransitiveMCPDeps:
                  "transport": "http", "url": "https://private.example.com"},
             ]},
         }))
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         lock_path.write_text(yaml.dump({
             "lockfile_version": "1",
             "dependencies": [
@@ -346,7 +346,7 @@ class TestCollectTransitiveMCPDeps:
                  "transport": "http", "url": "https://private.example.com"},
             ]},
         }))
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         lock_path.write_text(yaml.dump({
             "lockfile_version": "1",
             "dependencies": [
@@ -369,7 +369,7 @@ class TestCollectTransitiveMCPDeps:
                  "transport": "http", "url": "https://private.example.com"},
             ]},
         }))
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         lock_path.write_text(yaml.dump({
             "lockfile_version": "1",
             "dependencies": [

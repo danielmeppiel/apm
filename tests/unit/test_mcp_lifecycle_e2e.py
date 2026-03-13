@@ -92,7 +92,7 @@ class TestSelectiveInstallTransitiveMCP:
         ])
 
         # Lockfile records both packages
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/squad-alpha", depth=1, resolved_by="root"),
             LockedDependency(repo_url="acme/infra-cloud", depth=2, resolved_by="acme/squad-alpha"),
@@ -112,7 +112,7 @@ class TestSelectiveInstallTransitiveMCP:
         _make_pkg_dir(apm_modules, "acme/orphan-pkg", mcp=["ghcr.io/acme/orphan-server"])
 
         # Only squad-alpha is locked
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/squad-alpha", depth=1, resolved_by="root"),
         ])
@@ -147,7 +147,7 @@ class TestDeepTransitiveChainMCP:
             "ghcr.io/acme/mcp-deep-server",
         ])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
             LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
@@ -171,7 +171,7 @@ class TestDeepTransitiveChainMCP:
         _make_pkg_dir(apm_modules, "acme/pkg-c",
                       mcp=["ghcr.io/acme/mcp-level-3"])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
             LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
@@ -210,7 +210,7 @@ class TestDiamondDependencyMCP:
             "ghcr.io/acme/mcp-shared-server",
         ])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
             LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
@@ -239,7 +239,7 @@ class TestDiamondDependencyMCP:
                       mcp=["ghcr.io/acme/mcp-branch-c"])
         _make_pkg_dir(apm_modules, "acme/pkg-d", mcp=["ghcr.io/acme/mcp-leaf"])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_by="root"),
             LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a"),
@@ -295,7 +295,7 @@ class TestUninstallRemovesTransitiveMCP:
     def test_lockfile_mcp_list_updated_after_uninstall(self, tmp_path):
         os.chdir(tmp_path)
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/base-lib", depth=1, resolved_by="root"),
         ], mcp_servers=["ghcr.io/acme/mcp-server-alpha", "ghcr.io/acme/mcp-server-beta"])
@@ -309,7 +309,7 @@ class TestUninstallRemovesTransitiveMCP:
     def test_lockfile_mcp_cleared_when_all_removed(self, tmp_path):
         os.chdir(tmp_path)
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/base-lib", depth=1, resolved_by="root"),
         ], mcp_servers=["ghcr.io/acme/mcp-server-alpha"])
@@ -346,7 +346,7 @@ class TestUpdateMCPRename:
             "ghcr.io/acme/mcp-server-gamma",
         ])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ], mcp_servers=sorted(old_mcp))
@@ -398,7 +398,7 @@ class TestUpdateMCPRemoval:
         apm_modules = tmp_path / "apm_modules"
         _make_pkg_dir(apm_modules, "acme/infra-cloud")  # no mcp arg
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ], mcp_servers=sorted(old_mcp))
@@ -417,7 +417,7 @@ class TestUpdateMCPRemoval:
             "ghcr.io/acme/mcp-server-alpha": {"command": "npx", "args": ["alpha"]},
         })
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ], mcp_servers=["ghcr.io/acme/mcp-server-alpha"])
@@ -445,7 +445,7 @@ class TestDeduplicationRootAndTransitive:
             "ghcr.io/acme/mcp-server-alpha",
         ])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ])
@@ -465,7 +465,7 @@ class TestDeduplicationRootAndTransitive:
         _make_pkg_dir(apm_modules, "acme/infra-cloud", mcp=["ghcr.io/acme/mcp-server-alpha"])
         _make_pkg_dir(apm_modules, "acme/base-lib", mcp=["ghcr.io/acme/mcp-server-beta"])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
             LockedDependency(repo_url="acme/base-lib", depth=2, resolved_by="acme/infra-cloud"),
@@ -497,7 +497,7 @@ class TestVirtualPathMCPCollection:
             mcp=["ghcr.io/acme/mcp-server-web"],
         )
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(
                 repo_url="acme/monorepo",
@@ -523,7 +523,7 @@ class TestVirtualPathMCPCollection:
             mcp=["ghcr.io/acme/mcp-api"],
         )
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/base-lib", depth=1, resolved_by="root"),
             LockedDependency(
@@ -556,7 +556,7 @@ class TestSelfDefinedMCPTrustGating:
             {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
         ])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=2, resolved_by="some-dep"),
         ])
@@ -574,7 +574,7 @@ class TestSelfDefinedMCPTrustGating:
             {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
         ])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ])
@@ -591,7 +591,7 @@ class TestSelfDefinedMCPTrustGating:
             {"name": "private-srv", "registry": False, "transport": "http", "url": "https://private.example.com"},
         ])
 
-        lock_path = tmp_path / "apm.lock"
+        lock_path = tmp_path / "apm.lock.yaml"
         _write_lockfile(lock_path, [
             LockedDependency(repo_url="acme/infra-cloud", depth=1, resolved_by="root"),
         ])

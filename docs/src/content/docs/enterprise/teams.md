@@ -6,7 +6,7 @@ sidebar:
 ---
 
 APM is an open-source dependency manager for AI agent configuration.
-One manifest (`apm.yml`), one command (`apm install`), locked versions (`apm.lock`).
+One manifest (`apm.yml`), one command (`apm install`), locked versions (`apm.lock.yaml`).
 Every developer gets the same agent setup.
 Every CI run is reproducible.
 Every configuration change is auditable.
@@ -48,10 +48,10 @@ This file is version-controlled, reviewed in pull requests, and readable by anyo
 
 ### Lock
 
-Running `apm install` resolves versions and writes `apm.lock`, which pins the exact version of every dependency. The lock file is committed to the repository.
+Running `apm install` resolves versions and writes `apm.lock.yaml`, which pins the exact version of every dependency. The lock file is committed to the repository.
 
 ```
-# apm.lock (auto-generated)
+# apm.lock.yaml (auto-generated)
 org-security-rules==2.1.0
 team-coding-standards==1.3.4
 project-context==local
@@ -65,11 +65,11 @@ Two developers running `apm install` from the same lock file get identical confi
 
 ### Audit
 
-Because `apm.lock` is a committed file, standard Git tooling answers governance questions directly:
+Because `apm.lock.yaml` is a committed file, standard Git tooling answers governance questions directly:
 
-- **What changed?** `git diff apm.lock`
-- **When did it change?** `git log apm.lock`
-- **What was active at a specific release?** `git show v4.2.1:apm.lock`
+- **What changed?** `git diff apm.lock.yaml`
+- **When did it change?** `git log apm.lock.yaml`
+- **What was active at a specific release?** `git show v4.2.1:apm.lock.yaml`
 - **Is this environment current?** `apm audit`
 
 ## Developer stories
@@ -118,8 +118,8 @@ At enterprise scale, the primary concerns shift from convenience to governance: 
 
 APM addresses these through mechanisms that engineering leadership and platform teams can build on:
 
-- **Reproducibility.** `apm.lock` guarantees that every environment — developer workstation, CI runner, staging — uses identical configuration. "Works on my machine" stops applying to agent setup.
-- **Audit trail.** `git log apm.lock` provides a complete, timestamped history of every configuration change, who made it, and which pull request approved it.
+- **Reproducibility.** `apm.lock.yaml` guarantees that every environment — developer workstation, CI runner, staging — uses identical configuration. "Works on my machine" stops applying to agent setup.
+- **Audit trail.** `git log apm.lock.yaml` provides a complete, timestamped history of every configuration change, who made it, and which pull request approved it.
 - **CI enforcement.** `apm audit` in a CI pipeline fails the build if local configuration has drifted from the declared and locked state, catching unauthorized or accidental changes before they reach production.
 - **Centralized standards.** Organization-wide packages are published once and consumed by every repository. Updates propagate through version bumps in `apm.yml`, reviewed and approved through the normal pull request process.
 
@@ -131,9 +131,9 @@ Each AI tool has its own plugin or extension system. APM does not replace these 
 |---|---|---|
 | Install plugins for one tool | Yes | Yes |
 | Install across all tools, one command | No | Yes |
-| Consumer-side version lock | No | Yes (`apm.lock`) |
+| Consumer-side version lock | No | Yes (`apm.lock.yaml`) |
 | CI gate for configuration drift | No | Yes (`apm audit`) |
-| Audit trail | No | Yes (`git log apm.lock`) |
+| Audit trail | No | Yes (`git log apm.lock.yaml`) |
 | Multi-source composition | No | Yes |
 
 The distinction matters: native plugin systems solve distribution for a single tool. APM solves consistency across tools, teams, and time.

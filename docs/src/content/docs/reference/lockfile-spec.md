@@ -1,6 +1,6 @@
 ---
 title: "Lock File Specification"
-description: "The apm.lock format — how APM pins dependencies to exact versions for reproducible installs."
+description: "The apm.lock.yaml format — how APM pins dependencies to exact versions for reproducible installs."
 sidebar:
   order: 3
 ---
@@ -20,7 +20,7 @@ breaking changes will be gated behind a `lockfile_version` bump.
 
 ## Abstract
 
-`apm.lock` records the exact resolved state of every dependency in an APM
+`apm.lock.yaml` records the exact resolved state of every dependency in an APM
 project. It is the receipt of what was installed — commit SHAs, source URLs,
 and every file deployed into the workspace. Its role is analogous to
 `package-lock.json` (npm) or `.terraform.lock.hcl` (Terraform): given the same
@@ -42,14 +42,14 @@ The lock file serves four goals:
 2. **Provenance** — every dependency is traceable to an exact source commit.
 3. **Completeness** — `deployed_files` lists every file APM placed in the
    project, enabling precise removal.
-4. **Auditability** — `git log apm.lock` provides a full history of dependency
+4. **Auditability** — `git log apm.lock.yaml` provides a full history of dependency
    changes across the lifetime of the project.
 
 ## 3. Lifecycle
 
-`apm.lock` is created and updated at well-defined points:
+`apm.lock.yaml` is created and updated at well-defined points:
 
-| Event | Effect on `apm.lock` |
+| Event | Effect on `apm.lock.yaml` |
 |-------|----------------------|
 | `apm install` (first run) | Created. All dependencies resolved, commits pinned, files recorded. |
 | `apm install` (subsequent) | Read. Locked commits reused. New dependencies appended. |
@@ -156,7 +156,7 @@ produce consistent diffs in version control.
 
 When `apm pack` creates a bundle, it prepends a `pack:` section to the lock
 file copy included in the bundle. This section is informational and is not
-written back to the project's `apm.lock`.
+written back to the project's `apm.lock.yaml`.
 
 ```yaml
 pack:
@@ -184,8 +184,8 @@ packed archive.
 
 The dependency resolver interacts with the lock file as follows:
 
-1. **First install** — resolve all refs to commits, write `apm.lock`.
-2. **Subsequent installs** — read `apm.lock`, reuse locked commits. Only
+1. **First install** — resolve all refs to commits, write `apm.lock.yaml`.
+2. **Subsequent installs** — read `apm.lock.yaml`, reuse locked commits. Only
    newly added dependencies trigger resolution.
 3. **Update** (`--update` flag or `apm deps update`) — re-resolve all refs,
    overwrite the lock file with fresh commits.
@@ -203,21 +203,21 @@ The lock file reader supports one historical migration:
 
 ## 9. Auditing Patterns
 
-Because `apm.lock` is committed to version control, standard Git operations
+Because `apm.lock.yaml` is committed to version control, standard Git operations
 provide a complete audit trail:
 
 ```bash
 # Full history of dependency changes
-git log --oneline apm.lock
+git log --oneline apm.lock.yaml
 
 # What changed in the last commit
-git diff HEAD~1 -- apm.lock
+git diff HEAD~1 -- apm.lock.yaml
 
 # State of dependencies at a specific release
-git show v4.2.1:apm.lock
+git show v4.2.1:apm.lock.yaml
 
 # Who last modified the lock file
-git log -1 --format='%an <%ae> %ai' -- apm.lock
+git log -1 --format='%an <%ae> %ai' -- apm.lock.yaml
 ```
 
 In CI pipelines, `apm audit --ci` verifies the lock file is in sync with the

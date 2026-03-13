@@ -33,7 +33,7 @@ The left side (install, pack) runs where APM is available. The right side (downl
 
 ## `apm pack`
 
-Creates a self-contained bundle from installed dependencies. Reads the `deployed_files` manifest in `apm.lock` as the source of truth — it does not scan the disk.
+Creates a self-contained bundle from installed dependencies. Reads the `deployed_files` manifest in `apm.lock.yaml` as the source of truth — it does not scan the disk.
 
 ```bash
 # Default: apm format, target auto-detected from apm.yml
@@ -99,7 +99,7 @@ build/my-project-1.0.0/
     skills/
       security-scan/
         skill.md
-  apm.lock                         # enriched copy (see below)
+  apm.lock.yaml                         # enriched copy (see below)
 ```
 
 ### Claude target
@@ -113,7 +113,7 @@ build/my-project-1.0.0/
     skills/
       code-analysis/
         skill.md
-  apm.lock
+  apm.lock.yaml
 ```
 
 ### All targets
@@ -128,14 +128,14 @@ build/my-project-1.0.0/
   .claude/
     commands/
       ...
-  apm.lock
+  apm.lock.yaml
 ```
 
-The bundle is self-describing: its `apm.lock` lists every file it contains and the dependency graph that produced them.
+The bundle is self-describing: its `apm.lock.yaml` lists every file it contains and the dependency graph that produced them.
 
 ## Lockfile enrichment
 
-The bundle includes a copy of `apm.lock` enriched with a `pack:` section. The project's own `apm.lock` is never modified.
+The bundle includes a copy of `apm.lock.yaml` enriched with a `pack:` section. The project's own `apm.lock.yaml` is never modified.
 
 ```yaml
 pack:
@@ -197,7 +197,7 @@ apm unpack ./build/my-project-1.0.0.tar.gz --dry-run
 - **Additive-only**: `unpack` writes files listed in the bundle's lockfile. It never deletes existing files in the target directory.
 - **Overwrite on conflict**: if a file already exists at the target path, the bundle file wins.
 - **Verification**: by default, `unpack` checks that every path in the bundle's `deployed_files` manifest exists in the bundle before extracting. Pass `--skip-verify` to skip this check for partial bundles.
-- **Lockfile not copied**: the bundle's enriched `apm.lock` is metadata for verification only — it is not written to the output directory.
+- **Lockfile not copied**: the bundle's enriched `apm.lock.yaml` is metadata for verification only — it is not written to the output directory.
 
 ## Consumption scenarios
 
@@ -289,7 +289,7 @@ No APM binary, no Python runtime, no network calls. The action handles extractio
 
 `apm pack` requires two things:
 
-1. **`apm.lock`** — the resolved lockfile produced by `apm install`. Pack reads the `deployed_files` manifest from this file to know what to include.
+1. **`apm.lock.yaml`** — the resolved lockfile produced by `apm install`. Pack reads the `deployed_files` manifest from this file to know what to include.
 2. **Installed files on disk** — the actual files referenced in `deployed_files` must exist at their expected paths. Pack verifies this and fails with a clear error if files are missing.
 
 The typical sequence is:
@@ -299,13 +299,13 @@ apm install     # resolve dependencies and deploy files
 apm pack        # bundle the deployed files
 ```
 
-Pack reads from the lockfile, not from a disk scan. If a file exists on disk but is not listed in `apm.lock`, it will not be included. If a file is listed in `apm.lock` but missing from disk, pack will fail and prompt you to re-run `apm install`.
+Pack reads from the lockfile, not from a disk scan. If a file exists on disk but is not listed in `apm.lock.yaml`, it will not be included. If a file is listed in `apm.lock.yaml` but missing from disk, pack will fail and prompt you to re-run `apm install`.
 
 ## Troubleshooting
 
-### "apm.lock not found"
+### "apm.lock.yaml not found"
 
-Pack requires a lockfile. Run `apm install` first to resolve dependencies and generate `apm.lock`.
+Pack requires a lockfile. Run `apm install` first to resolve dependencies and generate `apm.lock.yaml`.
 
 ### "deployed files are missing on disk"
 
@@ -317,4 +317,4 @@ During unpack, verification found files listed in the bundle's lockfile that are
 
 ### Empty bundle
 
-If `apm pack` produces zero files, check that your dependencies have `deployed_files` entries in `apm.lock`. This can happen if `apm install` completed but no integration files were deployed (e.g., the package has no prompts or agents for the active target).
+If `apm pack` produces zero files, check that your dependencies have `deployed_files` entries in `apm.lock.yaml`. This can happen if `apm install` completed but no integration files were deployed (e.g., the package has no prompts or agents for the active target).

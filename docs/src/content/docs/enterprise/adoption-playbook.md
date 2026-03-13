@@ -40,7 +40,7 @@ Confirm these prerequisites before kicking off Phase 1:
    ```
 
 5. Run `apm install` to deploy files.
-6. Commit `apm.yml` and `apm.lock` to the repository.
+6. Commit `apm.yml` and `apm.lock.yaml` to the repository.
 
 ### Verification
 
@@ -61,7 +61,7 @@ single command.
 ### What to Watch
 
 - Installation friction (missing runtimes, network issues).
-- Unexpected file placement -- review `apm.lock` to confirm paths.
+- Unexpected file placement -- review `apm.lock.yaml` to confirm paths.
 - Authentication errors when pulling private packages.
 
 ---
@@ -98,7 +98,7 @@ automatically.
 
 ### What to Watch
 
-- Version pinning: confirm that `apm.lock` captures the exact version
+- Version pinning: confirm that `apm.lock.yaml` captures the exact version
   installed.
 - File collisions: if the shared package deploys a file that already exists,
   decide whether to force-overwrite or skip.
@@ -129,7 +129,7 @@ reach production.
    ```
 
 2. Make the audit step a **required status check** on pull requests.
-3. Ensure `apm.lock` is committed. Any version drift will cause the audit
+3. Ensure `apm.lock.yaml` is committed. Any version drift will cause the audit
    to fail, surfacing the problem before merge.
 
 ### Success Metric
@@ -229,7 +229,7 @@ application. Maintenance cost is limited to updating package versions in
 
 ### "What if we stop using it?"
 
-Delete `apm.yml` and `apm.lock`. The native configuration files APM
+Delete `apm.yml` and `apm.lock.yaml`. The native configuration files APM
 deployed remain in place and continue to work exactly as they did before.
 There is no lock-in.
 
@@ -246,7 +246,7 @@ go back to manual configuration.
 
 At any phase, you can reverse course:
 
-1. Remove `apm.yml` and `apm.lock` from the repository.
+1. Remove `apm.yml` and `apm.lock.yaml` from the repository.
 2. The configuration files APM deployed remain on disk and continue to
    function. Your tools read native files, not APM-specific formats.
 3. Optionally, remove APM from CI steps.

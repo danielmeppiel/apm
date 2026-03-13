@@ -97,7 +97,7 @@ steps:
 Review the PR using the installed coding standards.
 ```
 
-The repo needs an `apm.yml` with dependencies and `apm.lock` for reproducibility. The action runs as a pre-agent step, deploying primitives to `.github/` where the agent discovers them.
+The repo needs an `apm.yml` with dependencies and `apm.lock.yaml` for reproducibility. The action runs as a pre-agent step, deploying primitives to `.github/` where the agent discovers them.
 
 **When to use this over frontmatter dependencies:**
 

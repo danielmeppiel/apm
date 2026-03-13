@@ -81,7 +81,7 @@ class TestUninstallTransitiveDependencyCleanup:
                 _make_apm_modules_dir(root, "acme/pkg-a")
                 _make_apm_modules_dir(root, "acme/pkg-b")  # transitive dep
 
-                _write_lockfile(root / "apm.lock", [
+                _write_lockfile(root / "apm.lock.yaml", [
                     LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_commit="aaa"),
                     LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a", resolved_commit="bbb"),
                 ])
@@ -109,7 +109,7 @@ class TestUninstallTransitiveDependencyCleanup:
                 _make_apm_modules_dir(root, "acme/pkg-c")
                 _make_apm_modules_dir(root, "acme/shared-lib")
 
-                _write_lockfile(root / "apm.lock", [
+                _write_lockfile(root / "apm.lock.yaml", [
                     LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_commit="aaa"),
                     LockedDependency(repo_url="acme/pkg-c", depth=1, resolved_commit="ccc"),
                     LockedDependency(repo_url="acme/shared-lib", depth=2, resolved_by="acme/pkg-a", resolved_commit="sss"),
@@ -145,7 +145,7 @@ class TestUninstallTransitiveDependencyCleanup:
                 _make_apm_modules_dir(root, "acme/pkg-b")
                 _make_apm_modules_dir(root, "acme/pkg-c")
 
-                _write_lockfile(root / "apm.lock", [
+                _write_lockfile(root / "apm.lock.yaml", [
                     LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_commit="aaa"),
                     LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a", resolved_commit="bbb"),
                     LockedDependency(repo_url="acme/pkg-c", depth=3, resolved_by="acme/pkg-b", resolved_commit="ccc"),
@@ -172,7 +172,7 @@ class TestUninstallTransitiveDependencyCleanup:
                 _make_apm_modules_dir(root, "acme/pkg-b")
                 _make_apm_modules_dir(root, "acme/pkg-d")
 
-                _write_lockfile(root / "apm.lock", [
+                _write_lockfile(root / "apm.lock.yaml", [
                     LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_commit="aaa"),
                     LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a", resolved_commit="bbb"),
                     LockedDependency(repo_url="acme/pkg-d", depth=1, resolved_commit="ddd"),
@@ -182,7 +182,7 @@ class TestUninstallTransitiveDependencyCleanup:
 
                 assert result.exit_code == 0
                 # Lockfile should still exist with pkg-d
-                updated_lock = LockFile.read(root / "apm.lock")
+                updated_lock = LockFile.read(root / "apm.lock.yaml")
                 assert updated_lock is not None
                 assert updated_lock.has_dependency("acme/pkg-d")
                 assert not updated_lock.has_dependency("acme/pkg-a")
@@ -200,14 +200,14 @@ class TestUninstallTransitiveDependencyCleanup:
                 _write_apm_yml(root / "apm.yml", ["acme/pkg-a"])
                 _make_apm_modules_dir(root, "acme/pkg-a")
 
-                _write_lockfile(root / "apm.lock", [
+                _write_lockfile(root / "apm.lock.yaml", [
                     LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_commit="aaa"),
                 ])
 
                 result = self.runner.invoke(cli, ["uninstall", "acme/pkg-a"])
 
                 assert result.exit_code == 0
-                assert not (root / "apm.lock").exists()
+                assert not (root / "apm.lock.yaml").exists()
             finally:
                 os.chdir(os.path.dirname(os.path.abspath(__file__)))  # restore CWD before TemporaryDirectory cleanup
 
@@ -222,7 +222,7 @@ class TestUninstallTransitiveDependencyCleanup:
                 _make_apm_modules_dir(root, "acme/pkg-a")
                 _make_apm_modules_dir(root, "acme/pkg-b")
 
-                _write_lockfile(root / "apm.lock", [
+                _write_lockfile(root / "apm.lock.yaml", [
                     LockedDependency(repo_url="acme/pkg-a", depth=1, resolved_commit="aaa"),
                     LockedDependency(repo_url="acme/pkg-b", depth=2, resolved_by="acme/pkg-a", resolved_commit="bbb"),
                 ])

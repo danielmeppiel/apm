@@ -23,11 +23,11 @@ An internal advocacy toolkit for APM. Each section is self-contained and designe
 
 - **Developer productivity.** Eliminate manual setup of AI agent configurations. New developers run `apm install` and get a working environment in seconds instead of following multi-step setup guides.
 - **Consistency across teams.** A single shared package ensures every team uses the same coding standards, prompts, and tool configurations. Updates propagate with a version bump, not a Slack message.
-- **Audit trail for compliance.** Every change to agent configuration is tracked through `apm.lock` and git history. You can answer "what changed, when, and why" for any audit.
+- **Audit trail for compliance.** Every change to agent configuration is tracked through `apm.lock.yaml` and git history. You can answer "what changed, when, and why" for any audit.
 
 ### For Security and Compliance
 
-- **Lock file integrity.** `apm.lock` pins exact versions and commit SHAs for every dependency. No silent updates, no supply chain surprises.
+- **Lock file integrity.** `apm.lock.yaml` pins exact versions and commit SHAs for every dependency. No silent updates, no supply chain surprises.
 - **Dependency provenance.** Every package resolves to a specific git repository and commit. The full dependency tree is inspectable before installation.
 - **No code execution, no runtime.** APM is a dev-time tool only. It copies configuration files — it does not execute code, run background processes, or modify your application at runtime.
 - **Full audit trail.** All configuration changes are committed to git. Compliance teams can review agent setup changes through standard code review processes.
@@ -76,7 +76,7 @@ Installation is a single binary with no system dependencies. Updates are a binar
 
 APM outputs native configuration formats: `.github/instructions/`, `.github/prompts/`, `.claude/`, `AGENTS.md`. These are standard files that your AI tools read directly.
 
-If you stop using APM, delete `apm.yml` and `apm.lock`. Your configuration files remain and continue to work. Zero lock-in by design.
+If you stop using APM, delete `apm.yml` and `apm.lock.yaml`. Your configuration files remain and continue to work. Zero lock-in by design.
 
 ### "We only use one AI tool, not multiple."
 
@@ -115,7 +115,7 @@ This is a deliberate design choice. APM adds value on top of native formats rath
 
 The following is ready to copy into an internal proposal or RFC:
 
-> We propose adopting APM (Agent Package Manager) to manage AI agent configuration across our repositories. APM is an open-source, dev-time tool that provides a declarative manifest (`apm.yml`) and lock file (`apm.lock`) for AI coding agent setup — instructions, prompts, skills, plugins, and MCP servers. It resolves dependencies, generates native configuration files for each AI platform, and produces reproducible installs from locked versions. APM has zero runtime footprint: it runs during setup and CI, outputs standard config files, and introduces no vendor lock-in. Adopting APM will eliminate manual agent setup for new developers, enforce consistent configuration across teams, and provide an auditable record of all agent configuration changes through git history. The tool is MIT-licensed, maintained under the Microsoft GitHub organization, and supports GitHub, GitLab, Bitbucket, and Azure DevOps as package sources.
+> We propose adopting APM (Agent Package Manager) to manage AI agent configuration across our repositories. APM is an open-source, dev-time tool that provides a declarative manifest (`apm.yml`) and lock file (`apm.lock.yaml`) for AI coding agent setup — instructions, prompts, skills, plugins, and MCP servers. It resolves dependencies, generates native configuration files for each AI platform, and produces reproducible installs from locked versions. APM has zero runtime footprint: it runs during setup and CI, outputs standard config files, and introduces no vendor lock-in. Adopting APM will eliminate manual agent setup for new developers, enforce consistent configuration across teams, and provide an auditable record of all agent configuration changes through git history. The tool is MIT-licensed, maintained under the Microsoft GitHub organization, and supports GitHub, GitLab, Bitbucket, and Azure DevOps as package sources.
 
 ---
 
@@ -131,7 +131,7 @@ For stakeholders familiar with existing tools, this comparison clarifies where A
 | Dependency resolution | Manual | None | Automatic, transitive |
 | CI enforcement | Custom scripts | Not available | Planned (`apm audit --ci`) |
 | Shared org standards | Wiki pages, copy-paste | Not available | Versioned packages |
-| Audit trail | Implicit via git | Varies by vendor | Explicit via `apm.lock` |
+| Audit trail | Implicit via git | Varies by vendor | Explicit via `apm.lock.yaml` |
 | Lock-in | To manual process | To specific vendor | None (native output files) |
 
 ---
@@ -172,7 +172,7 @@ With APM, setup reduces to `apm install` (under 30 seconds). Standards updates r
 | New developer onboarding | Follow a setup doc, troubleshoot differences | `git clone && apm install` |
 | CI reproducibility | "Worked locally" debugging | Locked versions, identical environments |
 | Adding a new MCP server to all repos | Manual config in each repo, inconsistent rollout | Add to shared package, teams pull on next install |
-| Auditing agent configuration | Grep across repos, compare manually | Review `apm.lock` diffs in git history |
+| Auditing agent configuration | Grep across repos, compare manually | Review `apm.lock.yaml` diffs in git history |
 
 ---
 

@@ -62,7 +62,7 @@ Once configured, any PR that modifies agent configuration files without a corres
 
 `apm audit --ci` detects the following issues:
 
-- **Lock file out of sync** — `apm.lock` does not match the current state of `apm.yml`.
+- **Lock file out of sync** — `apm.lock.yaml` does not match the current state of `apm.yml`.
 - **Undeclared config changes** — manual edits to files in `.github/instructions/` or other managed paths that bypass the manifest.
 - **Missing dependencies** — packages declared in `apm.yml` that cannot be resolved.
 - **Deleted or modified managed files** — files that APM deployed but were removed or altered outside of APM.

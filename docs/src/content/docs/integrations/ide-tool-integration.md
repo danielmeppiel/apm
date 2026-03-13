@@ -91,7 +91,7 @@ apm install microsoft/apm-sample-package
 
 **How Auto-Integration Works**:
 - **Zero-Config**: Always enabled, works automatically with no configuration needed
-- **Auto-Cleanup**: Removes integrated files when you uninstall or prune packages (tracked via `deployed_files` in `apm.lock`)
+- **Auto-Cleanup**: Removes integrated files when you uninstall or prune packages (tracked via `deployed_files` in `apm.lock.yaml`)
 - **Collision Detection**: If a local file has the same name as a package file, APM skips it with a warning (use `--force` to overwrite)
 - **Always Overwrite**: Package-owned files are always copied fresh -- no version comparison
 - **Link Resolution**: Context links are resolved during integration
@@ -105,7 +105,7 @@ apm install microsoft/apm-sample-package
 6. Copies instructions to `.github/instructions/` with their original filename (e.g., `python.instructions.md`)
 7. Copies hooks to `.github/hooks/` with their original filename and copies referenced scripts
 8. If a local file already exists with the same name, skips with a warning (use `--force` to overwrite)
-9. Records all deployed files in `apm.lock` under `deployed_files` per package
+9. Records all deployed files in `apm.lock.yaml` under `deployed_files` per package
 10. VS Code automatically loads all prompts, agents, instructions, and hooks for your coding agents
 11. Run `apm uninstall` to automatically remove integrated primitives (using `deployed_files` manifest)
 
@@ -330,10 +330,10 @@ Claude Desktop can use `CLAUDE.md` as its project instructions file. Optionally 
 
 APM maintains synchronization between packages and Claude primitives:
 
-- **Install**: Adds agents, commands, and skills for new packages, tracked via `deployed_files` in `apm.lock`
-- **Uninstall**: Removes only that package's agents, commands, and skill directories (as tracked in `apm.lock`). User-authored files are preserved.
+- **Install**: Adds agents, commands, and skills for new packages, tracked via `deployed_files` in `apm.lock.yaml`
+- **Uninstall**: Removes only that package's agents, commands, and skill directories (as tracked in `apm.lock.yaml`). User-authored files are preserved.
 - **Update**: Refreshes agents, commands, and skills when package version changes
-- **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked via `apm.lock` and removed correctly on uninstall
+- **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked via `apm.lock.yaml` and removed correctly on uninstall
 
 ## Other IDE Support
 

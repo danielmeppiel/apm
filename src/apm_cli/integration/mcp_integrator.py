@@ -19,7 +19,7 @@ from typing import List, Optional
 
 import click
 
-from apm_cli.deps.lockfile import LockFile
+from apm_cli.deps.lockfile import LockFile, get_lockfile_path
 from apm_cli.utils.console import (
     _get_console,
     _rich_error,
@@ -539,7 +539,7 @@ class MCPIntegrator:
                          in the lockfile (used for drift-detection baseline).
         """
         if lock_path is None:
-            lock_path = Path.cwd() / "apm.lock"
+            lock_path = get_lockfile_path(Path.cwd())
         if not lock_path.exists():
             return
         try:
