@@ -436,7 +436,7 @@ description: Test {primitive_type} for {name}
             depth=3,
             resolved_by="rieraj/division-ime-agent-instructions",
         ))
-        lockfile.write(self.temp_dir_path / "apm.lock")
+        lockfile.write(self.temp_dir_path / "apm.lock.yaml")
 
         order = get_dependency_declaration_order(str(self.temp_dir_path))
 
@@ -474,7 +474,7 @@ description: Test {primitive_type} for {name}
         lockfile.add_dependency(LockedDependency(repo_url="rieraj/team-cot", depth=1))
         lockfile.add_dependency(LockedDependency(repo_url="rieraj/division-ime", depth=1))
         lockfile.add_dependency(LockedDependency(repo_url="rieraj/autodesk", depth=1))
-        lockfile.write(self.temp_dir_path / "apm.lock")
+        lockfile.write(self.temp_dir_path / "apm.lock.yaml")
 
         order = get_dependency_declaration_order(str(self.temp_dir_path))
         # No duplicates
@@ -496,7 +496,7 @@ description: Test {primitive_type} for {name}
             repo_url="owner/transitive-dep", depth=2,
             resolved_by="owner/direct-dep",
         ))
-        lockfile.write(self.temp_dir_path / "apm.lock")
+        lockfile.write(self.temp_dir_path / "apm.lock.yaml")
 
         # Create dependency directories with primitives
         direct_dep_dir = self.temp_dir_path / "apm_modules" / "owner" / "direct-dep" / ".apm" / "instructions"

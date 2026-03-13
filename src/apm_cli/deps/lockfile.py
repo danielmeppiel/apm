@@ -3,6 +3,7 @@
 Provides deterministic, reproducible installs by capturing exact resolved versions.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,8 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from ..models.apm_package import DependencyReference
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -270,20 +273,26 @@ class LockFile:
 
     @classmethod
     def installed_paths_for_project(cls, project_root: Path) -> List[str]:
-        """Load apm.lock from project_root and return installed paths.
+        """Load apm.lock.yaml from project_root and return installed paths.
 
         Returns an empty list if the lockfile is missing, corrupt, or
         unreadable.
 
         Args:
-            project_root: Path to project root containing apm.lock.
+            project_root: Path to project root containing apm.lock.yaml.
 
         Returns:
             List[str]: Relative installed paths (e.g., ['owner/repo']),
                        ordered by depth then repo_url (no duplicates).
         """
         try:
-            lockfile = cls.read(project_root / "apm.lock")
+            lockfile_path = get_lockfile_path(project_root)
+            if not lockfile_path.exists():
+                # Fallback to legacy lockfile for pre-migration reads
+                legacy_path = project_root / LEGACY_LOCKFILE_NAME
+                if legacy_path.exists():
+                    lockfile_path = legacy_path
+            lockfile = cls.read(lockfile_path)
             if not lockfile:
                 return []
             return lockfile.get_installed_paths(project_root / "apm_modules")
@@ -291,9 +300,40 @@ class LockFile:
             return []
 
 
+# Current lockfile filename (with .yaml extension for IDE syntax highlighting)
+LOCKFILE_NAME = "apm.lock.yaml"
+# Legacy lockfile filename used in older APM versions
+LEGACY_LOCKFILE_NAME = "apm.lock"
+
+
 def get_lockfile_path(project_root: Path) -> Path:
     """Get the path to the lock file for a project."""
-    return project_root / "apm.lock"
+    return project_root / LOCKFILE_NAME
+
+
+def migrate_lockfile_if_needed(project_root: Path) -> bool:
+    """Migrate legacy apm.lock to apm.lock.yaml if needed.
+
+    Renames ``apm.lock`` to ``apm.lock.yaml`` when the new file does not yet
+    exist.  This is a one-time, transparent migration for users upgrading from
+    older APM versions.
+
+    Args:
+        project_root: Path to the project root directory.
+
+    Returns:
+        True if a migration was performed, False otherwise.
+    """
+    new_path = get_lockfile_path(project_root)
+    legacy_path = project_root / LEGACY_LOCKFILE_NAME
+    if not new_path.exists() and legacy_path.exists():
+        try:
+            legacy_path.rename(new_path)
+        except OSError:
+            logger.debug("Could not rename %s to %s", legacy_path, new_path, exc_info=True)
+            return False
+        return True
+    return False
 
 
 def get_lockfile_installed_paths(project_root: Path) -> List[str]:

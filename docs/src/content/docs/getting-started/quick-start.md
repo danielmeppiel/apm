@@ -66,7 +66,7 @@ APM downloads the package, resolves its dependencies, and deploys files directly
 ```
 my-project/
   apm.yml
-  apm.lock
+  apm.lock.yaml
   apm_modules/
     microsoft/
       apm-sample-package/
@@ -88,7 +88,7 @@ Three things happened:
 
 1. The package was downloaded into `apm_modules/` (like `node_modules/`).
 2. Instructions, prompts, and skills were deployed to `.github/` and `.claude/` -- the native directories that GitHub Copilot, Cursor, and Claude already read from.
-3. A lockfile (`apm.lock`) was created, pinning the exact commit so every team member gets identical configuration.
+3. A lockfile (`apm.lock.yaml`) was created, pinning the exact commit so every team member gets identical configuration.
 
 Your `apm.yml` now tracks the dependency:
 
@@ -125,7 +125,7 @@ apm install github/awesome-copilot/skills/review-and-refactor
 ```
 
 **What to commit:**
-- `apm.yml` and `apm.lock` -- version-controlled, shared with the team.
+- `apm.yml` and `apm.lock.yaml` -- version-controlled, shared with the team.
 - `apm_modules/` -- add to `.gitignore`. Rebuilt from the lockfile on install.
 
 :::note[Using Cursor, Codex, or Gemini?]

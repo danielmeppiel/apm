@@ -280,14 +280,14 @@ apm uninstall microsoft/apm-sample-package --dry-run
 | Skill folders | `.github/skills/{folder-name}/` |
 | Integrated hooks | `.github/hooks/*.json` |
 | Claude hook settings | `.claude/settings.json` (hooks key cleaned) |
-| Lockfile entries | `apm.lock` (removed packages + orphaned transitives) |
+| Lockfile entries | `apm.lock.yaml` (removed packages + orphaned transitives) |
 
 **Behavior:**
 - Removes package from `apm.yml` dependencies
 - Deletes package folder from `apm_modules/`
-- Removes orphaned transitive dependencies (npm-style pruning via `apm.lock`)
-- Removes all deployed integration files tracked in `apm.lock` `deployed_files`
-- Updates `apm.lock` (or deletes it if no dependencies remain)
+- Removes orphaned transitive dependencies (npm-style pruning via `apm.lock.yaml`)
+- Removes all deployed integration files tracked in `apm.lock.yaml` `deployed_files`
+- Updates `apm.lock.yaml` (or deletes it if no dependencies remain)
 - Cleans up empty parent directories
 - Safe operation: only removes files tracked in the `deployed_files` manifest
 
@@ -313,12 +313,12 @@ apm prune --dry-run
 
 **Behavior:**
 - Removes orphaned package directories from `apm_modules/`
-- Removes deployed integration files (prompts, agents, hooks, etc.) for pruned packages using the `deployed_files` manifest in `apm.lock`
-- Updates `apm.lock` to reflect the pruned state
+- Removes deployed integration files (prompts, agents, hooks, etc.) for pruned packages using the `deployed_files` manifest in `apm.lock.yaml`
+- Updates `apm.lock.yaml` to reflect the pruned state
 
 ### `apm pack` - Create a portable bundle
 
-Create a self-contained bundle from installed APM dependencies using the `deployed_files` recorded in `apm.lock` as the source of truth.
+Create a self-contained bundle from installed APM dependencies using the `deployed_files` recorded in `apm.lock.yaml` as the source of truth.
 
 ```bash
 apm pack [OPTIONS]
@@ -350,9 +350,9 @@ apm pack -o dist/
 ```
 
 **Behavior:**
-- Reads `apm.lock` to enumerate all `deployed_files` from installed dependencies
+- Reads `apm.lock.yaml` to enumerate all `deployed_files` from installed dependencies
 - Copies files preserving directory structure
-- Writes an enriched `apm.lock` inside the bundle with a `pack:` metadata section (the project's own `apm.lock` is never modified)
+- Writes an enriched `apm.lock.yaml` inside the bundle with a `pack:` metadata section (the project's own `apm.lock.yaml` is never modified)
 
 **Target filtering:**
 
@@ -407,10 +407,10 @@ apm unpack bundle.tar.gz --dry-run
 ```
 
 **Behavior:**
-- **Additive-only**: only writes files listed in the bundle's `apm.lock`; never deletes existing files
+- **Additive-only**: only writes files listed in the bundle's `apm.lock.yaml`; never deletes existing files
 - If a local file has the same path as a bundle file, the bundle file wins (overwrite)
 - Verification checks that all `deployed_files` from the bundle lockfile are present in the bundle
-- The bundle's `apm.lock` is metadata only — it is **not** copied to the output directory
+- The bundle's `apm.lock.yaml` is metadata only — it is **not** copied to the output directory
 
 ### `apm update` - Update APM to the latest version
 

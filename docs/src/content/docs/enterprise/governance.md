@@ -23,13 +23,13 @@ APM addresses these by treating agent configuration as auditable infrastructure,
 Agent governance in APM follows a four-stage pipeline:
 
 ```
-apm.yml (declare) -> apm.lock (pin) -> apm audit (verify) -> CI gate (enforce)
+apm.yml (declare) -> apm.lock.yaml (pin) -> apm audit (verify) -> CI gate (enforce)
 ```
 
 | Stage | Purpose | Artifact |
 |-------|---------|----------|
 | **Declare** | Define dependencies and their sources | `apm.yml` |
-| **Pin** | Resolve every dependency to an exact commit | `apm.lock` |
+| **Pin** | Resolve every dependency to an exact commit | `apm.lock.yaml` |
 | **Verify** | Confirm on-disk state matches the lock file | `apm audit` output |
 | **Enforce** | Block merges when verification fails | Required status check |
 
@@ -39,7 +39,7 @@ Each stage builds on the previous one. The lock file provides the audit trail, t
 
 ## Lock file as audit trail
 
-The `apm.lock` file is the single source of truth for what agent configuration is deployed. Every dependency is pinned to an exact commit SHA, making the lock file a complete, point-in-time record of agent state.
+The `apm.lock.yaml` file is the single source of truth for what agent configuration is deployed. Every dependency is pinned to an exact commit SHA, making the lock file a complete, point-in-time record of agent state.
 
 ### What the lock file captures
 
@@ -77,23 +77,23 @@ Key fields for governance:
 
 ### Using git history for auditing
 
-Because `apm.lock` is a committed file, standard git operations answer governance questions directly:
+Because `apm.lock.yaml` is a committed file, standard git operations answer governance questions directly:
 
 ```bash
 # Full history of every agent configuration change
-git log --oneline apm.lock
+git log --oneline apm.lock.yaml
 
 # Who changed agent config, and when
-git log --format="%h %ai %an: %s" apm.lock
+git log --format="%h %ai %an: %s" apm.lock.yaml
 
 # What was the exact agent configuration at release v4.2.1
-git show v4.2.1:apm.lock
+git show v4.2.1:apm.lock.yaml
 
 # Diff agent config between two releases
-git diff v4.1.0..v4.2.1 -- apm.lock
+git diff v4.1.0..v4.2.1 -- apm.lock.yaml
 
 # Find the commit that introduced a specific dependency
-git log -p --all -S 'contoso/agent-standards' -- apm.lock
+git log -p --all -S 'contoso/agent-standards' -- apm.lock.yaml
 ```
 
 No additional tooling is required. The lock file turns git into an agent configuration audit log.
@@ -122,7 +122,7 @@ on:
   pull_request:
     paths:
       - 'apm.yml'
-      - 'apm.lock'
+      - 'apm.lock.yaml'
       - '.github/agents/**'
       - '.github/skills/**'
       - '.copilot/agents/**'
@@ -217,7 +217,7 @@ Combine with GitHub's CODEOWNERS to require security team approval for changes t
 ```
 # CODEOWNERS
 apm.yml    @contoso/platform-engineering
-apm.lock   @contoso/platform-engineering
+apm.lock.yaml   @contoso/platform-engineering
 ```
 
 ### Version pinning policy
@@ -303,9 +303,9 @@ For detailed setup instructions, see the [CI/CD integration guide](../../integra
 
 SOC 2 audits require evidence that configuration changes are authorized and traceable. APM's lock file provides this:
 
-- **Change authorization.** Every `apm.lock` change goes through a PR, requiring review and approval.
-- **Change history.** `git log apm.lock` produces a complete, tamper-evident history of every agent configuration change with author, timestamp, and diff.
-- **Point-in-time state.** `git show <tag>:apm.lock` reconstructs the exact agent configuration active at any release.
+- **Change authorization.** Every `apm.lock.yaml` change goes through a PR, requiring review and approval.
+- **Change history.** `git log apm.lock.yaml` produces a complete, tamper-evident history of every agent configuration change with author, timestamp, and diff.
+- **Point-in-time state.** `git show <tag>:apm.lock.yaml` reconstructs the exact agent configuration active at any release.
 
 Link auditors directly to the lock file history in your repository. No separate audit system is needed.
 
@@ -315,13 +315,13 @@ When a security review requires understanding what instructions agents were foll
 
 ```bash
 # What agent configuration was active at the time of the incident
-git show <commit-at-incident-time>:apm.lock
+git show <commit-at-incident-time>:apm.lock.yaml
 
 # What files were deployed by a specific package
-grep -A 10 'contoso/agent-standards' apm.lock
+grep -A 10 'contoso/agent-standards' apm.lock.yaml
 
 # Full diff of agent config changes in the last 90 days
-git log --since="90 days ago" -p -- apm.lock
+git log --since="90 days ago" -p -- apm.lock.yaml
 ```
 
 The lock file answers "what was running" without requiring access to the original package repositories. The `resolved_commit` field points to the exact source code that was deployed.
@@ -331,9 +331,9 @@ The lock file answers "what was running" without requiring access to the origina
 APM enforces change management by design:
 
 1. **Declaration.** Changes start in `apm.yml`, which is a committed, reviewable file.
-2. **Resolution.** `apm install` resolves declarations to exact commits in `apm.lock`.
+2. **Resolution.** `apm install` resolves declarations to exact commits in `apm.lock.yaml`.
 3. **Review.** Both files are included in the PR diff for peer review.
-4. **Verification.** `apm audit --ci` confirms consistency before merge (planned — currently achieved through PR review of `apm.lock` diffs).
+4. **Verification.** `apm audit --ci` confirms consistency before merge (planned — currently achieved through PR review of `apm.lock.yaml` diffs).
 5. **Traceability.** Git history provides a permanent record of who changed what and when.
 
 No agent configuration change can reach a protected branch without passing through this pipeline.
@@ -344,8 +344,8 @@ No agent configuration change can reach a protected branch without passing throu
 
 | Capability | Mechanism | Status |
 |---|---|---|
-| Dependency pinning | `apm.lock` with exact commit SHAs | Available |
-| Audit trail | Git history of `apm.lock` | Available |
+| Dependency pinning | `apm.lock.yaml` with exact commit SHAs | Available |
+| Audit trail | Git history of `apm.lock.yaml` | Available |
 | Constitution injection | `memory/constitution.md` with hash verification | Available |
 | Transitive MCP trust control | `--trust-transitive-mcp` flag | Available |
 | CI enforcement | `apm audit --ci` as required status check | Planned |

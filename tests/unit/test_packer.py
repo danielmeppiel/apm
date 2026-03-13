@@ -11,7 +11,7 @@ from apm_cli.deps.lockfile import LockFile, LockedDependency
 
 
 def _setup_project(tmp_path: Path, deployed_files: list[str], *, target: str | None = None) -> Path:
-    """Create a minimal project with apm.yml, apm.lock, and deployed files on disk."""
+    """Create a minimal project with apm.yml, apm.lock.yaml, and deployed files on disk."""
     project = tmp_path / "project"
     project.mkdir()
 
@@ -30,7 +30,7 @@ def _setup_project(tmp_path: Path, deployed_files: list[str], *, target: str | N
             full.parent.mkdir(parents=True, exist_ok=True)
             full.write_text(f"content of {fpath}", encoding="utf-8")
 
-    # apm.lock with a single dependency containing those files
+    # apm.lock.yaml with a single dependency containing those files
     lockfile = LockFile()
     dep = LockedDependency(
         repo_url="owner/repo",
@@ -38,7 +38,7 @@ def _setup_project(tmp_path: Path, deployed_files: list[str], *, target: str | N
         deployed_files=deployed_files,
     )
     lockfile.add_dependency(dep)
-    lockfile.write(project / "apm.lock")
+    lockfile.write(project / "apm.lock.yaml")
 
     return project
 
@@ -72,7 +72,7 @@ class TestPackBundle:
         for f in deployed:
             assert (result.bundle_path / f).exists()
         # Enriched lockfile present
-        lock_content = (result.bundle_path / "apm.lock").read_text()
+        lock_content = (result.bundle_path / "apm.lock.yaml").read_text()
         assert "pack:" in lock_content
 
     def test_pack_apm_format_claude(self, tmp_path):
@@ -140,7 +140,7 @@ class TestPackBundle:
         )
         out = tmp_path / "build"
 
-        with pytest.raises(FileNotFoundError, match="apm.lock not found"):
+        with pytest.raises(FileNotFoundError, match="apm.lock.yaml not found"):
             pack_bundle(project, out)
 
     def test_pack_missing_deployed_file(self, tmp_path):
@@ -156,7 +156,7 @@ class TestPackBundle:
             deployed_files=[".github/agents/ghost.md"],
         )
         lockfile.add_dependency(dep)
-        lockfile.write(project / "apm.lock")
+        lockfile.write(project / "apm.lock.yaml")
         out = tmp_path / "build"
 
         with pytest.raises(ValueError, match="missing on disk"):
@@ -171,7 +171,7 @@ class TestPackBundle:
         lockfile = LockFile()
         dep = LockedDependency(repo_url="owner/repo", deployed_files=[])
         lockfile.add_dependency(dep)
-        lockfile.write(project / "apm.lock")
+        lockfile.write(project / "apm.lock.yaml")
         out = tmp_path / "build"
 
         result = pack_bundle(project, out)
@@ -196,7 +196,7 @@ class TestPackBundle:
 
         result = pack_bundle(project, out)
 
-        lock_yaml = yaml.safe_load((result.bundle_path / "apm.lock").read_text())
+        lock_yaml = yaml.safe_load((result.bundle_path / "apm.lock.yaml").read_text())
         assert "pack" in lock_yaml
         assert lock_yaml["pack"]["format"] == "apm"
         assert lock_yaml["pack"]["target"] == "vscode"
@@ -207,22 +207,22 @@ class TestPackBundle:
         project = _setup_project(tmp_path, deployed, target="vscode")
         out = tmp_path / "build"
 
-        original_content = (project / "apm.lock").read_text()
+        original_content = (project / "apm.lock.yaml").read_text()
         pack_bundle(project, out)
 
-        assert (project / "apm.lock").read_text() == original_content
+        assert (project / "apm.lock.yaml").read_text() == original_content
 
     def test_pack_rejects_embedded_traversal_in_deployed_path(self, tmp_path):
         """pack_bundle must reject path-traversal entries embedded in deployed_files."""
         project = _setup_project(tmp_path, [])
         # A path that looks like it starts with .github/ but traverses out
-        lockfile = LockFile.read(project / "apm.lock")
+        lockfile = LockFile.read(project / "apm.lock.yaml")
         dep = LockedDependency(
             repo_url="owner/repo",
             deployed_files=[".github/../../../etc/passwd"],
         )
         lockfile.add_dependency(dep)
-        lockfile.write(project / "apm.lock")
+        lockfile.write(project / "apm.lock.yaml")
 
         with pytest.raises(ValueError, match="unsafe path"):
             pack_bundle(project, tmp_path / "out")
@@ -230,13 +230,13 @@ class TestPackBundle:
     def test_pack_rejects_traversal_deployed_path(self, tmp_path):
         """pack_bundle must reject path-traversal entries in deployed_files."""
         project = _setup_project(tmp_path, [])
-        lockfile = LockFile.read(project / "apm.lock")
+        lockfile = LockFile.read(project / "apm.lock.yaml")
         dep = LockedDependency(
             repo_url="owner/repo",
             deployed_files=[".github/agents/../../../../../../tmp/evil.sh"],
         )
         lockfile.add_dependency(dep)
-        lockfile.write(project / "apm.lock")
+        lockfile.write(project / "apm.lock.yaml")
 
         with pytest.raises(ValueError, match="unsafe path"):
             pack_bundle(project, tmp_path / "out")

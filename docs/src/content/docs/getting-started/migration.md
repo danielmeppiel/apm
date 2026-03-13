@@ -28,12 +28,12 @@ apm install microsoft/copilot-best-practices
 apm install your-org/team-standards
 ```
 
-Each package brings in versioned, maintained configuration instead of stale copies. Your `apm.yml` tracks these as dependencies, and `apm.lock` pins exact versions.
+Each package brings in versioned, maintained configuration instead of stale copies. Your `apm.yml` tracks these as dependencies, and `apm.lock.yaml` pins exact versions.
 
 ### 3. Commit and share
 
 ```bash
-git add apm.yml apm.lock
+git add apm.yml apm.lock.yaml
 git commit -m "Add APM manifest"
 ```
 
@@ -49,7 +49,7 @@ Over time, you may choose to move manual configuration into APM packages for por
 
 If you decide APM is not for you:
 
-1. Delete `apm.yml` and `apm.lock`.
+1. Delete `apm.yml` and `apm.lock.yaml`.
 2. Your original files are still there, unchanged.
 
 No uninstall script, no cleanup command. Zero risk.

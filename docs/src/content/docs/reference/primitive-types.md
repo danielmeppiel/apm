@@ -120,7 +120,7 @@ if collection.has_conflicts():
 
 ### Dependency Declaration Order
 
-The system reads `apm.yml` to determine the order in which direct dependencies should be processed. Transitive dependencies (resolved automatically via dependency chains) are read from `apm.lock` and appended after direct dependencies:
+The system reads `apm.yml` to determine the order in which direct dependencies should be processed. Transitive dependencies (resolved automatically via dependency chains) are read from `apm.lock.yaml` and appended after direct dependencies:
 
 ```yaml
 # apm.yml
@@ -133,7 +133,7 @@ dependencies:
     - user/utilities
 ```
 
-Direct dependencies are processed first, in declaration order. Transitive dependencies from `apm.lock` are appended after. If multiple dependencies provide primitives with the same name, the first one declared wins.
+Direct dependencies are processed first, in declaration order. Transitive dependencies from `apm.lock.yaml` are appended after. If multiple dependencies provide primitives with the same name, the first one declared wins.
 
 ## Directory Structure
 

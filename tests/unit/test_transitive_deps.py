@@ -28,7 +28,7 @@ class TestGetLockfileInstalledPaths:
         lockfile = LockFile()
         lockfile.add_dependency(LockedDependency(repo_url="owner/repo-a", depth=1))
         lockfile.add_dependency(LockedDependency(repo_url="owner/repo-b", depth=2))
-        lockfile.write(tmp_path / "apm.lock")
+        lockfile.write(tmp_path / "apm.lock.yaml")
 
         paths = LockFile.installed_paths_for_project(tmp_path)
         assert "owner/repo-a" in paths
@@ -37,7 +37,7 @@ class TestGetLockfileInstalledPaths:
     def test_no_duplicates(self, tmp_path):
         lockfile = LockFile()
         lockfile.add_dependency(LockedDependency(repo_url="owner/repo", depth=1))
-        lockfile.write(tmp_path / "apm.lock")
+        lockfile.write(tmp_path / "apm.lock.yaml")
 
         paths = LockFile.installed_paths_for_project(tmp_path)
         assert paths.count("owner/repo") == 1
@@ -47,7 +47,7 @@ class TestGetLockfileInstalledPaths:
         lockfile.add_dependency(LockedDependency(repo_url="z/deep", depth=3))
         lockfile.add_dependency(LockedDependency(repo_url="a/direct", depth=1))
         lockfile.add_dependency(LockedDependency(repo_url="m/mid", depth=2))
-        lockfile.write(tmp_path / "apm.lock")
+        lockfile.write(tmp_path / "apm.lock.yaml")
 
         paths = LockFile.installed_paths_for_project(tmp_path)
         assert paths == ["a/direct", "m/mid", "z/deep"]
@@ -61,7 +61,7 @@ class TestGetLockfileInstalledPaths:
             virtual_path="prompts/code-review.prompt.md",
             depth=1,
         ))
-        lockfile.write(tmp_path / "apm.lock")
+        lockfile.write(tmp_path / "apm.lock.yaml")
 
         paths = LockFile.installed_paths_for_project(tmp_path)
         # Virtual file: owner/<repo>-<stem> → owner/repo-code-review
@@ -69,7 +69,7 @@ class TestGetLockfileInstalledPaths:
 
     def test_corrupt_lockfile(self, tmp_path):
         """Corrupt lockfile should return empty list."""
-        (tmp_path / "apm.lock").write_text("not: valid: yaml: [")
+        (tmp_path / "apm.lock.yaml").write_text("not: valid: yaml: [")
         assert LockFile.installed_paths_for_project(tmp_path) == []
 
 
@@ -93,7 +93,7 @@ class TestTransitiveDependencyDiscovery:
         lockfile.add_dependency(LockedDependency(
             repo_url="owner/transitive", depth=2, resolved_by="owner/direct",
         ))
-        lockfile.write(tmp_path / "apm.lock")
+        lockfile.write(tmp_path / "apm.lock.yaml")
 
         order = get_dependency_declaration_order(str(tmp_path))
         assert order == ["owner/direct", "owner/transitive"]
@@ -104,7 +104,7 @@ class TestTransitiveDependencyDiscovery:
         lockfile = LockFile()
         lockfile.add_dependency(LockedDependency(repo_url="owner/a", depth=1))
         lockfile.add_dependency(LockedDependency(repo_url="owner/b", depth=1))
-        lockfile.write(tmp_path / "apm.lock")
+        lockfile.write(tmp_path / "apm.lock.yaml")
 
         order = get_dependency_declaration_order(str(tmp_path))
         assert order == ["owner/a", "owner/b"]
@@ -125,7 +125,7 @@ class TestTransitiveDependencyDiscovery:
             repo_url="rieraj/autodesk-agent-instructions", depth=3,
             resolved_by="rieraj/division-ime-agent-instructions",
         ))
-        lockfile.write(tmp_path / "apm.lock")
+        lockfile.write(tmp_path / "apm.lock.yaml")
 
         order = get_dependency_declaration_order(str(tmp_path))
         assert len(order) == 3
@@ -160,7 +160,7 @@ class TestOrphanDetectionWithTransitiveDeps:
             lockfile = LockFile()
             for dep in lockfile_deps:
                 lockfile.add_dependency(dep)
-            lockfile.write(tmp_path / "apm.lock")
+            lockfile.write(tmp_path / "apm.lock.yaml")
 
         # apm_modules directories
         for pkg in installed_pkgs:
