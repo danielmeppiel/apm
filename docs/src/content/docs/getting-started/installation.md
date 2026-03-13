@@ -1,36 +1,41 @@
 ---
 title: "Installation"
-description: "Install APM on macOS, Linux, or from source."
+description: "Install APM on macOS, Linux, Windows, or from source."
 sidebar:
   order: 1
 ---
 
 ## Requirements
 
-- macOS or Linux (x86_64 or ARM64)
+- macOS, Linux, or Windows (x86_64 or ARM64)
 - [git](https://git-scm.com/) for dependency management
 - Python 3.10+ (only for pip or from-source installs)
 
 ## Quick install (recommended)
 
+**macOS / Linux:**
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
-On Windows PowerShell:
+**Windows (PowerShell):**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
+irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex
 ```
 
-This script automatically:
-- Detects your platform (macOS/Linux/Windows, Intel/ARM)
-- Downloads the latest binary
-- Installs to `/usr/local/bin/` on macOS/Linux
-- Installs under `%LOCALAPPDATA%\Programs\apm\` on Windows and adds a user-level `apm` shim to `PATH`
-- Verifies installation
+The installer automatically detects your platform (macOS/Linux/Windows, Intel/ARM), downloads the latest binary, and adds `apm` to your `PATH`.
 
-### Windows Package Manager (Scoop)
+## Package managers
+
+**Homebrew (macOS/Linux):**
+
+```bash
+brew install microsoft/apm/apm
+```
+
+**Scoop (Windows):**
 
 ```powershell
 scoop bucket add apm https://github.com/microsoft/scoop-apm
@@ -74,12 +79,13 @@ sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
 
 Replace `apm-darwin-arm64` with the archive name for your platform:
 
-| Platform           | Archive name         |
-|--------------------|----------------------|
-| macOS Apple Silicon | `apm-darwin-arm64`  |
-| macOS Intel        | `apm-darwin-x86_64`  |
-| Linux x86_64       | `apm-linux-x86_64`   |
-| Linux ARM64        | `apm-linux-arm64`    |
+| Platform            | Archive name           |
+|---------------------|------------------------|
+| macOS Apple Silicon | `apm-darwin-arm64`     |
+| macOS Intel         | `apm-darwin-x86_64`    |
+| Linux x86_64        | `apm-linux-x86_64`     |
+| Linux ARM64         | `apm-linux-arm64`      |
+| Windows x86_64      | `apm-windows-x86_64`   |
 
 ## From source (contributors)
 
@@ -117,7 +123,7 @@ apm --version
 
 ## Troubleshooting
 
-### `apm: command not found`
+### `apm: command not found` (macOS / Linux)
 
 Ensure `/usr/local/bin` is in your `PATH`:
 
@@ -131,7 +137,7 @@ If missing, add it to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.):
 export PATH="/usr/local/bin:$PATH"
 ```
 
-### Permission denied during install
+### Permission denied during install (macOS / Linux)
 
 Use `sudo` for system-wide installation, or install to a user-writable directory instead:
 
@@ -139,10 +145,6 @@ Use `sudo` for system-wide installation, or install to a user-writable directory
 mkdir -p ~/bin
 # then install the binary to ~/bin/apm and add ~/bin to PATH
 ```
-
-### Verify Installation
-
-Check what runtimes are available:
 
 ### Authentication errors when installing packages
 

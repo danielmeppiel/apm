@@ -16,7 +16,7 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
 
 **An open-source dependency manager for AI agents.** Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent configuration.
 
@@ -41,11 +41,22 @@ APM fixes this. You declare your project's agent configuration once in `apm.yml`
 
 ## Quick Start
 
-```bash
-# Install APM
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+<Tabs>
+  <TabItem label="macOS / Linux">
+    ```bash
+    curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+    ```
+  </TabItem>
+  <TabItem label="Windows">
+    ```powershell
+    irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex
+    ```
+  </TabItem>
+</Tabs>
 
-# Add packages to your project
+Then add packages to your project:
+
+```bash
 apm install microsoft/apm-sample-package
 apm install anthropics/skills/skills/frontend-design
 ```
