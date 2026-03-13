@@ -83,13 +83,13 @@ function Install-Codex {
         }
 
         Write-Info "Using Codex release: $latestTag"
-        $downloadUrl = "https://github.com/$CodexRepo/releases/download/$latestTag/codex-$codexPlatform.tar.gz"
+        $downloadUrl = "https://github.com/$CodexRepo/releases/download/$latestTag/codex-$codexPlatform.exe.tar.gz"
     } else {
-        $downloadUrl = "https://github.com/$CodexRepo/releases/download/$Version/codex-$codexPlatform.tar.gz"
+        $downloadUrl = "https://github.com/$CodexRepo/releases/download/$Version/codex-$codexPlatform.exe.tar.gz"
     }
 
     # Download archive
-    $tarFile = Join-Path $tempDir "codex-$codexPlatform.tar.gz"
+    $tarFile = Join-Path $tempDir "codex-$codexPlatform.exe.tar.gz"
     $dlHeaders = @{}
     if ($authHeaders.Count -gt 0) { $dlHeaders = $authHeaders }
     Save-File -Url $downloadUrl -Output $tarFile -Description "Codex binary archive" -Headers $dlHeaders
