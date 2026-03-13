@@ -230,7 +230,20 @@ class TestDiagnosticCollectorRendering:
         dc.overwrite("skill.md", package="pkg")
         dc.render_summary()
         warning_texts = [str(c) for c in mock_warning.call_args_list]
-        assert any("sub-skill" in t and "overwrote" in t for t in warning_texts)
+        assert any("skill" in t and "replaced" in t for t in warning_texts)
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
+    def test_overwrite_verbose_renders_detail(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector(verbose=True)
+        dc.overwrite("skill.md", package="pkg", detail="replaced by newer version")
+        dc.render_summary()
+        echo_texts = [str(c) for c in mock_echo.call_args_list]
+        assert any("replaced by newer version" in t for t in echo_texts)
 
     @patch(f"{_MOCK_BASE}._get_console", return_value=None)
     @patch(f"{_MOCK_BASE}._rich_echo")
@@ -282,7 +295,7 @@ class TestDiagnosticCollectorRendering:
         combined = " ".join(all_texts)
         # All categories should appear
         assert "skipped" in combined
-        assert "overwrote" in combined
+        assert "replaced" in combined
         assert "watch out" in combined
         assert "failed" in combined
 

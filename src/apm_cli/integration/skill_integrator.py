@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
 from datetime import datetime
+import filecmp
 import hashlib
 import shutil
 import re
@@ -436,7 +437,28 @@ class SkillIntegrator(BaseIntegrator):
         return context_files
     
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None) -> tuple[int, list[Path]]:
+    def _dirs_equal(dir_a: Path, dir_b: Path) -> bool:
+        """Check if two directory trees have identical file contents."""
+        dcmp = filecmp.dircmp(str(dir_a), str(dir_b))
+        return SkillIntegrator._dircmp_equal(dcmp)
+
+    @staticmethod
+    def _dircmp_equal(dcmp) -> bool:
+        """Recursively check if dircmp shows identical contents."""
+        if dcmp.left_only or dcmp.right_only or dcmp.funny_files:
+            return False
+        _, mismatches, errors = filecmp.cmpfiles(
+            dcmp.left, dcmp.right, dcmp.common_files, shallow=False
+        )
+        if mismatches or errors:
+            return False
+        for sub_dcmp in dcmp.subdirs.values():
+            if not SkillIntegrator._dircmp_equal(sub_dcmp):
+                return False
+        return True
+
+    @staticmethod
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None, managed_files=None, force: bool = False, project_root: Path | None = None) -> tuple[int, list[Path]]:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -447,6 +469,7 @@ class SkillIntegrator(BaseIntegrator):
             owned_by: Map of skill_name -> owner_package_name from the lockfile.
                 When provided, warnings are suppressed for self-overwrites.
             diagnostics: Optional DiagnosticCollector for deferred warning output.
+            project_root: Project root for computing relative diagnostic paths.
 
         Returns:
             tuple[int, list[Path]]: (count of promoted sub-skills, list of deployed dir paths)
@@ -455,6 +478,16 @@ class SkillIntegrator(BaseIntegrator):
         deployed = []
         if not sub_skills_dir.is_dir():
             return promoted, deployed
+
+        # Compute project-relative prefix for consistent path reporting
+        if project_root is not None:
+            try:
+                rel_prefix = target_skills_root.relative_to(project_root).as_posix()
+            except ValueError:
+                rel_prefix = target_skills_root.name
+        else:
+            rel_prefix = target_skills_root.name
+
         for sub_skill_path in sub_skills_dir.iterdir():
             if not sub_skill_path.is_dir():
                 continue
@@ -464,21 +497,53 @@ class SkillIntegrator(BaseIntegrator):
             is_valid, _ = validate_skill_name(raw_sub_name)
             sub_name = raw_sub_name if is_valid else normalize_skill_name(raw_sub_name)
             target = target_skills_root / sub_name
+            rel_path = f"{rel_prefix}/{sub_name}"
             if target.exists():
+                # Content-identical → skip entirely (no copy, no warning)
+                if SkillIntegrator._dirs_equal(sub_skill_path, target):
+                    promoted += 1
+                    deployed.append(target)
+                    continue
+
+                # Check if this is a user-authored skill (not managed by APM)
+                is_managed = (
+                    managed_files is not None
+                    and rel_path.replace("\\", "/") in managed_files
+                )
                 prev_owner = (owned_by or {}).get(sub_name)
                 is_self_overwrite = prev_owner is not None and prev_owner == parent_name
+
+                if managed_files is not None and not is_managed and not is_self_overwrite:
+                    # User-authored skill — respect force flag
+                    if not force:
+                        if diagnostics is not None:
+                            diagnostics.skip(
+                                rel_path, package=parent_name
+                            )
+                        else:
+                            try:
+                                from apm_cli.utils.console import _rich_warning
+                                _rich_warning(
+                                    f"Skipping skill '{sub_name}' — local skill exists (not managed by APM). "
+                                    f"Use 'apm install --force' to overwrite."
+                                )
+                            except ImportError:
+                                pass
+                        continue  # SKIP — protect user content
+
+                # Cross-package overwrite with different content
                 if warn and not is_self_overwrite:
                     if diagnostics is not None:
                         diagnostics.overwrite(
-                            path=f"{target_skills_root.name}/{sub_name}/",
+                            path=rel_path,
                             package=parent_name,
-                            detail=f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill",
+                            detail=f"Skill '{sub_name}' replaced — previously from another package",
                         )
                     else:
                         try:
                             from apm_cli.utils.console import _rich_warning
                             _rich_warning(
-                                f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill at {target_skills_root.name}/{sub_name}/"
+                                f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill at {rel_path}"
                             )
                         except ImportError:
                             pass
@@ -512,6 +577,7 @@ class SkillIntegrator(BaseIntegrator):
 
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path, diagnostics=None,
+        managed_files=None, force: bool = False,
     ) -> tuple[int, list[Path]]:
         """Promote sub-skills from a package that is NOT itself a skill.
 
@@ -537,7 +603,7 @@ class SkillIntegrator(BaseIntegrator):
         github_skills_root.mkdir(parents=True, exist_ok=True)
         owned_by = self._build_skill_ownership_map(project_root)
         count, deployed = self._promote_sub_skills(
-            sub_skills_dir, github_skills_root, parent_name, warn=True, owned_by=owned_by, diagnostics=diagnostics
+            sub_skills_dir, github_skills_root, parent_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force, project_root=project_root
         )
         all_deployed = list(deployed)
 
@@ -546,7 +612,7 @@ class SkillIntegrator(BaseIntegrator):
         if claude_dir.exists() and claude_dir.is_dir():
             claude_skills_root = claude_dir / "skills"
             _, claude_deployed = self._promote_sub_skills(
-                sub_skills_dir, claude_skills_root, parent_name, warn=False
+                sub_skills_dir, claude_skills_root, parent_name, warn=False, project_root=project_root
             )
             all_deployed.extend(claude_deployed)
 
@@ -554,7 +620,7 @@ class SkillIntegrator(BaseIntegrator):
 
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path,
-        diagnostics=None,
+        diagnostics=None, managed_files=None, force: bool = False,
     ) -> SkillIntegrationResult:
         """Copy a native Skill (with existing SKILL.md) to .github/skills/ and optionally .claude/skills/.
         
@@ -645,7 +711,7 @@ class SkillIntegrator(BaseIntegrator):
         sub_skills_dir = package_path / ".apm" / "skills"
         github_skills_root = project_root / ".github" / "skills"
         owned_by = self._build_skill_ownership_map(project_root)
-        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True, owned_by=owned_by, diagnostics=diagnostics)
+        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force, project_root=project_root)
         all_target_paths.extend(sub_deployed)
         
         # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
@@ -663,7 +729,7 @@ class SkillIntegrator(BaseIntegrator):
             
             # Promote sub-skills for Claude too
             claude_skills_root = claude_dir / "skills"
-            _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False)
+            _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False, project_root=project_root)
             all_target_paths.extend(claude_sub_deployed)
         
         return SkillIntegrationResult(
@@ -677,7 +743,7 @@ class SkillIntegrator(BaseIntegrator):
             target_paths=all_target_paths
         )
 
-    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None) -> SkillIntegrationResult:
+    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None, managed_files=None, force: bool = False) -> SkillIntegrationResult:
         """Integrate a package's skill into .github/skills/ directory.
         
         Copies native skills (packages with SKILL.md at root) to .github/skills/
@@ -700,7 +766,7 @@ class SkillIntegrator(BaseIntegrator):
             # Even non-skill packages may ship sub-skills under .apm/skills/.
             # Promote them so Copilot can discover them independently.
             sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-                package_info, project_root, diagnostics=diagnostics
+                package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force
             )
             return SkillIntegrationResult(
                 skill_created=False,
@@ -733,12 +799,12 @@ class SkillIntegrator(BaseIntegrator):
         # Check if this is a native Skill (already has SKILL.md at root)
         source_skill_md = package_path / "SKILL.md"
         if source_skill_md.exists():
-            return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics)
+            return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics, managed_files=managed_files, force=force)
         
         # No SKILL.md at root  -- not a skill package.
         # Still promote any sub-skills shipped under .apm/skills/.
         sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-            package_info, project_root, diagnostics=diagnostics
+            package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force
         )
         return SkillIntegrationResult(
             skill_created=False,

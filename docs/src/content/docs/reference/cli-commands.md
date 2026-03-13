@@ -208,7 +208,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 
 **Diagnostic Summary:**
 
-After installation completes, APM prints a grouped diagnostic summary instead of inline warnings. Categories include collisions (skipped files), sub-skill overwrites, warnings, and errors.
+After installation completes, APM prints a grouped diagnostic summary instead of inline warnings. Categories include collisions (skipped files), cross-package skill replacements, warnings, and errors.
 
 - **Normal mode**: Shows counts and actionable tips (e.g., "9 files skipped -- use `apm install --force` to overwrite")
 - **Verbose mode** (`--verbose`): Additionally lists individual file paths grouped by package, and full error details
