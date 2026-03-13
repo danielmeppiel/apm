@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-12T01:06:39Z",
-  "last_run_tasks": ["task3", "task7"],
+  "last_updated": "2026-03-13T01:06:50Z",
+  "last_run_tasks": ["task4", "task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -10,13 +10,14 @@
   },
   "coverage_baseline": {
     "total": "55%",
-    "run_date": "2026-03-11",
-    "test_count": 1482,
-    "pre_existing_failures": 1,
-    "notes": "Pre-existing failure: test_install_command.py ANSI escape codes. discovery.py 78%->97%, parser.py 72%->76%. 54 new tests added this run. YAML test pollution: 4 success-path add_primitive() lines blocked in full-suite coverage run."
+    "run_date": "2026-03-13",
+    "test_count": 1586,
+    "pre_existing_failures": 0,
+    "notes": "All 1586 tests pass. Fixed 5 ANSI failures (4 in test_unpacker.py::TestUnpackCmdLogging, 1 in test_install_command.py). Added _strip_ansi() helpers. YAML test pollution note: --cov causes PyYAML global state corruption in full suite run."
   },
   "monthly_activity_issue": "open-2026-03",
   "yaml_pollution_note": "Running tests with --cov causes PyYAML global state corruption from some earlier test. Affects parse_skill_file and parse_primitive_file calls when run in full suite with coverage. Not a new issue. Tests pass without --cov.",
+  "ansi_strip_note": "Added _strip_ansi() helper (re.sub r'\\x1b\\[[0-9;]*m', '', text) to test_unpacker.py and test_install_command.py. Rich Console outputs bold ANSI codes even in Click CliRunner capture.",
   "testing_backlog": [
     {"id": "primitives-parser", "file": "src/apm_cli/primitives/parser.py", "coverage": "76%", "priority": "medium", "notes": "Uncovered: parse_skill_file inner (33-44), unknown type branch (87-90), _parse_context description (159), _extract_primitive_name structured .agent.md (204-207, 214, 216, 218, 223)"},
     {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
@@ -27,44 +28,31 @@
   ],
   "backlog_cursor": "primitives-parser",
   "pending_branches": [
-    "test-assist/primitives-model-coverage-1773191453",
-    "test-assist/primitives-discovery-parser-coverage"
+    "test-assist/agents-compiler-coverage-1773105017",
+    "test-assist/fix-ansi-test-failures-2026-03-13"
   ],
   "completed_work": [
+    {
+      "run": "2026-03-13T01:06:50Z",
+      "tasks": ["task4", "task3", "task7"],
+      "branch": "test-assist/fix-ansi-test-failures-2026-03-13",
+      "pr_status": "pr_created",
+      "description": "Fixed 5 failing tests: 4 in test_unpacker.py::TestUnpackCmdLogging and 1 in test_install_command.py. Added _strip_ansi() helper using re.sub to strip ANSI escape codes before plain-text assertions. 1586 tests now pass (0 failures)."
+    },
     {
       "run": "2026-03-12T01:06:39Z",
       "tasks": ["task3", "task7"],
       "branch": "test-assist/primitives-discovery-parser-coverage",
-      "pr_status": "pr_created",
-      "description": "Added 54 unit tests for primitives/discovery.py (78%->97%) and parser.py (72%->76%). Covered: parse_skill_file, unknown type error, _extract_primitive_name variants, _is_context_file, validate_primitive, _discover_local_skill, _discover_skill_in_directory, scan_directory_with_source, get_dependency_declaration_order (all virtual dep branches), scan_local_primitives, _is_readable, _should_skip_directory, _is_under_directory, find_primitive_files dedup. 1482 tests pass (1 pre-existing ANSI failure)."
-    },
-    {
-      "run": "2026-03-11T01:06:53Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/primitives-model-coverage-1773191453",
-      "pr_status": "pr_created",
-      "description": "Added 17 unit tests for primitives/models.py (78%->100%). Covered: Instruction.validate() missing description/content, Skill.validate() all branches, PrimitiveConflict.__str__(), PrimitiveCollection conflict detection (local wins, first dep wins), has_conflicts, get_conflicts_by_type, get_primitives_by_source. 1445 tests pass (1 pre-existing ANSI failure)."
+      "pr_status": "pr_closed",
+      "description": "PR #254 created then closed. Added 54 unit tests for primitives/discovery.py (78%->97%) and parser.py (72%->76%)."
     },
     {
       "run": "2026-03-10T01:06:43Z",
       "tasks": ["task3", "task7"],
       "branch": "test-assist/agents-compiler-coverage-1773105017",
-      "pr_status": "pr_created",
-      "description": "Added 34 unit tests for agents_compiler.py (65%->82%). Covered: CompilationConfig.from_apm_yml() additional fields, exception handling, validate_primitives errors, _write_distributed_file, summary generation methods, _merge_results, compile_agents_md error path. 964 tests pass (1 pre-existing ANSI failure)."
-    },
-    {
-      "run": "2026-03-09T01:06:34Z",
-      "tasks": ["task4", "task3", "task7"],
-      "branch": "test-assist/fix-ansi-install-test",
-      "pr_status": "pr_closed",
-      "description": "Fixed ANSI test failure in test_install_command.py (recurring issue - strip_ansi helper). Added 22 tests for workflow/runner.py (22%->100%). All PRs closed without merge."
-    },
-    {
-      "run": "2026-03-08T01:07:15Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/distributed-compiler-coverage",
-      "pr_status": "pr_closed",
-      "description": "Added 55 unit tests for distributed_compiler.py (50%->97%). PR closed."
+      "pr_status": "pr_open",
+      "pr_number": 221,
+      "description": "Added 34 unit tests for agents_compiler.py (65%->82%). PR #221 still open with passing CI."
     }
   ]
 }
