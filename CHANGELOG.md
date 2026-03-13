@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Copilot encoding instructions: `encoding.instructions.md` (`applyTo: "**"`) bans non-ASCII characters in source and CLI output; updated `copilot-instructions.md` and `cli.instructions.md` to use ASCII bracket notation (`[+]`/`[!]`/`[x]`/`[i]`/`[*]`/`[>]`) instead of emoji STATUS_SYMBOLS (#284)
+
 ### Changed
 
 - Lockfile renamed from `apm.lock` to `apm.lock.yaml` for IDE syntax highlighting; existing `apm.lock` files are automatically migrated to `apm.lock.yaml` on the next `apm install` (#280)
