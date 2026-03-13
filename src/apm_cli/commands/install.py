@@ -577,7 +577,10 @@ def _integrate_package_primitives(
 
     # --- skills ---
     if integrate_vscode or integrate_claude:
-        skill_result = skill_integrator.integrate_package_skill(package_info, project_root)
+        skill_result = skill_integrator.integrate_package_skill(
+            package_info, project_root,
+            diagnostics=diagnostics, managed_files=managed_files, force=force,
+        )
         if skill_result.skill_created:
             result["skills"] += 1
             _rich_info(f"  └─ Skill integrated → .github/skills/")
@@ -1365,7 +1368,8 @@ def _install_apm_dependencies(
                             # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
                             if integrate_vscode or integrate_claude:
                                 skill_result = skill_integrator.integrate_package_skill(
-                                    cached_package_info, project_root
+                                    cached_package_info, project_root,
+                                    diagnostics=diagnostics, managed_files=managed_files, force=force,
                                 )
                                 if skill_result.skill_created:
                                     total_skills_integrated += 1
@@ -1617,7 +1621,8 @@ def _install_apm_dependencies(
                             # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
                             if integrate_vscode or integrate_claude:
                                 skill_result = skill_integrator.integrate_package_skill(
-                                    package_info, project_root
+                                    package_info, project_root,
+                                    diagnostics=diagnostics, managed_files=managed_files, force=force,
                                 )
                                 if skill_result.skill_created:
                                     total_skills_integrated += 1

@@ -2371,3 +2371,213 @@ class TestSubSkillPromotionForNonSkillPackages:
 
         assert result['files_removed'] == 0
         assert style_checker.exists()
+
+
+class TestSubSkillContentSkipAndCollisionProtection:
+    """Test content-identical skip, user-authored collision protection, and diagnostics routing."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        install_path: Path = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        package = APMPackage(
+            name=name,
+            version="1.0.0",
+            package_path=install_path or self.project_root / "package",
+            source=f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            package_type=package_type
+        )
+
+    def _create_package_with_sub_skills(self, name="parent-skill", sub_skills=None):
+        package_dir = self.project_root / name
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text(f"---\nname: {name}\ndescription: Parent skill\n---\n# {name}\n")
+        if sub_skills:
+            skills_dir = package_dir / ".apm" / "skills"
+            skills_dir.mkdir(parents=True)
+            for sub_name in sub_skills:
+                sub_dir = skills_dir / sub_name
+                sub_dir.mkdir()
+                (sub_dir / "SKILL.md").write_text(
+                    f"---\nname: {sub_name}\ndescription: Sub-skill {sub_name}\n---\n# {sub_name}\n"
+                )
+        return package_dir
+
+    def test_content_identical_sub_skill_skipped(self):
+        """When source and target sub-skill directories have identical content, skip the copy."""
+        package_dir = self._create_package_with_sub_skills("pkg", sub_skills=["my-skill"])
+        pkg_info = self._create_package_info(name="pkg", install_path=package_dir)
+
+        # First install
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+        target = self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md"
+        assert target.exists()
+
+        # Record mtime after first install
+        first_mtime = target.stat().st_mtime
+
+        import time
+        time.sleep(0.05)  # Ensure mtime would differ if file was rewritten
+
+        # Second install — content identical
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # File should NOT have been rewritten (mtime unchanged)
+        assert target.stat().st_mtime == first_mtime
+
+    def test_content_different_sub_skill_replaced(self):
+        """When sub-skill content differs, it should be replaced."""
+        package_dir = self._create_package_with_sub_skills("pkg", sub_skills=["my-skill"])
+        pkg_info = self._create_package_info(name="pkg", install_path=package_dir)
+
+        # First install
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Modify the deployed skill to simulate drift
+        target = self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md"
+        target.write_text("# Modified by user")
+
+        # Second install — content differs
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Should be overwritten with original content
+        content = target.read_text()
+        assert "Sub-skill my-skill" in content
+        assert "Modified by user" not in content
+
+    def test_user_authored_skill_skipped_without_force(self):
+        """User-authored skills (not in managed_files) should be skipped without --force."""
+        # Create a user-authored skill at the target path
+        user_skill = self.project_root / ".github" / "skills" / "my-skill"
+        user_skill.mkdir(parents=True)
+        (user_skill / "SKILL.md").write_text("# User authored skill")
+
+        # Create package that would deploy a sub-skill with the same name
+        package_dir = self._create_package_with_sub_skills("pkg", sub_skills=["my-skill"])
+        pkg_info = self._create_package_info(name="pkg", install_path=package_dir)
+
+        # managed_files is set but does NOT contain this skill → user-authored
+        managed_files = set()
+
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+        diag = DiagnosticCollector()
+
+        self.integrator.integrate_package_skill(
+            pkg_info, self.project_root,
+            diagnostics=diag, managed_files=managed_files, force=False,
+        )
+
+        # User content should be preserved
+        content = (user_skill / "SKILL.md").read_text()
+        assert content == "# User authored skill"
+
+        # Diagnostic should record a collision skip
+        assert diag.has_diagnostics
+        groups = diag.by_category()
+        from apm_cli.utils.diagnostics import CATEGORY_COLLISION
+        assert CATEGORY_COLLISION in groups
+        assert any("my-skill" in d.message for d in groups[CATEGORY_COLLISION])
+
+    def test_user_authored_skill_overwritten_with_force(self):
+        """User-authored skills should be overwritten when force=True."""
+        user_skill = self.project_root / ".github" / "skills" / "my-skill"
+        user_skill.mkdir(parents=True)
+        (user_skill / "SKILL.md").write_text("# User authored skill")
+
+        package_dir = self._create_package_with_sub_skills("pkg", sub_skills=["my-skill"])
+        pkg_info = self._create_package_info(name="pkg", install_path=package_dir)
+
+        managed_files = set()  # Not managed
+
+        self.integrator.integrate_package_skill(
+            pkg_info, self.project_root,
+            managed_files=managed_files, force=True,
+        )
+
+        # Should be overwritten
+        content = (user_skill / "SKILL.md").read_text()
+        assert "Sub-skill my-skill" in content
+        assert "User authored" not in content
+
+    def test_cross_package_overwrite_records_diagnostic(self):
+        """Cross-package overwrites should record a diagnostic, not print inline."""
+        # Pre-existing managed skill from a different package
+        existing = self.project_root / ".github" / "skills" / "shared-skill"
+        existing.mkdir(parents=True)
+        (existing / "SKILL.md").write_text("# From other-pkg")
+
+        package_dir = self._create_package_with_sub_skills("my-pkg", sub_skills=["shared-skill"])
+        pkg_info = self._create_package_info(name="my-pkg", install_path=package_dir)
+
+        # Managed files includes this skill → it's APM-managed
+        managed_files = {".github/skills/shared-skill"}
+
+        from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_OVERWRITE
+        diag = DiagnosticCollector()
+
+        with patch("apm_cli.utils.console._rich_warning") as mock_warning:
+            self.integrator.integrate_package_skill(
+                pkg_info, self.project_root,
+                diagnostics=diag, managed_files=managed_files, force=False,
+            )
+
+        # Should NOT have printed an inline warning
+        mock_warning.assert_not_called()
+
+        # Should have recorded an overwrite diagnostic
+        assert diag.has_diagnostics
+        groups = diag.by_category()
+        assert CATEGORY_OVERWRITE in groups
+        assert any("shared-skill" in d.message for d in groups[CATEGORY_OVERWRITE])
+
+    def test_self_overwrite_silent_no_diagnostic(self):
+        """Self-overwrites (same package re-deploys) with different content should be silent."""
+        package_dir = self._create_package_with_sub_skills("my-pkg", sub_skills=["my-sub"])
+        pkg_info = self._create_package_info(name="my-pkg", install_path=package_dir)
+
+        # First install
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Modify deployed content to force a non-identical state
+        target = self.project_root / ".github" / "skills" / "my-sub" / "SKILL.md"
+        target.write_text("# Drifted content")
+
+        # Create mock lockfile that records ownership by my-pkg
+        managed_files = {".github/skills/my-sub"}
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+        diag = DiagnosticCollector()
+
+        with patch.object(SkillIntegrator, '_build_skill_ownership_map', return_value={"my-sub": "my-pkg"}):
+            self.integrator.integrate_package_skill(
+                pkg_info, self.project_root,
+                diagnostics=diag, managed_files=managed_files, force=False,
+            )
+
+        # Self-overwrite — no diagnostics should be recorded
+        assert not diag.has_diagnostics
+
+        # Content should be updated
+        content = target.read_text()
+        assert "Sub-skill my-sub" in content
