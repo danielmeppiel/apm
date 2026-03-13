@@ -9,7 +9,8 @@ description: "CI/CD Pipeline configuration for PyInstaller binary packaging and 
 Three workflows split by trigger and secret requirements:
 
 1. **`ci.yml`** — `pull_request` trigger (all PRs, including forks)
-   - **Linux-only** (ubuntu-24.04). Unit tests + single binary build. No secrets needed. Fast PR feedback (~3 min).
+   - **Linux + Windows** (ubuntu-24.04, windows-latest). Unit tests in parallel on both platforms + single Linux binary build. No secrets needed.
+   - Windows job catches path separator, encoding, and platform-specific issues before merge.
    - Uploads Linux x86_64 binary artifact for downstream integration testing.
 2. **`ci-integration.yml`** — `workflow_run` trigger (after CI completes, environment-gated)
    - **Linux-only**. Smoke tests, integration tests, release validation. Requires `integration-tests` environment approval.
@@ -21,9 +22,9 @@ Three workflows split by trigger and secret requirements:
    - macOS builds and cross-platform validation happen here, where queue time doesn't block PRs.
 
 ## Platform Testing Strategy
-- **PR time**: Linux-only for speed. Catches logic bugs, dependency issues, and binary packaging problems.
-- **Post-merge**: Full 4-platform matrix catches platform-specific issues immediately on main.
-- **Rationale**: PR-time Linux coverage gives fast feedback on logic, dependency, and packaging changes, while the post-merge full-matrix workflows quickly catch any remaining platform-specific issues.
+- **PR time**: Linux + Windows in parallel. Catches logic bugs, dependency issues, path separators, encoding, and Windows-specific problems before merge.
+- **Post-merge**: Full 5-platform matrix (linux x86_64/arm64, darwin x86_64/arm64, windows x86_64) catches remaining platform-specific issues on main.
+- **Rationale**: Linux + Windows PR coverage catches the two fundamentally different platform families (Unix vs Windows). macOS-specific issues are rare and caught post-merge.
 
 ## PyInstaller Binary Packaging
 - **CRITICAL**: Uses `--onedir` mode (NOT `--onefile`) for faster CLI startup performance

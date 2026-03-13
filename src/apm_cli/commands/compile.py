@@ -32,7 +32,7 @@ def _display_validation_errors(errors):
             from rich.table import Table
 
             error_table = Table(
-                title="❌ Primitive Validation Errors",
+                title="[x] Primitive Validation Errors",
                 show_header=True,
                 header_style="bold red",
             )
@@ -64,7 +64,7 @@ def _display_validation_errors(errors):
     # Fallback to simple text output
     _rich_error("Validation errors found:")
     for error in errors:
-        click.echo(f"  ❌ {error}")
+        click.echo(f"  [x] {error}")
 
 
 def _get_validation_suggestion(error_msg):
@@ -142,7 +142,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
                     else:
                         _rich_error("Recompilation failed")
                         for error in result.errors:
-                            click.echo(f"  ❌ {error}")
+                            click.echo(f"  [x] {error}")
 
                 except Exception as e:
                     _rich_error(f"Error during recompilation: {e}")
@@ -187,7 +187,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         # Start watching
         observer.start()
         _rich_info(
-            f"👀 Watching for changes in: {', '.join(watch_paths)}", symbol="eyes"
+            f" Watching for changes in: {', '.join(watch_paths)}", symbol="eyes"
         )
         _rich_info("Press Ctrl+C to stop watching...", symbol="info")
 
@@ -217,7 +217,7 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         else:
             _rich_error("Initial compilation failed")
             for error in result.errors:
-                click.echo(f"  ❌ {error}")
+                click.echo(f"  [x] {error}")
 
         try:
             while True:
@@ -315,23 +315,23 @@ def compile(
     Use --single-agents for traditional single-file compilation when needed.
 
     Target platforms:
-    • vscode/agents: Generates AGENTS.md + .github/ structure (VSCode/GitHub Copilot)
-    • claude: Generates CLAUDE.md + .claude/ structure (Claude Code)
-    • all: Generates both targets (default)
+    * vscode/agents: Generates AGENTS.md + .github/ structure (VSCode/GitHub Copilot)
+    * claude: Generates CLAUDE.md + .claude/ structure (Claude Code)
+    * all: Generates both targets (default)
 
     Advanced options:
-    • --dry-run: Preview compilation without writing files (shows placement decisions)
-    • --verbose: Show detailed source attribution and optimizer analysis
-    • --local-only: Ignore dependencies, compile only local .apm/ primitives
-    • --clean: Remove orphaned AGENTS.md files that are no longer generated
+    * --dry-run: Preview compilation without writing files (shows placement decisions)
+    * --verbose: Show detailed source attribution and optimizer analysis
+    * --local-only: Ignore dependencies, compile only local .apm/ primitives
+    * --clean: Remove orphaned AGENTS.md files that are no longer generated
     """
     try:
         # Check if this is an APM project first
         from pathlib import Path
 
         if not Path("apm.yml").exists():
-            _rich_error("❌ Not an APM project - no apm.yml found")
-            _rich_info("💡 To initialize an APM project, run:")
+            _rich_error("[x] Not an APM project - no apm.yml found")
+            _rich_info(" To initialize an APM project, run:")
             _rich_info("   apm init")
             sys.exit(1)
 
@@ -362,13 +362,13 @@ def compile(
             )
 
             if has_empty_apm:
-                _rich_error("❌ No instruction files found in .apm/ directory")
-                _rich_info("💡 To add instructions, create files like:")
+                _rich_error("[x] No instruction files found in .apm/ directory")
+                _rich_info(" To add instructions, create files like:")
                 _rich_info("   .apm/instructions/coding-standards.instructions.md")
                 _rich_info("   .apm/chatmodes/backend-engineer.chatmode.md")
             else:
-                _rich_error("❌ No APM content found to compile")
-                _rich_info("💡 To get started:")
+                _rich_error("[x] No APM content found to compile")
+                _rich_info(" To get started:")
                 _rich_info("   1. Install APM dependencies: apm install <owner>/<repo>")
                 _rich_info(
                     "   2. Or create local instructions: mkdir -p .apm/instructions"
@@ -386,7 +386,7 @@ def compile(
                 primitives = discover_primitives(".")
             except Exception as e:
                 _rich_error(f"Failed to discover primitives: {e}")
-                _rich_info(f"💡 Error details: {type(e).__name__}")
+                _rich_info(f" Error details: {type(e).__name__}")
                 sys.exit(1)
             validation_errors = compiler.validate_primitives(primitives)
             if validation_errors:
@@ -395,16 +395,16 @@ def compile(
                 sys.exit(1)
             _rich_success("All primitives validated successfully!", symbol="sparkles")
             _rich_info(f"Validated {primitives.count()} primitives:")
-            _rich_info(f"  • {len(primitives.chatmodes)} chatmodes")
-            _rich_info(f"  • {len(primitives.instructions)} instructions")
-            _rich_info(f"  • {len(primitives.contexts)} contexts")
+            _rich_info(f"  * {len(primitives.chatmodes)} chatmodes")
+            _rich_info(f"  * {len(primitives.instructions)} instructions")
+            _rich_info(f"  * {len(primitives.contexts)} contexts")
             # Show MCP dependency validation count
             try:
                 from ..models.apm_package import APMPackage
                 apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
                 mcp_count = len(apm_pkg.get_mcp_dependencies())
                 if mcp_count > 0:
-                    _rich_info(f"  • {mcp_count} MCP dependencies")
+                    _rich_info(f"  * {mcp_count} MCP dependencies")
             except Exception:
                 pass
             return
@@ -460,7 +460,7 @@ def compile(
             if detected_target == "minimal":
                 _rich_info(f"Compiling for AGENTS.md only ({detection_reason})")
                 _rich_info(
-                    "💡 Create .github/ or .claude/ folder for full integration",
+                    " Create .github/ or .claude/ folder for full integration",
                     symbol="light_bulb",
                 )
             elif detected_target == "vscode" or detected_target == "agents":
@@ -609,17 +609,17 @@ def compile(
                             table.add_row(
                                 "Instructions",
                                 str(stats.get("instructions", 0)),
-                                "✅ All validated",
+                                "[+] All validated",
                             )
                             table.add_row(
                                 "Contexts",
                                 str(stats.get("contexts", 0)),
-                                "✅ All validated",
+                                "[+] All validated",
                             )
                             table.add_row(
                                 "Chatmodes",
                                 str(stats.get("chatmodes", 0)),
-                                "✅ All validated",
+                                "[+] All validated",
                             )
 
                             # Output row with file size
@@ -636,7 +636,7 @@ def compile(
                             except:
                                 output_details = f"{output_path.name}"
 
-                            table.add_row("Output", "✨ SUCCESS", output_details)
+                            table.add_row("Output", "* SUCCESS", output_details)
 
                             console.print(table)
                         else:
@@ -645,9 +645,9 @@ def compile(
                                 f"Processed {stats.get('primitives_found', 0)} primitives:"
                             )
                             _rich_info(
-                                f"  • {stats.get('instructions', 0)} instructions"
+                                f"  * {stats.get('instructions', 0)} instructions"
                             )
-                            _rich_info(f"  • {stats.get('contexts', 0)} contexts")
+                            _rich_info(f"  * {stats.get('contexts', 0)} contexts")
                             _rich_info(
                                 f"Constitution status: {c_status} hash={c_hash or '-'}"
                             )
@@ -656,8 +656,8 @@ def compile(
                         _rich_info(
                             f"Processed {stats.get('primitives_found', 0)} primitives:"
                         )
-                        _rich_info(f"  • {stats.get('instructions', 0)} instructions")
-                        _rich_info(f"  • {stats.get('contexts', 0)} contexts")
+                        _rich_info(f"  * {stats.get('instructions', 0)} instructions")
+                        _rich_info(f"  * {stats.get('contexts', 0)} contexts")
                         _rich_info(
                             f"Constitution status: {c_status} hash={c_hash or '-'}"
                         )
@@ -667,7 +667,7 @@ def compile(
                             "..." if len(final_content) > 500 else ""
                         )
                         _rich_panel(
-                            preview, title="📋 Generated Content Preview", style="cyan"
+                            preview, title=" Generated Content Preview", style="cyan"
                         )
                     else:
                         next_steps = [
@@ -681,23 +681,23 @@ def compile(
                                 from rich.panel import Panel
 
                                 steps_content = "\n".join(
-                                    f"• {step}" for step in next_steps
+                                    f"* {step}" for step in next_steps
                                 )
                                 console.print(
                                     Panel(
                                         steps_content,
-                                        title="💡 Next Steps",
+                                        title=" Next Steps",
                                         border_style="blue",
                                     )
                                 )
                             else:
                                 _rich_info("Next steps:")
                                 for step in next_steps:
-                                    click.echo(f"  • {step}")
+                                    click.echo(f"  * {step}")
                         except (ImportError, NameError):
                             _rich_info("Next steps:")
                             for step in next_steps:
-                                click.echo(f"  • {step}")
+                                click.echo(f"  * {step}")
 
         # Common error handling for both compilation modes
         # Note: Warnings are handled by professional formatters for distributed mode
@@ -708,12 +708,12 @@ def compile(
                     f"Compilation completed with {len(result.warnings)} warnings:"
                 )
                 for warning in result.warnings:
-                    click.echo(f"  ⚠️  {warning}")
+                    click.echo(f"  [!]  {warning}")
 
         if result.errors:
             _rich_error(f"Compilation failed with {len(result.errors)} errors:")
             for error in result.errors:
-                click.echo(f"  ❌ {error}")
+                click.echo(f"  [x] {error}")
             sys.exit(1)
 
         # Check for orphaned packages after successful compilation
@@ -722,11 +722,11 @@ def compile(
             if orphaned_packages:
                 _rich_blank_line()
                 _rich_warning(
-                    f"⚠️ Found {len(orphaned_packages)} orphaned package(s) that were included in compilation:"
+                    f"[!] Found {len(orphaned_packages)} orphaned package(s) that were included in compilation:"
                 )
                 for pkg in orphaned_packages:
-                    _rich_info(f"  • {pkg}")
-                _rich_info("💡 Run 'apm prune' to remove orphaned packages")
+                    _rich_info(f"  * {pkg}")
+                _rich_info(" Run 'apm prune' to remove orphaned packages")
         except Exception:
             pass  # Continue if orphan check fails
 

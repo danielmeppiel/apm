@@ -7,9 +7,12 @@ from pathlib import Path
 
 from ..utils.constitution_fixtures import temp_project_with_constitution, DEFAULT_CONSTITUTION
 
+import pytest
+
 CLI = [sys.executable, "-m", "apm_cli.cli", "compile", "--single-agents"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows handles read-only directories differently")
 def test_permission_denied_graceful(tmp_path: Path):
     # Use temp project with constitution to force write
     with temp_project_with_constitution(constitution_text=DEFAULT_CONSTITUTION) as proj:

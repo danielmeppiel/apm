@@ -94,7 +94,7 @@ def test_runtime_factory_integration():
     
     # Should have at least LLM available
     assert len(available) >= 1
-    assert any(rt["name"] == "llm" for rt in available)
+    assert any(rt.get("name") == "llm" for rt in available)
     
     # Test runtime existence checks
     assert RuntimeFactory.runtime_exists("llm") is True

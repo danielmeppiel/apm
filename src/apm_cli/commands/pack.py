@@ -48,7 +48,7 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
         )
 
         if dry_run:
-            _rich_info("Dry run — no files written")
+            _rich_info("Dry run  -- no files written")
             if result.files:
                 _rich_info(f"Would pack {len(result.files)} file(s):")
                 for f in result.files:
@@ -58,9 +58,9 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
             return
 
         if not result.files:
-            _rich_warning("No deployed files found — empty bundle created")
+            _rich_warning("No deployed files found  -- empty bundle created")
         else:
-            _rich_success(f"Packed {len(result.files)} file(s) → {result.bundle_path}")
+            _rich_success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
 
     except (FileNotFoundError, ValueError) as exc:
         _rich_error(str(exc))
@@ -92,7 +92,7 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run):
         )
 
         if dry_run:
-            _rich_info("Dry run — no files written")
+            _rich_info("Dry run  -- no files written")
             if result.files:
                 _rich_info(f"Would unpack {len(result.files)} file(s):")
                 _log_unpack_file_list(result)

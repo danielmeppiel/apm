@@ -65,7 +65,7 @@ class TestPromptDiscovery:
         
         assert result is not None
         assert result.name == "test.prompt.md"
-        assert ".apm/prompts" in str(result)
+        assert ".apm/prompts" in str(result).replace("\\", "/")
     
     def test_discover_prompt_file_github_dir(self, tmp_path):
         """Test discovery in .github/prompts/."""
@@ -81,7 +81,7 @@ class TestPromptDiscovery:
         
         assert result is not None
         assert result.name == "test.prompt.md"
-        assert ".github/prompts" in str(result)
+        assert ".github/prompts" in str(result).replace("\\", "/")
     
     def test_discover_prompt_file_dependencies(self, tmp_path):
         """Test discovery in apm_modules/."""

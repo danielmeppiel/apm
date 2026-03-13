@@ -88,9 +88,9 @@ class DependencyReference:
         - Is a directory path (likely containing SKILL.md or apm.yml)
         
         Examples:
-            - ComposioHQ/awesome-claude-skills/brand-guidelines → True
-            - owner/repo/prompts/file.prompt.md → False (is_virtual_file)
-            - owner/repo/collections/name → False (is_virtual_collection)
+            - ComposioHQ/awesome-claude-skills/brand-guidelines -> True
+            - owner/repo/prompts/file.prompt.md -> False (is_virtual_file)
+            - owner/repo/collections/name -> False (is_virtual_collection)
         """
         if not self.is_virtual or not self.virtual_path:
             return False
@@ -101,9 +101,9 @@ class DependencyReference:
         """Generate a package name for this virtual package.
         
         For virtual packages, we create a sanitized name from the path:
-        - owner/repo/prompts/code-review.prompt.md → repo-code-review
-        - owner/repo/collections/project-planning → repo-project-planning
-        - owner/repo/collections/project-planning.collection.yml → repo-project-planning
+        - owner/repo/prompts/code-review.prompt.md -> repo-code-review
+        - owner/repo/collections/project-planning -> repo-project-planning
+        - owner/repo/collections/project-planning.collection.yml -> repo-project-planning
         """
         if not self.is_virtual or not self.virtual_path:
             return self.repo_url.split('/')[-1]  # Return repo name as fallback
@@ -116,8 +116,8 @@ class DependencyReference:
         path_parts = self.virtual_path.split('/')
         if self.is_virtual_collection():
             # For collections: use the collection name without extension
-            # collections/project-planning → project-planning
-            # collections/project-planning.collection.yml → project-planning
+            # collections/project-planning -> project-planning
+            # collections/project-planning.collection.yml -> project-planning
             collection_name = path_parts[-1]
             # Strip .collection.yml/.collection.yaml extension if present
             for ext in ('.collection.yml', '.collection.yaml'):
@@ -127,7 +127,7 @@ class DependencyReference:
             return f"{repo_name}-{collection_name}"
         else:
             # For individual files: use the filename without extension
-            # prompts/code-review.prompt.md → code-review
+            # prompts/code-review.prompt.md -> code-review
             filename = path_parts[-1]
             for ext in self.VIRTUAL_FILE_EXTENSIONS:
                 if filename.endswith(ext):
@@ -168,14 +168,14 @@ class DependencyReference:
         """Return the canonical form of this dependency for storage in apm.yml.
         
         Follows the Docker-style default-registry convention:
-        - Default host (github.com) is stripped  →  owner/repo
-        - Non-default hosts are preserved         →  gitlab.com/owner/repo
-        - Virtual paths are appended              →  owner/repo/path/to/thing
-        - Refs are appended with #                →  owner/repo#v1.0
-        - Aliases are appended with @             →  owner/repo@my-alias
-        - Local paths are returned as-is          →  ./packages/my-pkg
+        - Default host (github.com) is stripped  ->  owner/repo
+        - Non-default hosts are preserved         ->  gitlab.com/owner/repo
+        - Virtual paths are appended              ->  owner/repo/path/to/thing
+        - Refs are appended with #                ->  owner/repo#v1.0
+        - Aliases are appended with @             ->  owner/repo@my-alias
+        - Local paths are returned as-is          ->  ./packages/my-pkg
         
-        No .git suffix, no https://, no git@ — just the canonical identifier.
+        No .git suffix, no https://, no git@  -- just the canonical identifier.
         
         Returns:
             str: Canonical dependency string
@@ -248,7 +248,7 @@ class DependencyReference:
     def get_canonical_dependency_string(self) -> str:
         """Get the host-blind canonical string for filesystem and orphan-detection matching.
         
-        This returns repo_url (+ virtual_path) without host prefix — it matches
+        This returns repo_url (+ virtual_path) without host prefix  -- it matches
         the filesystem layout in apm_modules/ which is also host-blind.
         
         For identity-based matching that includes non-default hosts, use get_identity().
@@ -327,8 +327,8 @@ class DependencyReference:
         """Normalize ssh:// protocol URLs to git@ format for consistent parsing.
         
         Converts:
-        - ssh://git@gitlab.com/owner/repo.git → git@gitlab.com:owner/repo.git
-        - ssh://git@host:port/owner/repo.git → git@host:owner/repo.git
+        - ssh://git@gitlab.com/owner/repo.git -> git@gitlab.com:owner/repo.git
+        - ssh://git@host:port/owner/repo.git -> git@host:owner/repo.git
         
         Non-SSH URLs are returned unchanged.
         """
@@ -828,7 +828,7 @@ class DependencyReference:
             else:
                 if len(path_parts) < 2:
                     raise ValueError(f"Invalid repository path: expected at least 'user/repo', got '{path}'")
-                # HTTPS URLs cannot embed virtual paths — reject virtual file extensions
+                # HTTPS URLs cannot embed virtual paths  -- reject virtual file extensions
                 for pp in path_parts:
                     if any(pp.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
                         raise ValueError(
@@ -870,7 +870,7 @@ class DependencyReference:
                 raise ValueError(f"Invalid repository format: {repo_url}. Expected 'user/repo'")
             if not all(re.match(r'^[a-zA-Z0-9._-]+$', s) for s in segments):
                 raise ValueError(f"Invalid repository format: {repo_url}. Contains invalid characters")
-            # SSH/HTTPS URLs cannot embed virtual paths — reject virtual file extensions
+            # SSH/HTTPS URLs cannot embed virtual paths  -- reject virtual file extensions
             for seg in segments:
                 if any(seg.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
                     raise ValueError(
@@ -963,7 +963,7 @@ class MCPDependency:
     args: Optional[Any] = None               # Dict for overlay variable overrides, List for self-defined positional args
     version: Optional[str] = None            # Pin specific server version
     registry: Optional[Any] = None           # None=default, False=self-defined, str=custom registry URL
-    package: Optional[str] = None            # "npm" | "pypi" | "oci" — select package type
+    package: Optional[str] = None            # "npm" | "pypi" | "oci"  -- select package type
     headers: Optional[Dict[str, str]] = None # Custom HTTP headers for remote endpoints
     tools: Optional[List[str]] = None        # Restrict exposed tools (default is ["*"])
     url: Optional[str] = None                # Required for self-defined http/sse transports

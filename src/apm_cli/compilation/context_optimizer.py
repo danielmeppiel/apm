@@ -151,7 +151,7 @@ class ContextOptimizer:
         
         # Only show timing in verbose mode with professional formatting
         if self._timing_enabled and hasattr(self, '_verbose') and self._verbose:
-            print(f"⏱️  {phase_name}: {duration*1000:.1f}ms")
+            print(f"  {phase_name}: {duration*1000:.1f}ms")
         return result
     
     def _cached_glob(self, pattern: str) -> List[str]:
@@ -207,7 +207,7 @@ class ContextOptimizer:
         self._errors.clear()
         
         # Phase 1: Analyze project structure
-        self._time_phase("📊 Project Analysis", self._analyze_project_structure)
+        self._time_phase("Project Analysis", self._analyze_project_structure)
         
         # Phase 2: Analyze each instruction for optimal placement
         placement_map: Dict[Path, List[Instruction]] = defaultdict(list)
@@ -241,7 +241,7 @@ class ContextOptimizer:
                 for directory in optimal_placements:
                     placement_map[directory].append(instruction)
         
-        self._time_phase("🎯 Instruction Processing", process_instructions)
+        self._time_phase("Instruction Processing", process_instructions)
         
         return dict(placement_map)
     
@@ -430,7 +430,7 @@ class ContextOptimizer:
             if any(part.startswith('.') for part in current_path.parts[len(self.base_dir.parts):]):
                 continue
             
-            # Default hardcoded exclusions — match on exact path components
+            # Default hardcoded exclusions  -- match on exact path components
             if any(part in DEFAULT_EXCLUDED_DIRNAMES for part in relative_path.parts):
                 continue
             
@@ -505,8 +505,14 @@ class ContextOptimizer:
             return False
         
         # Get path relative to base_dir for pattern matching
+        # Resolve the path first to handle cross-platform differences
+        # (e.g., on Windows Path('/test') != Path('C:/test') after resolve)
         try:
-            rel_path = path.relative_to(self.base_dir)
+            resolved = path.resolve()
+        except (OSError, FileNotFoundError):
+            resolved = path.absolute()
+        try:
+            rel_path = resolved.relative_to(self.base_dir)
         except ValueError:
             # Path is not relative to base_dir, don't exclude
             return False
@@ -627,8 +633,8 @@ class ContextOptimizer:
         """Mathematical optimization solver for instruction placement.
         
         Implements the mathematician's objective function:
-        minimize: Σ(context_pollution × directory_weight) 
-        subject to: ∀instruction → ∃placement
+        minimize: sum(context_pollution x directory_weight) 
+        subject to: for_all instruction -> exists placement
         
         Args:
             instruction (Instruction): Instruction to optimize placement for.
@@ -867,7 +873,7 @@ class ContextOptimizer:
         pollution_score = 0.0
         
         # Optimization: Only check direct children instead of all directories
-        # This prevents O(n²) complexity with unlimited depth analysis
+        # This prevents O(n2) complexity with unlimited depth analysis
         try:
             direct_children = [
                 child for child in directory.iterdir() 

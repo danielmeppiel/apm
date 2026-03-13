@@ -78,7 +78,7 @@ class LockedDependency:
         """
         deployed_files = list(data.get("deployed_files", []))
 
-        # Migrate legacy deployed_skills → deployed_files
+        # Migrate legacy deployed_skills -> deployed_files
         old_skills = data.get("deployed_skills", [])
         if old_skills and not deployed_files:
             for skill_name in old_skills:

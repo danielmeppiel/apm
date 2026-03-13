@@ -430,6 +430,6 @@ class APMDependencyResolver:
         if summary['has_errors']:
             lines.append(f"  Resolution errors: {summary['error_count']}")
         
-        lines.append(f"  Status: {'✅ Valid' if summary['is_valid'] else '❌ Invalid'}")
+        lines.append(f"  Status: {'[+] Valid' if summary['is_valid'] else '[x] Invalid'}")
         
         return "\n".join(lines)

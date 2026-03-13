@@ -44,7 +44,7 @@ jobs:
     steps:
       - run: echo "Internal PR auto-approved for ${{ github.event.workflow_run.head_branch }}"
 
-  # Linux-only for fast PR feedback. Full platform smoke tests run post-merge.
+  # Linux smoke test
   smoke-test:
     needs: [approve-fork, approve-internal]
     # Run if either approval job succeeded (the other will be skipped)
@@ -92,9 +92,9 @@ jobs:
         GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
-  # Linux-only — downloads the single Linux binary artifact from ci.yml.
+  # Linux integration tests — downloads the Linux binary artifact from ci.yml.
   integration-tests:
-    name: Integration Tests
+    name: Integration Tests (Linux)
     needs: [smoke-test]
     if: always() && needs.smoke-test.result == 'success'
     runs-on: ubuntu-24.04
@@ -145,9 +145,9 @@ jobs:
           uv run ./scripts/test-integration.sh
         timeout-minutes: 20
 
-  # Linux-only — validates the Linux binary in isolation. Full platform validation runs post-merge.
+  # Linux release validation — validates the Linux binary in isolation.
   release-validation:
-    name: Release Validation
+    name: Release Validation (Linux)
     needs: [integration-tests]
     if: always() && needs.integration-tests.result == 'success'
     runs-on: ubuntu-24.04

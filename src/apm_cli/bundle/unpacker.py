@@ -1,4 +1,4 @@
-"""Bundle unpacker — extracts and verifies APM bundles."""
+"""Bundle unpacker  -- extracts and verifies APM bundles."""
 
 import shutil
 import sys
@@ -65,7 +65,7 @@ def unpack_bundle(
                 if sys.version_info >= (3, 12):
                     tar.extractall(temp_dir, filter="data")
                 else:
-                    tar.extractall(temp_dir)  # noqa: S202 — manual checks above
+                    tar.extractall(temp_dir)  # noqa: S202  -- manual checks above
         except Exception:
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise
@@ -89,10 +89,10 @@ def unpack_bundle(
         if lockfile is None:
             if not lockfile_path.exists():
                 raise FileNotFoundError(
-                    "apm.lock not found in the bundle — the bundle may be incomplete."
+                    "apm.lock not found in the bundle  -- the bundle may be incomplete."
                 )
             raise FileNotFoundError(
-                "apm.lock in the bundle could not be parsed — the bundle may be corrupt."
+                "apm.lock in the bundle could not be parsed  -- the bundle may be corrupt."
             )
 
         # Collect deployed_files per dependency and deduplicated global list
@@ -118,7 +118,7 @@ def unpack_bundle(
             ]
             if missing:
                 raise ValueError(
-                    "Bundle verification failed — the following deployed files "
+                    "Bundle verification failed  -- the following deployed files "
                     "are missing from the bundle:\n"
                     + "\n".join(f"  - {m}" for m in missing)
                 )
@@ -142,7 +142,7 @@ def unpack_bundle(
         for rel_path in unique_files:
             # Guard against absolute paths or path-traversal entries in deployed_files
             p = Path(rel_path)
-            if p.is_absolute() or ".." in p.parts:
+            if p.is_absolute() or rel_path.startswith("/") or ".." in p.parts:
                 raise ValueError(
                     f"Refusing to unpack unsafe path from bundle lockfile: {rel_path!r}"
                 )

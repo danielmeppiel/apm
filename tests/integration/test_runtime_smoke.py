@@ -7,6 +7,7 @@ runtimes can be detected and used by APM, without making actual API calls.
 
 import os
 import subprocess
+import sys
 import tempfile
 import shutil
 import pytest
@@ -63,6 +64,7 @@ def run_command(cmd, check=True, capture_output=True, timeout=60, cwd=None):
 class TestRuntimeSmoke:
     """Smoke tests for APM runtime installation and basic functionality."""
     
+    @pytest.mark.skipif(sys.platform == "win32", reason="Bash scripts not available on Windows")
     def test_codex_runtime_setup(self, temp_apm_home):
         """Test that Codex runtime setup script works correctly."""
         # Get the project root (where scripts are located)
@@ -94,6 +96,7 @@ class TestRuntimeSmoke:
         assert "github-models" in config_content, "GitHub Models config not found"
         assert "gpt-4o" in config_content, "Default model not configured"
     
+    @pytest.mark.skipif(sys.platform == "win32", reason="Bash scripts not available on Windows")
     def test_llm_runtime_setup(self, temp_apm_home):
         """Test that LLM runtime setup script works correctly."""
         # Get the project root
@@ -168,7 +171,7 @@ class TestRuntimeSmoke:
         runtime_dir = Path(temp_apm_home) / ".apm" / "runtimes"
         if runtime_dir.exists():
             original_path = os.environ.get('PATH', '')
-            os.environ['PATH'] = f"{runtime_dir}:{original_path}"
+            os.environ['PATH'] = f"{runtime_dir}{os.pathsep}{original_path}"
             
             try:
                 # Test runtime detection

@@ -327,7 +327,7 @@ dependencies:
         
         assert "test-package" in summary
         assert "Total dependencies: 1" in summary
-        assert "✅ Valid" in summary
+        assert "[+] Valid" in summary
     
     def test_max_depth_limit(self):
         """Test that maximum depth limit is respected."""

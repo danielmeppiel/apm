@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -186,6 +187,7 @@ class TestPluginHeroScenarios:
 
     # ---- Test 4: Symlinks not followed ----------------------------------
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Symlinks require admin privileges on Windows")
     def test_symlinks_not_followed(self, tmp_path):
         """Symlinks inside plugin dirs must NOT be dereferenced during copytree."""
         plugin_dir = tmp_path / "symlink-plugin"

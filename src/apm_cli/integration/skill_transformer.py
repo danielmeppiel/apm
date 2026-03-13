@@ -37,12 +37,12 @@ def to_hyphen_case(name: str) -> str:
 class SkillTransformer:
     """Transforms SKILL.md to platform-native formats.
     
-    For VSCode: SKILL.md → .github/agents/{name}.agent.md
+    For VSCode: SKILL.md -> .github/agents/{name}.agent.md
     For Claude: SKILL.md stays as-is (native format)
     """
     
     def transform_to_agent(self, skill: Skill, output_dir: Path, dry_run: bool = False) -> Optional[Path]:
-        """Transform SKILL.md → .github/agents/{name}.agent.md for VSCode.
+        """Transform SKILL.md -> .github/agents/{name}.agent.md for VSCode.
         
         Note: Only creates the .agent.md file. Bundled resources stay in apm_modules/.
         

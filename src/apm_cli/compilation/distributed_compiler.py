@@ -652,9 +652,9 @@ class DistributedAgentsCompiler:
             file_list = []
             for file_path in orphaned_files[:5]:  # Show first 5
                 rel_path = file_path.relative_to(self.base_dir)
-                file_list.append(f"  • {rel_path}")
+                file_list.append(f"  * {rel_path}")
             if len(orphaned_files) > 5:
-                file_list.append(f"  • ...and {len(orphaned_files) - 5} more")
+                file_list.append(f"  * ...and {len(orphaned_files) - 5} more")
             
             # Create one cohesive warning message
             files_text = "\n".join(file_list)
@@ -679,20 +679,20 @@ class DistributedAgentsCompiler:
         
         if dry_run:
             # In dry-run mode, just report what would be cleaned
-            cleanup_messages.append(f"🧹 Would clean up {len(orphaned_files)} orphaned AGENTS.md files")
+            cleanup_messages.append(f"Would clean up {len(orphaned_files)} orphaned AGENTS.md files")
             for file_path in orphaned_files:
                 rel_path = file_path.relative_to(self.base_dir)
-                cleanup_messages.append(f"  • {rel_path}")
+                cleanup_messages.append(f"  * {rel_path}")
         else:
             # Actually perform the cleanup
-            cleanup_messages.append(f"🧹 Cleaning up {len(orphaned_files)} orphaned AGENTS.md files")
+            cleanup_messages.append(f"Cleaning up {len(orphaned_files)} orphaned AGENTS.md files")
             for file_path in orphaned_files:
                 try:
                     rel_path = file_path.relative_to(self.base_dir)
                     file_path.unlink()
-                    cleanup_messages.append(f"  ✓ Removed {rel_path}")
+                    cleanup_messages.append(f"  + Removed {rel_path}")
                 except Exception as e:
-                    cleanup_messages.append(f"  ✗ Failed to remove {rel_path}: {str(e)}")
+                    cleanup_messages.append(f"  x Failed to remove {rel_path}: {str(e)}")
         
         return cleanup_messages
 

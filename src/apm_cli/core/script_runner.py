@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+import sys
 import time
 import yaml
 from pathlib import Path
@@ -53,7 +54,7 @@ class ScriptRunner:
         if not config:
             if is_virtual_package:
                 # Create minimal config for zero-config virtual package execution
-                print(f"  ℹ️  Creating minimal apm.yml for zero-config execution...")
+                print(f"  [i]  Creating minimal apm.yml for zero-config execution...")
                 self._create_minimal_config()
                 config = self._load_config()
             else:
@@ -71,7 +72,7 @@ class ScriptRunner:
         if discovered_prompt:
             # Print discovery message early to allow E2E tests to validate
             # This message appears before runtime detection, which may fail in test environments
-            print(f"ℹ Auto-discovered: {discovered_prompt}")
+            print(f"[i] Auto-discovered: {discovered_prompt}")
 
             # Detect runtime and generate command
             runtime = self._detect_installed_runtime()
@@ -82,14 +83,14 @@ class ScriptRunner:
 
         # 2.5 Try auto-install if it looks like a virtual package reference
         if self._is_virtual_package_reference(script_name):
-            print(f"\n📦 Auto-installing virtual package: {script_name}")
+            print(f"\n Auto-installing virtual package: {script_name}")
             if self._auto_install_virtual_package(script_name):
                 # Retry discovery after install
                 discovered_prompt = self._discover_prompt_file(script_name)
                 if discovered_prompt:
                     # Signal successful install before attempting runtime detection
                     # This allows E2E tests to validate auto-install without requiring runtime
-                    print(f"\n✨ Package installed and ready to run\n")
+                    print(f"\n* Package installed and ready to run\n")
                     runtime = self._detect_installed_runtime()
                     command = self._generate_runtime_command(runtime, discovered_prompt)
                     return self._execute_script_command(command, params)
@@ -186,6 +187,7 @@ class ScriptRunner:
                 )
             else:
                 # Use regular shell execution for other commands
+                # (shell=True works cross-platform: bash on Unix, cmd.exe on Windows)
                 result = subprocess.run(
                     compiled_command, shell=True, check=True, env=env
                 )
@@ -433,7 +435,12 @@ class ScriptRunner:
         import shlex
 
         # Parse the command into arguments
-        args = shlex.split(command.strip())
+        if sys.platform == "win32":
+            # On Windows, use posix=False to preserve Windows quoting semantics
+            # (e.g., paths with spaces, quoted arguments like --model "gpt-4o mini")
+            args = shlex.split(command.strip(), posix=False)
+        else:
+            args = shlex.split(command.strip())
 
         # Handle environment variables at the beginning of the command
         # Extract environment variables (key=value pairs) from the beginning of args
@@ -495,8 +502,8 @@ class ScriptRunner:
         """Discover prompt files by name across local and dependencies.
 
         Supports both simple names and qualified paths:
-        - Simple: "code-review" → searches everywhere
-        - Qualified: "github/awesome-copilot/code-review" → searches specific package
+        - Simple: "code-review" -> searches everywhere
+        - Qualified: "github/awesome-copilot/code-review" -> searches specific package
 
         Search order for simple names:
         1. Local root: ./{name}.prompt.md
@@ -542,7 +549,7 @@ class ScriptRunner:
             matches = list(apm_modules.rglob(search_name))
 
             # Also search for SKILL.md in directories matching the name
-            # e.g., name="architecture-blueprint-generator" → find */architecture-blueprint-generator/SKILL.md
+            # e.g., name="architecture-blueprint-generator" -> find */architecture-blueprint-generator/SKILL.md
             for skill_dir in apm_modules.rglob(name):
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
@@ -731,7 +738,7 @@ class ScriptRunner:
             from ..models.apm_package import DependencyReference
             from ..deps.github_downloader import GitHubPackageDownloader
 
-            # Parse the reference as-is — no extension guessing
+            # Parse the reference as-is  -- no extension guessing
             dep_ref = DependencyReference.parse(package_ref)
 
             if not dep_ref.is_virtual:
@@ -746,13 +753,13 @@ class ScriptRunner:
 
             # Check if already installed
             if target_path.exists():
-                print(f"  ℹ️  Package already installed at {target_path}")
+                print(f"  [i]  Package already installed at {target_path}")
                 return True
 
             # Download the virtual package
             downloader = GitHubPackageDownloader()
 
-            print(f"  📥 Downloading from {dep_ref.to_github_url()}")
+            print(f"   Downloading from {dep_ref.to_github_url()}")
 
             if dep_ref.is_virtual_collection():
                 package_info = downloader.download_virtual_collection_package(
@@ -769,7 +776,7 @@ class ScriptRunner:
 
             # PackageInfo has a 'package' attribute which is an APMPackage
             print(
-                f"  ✅ Installed {package_info.package.name} v{package_info.package.version}"
+                f"  [+] Installed {package_info.package.name} v{package_info.package.version}"
             )
 
             # Update apm.yml to include this dependency
@@ -778,7 +785,7 @@ class ScriptRunner:
             return True
 
         except Exception as e:
-            print(f"  ❌ Auto-install failed: {e}")
+            print(f"  [x] Auto-install failed: {e}")
             return False
 
     def _add_dependency_to_config(self, package_ref: str) -> None:
@@ -811,7 +818,7 @@ class ScriptRunner:
             with open(config_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
-            print(f"  ℹ️  Added {package_ref} to apm.yml dependencies")
+            print(f"  [i]  Added {package_ref} to apm.yml dependencies")
 
     def _create_minimal_config(self) -> None:
         """Create a minimal apm.yml for zero-config usage.
@@ -827,7 +834,7 @@ class ScriptRunner:
         with open("apm.yml", "w") as f:
             yaml.dump(minimal_config, f, default_flow_style=False, sort_keys=False)
 
-        print(f"  ℹ️  Created minimal apm.yml for zero-config execution")
+        print(f"  [i]  Created minimal apm.yml for zero-config execution")
 
     def _detect_installed_runtime(self) -> str:
         """Detect installed runtime with priority order.

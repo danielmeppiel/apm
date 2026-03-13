@@ -133,7 +133,7 @@ def preview(ctx, script_name, param):
 
             try:
                 # Show original and compiled commands in panels
-                _rich_panel(command, title="📄 Original command", style="blue")
+                _rich_panel(command, title=" Original command", style="blue")
 
                 # Auto-compile prompts to show what would be executed
                 compiled_command, compiled_prompt_files = (
@@ -142,12 +142,12 @@ def preview(ctx, script_name, param):
 
                 if compiled_prompt_files:
                     _rich_panel(
-                        compiled_command, title="⚡ Compiled command", style="green"
+                        compiled_command, title="> Compiled command", style="green"
                     )
                 else:
                     _rich_panel(
                         compiled_command,
-                        title="⚡ Command (no prompt compilation)",
+                        title="> Command (no prompt compilation)",
                         style="yellow",
                     )
                     _rich_warning(
@@ -164,16 +164,16 @@ def preview(ctx, script_name, param):
                         compiled_path = Path(".apm/compiled") / output_name
                         file_list.append(str(compiled_path))
 
-                    files_content = "\n".join([f"📄 {file}" for file in file_list])
+                    files_content = "\n".join([f" {file}" for file in file_list])
                     _rich_panel(
-                        files_content, title="📁 Compiled prompt files", style="cyan"
+                        files_content, title=" Compiled prompt files", style="cyan"
                     )
                 else:
                     _rich_panel(
                         "No .prompt.md files were compiled.\n\n"
                         + "APM only compiles files ending with '.prompt.md' extension.\n"
                         + "Other files are executed as-is by the runtime.",
-                        title="ℹ️  Compilation Info",
+                        title="[i]  Compilation Info",
                         style="cyan",
                     )
 

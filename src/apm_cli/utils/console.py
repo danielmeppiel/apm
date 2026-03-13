@@ -30,28 +30,28 @@ except ImportError:
     Style = None
 
 
-# Status symbols for consistent iconography
+# Status symbols for consistent iconography (ASCII-safe for Windows cp1252)
 STATUS_SYMBOLS = {
-    'success': '✨',
-    'sparkles': '✨',
-    'running': '🚀',
-    'gear': '⚙️',
-    'info': '💡', 
-    'warning': '⚠️',
-    'error': '❌',
-    'check': '✅',
-    'cross': '❌',
-    'list': '📋',
-    'preview': '👀',
-    'robot': '🤖',
-    'metrics': '📊',
-    'default': '📍',  # Default script marker
-    'eyes': '👀',  # Watch mode
-    'folder': '📁',  # Directory/folder operations
-    'cogs': '⚙️',  # Compilation/processing
-    'plugin': '🔌',  # Plugin-related operations
-    'search': '🔍',  # Search operations
-    'download': '📥',  # Download operations
+    'success': '[*]',
+    'sparkles': '[*]',
+    'running': '[>]',
+    'gear': '[*]',
+    'info': '[i]',
+    'warning': '[!]',
+    'error': '[x]',
+    'check': '[+]',
+    'cross': '[x]',
+    'list': '[#]',
+    'preview': '[>]',
+    'robot': '[>]',
+    'metrics': '[#]',
+    'default': '[>]',   # Default script marker
+    'eyes': '[>]',      # Watch mode
+    'folder': '[>]',    # Directory/folder operations
+    'cogs': '[*]',      # Compilation/processing
+    'plugin': '[>]',    # Plugin-related operations
+    'search': '[>]',    # Search operations
+    'download': '[>]',  # Download operations
 }
 
 
@@ -151,7 +151,7 @@ def _create_files_table(files_data: list, title: str = "Files") -> Optional[Any]
         return None
     
     try:
-        table = Table(title=f"📋 {title}", show_header=True, header_style="bold cyan")
+        table = Table(title=title, show_header=True, header_style="bold cyan")
         table.add_column("File", style="bold white")
         table.add_column("Description", style="white")
         
@@ -180,13 +180,13 @@ def show_download_spinner(repo_name: str):
     console = _get_console()
     if console and RICH_AVAILABLE:
         try:
-            with console.status(f"[cyan]⬇️  Downloading {repo_name}...", spinner="dots") as status:
+            with console.status(f"[cyan]Downloading {repo_name}...", spinner="dots") as status:
                 yield status
         except Exception:
             # Fallback if Rich fails
-            click.echo(f"⬇️  Downloading {repo_name}...")
+            click.echo(f"Downloading {repo_name}...")
             yield None
     else:
         # Fallback for non-Rich environments
-        click.echo(f"⬇️  Downloading {repo_name}...")
+        click.echo(f"Downloading {repo_name}...")
         yield None

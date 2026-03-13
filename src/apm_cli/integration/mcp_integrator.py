@@ -1,7 +1,7 @@
 """Standalone MCP lifecycle orchestrator.
 
 Owns all MCP dependency resolution, installation, stale cleanup, and lockfile
-persistence logic.  This is NOT a BaseIntegrator subclass — MCP integration is
+persistence logic.  This is NOT a BaseIntegrator subclass  -- MCP integration is
 config-level orchestration (registry APIs, runtime configs, lockfile tracking),
 not file-level deployment (copy/collision/sync).
 
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class MCPIntegrator:
-    """MCP lifecycle orchestrator — dependency resolution, installation, and cleanup.
+    """MCP lifecycle orchestrator  -- dependency resolution, installation, and cleanup.
 
     All methods are static: the class is a logical namespace, not a stateful
     object.  This keeps the extraction minimal and preserves the original
@@ -242,11 +242,11 @@ class MCPIntegrator:
         # Transport overlay: select matching transport from available options
         if dep.transport:
             if dep.transport in ("http", "sse", "streamable-http"):
-                # User prefers remote transport — remove packages to force remote path
+                # User prefers remote transport  -- remove packages to force remote path
                 if "remotes" in info and info["remotes"]:
                     info.pop("packages", None)
             elif dep.transport == "stdio":
-                # User prefers stdio — remove remotes to force package path
+                # User prefers stdio  -- remove remotes to force package path
                 if "packages" in info and info["packages"]:
                     info.pop("remotes", None)
 
@@ -458,7 +458,7 @@ class MCPIntegrator:
                         )
                         for name in removed:
                             _rich_info(
-                                f"✓ Removed stale MCP server '{name}' from .vscode/mcp.json"
+                                f"+ Removed stale MCP server '{name}' from .vscode/mcp.json"
                             )
                 except Exception:
                     logger.debug(
@@ -484,7 +484,7 @@ class MCPIntegrator:
                         )
                         for name in removed:
                             _rich_info(
-                                f"✓ Removed stale MCP server '{name}' from Copilot CLI config"
+                                f"+ Removed stale MCP server '{name}' from Copilot CLI config"
                             )
                 except Exception:
                     logger.debug(
@@ -508,7 +508,7 @@ class MCPIntegrator:
                         codex_cfg.write_text(_toml.dumps(config), encoding="utf-8")
                         for name in removed:
                             _rich_info(
-                                f"✓ Removed stale MCP server '{name}' from Codex CLI config"
+                                f"+ Removed stale MCP server '{name}' from Codex CLI config"
                             )
                 except Exception:
                     logger.debug(
@@ -646,7 +646,7 @@ class MCPIntegrator:
                         shared_runtime_vars=shared_runtime_vars,
                     )
                     if result["failed"]:
-                        click.echo(f"  ✗ Failed to install {dep}")
+                        click.echo(f"  x Failed to install {dep}")
                         all_ok = False
                 except Exception as install_error:
                     logger.debug(
@@ -655,7 +655,7 @@ class MCPIntegrator:
                         runtime,
                         exc_info=True,
                     )
-                    click.echo(f"  ✗ Failed to install {dep}: {install_error}")
+                    click.echo(f"  x Failed to install {dep}: {install_error}")
                     all_ok = False
             return all_ok
 
@@ -743,7 +743,7 @@ class MCPIntegrator:
                 from rich.text import Text
 
                 header = Text()
-                header.append("┌─ MCP Servers (", style="cyan")
+                header.append("+- MCP Servers (", style="cyan")
                 header.append(str(len(mcp_deps)), style="cyan bold")
                 header.append(")", style="cyan")
                 console.print(header)
@@ -759,7 +759,7 @@ class MCPIntegrator:
             _rich_info(f"Targeting specific runtime: {runtime}")
         else:
             if apm_config is None:
-                # Lazy load — only when the caller doesn't provide it
+                # Lazy load  -- only when the caller doesn't provide it
                 try:
                     import yaml
 
@@ -810,19 +810,19 @@ class MCPIntegrator:
 
                 if verbose:
                     if console:
-                        console.print("│  [cyan]ℹ️  Runtime Detection[/cyan]")
+                        console.print("|  [cyan][i]  Runtime Detection[/cyan]")
                         console.print(
-                            f"│     └─ Installed: {', '.join(installed_runtimes)}"
+                            f"|     +- Installed: {', '.join(installed_runtimes)}"
                         )
                         console.print(
-                            f"│     └─ Used in scripts: {', '.join(script_runtimes)}"
+                            f"|     +- Used in scripts: {', '.join(script_runtimes)}"
                         )
                         if target_runtimes:
                             console.print(
-                                f"│     └─ Target: {', '.join(target_runtimes)} "
+                                f"|     +- Target: {', '.join(target_runtimes)} "
                                 f"(available + used in scripts)"
                             )
-                        console.print("│")
+                        console.print("|")
                     else:
                         _rich_info(
                             f"Installed runtimes: {', '.join(installed_runtimes)}"
@@ -858,7 +858,7 @@ class MCPIntegrator:
             if exclude:
                 target_runtimes = [r for r in target_runtimes if r != exclude]
 
-            # All runtimes excluded — nothing to configure
+            # All runtimes excluded  -- nothing to configure
             if not target_runtimes and installed_runtimes:
                 _rich_warning(
                     f"All installed runtimes excluded (--exclude {exclude}), "
@@ -936,7 +936,7 @@ class MCPIntegrator:
                         if console:
                             for dep in already_configured_servers:
                                 console.print(
-                                    f"│  [green]✓[/green] {dep} "
+                                    f"|  [green]+[/green] {dep} "
                                     f"[dim](already configured)[/dim]"
                                 )
                         else:
@@ -948,7 +948,7 @@ class MCPIntegrator:
                             if console:
                                 for dep in already_configured_servers:
                                     console.print(
-                                        f"│  [green]✓[/green] {dep} "
+                                        f"|  [green]+[/green] {dep} "
                                         f"[dim](already configured)[/dim]"
                                     )
                             elif verbose:
@@ -994,10 +994,10 @@ class MCPIntegrator:
                         for dep in servers_to_install:
                             is_update = dep in servers_to_update
                             if console:
-                                action = "↻" if is_update else "⬇️"
-                                console.print(f"│  [cyan]{action}[/cyan]  {dep}")
+                                action_text = "Updating" if is_update else "Configuring"
+                                console.print(f"|  [cyan]>[/cyan]  {dep}")
                                 console.print(
-                                    f"│     └─ {'Updating' if is_update else 'Configuring'} for "
+                                    f"|     +- {action_text} for "
                                     f"{', '.join([rt.title() for rt in target_runtimes])}..."
                                 )
 
@@ -1018,7 +1018,7 @@ class MCPIntegrator:
                                 if console:
                                     label = "updated" if is_update else "configured"
                                     console.print(
-                                        f"│  [green]✓[/green]  {dep} → "
+                                        f"|  [green]+[/green]  {dep} -> "
                                         f"{', '.join([rt.title() for rt in target_runtimes])}"
                                         f" [dim]({label})[/dim]"
                                     )
@@ -1027,7 +1027,7 @@ class MCPIntegrator:
                                     successful_updates.add(dep)
                             elif console:
                                 console.print(
-                                    f"│  [red]✗[/red]  {dep} — "
+                                    f"|  [red]x[/red]  {dep}  -- "
                                     f"failed for all runtimes"
                                 )
 
@@ -1077,7 +1077,7 @@ class MCPIntegrator:
                 if console:
                     for name in already_configured_self_defined:
                         console.print(
-                            f"│  [green]✓[/green] {name} "
+                            f"|  [green]+[/green] {name} "
                             f"[dim](already configured)[/dim]"
                         )
                 elif verbose:
@@ -1101,13 +1101,13 @@ class MCPIntegrator:
 
                 if console:
                     transport_label = dep.transport or "stdio"
-                    action = "↻" if is_update else "⬇️"
+                    action_text = "Updating" if is_update else "Configuring"
                     console.print(
-                        f"│  [cyan]{action}[/cyan]  {dep.name} "
+                        f"|  [cyan]>[/cyan]  {dep.name} "
                         f"[dim](self-defined, {transport_label})[/dim]"
                     )
                     console.print(
-                        f"│     └─ {'Updating' if is_update else 'Configuring'} for "
+                        f"|     +- {action_text} for "
                         f"{', '.join([rt.title() for rt in target_runtimes])}..."
                     )
 
@@ -1127,7 +1127,7 @@ class MCPIntegrator:
                     if console:
                         label = "updated" if is_update else "configured"
                         console.print(
-                            f"│  [green]✓[/green]  {dep.name} → "
+                            f"|  [green]+[/green]  {dep.name} -> "
                             f"{', '.join([rt.title() for rt in target_runtimes])}"
                             f" [dim]({label})[/dim]"
                         )
@@ -1136,7 +1136,7 @@ class MCPIntegrator:
                         successful_updates.add(dep.name)
                 elif console:
                     console.print(
-                        f"│  [red]✗[/red]  {dep.name} — "
+                        f"|  [red]x[/red]  {dep.name}  -- "
                         f"failed for all runtimes"
                     )
 
@@ -1159,8 +1159,8 @@ class MCPIntegrator:
                         f"updated {update_count} "
                         f"server{'s' if update_count != 1 else ''}"
                     )
-                console.print(f"└─ [green]{', '.join(parts).capitalize()}[/green]")
+                console.print(f"+- [green]{', '.join(parts).capitalize()}[/green]")
             else:
-                console.print("└─ [green]All servers up to date[/green]")
+                console.print("+- [green]All servers up to date[/green]")
 
         return configured_count

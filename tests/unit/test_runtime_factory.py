@@ -14,8 +14,8 @@ class TestRuntimeFactory:
         
         # At least LLM should be available since it's installed
         assert len(available) >= 1
-        assert any(rt["name"] == "llm" for rt in available)
-        assert all(rt["available"] for rt in available)
+        assert any(rt.get("name") == "llm" for rt in available)
+        assert all(rt.get("available") for rt in available)
     
     def test_get_runtime_by_name_llm_real(self):
         """Test getting LLM runtime by name (real system)."""

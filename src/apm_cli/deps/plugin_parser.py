@@ -134,10 +134,10 @@ def _extract_mcp_servers(plugin_path: Path, manifest: Dict[str, Any]) -> Dict[st
     """Extract MCP server definitions from a plugin manifest.
 
     Resolves ``mcpServers`` by type (per Claude Code spec):
-    - ``str``  → read that file path relative to plugin root, parse JSON,
+    - ``str``  -> read that file path relative to plugin root, parse JSON,
       extract ``mcpServers`` key.
-    - ``list`` → read each file path, merge (last-wins on name conflict).
-    - ``dict`` → use directly as inline server definitions.
+    - ``list`` -> read each file path, merge (last-wins on name conflict).
+    - ``dict`` -> use directly as inline server definitions.
 
     When ``mcpServers`` is absent and ``.mcp.json`` (or ``.github/.mcp.json``)
     exists at plugin root, read it as the default (matches Claude Code
@@ -153,7 +153,7 @@ def _extract_mcp_servers(plugin_path: Path, manifest: Dict[str, Any]) -> Dict[st
         manifest: Parsed plugin.json dict.
 
     Returns:
-        dict mapping server name → server config.  Empty on failure.
+        dict mapping server name -> server config.  Empty on failure.
     """
     logger = logging.getLogger("apm")
     mcp_value = manifest.get("mcpServers")
@@ -254,14 +254,14 @@ def _mcp_servers_to_apm_deps(
     """Convert raw MCP server configs to ``dependencies.mcp`` dicts.
 
     Transport inference:
-    - ``command`` present → stdio
-    - ``url`` present → http (or ``type`` if it's a valid transport)
-    - Neither → skipped with warning
+    - ``command`` present -> stdio
+    - ``url`` present -> http (or ``type`` if it's a valid transport)
+    - Neither -> skipped with warning
 
     Every entry gets ``registry: false`` (self-defined, not registry lookups).
 
     Args:
-        servers: Mapping of server name → server config dict.
+        servers: Mapping of server name -> server config dict.
         plugin_path: Plugin root (used for log context only).
 
     Returns:
@@ -310,13 +310,13 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
     """Map plugin artifacts to .apm/ subdirectories and copy pass-through files.
 
     Copies:
-    - agents/     → .apm/agents/
-    - skills/     → .apm/skills/
-    - commands/   → .apm/prompts/  (*.md normalized to *.prompt.md)
-    - hooks/      → .apm/hooks/    (directory, config file, or inline object)
-    - .mcp.json   → .apm/.mcp.json  (MCP-based plugins need this to function)
-    - .lsp.json   → .apm/.lsp.json
-    - settings.json → .apm/settings.json
+    - agents/     -> .apm/agents/
+    - skills/     -> .apm/skills/
+    - commands/   -> .apm/prompts/  (*.md normalized to *.prompt.md)
+    - hooks/      -> .apm/hooks/    (directory, config file, or inline object)
+    - .mcp.json   -> .apm/.mcp.json  (MCP-based plugins need this to function)
+    - .lsp.json   -> .apm/.lsp.json
+    - settings.json -> .apm/settings.json
 
     When the manifest specifies custom component paths (e.g. ``"agents": ["custom/"]``),
     those paths are used instead of the defaults.
@@ -331,7 +331,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
     if manifest is None:
         manifest = {}
 
-    # Resolve source paths — use manifest arrays if present, else defaults.
+    # Resolve source paths  -- use manifest arrays if present, else defaults.
     # Custom paths may be directories OR individual files.
     def _resolve_sources(component: str, default_dir: str):
         """Return list of existing source paths (dirs or files) for a component."""
@@ -351,7 +351,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
 
     # Map agents/
     # Unlike skills (which are named directories containing SKILL.md), agents
-    # are flat files — each .md is one agent.  So we always merge directory
+    # are flat files  -- each .md is one agent.  So we always merge directory
     # contents directly into .apm/agents/ (no nesting by dir name).
     agent_sources = _resolve_sources("agents", "agents")
     if agent_sources:
@@ -394,7 +394,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
             for f in skill_files:
                 shutil.copy2(f, target_skills / f.name)
 
-    # Map commands/ → .apm/prompts/ (normalize .md → .prompt.md)
+    # Map commands/ -> .apm/prompts/ (normalize .md -> .prompt.md)
     command_sources = _resolve_sources("commands", "commands")
     if command_sources:
         target_prompts = apm_dir / "prompts"
@@ -403,7 +403,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
         target_prompts.mkdir(parents=True, exist_ok=True)
 
         def _copy_command_file(source_file: Path, dest_dir: Path, rel_to: Path = None):
-            """Copy a command file, normalizing .md → .prompt.md."""
+            """Copy a command file, normalizing .md -> .prompt.md."""
             if rel_to:
                 relative_path = source_file.relative_to(rel_to)
                 target_path = dest_dir / relative_path
@@ -423,11 +423,11 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
                         continue
                     _copy_command_file(source_file, target_prompts, rel_to=source)
 
-    # Map hooks/ — the spec allows a directory path, a config file path,
+    # Map hooks/  -- the spec allows a directory path, a config file path,
     # or an inline object.  Handle all three forms.
     hooks_value = manifest.get("hooks")
     if isinstance(hooks_value, dict):
-        # Inline hooks object → write as .apm/hooks/hooks.json
+        # Inline hooks object -> write as .apm/hooks/hooks.json
         target_hooks = apm_dir / "hooks"
         target_hooks.mkdir(parents=True, exist_ok=True)
         (target_hooks / "hooks.json").write_text(
@@ -441,7 +441,7 @@ def _map_plugin_artifacts(plugin_path: Path, apm_dir: Path, manifest: Optional[D
         if not src_file.is_symlink():
             shutil.copy2(src_file, target_hooks / "hooks.json")
     else:
-        # Directory path(s) — standard flow
+        # Directory path(s)  -- standard flow
         hook_sources = _resolve_sources("hooks", "hooks")
         if hook_sources:
             target_hooks = apm_dir / "hooks"

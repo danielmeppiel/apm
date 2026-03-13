@@ -100,10 +100,10 @@ def unsupported_host_error(hostname: str, context: Optional[str] = None) -> str:
     msg += f"Invalid Git host: '{hostname}'.\n"
     msg += "\n"
     msg += "APM supports any valid FQDN as a Git host, including:\n"
-    msg += "  • github.com\n"
-    msg += "  • *.ghe.com (GitHub Enterprise Cloud)\n"
-    msg += "  • dev.azure.com, *.visualstudio.com (Azure DevOps)\n"
-    msg += "  • gitlab.com, bitbucket.org, or any self-hosted Git server\n"
+    msg += "  * github.com\n"
+    msg += "  * *.ghe.com (GitHub Enterprise Cloud)\n"
+    msg += "  * dev.azure.com, *.visualstudio.com (Azure DevOps)\n"
+    msg += "  * gitlab.com, bitbucket.org, or any self-hosted Git server\n"
     msg += "\n"
     
     if current_host:

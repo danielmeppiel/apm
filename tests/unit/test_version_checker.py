@@ -276,5 +276,25 @@ class TestCheckForUpdates(unittest.TestCase):
         mock_save.assert_called_once()
 
 
+class TestCachePathPlatform(unittest.TestCase):
+    """Test platform-specific cache path selection."""
+
+    @patch("pathlib.Path.mkdir")
+    @patch("pathlib.Path.home", return_value=Path("/home/user"))
+    @patch("sys.platform", "linux")
+    def test_unix_cache_path(self, mock_home, mock_mkdir):
+        from apm_cli.utils.version_checker import get_update_cache_path
+        result = get_update_cache_path()
+        assert result == Path("/home/user") / ".cache" / "apm" / "last_version_check"
+
+    @patch("pathlib.Path.mkdir")
+    @patch("pathlib.Path.home", return_value=Path("C:/Users/testuser"))
+    @patch("sys.platform", "win32")
+    def test_windows_cache_path(self, mock_home, mock_mkdir):
+        from apm_cli.utils.version_checker import get_update_cache_path
+        result = get_update_cache_path()
+        assert result == Path("C:/Users/testuser") / "AppData" / "Local" / "apm" / "cache" / "last_version_check"
+
+
 if __name__ == "__main__":
     unittest.main()

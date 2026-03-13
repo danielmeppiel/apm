@@ -7,6 +7,7 @@ Tests cover:
 """
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
@@ -171,7 +172,8 @@ class TestCloneWithFallbackEnv:
         env_used = calls[0][1].get("env", calls[0].kwargs.get("env"))
         assert env_used.get("GIT_ASKPASS") == "echo"
         assert env_used.get("GIT_CONFIG_NOSYSTEM") == "1"
-        assert env_used.get("GIT_CONFIG_GLOBAL") == "/dev/null"
+        expected_null = "NUL" if sys.platform == "win32" else "/dev/null"
+        assert env_used.get("GIT_CONFIG_GLOBAL") == expected_null
 
     def test_github_host_no_token_allows_credential_helpers(self):
         """For GitHub hosts WITHOUT a token, env is relaxed so credential helpers work."""

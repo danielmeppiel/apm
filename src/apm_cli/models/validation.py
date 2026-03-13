@@ -118,11 +118,11 @@ class ValidationResult:
     def summary(self) -> str:
         """Get a summary of validation results."""
         if self.is_valid and not self.warnings:
-            return "✅ Package is valid"
+            return "[+] Package is valid"
         elif self.is_valid and self.warnings:
-            return f"⚠️ Package is valid with {len(self.warnings)} warning(s)"
+            return f"[!] Package is valid with {len(self.warnings)} warning(s)"
         else:
-            return f"❌ Package is invalid with {len(self.errors)} error(s)"
+            return f"[x] Package is invalid with {len(self.errors)} error(s)"
 
 
 def _has_hook_json(package_path: Path) -> bool:
@@ -164,7 +164,7 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
     apm_yml_path = package_path / "apm.yml"
     skill_md_path = package_path / "SKILL.md"
 
-    # Check for plugin.json — optional metadata, not a detection gate
+    # Check for plugin.json  -- optional metadata, not a detection gate
     from ..utils.helpers import find_plugin_json
     plugin_json_path = find_plugin_json(package_path)
 
@@ -290,7 +290,7 @@ def _validate_marketplace_plugin(package_path: Path, plugin_json_path: Optional[
     """Validate a Claude plugin and synthesize apm.yml.
 
     plugin.json is **optional** per the spec.  When present it provides
-    metadata (name, version, description …).  When absent the plugin name is
+    metadata (name, version, description ...).  When absent the plugin name is
     derived from the directory name and all other fields default gracefully.
 
     Args:

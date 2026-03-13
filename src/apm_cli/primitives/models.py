@@ -148,14 +148,14 @@ class PrimitiveCollection:
         self.contexts = []
         self.skills = []
         self.conflicts = []
-        # Name→index maps for O(1) conflict lookups (see #171)
+        # Name->index maps for O(1) conflict lookups (see #171)
         self._chatmode_index: Dict[str, int] = {}
         self._instruction_index: Dict[str, int] = {}
         self._context_index: Dict[str, int] = {}
         self._skill_index: Dict[str, int] = {}
     
     def _index_for(self, primitive_type: str) -> Dict[str, int]:
-        """Return the name→index map for the given primitive type."""
+        """Return the name->index map for the given primitive type."""
         if primitive_type == "chatmode":
             return self._chatmode_index
         elif primitive_type == "instruction":

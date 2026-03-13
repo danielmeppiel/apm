@@ -19,21 +19,26 @@ from ..core.token_manager import setup_runtime_environment
 class RuntimeManager:
     """Manages AI runtime installation and configuration via embedded scripts."""
     
+    @property
+    def _is_windows(self) -> bool:
+        return sys.platform == "win32"
+
     def __init__(self):
         self.runtime_dir = Path.home() / ".apm" / "runtimes"
+        ext = ".ps1" if sys.platform == "win32" else ".sh"
         self.supported_runtimes = {
             "copilot": {
-                "script": "setup-copilot.sh",
+                "script": f"setup-copilot{ext}",
                 "description": "GitHub Copilot CLI with native MCP integration",
                 "binary": "copilot"
             },
             "codex": {
-                "script": "setup-codex.sh",
+                "script": f"setup-codex{ext}",
                 "description": "OpenAI Codex CLI with GitHub Models support",
                 "binary": "codex"
             },
             "llm": {
-                "script": "setup-llm.sh", 
+                "script": f"setup-llm{ext}", 
                 "description": "Simon Willison's LLM library with multiple providers",
                 "binary": "llm"
             }
@@ -60,15 +65,19 @@ class RuntimeManager:
             
             raise FileNotFoundError(f"Script not found: {script_name}")
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Failed to load embedded script {script_name}: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Failed to load embedded script {script_name}: {e}{Style.RESET_ALL}", err=True)
             raise RuntimeError(f"Could not load setup script: {script_name}")
     
     def get_common_script(self) -> str:
         """Get the common utilities script."""
-        return self.get_embedded_script("setup-common.sh")
+        script_name = "setup-common.ps1" if self._is_windows else "setup-common.sh"
+        return self.get_embedded_script(script_name)
     
     def get_token_helper_script(self) -> str:
         """Get the GitHub token helper script."""
+        if self._is_windows:
+            # On Windows, tokens are passed via environment variables directly
+            return ""
         try:
             # Try PyInstaller bundle first
             if getattr(sys, 'frozen', False):
@@ -88,39 +97,58 @@ class RuntimeManager:
             
             raise FileNotFoundError("github-token-helper.sh not found")
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Failed to load github-token-helper.sh: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Failed to load github-token-helper.sh: {e}{Style.RESET_ALL}", err=True)
             raise RuntimeError("Could not load token helper script")
     
     def run_embedded_script(self, script_content: str, common_content: str, 
                            script_args: Optional[List[str]] = None) -> bool:
-        """Execute an embedded bash script with common utilities."""
+        """Execute an embedded setup script with common utilities."""
         script_args = script_args or []
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             
-            # Write common utilities
-            common_script = temp_path / "setup-common.sh"
-            common_script.write_text(common_content)
-            common_script.chmod(0o755)
-            
-            # Write GitHub token helper
-            try:
+            if self._is_windows:
+                # Write common utilities as PowerShell
+                common_script = temp_path / "setup-common.ps1"
+                common_script.write_text(common_content)
+                
+                # Write GitHub token helper (empty on Windows)
                 token_helper_content = self.get_token_helper_script()
-                token_helper_script = temp_path / "github-token-helper.sh"
-                token_helper_script.write_text(token_helper_content)
-                token_helper_script.chmod(0o755)
-            except Exception as e:
-                click.echo(f"{Fore.YELLOW}⚠️  Token helper not available, scripts may use fallback authentication: {e}{Style.RESET_ALL}")
-            
-            # Write main script
-            main_script = temp_path / "setup-script.sh"
-            main_script.write_text(script_content)
-            main_script.chmod(0o755)
+                if token_helper_content:
+                    token_helper_script = temp_path / "github-token-helper.ps1"
+                    token_helper_script.write_text(token_helper_content)
+                
+                # Write main script as PowerShell
+                main_script = temp_path / "setup-script.ps1"
+                main_script.write_text(script_content)
+            else:
+                # Write common utilities as bash
+                common_script = temp_path / "setup-common.sh"
+                common_script.write_text(common_content)
+                common_script.chmod(0o755)
+                
+                # Write GitHub token helper
+                try:
+                    token_helper_content = self.get_token_helper_script()
+                    token_helper_script = temp_path / "github-token-helper.sh"
+                    token_helper_script.write_text(token_helper_content)
+                    token_helper_script.chmod(0o755)
+                except Exception as e:
+                    click.echo(f"{Fore.YELLOW}[!]  Token helper not available, scripts may use fallback authentication: {e}{Style.RESET_ALL}")
+                
+                # Write main script as bash
+                main_script = temp_path / "setup-script.sh"
+                main_script.write_text(script_content)
+                main_script.chmod(0o755)
             
             # Execute script with environment that includes npm authentication
             try:
-                cmd = ["bash", str(main_script)] + script_args
+                if self._is_windows:
+                    ps_cmd = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+                    cmd = [ps_cmd, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(main_script)] + script_args
+                else:
+                    cmd = ["bash", str(main_script)] + script_args
                 
                 # Prepare environment with GitHub tokens for all authentication needs
                 env = os.environ.copy()
@@ -142,51 +170,57 @@ class RuntimeManager:
                 )
                 return result.returncode == 0
             except Exception as e:
-                click.echo(f"{Fore.RED}❌ Failed to execute setup script: {e}{Style.RESET_ALL}", err=True)
+                click.echo(f"{Fore.RED}[x] Failed to execute setup script: {e}{Style.RESET_ALL}", err=True)
                 return False
     
     def setup_runtime(self, runtime_name: str, version: Optional[str] = None, vanilla: bool = False) -> bool:
         """Set up a specific runtime."""
         if runtime_name not in self.supported_runtimes:
-            click.echo(f"{Fore.RED}❌ Unsupported runtime: {runtime_name}{Style.RESET_ALL}", err=True)
-            click.echo(f"{Fore.BLUE}ℹ️  Supported runtimes: {', '.join(self.supported_runtimes.keys())}{Style.RESET_ALL}")
+            click.echo(f"{Fore.RED}[x] Unsupported runtime: {runtime_name}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.BLUE}[i]  Supported runtimes: {', '.join(self.supported_runtimes.keys())}{Style.RESET_ALL}")
             return False
         
         runtime_info = self.supported_runtimes[runtime_name]
         script_name = runtime_info["script"]
         description = runtime_info["description"]
         
-        click.echo(f"{Fore.BLUE}🔧 Setting up {runtime_name} runtime: {description}{Style.RESET_ALL}")
+        click.echo(f"{Fore.BLUE} Setting up {runtime_name} runtime: {description}{Style.RESET_ALL}")
         
         if vanilla:
-            click.echo(f"{Fore.YELLOW}⚠️  Installing in vanilla mode - no APM configuration will be applied{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}[!]  Installing in vanilla mode - no APM configuration will be applied{Style.RESET_ALL}")
         else:
-            click.echo(f"{Fore.BLUE}ℹ️  Installing with APM defaults (GitHub Models for free access){Style.RESET_ALL}")
+            click.echo(f"{Fore.BLUE}[i]  Installing with APM defaults (GitHub Models for free access){Style.RESET_ALL}")
         
         try:
             # Get scripts
             script_content = self.get_embedded_script(script_name)
             common_content = self.get_common_script()
             
-            # Prepare arguments
+            # Prepare arguments (PowerShell scripts use named params like -Version/-Vanilla)
             script_args = []
             if version:
-                script_args.append(version)
+                if self._is_windows:
+                    script_args.extend(["-Version", version])
+                else:
+                    script_args.append(version)
             if vanilla:
-                script_args.append("--vanilla")
+                if self._is_windows:
+                    script_args.append("-Vanilla")
+                else:
+                    script_args.append("--vanilla")
             
             # Run setup script
             success = self.run_embedded_script(script_content, common_content, script_args)
             
             if success:
-                click.echo(f"{Fore.GREEN}✅ Successfully set up {runtime_name} runtime{Style.RESET_ALL}")
+                click.echo(f"{Fore.GREEN}[+] Successfully set up {runtime_name} runtime{Style.RESET_ALL}")
                 return True
             else:
-                click.echo(f"{Fore.RED}❌ Failed to set up {runtime_name} runtime{Style.RESET_ALL}", err=True)
+                click.echo(f"{Fore.RED}[x] Failed to set up {runtime_name} runtime{Style.RESET_ALL}", err=True)
                 return False
                 
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Error setting up {runtime_name}: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Error setting up {runtime_name}: {e}{Style.RESET_ALL}", err=True)
             return False
     
     def list_runtimes(self) -> Dict[str, Dict[str, str]]:
@@ -250,7 +284,7 @@ class RuntimeManager:
     def remove_runtime(self, runtime_name: str) -> bool:
         """Remove an installed runtime."""
         if runtime_name not in self.supported_runtimes:
-            click.echo(f"{Fore.RED}❌ Unknown runtime: {runtime_name}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Unknown runtime: {runtime_name}{Style.RESET_ALL}", err=True)
             return False
         
         # Handle copilot runtime (npm-based, global install)
@@ -262,13 +296,13 @@ class RuntimeManager:
                     text=True
                 )
                 if result.returncode == 0:
-                    click.echo(f"{Fore.GREEN}✅ Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
+                    click.echo(f"{Fore.GREEN}[+] Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
                     return True
                 else:
-                    click.echo(f"{Fore.RED}❌ Failed to remove {runtime_name}: {result.stderr}{Style.RESET_ALL}", err=True)
+                    click.echo(f"{Fore.RED}[x] Failed to remove {runtime_name}: {result.stderr}{Style.RESET_ALL}", err=True)
                     return False
             except Exception as e:
-                click.echo(f"{Fore.RED}❌ Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
+                click.echo(f"{Fore.RED}[x] Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
                 return False
         
         # Handle other runtimes (installed in APM runtime directory)
@@ -276,7 +310,7 @@ class RuntimeManager:
         binary_path = self.runtime_dir / binary_name
         
         if not binary_path.exists():
-            click.echo(f"{Fore.YELLOW}⚠️  Runtime {runtime_name} is not installed in APM runtime directory{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}[!]  Runtime {runtime_name} is not installed in APM runtime directory{Style.RESET_ALL}")
             return False
         
         try:
@@ -291,11 +325,11 @@ class RuntimeManager:
                 if venv_path.exists():
                     shutil.rmtree(venv_path)
             
-            click.echo(f"{Fore.GREEN}✅ Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
+            click.echo(f"{Fore.GREEN}[+] Successfully removed {runtime_name} runtime{Style.RESET_ALL}")
             return True
             
         except Exception as e:
-            click.echo(f"{Fore.RED}❌ Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
+            click.echo(f"{Fore.RED}[x] Failed to remove {runtime_name}: {e}{Style.RESET_ALL}", err=True)
             return False
     
     def get_runtime_preference(self) -> List[str]:

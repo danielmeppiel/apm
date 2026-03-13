@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  # Linux-only for fast PR feedback. Full platform matrix runs post-merge in build-release.yml.
+  # Linux-only for PR feedback. Full platform matrix (incl. macOS + Windows) runs post-merge in build-release.yml.
   test:
     runs-on: ubuntu-24.04
     permissions:
@@ -57,7 +57,7 @@ jobs:
 
   # Linux-only binary build for PR validation. Full platform builds run post-merge.
   build:
-    name: Build APM Binary
+    name: Build APM Binary (Linux)
     needs: [test]
     runs-on: ubuntu-24.04
     permissions:

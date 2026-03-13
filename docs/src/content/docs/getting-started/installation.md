@@ -17,7 +17,25 @@ sidebar:
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
 ```
 
-The install script detects your platform, downloads the latest binary, and installs it to `/usr/local/bin/`.
+On Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
+```
+
+This script automatically:
+- Detects your platform (macOS/Linux/Windows, Intel/ARM)
+- Downloads the latest binary
+- Installs to `/usr/local/bin/` on macOS/Linux
+- Installs under `%LOCALAPPDATA%\Programs\apm\` on Windows and adds a user-level `apm` shim to `PATH`
+- Verifies installation
+
+### Windows Package Manager (Scoop)
+
+```powershell
+scoop bucket add apm https://github.com/microsoft/scoop-apm
+scoop install apm
+```
 
 ## pip install
 
@@ -31,6 +49,21 @@ Requires Python 3.10+.
 
 Download the archive for your platform from [GitHub Releases](https://github.com/microsoft/apm/releases/latest) and install manually:
 
+#### Windows x86_64
+
+```powershell
+# Download and extract the Windows binary
+Invoke-WebRequest -Uri https://github.com/microsoft/apm/releases/latest/download/apm-windows-x86_64.zip -OutFile apm-windows-x86_64.zip
+Expand-Archive -Path .\apm-windows-x86_64.zip -DestinationPath .
+
+# Copy to a permanent location and add to PATH
+$installDir = "$env:LOCALAPPDATA\Programs\apm"
+New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+Copy-Item -Path .\apm-windows-x86_64\* -Destination $installDir -Recurse -Force
+[Environment]::SetEnvironmentVariable("Path", "$installDir;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")
+```
+
+#### macOS / Linux
 ```bash
 # Example: macOS Apple Silicon
 curl -L https://github.com/microsoft/apm/releases/latest/download/apm-darwin-arm64.tar.gz | tar -xz
@@ -106,6 +139,10 @@ Use `sudo` for system-wide installation, or install to a user-writable directory
 mkdir -p ~/bin
 # then install the binary to ~/bin/apm and add ~/bin to PATH
 ```
+
+### Verify Installation
+
+Check what runtimes are available:
 
 ### Authentication errors when installing packages
 

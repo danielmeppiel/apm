@@ -1,12 +1,51 @@
 """APM update command."""
 
 import os
+import shutil
 import sys
 
 import click
 
 from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success, _rich_warning
 from ..version import get_version
+
+
+def _is_windows_platform() -> bool:
+    """Return True when running on native Windows."""
+    return sys.platform == "win32"
+
+
+def _get_update_installer_url() -> str:
+    """Return the official installer URL for the current platform."""
+    installer_name = "install.ps1" if _is_windows_platform() else "install.sh"
+    return f"https://raw.githubusercontent.com/microsoft/apm/main/{installer_name}"
+
+
+def _get_update_installer_suffix() -> str:
+    """Return the file suffix for the downloaded installer script."""
+    return ".ps1" if _is_windows_platform() else ".sh"
+
+
+def _get_manual_update_command() -> str:
+    """Return the manual update command for the current platform."""
+    if _is_windows_platform():
+        return (
+            'powershell -ExecutionPolicy Bypass -c '
+            '"irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"'
+        )
+    return "curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
+
+
+def _get_installer_run_command(script_path: str) -> list[str]:
+    """Return the installer execution command for the current platform."""
+    if _is_windows_platform():
+        powershell_path = shutil.which("powershell") or shutil.which("pwsh")
+        if not powershell_path:
+            raise FileNotFoundError("PowerShell executable not found in PATH")
+        return [powershell_path, "-ExecutionPolicy", "Bypass", "-File", script_path]
+
+    shell_path = "/bin/sh" if os.path.exists("/bin/sh") else "sh"
+    return [shell_path, script_path]
 
 
 @click.command(help="Update APM to the latest version")
@@ -62,7 +101,7 @@ def update(check):
         _rich_info(f"Latest version available: {latest_version}", symbol="sparkles")
 
         if check:
-            _rich_warning(f"Update available: {current_version} → {latest_version}")
+            _rich_warning(f"Update available: {current_version} -> {latest_version}")
             _rich_info("Run 'apm update' (without --check) to install", symbol="info")
             return
 
@@ -73,29 +112,25 @@ def update(check):
         try:
             import requests
 
-            install_script_url = (
-                "https://raw.githubusercontent.com/microsoft/apm/main/install.sh"
-            )
+            install_script_url = _get_update_installer_url()
             response = requests.get(install_script_url, timeout=10)
             response.raise_for_status()
 
             # Create temporary file for install script
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=_get_update_installer_suffix(), delete=False
+            ) as f:
                 temp_script = f.name
                 f.write(response.text)
 
-            # Make script executable
-            os.chmod(temp_script, 0o755)
+            if not _is_windows_platform():
+                os.chmod(temp_script, 0o755)
 
             # Run install script
             _rich_info("Running installer...", symbol="gear")
 
-            # Use /bin/sh for better cross-platform compatibility
-            # Note: We don't capture output so the installer can prompt for sudo
-            shell_path = "/bin/sh" if os.path.exists("/bin/sh") else "sh"
-            result = subprocess.run(
-                [shell_path, temp_script], check=False
-            )
+            # Note: We don't capture output so the installer can prompt when needed.
+            result = subprocess.run(_get_installer_run_command(temp_script), check=False)
 
             # Clean up temp file
             try:
@@ -119,16 +154,12 @@ def update(check):
         except ImportError:
             _rich_error("'requests' library not available")
             _rich_info("Please update manually using:")
-            click.echo(
-                "  curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
-            )
+            click.echo(f"  {_get_manual_update_command()}")
             sys.exit(1)
         except Exception as e:
             _rich_error(f"Update failed: {e}")
             _rich_info("Please update manually using:")
-            click.echo(
-                "  curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
-            )
+            click.echo(f"  {_get_manual_update_command()}")
             sys.exit(1)
 
     except Exception as e:

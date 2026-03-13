@@ -1,4 +1,4 @@
-"""Bundle packer — creates self-contained APM bundles from the resolved dependency tree."""
+"""Bundle packer  -- creates self-contained APM bundles from the resolved dependency tree."""
 
 import shutil
 import tarfile
@@ -49,8 +49,8 @@ def pack_bundle(
     Args:
         project_root: Root of the project containing ``apm.lock`` and ``apm.yml``.
         output_dir: Directory where the bundle will be created.
-        fmt: Bundle format — ``"apm"`` (default) or ``"plugin"``.
-        target: Target filter — ``"vscode"``, ``"claude"``, ``"all"``, or *None*
+        fmt: Bundle format  -- ``"apm"`` (default) or ``"plugin"``.
+        target: Target filter  -- ``"vscode"``, ``"claude"``, ``"all"``, or *None*
             (auto-detect from apm.yml / project structure).
         archive: If *True*, produce a ``.tar.gz`` and remove the directory.
         dry_run: If *True*, resolve the file list but write nothing to disk.
@@ -67,7 +67,7 @@ def pack_bundle(
     lockfile = LockFile.read(lockfile_path)
     if lockfile is None:
         raise FileNotFoundError(
-            "apm.lock not found — run 'apm install' first to resolve dependencies."
+            "apm.lock not found  -- run 'apm install' first to resolve dependencies."
         )
 
     # 2. Read apm.yml for name / version / config target
@@ -100,7 +100,7 @@ def pack_bundle(
         explicit_target=target,
         config_target=config_target,
     )
-    # For packing purposes, "minimal" means nothing to pack — treat as "all"
+    # For packing purposes, "minimal" means nothing to pack  -- treat as "all"
     if effective_target == "minimal":
         effective_target = "all"
 
@@ -138,7 +138,7 @@ def pack_bundle(
             missing.append(rel_path)
     if missing:
         raise ValueError(
-            f"The following deployed files are missing on disk — "
+            f"The following deployed files are missing on disk  -- "
             f"run 'apm install' to restore them:\n"
             + "\n".join(f"  - {m}" for m in missing)
         )
