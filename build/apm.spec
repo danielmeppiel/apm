@@ -23,10 +23,14 @@ entry_point = repo_root / 'src' / 'apm_cli' / 'cli.py'
 # Data files to include - recursively include all template files
 datas = [
     (str(repo_root / 'scripts' / 'runtime'), 'scripts/runtime'),  # Bundle runtime setup scripts
-    (str(repo_root / 'scripts' / 'github-token-helper.sh'), 'scripts'),  # Bundle GitHub token helper (Unix)
-    (str(repo_root / 'scripts' / 'github-token-helper.ps1'), 'scripts'),  # Bundle GitHub token helper (Windows)
     (str(repo_root / 'pyproject.toml'), '.'),  # Bundle pyproject.toml for version reading
 ]
+
+# Bundle platform-appropriate token helper
+if sys.platform == 'win32':
+    datas.append((str(repo_root / 'scripts' / 'windows' / 'github-token-helper.ps1'), 'scripts'))
+else:
+    datas.append((str(repo_root / 'scripts' / 'github-token-helper.sh'), 'scripts'))
 
 # Recursively add all files from templates directory, including hidden directories
 def collect_template_files(templates_root):
