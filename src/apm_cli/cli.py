@@ -3,6 +3,8 @@
 Thin wiring layer  -- all command logic lives in ``apm_cli.commands.*`` modules.
 """
 
+import ctypes
+import os
 import sys
 
 import click
@@ -67,8 +69,51 @@ cli.add_command(runtime)
 cli.add_command(mcp)
 
 
+def _configure_encoding() -> None:
+    """Configure stdout/stderr for full Unicode on Windows.
+
+    The default Windows console encoding (cp1252) cannot represent many Unicode
+    characters used in APM output (box-drawing, check marks, arrows, etc.).
+
+    This function:
+    1. Sets ``PYTHONIOENCODING`` so child processes and redirected pipes
+       default to UTF-8.
+    2. Switches the console codepage to 65001 (UTF-8) via the Win32 API so
+       the terminal itself renders UTF-8 byte sequences correctly.
+    3. Reconfigures the Python text-mode streams to UTF-8.
+
+    On non-Windows platforms this is a no-op.
+    """
+    if sys.platform != "win32":
+        return
+
+    # 1. Help child processes / pipes default to UTF-8
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+    # 2. Switch the console codepage to UTF-8
+    try:
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        kernel32.SetConsoleOutputCP(65001)
+        kernel32.SetConsoleCP(65001)
+    except (OSError, AttributeError):
+        pass  # not a real console or ctypes unavailable
+
+    # 3. Reconfigure Python streams to UTF-8
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except Exception:
+                try:
+                    stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+                except Exception:
+                    pass
+
+
 def main():
     """Main entry point for the CLI."""
+    _configure_encoding()
     try:
         cli(obj={})
     except Exception as e:

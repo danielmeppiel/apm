@@ -14,16 +14,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Local filesystem path dependencies — install packages from relative/absolute paths with `apm install ./my-package` (#270)
 - Windows native support (Phase 1 & 2) — cross-platform runtime management, PowerShell helpers, and CI parity — by @sergio-sisternes-epam (#227)
+- CLI logging UX agent skill for consistent CLI output conventions (#289)
 
 ### Fixed
 
 - Resolve `UnboundLocalError` in `apm prune` crashing all prune operations (#283)
 - Restore CWD before `TemporaryDirectory` cleanup on Windows — by @sergio-sisternes-epam (#281)
+- Fix Codex runtime download 404 on Windows — asset naming uses `.exe.tar.gz` — by @sergio-sisternes-epam (#287)
+- Fix `UnicodeEncodeError` on Windows cp1252 consoles via UTF-8 codepage configuration — by @sergio-sisternes-epam (#287)
+- Fix `WinError 2` when resolving `.cmd`/`.ps1` shell wrappers via `shutil.which()` — by @sergio-sisternes-epam (#287)
+- Fix `GIT_CONFIG_GLOBAL=NUL` failure on some Windows git versions — by @sergio-sisternes-epam (#287)
+- Improve sub-skill overwrite UX with content skip and collision protection (#289)
 
 ### Changed
 
 - Lockfile renamed from `apm.lock` to `apm.lock.yaml` for IDE syntax highlighting; existing `apm.lock` files are automatically migrated on the next `apm install` (#280)
 - Add Windows as first-class install option across documentation site (#278)
+- Clarify that `.github/` deployed files should be committed (#290)
 
 ## [0.7.8] - 2026-03-13
 

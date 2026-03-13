@@ -193,6 +193,7 @@ class TestScriptRunnerWindowsParsing:
         env = {"PATH": "/usr/bin"}
 
         with patch("sys.platform", "win32"), \
+             patch("apm_cli.core.script_runner.shutil.which", return_value=None), \
              patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             runner._execute_runtime_command("codex --quiet", "prompt content", env)
             call_args = mock_run.call_args[0][0]
@@ -205,6 +206,7 @@ class TestScriptRunnerWindowsParsing:
         env = {"PATH": "/usr/bin"}
 
         with patch("sys.platform", "win32"), \
+             patch("apm_cli.core.script_runner.shutil.which", return_value=None), \
              patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             runner._execute_runtime_command(
                 'codex --model "gpt-4o mini"', "prompt content", env

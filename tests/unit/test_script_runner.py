@@ -132,8 +132,9 @@ class TestScriptRunner:
         assert self.script_runner._detect_runtime("unknown-command") == "unknown"
     
     @patch('subprocess.run')
+    @patch('apm_cli.core.script_runner.shutil.which', return_value=None)
     @patch('apm_cli.core.script_runner.setup_runtime_environment')
-    def test_execute_runtime_command_with_env_vars(self, mock_setup_env, mock_subprocess):
+    def test_execute_runtime_command_with_env_vars(self, mock_setup_env, mock_which, mock_subprocess):
         """Test runtime command execution with environment variables."""
         mock_setup_env.return_value = {'EXISTING_VAR': 'value'}
         mock_subprocess.return_value.returncode = 0
@@ -159,8 +160,9 @@ class TestScriptRunner:
         assert called_env['EXISTING_VAR'] == 'value'  # Existing env should be preserved
     
     @patch('subprocess.run')
+    @patch('apm_cli.core.script_runner.shutil.which', return_value=None)
     @patch('apm_cli.core.script_runner.setup_runtime_environment')
-    def test_execute_runtime_command_multiple_env_vars(self, mock_setup_env, mock_subprocess):
+    def test_execute_runtime_command_multiple_env_vars(self, mock_setup_env, mock_which, mock_subprocess):
         """Test runtime command execution with multiple environment variables."""
         mock_setup_env.return_value = {}
         mock_subprocess.return_value.returncode = 0
@@ -782,3 +784,55 @@ class TestScriptRunnerAutoInstall:
                 assert result.name == "SKILL.md"
             finally:
                 os.chdir(original_dir)
+
+
+class TestExecuteRuntimeCommandWindowsResolution:
+    """Test that _execute_runtime_command resolves executables on Windows."""
+
+    def setup_method(self):
+        self.runner = ScriptRunner()
+
+    @patch("apm_cli.core.script_runner.subprocess.run")
+    @patch("apm_cli.core.script_runner.shutil.which", return_value=r"C:\npm\copilot.cmd")
+    @patch("apm_cli.core.script_runner.sys")
+    def test_resolves_executable_on_windows(self, mock_sys, mock_which, mock_run):
+        """On win32, the executable should be resolved via shutil.which."""
+        mock_sys.platform = "win32"
+        mock_run.return_value = MagicMock(returncode=0)
+
+        self.runner._execute_runtime_command(
+            "copilot --log-level all", "prompt content", os.environ.copy()
+        )
+
+        mock_which.assert_called_once_with("copilot")
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0] == r"C:\npm\copilot.cmd"
+
+    @patch("apm_cli.core.script_runner.subprocess.run")
+    @patch("apm_cli.core.script_runner.shutil.which", return_value=None)
+    @patch("apm_cli.core.script_runner.sys")
+    def test_keeps_original_when_which_returns_none(self, mock_sys, mock_which, mock_run):
+        """If shutil.which can't find it, keep the original name."""
+        mock_sys.platform = "win32"
+        mock_run.return_value = MagicMock(returncode=0)
+
+        self.runner._execute_runtime_command(
+            "copilot -p", "prompt content", os.environ.copy()
+        )
+
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0] == "copilot"
+
+    @patch("apm_cli.core.script_runner.subprocess.run")
+    @patch("apm_cli.core.script_runner.shutil.which")
+    @patch("apm_cli.core.script_runner.sys")
+    def test_skips_resolution_on_non_windows(self, mock_sys, mock_which, mock_run):
+        """On non-Windows, shutil.which should not be called."""
+        mock_sys.platform = "linux"
+        mock_run.return_value = MagicMock(returncode=0)
+
+        self.runner._execute_runtime_command(
+            "copilot -p", "prompt content", os.environ.copy()
+        )
+
+        mock_which.assert_not_called()

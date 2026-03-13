@@ -199,7 +199,15 @@ class GitHubPackageDownloader:
         env['GIT_TERMINAL_PROMPT'] = '0'
         env['GIT_ASKPASS'] = 'echo'  # Prevent interactive credential prompts
         env['GIT_CONFIG_NOSYSTEM'] = '1'
-        env['GIT_CONFIG_GLOBAL'] = 'NUL' if sys.platform == 'win32' else '/dev/null'
+        if sys.platform == 'win32':
+            # 'NUL' fails on some Windows git versions; use an empty temp file.
+            import tempfile
+            empty_cfg = os.path.join(tempfile.gettempdir(), '.apm_empty_gitconfig')
+            with open(empty_cfg, 'w') as f:
+                pass
+            env['GIT_CONFIG_GLOBAL'] = empty_cfg
+        else:
+            env['GIT_CONFIG_GLOBAL'] = '/dev/null'
         
         return env
     
