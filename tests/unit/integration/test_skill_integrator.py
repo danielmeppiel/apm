@@ -2435,17 +2435,15 @@ class TestSubSkillContentSkipAndCollisionProtection:
         target = self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md"
         assert target.exists()
 
-        # Record mtime after first install
-        first_mtime = target.stat().st_mtime
-
-        import time
-        time.sleep(0.05)  # Ensure mtime would differ if file was rewritten
-
-        # Second install — content identical
-        self.integrator.integrate_package_skill(pkg_info, self.project_root)
-
-        # File should NOT have been rewritten (mtime unchanged)
-        assert target.stat().st_mtime == first_mtime
+        # Second install — content identical; copytree/rmtree should NOT be called
+        from unittest.mock import patch
+        with patch("shutil.rmtree") as mock_rm, patch("shutil.copytree") as mock_cp:
+            self.integrator.integrate_package_skill(pkg_info, self.project_root)
+            # Neither rmtree nor copytree should be invoked for the identical sub-skill
+            for call in mock_rm.call_args_list:
+                assert "my-skill" not in str(call), "rmtree called on identical sub-skill"
+            for call in mock_cp.call_args_list:
+                assert "my-skill" not in str(call), "copytree called on identical sub-skill"
 
     def test_content_different_sub_skill_replaced(self):
         """When sub-skill content differs, it should be replaced."""

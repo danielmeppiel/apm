@@ -458,7 +458,7 @@ class SkillIntegrator(BaseIntegrator):
         return True
 
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None, managed_files=None, force: bool = False) -> tuple[int, list[Path]]:
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None, managed_files=None, force: bool = False, project_root: Path | None = None) -> tuple[int, list[Path]]:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -469,6 +469,7 @@ class SkillIntegrator(BaseIntegrator):
             owned_by: Map of skill_name -> owner_package_name from the lockfile.
                 When provided, warnings are suppressed for self-overwrites.
             diagnostics: Optional DiagnosticCollector for deferred warning output.
+            project_root: Project root for computing relative diagnostic paths.
 
         Returns:
             tuple[int, list[Path]]: (count of promoted sub-skills, list of deployed dir paths)
@@ -477,6 +478,16 @@ class SkillIntegrator(BaseIntegrator):
         deployed = []
         if not sub_skills_dir.is_dir():
             return promoted, deployed
+
+        # Compute project-relative prefix for consistent path reporting
+        if project_root is not None:
+            try:
+                rel_prefix = target_skills_root.relative_to(project_root).as_posix()
+            except ValueError:
+                rel_prefix = target_skills_root.name
+        else:
+            rel_prefix = target_skills_root.name
+
         for sub_skill_path in sub_skills_dir.iterdir():
             if not sub_skill_path.is_dir():
                 continue
@@ -486,6 +497,7 @@ class SkillIntegrator(BaseIntegrator):
             is_valid, _ = validate_skill_name(raw_sub_name)
             sub_name = raw_sub_name if is_valid else normalize_skill_name(raw_sub_name)
             target = target_skills_root / sub_name
+            rel_path = f"{rel_prefix}/{sub_name}"
             if target.exists():
                 # Content-identical → skip entirely (no copy, no warning)
                 if SkillIntegrator._dirs_equal(sub_skill_path, target):
@@ -494,10 +506,9 @@ class SkillIntegrator(BaseIntegrator):
                     continue
 
                 # Check if this is a user-authored skill (not managed by APM)
-                rel_dir = f".github/skills/{sub_name}"
                 is_managed = (
                     managed_files is not None
-                    and rel_dir.replace("\\", "/") in managed_files
+                    and rel_path.replace("\\", "/") in managed_files
                 )
                 prev_owner = (owned_by or {}).get(sub_name)
                 is_self_overwrite = prev_owner is not None and prev_owner == parent_name
@@ -507,7 +518,7 @@ class SkillIntegrator(BaseIntegrator):
                     if not force:
                         if diagnostics is not None:
                             diagnostics.skip(
-                                f"skills/{sub_name}/", package=parent_name
+                                rel_path, package=parent_name
                             )
                         else:
                             try:
@@ -524,7 +535,7 @@ class SkillIntegrator(BaseIntegrator):
                 if warn and not is_self_overwrite:
                     if diagnostics is not None:
                         diagnostics.overwrite(
-                            path=f"{target_skills_root.name}/{sub_name}/",
+                            path=rel_path,
                             package=parent_name,
                             detail=f"Skill '{sub_name}' replaced — previously from another package",
                         )
@@ -532,7 +543,7 @@ class SkillIntegrator(BaseIntegrator):
                         try:
                             from apm_cli.utils.console import _rich_warning
                             _rich_warning(
-                                f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill at {target_skills_root.name}/{sub_name}/"
+                                f"Sub-skill '{sub_name}' from '{parent_name}' overwrites existing skill at {rel_path}"
                             )
                         except ImportError:
                             pass
@@ -592,7 +603,7 @@ class SkillIntegrator(BaseIntegrator):
         github_skills_root.mkdir(parents=True, exist_ok=True)
         owned_by = self._build_skill_ownership_map(project_root)
         count, deployed = self._promote_sub_skills(
-            sub_skills_dir, github_skills_root, parent_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force
+            sub_skills_dir, github_skills_root, parent_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force, project_root=project_root
         )
         all_deployed = list(deployed)
 
@@ -601,7 +612,7 @@ class SkillIntegrator(BaseIntegrator):
         if claude_dir.exists() and claude_dir.is_dir():
             claude_skills_root = claude_dir / "skills"
             _, claude_deployed = self._promote_sub_skills(
-                sub_skills_dir, claude_skills_root, parent_name, warn=False
+                sub_skills_dir, claude_skills_root, parent_name, warn=False, project_root=project_root
             )
             all_deployed.extend(claude_deployed)
 
@@ -700,7 +711,7 @@ class SkillIntegrator(BaseIntegrator):
         sub_skills_dir = package_path / ".apm" / "skills"
         github_skills_root = project_root / ".github" / "skills"
         owned_by = self._build_skill_ownership_map(project_root)
-        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force)
+        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force, project_root=project_root)
         all_target_paths.extend(sub_deployed)
         
         # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
@@ -718,7 +729,7 @@ class SkillIntegrator(BaseIntegrator):
             
             # Promote sub-skills for Claude too
             claude_skills_root = claude_dir / "skills"
-            _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False)
+            _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False, project_root=project_root)
             all_target_paths.extend(claude_sub_deployed)
         
         return SkillIntegrationResult(

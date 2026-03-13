@@ -206,6 +206,8 @@ class DiagnosticCollector:
                     _rich_echo(f"    [{pkg}]", color="dim")
                 for d in diags:
                     _rich_echo(f"      └─ {d.message}", color="dim")
+                    if d.detail:
+                        _rich_echo(f"         {d.detail}", color="dim")
 
     def _render_warning_group(self, items: List[Diagnostic]) -> None:
         for d in items:

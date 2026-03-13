@@ -236,6 +236,19 @@ class TestDiagnosticCollectorRendering:
     @patch(f"{_MOCK_BASE}._rich_echo")
     @patch(f"{_MOCK_BASE}._rich_warning")
     @patch(f"{_MOCK_BASE}._rich_info")
+    def test_overwrite_verbose_renders_detail(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector(verbose=True)
+        dc.overwrite("skill.md", package="pkg", detail="replaced by newer version")
+        dc.render_summary()
+        echo_texts = [str(c) for c in mock_echo.call_args_list]
+        assert any("replaced by newer version" in t for t in echo_texts)
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
     def test_error_group_shows_packages_failed(
         self, mock_info, mock_warning, mock_echo, mock_console
     ):
