@@ -357,19 +357,15 @@ class TestLocalPackMixed:
             },
         }))
 
-        # Create a lockfile
-        lock_data = {
-            "lockfile_version": "1",
-            "dependencies": {
-                "../packages/local-skills": {
-                    "repo_url": "_local/local-skills",
-                    "source": "local",
-                    "local_path": "../packages/local-skills",
-                },
-            },
-        }
-        with open(consumer / "apm.lock", "w") as f:
-            yaml.dump(lock_data, f)
+        # Create a valid lockfile via the LockFile API
+        from apm_cli.deps.lockfile import LockFile as _LF, LockedDependency as _LD
+        _lock = _LF()
+        _lock.add_dependency(_LD(
+            repo_url="_local/local-skills",
+            source="local",
+            local_path="../packages/local-skills",
+        ))
+        _lock.write(consumer / "apm.lock")
 
         result = subprocess.run(
             [apm_command, "pack"],

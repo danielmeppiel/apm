@@ -79,7 +79,6 @@ def pack_bundle(
         config_target = package.target
 
         # Guard: reject local-path dependencies (non-portable)
-        from ..models.apm_package import DependencyReference
         for dep_ref in package.get_apm_dependencies():
             if dep_ref.is_local:
                 raise ValueError(

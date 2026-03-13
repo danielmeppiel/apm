@@ -111,6 +111,28 @@ class TestParseLocalPath:
         assert dep.is_local is False
         assert dep.local_path is None
 
+    def test_bare_dot_dot_slash_rejected(self):
+        """Path '../' has name '..' which could escape _local/ — must be rejected."""
+        with pytest.raises(ValueError, match="does not resolve to a named directory"):
+            DependencyReference.parse("../")
+
+    def test_bare_dot_slash_rejected(self):
+        """Path './' has empty name — must be rejected."""
+        with pytest.raises(ValueError, match="does not resolve to a named directory"):
+            DependencyReference.parse("./")
+
+    def test_bare_root_rejected(self):
+        """Path '/' has empty name — must be rejected."""
+        with pytest.raises(ValueError, match="does not resolve to a named directory"):
+            DependencyReference.parse("/")
+
+    def test_dot_dot_without_slash_rejected(self):
+        """Path '..' is not detected as a local path (no trailing '/')."""
+        # '..' doesn't start with '../' so is_local_path returns False.
+        # It falls through to regular parsing which also rejects it.
+        with pytest.raises(ValueError):
+            DependencyReference.parse("..")
+
 
 # ===========================================================================
 # DependencyReference methods for local deps
@@ -470,3 +492,34 @@ class TestCopyLocalPackage:
         # Second copy should overwrite
         _copy_local_package(dep_ref, install_path, tmp_path)
         assert (install_path / "data.txt").read_text() == "updated"
+
+    def test_copy_preserves_symlinks_without_following(self, tmp_path):
+        """Symlinks in local packages should be preserved, not followed."""
+        from apm_cli.commands.install import _copy_local_package
+
+        # Create a secret file outside the package
+        secret_dir = tmp_path / "secret"
+        secret_dir.mkdir()
+        (secret_dir / "credentials.txt").write_text("TOP_SECRET")
+
+        # Create a local package with a symlink pointing outside
+        local_pkg = tmp_path / "evil-pkg"
+        local_pkg.mkdir()
+        (local_pkg / "apm.yml").write_text(yaml.dump({
+            "name": "evil-pkg",
+            "version": "1.0.0",
+        }))
+        (local_pkg / "escape").symlink_to(secret_dir)
+
+        dep_ref = DependencyReference.parse(f"./{local_pkg.name}")
+        dep_ref.local_path = str(local_pkg)
+        install_path = tmp_path / "apm_modules" / "_local" / "evil-pkg"
+
+        result = _copy_local_package(dep_ref, install_path, tmp_path)
+        assert result is not None
+
+        # The symlink should be preserved as a symlink, NOT followed
+        link = install_path / "escape"
+        assert link.is_symlink(), "Symlink was followed instead of preserved"
+        # The credentials should NOT have been copied as real files
+        assert not (install_path / "escape" / "credentials.txt").is_file() or link.is_symlink()

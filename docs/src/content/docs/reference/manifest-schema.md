@@ -172,7 +172,7 @@ Grammar (ABNF-style):
 dependency     = url_form / shorthand_form / local_path_form
 url_form       = ("https://" / "http://" / "ssh://git@" / "git@") clone-url
 shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref] ["@" alias]
-local_path_form = ("./" / "../" / "/") path
+local_path_form = ("./" / "../" / "/" / "~/" / ".\\" / "..\\" / "~\\") path
 ```
 
 | Segment | Required | Pattern | Description |
@@ -221,16 +221,24 @@ REQUIRED when the shorthand is ambiguous (e.g. nested-group repos with virtual p
 
 | Field | Type | Required | Pattern / Constraint | Description |
 |---|---|---|---|---|
-| `git` | `string` | REQUIRED | HTTPS URL, SSH URL, or FQDN shorthand | Clone URL of the repository. |
-| `path` | `string` | OPTIONAL | Relative path within the repo | Subdirectory, file, or collection (virtual package). |
+| `git` | `string` | REQUIRED (remote) | HTTPS URL, SSH URL, or FQDN shorthand | Clone URL of the repository. Required for remote dependencies. |
+| `path` | `string` | OPTIONAL / REQUIRED (local) | Relative path within the repo, or local filesystem path | When `git` is present: subdirectory, file, or collection (virtual package). When `git` is absent: local filesystem path (must start with `./`, `../`, `/`, or `~/`). |
 | `ref` | `string` | OPTIONAL | Branch, tag, or commit SHA | Git reference to checkout. |
 | `alias` | `string` | OPTIONAL | `^[a-zA-Z0-9._-]+$` | Local alias. |
+
+Remote dependency (git URL + sub-path):
 
 ```yaml
 - git: https://gitlab.com/acme/repo.git
   path: instructions/security
   ref: v2.0
   alias: acme-sec
+```
+
+Local path dependency (development only):
+
+```yaml
+- path: ./packages/my-shared-skills
 ```
 
 #### 4.1.3. Virtual Packages

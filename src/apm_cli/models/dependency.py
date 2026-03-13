@@ -481,8 +481,16 @@ class DependencyReference:
         # --- Local path detection (must run before URL/host parsing) ---
         if cls.is_local_path(dependency_str):
             local = dependency_str.strip()
-            # Use the directory basename as repo_url fallback
+            # Derive a safe directory name from the path basename.
+            # Path("../pkg").name → "pkg", but Path("../").name → "..",
+            # Path("./").name → "", Path("/").name → "" — all unsafe.
             pkg_name = Path(local).name
+            if not pkg_name or pkg_name in ('.', '..'):
+                raise ValueError(
+                    f"Local path '{local}' does not resolve to a named directory. "
+                    f"Use a path that ends with a directory name "
+                    f"(e.g., './my-package' instead of './')."
+                )
             return cls(
                 repo_url=f"_local/{pkg_name}",
                 is_local=True,

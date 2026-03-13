@@ -95,8 +95,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     _rich_info(f"Validating {len(packages)} package(s)...")
 
     for package in packages:
-        # Validate package format (should be owner/repo or a git URL)
-        if "/" not in package:
+        # Validate package format (should be owner/repo, a git URL, or a local path)
+        if "/" not in package and not DependencyReference.is_local_path(package):
             _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
             continue
 
@@ -505,6 +505,155 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 # ---------------------------------------------------------------------------
 
 
+def _integrate_package_primitives(
+    package_info,
+    project_root,
+    *,
+    integrate_vscode,
+    integrate_claude,
+    prompt_integrator,
+    agent_integrator,
+    skill_integrator,
+    instruction_integrator,
+    command_integrator,
+    hook_integrator,
+    force,
+    managed_files,
+    diagnostics,
+):
+    """Run the full integration pipeline for a single package.
+
+    Returns a dict with integration counters and the list of deployed file paths.
+    """
+    result = {
+        "prompts": 0,
+        "agents": 0,
+        "skills": 0,
+        "sub_skills": 0,
+        "instructions": 0,
+        "commands": 0,
+        "hooks": 0,
+        "links_resolved": 0,
+        "deployed_files": [],
+    }
+
+    deployed = result["deployed_files"]
+
+    if not (integrate_vscode or integrate_claude):
+        return result
+
+    # --- prompts ---
+    prompt_result = prompt_integrator.integrate_package_prompts(
+        package_info, project_root,
+        force=force, managed_files=managed_files,
+        diagnostics=diagnostics,
+    )
+    if prompt_result.files_integrated > 0:
+        result["prompts"] += prompt_result.files_integrated
+        _rich_info(f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/")
+    if prompt_result.files_updated > 0:
+        _rich_info(f"  └─ {prompt_result.files_updated} prompts updated")
+    result["links_resolved"] += prompt_result.links_resolved
+    for tp in prompt_result.target_paths:
+        deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- agents (.github) ---
+    agent_result = agent_integrator.integrate_package_agents(
+        package_info, project_root,
+        force=force, managed_files=managed_files,
+        diagnostics=diagnostics,
+    )
+    if agent_result.files_integrated > 0:
+        result["agents"] += agent_result.files_integrated
+        _rich_info(f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/")
+    if agent_result.files_updated > 0:
+        _rich_info(f"  └─ {agent_result.files_updated} agents updated")
+    result["links_resolved"] += agent_result.links_resolved
+    for tp in agent_result.target_paths:
+        deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- skills ---
+    if integrate_vscode or integrate_claude:
+        skill_result = skill_integrator.integrate_package_skill(package_info, project_root)
+        if skill_result.skill_created:
+            result["skills"] += 1
+            _rich_info(f"  └─ Skill integrated → .github/skills/")
+        if skill_result.sub_skills_promoted > 0:
+            result["sub_skills"] += skill_result.sub_skills_promoted
+            _rich_info(f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/")
+        for tp in skill_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- instructions (.github) ---
+    if integrate_vscode:
+        instruction_result = instruction_integrator.integrate_package_instructions(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if instruction_result.files_integrated > 0:
+            result["instructions"] += instruction_result.files_integrated
+            _rich_info(f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/")
+        result["links_resolved"] += instruction_result.links_resolved
+        for tp in instruction_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- Claude agents (.claude) ---
+    if integrate_claude:
+        claude_agent_result = agent_integrator.integrate_package_agents_claude(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if claude_agent_result.files_integrated > 0:
+            result["agents"] += claude_agent_result.files_integrated
+            _rich_info(f"  └─ {claude_agent_result.files_integrated} agents integrated → .claude/agents/")
+        result["links_resolved"] += claude_agent_result.links_resolved
+        for tp in claude_agent_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
+
+        # --- commands (.claude) ---
+        command_result = command_integrator.integrate_package_commands(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if command_result.files_integrated > 0:
+            result["commands"] += command_result.files_integrated
+            _rich_info(f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/")
+        if command_result.files_updated > 0:
+            _rich_info(f"  └─ {command_result.files_updated} commands updated")
+        result["links_resolved"] += command_result.links_resolved
+        for tp in command_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- hooks ---
+    if integrate_vscode:
+        hook_result = hook_integrator.integrate_package_hooks(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if hook_result.hooks_integrated > 0:
+            result["hooks"] += hook_result.hooks_integrated
+            _rich_info(f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/")
+        for tp in hook_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
+    if integrate_claude:
+        hook_result_claude = hook_integrator.integrate_package_hooks_claude(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if hook_result_claude.hooks_integrated > 0:
+            result["hooks"] += hook_result_claude.hooks_integrated
+            _rich_info(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json")
+        for tp in hook_result_claude.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
+
+    return result
+
+
 def _copy_local_package(dep_ref, install_path, project_root):
     """Copy a local package to apm_modules/.
 
@@ -538,7 +687,7 @@ def _copy_local_package(dep_ref, install_path, project_root):
     if install_path.exists():
         shutil.rmtree(install_path)
 
-    shutil.copytree(local, install_path, dirs_exist_ok=False)
+    shutil.copytree(local, install_path, dirs_exist_ok=False, symlinks=True)
     return install_path
 
 
@@ -990,109 +1139,36 @@ def _install_apm_dependencies(
                     # Use the same variable name as the rest of the loop
                     package_info = local_info
 
-                    # === Fall through to integration below ===
-                    # (The integration code after the download block is shared
-                    # between cached, downloaded, and local packages, so we
-                    # re-use it by NOT calling ``continue`` here.)
-
-                    # Integration: same block as fresh-download path (prompts, agents, skills, etc.)
-                    if integrate_vscode or integrate_claude:
-                        try:
-                            prompt_result = prompt_integrator.integrate_package_prompts(
-                                package_info, project_root,
-                                force=force, managed_files=managed_files,
-                                diagnostics=diagnostics,
-                            )
-                            if prompt_result.files_integrated > 0:
-                                total_prompts_integrated += prompt_result.files_integrated
-                                _rich_info(f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/")
-                            total_links_resolved += prompt_result.links_resolved
-                            for tp in prompt_result.target_paths:
-                                dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-
-                            agent_result = agent_integrator.integrate_package_agents(
-                                package_info, project_root,
-                                force=force, managed_files=managed_files,
-                                diagnostics=diagnostics,
-                            )
-                            if agent_result.files_integrated > 0:
-                                total_agents_integrated += agent_result.files_integrated
-                                _rich_info(f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/")
-                            total_links_resolved += agent_result.links_resolved
-                            for tp in agent_result.target_paths:
-                                dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-
-                            if integrate_vscode or integrate_claude:
-                                skill_result = skill_integrator.integrate_package_skill(package_info, project_root)
-                                if skill_result.skill_created:
-                                    total_skills_integrated += 1
-                                    _rich_info(f"  └─ Skill integrated → .github/skills/")
-                                if skill_result.sub_skills_promoted > 0:
-                                    total_sub_skills_promoted += skill_result.sub_skills_promoted
-                                for tp in skill_result.target_paths:
-                                    dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-
-                            if integrate_vscode:
-                                instruction_result = instruction_integrator.integrate_package_instructions(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if instruction_result.files_integrated > 0:
-                                    total_instructions_integrated += instruction_result.files_integrated
-                                    _rich_info(f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/")
-                                total_links_resolved += instruction_result.links_resolved
-                                for tp in instruction_result.target_paths:
-                                    dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-
-                            if integrate_claude:
-                                claude_agent_result = agent_integrator.integrate_package_agents_claude(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if claude_agent_result.files_integrated > 0:
-                                    total_agents_integrated += claude_agent_result.files_integrated
-                                total_links_resolved += claude_agent_result.links_resolved
-                                for tp in claude_agent_result.target_paths:
-                                    dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-
-                                command_result = command_integrator.integrate_package_commands(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if command_result.files_integrated > 0:
-                                    total_commands_integrated += command_result.files_integrated
-                                total_links_resolved += command_result.links_resolved
-                                for tp in command_result.target_paths:
-                                    dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-
-                            if integrate_vscode:
-                                hook_result = hook_integrator.integrate_package_hooks(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if hook_result.hooks_integrated > 0:
-                                    total_hooks_integrated += hook_result.hooks_integrated
-                                for tp in hook_result.target_paths:
-                                    dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-                            if integrate_claude:
-                                hook_result_claude = hook_integrator.integrate_package_hooks_claude(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if hook_result_claude.hooks_integrated > 0:
-                                    total_hooks_integrated += hook_result_claude.hooks_integrated
-                                for tp in hook_result_claude.target_paths:
-                                    dep_deployed_files.append(tp.relative_to(project_root).as_posix())
-                        except Exception as e:
-                            diagnostics.error(
-                                f"Failed to integrate primitives from local package: {e}",
-                                package=dep_ref.local_path,
-                            )
+                    # Run shared integration pipeline
+                    try:
+                        int_result = _integrate_package_primitives(
+                            package_info, project_root,
+                            integrate_vscode=integrate_vscode,
+                            integrate_claude=integrate_claude,
+                            prompt_integrator=prompt_integrator,
+                            agent_integrator=agent_integrator,
+                            skill_integrator=skill_integrator,
+                            instruction_integrator=instruction_integrator,
+                            command_integrator=command_integrator,
+                            hook_integrator=hook_integrator,
+                            force=force,
+                            managed_files=managed_files,
+                            diagnostics=diagnostics,
+                        )
+                        total_prompts_integrated += int_result["prompts"]
+                        total_agents_integrated += int_result["agents"]
+                        total_skills_integrated += int_result["skills"]
+                        total_sub_skills_promoted += int_result["sub_skills"]
+                        total_instructions_integrated += int_result["instructions"]
+                        total_commands_integrated += int_result["commands"]
+                        total_hooks_integrated += int_result["hooks"]
+                        total_links_resolved += int_result["links_resolved"]
+                        dep_deployed_files = int_result["deployed_files"]
+                    except Exception as e:
+                        diagnostics.error(
+                            f"Failed to integrate primitives from local package: {e}",
+                            package=dep_ref.local_path,
+                        )
 
                     package_deployed_files[dep_key] = dep_deployed_files
                     continue
