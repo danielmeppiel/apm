@@ -9,8 +9,16 @@ Three commands. Three minutes. Your AI agent learns your project's standards aut
 
 ## Install APM
 
+**macOS / Linux:**
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex
 ```
 
 Verify it worked:
@@ -19,7 +27,7 @@ Verify it worked:
 apm --version
 ```
 
-For Homebrew, pip, or manual install, see the [Installation guide](../installation/).
+For Homebrew (macOS/Linux), Scoop (Windows), pip, or manual install, see the [Installation guide](../installation/).
 
 ## Start a project
 
