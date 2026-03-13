@@ -57,11 +57,29 @@ If your project uses `apm compile` to target tools like Cursor, Codex, or Gemini
       - name: Check for drift
         run: |
           apm compile
-          git diff --exit-code AGENTS.md CLAUDE.md || \
-            (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
+          if [ -n "$(git status --porcelain -- AGENTS.md CLAUDE.md)" ]; then
+            echo "Compiled output is out of date. Run 'apm compile' locally and commit."
+            exit 1
+          fi
 ```
 
 This step is not needed if your team only uses GitHub Copilot and Claude, which read deployed primitives natively.
+
+### Verify Deployed Primitives
+
+To ensure `.github/` and `.claude/` integration files stay in sync with `apm.yml`, add a drift check:
+
+```yaml
+      - name: Check APM integration drift
+        run: |
+          apm install
+          if [ -n "$(git status --porcelain -- .github/ .claude/)" ]; then
+            echo "APM integration files are out of date. Run 'apm install' and commit."
+            exit 1
+          fi
+```
+
+This catches cases where a developer updates `apm.yml` but forgets to re-run `apm install`.
 
 ## Azure Pipelines
 
@@ -153,5 +171,6 @@ See the [Pack & Distribute guide](../../guides/pack-distribute/) for the full wo
 
 - **Pin APM version** in CI to avoid unexpected changes: `pip install apm-cli==0.7.7`
 - **Commit `apm.lock.yaml`** so CI resolves the same dependency versions as local development
+- **Commit `.github/` and `.claude/` deployed files** so contributors and cloud-based Copilot get agent context without running `apm install`
 - **If using `apm compile`** (for Cursor, Codex, Gemini), run it in CI and fail the build if the output differs from what's committed
 - **Use `GITHUB_APM_PAT`** for private dependencies; never use the default `GITHUB_TOKEN` for cross-repo access
