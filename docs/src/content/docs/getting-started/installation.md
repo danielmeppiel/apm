@@ -77,15 +77,14 @@ sudo cp -r apm-darwin-arm64/* /usr/local/lib/apm/
 sudo ln -sf /usr/local/lib/apm/apm /usr/local/bin/apm
 ```
 
-Replace `apm-darwin-arm64` with the archive name for your platform:
+Replace `apm-darwin-arm64` with the archive name for your macOS or Linux platform:
 
-| Platform            | Archive name           |
-|---------------------|------------------------|
-| macOS Apple Silicon | `apm-darwin-arm64`     |
-| macOS Intel         | `apm-darwin-x86_64`    |
-| Linux x86_64        | `apm-linux-x86_64`     |
-| Linux ARM64         | `apm-linux-arm64`      |
-| Windows x86_64      | `apm-windows-x86_64`   |
+| Platform            | Archive name          |
+|---------------------|-----------------------|
+| macOS Apple Silicon | `apm-darwin-arm64`    |
+| macOS Intel         | `apm-darwin-x86_64`   |
+| Linux x86_64        | `apm-linux-x86_64`    |
+| Linux ARM64         | `apm-linux-arm64`     |
 
 ## From source (contributors)
 
