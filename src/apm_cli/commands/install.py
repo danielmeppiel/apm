@@ -878,6 +878,7 @@ def _install_apm_dependencies(
             detect_target,
             should_integrate_vscode,
             should_integrate_claude,
+            should_integrate_opencode,
             get_target_description,
         )
 
@@ -888,10 +889,11 @@ def _install_apm_dependencies(
         # Per skill-strategy Decision 1, .github/skills/ is the standard skills location;
         # creating .github/ here ensures a consistent skills root and also enables
         # VSCode/Copilot integration by default (quick path to value), even for
-        # projects that don't yet use .claude/.
+        # projects that don't yet use .claude/ or .opencode/.
         github_dir = project_root / ".github"
         claude_dir = project_root / ".claude"
-        if not github_dir.exists() and not claude_dir.exists():
+        opencode_dir = project_root / ".opencode"
+        if not github_dir.exists() and not claude_dir.exists() and not opencode_dir.exists():
             github_dir.mkdir(parents=True, exist_ok=True)
             _rich_info(
                 "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
@@ -906,6 +908,7 @@ def _install_apm_dependencies(
         # Determine which integrations to run based on detected target
         integrate_vscode = should_integrate_vscode(detected_target)
         integrate_claude = should_integrate_claude(detected_target)
+        integrate_opencode = should_integrate_opencode(detected_target)
 
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
@@ -1232,7 +1235,7 @@ def _install_apm_dependencies(
                     installed_count += 1
 
                     # Still need to integrate prompts for cached packages (zero-config behavior)
-                    if integrate_vscode or integrate_claude:
+                    if integrate_vscode or integrate_claude or integrate_opencode:
                         try:
                             # Create PackageInfo from cached package
                             from apm_cli.models.apm_package import (
@@ -1312,7 +1315,7 @@ def _install_apm_dependencies(
                                 package_types[dep_key] = cached_package_info.package_type.value
 
                             # VSCode + Claude integration (prompts + agents)
-                            if integrate_vscode or integrate_claude:
+                            if integrate_vscode or integrate_claude or integrate_opencode:
                                 # Integrate prompts
                                 prompt_result = (
                                     prompt_integrator.integrate_package_prompts(
@@ -1363,7 +1366,7 @@ def _install_apm_dependencies(
 
                             # Skill integration (works for both VSCode and Claude)
                             # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
-                            if integrate_vscode or integrate_claude:
+                            if integrate_vscode or integrate_claude or integrate_opencode:
                                 skill_result = skill_integrator.integrate_package_skill(
                                     cached_package_info, project_root
                                 )
@@ -1378,6 +1381,28 @@ def _install_apm_dependencies(
                                         f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
                                     )
                                 for tp in skill_result.target_paths:
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
+
+                            if integrate_opencode:
+                                skill_result_opencode = (
+                                    skill_integrator.integrate_package_skill_opencode(
+                                        cached_package_info, project_root,
+                                        diagnostics=diagnostics,
+                                    )
+                                )
+                                if skill_result_opencode.skill_created:
+                                    total_skills_integrated += 1
+                                    _rich_info(
+                                        "  └─ Skill integrated → .opencode/skills/"
+                                    )
+                                if skill_result_opencode.sub_skills_promoted > 0:
+                                    total_sub_skills_promoted += (
+                                        skill_result_opencode.sub_skills_promoted
+                                    )
+                                    _rich_info(
+                                        f"  └─ {skill_result_opencode.sub_skills_promoted} skill(s) integrated → .opencode/skills/"
+                                    )
+                                for tp in skill_result_opencode.target_paths:
                                     dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Integrate instructions → .github/instructions/
@@ -1442,6 +1467,42 @@ def _install_apm_dependencies(
                                     )
                                 total_links_resolved += command_result.links_resolved
                                 for tp in command_result.target_paths:
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
+
+                            # OpenCode-specific integration (agents + commands)
+                            if integrate_opencode:
+                                opencode_agent_result = (
+                                    agent_integrator.integrate_package_agents_opencode(
+                                        cached_package_info, project_root,
+                                        force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
+                                    )
+                                )
+                                if opencode_agent_result.files_integrated > 0:
+                                    total_agents_integrated += (
+                                        opencode_agent_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {opencode_agent_result.files_integrated} agents integrated → .opencode/agents/"
+                                    )
+                                total_links_resolved += opencode_agent_result.links_resolved
+                                for tp in opencode_agent_result.target_paths:
+                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
+
+                                opencode_command_result = command_integrator.integrate_package_commands_opencode(
+                                    cached_package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                                if opencode_command_result.files_integrated > 0:
+                                    total_commands_integrated += (
+                                        opencode_command_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {opencode_command_result.files_integrated} commands integrated → .opencode/commands/"
+                                    )
+                                total_links_resolved += opencode_command_result.links_resolved
+                                for tp in opencode_command_result.target_paths:
                                     dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Hook integration (target-aware)
@@ -1562,7 +1623,7 @@ def _install_apm_dependencies(
                             _rich_info(f"  └─ Package type: APM Package (apm.yml)")
 
                     # Auto-integrate prompts and agents if enabled
-                    if integrate_vscode or integrate_claude:
+                    if integrate_vscode or integrate_claude or integrate_opencode:
                         try:
                             # Integrate prompts + agents (dual-target: .github/ + .claude/)
                             # Integrate prompts
@@ -1615,7 +1676,7 @@ def _install_apm_dependencies(
 
                             # Skill integration (works for both VSCode and Claude)
                             # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
-                            if integrate_vscode or integrate_claude:
+                            if integrate_vscode or integrate_claude or integrate_opencode:
                                 skill_result = skill_integrator.integrate_package_skill(
                                     package_info, project_root
                                 )
@@ -1630,6 +1691,28 @@ def _install_apm_dependencies(
                                         f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
                                     )
                                 for tp in skill_result.target_paths:
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
+
+                            if integrate_opencode:
+                                skill_result_opencode = (
+                                    skill_integrator.integrate_package_skill_opencode(
+                                        package_info, project_root,
+                                        diagnostics=diagnostics,
+                                    )
+                                )
+                                if skill_result_opencode.skill_created:
+                                    total_skills_integrated += 1
+                                    _rich_info(
+                                        "  └─ Skill integrated → .opencode/skills/"
+                                    )
+                                if skill_result_opencode.sub_skills_promoted > 0:
+                                    total_sub_skills_promoted += (
+                                        skill_result_opencode.sub_skills_promoted
+                                    )
+                                    _rich_info(
+                                        f"  └─ {skill_result_opencode.sub_skills_promoted} skill(s) integrated → .opencode/skills/"
+                                    )
+                                for tp in skill_result_opencode.target_paths:
                                     dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Integrate instructions → .github/instructions/
@@ -1694,6 +1777,42 @@ def _install_apm_dependencies(
                                     )
                                 total_links_resolved += command_result.links_resolved
                                 for tp in command_result.target_paths:
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
+
+                            # OpenCode-specific integration (agents + commands)
+                            if integrate_opencode:
+                                opencode_agent_result = (
+                                    agent_integrator.integrate_package_agents_opencode(
+                                        package_info, project_root,
+                                        force=force, managed_files=managed_files,
+                                        diagnostics=diagnostics,
+                                    )
+                                )
+                                if opencode_agent_result.files_integrated > 0:
+                                    total_agents_integrated += (
+                                        opencode_agent_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {opencode_agent_result.files_integrated} agents integrated → .opencode/agents/"
+                                    )
+                                total_links_resolved += opencode_agent_result.links_resolved
+                                for tp in opencode_agent_result.target_paths:
+                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
+
+                                opencode_command_result = command_integrator.integrate_package_commands_opencode(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                                if opencode_command_result.files_integrated > 0:
+                                    total_commands_integrated += (
+                                        opencode_command_result.files_integrated
+                                    )
+                                    _rich_info(
+                                        f"  └─ {opencode_command_result.files_integrated} commands integrated → .opencode/commands/"
+                                    )
+                                total_links_resolved += opencode_command_result.links_resolved
+                                for tp in opencode_command_result.target_paths:
                                     dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Hook integration (target-aware)

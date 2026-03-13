@@ -4,6 +4,7 @@ from apm_cli.core.target_detection import (
     detect_target,
     should_integrate_vscode,
     should_integrate_claude,
+    should_integrate_opencode,
     should_compile_agents_md,
     should_compile_claude_md,
     get_target_description,
@@ -70,6 +71,20 @@ class TestDetectTarget:
         assert target == "all"
         assert reason == "explicit --target flag"
 
+    def test_explicit_target_opencode_wins(self, tmp_path):
+        """Explicit --target opencode always wins."""
+        (tmp_path / ".github").mkdir()
+        (tmp_path / ".claude").mkdir()
+
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target="opencode",
+            config_target="all",
+        )
+
+        assert target == "opencode"
+        assert reason == "explicit --target flag"
+
     def test_config_target_copilot(self, tmp_path):
         """Config target copilot maps to vscode."""
         target, reason = detect_target(
@@ -101,6 +116,17 @@ class TestDetectTarget:
         )
         
         assert target == "claude"
+        assert reason == "apm.yml target"
+
+    def test_config_target_opencode(self, tmp_path):
+        """Config target opencode is used when no explicit target."""
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target=None,
+            config_target="opencode",
+        )
+
+        assert target == "opencode"
         assert reason == "apm.yml target"
 
     def test_config_target_all(self, tmp_path):
@@ -154,6 +180,34 @@ class TestDetectTarget:
         assert target == "all"
         assert "both" in reason
 
+    def test_auto_detect_opencode_only(self, tmp_path):
+        """Auto-detect opencode when only .opencode/ exists."""
+        (tmp_path / ".opencode").mkdir()
+
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target=None,
+            config_target=None,
+        )
+
+        assert target == "opencode"
+        assert "detected .opencode/ folder" in reason
+
+    def test_auto_detect_all_three_folders(self, tmp_path):
+        """Auto-detect all when .github/, .claude/, and .opencode/ exist."""
+        (tmp_path / ".github").mkdir()
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".opencode").mkdir()
+
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target=None,
+            config_target=None,
+        )
+
+        assert target == "all"
+        assert "all target folders" in reason
+
     def test_auto_detect_neither_folder(self, tmp_path):
         """Auto-detect minimal when neither folder exists."""
         target, reason = detect_target(
@@ -161,9 +215,9 @@ class TestDetectTarget:
             explicit_target=None,
             config_target=None,
         )
-        
+
         assert target == "minimal"
-        assert "no .github/ or .claude/" in reason
+        assert "no .github/, .claude/, or .opencode/" in reason
 
 
 class TestShouldIntegrateVscode:
@@ -206,12 +260,40 @@ class TestShouldIntegrateClaude:
         assert should_integrate_claude("minimal") is False
 
 
+class TestShouldIntegrateOpencode:
+    """Tests for should_integrate_opencode function."""
+
+    def test_opencode_target(self):
+        """OpenCode integration enabled for opencode target."""
+        assert should_integrate_opencode("opencode") is True
+
+    def test_all_target(self):
+        """OpenCode integration enabled for all target."""
+        assert should_integrate_opencode("all") is True
+
+    def test_vscode_target(self):
+        """OpenCode integration disabled for vscode target."""
+        assert should_integrate_opencode("vscode") is False
+
+    def test_claude_target(self):
+        """OpenCode integration disabled for claude target."""
+        assert should_integrate_opencode("claude") is False
+
+    def test_minimal_target(self):
+        """OpenCode integration disabled for minimal target."""
+        assert should_integrate_opencode("minimal") is False
+
+
 class TestShouldCompileAgentsMd:
     """Tests for should_compile_agents_md function."""
 
     def test_vscode_target(self):
         """AGENTS.md compiled for vscode target."""
         assert should_compile_agents_md("vscode") is True
+
+    def test_opencode_target(self):
+        """AGENTS.md compiled for opencode target."""
+        assert should_compile_agents_md("opencode") is True
 
     def test_all_target(self):
         """AGENTS.md compiled for all target."""
@@ -240,6 +322,10 @@ class TestShouldCompileClaudeMd:
     def test_vscode_target(self):
         """CLAUDE.md not compiled for vscode target."""
         assert should_compile_claude_md("vscode") is False
+
+    def test_opencode_target(self):
+        """CLAUDE.md not compiled for opencode target."""
+        assert should_compile_claude_md("opencode") is False
 
     def test_minimal_target(self):
         """CLAUDE.md not compiled for minimal target."""
@@ -272,6 +358,12 @@ class TestGetTargetDescription:
         desc = get_target_description("all")
         assert "AGENTS.md" in desc
         assert "CLAUDE.md" in desc
+
+    def test_opencode_description(self):
+        """Description for opencode target."""
+        desc = get_target_description("opencode")
+        assert "AGENTS.md" in desc
+        assert ".opencode/" in desc
 
     def test_minimal_description(self):
         """Description for minimal target."""

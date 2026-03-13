@@ -1026,7 +1026,7 @@ Use when building MCP servers or tools.
         )
         
         # Copy skill to target
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         target_skill_md = github_path / "SKILL.md"
@@ -1063,7 +1063,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert (github_path / "scripts").exists()
@@ -1091,7 +1091,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert (github_path / "references").exists()
@@ -1116,7 +1116,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert (github_path / "assets").exists()
@@ -1149,7 +1149,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1172,7 +1172,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert github_path.name == "valid-skill-name"
@@ -1189,7 +1189,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         # Name should be normalized to hyphen-case lowercase
@@ -1216,7 +1216,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert github_path == skill_dir
@@ -1246,11 +1246,12 @@ Use when building MCP servers or tools.
             install_path=pkg_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, pkg_source, self.project_root)
-        
-        # Should return None (skipped) - both paths should be None
+        github_path, claude_path, opencode_path = copy_skill_to_target(package_info, pkg_source, self.project_root)
+
+        # Should return None (skipped) - all paths should be None
         assert github_path is None
         assert claude_path is None
+        assert opencode_path is None
         
         # No skill directory should be created
         assert not (self.project_root / ".github" / "skills" / "instructions-only").exists()
@@ -1271,7 +1272,7 @@ Use when building MCP servers or tools.
             pkg_type=PackageContentType.SKILL
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1290,7 +1291,7 @@ Use when building MCP servers or tools.
             pkg_type=PackageContentType.HYBRID
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1311,7 +1312,7 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         assert (self.project_root / ".github" / "skills").exists()
@@ -1334,7 +1335,7 @@ Use when building MCP servers or tools.
             source="owner/my-skill"
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path, _, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
         
         assert github_path is not None
         
@@ -1776,31 +1777,53 @@ Detailed instructions here.
             install_path=skill_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
-        
+        github_path, claude_path, opencode_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+
         assert github_path is not None
         assert claude_path is not None
         assert github_path == self.project_root / ".github" / "skills" / "my-skill"
         assert claude_path == self.project_root / ".claude" / "skills" / "my-skill"
-    
+
     def test_copy_skill_to_target_returns_none_claude_when_no_claude_dir(self):
         """Test that copy_skill_to_target returns None for claude_path when .claude/ doesn't exist."""
         # Ensure .claude/ does NOT exist
         assert not (self.project_root / ".claude").exists()
-        
+
         skill_source = self.apm_modules / "owner" / "my-skill"
         skill_source.mkdir(parents=True)
         (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
-        
+
         package_info = self._create_package_info(
             name="my-skill",
             install_path=skill_source
         )
-        
-        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
-        
+
+        github_path, claude_path, opencode_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+
         assert github_path is not None
         assert claude_path is None
+        assert opencode_path is None
+
+    def test_copy_skill_to_target_returns_opencode_path_when_opencode_exists(self):
+        """Test that copy_skill_to_target returns opencode_path when .opencode/ exists."""
+        # Create .opencode/ directory
+        (self.project_root / ".opencode").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+
+        github_path, claude_path, opencode_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+
+        assert github_path is not None
+        assert opencode_path is not None
+        assert opencode_path == self.project_root / ".opencode" / "skills" / "my-skill"
+        assert (opencode_path / "SKILL.md").exists()
     
     # ========== Test: sync_integration cleans both locations ==========
     
@@ -2371,3 +2394,132 @@ class TestSubSkillPromotionForNonSkillPackages:
 
         assert result['files_removed'] == 0
         assert style_checker.exists()
+
+
+# =============================================================================
+# OpenCode Skills Collision / Overwrite Tests
+# =============================================================================
+
+class TestOpenCodeSkillCollisionAndOverwrite:
+    """Collision and overwrite tests for OpenCode skill integration.
+
+    integrate_package_skill_opencode always overwrites (rmtree + copytree),
+    so these tests verify that behaviour plus edge cases.
+    """
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        """Clean up after tests."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(
+        self,
+        name: str = "test-skill",
+        version: str = "1.0.0",
+        install_path: Path = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL,
+    ) -> PackageInfo:
+        """Helper to create PackageInfo objects for OpenCode skill tests."""
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=f"github.com/test/{name}",
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main",
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            package_type=package_type,
+        )
+
+    def test_first_install_creates_skill(self):
+        """First install creates the skill directory under .opencode/skills/."""
+        (self.project_root / ".opencode").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pkg_info = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill_opencode(pkg_info, self.project_root)
+
+        assert result.skill_created is True
+        assert result.skill_updated is False
+        opencode_skill = self.project_root / ".opencode" / "skills" / "my-skill" / "SKILL.md"
+        assert opencode_skill.exists()
+
+    def test_existing_skill_is_overwritten_on_reinstall(self):
+        """Existing skill directory is replaced (overwritten) on reinstall."""
+        (self.project_root / ".opencode").mkdir()
+
+        # Create the initial skill directory
+        existing_skill = self.project_root / ".opencode" / "skills" / "my-skill"
+        existing_skill.mkdir(parents=True)
+        (existing_skill / "SKILL.md").write_text("# Old content")
+        (existing_skill / "extra-file.md").write_text("# Should be removed")
+
+        # Re-install with new content
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Updated Skill")
+
+        pkg_info = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill_opencode(pkg_info, self.project_root)
+
+        assert result.skill_created is False
+        assert result.skill_updated is True
+        # Content should be the new version
+        content = (existing_skill / "SKILL.md").read_text()
+        assert "Updated Skill" in content
+        # Old extra file should be gone (rmtree + copytree)
+        assert not (existing_skill / "extra-file.md").exists()
+
+    def test_skipped_when_opencode_dir_missing(self):
+        """Skill integration is skipped when .opencode/ does not exist."""
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        pkg_info = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill_opencode(pkg_info, self.project_root)
+
+        assert result.skill_skipped is True
+        assert result.skill_created is False
+
+    def test_overwrite_preserves_references(self):
+        """After overwrite, reference files from the new version are present."""
+        (self.project_root / ".opencode").mkdir()
+
+        # Pre-existing skill
+        existing_skill = self.project_root / ".opencode" / "skills" / "my-skill"
+        existing_skill.mkdir(parents=True)
+        (existing_skill / "SKILL.md").write_text("# Old")
+
+        # New source with references
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# New")
+        refs = skill_source / "references"
+        refs.mkdir()
+        (refs / "api.md").write_text("# API Guide")
+
+        pkg_info = self._create_package_info(name="my-skill", install_path=skill_source)
+        self.integrator.integrate_package_skill_opencode(pkg_info, self.project_root)
+
+        assert (existing_skill / "references" / "api.md").exists()
+        assert (existing_skill / "references" / "api.md").read_text() == "# API Guide"

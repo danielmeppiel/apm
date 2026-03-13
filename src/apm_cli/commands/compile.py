@@ -250,9 +250,9 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["vscode", "agents", "claude", "all"]),
+    type=click.Choice(["vscode", "agents", "claude", "opencode", "all"]),
     default=None,
-    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), or all. Auto-detects if not specified.",
+    help="Target platform: vscode/agents (AGENTS.md), opencode (AGENTS.md + .opencode/), claude (CLAUDE.md), or all. Auto-detects if not specified.",
 )
 @click.option(
     "--dry-run",
@@ -316,6 +316,7 @@ def compile(
 
     Target platforms:
     * vscode/agents: Generates AGENTS.md + .github/ structure (VSCode/GitHub Copilot)
+    * opencode: Generates AGENTS.md + .opencode/ structure (OpenCode)
     * claude: Generates CLAUDE.md + .claude/ structure (Claude Code)
     * all: Generates both targets (default)
 
@@ -467,6 +468,8 @@ def compile(
                 _rich_info(
                     f"Compiling for AGENTS.md (VSCode/Copilot) - {detection_reason}"
                 )
+            elif detected_target == "opencode":
+                _rich_info(f"Compiling for AGENTS.md (OpenCode) - {detection_reason}")
             elif detected_target == "claude":
                 _rich_info(
                     f"Compiling for CLAUDE.md (Claude Code) - {detection_reason}"

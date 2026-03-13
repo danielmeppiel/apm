@@ -782,6 +782,239 @@ You are a security reviewer. Analyze code for vulnerabilities."""
     def test_sync_integration_claude_handles_missing_dir(self):
         """Test sync handles missing .claude/agents/ gracefully."""
         result = self.integrator.sync_integration_claude(None, self.project_root)
-        
+
         assert result['files_removed'] == 0
         assert result['errors'] == 0
+
+    def test_get_target_filename_opencode_from_agent_md(self):
+        source = Path("security.agent.md")
+        result = self.integrator.get_target_filename_opencode(source, "pkg")
+        assert result == "security.md"
+
+    def test_integrate_creates_opencode_agents_directory(self):
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security Agent")
+
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        assert (self.project_root / ".opencode" / "agents").exists()
+
+    def test_integrate_copies_agent_to_opencode_agents(self):
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security Agent")
+
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        target_file = self.project_root / ".opencode" / "agents" / "security.md"
+        assert target_file.exists()
+
+    def test_sync_integration_opencode_removes_apm_agents(self):
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security-apm.md").write_text("# APM managed")
+        (agents_dir / "custom.md").write_text("# User created")
+
+        result = self.integrator.sync_integration_opencode(None, self.project_root)
+
+        assert result["files_removed"] == 1
+        assert not (agents_dir / "security-apm.md").exists()
+        assert (agents_dir / "custom.md").exists()
+
+
+class TestOpenCodeAgentCollisionAndForce:
+    """Collision detection and force-overwrite tests for OpenCode agent integration.
+
+    These mirror the Claude collision tests to ensure parity.
+    """
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = AgentIntegrator()
+
+    def teardown_method(self):
+        """Clean up after tests."""
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(self, package_dir):
+        """Helper to create a PackageInfo object."""
+        package = APMPackage(
+            name="test-pkg",
+            version="1.0.0",
+            package_path=package_dir
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=package_dir,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat()
+        )
+
+    # ========== Collision: no manifest (managed_files=None) ==========
+
+    def test_overwrites_when_no_manifest(self):
+        """Without managed_files (no manifest), overwrites existing files."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# New version")
+
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security.md").write_text("# Old version")
+
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        assert result.files_skipped == 0
+        assert (agents_dir / "security.md").read_text() == "# New version"
+
+    # ========== Collision: user-authored file skipped ==========
+
+    def test_skips_user_file_collision(self):
+        """Skips user-authored file when managed_files says it's not APM-owned."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# APM version")
+
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security.md").write_text("# User version")
+
+        package_info = self._create_package_info(package_dir)
+        # managed_files is empty set — security.md not in it → user-authored
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root, managed_files=set()
+        )
+
+        assert result.files_integrated == 0
+        assert result.files_skipped == 1
+        assert (agents_dir / "security.md").read_text() == "# User version"
+
+    # ========== Collision: managed file is overwritten ==========
+
+    def test_overwrites_managed_file(self):
+        """Overwrites file when managed_files includes it (APM-owned)."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Updated APM version")
+
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security.md").write_text("# Old APM version")
+
+        package_info = self._create_package_info(package_dir)
+        managed = {".opencode/agents/security.md"}
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root, managed_files=managed
+        )
+
+        assert result.files_integrated == 1
+        assert result.files_skipped == 0
+        assert (agents_dir / "security.md").read_text() == "# Updated APM version"
+
+    # ========== Force flag overrides collision ==========
+
+    def test_force_overwrites_user_file(self):
+        """Force flag overrides collision detection."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# APM version")
+
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security.md").write_text("# User version")
+
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root, force=True, managed_files=set()
+        )
+
+        assert result.files_integrated == 1
+        assert result.files_skipped == 0
+        assert (agents_dir / "security.md").read_text() == "# APM version"
+
+    # ========== Sync removes stale files ==========
+
+    def test_sync_removes_stale_apm_agents(self):
+        """Sync removes APM-managed agents from .opencode/agents/."""
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security-apm.md").write_text("# APM managed")
+        (agents_dir / "planner-apm.md").write_text("# APM managed")
+        (agents_dir / "custom.md").write_text("# User created")
+
+        result = self.integrator.sync_integration_opencode(None, self.project_root)
+
+        assert result["files_removed"] == 2
+        assert not (agents_dir / "security-apm.md").exists()
+        assert not (agents_dir / "planner-apm.md").exists()
+        assert (agents_dir / "custom.md").exists()  # Preserved
+
+    def test_sync_handles_missing_opencode_dir(self):
+        """Sync handles missing .opencode/agents/ gracefully."""
+        result = self.integrator.sync_integration_opencode(None, self.project_root)
+
+        assert result["files_removed"] == 0
+        assert result["errors"] == 0
+
+    def test_sync_with_managed_files_removes_tracked_files(self):
+        """Sync removes files listed in managed_files from .opencode/agents/."""
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security.md").write_text("# APM managed")
+        (agents_dir / "custom.md").write_text("# User created")
+
+        managed = {".opencode/agents/security.md"}
+        result = self.integrator.sync_integration_opencode(
+            None, self.project_root, managed_files=managed
+        )
+
+        assert result["files_removed"] == 1
+        assert not (agents_dir / "security.md").exists()
+        assert (agents_dir / "custom.md").exists()
+
+    # ========== Multiple agents: partial collision ==========
+
+    def test_partial_collision_skips_only_conflicting(self):
+        """With multiple agents, only the colliding user-authored one is skipped."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security")
+        (package_dir / "planner.agent.md").write_text("# Planner")
+
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        # Pre-create security.md as a user file
+        (agents_dir / "security.md").write_text("# User's security agent")
+
+        package_info = self._create_package_info(package_dir)
+        # managed_files is empty → security.md is user-authored, planner.md is new
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root, managed_files=set()
+        )
+
+        assert result.files_integrated == 1  # Only planner
+        assert result.files_skipped == 1     # Security skipped
+        assert (agents_dir / "security.md").read_text() == "# User's security agent"
+        assert (agents_dir / "planner.md").read_text() == "# Planner"
