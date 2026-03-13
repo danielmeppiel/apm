@@ -188,8 +188,8 @@ class AgentsCompiler:
             # Route to targets based on config.target
             results: List[CompilationResult] = []
             
-            # AGENTS.md target (vscode/agents)
-            if config.target in ("vscode", "agents", "all"):
+            # AGENTS.md target (vscode/agents/opencode)
+            if config.target in ("vscode", "agents", "opencode", "all"):
                 results.append(self._compile_agents_md(config, primitives))
             
             # CLAUDE.md target

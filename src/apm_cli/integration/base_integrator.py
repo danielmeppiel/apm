@@ -94,13 +94,13 @@ class BaseIntegrator:
         return {p.replace("\\", "/") for p in managed_files}
 
     # Known integration prefixes that APM is allowed to deploy/remove under
-    INTEGRATION_PREFIXES = (".github/", ".claude/")
+    INTEGRATION_PREFIXES = (".github/", ".claude/", ".opencode/")
 
     @staticmethod
     def validate_deploy_path(
         rel_path: str,
         project_root: Path,
-        allowed_prefixes: tuple = (".github/", ".claude/"),
+        allowed_prefixes: tuple = (".github/", ".claude/", ".opencode/"),
     ) -> bool:
         """Return True if *rel_path* is safe for APM to deploy or remove.
 
@@ -135,7 +135,9 @@ class BaseIntegrator:
             "prompts": set(),
             "agents_github": set(),
             "agents_claude": set(),
+            "agents_opencode": set(),
             "commands": set(),
+            "commands_opencode": set(),
             "skills": set(),
             "hooks": set(),
             "instructions": set(),
@@ -147,9 +149,13 @@ class BaseIntegrator:
                 buckets["agents_github"].add(p)
             elif p.startswith(".claude/agents/"):
                 buckets["agents_claude"].add(p)
+            elif p.startswith(".opencode/agents/"):
+                buckets["agents_opencode"].add(p)
             elif p.startswith(".claude/commands/"):
                 buckets["commands"].add(p)
-            elif p.startswith((".github/skills/", ".claude/skills/")):
+            elif p.startswith(".opencode/commands/"):
+                buckets["commands_opencode"].add(p)
+            elif p.startswith((".github/skills/", ".claude/skills/", ".opencode/skills/")):
                 buckets["skills"].add(p)
             elif p.startswith((".github/hooks/", ".claude/hooks/")):
                 buckets["hooks"].add(p)

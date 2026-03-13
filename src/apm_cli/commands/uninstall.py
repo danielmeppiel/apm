@@ -446,6 +446,7 @@ def uninstall(ctx, packages, dry_run):
             from ..core.target_detection import (
                 detect_target,
                 should_integrate_claude,
+                should_integrate_opencode,
             )
             config_target = apm_package.target
             detected_target, _ = detect_target(
@@ -454,6 +455,7 @@ def uninstall(ctx, packages, dry_run):
                 config_target=config_target,
             )
             integrate_claude = should_integrate_claude(detected_target)
+            integrate_opencode = should_integrate_opencode(detected_target)
 
             prompt_integrator = PromptIntegrator()
             agent_integrator = AgentIntegrator()
@@ -489,9 +491,14 @@ def uninstall(ctx, packages, dry_run):
                         agent_integrator.integrate_package_agents(pkg_info, project_root)
                         if integrate_claude:
                             agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
+                        if integrate_opencode:
+                            agent_integrator.integrate_package_agents_opencode(pkg_info, project_root)
                     skill_integrator.integrate_package_skill(pkg_info, project_root)
                     if integrate_claude:
                         command_integrator.integrate_package_commands(pkg_info, project_root)
+                    if integrate_opencode:
+                        command_integrator.integrate_package_commands_opencode(pkg_info, project_root)
+                        skill_integrator.integrate_package_skill_opencode(pkg_info, project_root)
                     hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
                     if integrate_claude:
                         hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)

@@ -246,44 +246,47 @@ def copy_skill_to_target(
     package_info,
     source_path: Path,
     target_base: Path,
-) -> tuple[Path | None, Path | None]:
-    """Copy skill directory to .github/skills/ and optionally .claude/skills/.
-    
+) -> tuple[Path | None, Path | None, Path | None]:
+    """Copy skill directory to .github/skills/ and optionally .claude/skills/ and .opencode/skills/.
+
     This is a standalone function for direct skill copy operations.
     It handles:
     - Package type routing via should_install_skill()
     - Skill name validation/normalization
     - Directory structure preservation
     - Compatibility copy to .claude/skills/ when .claude/ exists (T7)
-    
-    Source SKILL.md is copied verbatim  -- no metadata injection.
-    
+    - Compatibility copy to .opencode/skills/ when .opencode/ exists (T8)
+
+    Source SKILL.md is copied verbatim -- no metadata injection.
+
+
     Copies:
     - SKILL.md (required)
     - scripts/ (optional)
     - references/ (optional)
     - assets/ (optional)
     - Any other subdirectories the package contains
-    
+
     Args:
         package_info: PackageInfo object with package metadata
         source_path: Path to skill in apm_modules/
         target_base: Usually project root
-        
+
     Returns:
-        Tuple of (github_path, claude_path):
+        Tuple of (github_path, claude_path, opencode_path):
         - github_path: Path to .github/skills/{name}/ or None if skipped
         - claude_path: Path to .claude/skills/{name}/ or None if .claude/ doesn't exist
+        - opencode_path: Path to .opencode/skills/{name}/ or None if .opencode/ doesn't exist
     """
     # Check if package type allows skill installation (T4 routing)
     if not should_install_skill(package_info):
-        return (None, None)
-    
+        return (None, None, None)
+
     # Check for SKILL.md existence
     source_skill_md = source_path / "SKILL.md"
     if not source_skill_md.exists():
         # No SKILL.md means this package is handled by compilation, not skill copy
-        return (None, None)
+        return (None, None, None)
     
     # Get and validate skill name from folder
     raw_skill_name = source_path.name
@@ -326,8 +329,18 @@ def copy_skill_to_target(
         
         # Copy the entire skill folder (identical to github copy)
         shutil.copytree(source_path, claude_skill_dir)
-    
-    return (github_skill_dir, claude_skill_dir)
+
+    # === T8: .opencode/skills/ (OpenCode compatibility copy) ===
+    opencode_skill_dir: Path | None = None
+    opencode_dir = target_base / ".opencode"
+    if opencode_dir.exists() and opencode_dir.is_dir():
+        opencode_skill_dir = opencode_dir / "skills" / skill_name
+        opencode_skill_dir.parent.mkdir(parents=True, exist_ok=True)
+        if opencode_skill_dir.exists():
+            shutil.rmtree(opencode_skill_dir)
+        shutil.copytree(source_path, opencode_skill_dir)
+
+    return (github_skill_dir, claude_skill_dir, opencode_skill_dir)
 
 
 class SkillIntegrator(BaseIntegrator):
@@ -552,6 +565,26 @@ class SkillIntegrator(BaseIntegrator):
 
         return count, all_deployed
 
+    def _promote_sub_skills_standalone_opencode(
+        self, package_info, project_root: Path, diagnostics=None
+    ) -> tuple[int, list[Path]]:
+        """Promote sub-skills from a non-skill package into .opencode/skills/."""
+        package_path = package_info.install_path
+        sub_skills_dir = package_path / ".apm" / "skills"
+        if not sub_skills_dir.is_dir():
+            return 0, []
+
+        parent_name = package_path.name
+        opencode_dir = project_root / ".opencode"
+        if not opencode_dir.exists() or not opencode_dir.is_dir():
+            return 0, []
+
+        opencode_skills_root = opencode_dir / "skills"
+        count, deployed = self._promote_sub_skills(
+            sub_skills_dir, opencode_skills_root, parent_name, warn=False
+        )
+        return count, list(deployed)
+
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path,
         diagnostics=None,
@@ -750,7 +783,107 @@ class SkillIntegrator(BaseIntegrator):
             sub_skills_promoted=sub_skills_count,
             target_paths=sub_deployed
         )
-    
+
+    def integrate_package_skill_opencode(
+        self, package_info, project_root: Path, diagnostics=None
+    ) -> SkillIntegrationResult:
+        """Integrate a package's skill into .opencode/skills/ only."""
+        if not should_install_skill(package_info):
+            sub_skills_count, sub_deployed = (
+                self._promote_sub_skills_standalone_opencode(package_info, project_root, diagnostics=diagnostics)
+            )
+            return SkillIntegrationResult(
+                skill_created=False,
+                skill_updated=False,
+                skill_skipped=True,
+                skill_path=None,
+                references_copied=0,
+                links_resolved=0,
+                sub_skills_promoted=sub_skills_count,
+                target_paths=sub_deployed,
+            )
+
+        # Skip virtual FILE/COLLECTION packages; allow virtual subdirectories
+        if package_info.dependency_ref and package_info.dependency_ref.is_virtual:
+            if not package_info.dependency_ref.is_virtual_subdirectory():
+                return SkillIntegrationResult(
+                    skill_created=False,
+                    skill_updated=False,
+                    skill_skipped=True,
+                    skill_path=None,
+                    references_copied=0,
+                    links_resolved=0,
+                )
+
+        package_path = package_info.install_path
+        source_skill_md = package_path / "SKILL.md"
+        if not source_skill_md.exists():
+            sub_skills_count, sub_deployed = (
+                self._promote_sub_skills_standalone_opencode(package_info, project_root, diagnostics=diagnostics)
+            )
+            return SkillIntegrationResult(
+                skill_created=False,
+                skill_updated=False,
+                skill_skipped=True,
+                skill_path=None,
+                references_copied=0,
+                links_resolved=0,
+                sub_skills_promoted=sub_skills_count,
+                target_paths=sub_deployed,
+            )
+
+        opencode_dir = project_root / ".opencode"
+        if not opencode_dir.exists() or not opencode_dir.is_dir():
+            return SkillIntegrationResult(
+                skill_created=False,
+                skill_updated=False,
+                skill_skipped=True,
+                skill_path=None,
+                references_copied=0,
+                links_resolved=0,
+                sub_skills_promoted=0,
+                target_paths=[],
+            )
+
+        raw_skill_name = package_path.name
+        is_valid, _ = validate_skill_name(raw_skill_name)
+        skill_name = (
+            raw_skill_name if is_valid else normalize_skill_name(raw_skill_name)
+        )
+
+        opencode_skill_dir = opencode_dir / "skills" / skill_name
+        opencode_skill_md = opencode_skill_dir / "SKILL.md"
+        skill_created = not opencode_skill_dir.exists()
+
+        if opencode_skill_dir.exists():
+            shutil.rmtree(opencode_skill_dir)
+
+        opencode_skill_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            package_path, opencode_skill_dir, ignore=shutil.ignore_patterns(".apm")
+        )
+
+        files_copied = sum(1 for _ in opencode_skill_dir.rglob("*") if _.is_file())
+        all_target_paths = [opencode_skill_dir]
+
+        sub_skills_dir = package_path / ".apm" / "skills"
+        opencode_skills_root = opencode_dir / "skills"
+        sub_skills_count, sub_deployed = self._promote_sub_skills(
+            sub_skills_dir, opencode_skills_root, skill_name, warn=False
+        )
+        all_target_paths.extend(sub_deployed)
+
+        return SkillIntegrationResult(
+            skill_created=skill_created,
+            skill_updated=not skill_created,
+            skill_skipped=False,
+            skill_path=opencode_skill_md,
+            references_copied=files_copied,
+            links_resolved=0,
+            sub_skills_promoted=sub_skills_count,
+            target_paths=all_target_paths,
+        )
+
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict[str, int]:
         """Sync .github/skills/ and .claude/skills/ with currently installed packages.
@@ -776,6 +909,7 @@ class SkillIntegrator(BaseIntegrator):
                 is_skill = (
                     rel_path.startswith(".github/skills/")
                     or rel_path.startswith(".claude/skills/")
+                    or rel_path.startswith(".opencode/skills/")
                 )
                 if not is_skill or ".." in rel_path:
                     continue
@@ -824,7 +958,16 @@ class SkillIntegrator(BaseIntegrator):
             result = self._clean_orphaned_skills(claude_skills_dir, installed_skill_names)
             stats['files_removed'] += result['files_removed']
             stats['errors'] += result['errors']
-        
+
+        # Clean .opencode/skills/ (OpenCode compatibility)
+        opencode_skills_dir = project_root / ".opencode" / "skills"
+        if opencode_skills_dir.exists():
+            result = self._clean_orphaned_skills(
+                opencode_skills_dir, installed_skill_names
+            )
+            stats['files_removed'] += result['files_removed']
+            stats['errors'] += result['errors']
+
         return stats
     
     def _clean_orphaned_skills(self, skills_dir: Path, installed_skill_names: set) -> Dict[str, int]:
