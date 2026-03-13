@@ -95,6 +95,8 @@ DiagnosticCollector categories: `skip()` for collisions, `overwrite()` for cross
 
 Always use the helpers from `apm_cli.utils.console` — never raw `print()` or bare `click.echo()`.
 
+**Emojis are banned.** Never use emoji characters anywhere in CLI output — not in messages, symbols, help text, or status indicators. Use ASCII text symbols exclusively via `STATUS_SYMBOLS`.
+
 ```python
 from apm_cli.utils.console import (
     _rich_success, _rich_error, _rich_warning, _rich_info, _rich_echo
@@ -107,9 +109,9 @@ _rich_error("Failed to download package")              # red
 _rich_echo("    [pkg-name]", color="dim")              # dim, for verbose details
 ```
 
-Use `STATUS_SYMBOLS` dict with `symbol=` parameter instead of hardcoding emojis:
+Use `STATUS_SYMBOLS` dict with `symbol=` parameter for consistent ASCII prefixes:
 ```python
-_rich_info("Starting operation...", symbol="gear")     # uses STATUS_SYMBOLS["gear"]
+_rich_info("Starting operation...", symbol="gear")     # renders as "[*] Starting operation..."
 ```
 
 ## Output structure pattern
@@ -153,6 +155,8 @@ if SkillIntegrator._dirs_equal(source, target):
 
 3. **Missing `diagnostics` parameter** — When calling integrators, always pass `diagnostics=diagnostics` so warnings route to the deferred summary.
 
-4. **Inconsistent symbols** — Use `STATUS_SYMBOLS` dict, not hardcoded emoji characters.
+4. **No emojis, ever** — Emojis are completely banned from all CLI output. Use ASCII text symbols from `STATUS_SYMBOLS` exclusively. This applies to messages, help text, status indicators, and table titles.
 
-5. **Walls of text** — Use Rich tables for structured data, panels for grouped content. Break up long output with visual hierarchy (indentation, `└─` tree connectors).
+5. **Inconsistent symbols** — Always use `STATUS_SYMBOLS` dict with `symbol=` param, not inline characters.
+
+6. **Walls of text** — Use Rich tables for structured data, panels for grouped content. Break up long output with visual hierarchy (indentation, `└─` tree connectors).
