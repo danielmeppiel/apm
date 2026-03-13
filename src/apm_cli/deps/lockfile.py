@@ -3,6 +3,7 @@
 Provides deterministic, reproducible installs by capturing exact resolved versions.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,8 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from ..models.apm_package import DependencyReference
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -327,6 +330,7 @@ def migrate_lockfile_if_needed(project_root: Path) -> bool:
         try:
             legacy_path.rename(new_path)
         except OSError:
+            logger.debug("Could not rename %s to %s", legacy_path, new_path, exc_info=True)
             return False
         return True
     return False
