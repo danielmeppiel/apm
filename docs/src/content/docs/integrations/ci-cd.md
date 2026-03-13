@@ -63,6 +63,20 @@ If your project uses `apm compile` to target tools like Cursor, Codex, or Gemini
 
 This step is not needed if your team only uses GitHub Copilot and Claude, which read deployed primitives natively.
 
+### Verify Deployed Primitives
+
+To ensure `.github/` and `.claude/` integration files stay in sync with `apm.yml`, add a drift check:
+
+```yaml
+      - name: Check APM integration drift
+        run: |
+          apm install
+          git diff --exit-code .github/ .claude/ || \
+            (echo "APM integration files are out of date. Run 'apm install' and commit." && exit 1)
+```
+
+This catches cases where a developer updates `apm.yml` but forgets to re-run `apm install`.
+
 ## Azure Pipelines
 
 ```yaml
@@ -153,5 +167,6 @@ See the [Pack & Distribute guide](../../guides/pack-distribute/) for the full wo
 
 - **Pin APM version** in CI to avoid unexpected changes: `pip install apm-cli==0.7.7`
 - **Commit `apm.lock.yaml`** so CI resolves the same dependency versions as local development
+- **Commit `.github/` and `.claude/` deployed files** so contributors and cloud-based Copilot get agent context without running `apm install`
 - **If using `apm compile`** (for Cursor, Codex, Gemini), run it in CI and fail the build if the output differs from what's committed
 - **Use `GITHUB_APM_PAT`** for private dependencies; never use the default `GITHUB_TOKEN` for cross-repo access
