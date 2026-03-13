@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Copilot encoding instructions: `encoding.instructions.md` (`applyTo: "**"`) bans non-ASCII characters in source and CLI output; updated `copilot-instructions.md` and `cli.instructions.md` to use ASCII bracket notation (`[+]`/`[!]`/`[x]`/`[i]`/`[*]`/`[>]`) instead of emoji STATUS_SYMBOLS (#282)
+
 ## [0.8.4] - 2026-03-22
 
 ### Added
