@@ -33,7 +33,18 @@ setup_github_tokens() {
             echo -e "${GREEN}✓ Preserving existing GITHUB_TOKEN for Models access (${#GITHUB_TOKEN} chars)${NC}"
         fi
     else
-        echo -e "${YELLOW}⚠️  No GITHUB_TOKEN found initially${NC}"
+        # Try to obtain a token from the gh CLI if authenticated
+        local gh_token=""
+        gh_token=$(gh auth token 2>/dev/null) || true
+        if [[ -n "$gh_token" ]]; then
+            export GITHUB_TOKEN="$gh_token"
+            preserve_github_token="$gh_token"
+            if [[ "$quiet_mode" != "true" ]]; then
+                echo -e "${GREEN}Obtained GITHUB_TOKEN from gh CLI (${#gh_token} chars)${NC}"
+            fi
+        else
+            echo -e "${YELLOW}⚠️  No GITHUB_TOKEN found initially${NC}"
+        fi
     fi
     
     # 2. Setup APM module access

@@ -172,8 +172,12 @@ class TestCloneWithFallbackEnv:
         env_used = calls[0][1].get("env", calls[0].kwargs.get("env"))
         assert env_used.get("GIT_ASKPASS") == "echo"
         assert env_used.get("GIT_CONFIG_NOSYSTEM") == "1"
-        expected_null = "NUL" if sys.platform == "win32" else "/dev/null"
-        assert env_used.get("GIT_CONFIG_GLOBAL") == expected_null
+        cfg_path = env_used.get("GIT_CONFIG_GLOBAL")
+        if sys.platform == "win32":
+            assert cfg_path != "NUL"
+            assert os.path.isfile(cfg_path)
+        else:
+            assert cfg_path == "/dev/null"
 
     def test_github_host_no_token_allows_credential_helpers(self):
         """For GitHub hosts WITHOUT a token, env is relaxed so credential helpers work."""

@@ -1129,12 +1129,15 @@ class TestDownloadSubdirectoryPackageWindowsCleanup:
 class TestGitEnvironmentPlatformBehavior:
     """Test platform-specific behavior in Git environment setup."""
 
-    def test_git_config_global_uses_nul_on_windows(self):
-        """GIT_CONFIG_GLOBAL should be 'NUL' on Windows."""
+    def test_git_config_global_uses_empty_file_on_windows(self):
+        """GIT_CONFIG_GLOBAL should be an existing empty file on Windows (not NUL)."""
         with patch.dict(os.environ, {'GITHUB_APM_PAT': 'tok'}, clear=True), \
              patch('sys.platform', 'win32'):
             dl = GitHubPackageDownloader()
-            assert dl.git_env['GIT_CONFIG_GLOBAL'] == 'NUL'
+            cfg_path = dl.git_env['GIT_CONFIG_GLOBAL']
+            # Must be a real path (not 'NUL') that exists as a file
+            assert cfg_path != 'NUL'
+            assert os.path.isfile(cfg_path)
 
     def test_git_config_global_uses_dev_null_on_unix(self):
         """GIT_CONFIG_GLOBAL should be '/dev/null' on Unix."""

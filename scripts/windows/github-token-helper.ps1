@@ -27,7 +27,20 @@ function Initialize-GitHubToken {
             Write-Host "$([char]0x2713) Preserving existing GITHUB_TOKEN for Models access ($($env:GITHUB_TOKEN.Length) chars)" -ForegroundColor Green
         }
     } else {
-        Write-Host "Warning: No GITHUB_TOKEN found initially" -ForegroundColor Yellow
+        # Try to obtain a token from the gh CLI if authenticated
+        $ghToken = $null
+        try {
+            $ghToken = (gh auth token 2>$null)
+        } catch { }
+        if ($ghToken) {
+            $env:GITHUB_TOKEN = $ghToken
+            $preserveGithubToken = $ghToken
+            if (-not $Quiet) {
+                Write-Host "Obtained GITHUB_TOKEN from gh CLI ($($ghToken.Length) chars)" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "Warning: No GITHUB_TOKEN found initially" -ForegroundColor Yellow
+        }
     }
 
     # 2. Setup APM module access

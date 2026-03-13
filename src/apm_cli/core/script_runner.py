@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -496,6 +497,12 @@ class ScriptRunner:
                     print(line)
 
         # Execute using argument list (no shell interpretation) with updated environment
+        # On Windows, resolve the executable via shutil.which() so that shell
+        # wrappers like copilot.cmd / copilot.ps1 are found without shell=True.
+        if sys.platform == "win32" and actual_command_args:
+            resolved = shutil.which(actual_command_args[0])
+            if resolved:
+                actual_command_args[0] = resolved
         return subprocess.run(actual_command_args, check=True, env=env_vars)
 
     def _discover_prompt_file(self, name: str) -> Optional[Path]:
