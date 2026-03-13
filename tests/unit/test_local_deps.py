@@ -521,5 +521,3 @@ class TestCopyLocalPackage:
         # The symlink should be preserved as a symlink, NOT followed
         link = install_path / "escape"
         assert link.is_symlink(), "Symlink was followed instead of preserved"
-        # The credentials should NOT have been copied as real files
-        assert not (install_path / "escape" / "credentials.txt").is_file() or link.is_symlink()

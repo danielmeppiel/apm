@@ -1163,7 +1163,7 @@ def _install_apm_dependencies(
                         total_commands_integrated += int_result["commands"]
                         total_hooks_integrated += int_result["hooks"]
                         total_links_resolved += int_result["links_resolved"]
-                        dep_deployed_files = int_result["deployed_files"]
+                        dep_deployed_files.extend(int_result["deployed_files"])
                     except Exception as e:
                         diagnostics.error(
                             f"Failed to integrate primitives from local package: {e}",
