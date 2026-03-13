@@ -119,9 +119,9 @@ author: test
                 
                 # Once we see "Package installed and ready to run", execution is about to start
                 # Terminate to avoid waiting for full prompt execution
-                if "✨ Package installed and ready to run" in line:
+                if "Package installed and ready to run" in line:
                     execution_started = True
-                    print("\n⚡ Test validated - terminating to save time")
+                    print("\n Test validated - terminating to save time")
                     process.terminate()
                     break
             
@@ -136,11 +136,11 @@ author: test
             output = ''.join(output_lines)
         
         # Check output for auto-install messages
-        assert "Auto-installing virtual package" in output or "📦" in output, \
+        assert "Auto-installing virtual package" in output or "[+]" in output, \
             "Should show auto-install message"
-        assert "Downloading from" in output or "📥" in output, \
+        assert "Downloading from" in output or "[>]" in output, \
             "Should show download message"
-        assert execution_started, "Should have started execution (✨ Package installed and ready to run)"
+        assert execution_started, "Should have started execution (Package installed and ready to run)"
         
         # Verify package was installed
         package_path = apm_modules / "github" / "awesome-copilot" / "skills" / "architecture-blueprint-generator"
@@ -150,7 +150,7 @@ author: test
         assert (package_path / "SKILL.md").exists() or (package_path / "apm.yml").exists(), \
             "Virtual package should have SKILL.md or apm.yml"
         
-        print(f"✅ Auto-install successful: {package_path}")
+        print(f"[+] Auto-install successful: {package_path}")
     
     def test_auto_install_uses_cache_on_second_run(self, temp_e2e_home):
         """Test that second run uses cached package (no re-download).
@@ -182,7 +182,7 @@ author: test
             for line in iter(process.stdout.readline, ''):
                 if not line:
                     break
-                if "✨ Package installed and ready to run" in line:
+                if "Package installed and ready to run" in line:
                     process.terminate()
                     break
             process.wait(timeout=5)
@@ -215,7 +215,7 @@ author: test
                     break
                 output_lines.append(line)
                 # Terminate once we see execution starting (no need for full run)
-                if "Executing" in line or "✨" in line:
+                if "Executing" in line or "Package installed and ready to run" in line:
                     process.terminate()
                     break
             process.wait(timeout=5)
@@ -227,10 +227,10 @@ author: test
         
         # Check output - should NOT show install/download messages
         assert "Auto-installing" not in output, "Should not auto-install on second run"
-        assert "Auto-discovered" in output or "ℹ" in output, \
+        assert "Auto-discovered" in output or "[i]" in output, \
             "Should show auto-discovery message (using cached package)"
         
-        print("✅ Second run used cached package (no re-download)")
+        print("[+] Second run used cached package (no re-download)")
     
     def test_simple_name_works_after_install(self, temp_e2e_home):
         """Test that simple name works after package is installed.
@@ -262,7 +262,7 @@ author: test
             for line in iter(process.stdout.readline, ''):
                 if not line:
                     break
-                if "✨ Package installed and ready to run" in line:
+                if "Package installed and ready to run" in line:
                     process.terminate()
                     break
             process.wait(timeout=5)
@@ -302,10 +302,10 @@ author: test
             output = ''.join(output_lines)
         
         # Check output - should discover the installed prompt
-        assert "Auto-discovered" in output or "ℹ" in output, \
+        assert "Auto-discovered" in output or "[i]" in output, \
             "Should auto-discover prompt from installed package"
         
-        print("✅ Simple name works after installation")
+        print("[+] Simple name works after installation")
     
     def test_auto_install_with_qualified_path(self, temp_e2e_home):
         """Test auto-install works with qualified path format.
@@ -337,7 +337,7 @@ author: test
                 if not line:
                     break
                 # Terminate once installation completes
-                if "✨ Package installed and ready to run" in line:
+                if "Package installed and ready to run" in line:
                     process.terminate()
                     break
             process.wait(timeout=5)
@@ -353,7 +353,7 @@ author: test
         skill_file = package_path / "SKILL.md"
         assert skill_file.exists(), "SKILL.md should exist"
         
-        print("✅ Auto-install works with qualified path")
+        print("[+] Auto-install works with qualified path")
 
 
 if __name__ == "__main__":
