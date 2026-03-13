@@ -31,9 +31,13 @@ class LockedDependency:
     resolved_by: Optional[str] = None
     package_type: Optional[str] = None
     deployed_files: List[str] = field(default_factory=list)
+    source: Optional[str] = None  # "local" for local deps, None/absent for remote
+    local_path: Optional[str] = None  # Original local path (relative to project root)
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
+        if self.source == "local" and self.local_path:
+            return self.local_path
         if self.is_virtual and self.virtual_path:
             return f"{self.repo_url}/{self.virtual_path}"
         return self.repo_url
@@ -61,6 +65,10 @@ class LockedDependency:
             result["package_type"] = self.package_type
         if self.deployed_files:
             result["deployed_files"] = sorted(self.deployed_files)
+        if self.source:
+            result["source"] = self.source
+        if self.local_path:
+            result["local_path"] = self.local_path
         return result
 
     @classmethod
@@ -92,6 +100,8 @@ class LockedDependency:
             resolved_by=data.get("resolved_by"),
             package_type=data.get("package_type"),
             deployed_files=deployed_files,
+            source=data.get("source"),
+            local_path=data.get("local_path"),
         )
 
     @classmethod
@@ -112,6 +122,8 @@ class LockedDependency:
             is_virtual=dep_ref.is_virtual,
             depth=depth,
             resolved_by=resolved_by,
+            source="local" if dep_ref.is_local else None,
+            local_path=dep_ref.local_path if dep_ref.is_local else None,
         )
 
 
@@ -256,6 +268,8 @@ class LockFile:
                 host=dep.host,
                 virtual_path=dep.virtual_path,
                 is_virtual=dep.is_virtual,
+                is_local=(dep.source == "local"),
+                local_path=dep.local_path,
             )
             install_path = dep_ref.get_install_path(apm_modules_dir)
             try:

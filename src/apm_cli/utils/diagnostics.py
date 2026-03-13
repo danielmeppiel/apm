@@ -193,9 +193,9 @@ class DiagnosticCollector:
 
     def _render_overwrite_group(self, items: List[Diagnostic]) -> None:
         count = len(items)
-        noun = "sub-skill" if count == 1 else "sub-skills"
+        noun = "skill" if count == 1 else "skills"
         _rich_warning(
-            f"  ⚠ {count} {noun} overwrote existing skills"
+            f"  ⚠ {count} {noun} replaced by a different package (last installed wins)"
         )
         if not self.verbose:
             _rich_info("    Run with --verbose to see details")
@@ -205,8 +205,9 @@ class DiagnosticCollector:
                 if pkg:
                     _rich_echo(f"    [{pkg}]", color="dim")
                 for d in diags:
-                    detail_str = f" — {d.detail}" if d.detail else ""
-                    _rich_echo(f"      └─ {d.message}{detail_str}", color="dim")
+                    _rich_echo(f"      └─ {d.message}", color="dim")
+                    if d.detail:
+                        _rich_echo(f"         {d.detail}", color="dim")
 
     def _render_warning_group(self, items: List[Diagnostic]) -> None:
         for d in items:

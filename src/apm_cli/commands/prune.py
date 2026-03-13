@@ -94,7 +94,6 @@ def prune(ctx, dry_run):
 
         # Clean deployed files for pruned packages and update lockfile
         if pruned_keys:
-            from ..deps.lockfile import get_lockfile_path
             lockfile_path = get_lockfile_path(Path("."))
             lockfile = LockFile.read(lockfile_path)
             project_root = Path(".")

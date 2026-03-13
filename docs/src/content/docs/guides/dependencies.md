@@ -27,6 +27,7 @@ APM supports multiple dependency types:
 | **Marketplace Plugin** | Has `plugin.json` (no `apm.yml`) | `github/awesome-copilot/plugins/context-engineering` |
 | **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` || **Hook Package** | Has `hooks/*.json` (no `apm.yml` or `SKILL.md`) | `anthropics/claude-plugins-official/plugins/hookify` || **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
 | **Virtual Subdirectory Package** | Folder path in repo | `github/awesome-copilot/skills/review-and-refactor` |
+| **Local Path Package** | Path starts with `./`, `../`, or `/` | `./packages/my-shared-skills` |
 | **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` |
 
 **Virtual Subdirectory Packages** are skill folders from monorepos - they download an entire folder and may contain a SKILL.md plus resources.
@@ -92,6 +93,10 @@ dependencies:
     # FQDN shorthand with virtual path (any host)
     - gitlab.com/acme/repo/prompts/code-review.prompt.md
 
+    # Local path (for development / monorepo workflows)
+    - ./packages/my-shared-skills          # relative to project root
+    - /home/user/repos/my-ai-package       # absolute path
+
     # Object format: git URL + sub-path / ref / alias
     - git: https://gitlab.com/acme/coding-standards.git
       path: instructions/security
@@ -119,6 +124,7 @@ APM accepts dependencies in two forms:
   - GitLab nested groups: `gitlab.com/group/subgroup/repo`
   - Virtual paths on simple repos: `gitlab.com/owner/repo/file.prompt.md`
   - For nested groups + virtual paths, use the object format below
+- **Local path** (`./path`, `../path`, `/absolute/path`) — local filesystem package
 
 **Object format** (when you need `path`, `ref`, or `alias` on a git URL):
 
@@ -164,6 +170,8 @@ APM normalizes every dependency entry on write — no matter how you specify a p
 | `gitlab.com/group/subgroup/repo` | `gitlab.com/group/subgroup/repo` |
 | `git@gitlab.com:group/subgroup/repo.git` | `gitlab.com/group/subgroup/repo` |
 | `git@bitbucket.org:team/standards.git` | `bitbucket.org/team/standards` |
+| `./packages/my-skills` | `./packages/my-skills` |
+| `/home/user/repos/my-pkg` | `/home/user/repos/my-pkg` |
 
 Virtual paths, refs, and aliases are preserved:
 
@@ -217,6 +225,40 @@ apm compile
 # Instructions with matching applyTo patterns are merged from all sources
 # See docs/wip/distributed-agents-compilation-strategy.md for detailed compilation logic
 ```
+
+## Local Path Dependencies
+
+Install packages from the local filesystem for fast iteration during development.
+
+```bash
+# Relative path
+apm install ./packages/my-shared-skills
+
+# Absolute path
+apm install /home/user/repos/my-ai-package
+```
+
+Or declare them in `apm.yml`:
+
+```yaml
+dependencies:
+  apm:
+    - ./packages/my-shared-skills          # relative to project root
+    - /home/user/repos/my-ai-package       # absolute path
+    - microsoft/apm-sample-package         # remote (can be mixed)
+```
+
+**How it works:**
+- Files are **copied** (not symlinked) to `apm_modules/_local/<package-name>/`
+- Local packages are validated the same as remote packages (must have `apm.yml` or `SKILL.md`)
+- `apm compile` works identically regardless of dependency source
+- Transitive dependencies are resolved recursively (local packages can depend on remote packages)
+
+**Re-install behavior:** Local deps are always re-copied on `apm install` since there is no commit SHA to cache against. This ensures you always get the latest local changes.
+
+**Lockfile representation:** Local dependencies are tracked with `source: local` and `local_path` fields. No `resolved_commit` is stored.
+
+**Pack guard:** `apm pack` rejects packages with local path dependencies — replace them with remote references before distributing.
 
 ## MCP Dependency Formats
 
