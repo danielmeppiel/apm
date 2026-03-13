@@ -244,7 +244,7 @@ class TestPromptCollisionDetection:
         result = PromptIntegrator().integrate_package_prompts(
             info, tmp_path, force=False, managed_files=managed
         )
-        rel_paths = [str(p.relative_to(tmp_path)) for p in result.target_paths]
+        rel_paths = [p.relative_to(tmp_path).as_posix() for p in result.target_paths]
         assert ".github/prompts/b.prompt.md" in rel_paths
         assert ".github/prompts/a.prompt.md" not in rel_paths
 
@@ -584,7 +584,7 @@ class TestCommandCollisionDetection:
         result = CommandIntegrator().integrate_package_commands(
             info, tmp_path, force=False, managed_files=managed
         )
-        rel_paths = [str(p.relative_to(tmp_path)) for p in result.target_paths]
+        rel_paths = [p.relative_to(tmp_path).as_posix() for p in result.target_paths]
         assert ".claude/commands/b.md" in rel_paths
         assert ".claude/commands/a.md" not in rel_paths
 

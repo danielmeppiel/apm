@@ -480,7 +480,7 @@ class TestPromptCompilerDependencyDiscovery:
             # Verify file was opened with resolved path
             mock_file.assert_called()
             opened_path = mock_file.call_args_list[0][0][0]
-            assert str(opened_path) == "apm_modules/microsoft/apm-sample-package/test.prompt.md"
+            assert str(opened_path).replace("\\", "/") == "apm_modules/microsoft/apm-sample-package/test.prompt.md"
 
 
 class TestScriptRunnerAutoInstall:

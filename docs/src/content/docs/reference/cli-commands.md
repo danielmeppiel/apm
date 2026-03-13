@@ -435,7 +435,7 @@ apm update
 **Behavior:**
 - Fetches latest release from GitHub
 - Compares with current installed version
-- Downloads and runs the official install script
+- Downloads and runs the official platform installer (`install.sh` on macOS/Linux, `install.ps1` on Windows)
 - Preserves existing configuration and projects
 - Shows progress and success/failure status
 
@@ -451,8 +451,15 @@ This check is non-blocking and cached to avoid slowing down the CLI.
 
 **Manual Update:**
 If the automatic update fails, you can always update manually:
+
+#### Linux / macOS
 ```bash
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+```
+
+#### Windows
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
 ```
 
 ### `apm deps` - Manage APM package dependencies
@@ -1031,6 +1038,11 @@ apm runtime setup codex
 # Install LLM with APM defaults  
 apm runtime setup llm
 ```
+
+**Windows support:**
+- On Windows, APM runs the setup scripts through PowerShell automatically
+- No special flags are required
+- Platform detection is automatic
 
 **Default Behavior:**
 - Installs runtime binary from official sources

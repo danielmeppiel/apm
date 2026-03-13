@@ -153,15 +153,15 @@ def normalize_skill_name(name: str) -> str:
 # 3. Default to INSTRUCTIONS for instruction-only packages
 #
 # Per skill-strategy.md Decision 2: "Skills are explicit, not implicit"
-# - Packages with SKILL.md OR explicit type: skill/hybrid → become skills
-# - Packages with only instructions → compile to AGENTS.md, NOT skills
+# - Packages with SKILL.md OR explicit type: skill/hybrid -> become skills
+# - Packages with only instructions -> compile to AGENTS.md, NOT skills
 
 def get_effective_type(package_info) -> "PackageContentType":
     """Get effective package content type based on package structure.
     
     Determines type by:
-    1. Package has SKILL.md (PackageType.CLAUDE_SKILL or HYBRID) → SKILL
-    2. Otherwise → INSTRUCTIONS (compile to AGENTS.md only)
+    1. Package has SKILL.md (PackageType.CLAUDE_SKILL or HYBRID) -> SKILL
+    2. Otherwise -> INSTRUCTIONS (compile to AGENTS.md only)
     
     Args:
         package_info: PackageInfo object containing package metadata
@@ -256,7 +256,7 @@ def copy_skill_to_target(
     - Directory structure preservation
     - Compatibility copy to .claude/skills/ when .claude/ exists (T7)
     
-    Source SKILL.md is copied verbatim — no metadata injection.
+    Source SKILL.md is copied verbatim  -- no metadata injection.
     
     Copies:
     - SKILL.md (required)
@@ -444,7 +444,7 @@ class SkillIntegrator(BaseIntegrator):
             target_skills_root: Root skills directory (e.g. .github/skills/ or .claude/skills/).
             parent_name: Name of the parent skill (used in warning messages).
             warn: Whether to emit a warning on name collisions.
-            owned_by: Map of skill_name → owner_package_name from the lockfile.
+            owned_by: Map of skill_name -> owner_package_name from the lockfile.
                 When provided, warnings are suppressed for self-overwrites.
             diagnostics: Optional DiagnosticCollector for deferred warning output.
 
@@ -491,7 +491,7 @@ class SkillIntegrator(BaseIntegrator):
 
     @staticmethod
     def _build_skill_ownership_map(project_root: Path) -> dict[str, str]:
-        """Build a map of skill_name → owner_package_name from the lockfile.
+        """Build a map of skill_name -> owner_package_name from the lockfile.
 
         Used to distinguish self-overwrites (no warning) from cross-package
         conflicts (warning) when promoting sub-skills.
@@ -505,7 +505,7 @@ class SkillIntegrator(BaseIntegrator):
         for dep in lockfile.get_all_dependencies():
             owner = (dep.virtual_path or dep.repo_url).rsplit("/", 1)[-1]
             for deployed_path in dep.deployed_files:
-                # e.g. ".github/skills/context-map" → "context-map"
+                # e.g. ".github/skills/context-map" -> "context-map"
                 skill_name = deployed_path.rstrip("/").rsplit("/", 1)[-1]
                 owned_by[skill_name] = owner
         return owned_by
@@ -565,7 +565,7 @@ class SkillIntegrator(BaseIntegrator):
         The skill folder name is the source folder name (e.g., `mcp-builder`),
         validated and normalized per the agentskills.io spec.
         
-        Source SKILL.md is copied verbatim — no metadata injection. Orphan
+        Source SKILL.md is copied verbatim  -- no metadata injection. Orphan
         detection uses apm.lock via directory name matching instead.
         
         T7 Enhancement: Also copies to .claude/skills/ when .claude/ folder exists.
@@ -590,7 +590,7 @@ class SkillIntegrator(BaseIntegrator):
         package_path = package_info.install_path
         
         # Use the source folder name as the skill name
-        # e.g., apm_modules/ComposioHQ/awesome-claude-skills/mcp-builder → mcp-builder
+        # e.g., apm_modules/ComposioHQ/awesome-claude-skills/mcp-builder -> mcp-builder
         raw_skill_name = package_path.name
         
         # Validate skill name per agentskills.io spec
@@ -618,7 +618,7 @@ class SkillIntegrator(BaseIntegrator):
         github_skill_dir = project_root / ".github" / "skills" / skill_name
         github_skill_md = github_skill_dir / "SKILL.md"
         
-        # Always copy — source integrity is preserved, orphan detection uses apm.lock
+        # Always copy  -- source integrity is preserved, orphan detection uses apm.lock
         skill_created = not github_skill_dir.exists()
         skill_updated = not skill_created
         
@@ -683,7 +683,7 @@ class SkillIntegrator(BaseIntegrator):
         Copies native skills (packages with SKILL.md at root) to .github/skills/
         and optionally .claude/skills/. Also promotes any sub-skills from .apm/skills/.
         
-        Packages without SKILL.md at root are not installed as skills — only their
+        Packages without SKILL.md at root are not installed as skills  -- only their
         sub-skills (if any) are promoted.
         
         Args:
@@ -694,8 +694,8 @@ class SkillIntegrator(BaseIntegrator):
             SkillIntegrationResult: Results of the integration operation
         """
         # Check if package type allows skill installation (T4 routing)
-        # SKILL and HYBRID → install as skill
-        # INSTRUCTIONS and PROMPTS → skip skill installation
+        # SKILL and HYBRID -> install as skill
+        # INSTRUCTIONS and PROMPTS -> skip skill installation
         if not should_install_skill(package_info):
             # Even non-skill packages may ship sub-skills under .apm/skills/.
             # Promote them so Copilot can discover them independently.
@@ -735,7 +735,7 @@ class SkillIntegrator(BaseIntegrator):
         if source_skill_md.exists():
             return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics)
         
-        # No SKILL.md at root — not a skill package.
+        # No SKILL.md at root  -- not a skill package.
         # Still promote any sub-skills shipped under .apm/skills/.
         sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
             package_info, project_root, diagnostics=diagnostics
@@ -770,7 +770,7 @@ class SkillIntegrator(BaseIntegrator):
         stats = {'files_removed': 0, 'errors': 0}
 
         if managed_files is not None:
-            # Manifest-based removal — only remove tracked skill directories
+            # Manifest-based removal  -- only remove tracked skill directories
             project_root_resolved = project_root.resolve()
             for rel_path in managed_files:
                 is_skill = (

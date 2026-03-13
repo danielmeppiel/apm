@@ -631,17 +631,17 @@ class TestValidationResult:
         """Test validation summary messages."""
         # Valid with no issues
         result1 = ValidationResult()
-        assert "✅ Package is valid" in result1.summary()
+        assert "[+] Package is valid" in result1.summary()
         
         # Valid with warnings
         result2 = ValidationResult()
         result2.add_warning("Test warning")
-        assert "⚠️ Package is valid with 1 warning(s)" in result2.summary()
+        assert "[!] Package is valid with 1 warning(s)" in result2.summary()
         
         # Invalid with errors
         result3 = ValidationResult()
         result3.add_error("Test error")
-        assert "❌ Package is invalid with 1 error(s)" in result3.summary()
+        assert "[x] Package is invalid with 1 error(s)" in result3.summary()
 
 
 class TestPackageValidation:

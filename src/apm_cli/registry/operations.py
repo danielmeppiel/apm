@@ -346,7 +346,7 @@ class MCPServerOperations:
                 existing_value = os.getenv(var_name)
                 
                 if existing_value:
-                    console.print(f"  ✅ {var_name}: [dim]using existing value[/dim]")
+                    console.print(f"  [+] {var_name}: [dim]using existing value[/dim]")
                     env_vars[var_name] = existing_value
                 else:
                     # Determine if this looks like a password/secret
@@ -379,7 +379,7 @@ class MCPServerOperations:
                 existing_value = os.getenv(var_name)
                 
                 if existing_value:
-                    click.echo(f"  ✅ {var_name}: using existing value")
+                    click.echo(f"  [+] {var_name}: using existing value")
                     env_vars[var_name] = existing_value
                 else:
                     prompt_text = f"  {var_name}"

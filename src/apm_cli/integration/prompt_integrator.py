@@ -60,7 +60,7 @@ class PromptIntegrator(BaseIntegrator):
         Returns:
             str: Target filename (e.g., accessibility-audit.prompt.md)
         """
-        # Use original filename — no -apm suffix
+        # Use original filename  -- no -apm suffix
         return source_file.name
     
 

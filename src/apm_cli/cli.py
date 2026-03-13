@@ -1,6 +1,6 @@
 """Command-line interface for Agent Package Manager (APM).
 
-Thin wiring layer — all command logic lives in ``apm_cli.commands.*`` modules.
+Thin wiring layer  -- all command logic lives in ``apm_cli.commands.*`` modules.
 """
 
 import sys

@@ -559,9 +559,9 @@ class TestADOPruneCommand:
         # GitHub 2-level
         github_parts = ["owner", "repo"]
         github_path = base.joinpath(*github_parts)
-        assert str(github_path) == "/tmp/apm_modules/owner/repo"
+        assert github_path.as_posix().endswith("/tmp/apm_modules/owner/repo")
         
         # ADO 3-level
         ado_parts = ["org", "project", "repo"]
         ado_path = base.joinpath(*ado_parts)
-        assert str(ado_path) == "/tmp/apm_modules/org/project/repo"
+        assert ado_path.as_posix().endswith("/tmp/apm_modules/org/project/repo")

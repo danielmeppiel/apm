@@ -44,17 +44,17 @@ def list_packages():
         # Check if apm_modules exists
         if not apm_modules_path.exists():
             if has_rich:
-                console.print("💡 No APM dependencies installed yet", style="cyan")
+                console.print(" No APM dependencies installed yet", style="cyan")
                 console.print("Run 'apm install' to install dependencies from apm.yml", style="dim")
             else:
-                click.echo("💡 No APM dependencies installed yet")
+                click.echo(" No APM dependencies installed yet")
                 click.echo("Run 'apm install' to install dependencies from apm.yml")
             return
         
         # Load project dependencies to check for orphaned packages
         # GitHub: owner/repo or owner/virtual-pkg-name (2 levels)
         # Azure DevOps: org/project/repo or org/project/virtual-pkg-name (3 levels)
-        declared_sources = {}  # dep_path → 'github' | 'azure-devops'
+        declared_sources = {}  # dep_path -> 'github' | 'azure-devops'
         try:
             apm_yml_path = project_root / "apm.yml"
             if apm_yml_path.exists():
@@ -127,7 +127,7 @@ def list_packages():
                 continue
             org_repo_name = "/".join(rel_parts)
             
-            # Skip sub-skills inside .apm/ directories — they belong to the parent package
+            # Skip sub-skills inside .apm/ directories  -- they belong to the parent package
             if '.apm' in rel_parts:
                 continue
 
@@ -157,18 +157,18 @@ def list_packages():
                     'is_orphaned': is_orphaned
                 })
             except Exception as e:
-                click.echo(f"⚠️ Warning: Failed to read package {org_repo_name}: {e}")
+                click.echo(f"[!] Warning: Failed to read package {org_repo_name}: {e}")
         
         if not installed_packages:
             if has_rich:
-                console.print("💡 apm_modules/ directory exists but contains no valid packages", style="cyan")
+                console.print(" apm_modules/ directory exists but contains no valid packages", style="cyan")
             else:
-                click.echo("💡 apm_modules/ directory exists but contains no valid packages")
+                click.echo(" apm_modules/ directory exists but contains no valid packages")
             return
         
         # Display packages in table format
         if has_rich:
-            table = Table(title="📋 APM Dependencies", show_header=True, header_style="bold cyan")
+            table = Table(title=" APM Dependencies", show_header=True, header_style="bold cyan")
             table.add_column("Package", style="bold white")
             table.add_column("Version", style="yellow") 
             table.add_column("Source", style="blue")
@@ -195,13 +195,13 @@ def list_packages():
             
             # Show orphaned packages warning
             if orphaned_packages:
-                console.print(f"\n⚠️  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):", style="yellow")
+                console.print(f"\n[!]  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):", style="yellow")
                 for pkg in orphaned_packages:
-                    console.print(f"  • {pkg}", style="dim yellow")
-                console.print("\n💡 Run 'apm prune' to remove orphaned packages", style="cyan")
+                    console.print(f"  * {pkg}", style="dim yellow")
+                console.print("\n Run 'apm prune' to remove orphaned packages", style="cyan")
         else:
             # Fallback text table
-            click.echo("📋 APM Dependencies:")
+            click.echo(" APM Dependencies:")
             click.echo(f"{'Package':<30} {'Version':<10} {'Source':<12} {'Prompts':>7} {'Instr':>7} {'Agents':>7} {'Skills':>7} {'Hooks':>7}")
             click.echo("-" * 98)
             
@@ -219,10 +219,10 @@ def list_packages():
             
             # Show orphaned packages warning
             if orphaned_packages:
-                click.echo(f"\n⚠️  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):")
+                click.echo(f"\n[!]  {len(orphaned_packages)} orphaned package(s) found (not in apm.yml):")
                 for pkg in orphaned_packages:
-                    click.echo(f"  • {pkg}")
-                click.echo("\n💡 Run 'apm prune' to remove orphaned packages")
+                    click.echo(f"  * {pkg}")
+                click.echo("\n Run 'apm prune' to remove orphaned packages")
 
     except Exception as e:
         _rich_error(f"Error listing dependencies: {e}")
@@ -274,7 +274,7 @@ def tree():
             direct = [d for d in lockfile_deps if d.depth <= 1]
             transitive = [d for d in lockfile_deps if d.depth > 1]
             
-            # Build parent→children map
+            # Build parent->children map
             children_map: Dict[str, list] = {}
             for dep in transitive:
                 parent_key = dep.resolved_by or ""
@@ -330,20 +330,20 @@ def tree():
                 click.echo(f"{project_name} (local)")
                 
                 if not direct:
-                    click.echo("└── No dependencies installed")
+                    click.echo("+-- No dependencies installed")
                 else:
                     for i, dep in enumerate(direct):
                         is_last = i == len(direct) - 1
-                        prefix = "└── " if is_last else "├── "
+                        prefix = "+-- " if is_last else "|-- "
                         display = _dep_display_name(dep)
                         click.echo(f"{prefix}{display}")
                         
                         # Show transitive deps
                         kids = children_map.get(dep.repo_url, [])
-                        sub_prefix = "    " if is_last else "│   "
+                        sub_prefix = "    " if is_last else "|   "
                         for j, child in enumerate(kids):
                             child_is_last = j == len(kids) - 1
-                            child_prefix = "└── " if child_is_last else "├── "
+                            child_prefix = "+-- " if child_is_last else "|-- "
                             click.echo(f"{sub_prefix}{child_prefix}{_dep_display_name(child)}")
         else:
             # Fallback: scan apm_modules directory (no lockfile)
@@ -382,7 +382,7 @@ def tree():
             else:
                 click.echo(f"{project_name} (local)")
                 if not apm_modules_path.exists():
-                    click.echo("└── No dependencies installed")
+                    click.echo("+-- No dependencies installed")
 
     except Exception as e:
         _rich_error(f"Error showing dependency tree: {e}")
@@ -527,30 +527,30 @@ def info(package: str):
             
             for context_type, count in package_info['context_files'].items():
                 if count > 0:
-                    content_lines.append(f"  • {count} {context_type}")
+                    content_lines.append(f"  * {count} {context_type}")
             
             if not any(count > 0 for count in package_info['context_files'].values()):
-                content_lines.append("  • No context files found")
+                content_lines.append("  * No context files found")
                 
             content_lines.append("")
             content_lines.append("[bold]Agent Workflows:[/bold]")
             if package_info['workflows'] > 0:
-                content_lines.append(f"  • {package_info['workflows']} executable workflows")
+                content_lines.append(f"  * {package_info['workflows']} executable workflows")
             else:
-                content_lines.append("  • No agent workflows found")
+                content_lines.append("  * No agent workflows found")
             
             if package_info.get('hooks', 0) > 0:
                 content_lines.append("")
                 content_lines.append("[bold]Hooks:[/bold]")
-                content_lines.append(f"  • {package_info['hooks']} hook file(s)")
+                content_lines.append(f"  * {package_info['hooks']} hook file(s)")
             
             content = "\n".join(content_lines)
-            panel = Panel(content, title=f"ℹ️ Package Info: {package}", border_style="cyan")
+            panel = Panel(content, title=f"[i] Package Info: {package}", border_style="cyan")
             console.print(panel)
             
         except ImportError:
             # Fallback text display
-            click.echo(f"ℹ️ Package Info: {package}")
+            click.echo(f"[i] Package Info: {package}")
             click.echo("=" * 40)
             click.echo(f"Name: {package_info['name']}")
             click.echo(f"Version: {package_info['version']}")
@@ -563,22 +563,22 @@ def info(package: str):
             
             for context_type, count in package_info['context_files'].items():
                 if count > 0:
-                    click.echo(f"  • {count} {context_type}")
+                    click.echo(f"  * {count} {context_type}")
             
             if not any(count > 0 for count in package_info['context_files'].values()):
-                click.echo("  • No context files found")
+                click.echo("  * No context files found")
                 
             click.echo("")
             click.echo("Agent Workflows:")
             if package_info['workflows'] > 0:
-                click.echo(f"  • {package_info['workflows']} executable workflows")
+                click.echo(f"  * {package_info['workflows']} executable workflows")
             else:
-                click.echo("  • No agent workflows found")
+                click.echo("  * No agent workflows found")
             
             if package_info.get('hooks', 0) > 0:
                 click.echo("")
                 click.echo("Hooks:")
-                click.echo(f"  • {package_info['hooks']} hook file(s)")
+                click.echo(f"  * {package_info['hooks']} hook file(s)")
     
     except Exception as e:
         _rich_error(f"Error reading package information: {e}")
@@ -595,7 +595,7 @@ def _is_nested_under_package(candidate: Path, apm_modules_path: Path) -> bool:
     the ``rglob`` scan would otherwise treat each skill sub-directory as an
     independent package.  This helper walks up from *candidate* towards
     *apm_modules_path* and returns ``True`` if any intermediate parent already
-    contains ``apm.yml`` — meaning the candidate is a deployment artifact, not
+    contains ``apm.yml``  -- meaning the candidate is a deployment artifact, not
     a standalone package.
     """
     parent = candidate.parent
@@ -826,7 +826,7 @@ def _update_single_package(package_name: str, project_deps: List, apm_modules_pa
         # Download latest version
         package_info = downloader.download_package(str(target_dep), package_dir)
         
-        _rich_success(f"✅ Updated {target_dep.repo_url}")
+        _rich_success(f"[+] Updated {target_dep.repo_url}")
         
     except Exception as e:
         _rich_error(f"Failed to update {package_name}: {e}")
@@ -862,17 +862,17 @@ def _update_all_packages(project_deps: List, apm_modules_path: Path):
                 package_dir = apm_modules_path / dep.repo_url
             
         if not package_dir.exists():
-            _rich_warning(f"⚠️ {dep.repo_url} not installed - skipping")
+            _rich_warning(f"[!] {dep.repo_url} not installed - skipping")
             continue
             
         try:
             _rich_info(f"  Updating {dep.repo_url}...")
             package_info = downloader.download_package(str(dep), package_dir)
             updated_count += 1
-            _rich_success(f"  ✅ {dep.repo_url}")
+            _rich_success(f"  [+] {dep.repo_url}")
             
         except Exception as e:
-            _rich_error(f"  ❌ Failed to update {dep.repo_url}: {e}")
+            _rich_error(f"  [x] Failed to update {dep.repo_url}: {e}")
             continue
     
     _rich_success(f"Updated {updated_count} of {len(project_deps)} packages")

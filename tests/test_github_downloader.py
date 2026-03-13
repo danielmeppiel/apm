@@ -259,12 +259,12 @@ class TestGitHubPackageDownloader:
         # Test with max_count
         with patch('builtins.print') as mock_print:
             callback(1, 50, 100, "Cloning")
-            mock_print.assert_called_with("\r🚀 Cloning: 50% (50/100) Cloning", end='', flush=True)
+            mock_print.assert_called_with("\r Cloning: 50% (50/100) Cloning", end='', flush=True)
         
         # Test without max_count
         with patch('builtins.print') as mock_print:
             callback(1, 25, None, "Receiving objects")
-            mock_print.assert_called_with("\r🚀 Cloning: Receiving objects (25)", end='', flush=True)
+            mock_print.assert_called_with("\r Cloning: Receiving objects (25)", end='', flush=True)
 
 
 class TestGitHubPackageDownloaderIntegration:
@@ -1124,6 +1124,24 @@ class TestDownloadSubdirectoryPackageWindowsCleanup:
         # Full clone must NOT reuse the sparse-checkout path "repo/"
         assert len(cloned_paths) == 1
         assert cloned_paths[0].name == "repo_clone"
+
+
+class TestGitEnvironmentPlatformBehavior:
+    """Test platform-specific behavior in Git environment setup."""
+
+    def test_git_config_global_uses_nul_on_windows(self):
+        """GIT_CONFIG_GLOBAL should be 'NUL' on Windows."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'tok'}, clear=True), \
+             patch('sys.platform', 'win32'):
+            dl = GitHubPackageDownloader()
+            assert dl.git_env['GIT_CONFIG_GLOBAL'] == 'NUL'
+
+    def test_git_config_global_uses_dev_null_on_unix(self):
+        """GIT_CONFIG_GLOBAL should be '/dev/null' on Unix."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'tok'}, clear=True), \
+             patch('sys.platform', 'darwin'):
+            dl = GitHubPackageDownloader()
+            assert dl.git_env['GIT_CONFIG_GLOBAL'] == '/dev/null'
 
 
 if __name__ == '__main__':

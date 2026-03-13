@@ -41,7 +41,7 @@ def list(ctx):
                     style="blue",
                 )
             except (ImportError, NameError):
-                _rich_info("💡 Add scripts to your apm.yml file:")
+                _rich_info(" Add scripts to your apm.yml file:")
                 click.echo("scripts:")
                 click.echo('  start: "codex run main.prompt.md"')
                 click.echo('  fast: "llm prompt main.prompt.md -m github/gpt-4o-mini"')
@@ -57,7 +57,7 @@ def list(ctx):
 
                 # Create a nice table for scripts
                 table = Table(
-                    title="📋 Available Scripts",
+                    title=" Available Scripts",
                     show_header=True,
                     header_style="bold cyan",
                 )

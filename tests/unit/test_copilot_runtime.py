@@ -71,7 +71,7 @@ class TestCopilotRuntime:
             runtime = CopilotRuntime()
             config_path = runtime.get_mcp_config_path()
             
-            assert str(config_path).endswith(".copilot/mcp-config.json")
+            assert config_path.as_posix().endswith(".copilot/mcp-config.json")
     
     def test_execute_prompt_basic(self):
         """Test basic prompt execution."""

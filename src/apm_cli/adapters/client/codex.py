@@ -122,7 +122,7 @@ class CodexClientAdapter(MCPClientAdapter):
             
             # If server has only remote endpoints and no packages, it's a remote-only server
             if remotes and not packages:
-                print(f"⚠️  Warning: MCP server '{server_url}' is a remote server (SSE type)")
+                print(f"[!]  Warning: MCP server '{server_url}' is a remote server (SSE type)")
                 print("   Codex CLI only supports local servers with command/args configuration")
                 print("   Remote servers are not supported by Codex CLI")
                 print("   Skipping installation for Codex CLI")
@@ -174,7 +174,7 @@ class CodexClientAdapter(MCPClientAdapter):
             "id": server_info.get("id", "")  # Add registry UUID for conflict detection
         }
 
-        # Self-defined stdio deps carry raw command/args — use directly
+        # Self-defined stdio deps carry raw command/args  -- use directly
         raw = server_info.get("_raw_stdio")
         if raw:
             config["command"] = raw["command"]
@@ -328,7 +328,7 @@ class CodexClientAdapter(MCPClientAdapter):
         # Check for CI/automated environment via APM_E2E_TESTS flag (more reliable than TTY detection)
         if os.getenv('APM_E2E_TESTS') == '1':
             skip_prompting = True
-            print(f"💡 APM_E2E_TESTS detected, will skip environment variable prompts")
+            print(f" APM_E2E_TESTS detected, will skip environment variable prompts")
         
         # Also skip prompting if we're in a non-interactive environment (fallback)
         is_interactive = sys.stdin.isatty() and sys.stdout.isatty()

@@ -95,13 +95,13 @@ def init(ctx, project_name, yes):
             console = _get_console()
             if console:
                 files_data = [
-                    ("✨", "apm.yml", "Project configuration"),
+                    ("*", "apm.yml", "Project configuration"),
                 ]
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
         except (ImportError, NameError):
             _rich_info("Created:")
-            _rich_echo("  ✨ apm.yml - Project configuration", style="muted")
+            _rich_echo("  * apm.yml - Project configuration", style="muted")
 
         _rich_blank_line()
 
@@ -115,14 +115,14 @@ def init(ctx, project_name, yes):
 
         try:
             _rich_panel(
-                "\n".join(f"• {step}" for step in next_steps),
-                title="💡 Next Steps",
+                "\n".join(f"* {step}" for step in next_steps),
+                title=" Next Steps",
                 style="cyan",
             )
         except (ImportError, NameError):
             _rich_info("Next steps:")
             for step in next_steps:
-                click.echo(f"  • {step}")
+                click.echo(f"  * {step}")
 
     except Exception as e:
         _rich_error(f"Error initializing project: {e}")

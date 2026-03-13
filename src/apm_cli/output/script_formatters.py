@@ -40,9 +40,9 @@ class ScriptExecutionFormatter:
         
         # Main header
         if self.use_color:
-            lines.append(self._styled(f"🚀 Running script: {script_name}", "cyan bold"))
+            lines.append(self._styled(f" Running script: {script_name}", "cyan bold"))
         else:
-            lines.append(f"🚀 Running script: {script_name}")
+            lines.append(f" Running script: {script_name}")
         
         # Parameters tree if any exist
         if params:
@@ -82,15 +82,15 @@ class ScriptExecutionFormatter:
         
         # Show each file being compiled
         for prompt_file in prompt_files:
-            file_line = f"├─ {prompt_file}"
+            file_line = f"|- {prompt_file}"
             if self.use_color:
                 lines.append(self._styled(file_line, "dim"))
             else:
                 lines.append(file_line)
         
-        # Change last ├─ to └─
+        # Change last |- to +-
         if lines and len(lines) > 1:
-            lines[-1] = lines[-1].replace("├─", "└─")
+            lines[-1] = lines[-1].replace("|-", "+-")
         
         return lines
     
@@ -124,14 +124,14 @@ class ScriptExecutionFormatter:
             lines.append(f"Executing {runtime} runtime...")
         
         # Command structure
-        command_line = f"├─ Command: {command}"
+        command_line = f"|- Command: {command}"
         if self.use_color:
             lines.append(self._styled(command_line, "dim"))
         else:
             lines.append(command_line)
         
         # Content size
-        content_line = f"└─ Prompt content: {content_length:,} characters"
+        content_line = f"+- Prompt content: {content_length:,} characters"
         if self.use_color:
             lines.append(self._styled(content_line, "dim"))
         else:
@@ -175,14 +175,14 @@ class ScriptExecutionFormatter:
                     lines.extend(panel_output.split('\n'))
             except:
                 # Fallback to simple formatting
-                lines.append("─" * 50)
+                lines.append("-" * 50)
                 lines.append(content_preview)
-                lines.append("─" * 50)
+                lines.append("-" * 50)
         else:
             # Simple text fallback
-            lines.append("─" * 50)
+            lines.append("-" * 50)
             lines.append(content_preview)
-            lines.append("─" * 50)
+            lines.append("-" * 50)
         
         return lines
     
@@ -207,15 +207,15 @@ class ScriptExecutionFormatter:
             lines.append("Environment setup:")
         
         for env_var in env_vars_set:
-            env_line = f"├─ {env_var}: configured"
+            env_line = f"|- {env_var}: configured"
             if self.use_color:
                 lines.append(self._styled(env_line, "dim"))
             else:
                 lines.append(env_line)
         
-        # Change last ├─ to └─
+        # Change last |- to +-
         if lines and len(lines) > 1:
-            lines[-1] = lines[-1].replace("├─", "└─")
+            lines[-1] = lines[-1].replace("|-", "+-")
         
         return lines
     
@@ -231,7 +231,7 @@ class ScriptExecutionFormatter:
         """
         lines = []
         
-        success_msg = f"✅ {runtime.title()} execution completed successfully"
+        success_msg = f"[+] {runtime.title()} execution completed successfully"
         if execution_time is not None:
             success_msg += f" ({execution_time:.2f}s)"
         
@@ -255,7 +255,7 @@ class ScriptExecutionFormatter:
         """
         lines = []
         
-        error_header = f"✗ {runtime.title()} execution failed (exit code: {error_code})"
+        error_header = f"x {runtime.title()} execution failed (exit code: {error_code})"
         if self.use_color:
             lines.append(self._styled(error_header, "red bold"))
         else:
@@ -293,14 +293,14 @@ class ScriptExecutionFormatter:
         
         # Show command structure
         args_display = " ".join(f'"{arg}"' if " " in arg else arg for arg in args)
-        command_line = f"├─ Args: {args_display}"
+        command_line = f"|- Args: {args_display}"
         if self.use_color:
             lines.append(self._styled(command_line, "dim"))
         else:
             lines.append(command_line)
         
         # Show content info
-        content_line = f"└─ Content: +{content_length:,} chars appended"
+        content_line = f"+- Content: +{content_length:,} chars appended"
         if self.use_color:
             lines.append(self._styled(content_line, "dim"))
         else:
@@ -322,7 +322,7 @@ class ScriptExecutionFormatter:
         if self.use_color and RICH_AVAILABLE and self.console:
             try:
                 text = Text()
-                text.append("ℹ Auto-discovered: ", style="cyan")
+                text.append("[i] Auto-discovered: ", style="cyan")
                 text.append(str(prompt_file), style="bold white")
                 text.append(f" (runtime: {runtime})", style="dim")
                 
@@ -331,9 +331,9 @@ class ScriptExecutionFormatter:
                 return capture.get().rstrip('\n')
             except:
                 # Fallback to simple formatting
-                return f"ℹ Auto-discovered: {prompt_file} (runtime: {runtime})"
+                return f"[i] Auto-discovered: {prompt_file} (runtime: {runtime})"
         else:
-            return f"ℹ Auto-discovered: {prompt_file} (runtime: {runtime})"
+            return f"[i] Auto-discovered: {prompt_file} (runtime: {runtime})"
     
     def _styled(self, text: str, style: str) -> str:
         """Apply styling to text with rich fallback."""

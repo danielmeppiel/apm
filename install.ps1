@@ -1,0 +1,392 @@
+param(
+    [string]$Repo = "microsoft/apm"
+)
+
+$ErrorActionPreference = "Stop"
+
+$installRoot = Join-Path $env:LOCALAPPDATA "Programs\apm"
+$binDir = Join-Path $installRoot "bin"
+$releasesDir = Join-Path $installRoot "releases"
+$assetName = "apm-windows-x86_64.zip"
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+function Write-Info {
+    param([string]$Message)
+    Write-Host $Message -ForegroundColor Cyan
+}
+
+function Write-Success {
+    param([string]$Message)
+    Write-Host $Message -ForegroundColor Green
+}
+
+function Write-WarningText {
+    param([string]$Message)
+    Write-Host $Message -ForegroundColor Yellow
+}
+
+function Write-ErrorText {
+    param([string]$Message)
+    Write-Host $Message -ForegroundColor Red
+}
+
+function Get-AuthHeader {
+    if ($env:GITHUB_APM_PAT) {
+        return @{ Authorization = "token $($env:GITHUB_APM_PAT)" }
+    }
+
+    if ($env:GITHUB_TOKEN) {
+        return @{ Authorization = "token $($env:GITHUB_TOKEN)" }
+    }
+
+    return @{}
+}
+
+function Invoke-GitHubJson {
+    param(
+        [string]$Url,
+        [hashtable]$Headers
+    )
+
+    if ($Headers.Count -gt 0) {
+        return Invoke-RestMethod -Uri $Url -Headers $Headers
+    }
+
+    return Invoke-RestMethod -Uri $Url
+}
+
+function Add-ToUserPath {
+    param([string]$PathEntry)
+
+    $currentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $userEntries = @()
+    if ($currentUserPath) {
+        $userEntries = $currentUserPath.Split(";", [System.StringSplitOptions]::RemoveEmptyEntries)
+    }
+
+    if ($userEntries -notcontains $PathEntry) {
+        $newUserPath = if ($currentUserPath) { "$PathEntry;$currentUserPath" } else { $PathEntry }
+        [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+        Write-Info "Added $PathEntry to your user PATH."
+    }
+
+    if (($env:Path -split ";") -notcontains $PathEntry) {
+        $env:Path = "$PathEntry;$env:Path"
+    }
+}
+
+function Test-PythonRequirement {
+    foreach ($cmd in @("python3", "python")) {
+        $exe = Get-Command $cmd -ErrorAction SilentlyContinue
+        if ($exe) {
+            try {
+                $verStr = & $cmd -c "import sys; print('.'.join(map(str, sys.version_info[:2])))" 2>$null
+                if ($verStr) {
+                    $parts = $verStr.Split('.')
+                    $major = [int]$parts[0]
+                    $minor = [int]$parts[1]
+                    if ($major -gt 3 -or ($major -eq 3 -and $minor -ge 9)) {
+                        return $cmd
+                    }
+                }
+            } catch {
+                # Ignore; try next candidate
+            }
+        }
+    }
+    return $null
+}
+
+function Install-ViaPip {
+    $pythonCmd = Test-PythonRequirement
+    if (-not $pythonCmd) {
+        Write-ErrorText "Python 3.9+ is not available — cannot fall back to pip."
+        return $false
+    }
+
+    Write-Info "Attempting installation via pip ($pythonCmd)..."
+
+    $pipCmd = $null
+    foreach ($candidate in @("pip3", "pip")) {
+        if (Get-Command $candidate -ErrorAction SilentlyContinue) {
+            $pipCmd = $candidate
+            break
+        }
+    }
+    if (-not $pipCmd) {
+        $pipCmd = "$pythonCmd -m pip"
+    }
+
+    try {
+        $pipArgs = "install --user apm-cli"
+        if ($pipCmd -like "* -m pip") {
+            $output = & $pythonCmd -m pip install --user apm-cli 2>&1
+            $pipExitCode = $LASTEXITCODE
+            $output | Write-Host
+        } else {
+            $output = & $pipCmd install --user apm-cli 2>&1
+            $pipExitCode = $LASTEXITCODE
+            $output | Write-Host
+        }
+        if ($pipExitCode -ne 0) {
+            Write-ErrorText "pip install failed (exit code $pipExitCode)."
+            return $false
+        }
+    } catch {
+        Write-ErrorText "pip install failed: $_"
+        return $false
+    }
+
+    # Verify apm is available after pip install
+    $apmExe = Get-Command apm -ErrorAction SilentlyContinue
+    if ($apmExe) {
+        $ver = & apm --version 2>$null
+        Write-Success "APM installed successfully via pip! Version: $ver"
+        Write-Info "Location: $($apmExe.Source)"
+    } else {
+        Write-WarningText "APM installed but not found in PATH."
+        Write-Host "You may need to add your Python user scripts directory to PATH."
+    }
+    return $true
+}
+
+function Write-ManualInstallHelp {
+    Write-Host ""
+    Write-Info "Manual installation options:"
+    Write-Host "  1. pip (recommended): pip install --user apm-cli"
+    Write-Host "  2. From source:"
+    Write-Host "     git clone https://github.com/$Repo.git"
+    Write-Host "     cd apm && uv sync && uv run pip install -e ."
+    Write-Host ""
+    Write-Host "Need help? Create an issue at: https://github.com/$Repo/issues"
+}
+
+# ---------------------------------------------------------------------------
+# Banner
+# ---------------------------------------------------------------------------
+
+Write-Host ""
+Write-Host "===========================================================" -ForegroundColor Blue
+Write-Host "                    APM Installer                          " -ForegroundColor Blue
+Write-Host "             The NPM for AI-Native Development             " -ForegroundColor Blue
+Write-Host "===========================================================" -ForegroundColor Blue
+Write-Host ""
+
+# ---------------------------------------------------------------------------
+# Stage 1 — Fetch release info (unauthenticated first, then authenticated)
+# ---------------------------------------------------------------------------
+
+Write-Info "Fetching latest release information..."
+
+$release = $null
+$headers = @{}
+
+# Try unauthenticated first
+try {
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
+} catch {
+    # Swallow — will try authenticated below
+}
+
+if (-not $release -or -not $release.tag_name) {
+    Write-Info "Unauthenticated request failed or returned no data. Retrying with authentication..."
+    $headers = Get-AuthHeader
+    if ($headers.Count -eq 0) {
+        Write-ErrorText "Repository may be private but no authentication token found."
+        Write-Host "Set GITHUB_APM_PAT or GITHUB_TOKEN and retry."
+        Write-ManualInstallHelp
+        exit 1
+    }
+    try {
+        $release = Invoke-GitHubJson -Url "https://api.github.com/repos/$Repo/releases/latest" -Headers $headers
+    } catch {
+        Write-ErrorText "Failed to fetch release information: $_"
+        Write-ManualInstallHelp
+        exit 1
+    }
+}
+
+if (-not $release.tag_name) {
+    Write-ErrorText "Could not determine the latest release tag."
+    Write-ManualInstallHelp
+    exit 1
+}
+
+$asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+if (-not $asset) {
+    Write-ErrorText "Release $($release.tag_name) does not contain $assetName."
+    Write-ManualInstallHelp
+    exit 1
+}
+
+$tagName = $release.tag_name
+Write-Success "Latest version: $tagName"
+
+$releaseDir = Join-Path $releasesDir $tagName
+$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("apm-install-" + [System.Guid]::NewGuid().ToString("N"))
+$zipPath = Join-Path $tempDir $assetName
+
+New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+New-Item -ItemType Directory -Force -Path $releasesDir | Out-Null
+
+try {
+    # ------------------------------------------------------------------
+    # Stage 2 — Download binary (3-stage fallback chain)
+    # ------------------------------------------------------------------
+
+    Write-Info "Downloading $assetName from $tagName..."
+
+    $downloadOk = $false
+
+    # 2a. Direct browser_download_url without auth
+    try {
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -UseBasicParsing
+        $downloadOk = $true
+        Write-Success "Download successful"
+    } catch {
+        Write-WarningText "Unauthenticated download failed, retrying with authentication..."
+    }
+
+    # 2b. API asset URL with Accept: application/octet-stream (authenticated)
+    if (-not $downloadOk) {
+        if ($headers.Count -eq 0) { $headers = Get-AuthHeader }
+        if ($headers.Count -gt 0 -and $asset.url) {
+            try {
+                $apiHeaders = $headers.Clone()
+                $apiHeaders["Accept"] = "application/octet-stream"
+                Invoke-WebRequest -Uri $asset.url -Headers $apiHeaders -OutFile $zipPath -UseBasicParsing
+                $downloadOk = $true
+                Write-Success "Download successful via GitHub API"
+            } catch {
+                Write-WarningText "API download failed, trying direct URL with auth..."
+            }
+        }
+    }
+
+    # 2c. Direct browser_download_url with auth header
+    if (-not $downloadOk) {
+        if ($headers.Count -eq 0) { $headers = Get-AuthHeader }
+        if ($headers.Count -gt 0) {
+            try {
+                Invoke-WebRequest -Uri $asset.browser_download_url -Headers $headers -OutFile $zipPath -UseBasicParsing
+                $downloadOk = $true
+                Write-Success "Download successful with authentication"
+            } catch {
+                # Will fall through to pip fallback
+            }
+        }
+    }
+
+    if (-not $downloadOk) {
+        Write-ErrorText "All download attempts failed."
+        Write-Host "This might mean:"
+        Write-Host "  - Network connectivity issues"
+        Write-Host "  - Invalid GitHub token or insufficient permissions"
+        Write-Host "  - Private repository requires authentication"
+        Write-Host ""
+
+        Write-Info "Attempting automatic fallback to pip..."
+        if (Install-ViaPip) { exit 0 }
+        Write-ManualInstallHelp
+        exit 1
+    }
+
+    # ------------------------------------------------------------------
+    # Verify checksum (if .sha256 asset is available)
+    # ------------------------------------------------------------------
+
+    $sha256AssetName = "$assetName.sha256"
+    $sha256Asset = $release.assets | Where-Object { $_.name -eq $sha256AssetName } | Select-Object -First 1
+    if ($sha256Asset) {
+        Write-Info "Verifying download checksum..."
+        $sha256Path = Join-Path $tempDir $sha256AssetName
+        try {
+            Invoke-WebRequest -Uri $sha256Asset.browser_download_url -OutFile $sha256Path -UseBasicParsing
+            $expectedHash = (Get-Content $sha256Path -Raw).Trim().Split(" ")[0]
+            $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+            if ($actualHash -ne $expectedHash) {
+                Write-ErrorText "Checksum verification FAILED."
+                Write-Host "  Expected: $expectedHash"
+                Write-Host "  Actual:   $actualHash"
+                Write-Info "Attempting automatic fallback to pip..."
+                if (Install-ViaPip) { exit 0 }
+                Write-ManualInstallHelp
+                exit 1
+            }
+            Write-Success "Checksum verified"
+        } catch {
+            Write-WarningText "Could not verify checksum (non-fatal): $_"
+        }
+    }
+
+    # ------------------------------------------------------------------
+    # Extract
+    # ------------------------------------------------------------------
+
+    Write-Info "Extracting package..."
+    Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+
+    $packageDir = Join-Path $tempDir "apm-windows-x86_64"
+    $exePath = Join-Path $packageDir "apm.exe"
+    if (-not (Test-Path $exePath)) {
+        Write-ErrorText "Extracted package is missing apm.exe."
+        Write-Info "Attempting automatic fallback to pip..."
+        if (Install-ViaPip) { exit 0 }
+        Write-ManualInstallHelp
+        exit 1
+    }
+
+    # ------------------------------------------------------------------
+    # Stage 3 — Binary test before installation
+    # ------------------------------------------------------------------
+
+    Write-Info "Testing binary..."
+    try {
+        $testOutput = & $exePath --version 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
+        Write-Success "Binary test successful: $testOutput"
+    } catch {
+        Write-ErrorText "Downloaded binary failed to run: $_"
+        Write-Host ""
+        Write-Info "Attempting automatic fallback to pip..."
+        if (Install-ViaPip) { exit 0 }
+        Write-ManualInstallHelp
+        exit 1
+    }
+
+    # ------------------------------------------------------------------
+    # Install
+    # ------------------------------------------------------------------
+
+    if (Test-Path $releaseDir) {
+        Remove-Item -Recurse -Force $releaseDir
+    }
+
+    Move-Item -Path $packageDir -Destination $releaseDir
+
+    $shimPath = Join-Path $binDir "apm.cmd"
+    $shimContent = "@echo off`r`n`"$releaseDir\apm.exe`" %*`r`n"
+    Set-Content -Path $shimPath -Value $shimContent -Encoding ASCII
+
+    Add-ToUserPath -PathEntry $binDir
+
+    Write-Host ""
+    Write-Success "APM $tagName installed successfully!"
+    Write-Info "Command shim: $shimPath"
+    Write-Host ""
+    Write-Info "Quick start:"
+    Write-Host "  apm init my-app          # Create a new APM project"
+    Write-Host "  cd my-app && apm install # Install dependencies"
+    Write-Host "  apm run                  # Run your first prompt"
+    Write-Host ""
+    Write-Host "Documentation: https://github.com/$Repo"
+    Write-Info "Run 'apm --version' in a new terminal to verify the installation."
+} finally {
+    if (Test-Path $tempDir) {
+        Remove-Item -Recurse -Force $tempDir
+    }
+}

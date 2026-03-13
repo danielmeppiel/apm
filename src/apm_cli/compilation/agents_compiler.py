@@ -435,7 +435,7 @@ class AgentsCompiler:
                     rel_path = claude_path.relative_to(self.base_dir)
                 except ValueError:
                     rel_path = claude_path
-                preview_lines.append(f"  📄 {rel_path}")
+                preview_lines.append(f"  {rel_path}")
             
             return CompilationResult(
                 success=len(all_errors) == 0,
@@ -756,7 +756,7 @@ class AgentsCompiler:
         Args:
             distributed_result: Result from distributed compilation.
         """
-        print("🔍 Distributed AGENTS.md Placement Preview:")
+        print("Distributed AGENTS.md Placement Preview:")
         print()
         
         for placement in distributed_result.placements:
@@ -765,7 +765,7 @@ class AgentsCompiler:
             except ValueError:
                 # Fallback for path resolution issues
                 rel_path = placement.agents_path
-            print(f"📄 {rel_path}")
+            print(f"{rel_path}")
             print(f"   Instructions: {len(placement.instructions)}")
             print(f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
             if placement.source_attribution:
@@ -780,7 +780,7 @@ class AgentsCompiler:
             distributed_result: Result from distributed compilation.
             primitives (PrimitiveCollection): Full primitive collection.
         """
-        print("🔍 Distributed Compilation Trace:")
+        print("Distributed Compilation Trace:")
         print()
         
         for placement in distributed_result.placements:
@@ -788,7 +788,7 @@ class AgentsCompiler:
                 rel_path = placement.agents_path.relative_to(self.base_dir.resolve())
             except ValueError:
                 rel_path = placement.agents_path
-            print(f"📄 {rel_path}")
+            print(f"{rel_path}")
             
             for instruction in placement.instructions:
                 source = getattr(instruction, 'source', 'local')
@@ -797,7 +797,7 @@ class AgentsCompiler:
                 except ValueError:
                     inst_path = instruction.file_path
                 
-                print(f"   • {instruction.apply_to or 'no pattern'} <- {source} {inst_path}")
+                print(f"   * {instruction.apply_to or 'no pattern'} <- {source} {inst_path}")
             print()
     
     def _generate_placement_summary(self, distributed_result) -> str:
@@ -816,7 +816,7 @@ class AgentsCompiler:
                 rel_path = placement.agents_path.relative_to(self.base_dir.resolve())
             except ValueError:
                 rel_path = placement.agents_path
-            lines.append(f"📄 {rel_path}")
+            lines.append(f"{rel_path}")
             lines.append(f"   Instructions: {len(placement.instructions)}")
             lines.append(f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
             lines.append("")
