@@ -29,7 +29,7 @@ def _build_bundle_dir(tmp_path: Path, deployed_files: list[str]) -> Path:
         deployed_files=deployed_files,
     )
     lockfile.add_dependency(dep)
-    lockfile.write(bundle / "apm.lock")
+    lockfile.write(bundle / "apm.lock.yaml")
     return bundle
 
 
@@ -93,7 +93,7 @@ class TestUnpackBundle:
             deployed_files=deployed,
         )
         lockfile.add_dependency(dep)
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
 
         output = tmp_path / "target"
         output.mkdir()
@@ -115,7 +115,7 @@ class TestUnpackBundle:
             deployed_files=deployed,
         )
         lockfile.add_dependency(dep)
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
 
         output = tmp_path / "target"
         output.mkdir()
@@ -179,7 +179,8 @@ class TestUnpackBundle:
 
         unpack_bundle(bundle, output)
 
-        # apm.lock should NOT be copied to the output root
+        # lockfile should NOT be copied to the output root
+        assert not (output / "apm.lock.yaml").exists()
         assert not (output / "apm.lock").exists()
 
     def test_unpack_rejects_absolute_path_in_deployed_files(self, tmp_path):
@@ -189,7 +190,7 @@ class TestUnpackBundle:
         lockfile = LockFile()
         dep = LockedDependency(repo_url="owner/repo", deployed_files=["/etc/passwd"])
         lockfile.add_dependency(dep)
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
         output = tmp_path / "target"
         output.mkdir()
 
@@ -203,7 +204,7 @@ class TestUnpackBundle:
         lockfile = LockFile()
         dep = LockedDependency(repo_url="owner/repo", deployed_files=["../outside.txt"])
         lockfile.add_dependency(dep)
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
         output = tmp_path / "target"
         output.mkdir()
 
@@ -241,7 +242,7 @@ class TestUnpackBundle:
         lockfile.add_dependency(
             LockedDependency(repo_url="org/repo-b", deployed_files=files_b)
         )
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
 
         output = tmp_path / "target"
         output.mkdir()
@@ -280,7 +281,7 @@ class TestUnpackBundle:
                 deployed_files=files_b,
             )
         )
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
 
         output = tmp_path / "target"
         output.mkdir()
@@ -317,7 +318,7 @@ class TestUnpackBundle:
         lockfile.add_dependency(
             LockedDependency(repo_url="owner/repo", deployed_files=deployed)
         )
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
 
         output = tmp_path / "target"
         output.mkdir()
@@ -337,6 +338,30 @@ class TestUnpackBundle:
         result = unpack_bundle(bundle, output)
 
         assert result.skipped_count == 0
+
+    def test_unpack_legacy_lockfile_backward_compat(self, tmp_path):
+        """Bundles with legacy apm.lock (no .yaml) are still readable."""
+        deployed = [".github/agents/a.md"]
+        bundle_dir = tmp_path / "bundle" / "legacy-pkg"
+        bundle_dir.mkdir(parents=True)
+
+        (bundle_dir / ".github" / "agents").mkdir(parents=True)
+        (bundle_dir / ".github" / "agents" / "a.md").write_text("ok")
+
+        lockfile = LockFile()
+        lockfile.add_dependency(
+            LockedDependency(repo_url="owner/repo", deployed_files=deployed)
+        )
+        # Write using the legacy name to simulate an old bundle
+        lockfile.write(bundle_dir / "apm.lock")
+
+        output = tmp_path / "target"
+        output.mkdir()
+
+        result = unpack_bundle(bundle_dir, output)
+
+        assert set(result.files) == set(deployed)
+        assert (output / ".github" / "agents" / "a.md").exists()
 
 
 class TestUnpackCmdLogging:
@@ -413,7 +438,7 @@ class TestUnpackCmdLogging:
         lockfile.add_dependency(
             LockedDependency(repo_url="owner/repo", deployed_files=deployed)
         )
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
 
         output = tmp_path / "target"
         output.mkdir()
@@ -455,7 +480,7 @@ class TestUnpackCmdLogging:
         lockfile.add_dependency(
             LockedDependency(repo_url="org/repo-b", deployed_files=files_b)
         )
-        lockfile.write(bundle_dir / "apm.lock")
+        lockfile.write(bundle_dir / "apm.lock.yaml")
 
         output = tmp_path / "target"
         output.mkdir()

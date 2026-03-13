@@ -68,7 +68,7 @@ class TestPackUnpackE2E:
         # 1. Install
         result = _run_apm(apm_command, ["install"], cwd=temp_project)
         assert result.returncode == 0, f"install failed: {result.stderr}"
-        assert (temp_project / "apm.lock").exists()
+        assert (temp_project / "apm.lock.yaml").exists()
 
         # 2. Pack
         result = _run_apm(

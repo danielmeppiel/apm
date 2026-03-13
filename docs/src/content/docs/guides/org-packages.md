@@ -214,7 +214,7 @@ dependencies:
     - acme-corp/apm-standards@v1
 ```
 
-Regardless of the version specifier, `apm.lock` always pins the exact commit SHA. This guarantees reproducible installs even if the tag is moved.
+Regardless of the version specifier, `apm.lock.yaml` always pins the exact commit SHA. This guarantees reproducible installs even if the tag is moved.
 
 ### When to bump versions
 
@@ -249,7 +249,7 @@ To pick up the latest version within your pinned range:
 apm deps update
 ```
 
-This updates `apm.lock` to the latest commit matching your version pin and deploys the updated files.
+This updates `apm.lock.yaml` to the latest commit matching your version pin and deploys the updated files.
 
 ### CI integration
 

@@ -76,7 +76,7 @@ def _run_apm(apm_command, args, cwd, timeout=120):
 
 def _read_lockfile(project_dir):
     """Read and parse apm.lock from the project directory."""
-    lock_path = project_dir / "apm.lock"
+    lock_path = project_dir / "apm.lock.yaml"
     if not lock_path.exists():
         return None
     with open(lock_path) as f:
@@ -258,7 +258,7 @@ class TestCollisionDetection:
 
         # Delete the lockfile to clear deployed_files tracking, then create
         # a user-authored file at the same path
-        lock_path = temp_project / "apm.lock"
+        lock_path = temp_project / "apm.lock.yaml"
         lock_path.unlink(missing_ok=True)
 
         user_content = "# User-authored content - DO NOT OVERWRITE\n"
@@ -290,7 +290,7 @@ class TestCollisionDetection:
         target_file = prompt_files[0]
 
         # Delete lockfile to clear tracking, then create user file
-        lock_path = temp_project / "apm.lock"
+        lock_path = temp_project / "apm.lock.yaml"
         lock_path.unlink(missing_ok=True)
 
         user_content = "# User-authored content\n"

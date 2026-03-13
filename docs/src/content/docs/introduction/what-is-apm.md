@@ -41,7 +41,7 @@ manager:
 | Without APM | With APM |
 |---|---|
 | Each dev configures agents manually | `apm install` sets up everything |
-| Instructions drift across machines | `apm.lock` pins exact versions |
+| Instructions drift across machines | `apm.lock.yaml` pins exact versions |
 | No way to share or reuse prompts | Publish and install from any git host |
 | MCP servers configured per-developer | Declared in manifest, installed consistently |
 | Onboarding requires tribal knowledge | Clone, `apm install`, done |
@@ -121,7 +121,7 @@ dependencies:
     - community/security-audit  # open-source prompt
 ```
 
-**Lock.** `apm.lock` pins every dependency to an exact commit. Two developers
+**Lock.** `apm.lock.yaml` pins every dependency to an exact commit. Two developers
 running `apm install` on the same lock file get identical setups.
 
 **Build.** `apm compile` produces optimized output files for each AI tool —
@@ -229,7 +229,7 @@ The compiled output is plain files that each tool already understands.
 
 ## Key value propositions
 
-**Reproducibility.** `apm.lock` guarantees identical agent setups across
+**Reproducibility.** `apm.lock.yaml` guarantees identical agent setups across
 developers, CI, and environments. No more "works on my machine" for AI
 configuration.
 

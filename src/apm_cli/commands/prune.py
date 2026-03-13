@@ -10,7 +10,7 @@ from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warnin
 from ._helpers import _build_expected_install_paths, _scan_installed_packages
 
 # APM Dependencies
-from ..deps.lockfile import LockFile
+from ..deps.lockfile import LockFile, get_lockfile_path
 from ..models.apm_package import APMPackage
 
 
@@ -47,7 +47,7 @@ def prune(ctx, dry_run):
         try:
             apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
             declared_deps = apm_package.get_apm_dependencies()
-            lockfile = LockFile.read(Path.cwd() / "apm.lock")
+            lockfile = LockFile.read(get_lockfile_path(Path.cwd()))
             expected_installed = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
         except Exception as e:
             _rich_error(f"Failed to parse apm.yml: {e}")

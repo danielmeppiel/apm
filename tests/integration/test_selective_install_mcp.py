@@ -94,7 +94,7 @@ def cli_env(tmp_path):
     ])
 
     # Pre-seed a lockfile so the install loop treats packages as cached
-    _seed_lockfile(tmp_path / "apm.lock", [
+    _seed_lockfile(tmp_path / "apm.lock.yaml", [
         LockedDependency(repo_url="acme/squad-alpha", depth=1,
                          resolved_by=None, resolved_commit="cached"),
         LockedDependency(repo_url="acme/infra-cloud", depth=2,
@@ -132,7 +132,7 @@ class TestSelectiveInstallTransitiveMCPIntegration:
         assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
 
         # Lockfile must contain both packages
-        lockfile = LockFile.read(tmp_path / "apm.lock")
+        lockfile = LockFile.read(tmp_path / "apm.lock.yaml")
         assert lockfile is not None
         dep_keys = set(lockfile.dependencies.keys())
         assert "acme/squad-alpha" in dep_keys
@@ -187,7 +187,7 @@ class TestDeepChainIntegration:
             _make_pkg(apm_modules, "acme/pkg-c", apm_deps=["acme/pkg-d"])
             _make_pkg(apm_modules, "acme/pkg-d", mcp=["ghcr.io/acme/mcp-deep"])
 
-            _seed_lockfile(tmp_path / "apm.lock", [
+            _seed_lockfile(tmp_path / "apm.lock.yaml", [
                 LockedDependency(repo_url="acme/pkg-a", depth=1,
                                  resolved_by=None, resolved_commit="cached"),
                 LockedDependency(repo_url="acme/pkg-b", depth=2,
@@ -208,7 +208,7 @@ class TestDeepChainIntegration:
                 f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
             )
 
-            lockfile = LockFile.read(tmp_path / "apm.lock")
+            lockfile = LockFile.read(tmp_path / "apm.lock.yaml")
             assert "acme/pkg-d" in lockfile.dependencies
             assert "ghcr.io/acme/mcp-deep" in lockfile.mcp_servers
         finally:
@@ -240,7 +240,7 @@ class TestDiamondDependencyIntegration:
                 "ghcr.io/acme/mcp-shared",
             ])
 
-            _seed_lockfile(tmp_path / "apm.lock", [
+            _seed_lockfile(tmp_path / "apm.lock.yaml", [
                 LockedDependency(repo_url="acme/pkg-a", depth=1,
                                  resolved_by=None, resolved_commit="cached"),
                 LockedDependency(repo_url="acme/pkg-b", depth=2,
@@ -261,7 +261,7 @@ class TestDiamondDependencyIntegration:
                 f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
             )
 
-            lockfile = LockFile.read(tmp_path / "apm.lock")
+            lockfile = LockFile.read(tmp_path / "apm.lock.yaml")
             assert "ghcr.io/acme/mcp-shared" in lockfile.mcp_servers
             # No duplicates in lockfile
             assert lockfile.mcp_servers.count("ghcr.io/acme/mcp-shared") == 1
@@ -296,7 +296,7 @@ class TestMultiPackageSelectiveInstallIntegration:
             _make_pkg(apm_modules, "acme/pkg-y", apm_deps=["acme/dep-y"])
             _make_pkg(apm_modules, "acme/dep-y", mcp=["ghcr.io/acme/mcp-y"])
 
-            _seed_lockfile(tmp_path / "apm.lock", [
+            _seed_lockfile(tmp_path / "apm.lock.yaml", [
                 LockedDependency(repo_url="acme/pkg-x", depth=1,
                                  resolved_by=None, resolved_commit="cached"),
                 LockedDependency(repo_url="acme/dep-x", depth=2,
@@ -318,7 +318,7 @@ class TestMultiPackageSelectiveInstallIntegration:
                 f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
             )
 
-            lockfile = LockFile.read(tmp_path / "apm.lock")
+            lockfile = LockFile.read(tmp_path / "apm.lock.yaml")
             assert "ghcr.io/acme/mcp-x" in lockfile.mcp_servers
             assert "ghcr.io/acme/mcp-y" in lockfile.mcp_servers
         finally:
@@ -342,7 +342,7 @@ class TestFullInstallTransitiveMCPIntegration:
 
         assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
 
-        lockfile = LockFile.read(tmp_path / "apm.lock")
+        lockfile = LockFile.read(tmp_path / "apm.lock.yaml")
         assert lockfile is not None
         assert "ghcr.io/acme/mcp-alpha" in lockfile.mcp_servers
         assert "ghcr.io/acme/mcp-beta" in lockfile.mcp_servers
@@ -372,7 +372,7 @@ class TestStaleRemovalAfterUpdate:
             ])
 
             # Pre-existing lockfile still references both servers
-            _seed_lockfile(tmp_path / "apm.lock", [
+            _seed_lockfile(tmp_path / "apm.lock.yaml", [
                 LockedDependency(repo_url="acme/infra-cloud", depth=1,
                                  resolved_by=None, resolved_commit="cached"),
             ], mcp_servers=["ghcr.io/acme/mcp-alpha", "ghcr.io/acme/mcp-beta"])
@@ -401,7 +401,7 @@ class TestStaleRemovalAfterUpdate:
             assert "ghcr.io/acme/mcp-beta" in updated["servers"]
 
             # Lockfile must only list the remaining server
-            lockfile = LockFile.read(tmp_path / "apm.lock")
+            lockfile = LockFile.read(tmp_path / "apm.lock.yaml")
             assert "ghcr.io/acme/mcp-alpha" not in lockfile.mcp_servers
             assert "ghcr.io/acme/mcp-beta" in lockfile.mcp_servers
 
@@ -421,7 +421,7 @@ class TestNoMCPWhenOnlyAPM:
         tmp_path, runner = cli_env
 
         # Seed lockfile with existing MCP servers
-        _seed_lockfile(tmp_path / "apm.lock", [
+        _seed_lockfile(tmp_path / "apm.lock.yaml", [
             LockedDependency(repo_url="acme/squad-alpha", depth=1,
                              resolved_by=None, resolved_commit="cached"),
             LockedDependency(repo_url="acme/infra-cloud", depth=2,
@@ -434,6 +434,6 @@ class TestNoMCPWhenOnlyAPM:
         assert result.exit_code == 0, f"CLI failed:\n{result.output}\n{getattr(result, 'stderr', '')}"
 
         # MCP servers must be preserved (not wiped) even with --only=apm
-        lockfile = LockFile.read(tmp_path / "apm.lock")
+        lockfile = LockFile.read(tmp_path / "apm.lock.yaml")
         assert "ghcr.io/acme/mcp-alpha" in lockfile.mcp_servers
         assert "ghcr.io/acme/mcp-beta" in lockfile.mcp_servers

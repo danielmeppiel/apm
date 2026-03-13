@@ -6,7 +6,7 @@ sidebar:
 ---
 
 :::caution[Experimental Feature]
-APM's core value is dependency management — `apm install`, `apm.lock`, `apm audit`. The workflow execution features described on this page are experimental and may change. For most users, `apm install` is all you need.
+APM's core value is dependency management — `apm install`, `apm.lock.yaml`, `apm audit`. The workflow execution features described on this page are experimental and may change. For most users, `apm install` is all you need.
 :::
 
 ## What are Agent Workflows?

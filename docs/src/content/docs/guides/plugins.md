@@ -47,7 +47,7 @@ When you run `apm install owner/repo/plugin-name`:
     - `*.md` command files are normalized to `*.prompt.md` for prompt/command integration
 4. **Synthesize** - `apm.yml` is automatically generated from plugin metadata
 5. **Integrate** - The plugin is now a standard dependency with:
-   - Version pinning via `apm.lock`
+   - Version pinning via `apm.lock.yaml`
    - Transitive dependency resolution
    - Conflict detection
    - Everything else APM packages support
@@ -242,7 +242,7 @@ dependencies:
     - owner/repo/plugin#abc123
 ```
 
-Run `apm install` to download and lock versions in `apm.lock`.
+Run `apm install` to download and lock versions in `apm.lock.yaml`.
 
 ## Supported Hosts
 
@@ -252,7 +252,7 @@ Run `apm install` to download and lock versions in `apm.lock`.
 
 ## Lock File Integration
 
-Plugin versions are automatically tracked in `apm.lock`:
+Plugin versions are automatically tracked in `apm.lock.yaml`:
 
 ```yaml
 apm_modules:

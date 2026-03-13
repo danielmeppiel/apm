@@ -76,7 +76,7 @@ def _write_apm_yml(project_dir, packages):
 
 def _read_lockfile(project_dir):
     """Read and parse apm.lock from the project directory."""
-    lock_path = project_dir / "apm.lock"
+    lock_path = project_dir / "apm.lock.yaml"
     if not lock_path.exists():
         return None
     with open(lock_path, encoding="utf-8") as f:

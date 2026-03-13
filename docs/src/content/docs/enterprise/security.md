@@ -14,7 +14,7 @@ APM is a build-time dependency manager for AI prompts and configuration. It perf
 1. **Resolves git repositories** — clones or sparse-checks-out packages from GitHub or Azure DevOps.
 2. **Deploys static files** — copies markdown, JSON, and YAML files into project directories (`.github/`, `.claude/`).
 3. **Generates compiled output** — produces `AGENTS.md`, `CLAUDE.md`, and similar files from templates and prompts.
-4. **Records a lock file** — writes `apm.lock` with exact commit SHAs for every resolved dependency.
+4. **Records a lock file** — writes `apm.lock.yaml` with exact commit SHAs for every resolved dependency.
 
 ## What APM does NOT do
 
@@ -33,7 +33,7 @@ APM resolves dependencies directly from git repositories. There is no intermedia
 
 ### Exact commit pinning
 
-Every resolved dependency is recorded in `apm.lock` with its full commit SHA:
+Every resolved dependency is recorded in `apm.lock.yaml` with its full commit SHA:
 
 ```yaml
 lockfile_version: "1"
@@ -55,7 +55,7 @@ APM does not use a package registry. Dependencies are specified as git repositor
 
 ### Reproducible installs
 
-Given the same `apm.lock`, `apm install` produces identical file output regardless of when or where it runs. The lock file is the single source of truth for dependency state.
+Given the same `apm.lock.yaml`, `apm install` produces identical file output regardless of when or where it runs. The lock file is the single source of truth for dependency state.
 
 ## Path security
 
@@ -133,7 +133,7 @@ APM authenticates to git hosts using personal access tokens (PATs) read from env
 
 ### Security properties
 
-- **Never stored in files.** Tokens are read from the environment at runtime. They are never written to `apm.yaml`, `apm.lock`, or any generated file.
+- **Never stored in files.** Tokens are read from the environment at runtime. They are never written to `apm.yaml`, `apm.lock.yaml`, or any generated file.
 - **Never logged.** Token values are not included in console output, error messages, or debug logs.
 - **Scoped to their git host.** A GitHub token is only sent to GitHub. An Azure DevOps token is only sent to Azure DevOps. Tokens are never transmitted to any other endpoint.
 
@@ -157,17 +157,17 @@ APM's design eliminates several supply chain attack vectors common in traditiona
 
 ### Auditing dependency changes
 
-Because `apm.lock` is a plain YAML file checked into version control, standard git tooling provides a full audit trail:
+Because `apm.lock.yaml` is a plain YAML file checked into version control, standard git tooling provides a full audit trail:
 
 ```bash
 # View all dependency changes over time
-git log --oneline apm.lock
+git log --oneline apm.lock.yaml
 
 # See exactly what changed in a specific commit
-git diff HEAD~1 -- apm.lock
+git diff HEAD~1 -- apm.lock.yaml
 
 # Find when a specific dependency was added
-git log --all -p -- apm.lock | grep -A5 "owner/repo"
+git log --all -p -- apm.lock.yaml | grep -A5 "owner/repo"
 ```
 
 ### Pinning and updates
@@ -196,7 +196,7 @@ Not by default. Transitive MCP server declarations are blocked unless you explic
 
 ### How do I audit what APM installed?
 
-The `apm.lock` file records every dependency (with exact commit SHA) and every file deployed. It is a plain YAML file suitable for automated policy checks, diff review, and compliance tooling.
+The `apm.lock.yaml` file records every dependency (with exact commit SHA) and every file deployed. It is a plain YAML file suitable for automated policy checks, diff review, and compliance tooling.
 
 ### Is the APM binary signed?
 

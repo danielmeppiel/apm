@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock
 import yaml
 
-from apm_cli.deps.lockfile import LockedDependency, LockFile, get_lockfile_path
+from apm_cli.deps.lockfile import LockedDependency, LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from apm_cli.models.apm_package import DependencyReference
 
 
@@ -159,7 +159,7 @@ class TestLockFile:
         assert lock.mcp_configs == {}
 
     def test_read_nonexistent(self, tmp_path):
-        loaded = LockFile.read(tmp_path / "apm.lock")
+        loaded = LockFile.read(tmp_path / "apm.lock.yaml")
         assert loaded is None
 
     def test_from_installed_packages(self):
@@ -179,4 +179,41 @@ class TestLockFile:
 class TestGetLockfilePath:
     def test_get_lockfile_path(self, tmp_path):
         path = get_lockfile_path(tmp_path)
-        assert path == tmp_path / "apm.lock"
+        assert path == tmp_path / "apm.lock.yaml"
+
+
+class TestMigrateLockfileIfNeeded:
+    def test_migrates_legacy_lockfile(self, tmp_path):
+        """apm.lock should be renamed to apm.lock.yaml when new file is absent."""
+        legacy = tmp_path / "apm.lock"
+        legacy.write_text("lockfile_version: '1'\ndependencies: []\n")
+        migrated = migrate_lockfile_if_needed(tmp_path)
+        assert migrated is True
+        assert not legacy.exists()
+        assert (tmp_path / "apm.lock.yaml").exists()
+
+    def test_no_migration_when_new_file_exists(self, tmp_path):
+        """No migration when apm.lock.yaml already exists."""
+        new_file = tmp_path / "apm.lock.yaml"
+        new_file.write_text("lockfile_version: '1'\ndependencies: []\n")
+        legacy = tmp_path / "apm.lock"
+        legacy.write_text("old content")
+        migrated = migrate_lockfile_if_needed(tmp_path)
+        assert migrated is False
+        assert legacy.exists()  # untouched
+        assert new_file.read_text() == "lockfile_version: '1'\ndependencies: []\n"
+
+    def test_no_migration_when_no_legacy_file(self, tmp_path):
+        """Returns False when neither file exists."""
+        migrated = migrate_lockfile_if_needed(tmp_path)
+        assert migrated is False
+
+    def test_migrated_file_is_readable(self, tmp_path):
+        """Migrated lockfile can be loaded by LockFile.read."""
+        lock = LockFile(apm_version="1.0.0")
+        lock.add_dependency(LockedDependency(repo_url="owner/repo"))
+        lock.write(tmp_path / "apm.lock")
+        migrate_lockfile_if_needed(tmp_path)
+        loaded = LockFile.read(tmp_path / "apm.lock.yaml")
+        assert loaded is not None
+        assert loaded.has_dependency("owner/repo")

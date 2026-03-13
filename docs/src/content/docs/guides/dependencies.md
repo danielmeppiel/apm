@@ -545,13 +545,13 @@ apm deps update apm-sample-package
 apm install --update
 ```
 
-## Reproducible Builds with apm.lock
+## Reproducible Builds with apm.lock.yaml
 
-APM generates a lockfile (`apm.lock`) after each successful install to ensure reproducible builds across machines and CI environments.
+APM generates a lockfile (`apm.lock.yaml`) after each successful install to ensure reproducible builds across machines and CI environments.
 
-### What is apm.lock?
+### What is apm.lock.yaml?
 
-The `apm.lock` file captures the exact state of your dependency tree, including which files APM deployed:
+The `apm.lock.yaml` file captures the exact state of your dependency tree, including which files APM deployed:
 
 ```yaml
 lockfile_version: "1.0"
@@ -586,16 +586,16 @@ The `mcp_servers` field records the MCP dependency references (e.g. `io.github.g
 
 ### How It Works
 
-1. **First install**: APM resolves dependencies, downloads packages, and writes `apm.lock`
-2. **Subsequent installs**: APM reads `apm.lock` and uses locked commits for exact reproducibility. If the local checkout already matches the locked commit SHA, the download is skipped entirely.
+1. **First install**: APM resolves dependencies, downloads packages, and writes `apm.lock.yaml`
+2. **Subsequent installs**: APM reads `apm.lock.yaml` and uses locked commits for exact reproducibility. If the local checkout already matches the locked commit SHA, the download is skipped entirely.
 3. **Updating**: Use `--update` to re-resolve dependencies and generate a fresh lockfile
 
 ### Version Control
 
-**Commit `apm.lock`** to version control:
+**Commit `apm.lock.yaml`** to version control:
 
 ```bash
-git add apm.lock
+git add apm.lock.yaml
 git commit -m "Lock dependencies"
 ```
 
@@ -620,7 +620,7 @@ apm install contoso/package-a
 
 Result:
 - Downloads A, B, and C
-- Records all three in `apm.lock` with depth information
+- Records all three in `apm.lock.yaml` with depth information
 - `depth: 1` = direct dependency
 - `depth: 2+` = transitive dependency
 

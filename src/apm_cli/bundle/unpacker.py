@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
-from ..deps.lockfile import LockFile
+from ..deps.lockfile import LockFile, LOCKFILE_NAME, LEGACY_LOCKFILE_NAME
 
 
 @dataclass
@@ -44,7 +44,7 @@ def unpack_bundle(
         :class:`UnpackResult` describing what was (or would be) extracted.
 
     Raises:
-        FileNotFoundError: If the bundle's ``apm.lock`` is missing.
+        FileNotFoundError: If the bundle's ``apm.lock.yaml`` is missing.
         ValueError: If verification finds files listed in the lockfile but
             absent from the bundle.
     """
@@ -83,16 +83,21 @@ def unpack_bundle(
         raise FileNotFoundError(f"Bundle not found or unsupported format: {bundle_path}")
 
     try:
-        # 2. Read apm.lock from bundle
-        lockfile_path = source_dir / "apm.lock"
+        # 2. Read apm.lock.yaml (or legacy apm.lock) from bundle
+        lockfile_path = source_dir / LOCKFILE_NAME
+        if not lockfile_path.exists():
+            # Backward compat: older bundles used "apm.lock"
+            legacy_lockfile_path = source_dir / LEGACY_LOCKFILE_NAME
+            if legacy_lockfile_path.exists():
+                lockfile_path = legacy_lockfile_path
         lockfile = LockFile.read(lockfile_path)
         if lockfile is None:
             if not lockfile_path.exists():
                 raise FileNotFoundError(
-                    "apm.lock not found in the bundle  -- the bundle may be incomplete."
+                    f"{lockfile_path.name} not found in the bundle  -- the bundle may be incomplete."
                 )
             raise FileNotFoundError(
-                "apm.lock in the bundle could not be parsed  -- the bundle may be corrupt."
+                f"{lockfile_path.name} in the bundle could not be parsed  -- the bundle may be corrupt."
             )
 
         # Collect deployed_files per dependency and deduplicated global list

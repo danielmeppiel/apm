@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-from ..deps.lockfile import LockFile
+from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from ..models.apm_package import APMPackage
 from ..core.target_detection import detect_target
 from .lockfile_enrichment import enrich_lockfile_for_pack
@@ -47,7 +47,7 @@ def pack_bundle(
     """Create a self-contained bundle from installed APM dependencies.
 
     Args:
-        project_root: Root of the project containing ``apm.lock`` and ``apm.yml``.
+        project_root: Root of the project containing ``apm.lock.yaml`` and ``apm.yml``.
         output_dir: Directory where the bundle will be created.
         fmt: Bundle format  -- ``"apm"`` (default) or ``"plugin"``.
         target: Target filter  -- ``"vscode"``, ``"claude"``, ``"all"``, or *None*
@@ -59,15 +59,16 @@ def pack_bundle(
         :class:`PackResult` describing what was (or would be) produced.
 
     Raises:
-        FileNotFoundError: If ``apm.lock`` is missing.
+        FileNotFoundError: If ``apm.lock.yaml`` is missing.
         ValueError: If deployed files referenced in the lockfile are missing on disk.
     """
-    # 1. Read lockfile
-    lockfile_path = project_root / "apm.lock"
+    # 1. Read lockfile (migrate legacy apm.lock → apm.lock.yaml if needed)
+    migrate_lockfile_if_needed(project_root)
+    lockfile_path = get_lockfile_path(project_root)
     lockfile = LockFile.read(lockfile_path)
     if lockfile is None:
         raise FileNotFoundError(
-            "apm.lock not found  -- run 'apm install' first to resolve dependencies."
+            "apm.lock.yaml not found  -- run 'apm install' first to resolve dependencies."
         )
 
     # 2. Read apm.yml for name / version / config target
@@ -168,7 +169,7 @@ def pack_bundle(
 
     # 8. Enrich lockfile copy and write to bundle
     enriched_yaml = enrich_lockfile_for_pack(lockfile, fmt, effective_target)
-    (bundle_dir / "apm.lock").write_text(enriched_yaml, encoding="utf-8")
+    (bundle_dir / "apm.lock.yaml").write_text(enriched_yaml, encoding="utf-8")
 
     result = PackResult(
         bundle_path=bundle_dir,

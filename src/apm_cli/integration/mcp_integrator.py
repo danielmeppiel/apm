@@ -19,7 +19,7 @@ from typing import List, Optional
 
 import click
 
-from apm_cli.deps.lockfile import LockFile
+from apm_cli.deps.lockfile import LockFile, get_lockfile_path
 from apm_cli.utils.console import (
     _get_console,
     _rich_error,
@@ -534,12 +534,12 @@ class MCPIntegrator:
 
         Args:
             mcp_server_names: Set of MCP server names to persist.
-            lock_path: Path to the lockfile.  Defaults to ``apm.lock`` in CWD.
+            lock_path: Path to the lockfile.  Defaults to ``apm.lock.yaml`` in CWD.
             mcp_configs: Keyword-only.  When provided, overwrites ``mcp_configs``
                          in the lockfile (used for drift-detection baseline).
         """
         if lock_path is None:
-            lock_path = Path.cwd() / "apm.lock"
+            lock_path = get_lockfile_path(Path.cwd())
         if not lock_path.exists():
             return
         try:

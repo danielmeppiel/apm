@@ -152,6 +152,6 @@ See the [Pack & Distribute guide](../../guides/pack-distribute/) for the full wo
 ## Best Practices
 
 - **Pin APM version** in CI to avoid unexpected changes: `pip install apm-cli==0.7.7`
-- **Commit `apm.lock`** so CI resolves the same dependency versions as local development
+- **Commit `apm.lock.yaml`** so CI resolves the same dependency versions as local development
 - **If using `apm compile`** (for Cursor, Codex, Gemini), run it in CI and fail the build if the output differs from what's committed
 - **Use `GITHUB_APM_PAT`** for private dependencies; never use the default `GITHUB_TOKEN` for cross-repo access
