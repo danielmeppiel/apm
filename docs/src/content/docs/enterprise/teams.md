@@ -13,7 +13,7 @@ Every configuration change is auditable.
 
 ## The problem at scale
 
-Consider a mid-to-large engineering organization: 50 repositories, 200 developers, three AI coding tools (Copilot, Claude, Cursor, OpenCode).
+Consider a mid-to-large engineering organization: 50 repositories, 200 developers, four AI coding tools (Copilot, Claude, Cursor, OpenCode).
 
 Without centralized configuration management, a predictable set of problems emerges:
 

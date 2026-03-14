@@ -111,7 +111,7 @@ If you use tools beyond GitHub Copilot, Claude, Cursor, and OpenCode (which read
 apm compile
 ```
 
-This produces `AGENTS.md` (for Codex) and `CLAUDE.md` for tools that need a single instructions file. Copilot, Claude, Cursor, and OpenCode users can skip this step.
+This produces `AGENTS.md` (for Codex, Gemini) and `CLAUDE.md` for tools that need a single instructions file. Copilot, Claude, and Cursor users can skip this step — OpenCode users need `apm compile` only if their packages include instructions (OpenCode reads `AGENTS.md` for those).
 
 ## Next Steps
 

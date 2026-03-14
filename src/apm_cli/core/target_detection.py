@@ -123,7 +123,7 @@ def should_integrate_opencode(target: TargetType) -> bool:
         target: The detected or configured target
 
     Returns:
-        bool: True if OpenCode integration (agents, skills) should run
+        bool: True if OpenCode integration (agents, commands, skills) should run
     """
     return target in ("opencode", "all")
 
