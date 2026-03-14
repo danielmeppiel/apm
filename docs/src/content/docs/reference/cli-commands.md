@@ -243,7 +243,7 @@ Skills are copied directly to target directories:
   └─ 3 commands integrated → .claude/commands/
 ```
 
-This makes all package primitives available in VSCode, Cursor, Claude Code, and compatible editors for immediate use with your coding agents.
+This makes all package primitives available in VSCode, Cursor, OpenCode, Claude Code, and compatible editors for immediate use with your coding agents.
 
 ### `apm uninstall` - Remove APM packages
 
