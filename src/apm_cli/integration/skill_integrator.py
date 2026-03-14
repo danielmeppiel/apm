@@ -312,7 +312,7 @@ def copy_skill_to_target(
     deployed.append(github_skill_dir)
     
     # === Opt-in targets: only deploy when target root already exists ===
-    for target_root in (".claude", ".cursor"):
+    for target_root in (".claude", ".cursor", ".opencode"):
         target_dir = target_base / target_root
         if not (target_dir.exists() and target_dir.is_dir()):
             continue
@@ -620,6 +620,15 @@ class SkillIntegrator(BaseIntegrator):
             )
             all_deployed.extend(cursor_deployed)
 
+        # Also promote into .opencode/skills/ when .opencode/ exists
+        opencode_dir = project_root / ".opencode"
+        if opencode_dir.exists() and opencode_dir.is_dir():
+            opencode_skills_root = opencode_dir / "skills"
+            _, opencode_deployed = self._promote_sub_skills(
+                sub_skills_dir, opencode_skills_root, parent_name, warn=False, project_root=project_root
+            )
+            all_deployed.extend(opencode_deployed)
+
         return count, all_deployed
 
     def _integrate_native_skill(
@@ -866,6 +875,7 @@ class SkillIntegrator(BaseIntegrator):
                     rel_path.startswith(".github/skills/")
                     or rel_path.startswith(".claude/skills/")
                     or rel_path.startswith(".cursor/skills/")
+                    or rel_path.startswith(".opencode/skills/")
                 )
                 if not is_skill or ".." in rel_path:
                     continue
@@ -919,6 +929,13 @@ class SkillIntegrator(BaseIntegrator):
         cursor_skills_dir = project_root / ".cursor" / "skills"
         if cursor_skills_dir.exists():
             result = self._clean_orphaned_skills(cursor_skills_dir, installed_skill_names)
+            stats['files_removed'] += result['files_removed']
+            stats['errors'] += result['errors']
+        
+        # Clean .opencode/skills/
+        opencode_skills_dir = project_root / ".opencode" / "skills"
+        if opencode_skills_dir.exists():
+            result = self._clean_orphaned_skills(opencode_skills_dir, installed_skill_names)
             stats['files_removed'] += result['files_removed']
             stats['errors'] += result['errors']
         

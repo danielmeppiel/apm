@@ -424,7 +424,7 @@ class MCPIntegrator:
             return
 
         # Determine which runtimes to clean, mirroring install-time logic.
-        all_runtimes = {"vscode", "copilot", "codex", "cursor"}
+        all_runtimes = {"vscode", "copilot", "codex", "cursor", "opencode"}
         if runtime:
             target_runtimes = {runtime}
         else:
@@ -542,6 +542,32 @@ class MCPIntegrator:
                         exc_info=True,
                     )
 
+        # Clean opencode.json (only if .opencode/ directory exists)
+        if "opencode" in target_runtimes:
+            opencode_cfg = Path.cwd() / "opencode.json"
+            if opencode_cfg.exists() and (Path.cwd() / ".opencode").is_dir():
+                try:
+                    import json as _json
+
+                    config = _json.loads(opencode_cfg.read_text(encoding="utf-8"))
+                    servers = config.get("mcp", {})
+                    removed = [n for n in expanded_stale if n in servers]
+                    for name in removed:
+                        del servers[name]
+                    if removed:
+                        opencode_cfg.write_text(
+                            _json.dumps(config, indent=2), encoding="utf-8"
+                        )
+                        for name in removed:
+                            _rich_info(
+                                f"+ Removed stale MCP server '{name}' from opencode.json"
+                            )
+                except Exception:
+                    logger.debug(
+                        "Failed to clean stale MCP servers from opencode.json",
+                        exc_info=True,
+                    )
+
     # ------------------------------------------------------------------
     # Lockfile persistence
     # ------------------------------------------------------------------
@@ -633,7 +659,7 @@ class MCPIntegrator:
 
         except ImportError:
             mcp_compatible = [
-                rt for rt in detected_runtimes if rt in ["vscode", "copilot", "cursor"]
+                rt for rt in detected_runtimes if rt in ["vscode", "copilot", "cursor", "opencode"]
             ]
             return [rt for rt in mcp_compatible if shutil.which(rt)]
 
@@ -691,7 +717,7 @@ class MCPIntegrator:
             return False
         except ValueError as e:
             _rich_warning(f"Runtime {runtime} not supported: {e}")
-            _rich_info("Supported runtimes: vscode, copilot, codex, cursor, llm")
+            _rich_info("Supported runtimes: vscode, copilot, codex, cursor, opencode, llm")
             return False
         except Exception as e:
             logger.debug(
@@ -804,7 +830,7 @@ class MCPIntegrator:
                 manager = RuntimeManager()
                 installed_runtimes = []
 
-                for runtime_name in ["copilot", "codex", "vscode", "cursor"]:
+                for runtime_name in ["copilot", "codex", "vscode", "cursor", "opencode"]:
                     try:
                         if runtime_name == "vscode":
                             if shutil.which("code") is not None:
@@ -813,6 +839,11 @@ class MCPIntegrator:
                         elif runtime_name == "cursor":
                             # Cursor is opt-in: only target when .cursor/ exists
                             if (Path.cwd() / ".cursor").is_dir():
+                                ClientFactory.create_client(runtime_name)
+                                installed_runtimes.append(runtime_name)
+                        elif runtime_name == "opencode":
+                            # OpenCode is opt-in: only target when .opencode/ exists
+                            if (Path.cwd() / ".opencode").is_dir():
                                 ClientFactory.create_client(runtime_name)
                                 installed_runtimes.append(runtime_name)
                         else:
@@ -830,6 +861,9 @@ class MCPIntegrator:
                 # Cursor is directory-presence based, not binary-based
                 if (Path.cwd() / ".cursor").is_dir():
                     installed_runtimes.append("cursor")
+                # OpenCode is directory-presence based
+                if (Path.cwd() / ".opencode").is_dir():
+                    installed_runtimes.append("opencode")
 
             # Step 2: Get runtimes referenced in apm.yml scripts
             script_runtimes = MCPIntegrator._detect_runtimes(

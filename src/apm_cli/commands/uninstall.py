@@ -422,7 +422,13 @@ def uninstall(ctx, packages, dry_run):
                                                             managed_files=_buckets["agents_cursor"] if _buckets else None)
                 agents_cleaned += result.get("files_removed", 0)
 
-            if Path(".github/skills").exists() or Path(".claude/skills").exists() or Path(".cursor/skills").exists():
+            if Path(".opencode/agents").exists():
+                integrator = AgentIntegrator()
+                result = integrator.sync_integration_opencode(apm_package, project_root,
+                                                              managed_files=_buckets["agents_opencode"] if _buckets else None)
+                agents_cleaned += result.get("files_removed", 0)
+
+            if Path(".github/skills").exists() or Path(".claude/skills").exists() or Path(".cursor/skills").exists() or Path(".opencode/skills").exists():
                 integrator = SkillIntegrator()
                 result = integrator.sync_integration(apm_package, project_root,
                                                      managed_files=_buckets["skills"] if _buckets else None)
@@ -433,6 +439,12 @@ def uninstall(ctx, packages, dry_run):
                 result = integrator.sync_integration(apm_package, project_root,
                                                      managed_files=_buckets["commands"] if _buckets else None)
                 commands_cleaned = result.get("files_removed", 0)
+
+            if Path(".opencode/commands").exists():
+                integrator = CommandIntegrator()
+                result = integrator.sync_integration_opencode(apm_package, project_root,
+                                                              managed_files=_buckets["commands_opencode"] if _buckets else None)
+                commands_cleaned += result.get("files_removed", 0)
 
             # Clean hooks (.github/hooks/ and .claude/settings.json)
             hook_integrator_cleanup = HookIntegrator()

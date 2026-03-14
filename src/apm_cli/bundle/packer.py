@@ -18,7 +18,8 @@ _TARGET_PREFIXES = {
     "vscode": [".github/"],
     "claude": [".claude/"],
     "cursor": [".cursor/"],
-    "all": [".github/", ".claude/", ".cursor/"],
+    "opencode": [".opencode/"],
+    "all": [".github/", ".claude/", ".cursor/", ".opencode/"],
 }
 
 

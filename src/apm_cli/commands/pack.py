@@ -21,7 +21,7 @@ from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, 
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["copilot", "vscode", "claude", "cursor", "all"]),
+    type=click.Choice(["copilot", "vscode", "claude", "cursor", "opencode", "all"]),
     default=None,
     help="Filter files by target (default: auto-detect). 'vscode' is an alias for 'copilot'.",
 )

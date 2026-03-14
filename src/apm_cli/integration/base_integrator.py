@@ -134,17 +134,19 @@ class BaseIntegrator:
         """Partition *managed_files* by integration prefix in a single pass.
 
         Returns a dict with keys ``"prompts"``, ``"agents_github"``,
-        ``"agents_claude"``, ``"agents_cursor"``, ``"commands"``,
-        ``"skills"``, ``"hooks"``, ``"instructions"``,
-        ``"rules_cursor"`` mapping to the subset of paths for each
-        integration type.
+        ``"agents_claude"``, ``"agents_cursor"``, ``"agents_opencode"``,
+        ``"commands"``, ``"commands_opencode"``, ``"skills"``, ``"hooks"``,
+        ``"instructions"``, ``"rules_cursor"`` mapping to the subset of
+        paths for each integration type.
         """
         buckets: dict = {
             "prompts": set(),
             "agents_github": set(),
             "agents_claude": set(),
             "agents_cursor": set(),
+            "agents_opencode": set(),
             "commands": set(),
+            "commands_opencode": set(),
             "skills": set(),
             "hooks": set(),
             "instructions": set(),
@@ -159,9 +161,13 @@ class BaseIntegrator:
                 buckets["agents_claude"].add(p)
             elif p.startswith(".cursor/agents/"):
                 buckets["agents_cursor"].add(p)
+            elif p.startswith(".opencode/agents/"):
+                buckets["agents_opencode"].add(p)
             elif p.startswith(".claude/commands/"):
                 buckets["commands"].add(p)
-            elif p.startswith((".github/skills/", ".claude/skills/", ".cursor/skills/")):
+            elif p.startswith(".opencode/commands/"):
+                buckets["commands_opencode"].add(p)
+            elif p.startswith((".github/skills/", ".claude/skills/", ".cursor/skills/", ".opencode/skills/")):
                 buckets["skills"].add(p)
             elif p.startswith(
                 (".github/hooks/", ".claude/hooks/", ".cursor/hooks/")

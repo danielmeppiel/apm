@@ -148,7 +148,7 @@ apm install microsoft/apm-sample-package
 
 ### Optional: Compiled Context with AGENTS.md
 
-For tools that do not support granular primitive discovery (such as Codex or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot, Claude, or Cursor, which read deployed primitives natively.
+For tools that do not support granular primitive discovery (such as Codex or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot, Claude, or Cursor, which read per-file instructions natively. OpenCode also reads `AGENTS.md`, so run `apm compile` to deploy instructions there.
 
 ```bash
 # Compile all local and dependency instructions into AGENTS.md
@@ -183,6 +183,22 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 | `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
 | `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
 | `.claude/settings.json` (hooks key) | Hooks from installed packages (merged into settings) |
+
+### OpenCode (`.opencode/`)
+
+APM natively integrates with OpenCode when a `.opencode/` directory exists in your project. Run `apm install` and APM automatically deploys primitives to OpenCode's native format:
+
+| APM Primitive | OpenCode Destination | Format |
+|---|---|---|
+| Agents (`.agent.md`) | `.opencode/agents/*.md` | Markdown with YAML frontmatter |
+| Prompts (`.prompt.md`) | `.opencode/commands/*.md` | Converted to command format |
+| Skills (`SKILL.md`) | `.opencode/skills/{name}/SKILL.md` | Identical (agentskills.io standard) |
+| MCP servers | `opencode.json` | `mcp` key with `command` array, `environment` |
+| Instructions | Via `AGENTS.md` | Read natively by OpenCode |
+
+**Setup**: Create a `.opencode/` directory in your project root, then run `apm install`. APM detects the directory and deploys automatically. OpenCode reads `AGENTS.md` natively for instructions.
+
+> **Note**: OpenCode does not support hooks.
 
 #### Cursor (`.cursor/`)
 
@@ -286,7 +302,7 @@ apm install anthropics/claude-plugins-official/plugins/hookify
 
 ### Optional: Target-Specific Compilation
 
-Compilation is optional for Copilot, Claude, and Cursor, which read deployed primitives natively. Use it when targeting tools like Codex or Gemini, or when you want a single merged instruction file:
+Compilation is optional for Copilot, Claude, and Cursor, which read per-file instructions natively. For OpenCode, run `apm compile` to generate `AGENTS.md` (OpenCode's instruction source). Also use it when targeting Codex or Gemini:
 
 ```bash
 # Generate all formats (default)

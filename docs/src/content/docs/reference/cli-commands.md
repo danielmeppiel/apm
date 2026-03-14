@@ -192,6 +192,7 @@ APM automatically detects which integrations to enable based on your project str
 - **VSCode integration**: Enabled when `.github/` directory exists
 - **Claude integration**: Enabled when `.claude/` directory exists
 - **Cursor integration**: Enabled when `.cursor/` directory exists
+- **OpenCode integration**: Enabled when `.opencode/` directory exists
 - All integrations can coexist in the same project
 
 **VSCode Integration (`.github/` present):**
@@ -243,7 +244,7 @@ Skills are copied directly to target directories:
   └─ 3 commands integrated → .claude/commands/
 ```
 
-This makes all package primitives available in VSCode, Cursor, Claude Code, and compatible editors for immediate use with your coding agents.
+This makes all package primitives available in VSCode, Cursor, OpenCode, Claude Code, and compatible editors for immediate use with your coding agents.
 
 ### `apm uninstall` - Remove APM packages
 
@@ -289,6 +290,9 @@ apm uninstall microsoft/apm-sample-package --dry-run
 | Cursor agents | `.cursor/agents/*.md` |
 | Cursor skills | `.cursor/skills/{folder-name}/` |
 | Cursor hooks | `.cursor/hooks.json` (hooks key cleaned) |
+| OpenCode agents | `.opencode/agents/*.md` |
+| OpenCode commands | `.opencode/commands/*.md` |
+| OpenCode skills | `.opencode/skills/{folder-name}/` |
 | Lockfile entries | `apm.lock.yaml` (removed packages + orphaned transitives) |
 
 **Behavior:**
@@ -335,7 +339,7 @@ apm pack [OPTIONS]
 
 **Options:**
 - `-o, --output PATH` - Output directory (default: `./build`)
-- `-t, --target [copilot|vscode|claude|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
+- `-t, --target [copilot|vscode|claude|cursor|opencode|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
 - `--format [apm|plugin]` - Bundle format (default: `apm`)
@@ -369,7 +373,9 @@ apm pack -o dist/
 |--------|------------------------------|
 | `vscode` | `.github/` |
 | `claude` | `.claude/` |
-| `all` | both |
+| `cursor` | `.cursor/` |
+| `opencode` | `.opencode/` |
+| `all` | all of the above |
 
 **Enriched lockfile example:**
 ```yaml
