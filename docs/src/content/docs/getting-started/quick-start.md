@@ -82,17 +82,22 @@ my-project/
     commands/
       apm-sample-package/
         ...
-  .cursor/                          # only if .cursor/ already exists
+  .cursor/
     rules/
       design-standards.mdc
     agents/
       design-reviewer.md
+  .opencode/
+    agents/
+      design-reviewer.md
+    commands/
+      design-review.md
 ```
 
 Three things happened:
 
 1. The package was downloaded into `apm_modules/` (like `node_modules/`).
-2. Instructions, agents, and skills were deployed to `.github/`, `.claude/`, and `.cursor/` (when present) -- the native directories that GitHub Copilot, Claude, and Cursor read from.
+2. Instructions, agents, and skills were deployed to `.github/`, `.claude/`, `.cursor/`, and `.opencode/` (when present) -- the native directories that GitHub Copilot, Claude, Cursor, and OpenCode read from.
 3. A lockfile (`apm.lock.yaml`) was created, pinning the exact commit so every team member gets identical configuration.
 
 Your `apm.yml` now tracks the dependency:
@@ -107,7 +112,7 @@ dependencies:
 
 ## That's it
 
-Open your editor. GitHub Copilot, Claude, and Cursor pick up the new context immediately -- no extra configuration, no compile step, no restart. The agent now knows your project's design standards, can run your prompt templates, and follows the conventions defined in the package.
+Open your editor. GitHub Copilot, Claude, Cursor, and OpenCode pick up the new context immediately -- no extra configuration, no compile step, no restart. The agent now knows your project's design standards, can run your prompt templates, and follows the conventions defined in the package.
 
 This is the core idea: **packages define what your AI agent knows, and `apm install` puts that knowledge exactly where your tools expect it.**
 

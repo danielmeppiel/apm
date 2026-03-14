@@ -183,3 +183,76 @@ class CommandIntegrator(BaseIntegrator):
             legacy_glob_pattern="*-apm.md",
         )
         return stats["files_removed"]
+
+    def integrate_package_commands_opencode(self, package_info, project_root: Path,
+                                            force: bool = False,
+                                            managed_files: set = None,
+                                            diagnostics=None) -> IntegrationResult:
+        """Integrate all prompt files from a package as OpenCode commands.
+
+        Deploys .prompt.md → .opencode/commands/<name>.md.
+        Only deploys if .opencode/ directory already exists (opt-in).
+        """
+        opencode_dir = project_root / ".opencode"
+        if not opencode_dir.exists() or not opencode_dir.is_dir():
+            return IntegrationResult(
+                files_integrated=0, files_updated=0,
+                files_skipped=0, target_paths=[], links_resolved=0,
+            )
+
+        commands_dir = opencode_dir / "commands"
+        prompt_files = self.find_prompt_files(package_info.install_path)
+
+        if not prompt_files:
+            return IntegrationResult(
+                files_integrated=0, files_updated=0,
+                files_skipped=0, target_paths=[], links_resolved=0,
+            )
+
+        self.init_link_resolver(package_info, project_root)
+
+        files_integrated = 0
+        files_skipped = 0
+        target_paths = []
+        total_links_resolved = 0
+
+        for prompt_file in prompt_files:
+            filename = prompt_file.name
+            if filename.endswith('.prompt.md'):
+                base_name = filename[:-len('.prompt.md')]
+            else:
+                base_name = prompt_file.stem
+
+            target_path = commands_dir / f"{base_name}.md"
+            rel_path = str(target_path.relative_to(project_root))
+
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+                files_skipped += 1
+                continue
+
+            links_resolved = self.integrate_command(
+                prompt_file, target_path, package_info, prompt_file
+            )
+            files_integrated += 1
+            total_links_resolved += links_resolved
+            target_paths.append(target_path)
+
+        return IntegrationResult(
+            files_integrated=files_integrated,
+            files_updated=0,
+            files_skipped=files_skipped,
+            target_paths=target_paths,
+            links_resolved=total_links_resolved,
+        )
+
+    def sync_integration_opencode(self, apm_package, project_root: Path,
+                                  managed_files: set = None) -> Dict:
+        """Remove APM-managed command files from .opencode/commands/."""
+        commands_dir = project_root / ".opencode" / "commands"
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=".opencode/commands/",
+            legacy_glob_dir=commands_dir,
+            legacy_glob_pattern="*-apm.md",
+        )

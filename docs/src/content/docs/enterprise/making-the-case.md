@@ -52,7 +52,7 @@ An internal advocacy toolkit for APM. Each section is self-contained and designe
 
 Plugins handle single-tool installation for a single AI platform. APM adds capabilities that plugins do not provide:
 
-- **Cross-tool composition.** One manifest manages configuration for Copilot, Claude, Cursor, and any other agent runtime simultaneously.
+- **Cross-tool composition.** One manifest manages configuration for Copilot, Claude, Cursor, OpenCode, and any other agent runtime simultaneously.
 - **Consumer-side lock files.** Plugins install the latest version. APM pins exact versions so your team stays synchronized.
 - **CI enforcement.** There is no plugin equivalent of `apm audit --ci` for drift detection in a CI pipeline.
 - **Multi-source dependency resolution.** APM resolves transitive dependencies across packages from multiple git hosts.

@@ -54,6 +54,7 @@ APM copies skills directly to `.github/skills/` (primary), `.claude/skills/`, an
 - **Primary**: `.github/skills/{skill-name}/` — Works with Copilot, Codex, Gemini
 - **Compatibility**: `.claude/skills/{skill-name}/` — Only if `.claude/` folder already exists
 - **Compatibility**: `.cursor/skills/{skill-name}/` — Only if `.cursor/` folder already exists
+- **Compatibility**: `.opencode/skills/{skill-name}/` — Only if `.opencode/` folder already exists
 
 ### Skill Folder Naming
 
@@ -293,6 +294,7 @@ APM decides where to output skills based on project structure:
 | `.github/` exists | `.github/skills/{skill-name}/SKILL.md` |
 | `.claude/` also exists | Also copies to `.claude/skills/{skill-name}/SKILL.md` |
 | `.cursor/` also exists | Also copies to `.cursor/skills/{skill-name}/SKILL.md` |
+| `.opencode/` also exists | Also copies to `.opencode/skills/{skill-name}/SKILL.md` |
 | Neither exists | Creates `.github/skills/` |
 
 Override with:

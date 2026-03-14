@@ -105,13 +105,13 @@ APM automatically:
 
 ## 7. Optional: Compile for Other Tools
 
-If you use tools beyond GitHub Copilot, Claude, and Cursor (which read deployed primitives natively), generate compiled instruction files:
+If you use tools beyond GitHub Copilot, Claude, Cursor, and OpenCode (which read deployed primitives natively), generate compiled instruction files:
 
 ```bash
 apm compile
 ```
 
-This produces `AGENTS.md` (for Codex) and `CLAUDE.md` for tools that need a single instructions file. Copilot, Claude, and Cursor users can skip this step.
+This produces `AGENTS.md` (for Codex, Gemini) and `CLAUDE.md` for tools that need a single instructions file. Copilot, Claude, and Cursor users can skip this step — OpenCode users need `apm compile` only if their packages include instructions (OpenCode reads `AGENTS.md` for those).
 
 ## Next Steps
 

@@ -62,7 +62,7 @@ apm pack --dry-run
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format` | `apm` | Bundle format (`apm` or `plugin`) |
-| `-t, --target` | auto-detect | File filter: `copilot`, `vscode`, `claude`, `cursor`, `all`. `vscode` is an alias for `copilot` |
+| `-t, --target` | auto-detect | File filter: `copilot`, `vscode`, `claude`, `cursor`, `opencode`, `all`. `vscode` is an alias for `copilot` |
 | `--archive` | off | Produce `.tar.gz` instead of directory |
 | `-o, --output` | `./build` | Output directory |
 | `--dry-run` | off | List files without writing |
@@ -77,7 +77,8 @@ The target flag controls which deployed files are included based on path prefix:
 | `vscode` | Alias for `copilot` |
 | `claude` | Paths starting with `.claude/` |
 | `cursor` | Paths starting with `.cursor/` |
-| `all` | `.github/`, `.claude/`, and `.cursor/` |
+| `opencode` | Paths starting with `.opencode/` |
+| `all` | `.github/`, `.claude/`, `.cursor/`, and `.opencode/` |
 
 When no target is specified, APM auto-detects from the `target` field in `apm.yml`, falling back to `all`.
 
@@ -133,6 +134,11 @@ build/my-project-1.0.0/
     rules/
       ...
     agents/
+      ...
+  .opencode/
+    agents/
+      ...
+    commands/
       ...
   apm.lock.yaml
 ```

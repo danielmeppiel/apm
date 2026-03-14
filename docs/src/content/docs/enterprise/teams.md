@@ -13,7 +13,7 @@ Every configuration change is auditable.
 
 ## The problem at scale
 
-Consider a mid-to-large engineering organization: 50 repositories, 200 developers, three AI coding tools (Copilot, Claude, Cursor).
+Consider a mid-to-large engineering organization: 50 repositories, 200 developers, four AI coding tools (Copilot, Claude, Cursor, OpenCode).
 
 Without centralized configuration management, a predictable set of problems emerges:
 
@@ -61,7 +61,7 @@ Two developers running `apm install` from the same lock file get identical confi
 
 ### Install
 
-`apm install` reads the lock file and deploys configuration into the native formats expected by each tool — `.github/` for Copilot, `.claude/` for Claude, `.cursor/` for Cursor. APM generates static files and then gets out of the way. There is no runtime, no daemon, no background process.
+`apm install` reads the lock file and deploys configuration into the native formats expected by each tool — `.github/` for Copilot, `.claude/` for Claude, `.cursor/` for Cursor, `.opencode/` for OpenCode. APM generates static files and then gets out of the way. There is no runtime, no daemon, no background process.
 
 ### Audit
 

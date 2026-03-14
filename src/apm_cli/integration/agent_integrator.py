@@ -413,4 +413,74 @@ class AgentIntegrator(BaseIntegrator):
             legacy_glob_pattern="*-apm.md",
         )
 
+    def integrate_package_agents_opencode(self, package_info, project_root: Path,
+                                          force: bool = False,
+                                          managed_files: set = None,
+                                          diagnostics=None) -> IntegrationResult:
+        """Integrate all agents from a package into .opencode/agents/.
+
+        Only deploys if .opencode/ directory already exists (opt-in).
+        Uses the same clean filename convention as Claude/Cursor agents.
+        """
+        self.init_link_resolver(package_info, project_root)
+
+        agent_files = self.find_agent_files(package_info.install_path)
+        if not agent_files:
+            return IntegrationResult(
+                files_integrated=0, files_updated=0,
+                files_skipped=0, target_paths=[],
+            )
+
+        opencode_dir = project_root / ".opencode"
+        if not opencode_dir.exists() or not opencode_dir.is_dir():
+            return IntegrationResult(
+                files_integrated=0, files_updated=0,
+                files_skipped=0, target_paths=[],
+            )
+
+        agents_dir = opencode_dir / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        files_integrated = 0
+        files_skipped = 0
+        target_paths = []
+        total_links_resolved = 0
+
+        for source_file in agent_files:
+            # Reuse Claude naming — plain .md in target dir
+            target_filename = self.get_target_filename_claude(
+                source_file, package_info.package.name
+            )
+            target_path = agents_dir / target_filename
+            rel_path = str(target_path.relative_to(project_root))
+
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+                files_skipped += 1
+                continue
+
+            links_resolved = self.copy_agent(source_file, target_path)
+            total_links_resolved += links_resolved
+            files_integrated += 1
+            target_paths.append(target_path)
+
+        return IntegrationResult(
+            files_integrated=files_integrated,
+            files_updated=0,
+            files_skipped=files_skipped,
+            target_paths=target_paths,
+            links_resolved=total_links_resolved,
+        )
+
+    def sync_integration_opencode(self, apm_package, project_root: Path,
+                                  managed_files: set = None) -> Dict[str, int]:
+        """Remove APM-managed agent files from .opencode/agents/."""
+        agents_dir = project_root / ".opencode" / "agents"
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=".opencode/agents/",
+            legacy_glob_dir=agents_dir,
+            legacy_glob_pattern="*-apm.md",
+        )
+
 
