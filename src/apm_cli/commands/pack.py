@@ -23,7 +23,7 @@ from ..core.command_logger import CommandLogger
     "-t",
     type=click.Choice(["copilot", "vscode", "claude", "cursor", "opencode", "all"]),
     default=None,
-    help="Filter files by target (default: auto-detect). 'vscode' is an alias for 'copilot'.",
+    help="Filter files by target (default: auto-detect). 'copilot' is an alias for 'vscode'.",
 )
 @click.option("--archive", is_flag=True, default=False, help="Produce a .tar.gz archive.")
 @click.option(
