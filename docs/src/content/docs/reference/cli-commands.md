@@ -567,17 +567,27 @@ apm deps info design-guidelines
 Remove the entire `apm_modules/` directory and all installed APM packages.
 
 ```bash
-apm deps clean
+apm deps clean [OPTIONS]
 ```
+
+**Options:**
+- `--dry-run` - Show what would be removed without removing
+- `--yes`, `-y` - Skip confirmation prompt (for non-interactive/scripted use)
 
 **Examples:**
 ```bash
 # Remove all APM dependencies (with confirmation)
 apm deps clean
+
+# Preview what would be removed
+apm deps clean --dry-run
+
+# Remove without confirmation (e.g. in CI pipelines)
+apm deps clean --yes
 ```
 
 **Behavior:**
-- Shows confirmation prompt before deletion
+- Shows confirmation prompt before deletion (unless `--yes` is provided)
 - Removes entire `apm_modules/` directory
 - Displays count of packages that will be removed
 - Can be cancelled with Ctrl+C or 'n' response
@@ -587,11 +597,11 @@ apm deps clean
 Update installed APM dependencies to their latest versions.
 
 ```bash
-apm deps update [PACKAGE_NAME]
+apm deps update [PACKAGE]
 ```
 
 **Arguments:**
-- `PACKAGE_NAME` - Optional. Update specific package only
+- `PACKAGE` - Optional. Update specific package only
 
 **Examples:**
 ```bash
@@ -619,7 +629,7 @@ apm mcp list [OPTIONS]
 ```
 
 **Options:**
-- `--limit INTEGER` - Number of results to show
+- `--limit INTEGER` - Number of results to show (default: 20)
 
 **Examples:**
 ```bash
@@ -1088,7 +1098,7 @@ apm runtime remove [OPTIONS] {copilot|codex|llm}
 **Options:**
 - `--yes` - Confirm the action without prompting
 
-#### `apm runtime status` - Show runtime status
+#### `apm runtime status` - Show active runtime and preference order
 
 Display which runtime APM will use for execution and runtime preference order.
 

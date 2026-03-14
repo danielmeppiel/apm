@@ -21,9 +21,9 @@ from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, 
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["copilot", "vscode", "claude", "all"]),
+    type=click.Choice(["vscode", "copilot", "claude", "all"]),
     default=None,
-    help="Filter files by target (default: auto-detect). 'vscode' is an alias for 'copilot'.",
+    help="Filter files by target (default: auto-detect). 'copilot' is an alias for 'vscode'.",
 )
 @click.option("--archive", is_flag=True, default=False, help="Produce a .tar.gz archive.")
 @click.option(
