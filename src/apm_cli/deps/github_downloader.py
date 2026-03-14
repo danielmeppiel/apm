@@ -1280,7 +1280,7 @@ author: {dep_ref.repo_url.split('/')[0]}
 
             # If target exists and has content, remove it
             if target_path.exists() and any(target_path.iterdir()):
-                shutil.rmtree(target_path)
+                _rmtree(target_path)
                 target_path.mkdir(parents=True, exist_ok=True)
 
             # Copy subdirectory contents to target
@@ -1409,7 +1409,7 @@ author: {dep_ref.repo_url.split('/')[0]}
         
         # If directory already exists and has content, remove it
         if target_path.exists() and any(target_path.iterdir()):
-            shutil.rmtree(target_path)
+            _rmtree(target_path)
             target_path.mkdir(parents=True, exist_ok=True)
         
         # Store progress reporter so we can disable it after clone
