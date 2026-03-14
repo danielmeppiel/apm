@@ -70,7 +70,7 @@ def detect_target(
     # Priority 3: Auto-detect from existing folders
     github_exists = (project_root / ".github").exists()
     claude_exists = (project_root / ".claude").exists()
-    opencode_exists = (project_root / ".opencode").exists()
+    opencode_exists = (project_root / ".opencode").is_dir()
     detected = []
     if github_exists:
         detected.append(".github/")

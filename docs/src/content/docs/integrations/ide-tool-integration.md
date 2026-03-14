@@ -193,7 +193,7 @@ APM natively integrates with OpenCode when a `.opencode/` directory exists in yo
 | Agents (`.agent.md`) | `.opencode/agents/*.md` | Markdown with YAML frontmatter |
 | Prompts (`.prompt.md`) | `.opencode/commands/*.md` | Converted to command format |
 | Skills (`SKILL.md`) | `.opencode/skills/{name}/SKILL.md` | Identical (agentskills.io standard) |
-| MCP servers | `opencode.json` | Standard `mcpServers` JSON |
+| MCP servers | `opencode.json` | `mcp` key with `command` array, `environment` |
 | Instructions | Via `AGENTS.md` | Read natively by OpenCode |
 
 **Setup**: Create a `.opencode/` directory in your project root, then run `apm install`. APM detects the directory and deploys automatically. OpenCode reads `AGENTS.md` natively for instructions.

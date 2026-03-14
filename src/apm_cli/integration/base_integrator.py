@@ -135,9 +135,9 @@ class BaseIntegrator:
 
         Returns a dict with keys ``"prompts"``, ``"agents_github"``,
         ``"agents_claude"``, ``"agents_cursor"``, ``"agents_opencode"``,
-        ``"commands"``, ``"skills"``, ``"hooks"``, ``"instructions"``,
-        ``"rules_cursor"`` mapping to the subset of paths for each
-        integration type.
+        ``"commands"``, ``"commands_opencode"``, ``"skills"``, ``"hooks"``,
+        ``"instructions"``, ``"rules_cursor"`` mapping to the subset of
+        paths for each integration type.
         """
         buckets: dict = {
             "prompts": set(),
