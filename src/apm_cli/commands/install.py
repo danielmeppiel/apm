@@ -604,6 +604,19 @@ def _integrate_package_primitives(
         for tp in instruction_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
 
+    # --- Cursor rules (.cursor/rules/) ---
+    cursor_rules_result = instruction_integrator.integrate_package_instructions_cursor(
+        package_info, project_root,
+        force=force, managed_files=managed_files,
+        diagnostics=diagnostics,
+    )
+    if cursor_rules_result.files_integrated > 0:
+        result["instructions"] += cursor_rules_result.files_integrated
+        _rich_info(f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated → .cursor/rules/")
+    result["links_resolved"] += cursor_rules_result.links_resolved
+    for tp in cursor_rules_result.target_paths:
+        deployed.append(tp.relative_to(project_root).as_posix())
+
     # --- Claude agents (.claude) ---
     if integrate_claude:
         claude_agent_result = agent_integrator.integrate_package_agents_claude(
@@ -618,20 +631,33 @@ def _integrate_package_primitives(
         for tp in claude_agent_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
 
-        # --- commands (.claude) ---
-        command_result = command_integrator.integrate_package_commands(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if command_result.files_integrated > 0:
-            result["commands"] += command_result.files_integrated
-            _rich_info(f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/")
-        if command_result.files_updated > 0:
-            _rich_info(f"  └─ {command_result.files_updated} commands updated")
-        result["links_resolved"] += command_result.links_resolved
-        for tp in command_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
+    # --- Cursor agents (.cursor) ---
+    cursor_agent_result = agent_integrator.integrate_package_agents_cursor(
+        package_info, project_root,
+        force=force, managed_files=managed_files,
+        diagnostics=diagnostics,
+    )
+    if cursor_agent_result.files_integrated > 0:
+        result["agents"] += cursor_agent_result.files_integrated
+        _rich_info(f"  └─ {cursor_agent_result.files_integrated} agents integrated → .cursor/agents/")
+    result["links_resolved"] += cursor_agent_result.links_resolved
+    for tp in cursor_agent_result.target_paths:
+        deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- commands (.claude) ---
+    command_result = command_integrator.integrate_package_commands(
+        package_info, project_root,
+        force=force, managed_files=managed_files,
+        diagnostics=diagnostics,
+    )
+    if command_result.files_integrated > 0:
+        result["commands"] += command_result.files_integrated
+        _rich_info(f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/")
+    if command_result.files_updated > 0:
+        _rich_info(f"  └─ {command_result.files_updated} commands updated")
+    result["links_resolved"] += command_result.links_resolved
+    for tp in command_result.target_paths:
+        deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- hooks ---
     if integrate_vscode:
@@ -656,6 +682,18 @@ def _integrate_package_primitives(
             _rich_info(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json")
         for tp in hook_result_claude.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
+
+    # Cursor hooks (.cursor/hooks.json) — method self-guards on .cursor/ existence
+    hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
+        package_info, project_root,
+        force=force, managed_files=managed_files,
+        diagnostics=diagnostics,
+    )
+    if hook_result_cursor.hooks_integrated > 0:
+        result["hooks"] += hook_result_cursor.hooks_integrated
+        _rich_info(f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated → .cursor/hooks.json")
+    for tp in hook_result_cursor.target_paths:
+        deployed.append(tp.relative_to(project_root).as_posix())
 
     return result
 
@@ -1404,6 +1442,25 @@ def _install_apm_dependencies(
                                 for tp in instruction_result.target_paths:
                                     dep_deployed.append(tp.relative_to(project_root).as_posix())
 
+                            # Integrate instructions → .cursor/rules/
+                            cursor_rules_result = (
+                                instruction_integrator.integrate_package_instructions_cursor(
+                                    cached_package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                            )
+                            if cursor_rules_result.files_integrated > 0:
+                                total_instructions_integrated += (
+                                    cursor_rules_result.files_integrated
+                                )
+                                _rich_info(
+                                    f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated → .cursor/rules/"
+                                )
+                            total_links_resolved += cursor_rules_result.links_resolved
+                            for tp in cursor_rules_result.target_paths:
+                                dep_deployed.append(tp.relative_to(project_root).as_posix())
+
                             # Claude-specific integration (agents + commands)
                             if integrate_claude:
                                 # Integrate agents to .claude/agents/
@@ -1425,7 +1482,27 @@ def _install_apm_dependencies(
                                 for tp in claude_agent_result.target_paths:
                                     dep_deployed.append(tp.relative_to(project_root).as_posix())
 
-                                # Generate Claude commands from prompts
+                            # Cursor agents (.cursor/agents/) — opt-in
+                            cursor_agent_result = (
+                                agent_integrator.integrate_package_agents_cursor(
+                                    cached_package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                            )
+                            if cursor_agent_result.files_integrated > 0:
+                                total_agents_integrated += (
+                                    cursor_agent_result.files_integrated
+                                )
+                                _rich_info(
+                                    f"  └─ {cursor_agent_result.files_integrated} agents integrated → .cursor/agents/"
+                                )
+                            total_links_resolved += cursor_agent_result.links_resolved
+                            for tp in cursor_agent_result.target_paths:
+                                dep_deployed.append(tp.relative_to(project_root).as_posix())
+
+                            # Claude-specific integration (commands)
+                            if integrate_claude:
                                 command_result = (
                                     command_integrator.integrate_package_commands(
                                         cached_package_info, project_root,
@@ -1475,6 +1552,20 @@ def _install_apm_dependencies(
                                     )
                                 for tp in hook_result_claude.target_paths:
                                     dep_deployed.append(tp.relative_to(project_root).as_posix())
+
+                            # Cursor hooks (.cursor/hooks.json)
+                            hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
+                                cached_package_info, project_root,
+                                force=force, managed_files=managed_files,
+                                diagnostics=diagnostics,
+                            )
+                            if hook_result_cursor.hooks_integrated > 0:
+                                total_hooks_integrated += hook_result_cursor.hooks_integrated
+                                _rich_info(
+                                    f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated → .cursor/hooks.json"
+                                )
+                            for tp in hook_result_cursor.target_paths:
+                                dep_deployed.append(tp.relative_to(project_root).as_posix())
 
                             # Record deployed files for this package
                             package_deployed_files[dep_key] = dep_deployed
@@ -1657,6 +1748,25 @@ def _install_apm_dependencies(
                                 for tp in instruction_result.target_paths:
                                     dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
+                            # Integrate instructions → .cursor/rules/
+                            cursor_rules_result = (
+                                instruction_integrator.integrate_package_instructions_cursor(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                            )
+                            if cursor_rules_result.files_integrated > 0:
+                                total_instructions_integrated += (
+                                    cursor_rules_result.files_integrated
+                                )
+                                _rich_info(
+                                    f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated → .cursor/rules/"
+                                )
+                            total_links_resolved += cursor_rules_result.links_resolved
+                            for tp in cursor_rules_result.target_paths:
+                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
+
                             # Claude-specific integration (agents + commands)
                             if integrate_claude:
                                 # Integrate agents to .claude/agents/
@@ -1678,7 +1788,27 @@ def _install_apm_dependencies(
                                 for tp in claude_agent_result.target_paths:
                                     dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
-                                # Generate Claude commands from prompts
+                            # Cursor agents (.cursor/agents/) — opt-in
+                            cursor_agent_result = (
+                                agent_integrator.integrate_package_agents_cursor(
+                                    package_info, project_root,
+                                    force=force, managed_files=managed_files,
+                                    diagnostics=diagnostics,
+                                )
+                            )
+                            if cursor_agent_result.files_integrated > 0:
+                                total_agents_integrated += (
+                                    cursor_agent_result.files_integrated
+                                )
+                                _rich_info(
+                                    f"  └─ {cursor_agent_result.files_integrated} agents integrated → .cursor/agents/"
+                                )
+                            total_links_resolved += cursor_agent_result.links_resolved
+                            for tp in cursor_agent_result.target_paths:
+                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
+
+                            # Claude-specific integration (commands)
+                            if integrate_claude:
                                 command_result = (
                                     command_integrator.integrate_package_commands(
                                         package_info, project_root,
@@ -1728,6 +1858,20 @@ def _install_apm_dependencies(
                                     )
                                 for tp in hook_result_claude.target_paths:
                                     dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
+
+                            # Cursor hooks (.cursor/hooks.json)
+                            hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
+                                package_info, project_root,
+                                force=force, managed_files=managed_files,
+                                diagnostics=diagnostics,
+                            )
+                            if hook_result_cursor.hooks_integrated > 0:
+                                total_hooks_integrated += hook_result_cursor.hooks_integrated
+                                _rich_info(
+                                    f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated → .cursor/hooks.json"
+                                )
+                            for tp in hook_result_cursor.target_paths:
+                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
 
                             # Record deployed files for this package
                             package_deployed_files[dep_ref.get_unique_key()] = dep_deployed_fresh

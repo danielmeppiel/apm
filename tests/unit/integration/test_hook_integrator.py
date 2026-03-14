@@ -666,6 +666,206 @@ class TestClaudeIntegration:
         assert copied_script.read_text() == "#!/bin/bash\necho lint"
 
 
+# ─── Cursor integration tests ────────────────────────────────────────────────
+
+
+class TestCursorIntegration:
+    """Tests for Cursor hook integration (.cursor/hooks.json merge)."""
+
+    @pytest.fixture
+    def temp_project(self):
+        temp_dir = tempfile.mkdtemp()
+        project = Path(temp_dir)
+        (project / ".cursor").mkdir()
+        yield project
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _setup_hookify_package(self, project: Path) -> PackageInfo:
+        """Create a hookify-like package structure."""
+        pkg_dir = project / "apm_modules" / "anthropics" / "hookify"
+        hooks_dir = pkg_dir / "hooks"
+        hooks_dir.mkdir(parents=True)
+
+        (hooks_dir / "hooks.json").write_text(json.dumps(HOOKIFY_HOOKS_JSON, indent=2))
+
+        for script in ["pretooluse.py", "posttooluse.py", "stop.py", "userpromptsubmit.py"]:
+            (hooks_dir / script).write_text(f"#!/usr/bin/env python3\n# {script}")
+
+        return _make_package_info(pkg_dir, "hookify")
+
+    def test_integrate_hookify_cursor(self, temp_project):
+        """Test Cursor integration of hookify plugin (merge into hooks.json)."""
+        pkg_info = self._setup_hookify_package(temp_project)
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks_cursor(pkg_info, temp_project)
+
+        assert result.hooks_integrated == 1
+        assert result.scripts_copied == 4
+
+        # Check hooks.json was created/updated
+        hooks_path = temp_project / ".cursor" / "hooks.json"
+        assert hooks_path.exists()
+
+        config = json.loads(hooks_path.read_text())
+        assert "hooks" in config
+        assert "PreToolUse" in config["hooks"]
+        assert "PostToolUse" in config["hooks"]
+        assert "Stop" in config["hooks"]
+        assert "UserPromptSubmit" in config["hooks"]
+
+        # Check APM source marker for cleanup
+        assert config["hooks"]["PreToolUse"][0]["_apm_source"] == "hookify"
+
+        # Verify rewritten paths point to .cursor/hooks/
+        cmd = config["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert ".cursor/hooks/hookify/hooks/pretooluse.py" in cmd
+
+    def test_skips_when_no_cursor_dir(self, temp_project):
+        """Test that Cursor integration is skipped when .cursor/ doesn't exist."""
+        # Remove .cursor/ directory
+        shutil.rmtree(temp_project / ".cursor")
+
+        pkg_info = self._setup_hookify_package(temp_project)
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks_cursor(pkg_info, temp_project)
+
+        assert result.hooks_integrated == 0
+        assert result.scripts_copied == 0
+        assert not (temp_project / ".cursor" / "hooks.json").exists()
+
+    def test_merge_into_existing_hooks_json(self, temp_project):
+        """Test that hooks are merged into existing hooks.json without clobbering."""
+        hooks_path = temp_project / ".cursor" / "hooks.json"
+        hooks_path.write_text(json.dumps({
+            "hooks": {
+                "afterFileEdit": [{"command": "echo user-hook"}]
+            }
+        }))
+
+        pkg_dir = temp_project / "pkg"
+        hooks_dir = pkg_dir / "hooks"
+        hooks_dir.mkdir(parents=True)
+        (hooks_dir / "hooks.json").write_text(json.dumps(RALPH_LOOP_HOOKS_JSON))
+        (hooks_dir / "stop-hook.sh").write_text("#!/bin/bash\nexit 0")
+
+        pkg_info = _make_package_info(pkg_dir, "ralph-loop")
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks_cursor(pkg_info, temp_project)
+
+        config = json.loads(hooks_path.read_text())
+        # User hook preserved
+        assert len(config["hooks"]["afterFileEdit"]) == 1
+        assert config["hooks"]["afterFileEdit"][0]["command"] == "echo user-hook"
+        # New hook added
+        assert "Stop" in config["hooks"]
+        assert config["hooks"]["Stop"][0]["_apm_source"] == "pkg"
+
+    def test_additive_merge_same_event(self, temp_project):
+        """Test that multiple packages can add hooks to the same event."""
+        integrator = HookIntegrator()
+
+        # First package
+        pkg1_dir = temp_project / "apm_modules" / "ralph-loop"
+        hooks1_dir = pkg1_dir / "hooks"
+        hooks1_dir.mkdir(parents=True)
+        (hooks1_dir / "hooks.json").write_text(json.dumps(RALPH_LOOP_HOOKS_JSON))
+        (hooks1_dir / "stop-hook.sh").write_text("#!/bin/bash\nexit 0")
+        pkg1_info = _make_package_info(pkg1_dir, "ralph-loop")
+
+        integrator.integrate_package_hooks_cursor(pkg1_info, temp_project)
+
+        # Second package with same event
+        pkg2_dir = temp_project / "apm_modules" / "other-pkg"
+        hooks2_dir = pkg2_dir / "hooks"
+        hooks2_dir.mkdir(parents=True)
+        (hooks2_dir / "hooks.json").write_text(json.dumps({
+            "hooks": {
+                "Stop": [{"hooks": [{"type": "command", "command": "echo other-stop"}]}]
+            }
+        }))
+        pkg2_info = _make_package_info(pkg2_dir, "other-pkg")
+
+        integrator.integrate_package_hooks_cursor(pkg2_info, temp_project)
+
+        config = json.loads((temp_project / ".cursor" / "hooks.json").read_text())
+        # Both entries present under Stop
+        assert len(config["hooks"]["Stop"]) == 2
+        assert config["hooks"]["Stop"][0]["_apm_source"] == "ralph-loop"
+        assert config["hooks"]["Stop"][1]["_apm_source"] == "other-pkg"
+
+    def test_scripts_copied_to_cursor_hooks_dir(self, temp_project):
+        """Test that scripts are copied to .cursor/hooks/<pkg>/."""
+        pkg_info = self._setup_hookify_package(temp_project)
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks_cursor(pkg_info, temp_project)
+
+        # Verify scripts exist under .cursor/hooks/hookify/
+        scripts_dir = temp_project / ".cursor" / "hooks" / "hookify" / "hooks"
+        assert scripts_dir.exists()
+        assert (scripts_dir / "pretooluse.py").exists()
+        assert (scripts_dir / "posttooluse.py").exists()
+        assert (scripts_dir / "stop.py").exists()
+        assert (scripts_dir / "userpromptsubmit.py").exists()
+
+    def test_sync_removes_cursor_hook_entries(self, temp_project):
+        """Test that sync removes APM-managed entries from .cursor/hooks.json."""
+        hooks_path = temp_project / ".cursor" / "hooks.json"
+        hooks_path.write_text(json.dumps({
+            "hooks": {
+                "Stop": [
+                    {"_apm_source": "ralph-loop", "hooks": [{"type": "command", "command": "..."}]},
+                    {"command": "echo user-hook"},
+                ],
+                "PreToolUse": [
+                    {"_apm_source": "hookify", "hooks": [{"type": "command", "command": "..."}]}
+                ],
+            }
+        }))
+
+        integrator = HookIntegrator()
+        stats = integrator.sync_integration(None, temp_project)
+
+        updated = json.loads(hooks_path.read_text())
+        # APM entries removed, user entries preserved
+        assert "Stop" in updated["hooks"]
+        assert len(updated["hooks"]["Stop"]) == 1
+        assert "_apm_source" not in updated["hooks"]["Stop"][0]
+        # PreToolUse completely removed (only had APM entries)
+        assert "PreToolUse" not in updated["hooks"]
+
+    def test_sync_removes_cursor_hooks_scripts(self, temp_project):
+        """Test that sync removes .cursor/hooks/ scripts via manifest mode."""
+        cursor_hooks = temp_project / ".cursor" / "hooks" / "hookify"
+        cursor_hooks.mkdir(parents=True)
+        (cursor_hooks / "pretooluse.py").write_text("# script")
+
+        integrator = HookIntegrator()
+        managed_files = {".cursor/hooks/hookify/pretooluse.py"}
+        stats = integrator.sync_integration(None, temp_project, managed_files=managed_files)
+
+        assert stats["files_removed"] == 1
+        assert not (temp_project / ".cursor" / "hooks").exists()
+
+    def test_sync_removes_empty_hooks_key_cursor(self, temp_project):
+        """Test that empty hooks key is removed from hooks.json after cleanup."""
+        hooks_path = temp_project / ".cursor" / "hooks.json"
+        hooks_path.write_text(json.dumps({
+            "hooks": {
+                "Stop": [{"_apm_source": "test", "hooks": []}]
+            }
+        }))
+
+        integrator = HookIntegrator()
+        integrator.sync_integration(None, temp_project)
+
+        updated = json.loads(hooks_path.read_text())
+        assert "hooks" not in updated
+
+
 # ─── Sync/cleanup tests ──────────────────────────────────────────────────────
 
 

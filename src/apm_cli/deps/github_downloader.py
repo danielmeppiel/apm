@@ -823,11 +823,12 @@ class GitHubPackageDownloader:
             except RuntimeError:
                 pass
             
-            # Try plugin.json at various Claude plugin locations
+            # Try plugin.json at various plugin locations
             plugin_locations = [
                 f"{dep_ref.virtual_path}/plugin.json",                                    # Root
                 f"{dep_ref.virtual_path}/.github/plugin/plugin.json",                     # GitHub Copilot format
                 f"{dep_ref.virtual_path}/.claude-plugin/plugin.json",                     # Claude format
+                f"{dep_ref.virtual_path}/.cursor-plugin/plugin.json",                     # Cursor format
             ]
 
             for plugin_path in plugin_locations:

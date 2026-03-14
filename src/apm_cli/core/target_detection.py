@@ -144,7 +144,7 @@ def get_target_description(target: UserTargetType) -> str:
     descriptions = {
         "vscode": "AGENTS.md + .github/prompts/ + .github/agents/",
         "claude": "CLAUDE.md + .claude/commands/ + .claude/agents/ + .claude/skills/",
-        "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/",
+        "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/ (+ .cursor/ if present)",
         "minimal": "AGENTS.md only (create .github/ or .claude/ for full integration)",
     }
     return descriptions.get(normalized, "unknown target")

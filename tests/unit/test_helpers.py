@@ -87,16 +87,37 @@ class TestFindPluginJson(unittest.TestCase):
             target.write_text(json.dumps({"name": "claude"}))
             assert find_plugin_json(root) == target
 
-    def test_priority_order(self):
-        """Root wins over .github/plugin/ which wins over .claude-plugin/."""
+    def test_finds_cursor_plugin_json(self):
+        """plugin.json under .cursor-plugin/ is found."""
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            for sub in ["plugin.json", ".github/plugin/plugin.json", ".claude-plugin/plugin.json"]:
+            target = root / ".cursor-plugin" / "plugin.json"
+            target.parent.mkdir(parents=True)
+            target.write_text(json.dumps({"name": "cursor"}))
+            assert find_plugin_json(root) == target
+
+    def test_priority_order(self):
+        """Root wins over .github/plugin/ which wins over .claude-plugin/ which wins over .cursor-plugin/."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for sub in ["plugin.json", ".github/plugin/plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json"]:
                 p = root / sub
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(json.dumps({"name": sub}))
             assert find_plugin_json(root) == root / "plugin.json"
+
+    def test_cursor_plugin_found_when_only_option(self):
+        """When only .cursor-plugin/ has plugin.json, it is found."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            target = root / ".cursor-plugin" / "plugin.json"
+            target.parent.mkdir(parents=True)
+            target.write_text(json.dumps({"name": "cursor-only"}))
+            # No root, .github, or .claude-plugin plugin.json
+            assert find_plugin_json(root) == target
 
     def test_ignores_unrelated_locations(self):
         """plugin.json buried in node_modules or other dirs is NOT found."""

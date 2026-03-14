@@ -1,4 +1,4 @@
-"""Skill integration functionality for APM packages (Claude Code support)."""
+"""Skill integration functionality for APM packages (Claude Code & Cursor support)."""
 
 from pathlib import Path
 from typing import List, Dict
@@ -247,8 +247,8 @@ def copy_skill_to_target(
     package_info,
     source_path: Path,
     target_base: Path,
-) -> tuple[Path | None, Path | None]:
-    """Copy skill directory to .github/skills/ and optionally .claude/skills/.
+) -> list[Path]:
+    """Copy skill directory to .github/skills/ and optionally .claude/skills/ and .cursor/skills/.
     
     This is a standalone function for direct skill copy operations.
     It handles:
@@ -256,6 +256,7 @@ def copy_skill_to_target(
     - Skill name validation/normalization
     - Directory structure preservation
     - Compatibility copy to .claude/skills/ when .claude/ exists (T7)
+    - Compatibility copy to .cursor/skills/ when .cursor/ exists
     
     Source SKILL.md is copied verbatim  -- no metadata injection.
     
@@ -272,19 +273,17 @@ def copy_skill_to_target(
         target_base: Usually project root
         
     Returns:
-        Tuple of (github_path, claude_path):
-        - github_path: Path to .github/skills/{name}/ or None if skipped
-        - claude_path: Path to .claude/skills/{name}/ or None if .claude/ doesn't exist
+        List of all deployed skill directory paths (empty if skipped).
     """
     # Check if package type allows skill installation (T4 routing)
     if not should_install_skill(package_info):
-        return (None, None)
+        return []
     
     # Check for SKILL.md existence
     source_skill_md = source_path / "SKILL.md"
     if not source_skill_md.exists():
         # No SKILL.md means this package is handled by compilation, not skill copy
-        return (None, None)
+        return []
     
     # Get and validate skill name from folder
     raw_skill_name = source_path.name
@@ -295,6 +294,8 @@ def copy_skill_to_target(
     else:
         skill_name = normalize_skill_name(raw_skill_name)
     
+    deployed: list[Path] = []
+
     # === Primary target: .github/skills/ ===
     github_skill_dir = target_base / ".github" / "skills" / skill_name
     
@@ -308,31 +309,25 @@ def copy_skill_to_target(
     # Copy the entire skill folder preserving structure
     # This copies SKILL.md, scripts/, references/, assets/, etc.
     shutil.copytree(source_path, github_skill_dir)
+    deployed.append(github_skill_dir)
     
-    # === Secondary target: .claude/skills/ (T7 - compatibility copy) ===
-    claude_skill_dir: Path | None = None
-    claude_dir = target_base / ".claude"
+    # === Opt-in targets: only deploy when target root already exists ===
+    for target_root in (".claude", ".cursor"):
+        target_dir = target_base / target_root
+        if not (target_dir.exists() and target_dir.is_dir()):
+            continue
+        skill_dir = target_dir / "skills" / skill_name
+        skill_dir.parent.mkdir(parents=True, exist_ok=True)
+        if skill_dir.exists():
+            shutil.rmtree(skill_dir)
+        shutil.copytree(source_path, skill_dir)
+        deployed.append(skill_dir)
     
-    # Only copy to .claude/skills/ if .claude/ directory already exists
-    # Do NOT create .claude/ folder if it doesn't exist
-    if claude_dir.exists() and claude_dir.is_dir():
-        claude_skill_dir = claude_dir / "skills" / skill_name
-        
-        # Create .claude/skills/ if needed (but .claude/ must already exist)
-        claude_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-        
-        # If skill already exists, remove it for update
-        if claude_skill_dir.exists():
-            shutil.rmtree(claude_skill_dir)
-        
-        # Copy the entire skill folder (identical to github copy)
-        shutil.copytree(source_path, claude_skill_dir)
-    
-    return (github_skill_dir, claude_skill_dir)
+    return deployed
 
 
 class SkillIntegrator(BaseIntegrator):
-    """Handles integration of native SKILL.md files for Claude Code and VS Code.
+    """Handles integration of native SKILL.md files for Claude Code, Cursor, and VS Code.
     
     Claude Skills Spec:
     - SKILL.md files provide structured context for Claude Code
@@ -616,13 +611,22 @@ class SkillIntegrator(BaseIntegrator):
             )
             all_deployed.extend(claude_deployed)
 
+        # Also promote into .cursor/skills/ when .cursor/ exists
+        cursor_dir = project_root / ".cursor"
+        if cursor_dir.exists() and cursor_dir.is_dir():
+            cursor_skills_root = cursor_dir / "skills"
+            _, cursor_deployed = self._promote_sub_skills(
+                sub_skills_dir, cursor_skills_root, parent_name, warn=False, project_root=project_root
+            )
+            all_deployed.extend(cursor_deployed)
+
         return count, all_deployed
 
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path,
         diagnostics=None, managed_files=None, force: bool = False,
     ) -> SkillIntegrationResult:
-        """Copy a native Skill (with existing SKILL.md) to .github/skills/ and optionally .claude/skills/.
+        """Copy a native Skill (with existing SKILL.md) to .github/skills/ and optionally .claude/skills/ and .cursor/skills/.
         
         For packages that already have a SKILL.md at their root (like those from
         awesome-claude-skills), we copy the entire skill folder rather than 
@@ -634,9 +638,10 @@ class SkillIntegrator(BaseIntegrator):
         Source SKILL.md is copied verbatim  -- no metadata injection. Orphan
         detection uses apm.lock via directory name matching instead.
         
-        T7 Enhancement: Also copies to .claude/skills/ when .claude/ folder exists.
-        This ensures Claude Code users get skills while not polluting projects
-        that don't use Claude.
+        T7 Enhancement: Also copies to .claude/skills/ when .claude/ folder exists
+        and to .cursor/skills/ when .cursor/ folder exists.
+        This ensures Claude Code and Cursor users get skills while not polluting
+        projects that don't use those tools.
         
         Copies:
         - SKILL.md (required)
@@ -732,6 +737,24 @@ class SkillIntegrator(BaseIntegrator):
             _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False, project_root=project_root)
             all_target_paths.extend(claude_sub_deployed)
         
+        # === Copy to .cursor/skills/ (tertiary - compatibility) ===
+        cursor_dir = project_root / ".cursor"
+        if cursor_dir.exists() and cursor_dir.is_dir():
+            cursor_skill_dir = cursor_dir / "skills" / skill_name
+            
+            if cursor_skill_dir.exists():
+                shutil.rmtree(cursor_skill_dir)
+            
+            cursor_skill_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(package_path, cursor_skill_dir,
+                            ignore=shutil.ignore_patterns('.apm'))
+            all_target_paths.append(cursor_skill_dir)
+            
+            # Promote sub-skills for Cursor too
+            cursor_skills_root = cursor_dir / "skills"
+            _, cursor_sub_deployed = self._promote_sub_skills(sub_skills_dir, cursor_skills_root, skill_name, warn=False, project_root=project_root)
+            all_target_paths.extend(cursor_sub_deployed)
+        
         return SkillIntegrationResult(
             skill_created=skill_created,
             skill_updated=skill_updated,
@@ -747,7 +770,7 @@ class SkillIntegrator(BaseIntegrator):
         """Integrate a package's skill into .github/skills/ directory.
         
         Copies native skills (packages with SKILL.md at root) to .github/skills/
-        and optionally .claude/skills/. Also promotes any sub-skills from .apm/skills/.
+        and optionally .claude/skills/ and .cursor/skills/. Also promotes any sub-skills from .apm/skills/.
         
         Packages without SKILL.md at root are not installed as skills  -- only their
         sub-skills (if any) are promoted.
@@ -819,7 +842,7 @@ class SkillIntegrator(BaseIntegrator):
     
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict[str, int]:
-        """Sync .github/skills/ and .claude/skills/ with currently installed packages.
+        """Sync .github/skills/, .claude/skills/, and .cursor/skills/ with currently installed packages.
         
         When *managed_files* is provided, only removes skill directories whose
         paths appear in the set.  Otherwise falls back to npm-style orphan
@@ -842,6 +865,7 @@ class SkillIntegrator(BaseIntegrator):
                 is_skill = (
                     rel_path.startswith(".github/skills/")
                     or rel_path.startswith(".claude/skills/")
+                    or rel_path.startswith(".cursor/skills/")
                 )
                 if not is_skill or ".." in rel_path:
                     continue
@@ -891,6 +915,13 @@ class SkillIntegrator(BaseIntegrator):
             stats['files_removed'] += result['files_removed']
             stats['errors'] += result['errors']
         
+        # Clean .cursor/skills/ (tertiary - compatibility)
+        cursor_skills_dir = project_root / ".cursor" / "skills"
+        if cursor_skills_dir.exists():
+            result = self._clean_orphaned_skills(cursor_skills_dir, installed_skill_names)
+            stats['files_removed'] += result['files_removed']
+            stats['errors'] += result['errors']
+        
         return stats
     
     def _clean_orphaned_skills(self, skills_dir: Path, installed_skill_names: set) -> Dict[str, int]:
@@ -900,7 +931,7 @@ class SkillIntegrator(BaseIntegrator):
         package name is considered orphaned and removed.
         
         Args:
-            skills_dir: Path to skills directory (.github/skills/ or .claude/skills/)
+            skills_dir: Path to skills directory (.github/skills/, .claude/skills/, or .cursor/skills/)
             installed_skill_names: Set of expected skill directory names
             
         Returns:

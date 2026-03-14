@@ -42,7 +42,7 @@ class TestMCPClientFactory(unittest.TestCase):
     
     def test_all_supported_client_types(self):
         """Test that all supported client types can be created."""
-        supported_types = ["vscode", "codex"]
+        supported_types = ["vscode", "codex", "cursor"]
         
         for client_type in supported_types:
             with self.subTest(client_type=client_type):

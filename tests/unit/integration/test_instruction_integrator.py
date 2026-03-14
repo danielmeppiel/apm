@@ -12,6 +12,28 @@ from apm_cli.integration.base_integrator import IntegrationResult
 from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType
 
 
+def _make_package_info(package_dir, name="test-pkg"):
+    """Helper shared across test classes."""
+    package = APMPackage(
+        name=name,
+        version="1.0.0",
+        package_path=package_dir,
+        source=f"github.com/test/{name}",
+    )
+    resolved_ref = ResolvedReference(
+        original_ref="main",
+        ref_type=GitReferenceType.BRANCH,
+        resolved_commit="abc123",
+        ref_name="main",
+    )
+    return PackageInfo(
+        package=package,
+        install_path=package_dir,
+        resolved_reference=resolved_ref,
+        installed_at=datetime.now().isoformat(),
+    )
+
+
 class TestInstructionIntegrator:
     """Test instruction integration logic."""
 
@@ -454,3 +476,296 @@ class TestInstructionNameCollision:
 
         # Last write wins
         assert (target_dir / "python.instructions.md").read_text() == "# Package B rules"
+
+
+# ==================================================================
+# Cursor Rules (.mdc) tests
+# ==================================================================
+
+
+class TestConvertToCursorRules:
+    """Test the frontmatter conversion helper."""
+
+    def test_maps_apply_to_to_globs(self):
+        content = "---\napplyTo: 'src/**/*.py'\n---\n\n# Python rules"
+        result = InstructionIntegrator._convert_to_cursor_rules(content)
+        assert 'globs: "src/**/*.py"' in result
+        assert "applyTo" not in result
+
+    def test_preserves_description(self):
+        content = "---\napplyTo: '**/*.ts'\ndescription: TypeScript guidelines\n---\n\n# TS Rules"
+        result = InstructionIntegrator._convert_to_cursor_rules(content)
+        assert "description: TypeScript guidelines" in result
+        assert 'globs: "**/*.ts"' in result
+
+    def test_generates_description_from_heading(self):
+        content = "---\napplyTo: '**/*.py'\n---\n\n# Python coding standards\n\nUse type hints."
+        result = InstructionIntegrator._convert_to_cursor_rules(content)
+        assert "description: Python coding standards" in result
+
+    def test_generates_description_from_first_sentence(self):
+        content = "---\napplyTo: '**'\n---\n\nAlways use descriptive names. Follow PEP8."
+        result = InstructionIntegrator._convert_to_cursor_rules(content)
+        assert "description: Always use descriptive names" in result
+
+    def test_no_frontmatter(self):
+        content = "# Simple rules\n\nJust some guidelines."
+        result = InstructionIntegrator._convert_to_cursor_rules(content)
+        assert result.startswith("---\n")
+        assert "description: Simple rules" in result
+        # No globs when no applyTo
+        assert "globs" not in result
+
+    def test_body_preserved(self):
+        content = "---\napplyTo: '**/*.py'\n---\n\n# Python rules\n\nUse type hints."
+        result = InstructionIntegrator._convert_to_cursor_rules(content)
+        assert "# Python rules" in result
+        assert "Use type hints." in result
+
+    def test_empty_apply_to_omits_globs(self):
+        content = "---\ndescription: General rules\n---\n\n# Rules"
+        result = InstructionIntegrator._convert_to_cursor_rules(content)
+        assert "globs" not in result
+        assert "description: General rules" in result
+
+
+class TestCursorRulesIntegration:
+    """Test integrate_package_instructions_cursor()."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = InstructionIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_skips_when_no_cursor_dir(self):
+        """Returns empty result when .cursor/ doesn't exist."""
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "python.instructions.md").write_text("# Python")
+
+        pkg_info = _make_package_info(pkg)
+        result = self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        assert result.files_integrated == 0
+        assert result.target_paths == []
+
+    def test_deploys_when_cursor_dir_exists(self):
+        """Deploys .mdc files when .cursor/ exists."""
+        (self.project_root / ".cursor").mkdir()
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "python.instructions.md").write_text(
+            "---\napplyTo: '**/*.py'\n---\n\n# Python rules"
+        )
+
+        pkg_info = _make_package_info(pkg)
+        result = self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        assert result.files_integrated == 1
+        target = self.project_root / ".cursor" / "rules" / "python.mdc"
+        assert target.exists()
+        content = target.read_text()
+        assert 'globs: "**/*.py"' in content
+        assert "# Python rules" in content
+
+    def test_creates_rules_subdirectory(self):
+        """Creates .cursor/rules/ if it doesn't exist."""
+        (self.project_root / ".cursor").mkdir()
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "test.instructions.md").write_text("# Test")
+
+        pkg_info = _make_package_info(pkg)
+        self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        assert (self.project_root / ".cursor" / "rules").is_dir()
+
+    def test_filename_strips_instructions_md_adds_mdc(self):
+        """Converts python.instructions.md → python.mdc."""
+        (self.project_root / ".cursor").mkdir()
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "security.instructions.md").write_text("# Security")
+
+        pkg_info = _make_package_info(pkg)
+        result = self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        assert len(result.target_paths) == 1
+        assert result.target_paths[0].name == "security.mdc"
+
+    def test_multiple_files(self):
+        """Integrates multiple instruction files as .mdc rules."""
+        (self.project_root / ".cursor").mkdir()
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "python.instructions.md").write_text("# Python")
+        (inst_dir / "testing.instructions.md").write_text("# Testing")
+
+        pkg_info = _make_package_info(pkg)
+        result = self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        assert result.files_integrated == 2
+        rules_dir = self.project_root / ".cursor" / "rules"
+        assert (rules_dir / "python.mdc").exists()
+        assert (rules_dir / "testing.mdc").exists()
+
+    def test_returns_empty_when_no_instruction_files(self):
+        (self.project_root / ".cursor").mkdir()
+        pkg = self.project_root / "package"
+        pkg.mkdir()
+
+        pkg_info = _make_package_info(pkg)
+        result = self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        assert result.files_integrated == 0
+        assert result.target_paths == []
+
+    def test_collision_detection_skips_user_file(self):
+        """Skips user-authored .mdc file when not in managed_files."""
+        (self.project_root / ".cursor").mkdir()
+        rules_dir = self.project_root / ".cursor" / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "python.mdc").write_text("# User rules")
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "python.instructions.md").write_text("# APM rules")
+
+        pkg_info = _make_package_info(pkg)
+        result = self.integrator.integrate_package_instructions_cursor(
+            pkg_info, self.project_root, managed_files=set()
+        )
+
+        assert result.files_integrated == 0
+        assert result.files_skipped == 1
+        assert (rules_dir / "python.mdc").read_text() == "# User rules"
+
+    def test_overwrites_managed_file(self):
+        """Overwrites file when it's in managed_files."""
+        (self.project_root / ".cursor").mkdir()
+        rules_dir = self.project_root / ".cursor" / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "python.mdc").write_text("# Old version")
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "python.instructions.md").write_text("# Updated")
+
+        pkg_info = _make_package_info(pkg)
+        managed = {".cursor/rules/python.mdc"}
+        result = self.integrator.integrate_package_instructions_cursor(
+            pkg_info, self.project_root, managed_files=managed
+        )
+
+        assert result.files_integrated == 1
+
+    def test_target_paths_are_absolute(self):
+        (self.project_root / ".cursor").mkdir()
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "python.instructions.md").write_text("# Python")
+
+        pkg_info = _make_package_info(pkg)
+        result = self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        assert len(result.target_paths) == 1
+        tp = result.target_paths[0]
+        assert tp.is_absolute()
+        assert tp.relative_to(self.project_root).as_posix() == ".cursor/rules/python.mdc"
+
+    def test_frontmatter_conversion_in_deployed_file(self):
+        """End-to-end: applyTo converts to globs in deployed .mdc."""
+        (self.project_root / ".cursor").mkdir()
+
+        pkg = self.project_root / "package"
+        inst_dir = pkg / ".apm" / "instructions"
+        inst_dir.mkdir(parents=True)
+        (inst_dir / "ts.instructions.md").write_text(
+            "---\napplyTo: 'src/**/*.ts'\ndescription: TypeScript rules\n---\n\n# TypeScript\n\nUse strict mode."
+        )
+
+        pkg_info = _make_package_info(pkg)
+        self.integrator.integrate_package_instructions_cursor(pkg_info, self.project_root)
+
+        deployed = (self.project_root / ".cursor" / "rules" / "ts.mdc").read_text()
+        assert 'globs: "src/**/*.ts"' in deployed
+        assert "description: TypeScript rules" in deployed
+        assert "applyTo" not in deployed
+        assert "# TypeScript" in deployed
+        assert "Use strict mode." in deployed
+
+
+class TestCursorRulesSyncIntegration:
+    """Test sync_integration_cursor (manifest-based removal)."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = InstructionIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_sync_removes_managed_mdc_files(self):
+        rules_dir = self.project_root / ".cursor" / "rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "python.mdc").write_text("# Python")
+        (rules_dir / "testing.mdc").write_text("# Testing")
+
+        managed = {
+            ".cursor/rules/python.mdc",
+            ".cursor/rules/testing.mdc",
+        }
+        apm_package = Mock()
+        result = self.integrator.sync_integration_cursor(apm_package, self.project_root, managed_files=managed)
+
+        assert result["files_removed"] == 2
+        assert not (rules_dir / "python.mdc").exists()
+        assert not (rules_dir / "testing.mdc").exists()
+
+    def test_sync_preserves_unmanaged_files(self):
+        rules_dir = self.project_root / ".cursor" / "rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "python.mdc").write_text("# APM")
+        (rules_dir / "my-custom.mdc").write_text("# User-authored")
+
+        managed = {".cursor/rules/python.mdc"}
+        apm_package = Mock()
+        result = self.integrator.sync_integration_cursor(apm_package, self.project_root, managed_files=managed)
+
+        assert result["files_removed"] == 1
+        assert (rules_dir / "my-custom.mdc").exists()
+
+    def test_sync_legacy_fallback_removes_all_mdc(self):
+        rules_dir = self.project_root / ".cursor" / "rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "python.mdc").write_text("# Python")
+        (rules_dir / "testing.mdc").write_text("# Testing")
+
+        apm_package = Mock()
+        result = self.integrator.sync_integration_cursor(apm_package, self.project_root, managed_files=None)
+
+        assert result["files_removed"] == 2
+
+    def test_sync_handles_missing_rules_dir(self):
+        apm_package = Mock()
+        result = self.integrator.sync_integration_cursor(apm_package, self.project_root)
+
+        assert result["files_removed"] == 0
+        assert result["errors"] == 0

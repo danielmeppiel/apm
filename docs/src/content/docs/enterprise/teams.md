@@ -152,5 +152,5 @@ For hands-on setup and deeper topics, start here:
 
 - [Quick Start](../../getting-started/installation/) — install APM and configure your first project in five minutes.
 - [Organization-Wide Packages](../../guides/org-packages/) — publish and maintain shared configuration packages across your organization.
-- [Compilation Guide](../../guides/compilation/) — optional: generate instruction files for tools without native APM integration (Cursor, Codex, Gemini).
+- [Compilation Guide](../../guides/compilation/) — optional: generate instruction files for tools without native APM integration (Codex, Gemini).
 - [Dependencies Guide](../../guides/dependencies/) — version constraints, lock file mechanics, and update workflows.

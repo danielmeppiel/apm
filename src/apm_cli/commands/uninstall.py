@@ -416,7 +416,13 @@ def uninstall(ctx, packages, dry_run):
                                                             managed_files=_buckets["agents_claude"] if _buckets else None)
                 agents_cleaned += result.get("files_removed", 0)
 
-            if Path(".github/skills").exists() or Path(".claude/skills").exists():
+            if Path(".cursor/agents").exists():
+                integrator = AgentIntegrator()
+                result = integrator.sync_integration_cursor(apm_package, project_root,
+                                                            managed_files=_buckets["agents_cursor"] if _buckets else None)
+                agents_cleaned += result.get("files_removed", 0)
+
+            if Path(".github/skills").exists() or Path(".claude/skills").exists() or Path(".cursor/skills").exists():
                 integrator = SkillIntegrator()
                 result = integrator.sync_integration(apm_package, project_root,
                                                      managed_files=_buckets["skills"] if _buckets else None)
@@ -440,6 +446,13 @@ def uninstall(ctx, packages, dry_run):
                 result = integrator.sync_integration(apm_package, project_root,
                                                      managed_files=_buckets["instructions"] if _buckets else None)
                 instructions_cleaned = result.get("files_removed", 0)
+
+            # Clean Cursor rules (.cursor/rules/)
+            if Path(".cursor/rules").exists():
+                integrator = InstructionIntegrator()
+                result = integrator.sync_integration_cursor(apm_package, project_root,
+                                                            managed_files=_buckets["rules_cursor"] if _buckets else None)
+                instructions_cleaned += result.get("files_removed", 0)
 
             # Phase 2: Re-integrate from remaining installed packages in apm_modules/
             # Detect target so we only re-create Claude artefacts when appropriate
@@ -489,13 +502,16 @@ def uninstall(ctx, packages, dry_run):
                         agent_integrator.integrate_package_agents(pkg_info, project_root)
                         if integrate_claude:
                             agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
+                        agent_integrator.integrate_package_agents_cursor(pkg_info, project_root)
                     skill_integrator.integrate_package_skill(pkg_info, project_root)
                     if integrate_claude:
                         command_integrator.integrate_package_commands(pkg_info, project_root)
                     hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
                     if integrate_claude:
                         hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
+                    hook_integrator_reint.integrate_package_hooks_cursor(pkg_info, project_root)
                     instruction_integrator.integrate_package_instructions(pkg_info, project_root)
+                    instruction_integrator.integrate_package_instructions_cursor(pkg_info, project_root)
                 except Exception:
                     pass  # Best effort re-integration
 

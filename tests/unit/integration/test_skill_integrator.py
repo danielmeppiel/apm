@@ -1026,7 +1026,8 @@ Use when building MCP servers or tools.
         )
         
         # Copy skill to target
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         target_skill_md = github_path / "SKILL.md"
@@ -1063,7 +1064,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "scripts").exists()
@@ -1091,7 +1093,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "references").exists()
@@ -1116,7 +1119,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "assets").exists()
@@ -1149,7 +1153,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1172,7 +1177,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert github_path.name == "valid-skill-name"
@@ -1189,7 +1195,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         # Name should be normalized to hyphen-case lowercase
@@ -1216,7 +1223,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert github_path == skill_dir
@@ -1246,11 +1254,10 @@ Use when building MCP servers or tools.
             install_path=pkg_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, pkg_source, self.project_root)
+        paths = copy_skill_to_target(package_info, pkg_source, self.project_root)
         
-        # Should return None (skipped) - both paths should be None
-        assert github_path is None
-        assert claude_path is None
+        # Should return empty list (skipped)
+        assert paths == []
         
         # No skill directory should be created
         assert not (self.project_root / ".github" / "skills" / "instructions-only").exists()
@@ -1271,7 +1278,8 @@ Use when building MCP servers or tools.
             pkg_type=PackageContentType.SKILL
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1290,7 +1298,8 @@ Use when building MCP servers or tools.
             pkg_type=PackageContentType.HYBRID
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1311,7 +1320,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (self.project_root / ".github" / "skills").exists()
@@ -1334,7 +1344,8 @@ Use when building MCP servers or tools.
             source="owner/my-skill"
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         
@@ -1776,10 +1787,11 @@ Detailed instructions here.
             install_path=skill_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
         
-        assert github_path is not None
-        assert claude_path is not None
+        assert len(paths) >= 2
+        github_path = paths[0]
+        claude_path = paths[1]
         assert github_path == self.project_root / ".github" / "skills" / "my-skill"
         assert claude_path == self.project_root / ".claude" / "skills" / "my-skill"
     
@@ -1797,10 +1809,10 @@ Detailed instructions here.
             install_path=skill_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
         
-        assert github_path is not None
-        assert claude_path is None
+        assert len(paths) == 1
+        github_path = paths[0]
     
     # ========== Test: sync_integration cleans both locations ==========
     
@@ -2579,3 +2591,409 @@ class TestSubSkillContentSkipAndCollisionProtection:
         # Content should be updated
         content = target.read_text()
         assert "Sub-skill my-sub" in content
+
+
+# =============================================================================
+# Cursor Skills Integration Tests
+# =============================================================================
+
+class TestCursorSkillIntegration:
+    """Tests for Cursor skill integration (.cursor/skills/).
+
+    When .cursor/ exists in the project root, skills should be deployed to
+    .cursor/skills/ in addition to .github/skills/ and .claude/skills/.
+    The .cursor/ directory is opt-in: if it doesn't exist, no Cursor
+    deployment happens.
+    """
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        """Clean up after tests."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        version: str = "1.0.0",
+        commit: str = "abc123",
+        install_path: Path = None,
+        source: str = None,
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        """Helper to create PackageInfo objects for tests."""
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=source or f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit=commit,
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref,
+            package_type=package_type
+        )
+
+    def _create_package_with_sub_skills(self, name="parent-skill", sub_skills=None):
+        """Create a package directory with a SKILL.md and sub-skills under .apm/skills/."""
+        package_dir = self.project_root / name
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: Parent skill\n---\n# {name}\n"
+        )
+        if sub_skills:
+            skills_dir = package_dir / ".apm" / "skills"
+            skills_dir.mkdir(parents=True)
+            for sub_name in sub_skills:
+                sub_dir = skills_dir / sub_name
+                sub_dir.mkdir()
+                (sub_dir / "SKILL.md").write_text(
+                    f"---\nname: {sub_name}\ndescription: Sub-skill {sub_name}\n---\n# {sub_name}\n"
+                )
+        return package_dir
+
+    # ========== Test: Opt-in guard — no .cursor/ means no deployment ==========
+
+    def test_no_cursor_deployment_when_cursor_dir_missing(self):
+        """Skills should NOT deploy to .cursor/skills/ when .cursor/ doesn't exist."""
+        assert not (self.project_root / ".cursor").exists()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        package_info = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        # .github/skills/ should be created
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+
+        # .cursor/ should NOT be created
+        assert not (self.project_root / ".cursor").exists()
+
+    def test_no_cursor_sub_skill_promotion_when_cursor_dir_missing(self):
+        """Sub-skills should NOT be promoted to .cursor/skills/ when .cursor/ doesn't exist."""
+        assert not (self.project_root / ".cursor").exists()
+
+        package_dir = self._create_package_with_sub_skills(
+            "my-pkg", sub_skills=["sub-a"]
+        )
+        pkg_info = self._create_package_info(name="my-pkg", install_path=package_dir)
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        assert (self.project_root / ".github" / "skills" / "sub-a" / "SKILL.md").exists()
+        assert not (self.project_root / ".cursor").exists()
+
+    # ========== Test: Basic deployment to .cursor/skills/ ==========
+
+    def test_skill_deployed_to_cursor_when_cursor_exists(self):
+        """Skills should be copied to .cursor/skills/{name}/SKILL.md when .cursor/ exists."""
+        (self.project_root / ".cursor").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        package_info = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        assert result.skill_created is True
+
+        cursor_skill = self.project_root / ".cursor" / "skills" / "my-skill" / "SKILL.md"
+        assert cursor_skill.exists()
+        assert "# My Skill" in cursor_skill.read_text()
+
+    def test_cursor_skill_dir_auto_created(self):
+        """The .cursor/skills/ directory is auto-created when .cursor/ exists."""
+        (self.project_root / ".cursor").mkdir()
+        assert not (self.project_root / ".cursor" / "skills").exists()
+
+        skill_source = self.apm_modules / "owner" / "auto-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: auto-skill\n---\n# Auto")
+
+        package_info = self._create_package_info(name="auto-skill", install_path=skill_source)
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        assert (self.project_root / ".cursor" / "skills").is_dir()
+
+    # ========== Test: Full directory structure copied ==========
+
+    def test_cursor_preserves_full_directory_structure(self):
+        """Full skill directory (SKILL.md + sub-files) copied correctly to .cursor/skills/."""
+        (self.project_root / ".cursor").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "full-skill"
+        skill_source.mkdir(parents=True)
+
+        (skill_source / "SKILL.md").write_text("---\nname: full-skill\n---\n# Full Skill")
+        (skill_source / "scripts").mkdir()
+        (skill_source / "scripts" / "run.sh").write_text("#!/bin/bash\necho 'ok'")
+        (skill_source / "references").mkdir()
+        (skill_source / "references" / "api.md").write_text("# API Ref")
+        (skill_source / "assets").mkdir()
+        (skill_source / "assets" / "config.json").write_text('{"key": "val"}')
+
+        package_info = self._create_package_info(name="full-skill", install_path=skill_source)
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        cursor_dir = self.project_root / ".cursor" / "skills" / "full-skill"
+        assert (cursor_dir / "SKILL.md").exists()
+        assert (cursor_dir / "scripts" / "run.sh").exists()
+        assert (cursor_dir / "references" / "api.md").exists()
+        assert (cursor_dir / "assets" / "config.json").exists()
+
+        # Verify sub-file content
+        assert "echo 'ok'" in (cursor_dir / "scripts" / "run.sh").read_text()
+        assert "API Ref" in (cursor_dir / "references" / "api.md").read_text()
+
+    # ========== Test: Sub-skill promotion to .cursor/skills/ ==========
+
+    def test_sub_skills_promoted_to_cursor_when_cursor_exists(self):
+        """Sub-skills should be promoted to .cursor/skills/ when .cursor/ exists."""
+        (self.project_root / ".cursor").mkdir()
+
+        package_dir = self._create_package_with_sub_skills(
+            "modernisation", sub_skills=["azure-naming", "cloud-patterns"]
+        )
+        pkg_info = self._create_package_info(name="modernisation", install_path=package_dir)
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        # Sub-skills promoted in all three targets
+        for sub in ["azure-naming", "cloud-patterns"]:
+            assert (self.project_root / ".github" / "skills" / sub / "SKILL.md").exists()
+            assert (self.project_root / ".cursor" / "skills" / sub / "SKILL.md").exists()
+
+    def test_sub_skill_content_correct_in_cursor(self):
+        """Promoted sub-skill content in .cursor/skills/ matches source."""
+        (self.project_root / ".cursor").mkdir()
+
+        package_dir = self._create_package_with_sub_skills(
+            "my-pkg", sub_skills=["my-sub"]
+        )
+        pkg_info = self._create_package_info(name="my-pkg", install_path=package_dir)
+        self.integrator.integrate_package_skill(pkg_info, self.project_root)
+
+        cursor_content = (
+            self.project_root / ".cursor" / "skills" / "my-sub" / "SKILL.md"
+        ).read_text()
+        assert "my-sub" in cursor_content
+        assert "Sub-skill my-sub" in cursor_content
+
+    # ========== Test: Multi-target deployment ==========
+
+    def test_multi_target_deploy_all_three_dirs(self):
+        """A single integrate deploys to .github/, .claude/, and .cursor/ when all exist."""
+        (self.project_root / ".claude").mkdir()
+        (self.project_root / ".cursor").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "triple-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: triple-skill\n---\n# Triple")
+
+        package_info = self._create_package_info(name="triple-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        assert result.skill_created is True
+
+        # All three targets exist
+        assert (self.project_root / ".github" / "skills" / "triple-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".claude" / "skills" / "triple-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".cursor" / "skills" / "triple-skill" / "SKILL.md").exists()
+
+    def test_multi_target_target_paths_includes_cursor(self):
+        """result.target_paths should include .cursor/skills/ path for manifest tracking."""
+        (self.project_root / ".claude").mkdir()
+        (self.project_root / ".cursor").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "tracked-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: tracked-skill\n---\n# Tracked")
+
+        package_info = self._create_package_info(name="tracked-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        posix_paths = [tp.relative_to(self.project_root).as_posix() for tp in result.target_paths]
+        assert ".github/skills/tracked-skill" in posix_paths
+        assert ".claude/skills/tracked-skill" in posix_paths
+        assert ".cursor/skills/tracked-skill" in posix_paths
+
+    def test_copy_skill_to_target_deploys_to_cursor(self):
+        """copy_skill_to_target() copies to .cursor/skills/ when .cursor/ exists."""
+        (self.project_root / ".cursor").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "fn-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: fn-skill\n---\n# Fn Skill")
+
+        package_info = self._create_package_info(name="fn-skill", install_path=skill_source)
+        copy_skill_to_target(package_info, skill_source, self.project_root)
+
+        assert (self.project_root / ".cursor" / "skills" / "fn-skill" / "SKILL.md").exists()
+
+    # ========== Test: Sync cleanup for .cursor/skills/ ==========
+
+    def test_sync_removes_orphans_from_cursor(self):
+        """sync_integration removes orphaned skills from .cursor/skills/."""
+        cursor_orphan = self.project_root / ".cursor" / "skills" / "orphan-skill"
+        cursor_orphan.mkdir(parents=True)
+        (cursor_orphan / "SKILL.md").write_text("# Orphan\n")
+
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        assert result['files_removed'] >= 1
+        assert not cursor_orphan.exists()
+
+    def test_sync_removes_orphans_from_all_three_targets(self):
+        """sync_integration removes orphans from .github/, .claude/, and .cursor/ skills."""
+        for prefix in [".github", ".claude", ".cursor"]:
+            orphan = self.project_root / prefix / "skills" / "orphan"
+            orphan.mkdir(parents=True)
+            (orphan / "SKILL.md").write_text("# Orphan\n")
+
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        assert result['files_removed'] == 3
+        for prefix in [".github", ".claude", ".cursor"]:
+            assert not (self.project_root / prefix / "skills" / "orphan").exists()
+
+    def test_sync_keeps_installed_skills_in_cursor(self):
+        """sync_integration preserves installed skills in .cursor/skills/."""
+        skill_name = "installed-skill"
+        for prefix in [".github", ".cursor"]:
+            d = self.project_root / prefix / "skills" / skill_name
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text("# Installed\n")
+
+        dep_ref = DependencyReference.parse("owner/installed-skill")
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [dep_ref]
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        assert result['files_removed'] == 0
+        assert (self.project_root / ".cursor" / "skills" / skill_name).exists()
+
+    def test_sync_manifest_based_removes_cursor_paths(self):
+        """sync_integration with managed_files removes .cursor/skills/ entries."""
+        cursor_skill = self.project_root / ".cursor" / "skills" / "old-skill"
+        cursor_skill.mkdir(parents=True)
+        (cursor_skill / "SKILL.md").write_text("# Old\n")
+
+        managed_files = {".cursor/skills/old-skill"}
+        result = self.integrator.sync_integration(
+            None, self.project_root, managed_files=managed_files
+        )
+
+        assert result['files_removed'] == 1
+        assert not cursor_skill.exists()
+
+    def test_sync_no_cursor_cleanup_when_cursor_missing(self):
+        """sync_integration should not error when .cursor/ doesn't exist."""
+        github_orphan = self.project_root / ".github" / "skills" / "orphan"
+        github_orphan.mkdir(parents=True)
+        (github_orphan / "SKILL.md").write_text("# Orphan\n")
+
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        assert result['files_removed'] == 1
+        assert not (self.project_root / ".cursor").exists()
+
+    # ========== Test: SKILL.md content preserved ==========
+
+    def test_cursor_skill_content_identical_to_source(self):
+        """SKILL.md content in .cursor/skills/ is identical to the source."""
+        (self.project_root / ".cursor").mkdir()
+
+        original_content = "---\nname: my-skill\ndescription: Detailed instructions\n---\n# My Skill\n\nDo exactly this."
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text(original_content)
+
+        package_info = self._create_package_info(name="my-skill", install_path=skill_source)
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        cursor_content = (self.project_root / ".cursor" / "skills" / "my-skill" / "SKILL.md").read_text()
+        assert cursor_content == original_content
+
+    def test_cursor_and_github_copies_identical(self):
+        """Content in .cursor/skills/ and .github/skills/ should be identical."""
+        (self.project_root / ".cursor").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "compare-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: compare-skill\n---\n# Compare")
+        (skill_source / "references").mkdir()
+        (skill_source / "references" / "ref.md").write_text("# Ref Content")
+
+        package_info = self._create_package_info(name="compare-skill", install_path=skill_source)
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        github_dir = self.project_root / ".github" / "skills" / "compare-skill"
+        cursor_dir = self.project_root / ".cursor" / "skills" / "compare-skill"
+
+        github_files = set(f.relative_to(github_dir) for f in github_dir.rglob('*') if f.is_file())
+        cursor_files = set(f.relative_to(cursor_dir) for f in cursor_dir.rglob('*') if f.is_file())
+        assert github_files == cursor_files
+
+        for rel_path in github_files:
+            assert (github_dir / rel_path).read_text() == (cursor_dir / rel_path).read_text()
+
+    # ========== Test: Updates affect .cursor/skills/ ==========
+
+    def test_skill_update_reflected_in_cursor(self):
+        """Skill updates should be reflected in .cursor/skills/."""
+        (self.project_root / ".cursor").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Version 1")
+
+        package_info = self._create_package_info(
+            name="my-skill", version="1.0.0", commit="aaa", install_path=skill_source
+        )
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        assert "# Version 1" in (
+            self.project_root / ".cursor" / "skills" / "my-skill" / "SKILL.md"
+        ).read_text()
+
+        # Update source
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Version 2")
+        package_info_v2 = self._create_package_info(
+            name="my-skill", version="2.0.0", commit="bbb", install_path=skill_source
+        )
+        self.integrator.integrate_package_skill(package_info_v2, self.project_root)
+
+        cursor_content = (
+            self.project_root / ".cursor" / "skills" / "my-skill" / "SKILL.md"
+        ).read_text()
+        assert "# Version 2" in cursor_content
+        assert "# Version 1" not in cursor_content

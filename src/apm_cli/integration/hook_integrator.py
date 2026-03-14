@@ -1,8 +1,8 @@
 """Hook integration functionality for APM packages.
 
 Integrates hook JSON files and their referenced scripts during package
-installation. Supports both VSCode Copilot (.github/hooks/) and Claude Code
-(.claude/settings.json) targets.
+installation. Supports VSCode Copilot (.github/hooks/), Claude Code
+(.claude/settings.json), and Cursor (.cursor/hooks.json) targets.
 
 Hook JSON format (Claude Code  -- nested matcher groups):
     {
@@ -23,6 +23,15 @@ Hook JSON format (GitHub Copilot  -- flat arrays with bash/powershell keys):
         "hooks": {
             "preToolUse": [
                 {"type": "command", "bash": "./scripts/validate.sh", "timeoutSec": 10}
+            ]
+        }
+    }
+
+Hook JSON format (Cursor  -- flat arrays with command key):
+    {
+        "hooks": {
+            "afterFileEdit": [
+                {"command": "./hooks/format.sh"}
             ]
         }
     }
@@ -58,6 +67,7 @@ class HookIntegrator(BaseIntegrator):
     then installs them to the appropriate target location:
     - VSCode: .github/hooks/<pkg>-<name>.json + .github/hooks/scripts/<pkg>/
     - Claude: Merged into .claude/settings.json hooks key + .claude/hooks/<pkg>/
+    - Cursor: Merged into .cursor/hooks.json hooks key + .cursor/hooks/<pkg>/
     """
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
@@ -143,6 +153,8 @@ class HookIntegrator(BaseIntegrator):
 
         if target == "vscode":
             scripts_base = f".github/hooks/scripts/{package_name}"
+        elif target == "cursor":
+            scripts_base = f".cursor/hooks/{package_name}"
         else:
             scripts_base = f".claude/hooks/{package_name}"
 
@@ -427,6 +439,111 @@ class HookIntegrator(BaseIntegrator):
             target_paths=target_paths,
         )
 
+    def integrate_package_hooks_cursor(self, package_info, project_root: Path,
+                                        force: bool = False,
+                                        managed_files: set = None,
+                                        diagnostics=None) -> HookIntegrationResult:
+        """Integrate hooks from a package into .cursor/hooks.json (Cursor target).
+
+        Merges hook definitions into the Cursor hooks file and copies
+        referenced script files. Tracks individual script files for
+        manifest-based cleanup.
+
+        Args:
+            package_info: PackageInfo with package metadata and install path
+            project_root: Root directory of the project
+            force: If True, overwrite user-authored files on collision
+            managed_files: Set of relative paths known to be APM-managed
+
+        Returns:
+            HookIntegrationResult: Results of the integration operation
+        """
+        # Only deploy when .cursor/ already exists (opt-in)
+        cursor_dir = project_root / ".cursor"
+        if not cursor_dir.exists():
+            return HookIntegrationResult(
+                hooks_integrated=0,
+                scripts_copied=0,
+            )
+
+        hook_files = self.find_hook_files(package_info.install_path)
+
+        if not hook_files:
+            return HookIntegrationResult(
+                hooks_integrated=0,
+                scripts_copied=0,
+            )
+
+        package_name = self._get_package_name(package_info)
+        hooks_integrated = 0
+        scripts_copied = 0
+        target_paths: List[Path] = []
+
+        # Read existing hooks.json
+        hooks_json_path = project_root / ".cursor" / "hooks.json"
+        hooks_config: Dict = {}
+        if hooks_json_path.exists():
+            try:
+                with open(hooks_json_path, 'r', encoding='utf-8') as f:
+                    hooks_config = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                hooks_config = {}
+
+        if "hooks" not in hooks_config:
+            hooks_config["hooks"] = {}
+
+        for hook_file in hook_files:
+            data = self._parse_hook_json(hook_file)
+            if data is None:
+                continue
+
+            # Rewrite script paths for Cursor target
+            rewritten, scripts = self._rewrite_hooks_data(
+                data, package_info.install_path, package_name, "cursor",
+                hook_file_dir=hook_file.parent,
+            )
+
+            # Merge hooks into hooks.json (additive)
+            hooks = rewritten.get("hooks", {})
+            for event_name, entries in hooks.items():
+                if not isinstance(entries, list):
+                    continue
+                if event_name not in hooks_config["hooks"]:
+                    hooks_config["hooks"][event_name] = []
+
+                # Mark each entry with APM source for sync/cleanup
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        entry["_apm_source"] = package_name
+
+                hooks_config["hooks"][event_name].extend(entries)
+
+            hooks_integrated += 1
+
+            # Copy referenced scripts
+            for source_file, target_rel in scripts:
+                target_script = project_root / target_rel
+                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
+                    continue
+                target_script.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_file, target_script)
+                scripts_copied += 1
+                target_paths.append(target_script)
+
+        # Write hooks.json back
+        hooks_json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(hooks_json_path, 'w', encoding='utf-8') as f:
+            json.dump(hooks_config, f, indent=2)
+            f.write('\n')
+        # Don't track hooks.json in target_paths  -- it's a shared file
+        # cleaned via _apm_source markers, not file-level deletion
+
+        return HookIntegrationResult(
+            hooks_integrated=hooks_integrated,
+            scripts_copied=scripts_copied,
+            target_paths=target_paths,
+        )
+
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict:
         """Remove APM-managed hook files.
@@ -437,8 +554,8 @@ class HookIntegrator(BaseIntegrator):
 
         **Never** calls ``shutil.rmtree``.
 
-        Also cleans APM entries from ``.claude/settings.json`` via the
-        ``_apm_source`` marker.
+        Also cleans APM entries from ``.claude/settings.json`` and
+        ``.cursor/hooks.json`` via the ``_apm_source`` marker.
         """
         stats: Dict[str, int] = {'files_removed': 0, 'errors': 0}
 
@@ -452,6 +569,7 @@ class HookIntegrator(BaseIntegrator):
                 is_hook = (
                     normalized.startswith(".github/hooks/")
                     or normalized.startswith(".claude/hooks/")
+                    or normalized.startswith(".cursor/hooks/")
                 )
                 if not is_hook or ".." in rel_path:
                     continue
@@ -509,5 +627,51 @@ class HookIntegrator(BaseIntegrator):
             except (json.JSONDecodeError, OSError):
                 stats['errors'] += 1
 
+        # Clean APM entries from .cursor/hooks.json (safe  -- uses _apm_source marker)
+        self._clean_apm_entries_from_json(
+            project_root / ".cursor" / "hooks.json", stats,
+        )
+
         return stats
+
+    @staticmethod
+    def _clean_apm_entries_from_json(json_path: Path, stats: Dict[str, int]) -> None:
+        """Remove APM-tagged entries from a hooks JSON file.
+
+        Filters out entries with ``_apm_source`` markers and cleans up
+        empty event arrays and the ``hooks`` key itself.
+        """
+        if not json_path.exists():
+            return
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if "hooks" not in data:
+                return
+
+            modified = False
+            for event_name in list(data["hooks"].keys()):
+                entries = data["hooks"][event_name]
+                if isinstance(entries, list):
+                    filtered = [
+                        e for e in entries
+                        if not (isinstance(e, dict) and "_apm_source" in e)
+                    ]
+                    if len(filtered) != len(entries):
+                        modified = True
+                    data["hooks"][event_name] = filtered
+                    if not filtered:
+                        del data["hooks"][event_name]
+
+            if not data["hooks"]:
+                del data["hooks"]
+
+            if modified:
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2)
+                    f.write('\n')
+                stats['files_removed'] += 1
+        except (json.JSONDecodeError, OSError):
+            stats['errors'] += 1
 

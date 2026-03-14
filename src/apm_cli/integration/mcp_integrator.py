@@ -424,7 +424,7 @@ class MCPIntegrator:
             return
 
         # Determine which runtimes to clean, mirroring install-time logic.
-        all_runtimes = {"vscode", "copilot", "codex"}
+        all_runtimes = {"vscode", "copilot", "codex", "cursor"}
         if runtime:
             target_runtimes = {runtime}
         else:
@@ -513,6 +513,32 @@ class MCPIntegrator:
                 except Exception:
                     logger.debug(
                         "Failed to clean stale MCP servers from Codex CLI config",
+                        exc_info=True,
+                    )
+
+        # Clean .cursor/mcp.json (only if .cursor/ directory exists)
+        if "cursor" in target_runtimes:
+            cursor_mcp = Path.cwd() / ".cursor" / "mcp.json"
+            if cursor_mcp.exists():
+                try:
+                    import json as _json
+
+                    config = _json.loads(cursor_mcp.read_text(encoding="utf-8"))
+                    servers = config.get("mcpServers", {})
+                    removed = [n for n in expanded_stale if n in servers]
+                    for name in removed:
+                        del servers[name]
+                    if removed:
+                        cursor_mcp.write_text(
+                            _json.dumps(config, indent=2), encoding="utf-8"
+                        )
+                        for name in removed:
+                            _rich_info(
+                                f"+ Removed stale MCP server '{name}' from .cursor/mcp.json"
+                            )
+                except Exception:
+                    logger.debug(
+                        "Failed to clean stale MCP servers from .cursor/mcp.json",
                         exc_info=True,
                     )
 
@@ -607,7 +633,7 @@ class MCPIntegrator:
 
         except ImportError:
             mcp_compatible = [
-                rt for rt in detected_runtimes if rt in ["vscode", "copilot"]
+                rt for rt in detected_runtimes if rt in ["vscode", "copilot", "cursor"]
             ]
             return [rt for rt in mcp_compatible if shutil.which(rt)]
 
@@ -665,7 +691,7 @@ class MCPIntegrator:
             return False
         except ValueError as e:
             _rich_warning(f"Runtime {runtime} not supported: {e}")
-            _rich_info("Supported runtimes: vscode, copilot, codex, llm")
+            _rich_info("Supported runtimes: vscode, copilot, codex, cursor, llm")
             return False
         except Exception as e:
             logger.debug(
@@ -778,10 +804,15 @@ class MCPIntegrator:
                 manager = RuntimeManager()
                 installed_runtimes = []
 
-                for runtime_name in ["copilot", "codex", "vscode"]:
+                for runtime_name in ["copilot", "codex", "vscode", "cursor"]:
                     try:
                         if runtime_name == "vscode":
                             if shutil.which("code") is not None:
+                                ClientFactory.create_client(runtime_name)
+                                installed_runtimes.append(runtime_name)
+                        elif runtime_name == "cursor":
+                            # Cursor is opt-in: only target when .cursor/ exists
+                            if (Path.cwd() / ".cursor").is_dir():
                                 ClientFactory.create_client(runtime_name)
                                 installed_runtimes.append(runtime_name)
                         else:
@@ -796,6 +827,9 @@ class MCPIntegrator:
                     for rt in ["copilot", "codex", "vscode"]
                     if shutil.which(rt if rt != "vscode" else "code") is not None
                 ]
+                # Cursor is directory-presence based, not binary-based
+                if (Path.cwd() / ".cursor").is_dir():
+                    installed_runtimes.append("cursor")
 
             # Step 2: Get runtimes referenced in apm.yml scripts
             script_runtimes = MCPIntegrator._detect_runtimes(

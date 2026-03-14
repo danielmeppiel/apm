@@ -3,6 +3,7 @@
 from .adapters.client.vscode import VSCodeClientAdapter
 from .adapters.client.codex import CodexClientAdapter
 from .adapters.client.copilot import CopilotClientAdapter
+from .adapters.client.cursor import CursorClientAdapter
 from .adapters.package_manager.default_manager import DefaultMCPPackageManager
 
 
@@ -26,6 +27,7 @@ class ClientFactory:
             "copilot": CopilotClientAdapter,
             "vscode": VSCodeClientAdapter,
             "codex": CodexClientAdapter,
+            "cursor": CursorClientAdapter,
             # Add more clients as needed
         }
         

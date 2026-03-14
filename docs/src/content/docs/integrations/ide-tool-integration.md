@@ -34,7 +34,7 @@ When using Spec-kit for Specification-Driven Development (SDD), APM automaticall
 # 1. Set up APM contextual foundation
 apm init my-project && apm install
 
-# 2. Optional: compile for tools without native integration (Cursor, Codex, Gemini)
+# 2. Optional: compile for tools without native integration (Codex, Gemini)
 # Spec-kit constitution is automatically included in compiled AGENTS.md
 apm compile
 
@@ -148,7 +148,7 @@ apm install microsoft/apm-sample-package
 
 ### Optional: Compiled Context with AGENTS.md
 
-For tools that do not support granular `.github/` primitive discovery (such as Cursor, Codex, or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot or Claude, which read deployed primitives natively.
+For tools that do not support granular primitive discovery (such as Codex or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot, Claude, or Cursor, which read deployed primitives natively.
 
 ```bash
 # Compile all local and dependency instructions into AGENTS.md
@@ -183,6 +183,17 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 | `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
 | `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
 | `.claude/settings.json` (hooks key) | Hooks from installed packages (merged into settings) |
+
+#### Cursor (`.cursor/`)
+
+| Location | Purpose |
+|----------|---------|
+| `.cursor/rules/*.mdc` | Instructions converted to Cursor rules format |
+| `.cursor/agents/*.md` | Sub-agents from installed packages |
+| `.cursor/skills/{name}/SKILL.md` | Skills from installed packages |
+| `.cursor/hooks.json` (hooks key) | Hooks from installed packages (merged into config) |
+| `.cursor/hooks/{pkg}/` | Referenced hook scripts |
+| `.cursor/mcp.json` | MCP server configurations |
 
 ### Automatic Agent Integration
 
@@ -243,7 +254,7 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 
 ### Automatic Hook Integration
 
-APM automatically integrates hooks from installed packages. Hooks define lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`) supported by both VS Code Copilot and Claude Code.
+APM automatically integrates hooks from installed packages. Hooks define lifecycle event handlers (e.g., `PreToolUse`, `PostToolUse`, `Stop`) supported by VS Code Copilot, Claude Code, and Cursor.
 
 > **Note:** Hook packages must be authored in the target platform's native format. APM handles path rewriting and file placement but does not translate between hook schema formats (e.g., Claude's `command` key vs GitHub Copilot's `bash`/`powershell` keys, or event name casing differences).
 
@@ -258,19 +269,24 @@ apm install anthropics/claude-plugins-official/plugins/hookify
 # Claude result (.claude/settings.json):
 # Hooks merged into .claude/settings.json hooks key
 # Scripts copied to .claude/hooks/hookify/
+
+# Cursor result (.cursor/hooks.json) — only when .cursor/ exists:
+# Hooks merged into .cursor/hooks.json hooks key
+# Scripts copied to .cursor/hooks/hookify/
 ```
 
 **How hook integration works:**
 1. `apm install` discovers hook JSON files in `.apm/hooks/` or `hooks/` directories
 2. For VS Code: copies hook JSON to `.github/hooks/` and rewrites script paths
 3. For Claude: merges hook definitions into `.claude/settings.json` under the `hooks` key
-4. Copies referenced scripts to the target location
-5. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
-6. `apm uninstall` removes hook files and cleans up merged settings
+4. For Cursor: merges hook definitions into `.cursor/hooks.json` under the `hooks` key (only when `.cursor/` exists)
+5. Copies referenced scripts to the target location
+6. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
+7. `apm uninstall` removes hook files and cleans up merged settings
 
 ### Optional: Target-Specific Compilation
 
-Compilation is optional for Copilot and Claude, which read deployed primitives natively. Use it when targeting tools like Cursor, Codex, or Gemini, or when you want a single merged instruction file:
+Compilation is optional for Copilot, Claude, and Cursor, which read deployed primitives natively. Use it when targeting tools like Codex or Gemini, or when you want a single merged instruction file:
 
 ```bash
 # Generate all formats (default)
@@ -354,22 +370,19 @@ apm install microsoft/apm-sample-package
 
 ### Cursor
 
-Cursor does not follow the `.github/` primitive structure. APM supports Cursor through compiled context output:
+APM natively integrates with Cursor when a `.cursor/` directory exists in your project. Run `apm install` and APM automatically deploys primitives to Cursor's native format:
 
-```bash
-# Compile APM context into AGENTS.md (Cursor reads this format)
-apm compile --target copilot
-```
+| APM Primitive | Cursor Destination | Format |
+|---|---|---|
+| Instructions (`.instructions.md`) | `.cursor/rules/*.mdc` | Converted: `applyTo:` → `globs:` frontmatter |
+| Agents (`.agent.md`) | `.cursor/agents/*.md` | Markdown with YAML frontmatter |
+| Skills (`SKILL.md`) | `.cursor/skills/{name}/SKILL.md` | Identical (agentskills.io standard) |
+| Hooks (`.json`) | `.cursor/hooks.json` + `.cursor/hooks/{pkg}/` | Merged JSON config |
+| MCP servers | `.cursor/mcp.json` | Standard `mcpServers` JSON |
 
-Cursor reads `AGENTS.md` as project-level context. The `copilot` compilation target (also aliased as `agents`) produces the format Cursor expects.
+**Setup**: Create a `.cursor/` directory in your project root (or use Cursor's settings), then run `apm install`. APM detects the directory and deploys automatically.
 
-**Setup options**:
-
-1. **AGENTS.md (recommended)**: Run `apm compile` to generate `AGENTS.md` at the project root. Cursor discovers it automatically as project instructions.
-
-2. **Cursor Rules**: Reference APM-managed instructions from `.cursor-rules` if your project uses Cursor's native rules format. Point your rules at specific instruction files in `.apm/instructions/` or at the compiled `AGENTS.md`.
-
-3. **Distributed compilation**: APM's default distributed strategy places focused `AGENTS.md` files in subdirectories, giving Cursor scoped context per area of the codebase.
+**Fallback**: `apm compile` also generates `AGENTS.md` at the project root, which Cursor discovers as project-level context. This is useful for compiled/merged instruction output.
 
 ```bash
 # Preview what will be compiled
@@ -512,7 +525,7 @@ The following IDE integrations are planned for future releases:
 
 - **JetBrains IDE support**: Native integration with IntelliJ, PyCharm, WebStorm, and other JetBrains IDEs
 - **Windsurf support**: Integration with the Windsurf AI coding environment
-- **Cursor deeper integration**: Enhanced support beyond AGENTS.md, including native Cursor rules generation
+- **Cursor deeper integration**: Enhanced Cursor support including rule versioning and conflict resolution
 
 ## Related Resources
 

@@ -119,7 +119,7 @@ reach production.
    - name: Install APM packages
      run: apm install
 
-   # Optional: only needed if targeting Cursor, Codex, Gemini, or other
+   # Optional: only needed if targeting Codex, Gemini, or other
    # tools without native APM integration
    # - name: Compile configuration
    #   run: apm compile
