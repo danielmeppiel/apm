@@ -875,6 +875,7 @@ class SkillIntegrator(BaseIntegrator):
                     rel_path.startswith(".github/skills/")
                     or rel_path.startswith(".claude/skills/")
                     or rel_path.startswith(".cursor/skills/")
+                    or rel_path.startswith(".opencode/skills/")
                 )
                 if not is_skill or ".." in rel_path:
                     continue
@@ -928,6 +929,13 @@ class SkillIntegrator(BaseIntegrator):
         cursor_skills_dir = project_root / ".cursor" / "skills"
         if cursor_skills_dir.exists():
             result = self._clean_orphaned_skills(cursor_skills_dir, installed_skill_names)
+            stats['files_removed'] += result['files_removed']
+            stats['errors'] += result['errors']
+        
+        # Clean .opencode/skills/
+        opencode_skills_dir = project_root / ".opencode" / "skills"
+        if opencode_skills_dir.exists():
+            result = self._clean_orphaned_skills(opencode_skills_dir, installed_skill_names)
             stats['files_removed'] += result['files_removed']
             stats['errors'] += result['errors']
         
