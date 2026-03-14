@@ -17,7 +17,8 @@ _TARGET_PREFIXES = {
     "copilot": [".github/"],
     "vscode": [".github/"],
     "claude": [".claude/"],
-    "all": [".github/", ".claude/"],
+    "cursor": [".cursor/"],
+    "all": [".github/", ".claude/", ".cursor/"],
 }
 
 

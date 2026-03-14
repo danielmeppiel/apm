@@ -35,8 +35,8 @@ dependencies:
 Run `apm install` and APM:
 
 - **Resolves transitive dependencies** — if package A depends on package B, both are installed automatically.
-- **Integrates primitives** — instructions go to `.github/instructions/`, prompts to `.github/prompts/`, skills to `.github/skills/`. GitHub Copilot and Claude read these natively.
-- **Bridges other tools** — for Cursor, Codex, Gemini, and other tools without native integration, `apm compile` generates compatible instruction files (`AGENTS.md`, `CLAUDE.md`).
+- **Integrates primitives** — instructions, prompts, agents, and skills are deployed to `.github/`, with equivalent primitives to `.claude/` and `.cursor/` when those directories exist. GitHub Copilot, Claude, and Cursor read these natively.
+- **Bridges other tools** — for Codex, Gemini, and other tools without native integration, `apm compile` generates compatible instruction files (`AGENTS.md`, `CLAUDE.md`).
 
 ## APM vs. Manual Setup
 

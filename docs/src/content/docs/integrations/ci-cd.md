@@ -30,7 +30,7 @@ jobs:
         with:
           commands: |
             apm install
-            # Optional: only needed if targeting Cursor, Codex, Gemini, or other
+            # Optional: only needed if targeting Codex, Gemini, or other
             # tools without native APM integration
             # apm compile --verbose
 ```
@@ -67,13 +67,13 @@ This step is not needed if your team only uses GitHub Copilot and Claude, which 
 
 ### Verify Deployed Primitives
 
-To ensure `.github/` and `.claude/` integration files stay in sync with `apm.yml`, add a drift check:
+To ensure `.github/`, `.claude/`, and `.cursor/` integration files stay in sync with `apm.yml`, add a drift check:
 
 ```yaml
       - name: Check APM integration drift
         run: |
           apm install
-          if [ -n "$(git status --porcelain -- .github/ .claude/)" ]; then
+          if [ -n "$(git status --porcelain -- .github/ .claude/ .cursor/)" ]; then
             echo "APM integration files are out of date. Run 'apm install' and commit."
             exit 1
           fi
@@ -88,7 +88,7 @@ steps:
   - script: |
       curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
       apm install
-      # Optional: only if targeting Cursor, Codex, Gemini, or similar tools
+      # Optional: only if targeting Codex, Gemini, or similar tools
       # apm compile
     displayName: 'APM Install'
     env:
@@ -102,7 +102,7 @@ For any CI system with Python available:
 ```bash
 pip install apm-cli
 apm install
-# Optional: only if targeting Cursor, Codex, Gemini, or similar tools
+# Optional: only if targeting Codex, Gemini, or similar tools
 # apm compile --verbose
 ```
 
@@ -171,6 +171,6 @@ See the [Pack & Distribute guide](../../guides/pack-distribute/) for the full wo
 
 - **Pin APM version** in CI to avoid unexpected changes: `pip install apm-cli==0.7.7`
 - **Commit `apm.lock.yaml`** so CI resolves the same dependency versions as local development
-- **Commit `.github/` and `.claude/` deployed files** so contributors and cloud-based Copilot get agent context without running `apm install`
-- **If using `apm compile`** (for Cursor, Codex, Gemini), run it in CI and fail the build if the output differs from what's committed
+- **Commit `.github/`, `.claude/`, and `.cursor/` deployed files** so contributors and cloud-based Copilot get agent context without running `apm install`
+- **If using `apm compile`** (for Codex, Gemini), run it in CI and fail the build if the output differs from what's committed
 - **Use `GITHUB_APM_PAT`** for private dependencies; never use the default `GITHUB_TOKEN` for cross-repo access
