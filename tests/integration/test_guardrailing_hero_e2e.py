@@ -48,7 +48,9 @@ def run_command(cmd, check=True, capture_output=True, timeout=180, cwd=None, sho
                 text=True,
                 timeout=timeout,
                 cwd=cwd,
-                env=env
+                env=env,
+                encoding='utf-8',
+                errors='replace'
             )
             result_capture = subprocess.run(
                 cmd, 
@@ -58,7 +60,9 @@ def run_command(cmd, check=True, capture_output=True, timeout=180, cwd=None, sho
                 text=True,
                 timeout=timeout,
                 cwd=cwd,
-                env=env
+                env=env,
+                encoding='utf-8',
+                errors='replace'
             )
             result.stdout = result_capture.stdout
             result.stderr = result_capture.stderr
@@ -71,7 +75,9 @@ def run_command(cmd, check=True, capture_output=True, timeout=180, cwd=None, sho
                 text=True,
                 timeout=timeout,
                 cwd=cwd,
-                env=env
+                env=env,
+                encoding='utf-8',
+                errors='replace'
             )
         return result
     except subprocess.TimeoutExpired:
@@ -126,7 +132,7 @@ class TestGuardrailingHeroScenario:
             assert project_dir.exists(), "Project directory not created"
             assert (project_dir / "apm.yml").exists(), "apm.yml not created"
             
-            print("✓ Project initialized")
+            print("[OK] Project initialized")
             
             # Step 2: apm install microsoft/apm-sample-package
             print("\n=== Step 2: apm install microsoft/apm-sample-package ===")
@@ -144,7 +150,7 @@ class TestGuardrailingHeroScenario:
             assert design_pkg.exists(), "design-guidelines package not installed"
             assert (design_pkg / "apm.yml").exists(), "design-guidelines apm.yml not found"
             
-            print("✓ design-guidelines installed")
+            print("[OK] design-guidelines installed")
             
             # Step 3: apm install github/awesome-copilot/instructions/code-review-generic.instructions.md
             print("\n=== Step 3: apm install github/awesome-copilot/instructions/code-review-generic.instructions.md ===")
@@ -164,7 +170,7 @@ class TestGuardrailingHeroScenario:
             instruction_files = list(instruction_pkg.rglob("*.instructions.md"))
             assert len(instruction_files) > 0, "instruction file not downloaded into virtual package"
             
-            print("✓ code-review-generic instruction installed")
+            print("[OK] code-review-generic instruction installed")
             
             # Step 4: apm compile
             print("\n=== Step 4: apm compile ===")
@@ -182,9 +188,9 @@ class TestGuardrailingHeroScenario:
             assert "review" in agents_content.lower() or "code" in agents_content.lower(), \
                 "AGENTS.md doesn't contain code-review content from awesome-copilot"
             
-            print(f"✓ AGENTS.md generated ({len(agents_content)} bytes)")
-            print(f"  Contains design instructions: ✓")
-            print(f"  Contains code-review instructions: ✓")
+            print(f"[OK] AGENTS.md generated ({len(agents_content)} bytes)")
+            print(f"  Contains design instructions: [OK]")
+            print(f"  Contains code-review instructions: [OK]")
             
             # Step 5: apm run design-review
             print("\n=== Step 5: apm run design-review ===")
@@ -198,7 +204,9 @@ class TestGuardrailingHeroScenario:
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=project_dir,
-                env=env
+                env=env,
+                encoding='utf-8',
+                errors='replace'
             )
             
             # Monitor output for success signals
@@ -218,7 +226,7 @@ class TestGuardrailingHeroScenario:
                         "Subprocess execution:",  # Codex about to run
                     ]):
                         prompt_started = True
-                        print("✓ design-review prompt execution started")
+                        print("[OK] design-review prompt execution started")
                         break
                 
                 # Terminate the process gracefully
@@ -240,13 +248,13 @@ class TestGuardrailingHeroScenario:
             assert prompt_started or "design-review" in full_output, \
                 f"Prompt execution didn't start correctly. Output:\n{full_output}"
             
-            print("✓ design-review prompt found and started successfully")
+            print("[OK] design-review prompt found and started successfully")
             
-            print("\n=== 2-Minute Guardrailing Hero Scenario: PASSED ✨ ===")
-            print("✓ Project initialization")
-            print("✓ Multiple APM package installation")
-            print("✓ AGENTS.md compilation with combined instructions")
-            print("✓ Prompt execution from installed package")
+            print("\n=== 2-Minute Guardrailing Hero Scenario: PASSED ===")
+            print("[OK] Project initialization")
+            print("[OK] Multiple APM package installation")
+            print("[OK] AGENTS.md compilation with combined instructions")
+            print("[OK] Prompt execution from installed package")
 
 
 if __name__ == "__main__":
