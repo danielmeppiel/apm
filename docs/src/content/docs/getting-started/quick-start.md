@@ -112,7 +112,7 @@ dependencies:
 
 ## That's it
 
-Open your editor. GitHub Copilot, Claude, and Cursor pick up the new context immediately -- no extra configuration, no compile step, no restart. The agent now knows your project's design standards, can run your prompt templates, and follows the conventions defined in the package.
+Open your editor. GitHub Copilot, Claude, Cursor, and OpenCode pick up the new context immediately -- no extra configuration, no compile step, no restart. The agent now knows your project's design standards, can run your prompt templates, and follows the conventions defined in the package.
 
 This is the core idea: **packages define what your AI agent knows, and `apm install` puts that knowledge exactly where your tools expect it.**
 

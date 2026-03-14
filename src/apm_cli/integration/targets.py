@@ -133,6 +133,7 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         auto_create=False,
         detect_by_dir=True,
     ),
+    # OpenCode does not support hooks — instructions are via AGENTS.md (apm compile).
     "opencode": TargetProfile(
         name="opencode",
         root_dir=".opencode",

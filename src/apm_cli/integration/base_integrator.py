@@ -170,7 +170,7 @@ class BaseIntegrator:
             elif p.startswith((".github/skills/", ".claude/skills/", ".cursor/skills/", ".opencode/skills/")):
                 buckets["skills"].add(p)
             elif p.startswith(
-                (".github/hooks/", ".claude/hooks/", ".cursor/hooks/")
+                (".github/hooks/", ".claude/hooks/", ".cursor/hooks/", ".opencode/hooks/")
             ):
                 buckets["hooks"].add(p)
             elif p.startswith(".github/instructions/"):
