@@ -69,7 +69,10 @@ author: test
         """Clean up test environment."""
         os.chdir(self.original_dir)
         if os.path.exists(self.test_dir):
-            shutil.rmtree(self.test_dir)
+            # ignore_errors=True: on Windows, recently-terminated subprocesses
+            # may still hold file locks on the temp directory (WinError 32).
+            # CI temp dirs are ephemeral — safe to leave behind if needed.
+            shutil.rmtree(self.test_dir, ignore_errors=True)
     
     def test_auto_install_virtual_prompt_first_run(self, temp_e2e_home):
         """Test auto-install on first run with virtual package reference.
@@ -126,8 +129,9 @@ author: test
                     break
             
             # Wait for graceful shutdown
+            process.stdout.close()
             try:
-                process.wait(timeout=5)
+                process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
@@ -185,7 +189,8 @@ author: test
                 if "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.wait(timeout=5)
+            process.stdout.close()
+            process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
@@ -218,7 +223,8 @@ author: test
                 if "Executing" in line or "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.wait(timeout=5)
+            process.stdout.close()
+            process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
@@ -265,7 +271,8 @@ author: test
                 if "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.wait(timeout=5)
+            process.stdout.close()
+            process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
@@ -294,7 +301,8 @@ author: test
                 if "Executing" in line or "Auto-discovered" in line:
                     process.terminate()
                     break
-            process.wait(timeout=5)
+            process.stdout.close()
+            process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
@@ -340,7 +348,8 @@ author: test
                 if "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.wait(timeout=5)
+            process.stdout.close()
+            process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
