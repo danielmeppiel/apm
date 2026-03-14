@@ -82,12 +82,17 @@ my-project/
     commands/
       apm-sample-package/
         ...
+  .cursor/
+    rules/
+      design-standards.mdc
+    agents/
+      design-reviewer.md
 ```
 
 Three things happened:
 
 1. The package was downloaded into `apm_modules/` (like `node_modules/`).
-2. Instructions, prompts, and skills were deployed to `.github/` and `.claude/` -- the native directories that GitHub Copilot, Cursor, and Claude already read from.
+2. Instructions, prompts, and skills were deployed to `.github/`, `.claude/`, and `.cursor/` -- the native directories that GitHub Copilot, Claude, and Cursor already read from.
 3. A lockfile (`apm.lock.yaml`) was created, pinning the exact commit so every team member gets identical configuration.
 
 Your `apm.yml` now tracks the dependency:
@@ -102,7 +107,7 @@ dependencies:
 
 ## That's it
 
-Open your editor. GitHub Copilot and Claude pick up the new context immediately -- no extra configuration, no compile step, no restart. The agent now knows your project's design standards, can run your prompt templates, and follows the conventions defined in the package.
+Open your editor. GitHub Copilot, Claude, and Cursor pick up the new context immediately -- no extra configuration, no compile step, no restart. The agent now knows your project's design standards, can run your prompt templates, and follows the conventions defined in the package.
 
 This is the core idea: **packages define what your AI agent knows, and `apm install` puts that knowledge exactly where your tools expect it.**
 
@@ -128,13 +133,14 @@ apm install github/awesome-copilot/skills/review-and-refactor
 - `apm.yml` and `apm.lock.yaml` — version-controlled, shared with the team.
 - `.github/` deployed files (`prompts/`, `agents/`, `instructions/`, `skills/`, `hooks/`) — commit them so every contributor (and [Copilot on github.com](https://docs.github.com/en/copilot)) gets agent context immediately after cloning, before they run `apm install` to sync and regenerate files.
 - `.claude/` deployed files (`agents/`, `commands/`, `skills/`, `hooks/`) — same rationale for Claude Code users: committed files give instant context on clone, while `apm install` remains the way to refresh them from `apm.yml`.
+- `.cursor/` deployed files (`rules/`, `agents/`, `skills/`, `hooks/`) — same rationale for Cursor users.
 - `apm_modules/` — add to `.gitignore`. Rebuilt from the lockfile on install.
 
 :::tip[Keeping deployed files in sync]
-When you update `apm.yml`, re-run `apm install` and commit the changed `.github/` and `.claude/` files. A [CI drift check](../../integrations/ci-cd/#verify-deployed-primitives) catches stale files automatically.
+When you update `apm.yml`, re-run `apm install` and commit the changed `.github/`, `.claude/`, and `.cursor/` files. A [CI drift check](../../integrations/ci-cd/#verify-deployed-primitives) catches stale files automatically.
 :::
 
-:::note[Using Cursor, Codex, or Gemini?]
+:::note[Using Codex or Gemini?]
 These tools use different configuration formats. Run `apm compile` after installing to generate their native files. See the [Compilation guide](../../guides/compilation/) for details.
 :::
 
