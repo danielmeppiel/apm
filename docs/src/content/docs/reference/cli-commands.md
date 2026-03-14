@@ -191,7 +191,8 @@ APM automatically detects which integrations to enable based on your project str
 
 - **VSCode integration**: Enabled when `.github/` directory exists
 - **Claude integration**: Enabled when `.claude/` directory exists
-- Both integrations can coexist in the same project
+- **Cursor integration**: Enabled when `.cursor/` directory exists
+- All integrations can coexist in the same project
 
 **VSCode Integration (`.github/` present):**
 
@@ -242,7 +243,7 @@ Skills are copied directly to target directories:
   └─ 3 commands integrated → .claude/commands/
 ```
 
-This makes all package prompts available in VSCode, Claude Code, and compatible editors for immediate use with your coding agents.
+This makes all package prompts available in VSCode, Cursor, Claude Code, and compatible editors for immediate use with your coding agents.
 
 ### `apm uninstall` - Remove APM packages
 
@@ -284,6 +285,10 @@ apm uninstall microsoft/apm-sample-package --dry-run
 | Skill folders | `.github/skills/{folder-name}/` |
 | Integrated hooks | `.github/hooks/*.json` |
 | Claude hook settings | `.claude/settings.json` (hooks key cleaned) |
+| Cursor rules | `.cursor/rules/*.mdc` |
+| Cursor agents | `.cursor/agents/*.md` |
+| Cursor skills | `.cursor/skills/{folder-name}/` |
+| Cursor hooks | `.cursor/hooks.json` (hooks key cleaned) |
 | Lockfile entries | `apm.lock.yaml` (removed packages + orphaned transitives) |
 
 **Behavior:**
