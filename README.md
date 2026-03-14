@@ -4,7 +4,7 @@
 
 Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent configuration.
 
-GitHub Copilot · Claude Code
+GitHub Copilot · Claude Code · Cursor
 
 **[Documentation](https://microsoft.github.io/apm/)** · **[Quick Start](https://microsoft.github.io/apm/getting-started/quick-start/)** · **[CLI Reference](https://microsoft.github.io/apm/reference/cli-commands/)**
 
@@ -40,7 +40,7 @@ apm install    # every agent is configured
 - **One manifest for everything** — instructions, skills, prompts, agents, hooks, plugins, MCP servers
 - **Install from anywhere** — GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, any git host
 - **Transitive dependencies** — packages can depend on packages; APM resolves the full tree
-- **Compile to standards** — `apm compile` produces `AGENTS.md` (GitHub Copilot) and `CLAUDE.md` (Claude Code)
+- **Compile to standards** — `apm compile` produces `AGENTS.md` (GitHub Copilot), `CLAUDE.md` (Claude Code), and `.cursor/rules/` (Cursor)
 - **Create & share** — `apm pack` bundles your current configuration as a zipped package
 - **CI/CD ready** — [GitHub Action](https://github.com/microsoft/apm-action) for automated workflows
 
