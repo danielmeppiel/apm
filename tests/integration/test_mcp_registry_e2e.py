@@ -91,7 +91,7 @@ def run_command(cmd, check=True, capture_output=True, timeout=180, cwd=None, inp
 @pytest.fixture(scope="module")
 def temp_e2e_home():
     """Create a temporary home directory for E2E testing."""
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         original_home = os.environ.get('HOME')
         test_home = os.path.join(temp_dir, 'e2e_home')
         os.makedirs(test_home)
@@ -191,7 +191,7 @@ class TestMCPRegistryE2E:
         assert codex_config.exists(), "Codex configuration not created"
         
         # Step 2: Create test project with MCP dependencies
-        with tempfile.TemporaryDirectory() as project_workspace:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as project_workspace:
             project_dir = Path(project_workspace) / "registry-test-project"
             
             print("Creating project with MCP dependencies...")
@@ -318,7 +318,7 @@ class TestMCPRegistryE2E:
         if result.returncode != 0:
             pytest.skip("Codex setup failed, skipping empty string test")
         
-        with tempfile.TemporaryDirectory() as project_workspace:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as project_workspace:
             project_dir = Path(project_workspace) / "empty-string-test"
             
             result = run_command(f"{apm_binary} init empty-string-test --yes", cwd=project_workspace)
@@ -427,7 +427,7 @@ class TestMCPRegistryE2E:
         if result.returncode != 0:
             pytest.skip("Codex setup failed, skipping empty string test")
         
-        with tempfile.TemporaryDirectory() as project_workspace:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as project_workspace:
             project_dir = Path(project_workspace) / "empty-string-test"
             
             result = run_command(f"{apm_binary} init empty-string-test --yes", cwd=project_workspace)
@@ -488,7 +488,7 @@ class TestMCPRegistryE2E:
         if result.returncode != 0:
             pytest.skip("Codex setup failed, skipping consistency test")
         
-        with tempfile.TemporaryDirectory() as project_workspace:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as project_workspace:
             project_dir = Path(project_workspace) / "consistency-test"
             
             result = run_command(f"{apm_binary} init consistency-test --yes", cwd=project_workspace)
@@ -552,7 +552,7 @@ class TestMCPRegistryE2E:
         if result.returncode != 0:
             pytest.skip("Codex setup failed, skipping duplication test")
         
-        with tempfile.TemporaryDirectory() as project_workspace:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as project_workspace:
             project_dir = Path(project_workspace) / "duplication-test"
             
             result = run_command(f"{apm_binary} init duplication-test --yes", cwd=project_workspace)

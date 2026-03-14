@@ -122,7 +122,7 @@ class TestGuardrailingHeroScenario:
         5. apm run design-review executes prompt from first installed package
         """
         
-        with tempfile.TemporaryDirectory() as workspace:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as workspace:
             # Step 1: apm init my-project
             print("\n=== Step 1: apm init my-project ===")
             result = run_command(f"{apm_binary} init my-project --yes", cwd=workspace, show_output=True)
@@ -233,7 +233,7 @@ class TestGuardrailingHeroScenario:
                 if process.poll() is None:
                     process.terminate()
                     try:
-                        process.wait(timeout=5)
+                        process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
@@ -242,6 +242,9 @@ class TestGuardrailingHeroScenario:
                 process.kill()
                 process.wait()
                 pytest.fail(f"Error monitoring design-review execution: {e}")
+            finally:
+                if process.stdout:
+                    process.stdout.close()
             
             # Verify prompt was found and started
             full_output = '\n'.join(output_lines)
