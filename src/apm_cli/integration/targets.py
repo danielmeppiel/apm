@@ -133,6 +133,23 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         auto_create=False,
         detect_by_dir=True,
     ),
+    "opencode": TargetProfile(
+        name="opencode",
+        root_dir=".opencode",
+        primitives={
+            "agents": PrimitiveMapping(
+                "agents", ".md", "opencode_agent"
+            ),
+            "commands": PrimitiveMapping(
+                "commands", ".md", "opencode_command"
+            ),
+            "skills": PrimitiveMapping(
+                "skills", "/SKILL.md", "skill_standard"
+            ),
+        },
+        auto_create=False,
+        detect_by_dir=True,
+    ),
 }
 
 

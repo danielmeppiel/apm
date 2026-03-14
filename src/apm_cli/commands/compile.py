@@ -250,9 +250,9 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["vscode", "agents", "claude", "all"]),
+    type=click.Choice(["vscode", "agents", "claude", "opencode", "all"]),
     default=None,
-    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), or all. Auto-detects if not specified.",
+    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), opencode (AGENTS.md), or all. Auto-detects if not specified.",
 )
 @click.option(
     "--dry-run",

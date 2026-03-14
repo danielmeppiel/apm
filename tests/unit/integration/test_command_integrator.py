@@ -266,3 +266,102 @@ argument-hint: "file path"
         assert post.metadata['model'] == 'claude-sonnet'
         assert post.metadata['argument-hint'] == 'file path'
         assert 'apm' not in post.metadata
+
+
+class TestOpenCodeCommandIntegration:
+    """Tests for OpenCode command integration."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Create a temporary project with .opencode/ directory."""
+        temp_dir = tempfile.mkdtemp()
+        temp_path = Path(temp_dir)
+        (temp_path / ".opencode").mkdir()
+        yield temp_path
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def temp_project_no_opencode(self):
+        """Create a temporary project without .opencode/ directory."""
+        temp_dir = tempfile.mkdtemp()
+        temp_path = Path(temp_dir)
+        yield temp_path
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _make_package(self, project_root, prompts):
+        """Create a package with .prompt.md files and return PackageInfo."""
+        pkg_dir = project_root / "apm_modules" / "test-pkg"
+        pkg_dir.mkdir(parents=True)
+        prompts_dir = pkg_dir / ".apm" / "prompts"
+        prompts_dir.mkdir(parents=True)
+        for name, content in prompts.items():
+            (prompts_dir / name).write_text(content)
+
+        mock_info = MagicMock()
+        mock_info.install_path = pkg_dir
+        mock_info.resolved_reference = None
+        mock_info.package = MagicMock()
+        mock_info.package.name = "test-pkg"
+        return mock_info
+
+    def test_skips_when_opencode_dir_missing(self, temp_project_no_opencode):
+        """Opt-in: skip if .opencode/ does not exist."""
+        pkg_info = self._make_package(
+            temp_project_no_opencode,
+            {"test.prompt.md": "---\ndescription: Test\n---\n# Test"},
+        )
+        integrator = CommandIntegrator()
+        result = integrator.integrate_package_commands_opencode(
+            pkg_info, temp_project_no_opencode
+        )
+        assert result.files_integrated == 0
+        assert not (temp_project_no_opencode / ".opencode" / "commands").exists()
+
+    def test_deploys_prompts_to_opencode_commands(self, temp_project):
+        """Deploy .prompt.md → .opencode/commands/<name>.md."""
+        pkg_info = self._make_package(
+            temp_project,
+            {"test.prompt.md": "---\ndescription: A test\n---\n# Test command"},
+        )
+        integrator = CommandIntegrator()
+        result = integrator.integrate_package_commands_opencode(
+            pkg_info, temp_project
+        )
+        assert result.files_integrated == 1
+        target = temp_project / ".opencode" / "commands" / "test.md"
+        assert target.exists()
+
+    def test_deploys_multiple_prompts(self, temp_project):
+        """Deploy multiple prompts to .opencode/commands/."""
+        pkg_info = self._make_package(
+            temp_project,
+            {
+                "review.prompt.md": "---\ndescription: Review\n---\n# Review",
+                "fix.prompt.md": "---\ndescription: Fix\n---\n# Fix",
+            },
+        )
+        integrator = CommandIntegrator()
+        result = integrator.integrate_package_commands_opencode(
+            pkg_info, temp_project
+        )
+        assert result.files_integrated == 2
+
+    def test_sync_removes_apm_commands(self, temp_project):
+        """Sync removes APM-managed commands from .opencode/commands/."""
+        cmds = temp_project / ".opencode" / "commands"
+        cmds.mkdir(parents=True)
+        (cmds / "test-apm.md").write_text("# APM managed")
+        (cmds / "custom.md").write_text("# User created")
+
+        integrator = CommandIntegrator()
+        result = integrator.sync_integration_opencode(None, temp_project)
+
+        assert result["files_removed"] == 1
+        assert not (cmds / "test-apm.md").exists()
+        assert (cmds / "custom.md").exists()
+
+    def test_sync_handles_missing_dir(self, temp_project_no_opencode):
+        """Sync handles missing .opencode/commands/ gracefully."""
+        integrator = CommandIntegrator()
+        result = integrator.sync_integration_opencode(None, temp_project_no_opencode)
+        assert result["files_removed"] == 0

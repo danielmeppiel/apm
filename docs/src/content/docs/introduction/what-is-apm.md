@@ -12,7 +12,7 @@ AI agent configuration has no equivalent. Until now.
 
 ## What is agent package management?
 
-AI coding agents — GitHub Copilot, Claude, Cursor, Codex, Gemini — are only as
+AI coding agents — GitHub Copilot, Claude, Cursor, OpenCode, Codex, Gemini — are only as
 good as the context they receive. That context is made up of instructions,
 skills, prompts, agent definitions, hooks, plugins, and MCP server
 configurations.
@@ -148,6 +148,7 @@ supported tool:
 | GitHub Copilot | `.github/instructions/`, `.github/prompts/`, agents, hooks, plugins, MCP | `AGENTS.md` (optional) | **Full** |
 | Claude | `.claude/` commands, skills, MCP | `CLAUDE.md` | **Full** |
 | Cursor | `.cursor/rules/`, `.cursor/agents/`, skills, hooks, MCP | `.cursor/rules/` (also via compile) | **Full** |
+| OpenCode | `.opencode/agents/`, `.opencode/commands/`, skills, MCP | Via `AGENTS.md` | **Full** |
 | Codex CLI | — | `AGENTS.md` | Instructions via compile |
 | Gemini | — | `GEMINI.md` | Instructions via compile |
 
@@ -197,7 +198,7 @@ underneath:
 ```
 +--------------------------------------------------+
 |  AI Coding Tools                                  |
-|  (Copilot, Claude, Cursor, Codex, Gemini)         |
+|  (Copilot, Claude, Cursor, OpenCode, Codex, Gemini)|
 +--------------------------------------------------+
 |  Plugin / Extension Systems                       |
 |  (tool-specific capabilities)                     |
@@ -222,6 +223,7 @@ APM:
 - Your `AGENTS.md` still works with Copilot and Codex
 - Your `CLAUDE.md` still works with Claude
 - Your `.cursor/rules/` still work with Cursor
+- Your `.opencode/` files still work with OpenCode
 - Your `.github/prompts/` still work with Copilot
 
 APM adds a dependency management layer. It does not add a runtime dependency.

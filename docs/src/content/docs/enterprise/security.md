@@ -12,7 +12,7 @@ This page documents APM's security posture for enterprise security reviews, comp
 APM is a build-time dependency manager for AI prompts and configuration. It performs four operations:
 
 1. **Resolves git repositories** — clones or sparse-checks-out packages from GitHub or Azure DevOps.
-2. **Deploys static files** — copies markdown, JSON, and YAML files into project directories (`.github/`, `.claude/`, `.cursor/`).
+2. **Deploys static files** — copies markdown, JSON, and YAML files into project directories (`.github/`, `.claude/`, `.cursor/`, `.opencode/`).
 3. **Generates compiled output** — produces `AGENTS.md`, `CLAUDE.md`, and similar files from templates and prompts.
 4. **Records a lock file** — writes `apm.lock.yaml` with exact commit SHAs for every resolved dependency.
 
@@ -66,7 +66,7 @@ APM deploys files only to controlled subdirectories within the project root. Thr
 All deploy paths are validated before any file operation. The `validate_deploy_path` check enforces three rules:
 
 1. **No `..` segments.** Any path containing `..` is rejected outright.
-2. **Allowed prefixes only.** Paths must start with an allowed prefix (`.github/`, `.claude/`, or `.cursor/`).
+2. **Allowed prefixes only.** Paths must start with an allowed prefix (`.github/`, `.claude/`, `.cursor/`, or `.opencode/`).
 3. **Resolution containment.** The fully resolved path must remain within the project root directory.
 
 A path must pass all three checks. Failure on any check prevents the file from being written.
@@ -188,7 +188,7 @@ No. APM makes no network requests beyond git clone/fetch operations to resolve d
 
 ### Can a malicious package write files outside the project?
 
-No. All deploy paths are validated against the project root using path traversal checks, prefix allowlists, and resolved path containment. Symlinks are skipped entirely. A package cannot write files outside `.github/`, `.claude/`, or `.cursor/` within the project root.
+No. All deploy paths are validated against the project root using path traversal checks, prefix allowlists, and resolved path containment. Symlinks are skipped entirely. A package cannot write files outside `.github/`, `.claude/`, `.cursor/`, or `.opencode/` within the project root.
 
 ### Can a transitive dependency inject MCP servers?
 

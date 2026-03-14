@@ -4,7 +4,7 @@ sidebar:
   order: 1
 ---
 
-Compilation is **optional for most users**. If your team uses GitHub Copilot, Claude, or Cursor, `apm install` deploys all primitives in their native format -- you can skip this guide entirely. `apm compile` is for teams that use Codex, Gemini, or other tools that read single-root-file formats like `AGENTS.md` or `CLAUDE.md`. It is also useful when you want a consolidated view of all instructions in one file.
+Compilation is **optional for most users**. If your team uses GitHub Copilot, Claude, Cursor, or OpenCode, `apm install` deploys all primitives in their native format -- you can skip this guide entirely. `apm compile` is for teams that use Codex, Gemini, or other tools that read single-root-file formats like `AGENTS.md` or `CLAUDE.md`. It is also useful when you want a consolidated view of all instructions in one file.
 
 **Solving the AI agent scalability problem through constraint satisfaction optimization**
 
@@ -435,10 +435,11 @@ Different AI tools get different levels of support from `apm install` vs `apm co
 | GitHub Copilot | `.github/instructions/`, `.github/prompts/`, agents, hooks, plugins, MCP | `AGENTS.md` (optional) | **Full** |
 | Claude | `.claude/` commands, skills, MCP | `CLAUDE.md` | **Full** |
 | Cursor | `.cursor/rules/`, `.cursor/agents/`, `.cursor/skills/`, `.cursor/hooks.json`, `.cursor/mcp.json` | `AGENTS.md` (optional) | **Full** |
+| OpenCode | `.opencode/agents/`, `.opencode/commands/`, `.opencode/skills/`, `opencode.json` (MCP) | Via `AGENTS.md` | **Full** |
 | Codex CLI | -- | `AGENTS.md` | Instructions via compile |
 | Gemini | -- | `GEMINI.md` | Instructions via compile |
 
-For Copilot, Claude, and Cursor users, `apm install` handles everything natively. Compilation is the bridge that brings instruction support to tools that do not yet have first-class APM integration.
+For Copilot, Claude, Cursor, and OpenCode users, `apm install` handles everything natively. Compilation is the bridge that brings instruction support to tools that do not yet have first-class APM integration.
 
 ## Theoretical Foundations
 

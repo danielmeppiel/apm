@@ -987,3 +987,109 @@ You are a security reviewer. Analyze code for vulnerabilities."""
         
         assert result['files_removed'] == 0
         assert result['errors'] == 0
+
+
+class TestOpenCodeAgentIntegration:
+    """Tests for OpenCode agent integration."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.project_root = self.temp_dir / "project"
+        self.project_root.mkdir()
+        self.integrator = AgentIntegrator()
+
+    def teardown_method(self):
+        """Clean up after tests."""
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(self, package_dir):
+        """Helper to create a PackageInfo object."""
+        package = APMPackage(
+            name="test-pkg",
+            version="1.0.0",
+            package_path=package_dir
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=package_dir,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat()
+        )
+
+    def test_integrate_skips_when_opencode_dir_missing(self):
+        """Opt-in: skip if .opencode/ does not exist."""
+        package_dir = self.project_root / "apm_modules" / "test-pkg"
+        package_dir.mkdir(parents=True)
+        apm_dir = package_dir / ".apm" / "agents"
+        apm_dir.mkdir(parents=True)
+        (apm_dir / "security.agent.md").write_text("# Security Agent")
+
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root
+        )
+
+        assert result.files_integrated == 0
+        assert not (self.project_root / ".opencode" / "agents").exists()
+
+    def test_integrate_deploys_to_opencode_agents(self):
+        """Deploy agents to .opencode/agents/ when .opencode/ exists."""
+        (self.project_root / ".opencode").mkdir()
+        package_dir = self.project_root / "apm_modules" / "test-pkg"
+        package_dir.mkdir(parents=True)
+        apm_dir = package_dir / ".apm" / "agents"
+        apm_dir.mkdir(parents=True)
+        (apm_dir / "security.agent.md").write_text("# Security Agent")
+
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root
+        )
+
+        assert result.files_integrated == 1
+        assert (self.project_root / ".opencode" / "agents" / "security.md").exists()
+
+    def test_integrate_multiple_agents_opencode(self):
+        """Deploy multiple agents to .opencode/agents/."""
+        (self.project_root / ".opencode").mkdir()
+        package_dir = self.project_root / "apm_modules" / "test-pkg"
+        package_dir.mkdir(parents=True)
+        apm_dir = package_dir / ".apm" / "agents"
+        apm_dir.mkdir(parents=True)
+        (apm_dir / "security.agent.md").write_text("# Security")
+        (apm_dir / "planner.agent.md").write_text("# Planner")
+
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_opencode(
+            package_info, self.project_root
+        )
+
+        assert result.files_integrated == 2
+
+    def test_sync_integration_opencode_removes_apm_agents(self):
+        """Sync removes APM-managed agents from .opencode/agents/."""
+        agents_dir = self.project_root / ".opencode" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security-apm.md").write_text("# APM managed")
+        (agents_dir / "custom.md").write_text("# User created")
+
+        result = self.integrator.sync_integration_opencode(None, self.project_root)
+
+        assert result['files_removed'] == 1
+        assert not (agents_dir / "security-apm.md").exists()
+        assert (agents_dir / "custom.md").exists()
+
+    def test_sync_integration_opencode_handles_missing_dir(self):
+        """Sync handles missing .opencode/agents/ gracefully."""
+        result = self.integrator.sync_integration_opencode(None, self.project_root)
+
+        assert result['files_removed'] == 0
+        assert result['errors'] == 0
