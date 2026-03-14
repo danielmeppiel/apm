@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-13T01:06:50Z",
-  "last_run_tasks": ["task4", "task3", "task7"],
+  "last_updated": "2026-03-14T01:06:43Z",
+  "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -11,13 +11,13 @@
   "coverage_baseline": {
     "total": "55%",
     "run_date": "2026-03-13",
-    "test_count": 1586,
+    "test_count": 1683,
     "pre_existing_failures": 0,
-    "notes": "All 1586 tests pass. Fixed 5 ANSI failures (4 in test_unpacker.py::TestUnpackCmdLogging, 1 in test_install_command.py). Added _strip_ansi() helpers. YAML test pollution note: --cov causes PyYAML global state corruption in full suite run."
+    "notes": "All 1683 tests pass after ANSI fix. Fixed 7 ANSI failures across test_unpacker.py (4), test_update_command.py (2), test_install_command.py (1). Added _strip_ansi() helpers."
   },
   "monthly_activity_issue": "open-2026-03",
   "yaml_pollution_note": "Running tests with --cov causes PyYAML global state corruption from some earlier test. Affects parse_skill_file and parse_primitive_file calls when run in full suite with coverage. Not a new issue. Tests pass without --cov.",
-  "ansi_strip_note": "Added _strip_ansi() helper (re.sub r'\\x1b\\[[0-9;]*m', '', text) to test_unpacker.py and test_install_command.py. Rich Console outputs bold ANSI codes even in Click CliRunner capture.",
+  "ansi_strip_note": "Added _strip_ansi() helper (re.sub r'\\x1b\\[[0-9;]*m', '', text) to test_unpacker.py, test_update_command.py, and test_install_command.py. Rich Console outputs bold ANSI codes even in Click CliRunner capture.",
   "testing_backlog": [
     {"id": "primitives-parser", "file": "src/apm_cli/primitives/parser.py", "coverage": "76%", "priority": "medium", "notes": "Uncovered: parse_skill_file inner (33-44), unknown type branch (87-90), _parse_context description (159), _extract_primitive_name structured .agent.md (204-207, 214, 216, 218, 223)"},
     {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
@@ -29,15 +29,22 @@
   "backlog_cursor": "primitives-parser",
   "pending_branches": [
     "test-assist/agents-compiler-coverage-1773105017",
-    "test-assist/fix-ansi-test-failures-2026-03-13"
+    "test-assist/fix-ansi-failures-2026-03-14"
   ],
   "completed_work": [
+    {
+      "run": "2026-03-14T01:06:43Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/fix-ansi-failures-2026-03-14",
+      "pr_status": "pr_created",
+      "description": "Fixed 7 failing tests: 4 in test_unpacker.py::TestUnpackCmdLogging, 2 in test_update_command.py::TestUpdateCommand, 1 in test_install_command.py. Added _strip_ansi() helper using re.sub to strip ANSI escape codes before plain-text assertions. 1683 tests now pass (0 failures)."
+    },
     {
       "run": "2026-03-13T01:06:50Z",
       "tasks": ["task4", "task3", "task7"],
       "branch": "test-assist/fix-ansi-test-failures-2026-03-13",
       "pr_status": "pr_created",
-      "description": "Fixed 5 failing tests: 4 in test_unpacker.py::TestUnpackCmdLogging and 1 in test_install_command.py. Added _strip_ansi() helper using re.sub to strip ANSI escape codes before plain-text assertions. 1586 tests now pass (0 failures)."
+      "description": "Created PR for ANSI fixes, not merged. Fixed same pattern in 5 tests."
     },
     {
       "run": "2026-03-12T01:06:39Z",
