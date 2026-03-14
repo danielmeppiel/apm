@@ -93,14 +93,20 @@ class BaseIntegrator:
             return None
         return {p.replace("\\", "/") for p in managed_files}
 
-    # Known integration prefixes that APM is allowed to deploy/remove under
-    INTEGRATION_PREFIXES = (".github/", ".claude/")
+    # Known integration prefixes that APM is allowed to deploy/remove under.
+    # Derived from ``targets.KNOWN_TARGETS`` so the allow-list stays in sync.
+    @staticmethod
+    def _get_integration_prefixes() -> tuple:
+        from apm_cli.integration.targets import get_integration_prefixes
+        return get_integration_prefixes()
+
+    INTEGRATION_PREFIXES = (".github/", ".claude/", ".cursor/")
 
     @staticmethod
     def validate_deploy_path(
         rel_path: str,
         project_root: Path,
-        allowed_prefixes: tuple = (".github/", ".claude/"),
+        allowed_prefixes: tuple = (".github/", ".claude/", ".cursor/"),
     ) -> bool:
         """Return True if *rel_path* is safe for APM to deploy or remove.
 
@@ -128,17 +134,21 @@ class BaseIntegrator:
         """Partition *managed_files* by integration prefix in a single pass.
 
         Returns a dict with keys ``"prompts"``, ``"agents_github"``,
-        ``"agents_claude"``, ``"commands"``, ``"skills"``, ``"hooks"``
-        mapping to the subset of paths for each integration type.
+        ``"agents_claude"``, ``"agents_cursor"``, ``"commands"``,
+        ``"skills"``, ``"hooks"``, ``"instructions"``,
+        ``"rules_cursor"`` mapping to the subset of paths for each
+        integration type.
         """
         buckets: dict = {
             "prompts": set(),
             "agents_github": set(),
             "agents_claude": set(),
+            "agents_cursor": set(),
             "commands": set(),
             "skills": set(),
             "hooks": set(),
             "instructions": set(),
+            "rules_cursor": set(),
         }
         for p in managed_files:
             if p.startswith(".github/prompts/"):
@@ -147,14 +157,20 @@ class BaseIntegrator:
                 buckets["agents_github"].add(p)
             elif p.startswith(".claude/agents/"):
                 buckets["agents_claude"].add(p)
+            elif p.startswith(".cursor/agents/"):
+                buckets["agents_cursor"].add(p)
             elif p.startswith(".claude/commands/"):
                 buckets["commands"].add(p)
-            elif p.startswith((".github/skills/", ".claude/skills/")):
+            elif p.startswith((".github/skills/", ".claude/skills/", ".cursor/skills/")):
                 buckets["skills"].add(p)
-            elif p.startswith((".github/hooks/", ".claude/hooks/")):
+            elif p.startswith(
+                (".github/hooks/", ".claude/hooks/", ".cursor/hooks/")
+            ):
                 buckets["hooks"].add(p)
             elif p.startswith(".github/instructions/"):
                 buckets["instructions"].add(p)
+            elif p.startswith(".cursor/rules/"):
+                buckets["rules_cursor"].add(p)
         return buckets
 
     @staticmethod

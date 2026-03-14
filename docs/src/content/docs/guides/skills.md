@@ -42,7 +42,7 @@ When you run `apm install`, APM handles skill integration automatically:
 APM downloads packages to `apm_modules/owner/repo/` (or `apm_modules/owner/repo/skill-name/` for subdirectory packages).
 
 ### Step 2: Skill Integration
-APM copies skills directly to `.github/skills/` (primary) and `.claude/skills/` (compatibility):
+APM copies skills directly to `.github/skills/` (primary), `.claude/skills/`, and `.cursor/skills/` when those directories exist:
 
 | Package Type | Behavior |
 |--------------|----------|
@@ -51,8 +51,9 @@ APM copies skills directly to `.github/skills/` (primary) and `.claude/skills/` 
 | **No SKILL.md and no primitives** | No skill folder created |
 
 **Target Directories:**
-- **Primary**: `.github/skills/{skill-name}/` — Works with Copilot, Cursor, Codex, Gemini
+- **Primary**: `.github/skills/{skill-name}/` — Works with Copilot, Codex, Gemini
 - **Compatibility**: `.claude/skills/{skill-name}/` — Only if `.claude/` folder already exists
+- **Compatibility**: `.cursor/skills/{skill-name}/` — Only if `.cursor/` folder already exists
 
 ### Skill Folder Naming
 
@@ -291,6 +292,7 @@ APM decides where to output skills based on project structure:
 |-----------|---------------|
 | `.github/` exists | `.github/skills/{skill-name}/SKILL.md` |
 | `.claude/` also exists | Also copies to `.claude/skills/{skill-name}/SKILL.md` |
+| `.cursor/` also exists | Also copies to `.cursor/skills/{skill-name}/SKILL.md` |
 | Neither exists | Creates `.github/skills/` |
 
 Override with:

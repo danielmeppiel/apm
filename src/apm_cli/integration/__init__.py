@@ -17,6 +17,13 @@ from .skill_integrator import (
 )
 from .skill_transformer import SkillTransformer
 from .mcp_integrator import MCPIntegrator
+from .targets import (
+    TargetProfile,
+    PrimitiveMapping,
+    KNOWN_TARGETS,
+    get_integration_prefixes,
+    active_targets,
+)
 
 __all__ = [
     'BaseIntegrator',
@@ -28,6 +35,11 @@ __all__ = [
     'SkillIntegrator',
     'SkillTransformer',
     'MCPIntegrator',
+    'TargetProfile',
+    'PrimitiveMapping',
+    'KNOWN_TARGETS',
+    'get_integration_prefixes',
+    'active_targets',
     'validate_skill_name',
     'normalize_skill_name',
     'to_hyphen_case',

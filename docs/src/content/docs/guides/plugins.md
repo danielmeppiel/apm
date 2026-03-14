@@ -40,6 +40,7 @@ When you run `apm install owner/repo/plugin-name`:
    1. `plugin.json` (root)
    2. `.github/plugin/plugin.json` (GitHub Copilot format)
    3. `.claude-plugin/plugin.json` (Claude format)
+   4. `.cursor-plugin/plugin.json` (Cursor format)
 3. **Map Artifacts** - Plugin primitives from the repository root are mapped into `.apm/`:
    - `agents/` → `.apm/agents/`
    - `skills/` → `.apm/skills/`
@@ -107,10 +108,25 @@ plugin-repo/
     └── command-2.md
 ```
 
-**Priority Order**: APM checks for `plugin.json` in exactly three locations:
+#### Cursor Format
+```
+plugin-repo/
+├── .cursor-plugin/
+│   └── plugin.json       # Cursor location
+├── agents/
+│   └── agent-name.md
+├── skills/
+│   └── skill-name/
+│       └── SKILL.md
+└── rules/
+    └── my-rule.mdc
+```
+
+**Priority Order**: APM checks for `plugin.json` in these locations:
 1. `plugin.json` (root)
 2. `.github/plugin/plugin.json`
 3. `.claude-plugin/plugin.json`
+4. `.cursor-plugin/plugin.json`
 
 **Note**: Primitives (agents, skills, commands, instructions) are always located at the repository root, regardless of where `plugin.json` is located.
 
@@ -309,6 +325,7 @@ If APM doesn't recognize your plugin:
    - `plugin.json` (root)
    - `.github/plugin/plugin.json` (GitHub Copilot format)
    - `.claude-plugin/plugin.json` (Claude format)
+   - `.cursor-plugin/plugin.json` (Cursor format)
 2. Verify JSON is valid: `cat plugin.json | jq .`
 3. Ensure `name` field is present (only required field)
 4. Verify primitives are at the repository root (`agents/`, `skills/`, `commands/`)

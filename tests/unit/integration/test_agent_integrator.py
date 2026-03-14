@@ -785,3 +785,205 @@ You are a security reviewer. Analyze code for vulnerabilities."""
         
         assert result['files_removed'] == 0
         assert result['errors'] == 0
+
+
+class TestCursorAgentIntegration:
+    """Tests for Cursor agent integration (.cursor/agents/)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = AgentIntegrator()
+    
+    def teardown_method(self):
+        """Clean up after tests."""
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def _create_package_info(self, package_dir):
+        """Helper to create a PackageInfo object."""
+        package = APMPackage(
+            name="test-pkg",
+            version="1.0.0",
+            package_path=package_dir
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit="abc123",
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=package_dir,
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat()
+        )
+    
+    def test_get_target_filename_cursor_from_agent_md(self):
+        """Test Cursor filename from .agent.md uses .md extension."""
+        source = Path("security.agent.md")
+        result = self.integrator.get_target_filename_cursor(source, "pkg")
+        assert result == "security.md"
+    
+    def test_get_target_filename_cursor_from_chatmode_md(self):
+        """Test Cursor filename from .chatmode.md uses .md extension."""
+        source = Path("default.chatmode.md")
+        result = self.integrator.get_target_filename_cursor(source, "pkg")
+        assert result == "default.md"
+    
+    def test_get_target_filename_cursor_hyphenated(self):
+        """Test Cursor filename with hyphenated source name."""
+        source = Path("backend-engineer.agent.md")
+        result = self.integrator.get_target_filename_cursor(source, "pkg")
+        assert result == "backend-engineer.md"
+    
+    def test_integrate_skips_when_cursor_dir_missing(self):
+        """Test that integration returns empty when .cursor/ doesn't exist."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security Agent")
+        
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_cursor(package_info, self.project_root)
+        
+        assert result.files_integrated == 0
+        assert not (self.project_root / ".cursor" / "agents").exists()
+    
+    def test_integrate_creates_cursor_agents_directory(self):
+        """Test that integration creates .cursor/agents/ when .cursor/ exists."""
+        # Pre-create .cursor/ to opt in
+        (self.project_root / ".cursor").mkdir()
+        
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security Agent")
+        
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_cursor(package_info, self.project_root)
+        
+        assert result.files_integrated == 1
+        assert (self.project_root / ".cursor" / "agents").exists()
+    
+    def test_integrate_copies_agent_to_cursor_agents(self):
+        """Test agent files are copied to .cursor/agents/ with .md extension."""
+        (self.project_root / ".cursor").mkdir()
+        
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security Agent\nReview code for vulnerabilities.")
+        
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_cursor(package_info, self.project_root)
+        
+        assert result.files_integrated == 1
+        target_file = self.project_root / ".cursor" / "agents" / "security.md"
+        assert target_file.exists()
+        content = target_file.read_text()
+        assert "Security Agent" in content
+        assert "Review code for vulnerabilities" in content
+    
+    def test_integrate_multiple_agents(self):
+        """Test multiple agent files are all integrated."""
+        (self.project_root / ".cursor").mkdir()
+        
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security")
+        (package_dir / "planner.agent.md").write_text("# Planner")
+        (package_dir / "default.chatmode.md").write_text("# Default")
+        
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_cursor(package_info, self.project_root)
+        
+        assert result.files_integrated == 3
+        assert (self.project_root / ".cursor" / "agents" / "security.md").exists()
+        assert (self.project_root / ".cursor" / "agents" / "planner.md").exists()
+        assert (self.project_root / ".cursor" / "agents" / "default.md").exists()
+    
+    def test_integrate_no_agents_returns_empty_result(self):
+        """Test empty result when no agent files found."""
+        (self.project_root / ".cursor").mkdir()
+        
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "readme.md").write_text("# Not an agent")
+        
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents_cursor(package_info, self.project_root)
+        
+        assert result.files_integrated == 0
+    
+    def test_integrate_preserves_frontmatter(self):
+        """Test that YAML frontmatter is preserved in Cursor agents."""
+        (self.project_root / ".cursor").mkdir()
+        
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        content = """---
+name: security-reviewer
+description: Reviews code for security issues
+---
+
+You are a security reviewer. Analyze code for vulnerabilities."""
+        (package_dir / "security.agent.md").write_text(content)
+        
+        package_info = self._create_package_info(package_dir)
+        self.integrator.integrate_package_agents_cursor(package_info, self.project_root)
+        
+        target_content = (self.project_root / ".cursor" / "agents" / "security.md").read_text()
+        assert "name: security-reviewer" in target_content
+        assert "description: Reviews code for security issues" in target_content
+        assert "security reviewer" in target_content
+    
+    def test_integrate_package_agents_deploys_to_cursor_when_dir_exists(self):
+        """Test integrate_package_agents() also deploys to .cursor/agents/."""
+        (self.project_root / ".cursor").mkdir()
+        
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security Agent")
+        
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents(package_info, self.project_root)
+        
+        # Should deploy to both .github/agents/ and .cursor/agents/
+        assert (self.project_root / ".github" / "agents" / "security.agent.md").exists()
+        assert (self.project_root / ".cursor" / "agents" / "security.md").exists()
+        posix_paths = [tp.relative_to(self.project_root).as_posix() for tp in result.target_paths]
+        assert ".cursor/agents/security.md" in posix_paths
+    
+    def test_integrate_package_agents_skips_cursor_when_dir_missing(self):
+        """Test integrate_package_agents() skips .cursor/ when it doesn't exist."""
+        package_dir = self.project_root / "package"
+        package_dir.mkdir()
+        (package_dir / "security.agent.md").write_text("# Security Agent")
+        
+        package_info = self._create_package_info(package_dir)
+        result = self.integrator.integrate_package_agents(package_info, self.project_root)
+        
+        assert (self.project_root / ".github" / "agents" / "security.agent.md").exists()
+        assert not (self.project_root / ".cursor" / "agents").exists()
+    
+    def test_sync_integration_cursor_removes_apm_agents(self):
+        """Test sync removes APM-managed agents from .cursor/agents/."""
+        agents_dir = self.project_root / ".cursor" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "security-apm.md").write_text("# APM managed")
+        (agents_dir / "planner-apm.md").write_text("# APM managed")
+        (agents_dir / "custom.md").write_text("# User created")
+        
+        result = self.integrator.sync_integration_cursor(None, self.project_root)
+        
+        assert result['files_removed'] == 2
+        assert not (agents_dir / "security-apm.md").exists()
+        assert not (agents_dir / "planner-apm.md").exists()
+        assert (agents_dir / "custom.md").exists()  # Preserved
+    
+    def test_sync_integration_cursor_handles_missing_dir(self):
+        """Test sync handles missing .cursor/agents/ gracefully."""
+        result = self.integrator.sync_integration_cursor(None, self.project_root)
+        
+        assert result['files_removed'] == 0
+        assert result['errors'] == 0

@@ -147,7 +147,7 @@ supported tool:
 |---|---|---|---|
 | GitHub Copilot | `.github/instructions/`, `.github/prompts/`, agents, hooks, plugins, MCP | `AGENTS.md` (optional) | **Full** |
 | Claude | `.claude/` commands, skills, MCP | `CLAUDE.md` | **Full** |
-| Cursor | — | `.cursor/rules/` | Instructions via compile |
+| Cursor | `.cursor/mcp.json` (MCP) | `.cursor/rules/` | MCP + Instructions |
 | Codex CLI | — | `AGENTS.md` | Instructions via compile |
 | Gemini | — | `GEMINI.md` | Instructions via compile |
 

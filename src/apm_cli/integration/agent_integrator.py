@@ -12,7 +12,7 @@ from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResul
 
 
 class AgentIntegrator(BaseIntegrator):
-    """Handles integration of APM package agents into .github/agents/."""
+    """Handles integration of APM package agents into .github/agents/, .claude/agents/, and .cursor/agents/."""
     
     def find_agent_files(self, package_path: Path) -> List[Path]:
         """Find all .agent.md and .chatmode.md files in a package.
@@ -107,7 +107,8 @@ class AgentIntegrator(BaseIntegrator):
         """Integrate all agents from a package into .github/agents/.
         
         Deploys with clean filenames. Skips user-authored files unless force=True.
-        Also copies to .claude/agents/ when .claude/ exists (dual-target).
+        Also copies to .claude/agents/ and .cursor/agents/ when the respective
+        directories exist (multi-target).
         
         Args:
             package_info: PackageInfo object with package metadata
@@ -137,12 +138,19 @@ class AgentIntegrator(BaseIntegrator):
         agents_dir = project_root / ".github" / "agents"
         agents_dir.mkdir(parents=True, exist_ok=True)
         
-        # Also target .claude/agents/ when .claude/ folder exists (dual-target)
+        # Also target .claude/agents/ when .claude/ folder exists
         claude_agents_dir = None
         claude_dir = project_root / ".claude"
         if claude_dir.exists() and claude_dir.is_dir():
             claude_agents_dir = claude_dir / "agents"
             claude_agents_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Also target .cursor/agents/ when .cursor/ folder exists
+        cursor_agents_dir = None
+        cursor_dir = project_root / ".cursor"
+        if cursor_dir.exists() and cursor_dir.is_dir():
+            cursor_agents_dir = cursor_dir / "agents"
+            cursor_agents_dir.mkdir(parents=True, exist_ok=True)
         
         # Process each agent file
         files_integrated = 0
@@ -172,6 +180,15 @@ class AgentIntegrator(BaseIntegrator):
                 if not self.check_collision(claude_target, claude_rel, managed_files, force, diagnostics=diagnostics):
                     self.copy_agent(source_file, claude_target)
                     target_paths.append(claude_target)
+            
+            # Copy to .cursor/agents/ as well with same collision check
+            if cursor_agents_dir:
+                cursor_filename = self.get_target_filename_cursor(source_file, package_info.package.name)
+                cursor_target = cursor_agents_dir / cursor_filename
+                cursor_rel = str(cursor_target.relative_to(project_root))
+                if not self.check_collision(cursor_target, cursor_rel, managed_files, force, diagnostics=diagnostics):
+                    self.copy_agent(source_file, cursor_target)
+                    target_paths.append(cursor_target)
         
         return IntegrationResult(
             files_integrated=files_integrated,
@@ -285,6 +302,113 @@ class AgentIntegrator(BaseIntegrator):
             project_root,
             managed_files,
             prefix=".claude/agents/",
+            legacy_glob_dir=agents_dir,
+            legacy_glob_pattern="*-apm.md",
+        )
+    
+    def get_target_filename_cursor(self, source_file: Path, package_name: str) -> str:
+        """Generate target filename for Cursor agents (clean, no suffix).
+        
+        Cursor sub-agents use plain .md files in .cursor/agents/.
+        Both .agent.md and .chatmode.md sources are converted to .md.
+        
+        Args:
+            source_file: Source file path
+            package_name: Name of the package (not used in simple naming)
+            
+        Returns:
+            str: Target filename (e.g., security.md)
+        """
+        if source_file.name.endswith('.agent.md'):
+            stem = source_file.name[:-9]  # Remove .agent.md
+        elif source_file.name.endswith('.chatmode.md'):
+            stem = source_file.name[:-12]  # Remove .chatmode.md
+        else:
+            stem = source_file.stem
+        
+        return f"{stem}.md"
+    
+    def integrate_package_agents_cursor(self, package_info, project_root: Path,
+                                          force: bool = False,
+                                          managed_files: set = None,
+                                          diagnostics=None) -> IntegrationResult:
+        """Integrate all agents from a package into .cursor/agents/.
+        
+        Deploys with clean filenames. Skips user-authored files unless force=True.
+        Only deploys if .cursor/ directory already exists (opt-in).
+        
+        Args:
+            package_info: PackageInfo object with package metadata
+            project_root: Root directory of the project
+            force: If True, overwrite user-authored files on collision
+            managed_files: Set of relative paths known to be APM-managed
+            
+        Returns:
+            IntegrationResult: Results of the integration operation
+        """
+        self.init_link_resolver(package_info, project_root)
+        
+        # Find all agent files in the package
+        agent_files = self.find_agent_files(package_info.install_path)
+        
+        if not agent_files:
+            return IntegrationResult(
+                files_integrated=0,
+                files_updated=0,
+                files_skipped=0,
+                target_paths=[],
+            )
+        
+        # Only deploy if .cursor/ directory exists (opt-in)
+        cursor_dir = project_root / ".cursor"
+        if not cursor_dir.exists() or not cursor_dir.is_dir():
+            return IntegrationResult(
+                files_integrated=0,
+                files_updated=0,
+                files_skipped=0,
+                target_paths=[],
+            )
+        
+        # Create .cursor/agents/ if it doesn't exist
+        agents_dir = cursor_dir / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Process each agent file
+        files_integrated = 0
+        files_skipped = 0
+        target_paths = []
+        total_links_resolved = 0
+        
+        for source_file in agent_files:
+            target_filename = self.get_target_filename_cursor(source_file, package_info.package.name)
+            target_path = agents_dir / target_filename
+            rel_path = str(target_path.relative_to(project_root))
+            
+            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+                files_skipped += 1
+                continue
+            
+            links_resolved = self.copy_agent(source_file, target_path)
+            total_links_resolved += links_resolved
+            files_integrated += 1
+            target_paths.append(target_path)
+        
+        return IntegrationResult(
+            files_integrated=files_integrated,
+            files_updated=0,
+            files_skipped=files_skipped,
+            target_paths=target_paths,
+            links_resolved=total_links_resolved
+        )
+    
+    def sync_integration_cursor(self, apm_package, project_root: Path,
+                                managed_files: set = None) -> Dict[str, int]:
+        """Remove APM-managed agent files from .cursor/agents/."""
+        agents_dir = project_root / ".cursor" / "agents"
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=".cursor/agents/",
             legacy_glob_dir=agents_dir,
             legacy_glob_pattern="*-apm.md",
         )
