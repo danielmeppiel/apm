@@ -415,7 +415,7 @@ class TestMCPRegistryE2E:
                 except json.JSONDecodeError as e:
                     pytest.fail(f"Invalid JSON in Copilot config: {e}\nContent: {config_content}")
             else:
-                print("⚠ Copilot configuration not created (binary may not be available)")
+                print("[WARN] Copilot configuration not created (binary may not be available)")
                 # This is OK for testing - we're validating the adapter logic
 
     def test_empty_string_handling_e2e(self, temp_e2e_home, apm_binary):
