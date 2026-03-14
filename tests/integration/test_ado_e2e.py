@@ -10,6 +10,7 @@ Skip these tests if ADO_APM_PAT is not available.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -31,7 +32,10 @@ def run_apm_command(cmd: str, cwd: Path, timeout: int = 60) -> subprocess.Comple
         apm_path = apm_on_path
     else:
         # Fallback to local dev venv
-        apm_path = Path(__file__).parent.parent.parent / ".venv" / "bin" / "apm"
+        if sys.platform == "win32":
+            apm_path = Path(__file__).parent.parent.parent / ".venv" / "Scripts" / "apm.exe"
+        else:
+            apm_path = Path(__file__).parent.parent.parent / ".venv" / "bin" / "apm"
     
     full_cmd = f"{apm_path} {cmd}"
     result = subprocess.run(
