@@ -422,7 +422,7 @@ def uninstall(ctx, packages, dry_run):
                                                             managed_files=_buckets["agents_cursor"] if _buckets else None)
                 agents_cleaned += result.get("files_removed", 0)
 
-            if Path(".github/skills").exists() or Path(".claude/skills").exists():
+            if Path(".github/skills").exists() or Path(".claude/skills").exists() or Path(".cursor/skills").exists():
                 integrator = SkillIntegrator()
                 result = integrator.sync_integration(apm_package, project_root,
                                                      managed_files=_buckets["skills"] if _buckets else None)

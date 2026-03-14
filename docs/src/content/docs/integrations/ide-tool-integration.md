@@ -190,8 +190,10 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 |----------|---------|
 | `.cursor/rules/*.mdc` | Instructions converted to Cursor rules format |
 | `.cursor/agents/*.md` | Sub-agents from installed packages |
+| `.cursor/skills/{name}/SKILL.md` | Skills from installed packages |
 | `.cursor/hooks.json` (hooks key) | Hooks from installed packages (merged into config) |
 | `.cursor/hooks/{pkg}/` | Referenced hook scripts |
+| `.cursor/mcp.json` | MCP server configurations |
 
 ### Automatic Agent Integration
 

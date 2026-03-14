@@ -94,19 +94,17 @@ class BaseIntegrator:
         return {p.replace("\\", "/") for p in managed_files}
 
     # Known integration prefixes that APM is allowed to deploy/remove under.
-    # Derived from ``targets.KNOWN_TARGETS`` so the allow-list stays in sync.
+    # Derived from ``targets.KNOWN_TARGETS`` so adding a target auto-propagates.
     @staticmethod
     def _get_integration_prefixes() -> tuple:
         from apm_cli.integration.targets import get_integration_prefixes
         return get_integration_prefixes()
 
-    INTEGRATION_PREFIXES = (".github/", ".claude/", ".cursor/")
-
     @staticmethod
     def validate_deploy_path(
         rel_path: str,
         project_root: Path,
-        allowed_prefixes: tuple = (".github/", ".claude/", ".cursor/"),
+        allowed_prefixes: tuple | None = None,
     ) -> bool:
         """Return True if *rel_path* is safe for APM to deploy or remove.
 
@@ -118,6 +116,8 @@ class BaseIntegrator:
         2. Starts with an allowed integration prefix
         3. Resolves within *project_root*
         """
+        if allowed_prefixes is None:
+            allowed_prefixes = BaseIntegrator._get_integration_prefixes()
         if ".." in rel_path:
             return False
         if not rel_path.startswith(allowed_prefixes):

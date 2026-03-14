@@ -1026,7 +1026,8 @@ Use when building MCP servers or tools.
         )
         
         # Copy skill to target
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         target_skill_md = github_path / "SKILL.md"
@@ -1063,7 +1064,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "scripts").exists()
@@ -1091,7 +1093,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "references").exists()
@@ -1116,7 +1119,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "assets").exists()
@@ -1149,7 +1153,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1172,7 +1177,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert github_path.name == "valid-skill-name"
@@ -1189,7 +1195,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         # Name should be normalized to hyphen-case lowercase
@@ -1216,7 +1223,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert github_path == skill_dir
@@ -1246,11 +1254,10 @@ Use when building MCP servers or tools.
             install_path=pkg_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, pkg_source, self.project_root)
+        paths = copy_skill_to_target(package_info, pkg_source, self.project_root)
         
-        # Should return None (skipped) - both paths should be None
-        assert github_path is None
-        assert claude_path is None
+        # Should return empty list (skipped)
+        assert paths == []
         
         # No skill directory should be created
         assert not (self.project_root / ".github" / "skills" / "instructions-only").exists()
@@ -1271,7 +1278,8 @@ Use when building MCP servers or tools.
             pkg_type=PackageContentType.SKILL
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1290,7 +1298,8 @@ Use when building MCP servers or tools.
             pkg_type=PackageContentType.HYBRID
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (github_path / "SKILL.md").exists()
@@ -1311,7 +1320,8 @@ Use when building MCP servers or tools.
             install_path=skill_source
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         assert (self.project_root / ".github" / "skills").exists()
@@ -1334,7 +1344,8 @@ Use when building MCP servers or tools.
             source="owner/my-skill"
         )
         
-        github_path, _ = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
+        github_path = paths[0] if paths else None
         
         assert github_path is not None
         
@@ -1776,10 +1787,11 @@ Detailed instructions here.
             install_path=skill_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
         
-        assert github_path is not None
-        assert claude_path is not None
+        assert len(paths) >= 2
+        github_path = paths[0]
+        claude_path = paths[1]
         assert github_path == self.project_root / ".github" / "skills" / "my-skill"
         assert claude_path == self.project_root / ".claude" / "skills" / "my-skill"
     
@@ -1797,10 +1809,10 @@ Detailed instructions here.
             install_path=skill_source
         )
         
-        github_path, claude_path = copy_skill_to_target(package_info, skill_source, self.project_root)
+        paths = copy_skill_to_target(package_info, skill_source, self.project_root)
         
-        assert github_path is not None
-        assert claude_path is None
+        assert len(paths) == 1
+        github_path = paths[0]
     
     # ========== Test: sync_integration cleans both locations ==========
     

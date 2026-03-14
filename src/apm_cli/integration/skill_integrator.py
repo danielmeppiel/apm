@@ -247,7 +247,7 @@ def copy_skill_to_target(
     package_info,
     source_path: Path,
     target_base: Path,
-) -> tuple[Path | None, Path | None]:
+) -> list[Path]:
     """Copy skill directory to .github/skills/ and optionally .claude/skills/ and .cursor/skills/.
     
     This is a standalone function for direct skill copy operations.
@@ -273,19 +273,17 @@ def copy_skill_to_target(
         target_base: Usually project root
         
     Returns:
-        Tuple of (github_path, claude_path):
-        - github_path: Path to .github/skills/{name}/ or None if skipped
-        - claude_path: Path to .claude/skills/{name}/ or None if .claude/ doesn't exist
+        List of all deployed skill directory paths (empty if skipped).
     """
     # Check if package type allows skill installation (T4 routing)
     if not should_install_skill(package_info):
-        return (None, None)
+        return []
     
     # Check for SKILL.md existence
     source_skill_md = source_path / "SKILL.md"
     if not source_skill_md.exists():
         # No SKILL.md means this package is handled by compilation, not skill copy
-        return (None, None)
+        return []
     
     # Get and validate skill name from folder
     raw_skill_name = source_path.name
@@ -296,6 +294,8 @@ def copy_skill_to_target(
     else:
         skill_name = normalize_skill_name(raw_skill_name)
     
+    deployed: list[Path] = []
+
     # === Primary target: .github/skills/ ===
     github_skill_dir = target_base / ".github" / "skills" / skill_name
     
@@ -309,45 +309,21 @@ def copy_skill_to_target(
     # Copy the entire skill folder preserving structure
     # This copies SKILL.md, scripts/, references/, assets/, etc.
     shutil.copytree(source_path, github_skill_dir)
+    deployed.append(github_skill_dir)
     
-    # === Secondary target: .claude/skills/ (T7 - compatibility copy) ===
-    claude_skill_dir: Path | None = None
-    claude_dir = target_base / ".claude"
+    # === Opt-in targets: only deploy when target root already exists ===
+    for target_root in (".claude", ".cursor"):
+        target_dir = target_base / target_root
+        if not (target_dir.exists() and target_dir.is_dir()):
+            continue
+        skill_dir = target_dir / "skills" / skill_name
+        skill_dir.parent.mkdir(parents=True, exist_ok=True)
+        if skill_dir.exists():
+            shutil.rmtree(skill_dir)
+        shutil.copytree(source_path, skill_dir)
+        deployed.append(skill_dir)
     
-    # Only copy to .claude/skills/ if .claude/ directory already exists
-    # Do NOT create .claude/ folder if it doesn't exist
-    if claude_dir.exists() and claude_dir.is_dir():
-        claude_skill_dir = claude_dir / "skills" / skill_name
-        
-        # Create .claude/skills/ if needed (but .claude/ must already exist)
-        claude_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-        
-        # If skill already exists, remove it for update
-        if claude_skill_dir.exists():
-            shutil.rmtree(claude_skill_dir)
-        
-        # Copy the entire skill folder (identical to github copy)
-        shutil.copytree(source_path, claude_skill_dir)
-    
-    # === Tertiary target: .cursor/skills/ (compatibility copy) ===
-    cursor_dir = target_base / ".cursor"
-    
-    # Only copy to .cursor/skills/ if .cursor/ directory already exists
-    # Do NOT create .cursor/ folder if it doesn't exist
-    if cursor_dir.exists() and cursor_dir.is_dir():
-        cursor_skill_dir = cursor_dir / "skills" / skill_name
-        
-        # Create .cursor/skills/ if needed (but .cursor/ must already exist)
-        cursor_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-        
-        # If skill already exists, remove it for update
-        if cursor_skill_dir.exists():
-            shutil.rmtree(cursor_skill_dir)
-        
-        # Copy the entire skill folder (identical to github copy)
-        shutil.copytree(source_path, cursor_skill_dir)
-    
-    return (github_skill_dir, claude_skill_dir)
+    return deployed
 
 
 class SkillIntegrator(BaseIntegrator):
