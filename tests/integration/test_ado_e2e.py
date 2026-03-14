@@ -45,7 +45,9 @@ def run_apm_command(cmd: str, cwd: Path, timeout: int = 60) -> subprocess.Comple
         capture_output=True,
         text=True,
         timeout=timeout,
-        env={**os.environ}
+        env={**os.environ},
+        encoding='utf-8',
+        errors='replace'
     )
     return result
 

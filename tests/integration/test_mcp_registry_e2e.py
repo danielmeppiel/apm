@@ -77,7 +77,9 @@ def run_command(cmd, check=True, capture_output=True, timeout=180, cwd=None, inp
             text=True,
             timeout=timeout,
             cwd=cwd,
-            input=input_text
+            input=input_text,
+            encoding='utf-8',
+            errors='replace'
         )
         return result
     except subprocess.TimeoutExpired:
@@ -148,13 +150,13 @@ class TestMCPRegistryE2E:
         assert "github" in output, "Search results should contain GitHub servers"
         assert "mcp" in output, "Search results should be about MCP servers"
         
-        print(f"✓ MCP search found GitHub servers:\n{result.stdout[:500]}...")
+        print(f"[OK] MCP search found GitHub servers:\n{result.stdout[:500]}...")
         
         # Test search with limit
         result = run_command(f"{apm_binary} mcp search filesystem --limit 3", timeout=30)
         assert result.returncode == 0, f"MCP search with limit failed: {result.stderr}"
         
-        print(f"✓ MCP search with limit works")
+        print(f"[OK] MCP search with limit works")
 
     def test_mcp_show_command(self, temp_e2e_home, apm_binary):
         """Test MCP registry server details functionality."""
@@ -171,7 +173,7 @@ class TestMCPRegistryE2E:
         # The show command displays installation guide - look for key elements
         assert "installation" in output or "install" in output or "command" in output, "Should show installation info"
         
-        print(f"✓ MCP show displays server details:\n{result.stdout[:500]}...")
+        print(f"[OK] MCP show displays server details:\n{result.stdout[:500]}...")
 
     @pytest.mark.skipif(not GITHUB_TOKEN, reason="GITHUB_TOKEN required for installation tests")
     @pytest.mark.skipif(not _is_registry_healthy(), reason="GitHub MCP server configured as remote-only (no packages) - skipping installation tests")
@@ -228,7 +230,7 @@ class TestMCPRegistryE2E:
                     f.write("scripts:\n")
                     f.write('  start: codex run start --param name="$name"\n')
             
-            print(f"✓ Created apm.yml with MCP dependencies")
+            print(f"[OK] Created apm.yml with MCP dependencies")
             
             # Step 3: Test installation with environment variable prompting
             print("Testing MCP installation with environment variable handling...")
@@ -280,7 +282,7 @@ class TestMCPRegistryE2E:
                             
                             # For servers without proper package configuration, expect minimal config
                             if command == "unknown" and not args:
-                                print(f"✓ Server configured with basic setup: {server_name}")
+                                print(f"[OK] Server configured with basic setup: {server_name}")
                             elif command == "docker":
                                 # For Docker servers, verify args contain proper Docker command structure
                                 if isinstance(args, list):
@@ -291,15 +293,15 @@ class TestMCPRegistryE2E:
                                 # Should contain docker run command structure
                                 assert "run" in args_str or len(args) > 0, f"Docker server should have proper args: {args}"
                                 
-                                print(f"✓ Docker server configured with args: {args}")
+                                print(f"[OK] Docker server configured with args: {args}")
                             else:
                                 # For other servers, just verify config structure
-                                print(f"✓ Server configured: command={command}, args={args}")
+                                print(f"[OK] Server configured: command={command}, args={args}")
                             
                             break
                     
                     assert server_found, "Test server not found in configuration"
-                    print(f"✓ Verified {len(mcp_servers)} MCP servers in Codex config")
+                    print(f"[OK] Verified {len(mcp_servers)} MCP servers in Codex config")
                     
                 except Exception as e:
                     pytest.fail(f"Failed to parse Codex config: {e}\nContent: {config_content}")
@@ -391,7 +393,7 @@ class TestMCPRegistryE2E:
                                 
                                 # GitHub server has limited package config - accept basic setup
                                 if command == "unknown" and not args:
-                                    print(f"✓ Copilot server with basic setup: {server_name}")
+                                    print(f"[OK] Copilot server with basic setup: {server_name}")
                                 elif command == "docker":
                                     if isinstance(args, list):
                                         args_str = " ".join(args)
@@ -399,21 +401,21 @@ class TestMCPRegistryE2E:
                                         args_str = str(args)
                                     
                                     assert "run" in args_str or len(args) > 0, f"Docker server should have valid args: {args}"
-                                    print(f"✓ Copilot Docker server with args: {args}")
+                                    print(f"[OK] Copilot Docker server with args: {args}")
                                 else:
-                                    print(f"✓ Copilot server configured: {command}")
+                                    print(f"[OK] Copilot server configured: {command}")
                             
                             break
                     
                     if not server_found and result.returncode == 0:
                         pytest.fail("Test server not configured in Copilot despite successful installation")
                     
-                    print(f"✓ Copilot configuration tested with {len(mcp_servers)} servers")
+                    print(f"[OK] Copilot configuration tested with {len(mcp_servers)} servers")
                     
                 except json.JSONDecodeError as e:
                     pytest.fail(f"Invalid JSON in Copilot config: {e}\nContent: {config_content}")
             else:
-                print("⚠ Copilot configuration not created (binary may not be available)")
+                print("[WARN] Copilot configuration not created (binary may not be available)")
                 # This is OK for testing - we're validating the adapter logic
 
     def test_empty_string_handling_e2e(self, temp_e2e_home, apm_binary):
@@ -474,7 +476,7 @@ class TestMCPRegistryE2E:
                             assert value != "", f"GITHUB_TOKEN should not be empty: {line}"
                             assert value.strip() != "", f"GITHUB_TOKEN should not be whitespace: {line}"
                 
-                print("✓ Empty string handling verified in configuration")
+                print("[OK] Empty string handling verified in configuration")
 
     @pytest.mark.skipif(not _is_registry_healthy(), reason="GitHub MCP server configured as remote-only (no packages) - skipping installation tests")
     def test_cross_adapter_consistency(self, temp_e2e_home, apm_binary):
@@ -521,7 +523,7 @@ class TestMCPRegistryE2E:
             codex_config = Path(temp_e2e_home) / ".codex" / "config.toml"
             
             if codex_config.exists():
-                print("✓ Found Codex configuration to verify")
+                print("[OK] Found Codex configuration to verify")
                 
                 config_content = codex_config.read_text()
                 
@@ -536,7 +538,7 @@ class TestMCPRegistryE2E:
                 server_found = any("github" in name.lower() for name in servers.keys())
                 assert server_found, "Codex configuration should contain GitHub server"
                 
-                print("✓ Codex configuration contains GitHub server")
+                print("[OK] Codex configuration contains GitHub server")
             else:
                 pytest.fail("No Codex configuration found to verify")
 
@@ -615,9 +617,9 @@ class TestMCPRegistryE2E:
                     if isinstance(args, list) and len(args) > 20:  # Very high threshold for duplication
                         pytest.fail(f"GitHub server args seem excessively duplicated: {len(args)} items")
                 
-                print(f"✓ Configuration verified - no excessive duplication detected")
+                print(f"[OK] Configuration verified - no excessive duplication detected")
             
-            print("✓ Duplication prevention working correctly")
+            print("[OK] Duplication prevention working correctly")
 
 
 class TestSlugCollisionPrevention:
