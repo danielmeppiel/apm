@@ -94,18 +94,6 @@ check_prerequisites() {
         log_error "GitHub token setup failed"
         return 1
     fi
-    
-    # Set up GitHub tokens for testing
-    # No specific NPM authentication needed for public runtimes
-    if [[ -n "${GITHUB_APM_PAT:-}" ]]; then
-        log_success "GITHUB_APM_PAT is set (APM module access)"
-        export GITHUB_APM_PAT="${GITHUB_APM_PAT}"
-    fi
-    
-    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-        log_success "GITHUB_TOKEN is set (GitHub Models access)"
-        export GITHUB_TOKEN="${GITHUB_TOKEN}"
-    fi
 }
 
 # Test Step 2: apm runtime setup (both copilot and codex for full coverage)

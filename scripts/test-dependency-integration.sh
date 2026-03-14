@@ -3,7 +3,12 @@
 # Tests real dependency scenarios with actual GitHub repositories
 # Used in CI pipeline for comprehensive dependency validation
 
-set -euo pipefail
+# NOTE: Do NOT use `set -e` here — this file is `source`d into
+# test-release-validation.sh which deliberately avoids -e for its own
+# error-handling strategy.  Setting -e here would re-enable it for the
+# sourcing script, causing silent early exits (e.g. `((count++))` when
+# count is 0 returns exit-code 1 under -e).
+set -uo pipefail
 
 # Colors for output
 RED='\033[0;31m'
