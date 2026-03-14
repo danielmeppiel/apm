@@ -148,7 +148,7 @@ apm install microsoft/apm-sample-package
 
 ### Optional: Compiled Context with AGENTS.md
 
-For tools that do not support granular primitive discovery (such as Codex or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot, Claude, Cursor, or OpenCode, which read deployed primitives natively.
+For tools that do not support granular primitive discovery (such as Codex or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot, Claude, or Cursor, which read per-file instructions natively. OpenCode also reads `AGENTS.md`, so run `apm compile` to deploy instructions there.
 
 ```bash
 # Compile all local and dependency instructions into AGENTS.md
@@ -302,7 +302,7 @@ apm install anthropics/claude-plugins-official/plugins/hookify
 
 ### Optional: Target-Specific Compilation
 
-Compilation is optional for Copilot, Claude, Cursor, and OpenCode, which read deployed primitives natively. Use it when targeting tools like Codex or Gemini, or when you want a single merged instruction file:
+Compilation is optional for Copilot, Claude, and Cursor, which read per-file instructions natively. For OpenCode, run `apm compile` to generate `AGENTS.md` (OpenCode's instruction source). Also use it when targeting Codex or Gemini:
 
 ```bash
 # Generate all formats (default)
