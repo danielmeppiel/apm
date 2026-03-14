@@ -11,10 +11,12 @@ The full execution is already tested in test_golden_scenario_e2e.py.
 """
 
 import os
+import platform
 import pytest
 import subprocess
 import tempfile
 import shutil
+import time
 from pathlib import Path
 
 
@@ -69,10 +71,17 @@ author: test
         """Clean up test environment."""
         os.chdir(self.original_dir)
         if os.path.exists(self.test_dir):
-            # ignore_errors=True: on Windows, recently-terminated subprocesses
-            # may still hold file locks on the temp directory (WinError 32).
-            # CI temp dirs are ephemeral — safe to leave behind if needed.
-            shutil.rmtree(self.test_dir, ignore_errors=True)
+            try:
+                shutil.rmtree(self.test_dir)
+            except PermissionError:
+                if platform.system() == "Windows":
+                    # On Windows, recently-terminated subprocesses may still
+                    # hold file locks (WinError 32). Retry once after a brief
+                    # delay; CI temp dirs are ephemeral so a leftover is OK.
+                    time.sleep(1)
+                    shutil.rmtree(self.test_dir, ignore_errors=True)
+                else:
+                    raise
     
     def test_auto_install_virtual_prompt_first_run(self, temp_e2e_home):
         """Test auto-install on first run with virtual package reference.
@@ -129,7 +138,6 @@ author: test
                     break
             
             # Wait for graceful shutdown
-            process.stdout.close()
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
@@ -137,6 +145,7 @@ author: test
                 process.wait()
         
         finally:
+            process.stdout.close()
             output = ''.join(output_lines)
         
         # Check output for auto-install messages
@@ -189,11 +198,12 @@ author: test
                 if "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.stdout.close()
             process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
+        finally:
+            process.stdout.close()
         
         # Verify package exists
         package_path = Path("apm_modules") / "github" / "awesome-copilot" / "skills" / "architecture-blueprint-generator"
@@ -223,12 +233,12 @@ author: test
                 if "Executing" in line or "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.stdout.close()
             process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
         finally:
+            process.stdout.close()
             output = ''.join(output_lines)
         
         # Check output - should NOT show install/download messages
@@ -271,11 +281,12 @@ author: test
                 if "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.stdout.close()
             process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
+        finally:
+            process.stdout.close()
         
         # Run with simple name - early termination
         process = subprocess.Popen(
@@ -301,12 +312,12 @@ author: test
                 if "Executing" in line or "Auto-discovered" in line:
                     process.terminate()
                     break
-            process.stdout.close()
             process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
         finally:
+            process.stdout.close()
             output = ''.join(output_lines)
         
         # Check output - should discover the installed prompt
@@ -348,11 +359,12 @@ author: test
                 if "Package installed and ready to run" in line:
                     process.terminate()
                     break
-            process.stdout.close()
             process.wait(timeout=10)
         except:
             process.kill()
             process.wait()
+        finally:
+            process.stdout.close()
         
         # Check that package was installed
         package_path = Path("apm_modules/github/awesome-copilot/skills/architecture-blueprint-generator")
