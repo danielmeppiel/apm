@@ -149,7 +149,7 @@ def remove(runtime_name):
 
 @runtime.command(help="Show active runtime and preference order")
 def status():
-    """Show which runtime APM will use for execution."""
+    """Show active runtime and preference order."""
     try:
         from ..runtime.manager import RuntimeManager
 
