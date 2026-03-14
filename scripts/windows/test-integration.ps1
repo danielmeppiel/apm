@@ -164,6 +164,7 @@ function Invoke-IntegrationTests {
     Write-Info "  - APM Dependencies with real repositories"
 
     $env:APM_E2E_TESTS = "1"
+    $env:PYTHONUTF8 = "1"
 
     Write-Info "Environment:"
     Write-Host "  APM_E2E_TESTS: $env:APM_E2E_TESTS"
