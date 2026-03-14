@@ -111,7 +111,7 @@ jobs:
           commands: |
             apm install
             apm audit --ci
-            # Optional: only needed if targeting Cursor, Codex, Gemini, or similar
+            # Optional: only needed if targeting Codex, Gemini, or similar
             # apm compile
             # git diff --exit-code AGENTS.md || \
             #   (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
@@ -121,7 +121,7 @@ jobs:
 
 ### Separate Jobs for Granular Status
 
-If your project uses `apm compile` (for Cursor, Codex, Gemini, or other tools without native APM integration), you can add audit and compile as separate required checks:
+If your project uses `apm compile` (for Codex, Gemini, or other tools without native APM integration), you can add audit and compile as separate required checks:
 
 ```yaml
 jobs:

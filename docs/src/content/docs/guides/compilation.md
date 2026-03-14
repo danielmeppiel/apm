@@ -49,7 +49,7 @@ target: copilot  # or vscode, claude, or all
 
 > **Aliases**: `vscode` and `agents` are accepted as aliases for `copilot`.
 
-> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](../../integrations/ide-tool-integration/) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, and `.claude/commands/`.
+> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](../../integrations/ide-tool-integration/) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, `.claude/commands/`, `.cursor/rules/`, and `.cursor/agents/`.
 
 ### How It Works
 
@@ -73,9 +73,12 @@ my-project/
 ├── .github/
 │   ├── prompts/           # Prompts from installed packages
 │   └── agents/            # Agents from installed packages
-└── .claude/
-    ├── commands/          # Claude slash commands from packages
-    └── skills/            # Skills from packages with SKILL.md
+├── .claude/
+│   ├── commands/          # Claude slash commands from packages
+│   └── skills/            # Skills from packages with SKILL.md
+└── .cursor/
+    ├── rules/             # Instructions converted to Cursor rules
+    └── agents/            # Agents from installed packages
 ```
 
 ## The Context Pollution Problem
@@ -435,7 +438,7 @@ Different AI tools get different levels of support from `apm install` vs `apm co
 | Codex CLI | -- | `AGENTS.md` | Instructions via compile |
 | Gemini | -- | `GEMINI.md` | Instructions via compile |
 
-For Copilot and Claude users, `apm install` handles everything natively. Compilation is the bridge that brings instruction support to tools that do not yet have first-class APM integration.
+For Copilot, Claude, and Cursor users, `apm install` handles everything natively. Compilation is the bridge that brings instruction support to tools that do not yet have first-class APM integration.
 
 ## Theoretical Foundations
 
