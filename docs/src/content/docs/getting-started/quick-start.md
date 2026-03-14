@@ -82,17 +82,22 @@ my-project/
     commands/
       apm-sample-package/
         ...
-  .cursor/                          # only if .cursor/ already exists
+  .cursor/
     rules/
       design-standards.mdc
     agents/
       design-reviewer.md
+  .opencode/
+    agents/
+      design-reviewer.md
+    commands/
+      design-review.md
 ```
 
 Three things happened:
 
 1. The package was downloaded into `apm_modules/` (like `node_modules/`).
-2. Instructions, agents, and skills were deployed to `.github/`, `.claude/`, and `.cursor/` (when present) -- the native directories that GitHub Copilot, Claude, and Cursor read from.
+2. Instructions, agents, and skills were deployed to `.github/`, `.claude/`, `.cursor/`, and `.opencode/` (when present) -- the native directories that GitHub Copilot, Claude, Cursor, and OpenCode read from.
 3. A lockfile (`apm.lock.yaml`) was created, pinning the exact commit so every team member gets identical configuration.
 
 Your `apm.yml` now tracks the dependency:
