@@ -74,7 +74,7 @@ apm install your-org/my-private-package   # resolves via GITHUB_HOST
 apm install dev.azure.com/org/project/my-private-package
 
 # Explicit HTTPS URL (always works for any host)
-apm install git: https://github.com/your-org/my-private-package.git
+apm install https://github.com/your-org/my-private-package.git
 ```
 
 Or declare it in `apm.yml`:
