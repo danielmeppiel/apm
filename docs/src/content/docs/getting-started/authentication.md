@@ -12,11 +12,11 @@ APM resolves every dependency to a git URL and clones it. Authentication depends
 
 | Host | Token variable | How it's used |
 |------|---------------|---------------|
-| GitHub / GitHub Enterprise | `GITHUB_APM_PAT` | Injected into the HTTPS URL as `x-access-token` |
+| GitHub.com / GitHub Enterprise (`*.ghe.com`) | `GITHUB_APM_PAT` | Injected into the HTTPS URL as `x-access-token` |
 | Azure DevOps | `ADO_APM_PAT` | Injected into the HTTPS URL as the password |
-| Any other git host | — | Delegated to **git credential helpers** or SSH keys |
+| Any other git host (including GitHub Enterprise on custom domains) | — | Delegated to **git credential helpers** or SSH keys |
 
-When APM has a token for the host, it injects it directly and disables interactive prompts. When no token is available (public repos or generic hosts), APM relaxes the git environment so your existing credential helpers — `gh auth`, macOS Keychain, Windows Credential Manager, `git-credential-store`, etc. — can provide credentials transparently.
+When APM has a token for a recognized host (GitHub.com, GitHub Enterprise under `*.ghe.com`, or Azure DevOps), it injects it directly and disables interactive prompts. When no token is available, or the host is treated as generic (including GitHub Enterprise on custom domains), APM relaxes the git environment so your existing credential helpers — `gh auth`, macOS Keychain, Windows Credential Manager, `git-credential-store`, etc. — can provide credentials transparently.
 
 ### Object-style `git:` references
 
@@ -32,7 +32,7 @@ dependencies:
       path: prompts/review.prompt.md
 ```
 
-Authentication for these URLs follows the same rules: APM uses `GITHUB_APM_PAT` / `ADO_APM_PAT` for recognized hosts, and falls back to your git credential helpers or SSH keys for everything else. If your GitLab, Bitbucket, or self-hosted git server is already configured in `~/.gitconfig` or your SSH agent, APM will work without any additional setup.
+Authentication for these URLs follows the same rules: APM uses `GITHUB_APM_PAT` / `ADO_APM_PAT` for recognized hosts (GitHub.com and GitHub Enterprise under `*.ghe.com`, Azure DevOps), and falls back to your git credential helpers or SSH keys for everything else (including GitHub Enterprise on custom domains). If your GitLab, Bitbucket, GitHub Enterprise, or self-hosted git server is already configured in `~/.gitconfig` or your SSH agent, APM will work without any additional setup.
 
 ## Token Reference
 
@@ -42,7 +42,7 @@ Authentication for these URLs follows the same rules: APM uses `GITHUB_APM_PAT` 
 export GITHUB_APM_PAT=github_pat_finegrained_token_here
 ```
 
-- **Scope**: Private repositories on GitHub and GitHub Enterprise
+- **Scope**: Private repositories on GitHub.com and GitHub Enterprise instances under `*.ghe.com`
 - **Type**: [Fine-grained PAT](https://github.com/settings/personal-access-tokens/new) (org or user-scoped)
 - **Permissions**: Repository read access
 - **Fallback**: `GITHUB_TOKEN` (e.g., in GitHub Actions)
