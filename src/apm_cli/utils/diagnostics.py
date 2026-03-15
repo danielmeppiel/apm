@@ -23,8 +23,15 @@ CATEGORY_COLLISION = "collision"
 CATEGORY_OVERWRITE = "overwrite"
 CATEGORY_WARNING = "warning"
 CATEGORY_ERROR = "error"
+CATEGORY_SECURITY = "security"
 
-_CATEGORY_ORDER = [CATEGORY_COLLISION, CATEGORY_OVERWRITE, CATEGORY_WARNING, CATEGORY_ERROR]
+_CATEGORY_ORDER = [
+    CATEGORY_SECURITY,
+    CATEGORY_COLLISION,
+    CATEGORY_OVERWRITE,
+    CATEGORY_WARNING,
+    CATEGORY_ERROR,
+]
 
 
 @dataclass(frozen=True)
@@ -35,6 +42,7 @@ class Diagnostic:
     category: str
     package: str = ""
     detail: str = ""
+    severity: str = ""  # e.g. "critical", "warning", "info" — used by security category
 
 
 class DiagnosticCollector:
@@ -101,6 +109,25 @@ class DiagnosticCollector:
                 )
             )
 
+    def security(
+        self,
+        message: str,
+        package: str = "",
+        detail: str = "",
+        severity: str = "warning",
+    ) -> None:
+        """Record a security finding (hidden characters, etc.)."""
+        with self._lock:
+            self._diagnostics.append(
+                Diagnostic(
+                    message=message,
+                    category=CATEGORY_SECURITY,
+                    package=package,
+                    detail=detail,
+                    severity=severity,
+                )
+            )
+
     # ------------------------------------------------------------------
     # Query helpers
     # ------------------------------------------------------------------
@@ -113,6 +140,19 @@ class DiagnosticCollector:
     @property
     def error_count(self) -> int:
         return sum(1 for d in self._diagnostics if d.category == CATEGORY_ERROR)
+
+    @property
+    def security_count(self) -> int:
+        """Return number of security findings."""
+        return sum(1 for d in self._diagnostics if d.category == CATEGORY_SECURITY)
+
+    @property
+    def has_critical_security(self) -> bool:
+        """Return True if any critical-severity security finding exists."""
+        return any(
+            d.category == CATEGORY_SECURITY and d.severity == "critical"
+            for d in self._diagnostics
+        )
 
     def by_category(self) -> Dict[str, List[Diagnostic]]:
         """Return diagnostics grouped by category, preserving insertion order."""
@@ -154,7 +194,9 @@ class DiagnosticCollector:
             if not items:
                 continue
 
-            if cat == CATEGORY_COLLISION:
+            if cat == CATEGORY_SECURITY:
+                self._render_security_group(items)
+            elif cat == CATEGORY_COLLISION:
                 self._render_collision_group(items)
             elif cat == CATEGORY_OVERWRITE:
                 self._render_overwrite_group(items)
@@ -172,6 +214,46 @@ class DiagnosticCollector:
             _rich_echo("")
 
     # -- Per-category renderers ------------------------------------
+
+    def _render_security_group(self, items: List[Diagnostic]) -> None:
+        critical = [d for d in items if d.severity == "critical"]
+        warnings = [d for d in items if d.severity == "warning"]
+        info = [d for d in items if d.severity == "info"]
+
+        if critical:
+            _rich_echo(
+                f"  [!] {len(critical)} critical security finding(s) — "
+                f"hidden characters detected",
+                color="red",
+                bold=True,
+            )
+            _rich_info("    Run 'apm audit' for full details")
+            if self.verbose:
+                by_pkg = _group_by_package(critical)
+                for pkg, diags in by_pkg.items():
+                    if pkg:
+                        _rich_echo(f"    [{pkg}]", color="dim")
+                    for d in diags:
+                        _rich_echo(f"      └─ {d.message}", color="red")
+
+        if warnings:
+            _rich_warning(
+                f"  [!] {len(warnings)} file(s) contain zero-width or hidden characters"
+            )
+            if not self.verbose:
+                _rich_info("    Run with --verbose to see details")
+            else:
+                by_pkg = _group_by_package(warnings)
+                for pkg, diags in by_pkg.items():
+                    if pkg:
+                        _rich_echo(f"    [{pkg}]", color="dim")
+                    for d in diags:
+                        _rich_echo(f"      └─ {d.message}", color="dim")
+
+        if info and self.verbose:
+            _rich_info(
+                f"  [i] {len(info)} file(s) contain unusual whitespace characters"
+            )
 
     def _render_collision_group(self, items: List[Diagnostic]) -> None:
         count = len(items)

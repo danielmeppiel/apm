@@ -1,5 +1,6 @@
 """Bundle packer  -- creates self-contained APM bundles from the resolved dependency tree."""
 
+import os
 import shutil
 import tarfile
 from dataclasses import dataclass, field
@@ -153,6 +154,34 @@ def pack_bundle(
             bundle_path=bundle_dir,
             files=unique_files,
             lockfile_enriched=True,
+        )
+
+    # 5b. Scan files for hidden characters before bundling
+    from ..security.content_scanner import ContentScanner
+    from ..utils.console import _rich_warning
+
+    _scan_findings_total = 0
+    for rel_path in unique_files:
+        src = project_root / rel_path
+        if src.is_symlink():
+            continue
+        if src.is_file():
+            findings = ContentScanner.scan_file(src)
+            if findings:
+                _scan_findings_total += len(findings)
+        elif src.is_dir():
+            for dirpath, _dirnames, filenames in os.walk(src, followlinks=False):
+                for fname in filenames:
+                    fpath = Path(dirpath) / fname
+                    if fpath.is_symlink():
+                        continue
+                    findings = ContentScanner.scan_file(fpath)
+                    if findings:
+                        _scan_findings_total += len(findings)
+    if _scan_findings_total:
+        _rich_warning(
+            f"Bundle contains {_scan_findings_total} hidden character(s) across source files "
+            f"— run 'apm audit' to inspect before publishing"
         )
 
     # 6. Build output directory

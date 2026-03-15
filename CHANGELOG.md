@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Content security scanning: `apm audit` command with `--file`, `--strip`; install-time pre-deployment gate that blocks critical hidden Unicode characters (override with `--force`); advisory scanning in `compile` and `pack` (#313)
 - Native Cursor IDE integration — `apm install` deploys primitives to `.cursor/` when the directory exists: instructions→rules (`.mdc`), agents, skills, hooks (`hooks.json`), and MCP (`mcp.json`)
 - Native OpenCode integration — `apm install` deploys primitives to `.opencode/` when the directory exists: agents, commands (from prompts), skills, and MCP (`opencode.json`) — inspired by @timvw (#257, #306)
 - `TargetProfile` data layer (`src/apm_cli/integration/targets.py`) — data-driven target definitions for scalable multi-target architecture

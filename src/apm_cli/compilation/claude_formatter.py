@@ -385,9 +385,20 @@ class ClaudeFormatter:
         files_written = 0
         if not dry_run and generated_commands:
             try:
+                from ..security.content_scanner import ContentScanner
                 commands_dir.mkdir(parents=True, exist_ok=True)
                 
                 for command_path, content in generated_commands.items():
+                    # Defense-in-depth: scan compiled command before writing
+                    findings = ContentScanner.scan_text(
+                        content, filename=str(command_path)
+                    )
+                    actionable = [f for f in findings if f.severity != "info"]
+                    if actionable:
+                        warnings.append(
+                            f"{command_path.name}: {len(actionable)} hidden character(s) "
+                            f"— run 'apm audit --file {command_path}' to inspect"
+                        )
                     command_path.write_text(content, encoding='utf-8')
                     files_written += 1
                     

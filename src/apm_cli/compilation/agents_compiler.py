@@ -448,6 +448,7 @@ class AgentsCompiler:
         
         # Write CLAUDE.md files
         files_written = 0
+        from ..security.content_scanner import ContentScanner
         for claude_path, content in claude_result.content_map.items():
             try:
                 # Create directory if needed
@@ -467,6 +468,17 @@ class AgentsCompiler:
                     except Exception:
                         pass  # Use original content if injection fails
                 
+                # Defense-in-depth: scan compiled output before writing
+                findings = ContentScanner.scan_text(
+                    final_content, filename=str(claude_path)
+                )
+                actionable = [f for f in findings if f.severity != "info"]
+                if actionable:
+                    all_warnings.append(
+                        f"CLAUDE.md contains {len(actionable)} hidden character(s) "
+                        f"— run 'apm audit --file {claude_path}' to inspect"
+                    )
+
                 claude_path.write_text(final_content, encoding='utf-8')
                 files_written += 1
             except OSError as e:

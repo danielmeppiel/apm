@@ -15,6 +15,7 @@ from apm_cli.commands._helpers import (
     _check_and_notify_updates,
     print_version,
 )
+from apm_cli.commands.audit import audit
 from apm_cli.commands.compile import compile as compile_cmd
 from apm_cli.commands.config import config
 from apm_cli.commands.deps import deps
@@ -52,6 +53,7 @@ def cli(ctx):
 
 
 # Register command groups
+cli.add_command(audit)
 cli.add_command(deps)
 cli.add_command(pack_cmd, name="pack")
 cli.add_command(unpack_cmd, name="unpack")

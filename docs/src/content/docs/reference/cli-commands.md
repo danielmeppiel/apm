@@ -82,7 +82,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--exclude TEXT` - Exclude specific runtime from installation
 - `--only [apm|mcp]` - Install only specific dependency type
 - `--update` - Update dependencies to latest Git references  
-- `--force` - Overwrite locally-authored files on collision
+- `--force` - Overwrite locally-authored files on collision; bypass security scan blocks
 - `--dry-run` - Show what would be installed without installing
 - `--parallel-downloads INTEGER` - Max concurrent package downloads (default: 4, 0 to disable)
 - `--verbose` - Show individual file paths and full error details in the diagnostic summary
@@ -207,6 +207,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Smart updates**: Only updates when package version/commit changes
 - **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
 - **Collision detection**: Skips local files that aren't managed by APM; use `--force` to overwrite
+- **Security scanning**: Source files are scanned for hidden Unicode characters before deployment. Critical findings (tag characters, bidi overrides) block deployment; use `--force` to override
 
 **Diagnostic Summary:**
 
@@ -329,6 +330,52 @@ apm prune --dry-run
 - Removes deployed integration files (prompts, agents, hooks, etc.) for pruned packages using the `deployed_files` manifest in `apm.lock.yaml`
 - Updates `apm.lock.yaml` to reflect the pruned state
 
+### `apm audit` - Scan for hidden Unicode characters
+
+Scan installed packages or arbitrary files for hidden Unicode characters that could embed invisible instructions in prompt files.
+
+```bash
+apm audit [PACKAGE] [OPTIONS]
+```
+
+**Arguments:**
+- `PACKAGE` - Optional package key to scan (repo URL from lockfile). If omitted, scans all installed packages.
+
+**Options:**
+- `--file PATH` - Scan an arbitrary file instead of installed packages
+- `--strip` - Strip non-critical hidden characters (zero-width spaces, unusual whitespace). Critical findings are preserved for manual review.
+- `-v, --verbose` - Show info-level findings and file details
+
+**Examples:**
+```bash
+# Scan all installed packages
+apm audit
+
+# Scan a specific package
+apm audit https://github.com/owner/repo
+
+# Scan any file (even non-APM-managed)
+apm audit --file .cursorrules
+
+# Auto-strip zero-width characters
+apm audit --strip
+
+# Verbose output with info-level findings
+apm audit --verbose
+```
+
+**Exit codes:**
+| Code | Meaning |
+|------|---------|
+| 0 | Clean — no findings, or info-only |
+| 1 | Critical findings — tag characters or bidi overrides detected |
+| 2 | Warnings only — zero-width characters or mid-file BOM |
+
+**What it detects:**
+- **Critical**: Unicode tag characters (U+E0001–E007F), bidirectional overrides — these have zero legitimate use in prompt files
+- **Warning**: Zero-width spaces/joiners, mid-file BOM — common copy-paste debris
+- **Info**: Non-breaking spaces, unusual whitespace — mostly harmless
+
 ### `apm pack` - Create a portable bundle
 
 Create a self-contained bundle from installed APM dependencies using the `deployed_files` recorded in `apm.lock.yaml` as the source of truth.
@@ -364,6 +411,7 @@ apm pack -o dist/
 
 **Behavior:**
 - Reads `apm.lock.yaml` to enumerate all `deployed_files` from installed dependencies
+- Scans files for hidden Unicode characters before bundling — warns if findings are detected
 - Copies files preserving directory structure
 - Writes an enriched `apm.lock.yaml` inside the bundle with a `pack:` metadata section (the project's own `apm.lock.yaml` is never modified)
 
@@ -868,6 +916,9 @@ apm compile --no-constitution
 - Displays actionable suggestions for fixing validation errors
 - Exits with error code 1 if validation fails
 - No output file generation in validation-only mode
+
+**Content Scanning:**
+Compiled output is scanned for hidden Unicode characters before writing to disk. If findings are detected, a warning is displayed with instructions to run `apm audit --file` for details. This is defense-in-depth — source files are already scanned during `apm install`.
 
 **Configuration Integration:**
 The compile command supports configuration via `apm.yml`:
