@@ -448,6 +448,7 @@ class AgentsCompiler:
         
         # Write CLAUDE.md files
         files_written = 0
+        from ..security.content_scanner import ContentScanner
         for claude_path, content in claude_result.content_map.items():
             try:
                 # Create directory if needed
@@ -468,7 +469,6 @@ class AgentsCompiler:
                         pass  # Use original content if injection fails
                 
                 # Defense-in-depth: scan compiled output before writing
-                from ..security.content_scanner import ContentScanner
                 findings = ContentScanner.scan_text(
                     final_content, filename=str(claude_path)
                 )

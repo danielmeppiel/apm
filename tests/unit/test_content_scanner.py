@@ -228,6 +228,22 @@ class TestScanFile:
         findings = ContentScanner.scan_file(f)
         assert findings == []
 
+    def test_latin1_file_returns_empty(self, tmp_path):
+        """Non-UTF-8 encoded files should be skipped gracefully."""
+        f = tmp_path / "latin1.txt"
+        f.write_bytes("Stra\xdfe".encode("latin-1"))
+        findings = ContentScanner.scan_file(f)
+        assert findings == []
+
+    def test_bom_plus_critical_detected(self, tmp_path):
+        """Files with BOM and critical chars should report both."""
+        f = tmp_path / "bom_critical.md"
+        f.write_text("\ufeff" + "tag\U000E0041char\n", encoding="utf-8")
+        findings = ContentScanner.scan_file(f)
+        severities = {fnd.severity for fnd in findings}
+        assert "critical" in severities
+        assert "info" in severities  # Leading BOM is info-level
+
 
 class TestHasCritical:
     def test_no_findings(self):
