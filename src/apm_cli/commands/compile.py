@@ -558,11 +558,12 @@ def compile(
                             )
                             if findings:
                                 _, summary = ContentScanner.classify(findings)
-                                total = sum(summary.values())
-                                _rich_warning(
-                                    f"Compiled output contains {total} hidden character(s) "
-                                    f"— run 'apm audit --file {output_path}' to inspect"
-                                )
+                                actionable = summary.get("critical", 0) + summary.get("warning", 0)
+                                if actionable:
+                                    _rich_warning(
+                                        f"Compiled output contains {actionable} hidden character(s) "
+                                        f"— run 'apm audit --file {output_path}' to inspect"
+                                    )
                             try:
                                 _atomic_write(output_path, final_content)
                             except OSError as e:

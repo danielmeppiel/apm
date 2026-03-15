@@ -472,9 +472,10 @@ class AgentsCompiler:
                 findings = ContentScanner.scan_text(
                     final_content, filename=str(claude_path)
                 )
-                if findings:
+                actionable = [f for f in findings if f.severity != "info"]
+                if actionable:
                     all_warnings.append(
-                        f"CLAUDE.md contains {len(findings)} hidden character(s) "
+                        f"CLAUDE.md contains {len(actionable)} hidden character(s) "
                         f"— run 'apm audit --file {claude_path}' to inspect"
                     )
 

@@ -393,9 +393,10 @@ class ClaudeFormatter:
                     findings = ContentScanner.scan_text(
                         content, filename=str(command_path)
                     )
-                    if findings:
+                    actionable = [f for f in findings if f.severity != "info"]
+                    if actionable:
                         warnings.append(
-                            f"{command_path.name}: {len(findings)} hidden character(s) "
+                            f"{command_path.name}: {len(actionable)} hidden character(s) "
                             f"— run 'apm audit --file {command_path}' to inspect"
                         )
                     command_path.write_text(content, encoding='utf-8')
