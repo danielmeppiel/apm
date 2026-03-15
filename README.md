@@ -41,6 +41,7 @@ apm install    # every agent is configured
 - **Install from anywhere** — GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, any git host
 - **Transitive dependencies** — packages can depend on packages; APM resolves the full tree
 - **Compile to standards** — `apm compile` produces `AGENTS.md` (GitHub Copilot, OpenCode), `CLAUDE.md` (Claude Code), and `.cursor/rules/` (Cursor)
+- **Content security** — `apm audit` scans for hidden Unicode characters; `apm install` blocks compromised packages before agents can read them
 - **Create & share** — `apm pack` bundles your current configuration as a zipped package
 - **CI/CD ready** — [GitHub Action](https://github.com/microsoft/apm-action) for automated workflows
 
