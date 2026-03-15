@@ -1,11 +1,71 @@
 ---
 title: "Security Model"
-description: "How APM handles dependency provenance, path security, and supply chain integrity."
+description: "How APM handles supply chain security for AI prompts — content scanning, dependency provenance, path safety, and MCP trust."
 sidebar:
   order: 3
 ---
 
 This page documents APM's security posture for enterprise security reviews, compliance audits, and supply chain assessments.
+
+## The prompt supply chain is different
+
+Traditional package managers install code that sits inert until a developer or CI pipeline explicitly executes it. Between `npm install` and `npm start`, there is a gap — time for `npm audit`, code review, and policy checks.
+
+**Prompt files have no such gap.** The moment a `.md` file lands in `.github/prompts/` or `.claude/agents/`, any IDE agent watching the filesystem — Copilot, Cursor, Claude Code — may already be ingesting it. There is no "execution step." File presence IS execution.
+
+This changes the security model fundamentally. A post-install scan that warns about a bad file is a smoke detector — useful, but the fire is already burning. APM treats prompt deployment as a **pre-deployment gate**: scan first, deploy only if clean.
+
+## Content scanning
+
+### The threat
+
+Researchers have found hidden Unicode characters embedded in popular shared rules files. Tag characters (U+E0001–E007F) map 1:1 to invisible ASCII. Bidirectional overrides can reorder visible text. Zero-width joiners create invisible gaps. LLMs tokenize all of these individually, meaning models process instructions that developers cannot see on screen.
+
+### What APM detects
+
+| Severity | Characters | Risk |
+|----------|-----------|------|
+| Critical | Tag characters (U+E0001–E007F), bidi overrides (U+202A–E, U+2066–9) | Hidden instruction embedding. Zero legitimate use in prompt files. |
+| Warning | Zero-width spaces/joiners (U+200B–D), mid-file BOM (U+FEFF) | Common copy-paste debris, but can hide content. |
+| Info | Non-breaking spaces (U+00A0), unusual whitespace (U+2000–200A) | Mostly harmless, flagged for awareness. |
+
+### Pre-deployment gate
+
+During `apm install`, source files in `apm_modules/` are scanned **before** any integrator copies them to target directories:
+
+```
+download → scan source → block or deploy → report
+```
+
+- **Critical findings block deployment.** The package is downloaded and cached so you can inspect it (`apm_modules/owner/package/`), but nothing reaches agent-readable directories.
+- **Warnings are non-blocking.** Zero-width characters are flagged in the diagnostics summary. Files are deployed normally.
+- **`--force` overrides the block.** Consistent with existing collision semantics — an explicit "I know what I'm doing."
+- **Multi-package installs continue.** A blocked package doesn't stop other packages from installing.
+
+### On-demand scanning
+
+`apm audit` scans deployed files or any arbitrary file, independent of the install flow:
+
+```bash
+apm audit                        # Scan all installed packages
+apm audit --file .cursorrules    # Scan any file
+apm audit --strip                # Remove non-critical characters
+```
+
+The `--file` flag is useful for inspecting files obtained outside APM — downloaded rules files, copy-pasted instructions, or files from pull requests.
+
+See [Content scanning with `apm audit`](../governance/#content-scanning-with-apm-audit) for usage details and exit codes.
+
+### Limitations
+
+Content scanning detects hidden Unicode characters. It does not detect:
+
+- Plain-text prompt injection (visible but malicious instructions)
+- Homoglyph substitution (visually similar characters from different scripts)
+- Semantic manipulation (subtly misleading but syntactically normal text)
+- Binary payload embedding
+
+`--strip` removes non-critical characters from deployed copies. It does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
 
 ## What APM does
 
@@ -141,9 +201,7 @@ APM authenticates to git hosts using personal access tokens (PATs) read from env
 
 For GitHub, a fine-grained PAT with read-only `Contents` permission on the repositories you depend on is sufficient. APM only performs git clone and fetch operations.
 
-## Supply chain considerations
-
-### Attack surface comparison
+## Attack surface comparison
 
 APM's design eliminates several supply chain attack vectors common in traditional package managers:
 
@@ -154,27 +212,7 @@ APM's design eliminates several supply chain attack vectors common in traditiona
 | Post-install scripts | Arbitrary code runs after install | No code execution |
 | Typosquatting | Similar package names on registry | Dependencies are full git URLs |
 | Build-time injection | Malicious build steps execute | No build step — files are copied |
-
-### Auditing dependency changes
-
-Because `apm.lock.yaml` is a plain YAML file checked into version control, standard git tooling provides a full audit trail:
-
-```bash
-# View all dependency changes over time
-git log --oneline apm.lock.yaml
-
-# See exactly what changed in a specific commit
-git diff HEAD~1 -- apm.lock.yaml
-
-# Find when a specific dependency was added
-git log --all -p -- apm.lock.yaml | grep -A5 "owner/repo"
-```
-
-### Pinning and updates
-
-- `apm install` respects the existing lock file. Dependencies are not re-resolved unless explicitly requested.
-- `apm update` re-resolves dependencies and updates the lock file. The diff is visible in version control before merging.
-- There is no automatic update mechanism. Dependency changes require a deliberate action and a code review.
+| Hidden content injection | Not applicable (binary packages) | Pre-deploy scan blocks critical hidden Unicode; `apm audit` for on-demand checks |
 
 ## Frequently asked questions
 
@@ -194,9 +232,13 @@ No. All deploy paths are validated against the project root using path traversal
 
 Not by default. Transitive MCP server declarations are blocked unless you explicitly opt in with `--trust-transitive-mcp` or re-declare the dependency as a direct dependency.
 
+### Can a package embed hidden instructions?
+
+Not without detection. APM scans all package source files before deployment. Critical hidden characters (tag characters, bidi overrides) block deployment. `apm audit` provides on-demand scanning for any file, including those obtained outside APM.
+
 ### How do I audit what APM installed?
 
-The `apm.lock.yaml` file records every dependency (with exact commit SHA) and every file deployed. It is a plain YAML file suitable for automated policy checks, diff review, and compliance tooling.
+The `apm.lock.yaml` file records every dependency (with exact commit SHA) and every file deployed. It is a plain YAML file suitable for automated policy checks, diff review, and compliance tooling. See [Governance & Compliance](../governance/) for audit workflows.
 
 ### Is the APM binary signed?
 

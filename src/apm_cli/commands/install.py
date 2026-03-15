@@ -508,6 +508,80 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 # ---------------------------------------------------------------------------
 
 
+def _pre_deploy_security_scan(
+    install_path: Path,
+    diagnostics: DiagnosticCollector,
+    package_name: str = "",
+    force: bool = False,
+) -> bool:
+    """Scan package source files for hidden characters BEFORE deployment.
+
+    Prompt files are read by IDE agents the moment they land on disk —
+    unlike JavaScript, there is no gap between "install" and "execute".
+    This function acts as a gate: critical findings block deployment
+    entirely (unless ``--force``), while warnings are recorded but
+    allow deployment to proceed.
+
+    Returns:
+        True if deployment should proceed, False to block.
+    """
+    from ..security.content_scanner import ContentScanner
+
+    all_findings = []
+    for f in install_path.rglob("*"):
+        if not f.is_file():
+            continue
+        findings = ContentScanner.scan_file(f)
+        all_findings.extend(findings)
+
+    if not all_findings:
+        return True
+
+    has_critical = ContentScanner.has_critical(all_findings)
+    summary = ContentScanner.summarize(all_findings)
+    crit_count = summary.get("critical", 0)
+    warn_count = summary.get("warning", 0)
+
+    if has_critical and not force:
+        diagnostics.security(
+            message=(
+                "Blocked — critical hidden characters in source. "
+                "Use --force to override."
+            ),
+            package=package_name,
+            detail=f"{crit_count} critical, {warn_count} warning(s)",
+            severity="critical",
+        )
+        _rich_error(
+            f"  Blocked: {package_name or 'package'} contains "
+            f"{crit_count} critical hidden character(s)"
+        )
+        _rich_info(f"  └─ Inspect source: {install_path}")
+        _rich_info("  └─ Use --force to deploy anyway")
+        return False
+
+    if has_critical:
+        # --force: deploy but warn loudly
+        diagnostics.security(
+            message="Deployed with --force despite critical hidden characters",
+            package=package_name,
+            detail=f"{crit_count} critical finding(s)",
+            severity="critical",
+        )
+    elif warn_count > 0:
+        diagnostics.security(
+            message="Hidden characters in source files",
+            package=package_name,
+            detail=(
+                f"{warn_count} warning(s) — "
+                "run 'apm audit --strip' after install"
+            ),
+            severity="warning",
+        )
+
+    return True
+
+
 def _integrate_package_primitives(
     package_info,
     project_root,
@@ -524,6 +598,7 @@ def _integrate_package_primitives(
     force,
     managed_files,
     diagnostics,
+    package_name="",
 ):
     """Run the full integration pipeline for a single package.
 
@@ -1214,6 +1289,17 @@ def _install_apm_dependencies(
 
                     # Run shared integration pipeline
                     try:
+                        # Pre-deploy security gate
+                        if not _pre_deploy_security_scan(
+                            install_path, diagnostics,
+                            package_name=dep_key, force=force,
+                        ):
+                            package_deployed_files[dep_key] = []
+                            installed_packages.append(
+                                (dep_ref, "local", depth, resolved_by)
+                            )
+                            continue
+
                         int_result = _integrate_package_primitives(
                             package_info, project_root,
                             integrate_vscode=integrate_vscode,
@@ -1228,6 +1314,7 @@ def _install_apm_dependencies(
                             force=force,
                             managed_files=managed_files,
                             diagnostics=diagnostics,
+                            package_name=dep_key,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1381,6 +1468,14 @@ def _install_apm_dependencies(
                             # Track package type for lockfile
                             if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
                                 package_types[dep_key] = cached_package_info.package_type.value
+
+                            # Pre-deploy security gate
+                            if not _pre_deploy_security_scan(
+                                install_path, diagnostics,
+                                package_name=dep_key, force=force,
+                            ):
+                                package_deployed_files[dep_key] = []
+                                continue
 
                             # VSCode + Claude + OpenCode integration (prompts + agents)
                             if integrate_vscode or integrate_claude or integrate_opencode:
@@ -1725,6 +1820,14 @@ def _install_apm_dependencies(
                             _rich_info(f"  └─ Package type: APM Package (apm.yml)")
 
                     # Auto-integrate prompts and agents if enabled
+                    # Pre-deploy security gate
+                    if not _pre_deploy_security_scan(
+                        package_info.install_path, diagnostics,
+                        package_name=dep_ref.get_unique_key(), force=force,
+                    ):
+                        package_deployed_files[dep_ref.get_unique_key()] = []
+                        continue
+
                     if integrate_vscode or integrate_claude or integrate_opencode:
                         try:
                             # Integrate prompts + agents (dual-target: .github/ + .claude/)

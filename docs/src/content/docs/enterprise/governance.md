@@ -100,6 +100,35 @@ No additional tooling is required. The lock file turns git into an agent configu
 
 ---
 
+## Content scanning with `apm audit`
+
+APM scans for hidden Unicode characters that can embed invisible instructions in prompt files. For background on the threat model, severity levels, and the pre-deployment gate that blocks critical findings during `apm install`, see [Content scanning](../security/#content-scanning) in the security model.
+
+`apm audit` provides on-demand scanning independent of the install flow.
+
+### Usage
+
+```bash
+apm audit                              # Scan all installed packages
+apm audit <package>                    # Scan a specific package
+apm audit --file .cursorrules          # Scan any file (even non-APM-managed)
+apm audit --strip                      # Remove non-critical characters
+```
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Clean — no findings, or info-only |
+| 1 | Critical findings — tag characters or bidi overrides detected |
+| 2 | Warnings only — zero-width or unusual characters |
+
+### The `--file` escape hatch
+
+`apm audit --file .cursorrules` scans any file, not just APM-managed ones. This is useful for inspecting files obtained outside the APM workflow — downloaded rules files, copy-pasted instructions, or files from PRs.
+
+---
+
 ## CI enforcement with `apm audit --ci`
 
 :::note[Planned Feature]
@@ -348,6 +377,7 @@ No agent configuration change can reach a protected branch without passing throu
 | Audit trail | Git history of `apm.lock.yaml` | Available |
 | Constitution injection | `memory/constitution.md` with hash verification | Available |
 | Transitive MCP trust control | `--trust-transitive-mcp` flag | Available |
+| Content scanning | Pre-deploy gate blocks critical hidden Unicode; `apm audit` for on-demand checks | Available |
 | CI enforcement | `apm audit --ci` as required status check | Planned |
 | Drift detection | `apm audit --drift` | Planned |
 | Approved source policies | CODEOWNERS + PR review | Available (manual) |
