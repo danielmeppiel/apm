@@ -33,7 +33,7 @@ Or declare it in `apm.yml`:
 ```yaml
 dependencies:
   apm:
-    - your-org/my-private-package@v1.0.0
+    - your-org/my-private-package#v1.0.0
 ```
 
 For GitLab, Bitbucket, or self-hosted git servers, use the `git:` object form and rely on your [existing git credentials](../../getting-started/authentication/#object-style-git-references):
