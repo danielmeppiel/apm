@@ -70,3 +70,4 @@ skill-strategy.md
 apm_modules/
 build/tmp/
 scout-pipeline-result.png
+.copilot/
