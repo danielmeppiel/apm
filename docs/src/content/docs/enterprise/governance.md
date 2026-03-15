@@ -121,7 +121,7 @@ apm audit --strip                      # Remove non-critical characters
 |------|---------|
 | 0 | Clean — no findings, or info-only |
 | 1 | Critical findings — tag characters or bidi overrides detected |
-| 2 | Warnings only — zero-width or unusual characters |
+| 2 | Warnings only — zero-width characters or mid-file BOM |
 
 ### The `--file` escape hatch
 

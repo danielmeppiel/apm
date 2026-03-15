@@ -326,11 +326,12 @@ class BaseIntegrator:
         # Expand directories into individual files
         expanded: List[Path] = []
         for path in target_paths:
-            if not path.exists():
+            if path.is_symlink() or not path.exists():
                 continue
             if path.is_dir():
                 expanded.extend(
-                    f for f in path.rglob("*") if f.is_file()
+                    f for f in path.rglob("*")
+                    if f.is_file() and not f.is_symlink()
                 )
             else:
                 expanded.append(path)

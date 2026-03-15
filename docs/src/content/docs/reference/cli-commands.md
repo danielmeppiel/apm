@@ -367,9 +367,9 @@ apm audit --verbose
 **Exit codes:**
 | Code | Meaning |
 |------|---------|
-| 0 | Clean — no findings |
+| 0 | Clean — no findings, or info-only |
 | 1 | Critical findings — tag characters or bidi overrides detected |
-| 2 | Warnings only — zero-width or unusual characters |
+| 2 | Warnings only — zero-width characters or mid-file BOM |
 
 **What it detects:**
 - **Critical**: Unicode tag characters (U+E0001–E007F), bidirectional overrides — these have zero legitimate use in prompt files

@@ -100,6 +100,13 @@ class ContentScanner:
         if not content:
             return []
 
+        # Fast path: pure-ASCII content cannot contain any suspicious
+        # codepoints.  str.isascii() runs at C speed (<1 µs for typical
+        # prompt files) and lets us skip the Python-level character loop
+        # for the ~90 %+ of files that are plain ASCII.
+        if content.isascii():
+            return []
+
         findings: List[ScanFinding] = []
         lines = content.split("\n")
 
@@ -176,6 +183,22 @@ class ContentScanner:
         for f in findings:
             counts[f.severity] = counts.get(f.severity, 0) + 1
         return counts
+
+    @staticmethod
+    def classify(
+        findings: List[ScanFinding],
+    ) -> Tuple[bool, Dict[str, int]]:
+        """Combined has_critical + summarize in a single pass.
+
+        Returns (has_critical, severity_counts).
+        """
+        critical = False
+        counts: Dict[str, int] = {"critical": 0, "warning": 0, "info": 0}
+        for f in findings:
+            counts[f.severity] = counts.get(f.severity, 0) + 1
+            if f.severity == "critical":
+                critical = True
+        return critical, counts
 
     @staticmethod
     def strip_non_critical(content: str) -> str:

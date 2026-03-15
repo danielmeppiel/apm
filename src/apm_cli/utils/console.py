@@ -81,7 +81,7 @@ def _rich_echo(message: str, color: str = "white", style: str = None, bold: bool
             style_str = color
             if bold:
                 style_str = f"bold {color}"
-            console.print(message, style=style_str)
+            console.print(message, style=style_str, highlight=False, markup=False)
             return
         except Exception:
             pass

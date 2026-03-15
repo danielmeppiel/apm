@@ -527,18 +527,24 @@ def _pre_deploy_security_scan(
     """
     from ..security.content_scanner import ContentScanner
 
-    all_findings = []
+    all_findings: list = []
+    found_critical = False
     for f in install_path.rglob("*"):
-        if not f.is_file():
+        if f.is_symlink() or not f.is_file():
             continue
         findings = ContentScanner.scan_file(f)
-        all_findings.extend(findings)
+        if findings:
+            all_findings.extend(findings)
+            if not force and not found_critical:
+                found_critical = ContentScanner.has_critical(findings)
+                if found_critical:
+                    # Block is certain — skip remaining files.
+                    break
 
     if not all_findings:
         return True
 
-    has_critical = ContentScanner.has_critical(all_findings)
-    summary = ContentScanner.summarize(all_findings)
+    has_critical, summary = ContentScanner.classify(all_findings)
     crit_count = summary.get("critical", 0)
     warn_count = summary.get("warning", 0)
 
