@@ -64,7 +64,7 @@ export GITHUB_COPILOT_PAT=ghp_copilot_token
 ```
 
 - **Scope**: Runtime features (see [Agent Workflows](../../guides/agent-workflows/))
-- **Fallback**: `GITHUB_TOKEN`
+- **Fallback**: `GITHUB_APM_PAT`, then `GITHUB_TOKEN` (e.g., in GitHub Actions)
 
 ### GITHUB_HOST
 
