@@ -7,6 +7,7 @@ import click
 
 from ..compilation import AgentsCompiler, CompilationConfig
 from ..primitives.discovery import discover_primitives
+from ..security.content_scanner import ContentScanner
 from ..utils.console import (
     STATUS_SYMBOLS,
     _rich_echo,
@@ -551,6 +552,17 @@ def compile(
                     if not dry_run:
                         # Only rewrite when content materially changes (creation, update, missing constitution case)
                         if c_status in ("CREATED", "UPDATED", "MISSING"):
+                            # Defense-in-depth: scan compiled output before writing
+                            findings = ContentScanner.scan_text(
+                                final_content, filename=str(output_path)
+                            )
+                            if findings:
+                                has_crit, summary = ContentScanner.classify(findings)
+                                total = sum(summary.values())
+                                _rich_warning(
+                                    f"Compiled output contains {total} hidden character(s) "
+                                    f"— run 'apm audit --file {output_path}' to inspect"
+                                )
                             try:
                                 _atomic_write(output_path, final_content)
                             except OSError as e:

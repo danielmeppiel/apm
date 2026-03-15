@@ -1,9 +1,7 @@
 """Tests for install-time content scanning integration.
 
 Verifies that ``_pre_deploy_security_scan()`` blocks deployment on
-critical findings and allows deployment on warnings/clean, and that
-``BaseIntegrator.scan_deployed_files()`` correctly pushes findings
-into a ``DiagnosticCollector``.
+critical findings and allows deployment on warnings/clean.
 """
 
 from pathlib import Path
@@ -11,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from apm_cli.commands.install import _pre_deploy_security_scan
-from apm_cli.integration.base_integrator import BaseIntegrator
+from apm_cli.security.content_scanner import ContentScanner
 from apm_cli.utils.diagnostics import DiagnosticCollector
 
 
@@ -41,72 +39,7 @@ def mixed_files(tmp_path):
     return [clean, warning, critical]
 
 
-class TestScanDeployedFiles:
-    """Tests for BaseIntegrator.scan_deployed_files()."""
-
-    def test_clean_files_no_diagnostics(self, clean_files):
-        diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files(clean_files, diagnostics=diag, package="pkg")
-        assert not diag.has_diagnostics
-        assert diag.security_count == 0
-
-    def test_warning_files_recorded(self, tmp_path):
-        p = tmp_path / "warn.md"
-        p.write_text("zero\u200Bwidth\n", encoding="utf-8")
-        diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files([p], diagnostics=diag, package="pkg")
-        assert diag.security_count == 1
-        assert not diag.has_critical_security
-
-    def test_critical_files_recorded(self, tmp_path):
-        p = tmp_path / "evil.md"
-        p.write_text("tag\U000E0001char\n", encoding="utf-8")
-        diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files([p], diagnostics=diag, package="pkg")
-        assert diag.security_count == 1
-        assert diag.has_critical_security
-
-    def test_mixed_files_all_recorded(self, mixed_files):
-        diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files(mixed_files, diagnostics=diag, package="pkg")
-        assert diag.security_count == 2  # warning + critical
-        assert diag.has_critical_security
-
-    def test_skips_missing_files(self, tmp_path):
-        missing = tmp_path / "gone.md"
-        diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files([missing], diagnostics=diag, package="pkg")
-        assert not diag.has_diagnostics
-
-    def test_scans_files_inside_directories(self, tmp_path):
-        """When a deployed path is a directory, scan its files recursively."""
-        d = tmp_path / "skill-dir"
-        d.mkdir()
-        (d / "SKILL.md").write_text("skill\u200Bcontent\n", encoding="utf-8")
-        (d / "clean.md").write_text("clean\n", encoding="utf-8")
-        sub = d / "nested"
-        sub.mkdir()
-        (sub / "deep.md").write_text("deep\U000E0001file\n", encoding="utf-8")
-
-        diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files([d], diagnostics=diag, package="pkg")
-        # SKILL.md (warning) + deep.md (critical) = 2 findings
-        assert diag.security_count == 2
-        assert diag.has_critical_security
-
-    def test_none_diagnostics_noop(self, clean_files):
-        # Should not raise when diagnostics is None
-        BaseIntegrator.scan_deployed_files(clean_files, diagnostics=None, package="pkg")
-
-    def test_package_name_in_diagnostic(self, tmp_path):
-        p = tmp_path / "warn.md"
-        p.write_text("has\u200Bchar\n", encoding="utf-8")
-        diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files([p], diagnostics=diag, package="my-pkg")
-        groups = diag.by_category()
-        security_items = groups.get("security", [])
-        assert len(security_items) == 1
-        assert security_items[0].package == "my-pkg"
+# ── Diagnostics security rendering tests ────────────────────────────
 
 
 class TestDiagnosticsSecurityRendering:
@@ -114,7 +47,15 @@ class TestDiagnosticsSecurityRendering:
 
     def test_render_summary_includes_security(self, mixed_files, capsys):
         diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files(mixed_files, diagnostics=diag, package="pkg")
+        for f in mixed_files:
+            findings = ContentScanner.scan_file(f)
+            if findings:
+                has_crit, summary = ContentScanner.classify(findings)
+                sev = "critical" if has_crit else "warning"
+                diag.security(
+                    message=str(f), package="pkg",
+                    detail=f"{len(findings)} finding(s)", severity=sev,
+                )
         diag.render_summary()
         captured = capsys.readouterr()
         assert "Diagnostics" in captured.out or "security" in captured.out.lower()
@@ -123,14 +64,22 @@ class TestDiagnosticsSecurityRendering:
         p = tmp_path / "evil.md"
         p.write_text("x\U000E0001y\n", encoding="utf-8")
         diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files([p], diagnostics=diag, package="pkg")
+        findings = ContentScanner.scan_file(p)
+        diag.security(
+            message=str(p), package="pkg",
+            detail=f"{len(findings)} finding(s)", severity="critical",
+        )
         assert diag.has_critical_security is True
 
     def test_no_critical_when_only_warnings(self, tmp_path):
         p = tmp_path / "warn.md"
         p.write_text("x\u200By\n", encoding="utf-8")
         diag = DiagnosticCollector()
-        BaseIntegrator.scan_deployed_files([p], diagnostics=diag, package="pkg")
+        findings = ContentScanner.scan_file(p)
+        diag.security(
+            message=str(p), package="pkg",
+            detail=f"{len(findings)} finding(s)", severity="warning",
+        )
         assert diag.has_critical_security is False
 
 

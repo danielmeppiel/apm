@@ -42,6 +42,13 @@ download → scan source → block or deploy → report
 - **`--force` overrides the block.** Consistent with existing collision semantics — an explicit "I know what I'm doing."
 - **Multi-package installs continue.** A blocked package doesn't stop other packages from installing.
 
+### Compile and pack scanning
+
+Content scanning extends beyond install:
+
+- **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, commands) before writing to disk. This is defense-in-depth — source files were already scanned at install, but compilation assembles content from multiple sources and the final output is what agents read.
+- **`apm pack`** scans files before bundling. This catches hidden characters before a package is published, preventing authors from accidentally distributing tainted content.
+
 ### On-demand scanning
 
 `apm audit` scans deployed files or any arbitrary file, independent of the install flow:
@@ -66,6 +73,13 @@ Content scanning detects hidden Unicode characters. It does not detect:
 - Binary payload embedding
 
 `--strip` removes non-critical characters from deployed copies. It does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
+
+### Planned hardening
+
+The following capabilities are planned for future releases:
+
+- **Content integrity hashing** — SHA-256 checksums stored in `apm.lock.yaml` to verify downloaded content hasn't been tampered with.
+- **Hook transparency** — display hook script contents during install so developers can review what will execute.
 
 ## What APM does
 

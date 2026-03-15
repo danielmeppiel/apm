@@ -467,6 +467,20 @@ class AgentsCompiler:
                     except Exception:
                         pass  # Use original content if injection fails
                 
+                # Defense-in-depth: scan compiled output before writing
+                from ..security.content_scanner import ContentScanner
+                findings = ContentScanner.scan_text(
+                    final_content, filename=str(claude_path)
+                )
+                if findings:
+                    import logging
+                    total = len(findings)
+                    logging.getLogger(__name__).warning(
+                        "CLAUDE.md contains %d hidden character(s) "
+                        "— run 'apm audit --file %s' to inspect",
+                        total, claude_path,
+                    )
+
                 claude_path.write_text(final_content, encoding='utf-8')
                 files_written += 1
             except OSError as e:

@@ -388,6 +388,16 @@ class ClaudeFormatter:
                 commands_dir.mkdir(parents=True, exist_ok=True)
                 
                 for command_path, content in generated_commands.items():
+                    # Defense-in-depth: scan compiled command before writing
+                    from ..security.content_scanner import ContentScanner
+                    findings = ContentScanner.scan_text(
+                        content, filename=str(command_path)
+                    )
+                    if findings:
+                        warnings.append(
+                            f"{command_path.name}: {len(findings)} hidden character(s) "
+                            f"— run 'apm audit --file {command_path}' to inspect"
+                        )
                     command_path.write_text(content, encoding='utf-8')
                     files_written += 1
                     

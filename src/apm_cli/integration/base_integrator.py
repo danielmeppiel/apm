@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 
 from apm_cli.compilation.link_resolver import UnifiedLinkResolver
 from apm_cli.primitives.discovery import discover_primitives
-from apm_cli.security.content_scanner import ContentScanner
 from apm_cli.utils.console import _rich_warning
 
 
@@ -301,61 +300,6 @@ class BaseIntegrator:
                     stats["errors"] += 1
 
         return stats
-
-    # ------------------------------------------------------------------
-    # Content security scanning
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def scan_deployed_files(
-        target_paths: List[Path],
-        diagnostics=None,
-        package: str = "",
-    ) -> None:
-        """Scan deployed files for hidden Unicode characters.
-
-        Called after file integration. Reads each file and records any
-        security findings to *diagnostics*. When a path is a directory
-        (e.g. a deployed skill folder), all files inside are scanned
-        recursively. Failures are silently ignored (file may have been
-        removed, be binary, etc.).
-        """
-        if diagnostics is None:
-            return
-
-        # Expand directories into individual files
-        expanded: List[Path] = []
-        for path in target_paths:
-            if path.is_symlink() or not path.exists():
-                continue
-            if path.is_dir():
-                expanded.extend(
-                    f for f in path.rglob("*")
-                    if f.is_file() and not f.is_symlink()
-                )
-            else:
-                expanded.append(path)
-
-        for path in expanded:
-            findings = ContentScanner.scan_file(path)
-            if not findings:
-                continue
-            summary = ContentScanner.summarize(findings)
-            # Pick the highest severity for the per-file diagnostic
-            if summary.get("critical", 0) > 0:
-                sev = "critical"
-            elif summary.get("warning", 0) > 0:
-                sev = "warning"
-            else:
-                sev = "info"
-            count = len(findings)
-            noun = "hidden character" if count == 1 else "hidden characters"
-            diagnostics.security(
-                message=str(path),
-                package=package,
-                detail=f"{count} {noun} found",
-                severity=sev,
-            )
 
     # ------------------------------------------------------------------
     # File-discovery helpers (reusable globs)

@@ -411,6 +411,7 @@ apm pack -o dist/
 
 **Behavior:**
 - Reads `apm.lock.yaml` to enumerate all `deployed_files` from installed dependencies
+- Scans files for hidden Unicode characters before bundling — warns if findings are detected
 - Copies files preserving directory structure
 - Writes an enriched `apm.lock.yaml` inside the bundle with a `pack:` metadata section (the project's own `apm.lock.yaml` is never modified)
 
@@ -915,6 +916,9 @@ apm compile --no-constitution
 - Displays actionable suggestions for fixing validation errors
 - Exits with error code 1 if validation fails
 - No output file generation in validation-only mode
+
+**Content Scanning:**
+Compiled output is scanned for hidden Unicode characters before writing to disk. If findings are detected, a warning is displayed with instructions to run `apm audit --file` for details. This is defense-in-depth — source files are already scanned during `apm install`.
 
 **Configuration Integration:**
 The compile command supports configuration via `apm.yml`:
