@@ -24,7 +24,7 @@ Set the repository to **private** in your git host's settings.
 Set the appropriate token (see [Authentication](../../getting-started/authentication/)), then install like any public package:
 
 ```bash
-export GITHUB_APM_PAT=ghp_your_token
+export GITHUB_APM_PAT=github_pat_your_token
 apm install your-org/my-private-package
 ```
 
