@@ -110,8 +110,8 @@ apm install team/package  # → github.company.com/team/package
 > ```yaml
 > dependencies:
 >   apm:
->   - team/internal-package                   # → GITHUB_HOST
->   - github.com/public/open-source-package   # → github.com
+>     - team/internal-package                   # → GITHUB_HOST
+>     - github.com/public/open-source-package   # → github.com
 > ```
 
 #### GitLab, Bitbucket, or Self-Hosted Git
