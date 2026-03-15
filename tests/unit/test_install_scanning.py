@@ -152,3 +152,22 @@ class TestPreDeploySecurityScan:
         items = diag.by_category().get("security", [])
         assert len(items) == 1
         assert items[0].package == "my-pkg"
+
+    def test_does_not_follow_symlinked_directories(self, tmp_path):
+        """Symlinked directories should not be traversed."""
+        # Create a directory outside the package with a critical file
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "evil.md").write_text("tag\U000E0001char\n", encoding="utf-8")
+
+        # Package directory with a symlink pointing outside
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "clean.md").write_text("Clean\n", encoding="utf-8")
+        (pkg / "escape").symlink_to(outside)
+
+        diag = DiagnosticCollector()
+        result = _pre_deploy_security_scan(pkg, diag, package_name="test")
+        # Should allow deploy — the evil file is behind a symlink
+        assert result is True
+        assert diag.security_count == 0

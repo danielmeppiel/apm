@@ -529,17 +529,22 @@ def _pre_deploy_security_scan(
 
     all_findings: list = []
     found_critical = False
-    for f in install_path.rglob("*"):
-        if f.is_symlink() or not f.is_file():
-            continue
-        findings = ContentScanner.scan_file(f)
-        if findings:
-            all_findings.extend(findings)
-            if not force and not found_critical:
-                found_critical = ContentScanner.has_critical(findings)
-                if found_critical:
-                    # Block is certain — skip remaining files.
-                    break
+    # os.walk with followlinks=False prevents traversal into symlinked dirs
+    import os
+    for dirpath, _dirnames, filenames in os.walk(install_path, followlinks=False):
+        for fname in filenames:
+            f = Path(dirpath) / fname
+            if f.is_symlink():
+                continue
+            findings = ContentScanner.scan_file(f)
+            if findings:
+                all_findings.extend(findings)
+                if not force and not found_critical:
+                    found_critical = ContentScanner.has_critical(findings)
+                    if found_critical:
+                        break
+        if found_critical and not force:
+            break
 
     if not all_findings:
         return True
@@ -555,12 +560,12 @@ def _pre_deploy_security_scan(
                 "Use --force to override."
             ),
             package=package_name,
-            detail=f"{crit_count} critical, {warn_count} warning(s)",
+            detail=f"at least {crit_count} critical, {warn_count} warning(s)",
             severity="critical",
         )
         _rich_error(
             f"  Blocked: {package_name or 'package'} contains "
-            f"{crit_count} critical hidden character(s)"
+            f"critical hidden character(s)"
         )
         _rich_info(f"  └─ Inspect source: {install_path}")
         _rich_info("  └─ Use --force to deploy anyway")

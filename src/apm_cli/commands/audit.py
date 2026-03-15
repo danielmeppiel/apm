@@ -49,18 +49,25 @@ def _scan_files_in_dir(
 ) -> Tuple[Dict[str, List[ScanFinding]], int]:
     """Recursively scan all files under a directory.
 
+    Uses ``os.walk(followlinks=False)`` to avoid following symlinked
+    directories outside the intended package tree.
+
     Returns (findings_by_file, files_scanned).
     """
+    import os
+
     findings: Dict[str, List[ScanFinding]] = {}
     count = 0
-    for f in dir_path.rglob("*"):
-        if not f.is_file():
-            continue
-        count += 1
-        result = ContentScanner.scan_file(f)
-        if result:
-            label = f"{base_label}/{f.relative_to(dir_path).as_posix()}"
-            findings[label] = result
+    for dirpath, _dirs, filenames in os.walk(dir_path, followlinks=False):
+        for fname in filenames:
+            f = Path(dirpath) / fname
+            if f.is_symlink():
+                continue
+            count += 1
+            result = ContentScanner.scan_file(f)
+            if result:
+                label = f"{base_label}/{f.relative_to(dir_path).as_posix()}"
+                findings[label] = result
     return findings, count
 
 
@@ -126,7 +133,8 @@ def _scan_single_file(file_path: Path) -> Tuple[Dict[str, List[ScanFinding]], in
     findings = ContentScanner.scan_file(file_path)
     files_scanned = 1
     if findings:
-        return {str(file_path): findings}, files_scanned
+        # Resolve to absolute so --strip can locate the file reliably
+        return {str(file_path.resolve()): findings}, files_scanned
     return {}, files_scanned
 
 

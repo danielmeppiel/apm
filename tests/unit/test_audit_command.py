@@ -328,7 +328,7 @@ class TestScanSingleFile:
         assert count == 1
         assert len(findings) == 1
         key = list(findings.keys())[0]
-        assert str(warning_file) == key
+        assert str(warning_file.resolve()) == key
 
 
 # ── _apply_strip helper tests ────────────────────────────────────
