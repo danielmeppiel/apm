@@ -6,24 +6,46 @@ sidebar:
 
 APM works without any tokens for public packages. Authentication is only needed for private repositories and enterprise hosts.
 
-## Token Configuration
+## How APM Authenticates
 
-| Variable | Purpose | When Needed |
-|----------|---------|-------------|
-| `GITHUB_APM_PAT` | Private GitHub/GHE repos | Private GitHub packages |
-| `ADO_APM_PAT` | Private Azure DevOps repos | Private ADO packages |
-| `GITHUB_COPILOT_PAT` | Copilot runtime | Runtime features (see [Agent Workflows](../../guides/agent-workflows/)) |
-| `GITHUB_HOST` | Default host for bare package names | GitHub Enterprise setups |
+APM resolves every dependency to a git URL and clones it. Authentication depends on the host:
+
+| Host | Token variable | How it's used |
+|------|---------------|---------------|
+| GitHub.com / GitHub Enterprise (`*.ghe.com`) | `GITHUB_APM_PAT` | Injected into the HTTPS URL as `x-access-token` |
+| Azure DevOps | `ADO_APM_PAT` | Injected into the HTTPS URL as the password |
+| Any other git host (including GitHub Enterprise on custom domains) | — | Delegated to **git credential helpers** or SSH keys |
+
+When APM has a token for a recognized host (GitHub.com, GitHub Enterprise under `*.ghe.com`, or Azure DevOps), it injects it directly and disables interactive prompts. When no token is available, or the host is treated as generic (including GitHub Enterprise on custom domains), APM relaxes the git environment so your existing credential helpers — `gh auth`, macOS Keychain, Windows Credential Manager, `git-credential-store`, etc. — can provide credentials transparently.
+
+### Object-style `git:` references
+
+The `git:` object form in `apm.yml` lets you reference any git URL explicitly — HTTPS, SSH, or any host:
+
+```yaml
+dependencies:
+  apm:
+    - git: https://gitlab.com/acme/coding-standards.git
+      path: instructions/security
+      ref: v2.0
+    - git: git@bitbucket.org:team/rules.git
+      path: prompts/review.prompt.md
+```
+
+Authentication for these URLs follows the same rules: APM uses `GITHUB_APM_PAT` / `ADO_APM_PAT` for recognized hosts (GitHub.com and GitHub Enterprise under `*.ghe.com`, Azure DevOps), and falls back to your git credential helpers or SSH keys for everything else (including GitHub Enterprise on custom domains). If your GitLab, Bitbucket, GitHub Enterprise, or self-hosted git server is already configured in `~/.gitconfig` or your SSH agent, APM will work without any additional setup.
+
+## Token Reference
 
 ### GITHUB_APM_PAT
 
 ```bash
-export GITHUB_APM_PAT=ghp_finegrained_token_here
+export GITHUB_APM_PAT=github_pat_finegrained_token_here
 ```
 
-- **Purpose**: Access to private APM modules on GitHub/GitHub Enterprise
-- **Type**: Fine-grained Personal Access Token (org or user-scoped)
-- **Permissions**: Repository read access to repositories you want to install from
+- **Scope**: Private repositories on GitHub.com and GitHub Enterprise instances under `*.ghe.com`
+- **Type**: [Fine-grained PAT](https://github.com/settings/personal-access-tokens/new) (org or user-scoped)
+- **Permissions**: Repository read access
+- **Fallback**: `GITHUB_TOKEN` (e.g., in GitHub Actions)
 
 ### ADO_APM_PAT
 
@@ -31,9 +53,9 @@ export GITHUB_APM_PAT=ghp_finegrained_token_here
 export ADO_APM_PAT=your_ado_pat
 ```
 
-- **Purpose**: Access to private APM modules on Azure DevOps
-- **Type**: Azure DevOps Personal Access Token
-- **Permissions**: Code (Read) scope
+- **Scope**: Private repositories on Azure DevOps
+- **Type**: PAT created at `https://dev.azure.com/{org}/_usersSettings/tokens`
+- **Permissions**: Code (Read)
 
 ### GITHUB_COPILOT_PAT
 
@@ -41,9 +63,8 @@ export ADO_APM_PAT=your_ado_pat
 export GITHUB_COPILOT_PAT=ghp_copilot_token
 ```
 
-- **Purpose**: Authentication for runtime features (see [Agent Workflows guide](../../guides/agent-workflows/))
-- **Type**: Personal Access Token with Copilot access
-- **Fallback**: Falls back to `GITHUB_TOKEN` if not set
+- **Scope**: Runtime features (see [Agent Workflows](../../guides/agent-workflows/))
+- **Fallback**: `GITHUB_APM_PAT`, then `GITHUB_TOKEN` (e.g., in GitHub Actions)
 
 ### GITHUB_HOST
 
@@ -53,47 +74,76 @@ export GITHUB_HOST=github.company.com
 
 - **Purpose**: Set default host for bare package names (e.g., `owner/repo`)
 - **Default**: `github.com`
-- **Note**: Azure DevOps has no equivalent — always use FQDN syntax (e.g., `dev.azure.com/org/project/repo`)
+- **Note**: Azure DevOps has no equivalent — always use FQDN syntax
 
 ## Common Setup Scenarios
 
-#### Public Modules Only (Most Users)
+#### Public Packages (No Setup)
 
 ```bash
-# No tokens needed — just works!
 apm install microsoft/apm-sample-package
 ```
 
-#### Private GitHub Modules
+#### Private GitHub Packages
 
 ```bash
 export GITHUB_APM_PAT=ghp_org_token
+apm install your-org/private-package
 ```
 
-#### Private Azure DevOps Modules
+#### Private Azure DevOps Packages
 
 ```bash
 export ADO_APM_PAT=your_ado_pat
-# Always use FQDN syntax for ADO
 apm install dev.azure.com/org/project/repo
 ```
 
-#### GitHub Enterprise as Default
+#### GitHub Enterprise
 
 ```bash
 export GITHUB_HOST=github.company.com
 export GITHUB_APM_PAT=ghp_enterprise_token
-# Now bare packages resolve to your enterprise
 apm install team/package  # → github.company.com/team/package
+```
+
+> When `GITHUB_HOST` is set, **all** bare package names resolve against that host. Use full hostnames for packages on other servers:
+> ```yaml
+> dependencies:
+>   apm:
+>     - team/internal-package                   # → GITHUB_HOST
+>     - github.com/public/open-source-package   # → github.com
+> ```
+
+#### GitLab, Bitbucket, or Self-Hosted Git
+
+No APM-specific token is needed. Configure access using your standard git setup:
+
+```yaml
+# SSH — if your key is in the SSH agent, it just works
+- git: git@gitlab.com:acme/standards.git
+
+# HTTPS — relies on git credential helpers
+- git: https://gitlab.com/acme/standards.git
+```
+
+To configure HTTPS credentials for a generic host, use any standard git credential helper:
+
+```bash
+# gh CLI (GitHub-compatible forges)
+gh auth login
+
+# Git credential store (any host)
+git credential approve <<EOF
+protocol=https
+host=gitlab.com
+username=your-username
+password=glpat-your-token
+EOF
 ```
 
 #### Runtime Features
 
-Authentication may be needed for runtime features. See the [Agent Workflows guide](../../guides/agent-workflows/) for details.
-
-```bash
-export GITHUB_COPILOT_PAT=ghp_copilot_token
-```
+See the [Agent Workflows guide](../../guides/agent-workflows/) for `GITHUB_COPILOT_PAT` setup.
 
 ## GitHub Enterprise Support
 
@@ -109,58 +159,20 @@ export GITHUB_HOST=myorg.ghe.com
 apm install platform/standards  # → myorg.ghe.com/platform/standards
 
 # Multiple instances: Use FQDN for explicit hosts
-apm install partner.ghe.com/external/integration  # FQDN always works
+apm install partner.ghe.com/external/integration
 apm install github.com/public/open-source-package
 ```
 
-> **Important:** When `GITHUB_HOST` is set, **all** bare package names (e.g., `owner/repo`) resolve against that host. To reference packages on a different server, use the full hostname (FQDN) in your `apm.yml`:
-> ```yaml
-> dependencies:
->   apm:
->   - team/internal-package                          # → goes to GITHUB_HOST
->   - github.com/public/open-source-package           # → goes to github.com
-> ```
-
 ## Azure DevOps Support
 
-APM supports Azure DevOps Services (cloud) and Azure DevOps Server (self-hosted). There is no `ADO_HOST` equivalent — Azure DevOps always requires FQDN syntax.
+APM supports Azure DevOps Services (cloud) and Azure DevOps Server (self-hosted). There is no `ADO_HOST` equivalent — always use FQDN syntax.
 
-### URL Format
-
-Azure DevOps uses 3 segments vs GitHub's 2:
-- **GitHub**: `owner/repo`
-- **Azure DevOps**: `org/project/repo`
+Azure DevOps uses 3 path segments vs GitHub's 2:
 
 ```bash
-# Both formats work (the _git segment is optional):
 apm install dev.azure.com/myorg/myproject/myrepo
-apm install dev.azure.com/myorg/myproject/_git/myrepo
-
-# With git reference
-apm install dev.azure.com/myorg/myproject/myrepo#main
-
-# Legacy visualstudio.com URLs
-apm install mycompany.visualstudio.com/myorg/myproject/myrepo
-
-# Self-hosted Azure DevOps Server
-apm install ado.company.internal/myorg/myproject/myrepo
-
-# Virtual packages (individual files)
-apm install dev.azure.com/myorg/myproject/myrepo/prompts/code-review.prompt.md
+apm install dev.azure.com/myorg/myproject/_git/myrepo   # _git is optional
+apm install dev.azure.com/myorg/myproject/myrepo#main   # with ref
+apm install mycompany.visualstudio.com/org/project/repo # legacy URL
+apm install ado.internal/myorg/myproject/myrepo          # self-hosted
 ```
-
-## Token Creation Guide
-
-1. **GITHUB_APM_PAT** (Private GitHub modules):
-   - Go to [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)
-   - Select "Fine-grained Personal Access Token"
-   - Scope: Organization or Personal account (as needed)
-   - Permissions: Repository read access
-
-2. **ADO_APM_PAT** (Private ADO modules):
-   - Go to `https://dev.azure.com/{org}/_usersSettings/tokens`
-   - Create PAT with **Code (Read)** scope
-
-3. **GITHUB_COPILOT_PAT** (Runtime features -- see [Agent Workflows](../../guides/agent-workflows/)):
-   - Go to [github.com/settings/tokens](https://github.com/settings/tokens)
-   - Create token with Copilot access
