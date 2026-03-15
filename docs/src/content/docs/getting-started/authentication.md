@@ -39,7 +39,7 @@ Authentication for these URLs follows the same rules: APM uses `GITHUB_APM_PAT` 
 ### GITHUB_APM_PAT
 
 ```bash
-export GITHUB_APM_PAT=ghp_finegrained_token_here
+export GITHUB_APM_PAT=github_pat_finegrained_token_here
 ```
 
 - **Scope**: Private repositories on GitHub and GitHub Enterprise
