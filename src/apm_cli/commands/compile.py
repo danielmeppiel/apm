@@ -557,7 +557,7 @@ def compile(
                                 final_content, filename=str(output_path)
                             )
                             if findings:
-                                has_crit, summary = ContentScanner.classify(findings)
+                                _, summary = ContentScanner.classify(findings)
                                 total = sum(summary.values())
                                 _rich_warning(
                                     f"Compiled output contains {total} hidden character(s) "

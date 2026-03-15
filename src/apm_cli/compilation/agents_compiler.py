@@ -473,12 +473,9 @@ class AgentsCompiler:
                     final_content, filename=str(claude_path)
                 )
                 if findings:
-                    import logging
-                    total = len(findings)
-                    logging.getLogger(__name__).warning(
-                        "CLAUDE.md contains %d hidden character(s) "
-                        "— run 'apm audit --file %s' to inspect",
-                        total, claude_path,
+                    all_warnings.append(
+                        f"CLAUDE.md contains {len(findings)} hidden character(s) "
+                        f"— run 'apm audit --file {claude_path}' to inspect"
                     )
 
                 claude_path.write_text(final_content, encoding='utf-8')

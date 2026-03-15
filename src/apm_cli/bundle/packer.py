@@ -157,6 +157,7 @@ def pack_bundle(
 
     # 5b. Scan files for hidden characters before bundling
     from ..security.content_scanner import ContentScanner
+    from ..utils.console import _rich_warning
 
     _scan_findings_total = 0
     for rel_path in unique_files:
@@ -166,11 +167,9 @@ def pack_bundle(
             if findings:
                 _scan_findings_total += len(findings)
     if _scan_findings_total:
-        import logging
-        logging.getLogger(__name__).warning(
-            "Bundle contains %d hidden character(s) across source files "
-            "— run 'apm audit' to inspect before publishing",
-            _scan_findings_total,
+        _rich_warning(
+            f"Bundle contains {_scan_findings_total} hidden character(s) across source files "
+            f"— run 'apm audit' to inspect before publishing"
         )
 
     # 6. Build output directory

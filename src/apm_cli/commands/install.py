@@ -1306,9 +1306,6 @@ def _install_apm_dependencies(
                             package_name=dep_key, force=force,
                         ):
                             package_deployed_files[dep_key] = []
-                            installed_packages.append(
-                                (dep_ref, "local", depth, resolved_by)
-                            )
                             continue
 
                         int_result = _integrate_package_primitives(

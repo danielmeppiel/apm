@@ -385,11 +385,11 @@ class ClaudeFormatter:
         files_written = 0
         if not dry_run and generated_commands:
             try:
+                from ..security.content_scanner import ContentScanner
                 commands_dir.mkdir(parents=True, exist_ok=True)
                 
                 for command_path, content in generated_commands.items():
                     # Defense-in-depth: scan compiled command before writing
-                    from ..security.content_scanner import ContentScanner
                     findings = ContentScanner.scan_text(
                         content, filename=str(command_path)
                     )

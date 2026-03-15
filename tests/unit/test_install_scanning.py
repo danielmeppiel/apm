@@ -164,7 +164,10 @@ class TestPreDeploySecurityScan:
         pkg = tmp_path / "pkg"
         pkg.mkdir()
         (pkg / "clean.md").write_text("Clean\n", encoding="utf-8")
-        (pkg / "escape").symlink_to(outside)
+        try:
+            (pkg / "escape").symlink_to(outside)
+        except OSError:
+            pytest.skip("symlinks not supported on this platform")
 
         diag = DiagnosticCollector()
         result = _pre_deploy_security_scan(pkg, diag, package_name="test")
