@@ -25,17 +25,14 @@ AI coding agents need context and capabilities to be useful — instructions, sk
 APM fixes this. You declare your project's agent configuration once in `apm.yml` — skills, prompts, instructions, agents, hooks, plugins, MCP servers — and every developer who clones your repo gets a fully configured agent setup in seconds. New developer joins the team? `git clone`, `cd`, `apm install`. Done.
 
 <CardGrid>
-  <Card title="One Manifest, Every Primitive" icon="document">
-    `apm.yml` declares skills, instructions, prompts, agents, hooks, plugins, and MCP servers. Like `package.json` for agent configuration.
+  <Card title="One Manifest, Every Agent" icon="document">
+    `apm.yml` declares skills, instructions, prompts, agents, hooks, plugins, and MCP servers — deployed to Copilot, Claude Code, Cursor, and OpenCode from a single source of truth.
   </Card>
   <Card title="Dependencies That Resolve" icon="random">
     Packages depend on packages. APM resolves the full tree — transitive dependencies just work, like npm or pip.
   </Card>
   <Card title="Any Git Host" icon="github">
     Install from GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, or any self-hosted git server.
-  </Card>
-  <Card title="Every Agent, One Setup" icon="rocket">
-    Works with GitHub Copilot, Claude Code, Cursor, and OpenCode. The same manifest, the same setup, across agents.
   </Card>
   <Card title="Supply Chain Security" icon="approve-check-circle">
     Prompt files are ingested the moment they hit disk — there's no execution gap. APM scans for hidden Unicode injection before deployment, blocking compromised packages before agents can read them.
