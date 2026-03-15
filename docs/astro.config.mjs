@@ -67,6 +67,7 @@ export default defineConfig({
 						{ label: 'Plugins', slug: 'guides/plugins' },
 						{ label: 'Dependencies & Lockfile', slug: 'guides/dependencies' },
 						{ label: 'Pack & Distribute', slug: 'guides/pack-distribute' },
+						{ label: 'Private Packages', slug: 'guides/private-packages' },
 						{ label: 'Org-Wide Packages', slug: 'guides/org-packages' },
 						{ label: 'Agent Workflows (Experimental)', slug: 'guides/agent-workflows' },
 					],
