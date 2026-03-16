@@ -11,7 +11,7 @@ Token Architecture:
 - GITHUB_TOKEN: User-scoped PAT for GitHub Models API access
 
 Platform Token Selection:
-- GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN
+- GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN -> git credential helpers
 - Azure DevOps: ADO_APM_PAT
 
 Runtime Requirements:
@@ -19,6 +19,7 @@ Runtime Requirements:
 """
 
 import os
+import subprocess
 from typing import Dict, Optional, Tuple
 
 
@@ -29,7 +30,7 @@ class GitHubTokenManager:
     TOKEN_PRECEDENCE = {
         'copilot': ['GITHUB_COPILOT_PAT', 'GITHUB_TOKEN', 'GITHUB_APM_PAT'],
         'models': ['GITHUB_TOKEN', 'GITHUB_APM_PAT'],  # GitHub Models prefers user-scoped PAT, falls back to APM PAT
-        'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN'],  # APM module access (GitHub)
+        'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN', 'GH_TOKEN'],  # APM module access (GitHub)
         'ado_modules': ['ADO_APM_PAT'],  # APM module access (Azure DevOps)
     }
     
@@ -47,6 +48,41 @@ class GitHubTokenManager:
             preserve_existing: If True, never overwrite existing environment variables
         """
         self.preserve_existing = preserve_existing
+        self._credential_cache: Dict[str, Optional[str]] = {}
+    
+    @staticmethod
+    def resolve_credential_from_git(host: str) -> Optional[str]:
+        """Resolve a credential from the git credential store.
+        
+        Uses `git credential fill` to query the user's configured credential
+        helpers (macOS Keychain, Windows Credential Manager, gh CLI, etc.).
+        This is the same mechanism git clone uses internally.
+        
+        Args:
+            host: The git host to resolve credentials for (e.g., "github.com")
+            
+        Returns:
+            The password/token from the credential store, or None if unavailable
+        """
+        try:
+            result = subprocess.run(
+                ['git', 'credential', 'fill'],
+                input=f"protocol=https\nhost={host}\n\n",
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'},
+            )
+            if result.returncode != 0:
+                return None
+            
+            for line in result.stdout.splitlines():
+                if line.startswith('password='):
+                    token = line[len('password='):]
+                    return token if token else None
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return None
         
     def setup_environment(self, env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         """Set up complete token environment for all runtimes.
@@ -91,6 +127,32 @@ class GitHubTokenManager:
             if token:
                 return token
         return None
+    
+    def get_token_with_credential_fallback(self, purpose: str, host: str, env: Optional[Dict[str, str]] = None) -> Optional[str]:
+        """Get token for a purpose, falling back to git credential helpers.
+        
+        Tries environment variables first (via get_token_for_purpose), then
+        queries the git credential store as a last resort. Results are cached
+        per host to avoid repeated subprocess calls.
+        
+        Args:
+            purpose: Token purpose ('modules', etc.)
+            host: Git host to resolve credentials for (e.g., "github.com")
+            env: Environment to check (defaults to os.environ)
+            
+        Returns:
+            Best available token, or None if not available from any source
+        """
+        token = self.get_token_for_purpose(purpose, env)
+        if token:
+            return token
+        
+        if host in self._credential_cache:
+            return self._credential_cache[host]
+        
+        credential = self.resolve_credential_from_git(host)
+        self._credential_cache[host] = credential
+        return credential
     
     def validate_tokens(self, env: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
         """Validate that required tokens are available.

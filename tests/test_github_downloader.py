@@ -1147,5 +1147,93 @@ class TestGitEnvironmentPlatformBehavior:
             assert dl.git_env['GIT_CONFIG_GLOBAL'] == '/dev/null'
 
 
+class TestDownloaderCredentialFallback:
+    """Test credential fallback behavior in GitHubPackageDownloader."""
+
+    def test_credential_fill_used_when_no_env_token(self):
+        """When no env tokens are set, credential helpers should be used."""
+        with patch.dict(os.environ, {}, clear=True), \
+             patch(
+                 'apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git',
+                 return_value='credential-token'
+             ):
+            downloader = GitHubPackageDownloader()
+            assert downloader.github_token == 'credential-token'
+            assert downloader._github_token_from_credential_fill is True
+
+    def test_env_token_takes_priority_over_credential_fill(self):
+        """GITHUB_APM_PAT should take priority over credential helpers."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'apm-pat-token'}, clear=True), \
+             patch(
+                 'apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git',
+             ) as mock_cred:
+            downloader = GitHubPackageDownloader()
+            assert downloader.github_token == 'apm-pat-token'
+            assert downloader._github_token_from_credential_fill is False
+            mock_cred.assert_not_called()
+
+    def test_credential_fill_for_non_default_host(self):
+        """Non-default hosts should try credential fill on demand in _download_github_file."""
+        with patch.dict(os.environ, {}, clear=True), \
+             patch(
+                 'apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git',
+             ) as mock_cred:
+            # Return None for default host, enterprise token for custom host
+            mock_cred.side_effect = lambda host: (
+                'enterprise-token' if host == 'ghes.company.com' else None
+            )
+            downloader = GitHubPackageDownloader()
+            # No token for default host
+            assert downloader.github_token is None
+
+            dep_ref = DependencyReference(
+                repo_url='owner/repo',
+                host='ghes.company.com',
+            )
+
+            mock_response_200 = Mock()
+            mock_response_200.status_code = 200
+            mock_response_200.content = b'file content'
+            mock_response_200.raise_for_status = Mock()
+
+            with patch.object(downloader, '_resilient_get', return_value=mock_response_200) as mock_get:
+                result = downloader._download_github_file(dep_ref, 'SKILL.md', 'main')
+                assert result == b'file content'
+
+                call_headers = mock_get.call_args[1].get('headers', mock_get.call_args[0][1] if len(mock_get.call_args[0]) > 1 else {})
+                # _resilient_get is called as (url, headers=headers, timeout=30)
+                actual_headers = mock_get.call_args[1].get('headers') or mock_get.call_args[0][1]
+                assert actual_headers.get('Authorization') == 'token enterprise-token'
+
+    def test_error_message_mentions_gh_auth_login(self):
+        """Error message should mention 'gh auth login' when no token is available."""
+        with patch.dict(os.environ, {}, clear=True), \
+             patch(
+                 'apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git',
+                 return_value=None,
+             ):
+            downloader = GitHubPackageDownloader()
+            assert downloader.github_token is None
+
+            dep_ref = DependencyReference.parse('owner/private-repo')
+
+            mock_response_401 = Mock()
+            mock_response_401.status_code = 401
+            mock_response_401.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_401)
+            )
+
+            with patch.object(downloader, '_resilient_get', return_value=mock_response_401):
+                with pytest.raises(RuntimeError, match='gh auth login'):
+                    downloader._download_github_file(dep_ref, 'SKILL.md', 'main')
+
+    def test_gh_token_env_var_used_for_modules(self):
+        """GH_TOKEN should be used when no GITHUB_APM_PAT or GITHUB_TOKEN is set."""
+        with patch.dict(os.environ, {'GH_TOKEN': 'gh-cli-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            assert downloader.github_token == 'gh-cli-token'
+            assert downloader._github_token_from_credential_fill is False
+
+
 if __name__ == '__main__':
     pytest.main([__file__])

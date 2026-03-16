@@ -12,11 +12,13 @@ APM resolves every dependency to a git URL and clones it. Authentication depends
 
 | Host | Token variable | How it's used |
 |------|---------------|---------------|
-| GitHub.com / GitHub Enterprise (`*.ghe.com`) | `GITHUB_APM_PAT` | Injected into the HTTPS URL as `x-access-token` |
+| GitHub.com / GitHub Enterprise (`*.ghe.com`) | `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` | Injected into the HTTPS URL as `x-access-token` |
 | Azure DevOps | `ADO_APM_PAT` | Injected into the HTTPS URL as the password |
 | Any other git host (including GitHub Enterprise on custom domains) | — | Delegated to **git credential helpers** or SSH keys |
 
 When APM has a token for a recognized host (GitHub.com, GitHub Enterprise under `*.ghe.com`, or Azure DevOps), it injects it directly and disables interactive prompts. When no token is available, or the host is treated as generic (including GitHub Enterprise on custom domains), APM relaxes the git environment so your existing credential helpers — `gh auth`, macOS Keychain, Windows Credential Manager, `git-credential-store`, etc. — can provide credentials transparently.
+
+For single-file downloads from GitHub (which use the GitHub API rather than `git clone`), APM also queries `git credential fill` as a last-resort fallback when no token environment variable is set. This means credentials stored by `gh auth login` or your OS keychain work for both folder-level and file-level dependencies.
 
 ### Object-style `git:` references
 
@@ -45,7 +47,7 @@ export GITHUB_APM_PAT=github_pat_finegrained_token_here
 - **Scope**: Private repositories on GitHub.com and GitHub Enterprise instances under `*.ghe.com`
 - **Type**: [Fine-grained PAT](https://github.com/settings/personal-access-tokens/new) (org or user-scoped)
 - **Permissions**: Repository read access
-- **Fallback**: `GITHUB_TOKEN` (e.g., in GitHub Actions)
+- **Fallback**: `GITHUB_TOKEN` (e.g., in GitHub Actions), then `GH_TOKEN` (used by the GitHub CLI)
 
 ### ADO_APM_PAT
 

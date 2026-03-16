@@ -185,15 +185,22 @@ class GitHubPackageDownloader:
         env = self.token_manager.setup_environment()
         
         # Get tokens for modules (APM package access)
-        # GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN
-        self.github_token = self.token_manager.get_token_for_purpose('modules', env)
+        # GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN -> git credential helpers
+        self.github_token = self.token_manager.get_token_with_credential_fallback(
+            'modules', default_host(), env
+        )
         self.has_github_token = self.github_token is not None
+        self._github_token_from_credential_fill = (
+            self.has_github_token
+            and self.token_manager.get_token_for_purpose('modules', env) is None
+        )
         
         # Azure DevOps: ADO_APM_PAT
         self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
         self.has_ado_token = self.ado_token is not None
         
-        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}")
+        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}"
+               f"{', source=credential_helper' if self._github_token_from_credential_fill else ''}")
         
         # Configure Git security settings
         env['GIT_TERMINAL_PROMPT'] = '0'
@@ -699,12 +706,21 @@ class GitHubPackageDownloader:
             # GitHub Enterprise Server: https://{host}/api/v3/repos/owner/repo/contents/path
             api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         
+        # Resolve the best available token for this host.
+        # self.github_token is pre-resolved for the default host during __init__;
+        # for non-default hosts, try credential fill on demand.
+        token = self.github_token
+        if not token and host != default_host():
+            token = self.token_manager.get_token_with_credential_fallback(
+                'modules', host
+            )
+        
         # Set up authentication headers
         headers = {
             'Accept': 'application/vnd.github.v3.raw'  # Returns raw content directly
         }
-        if self.github_token:
-            headers['Authorization'] = f'token {self.github_token}'
+        if token:
+            headers['Authorization'] = f'token {token}'
         
         # Try to download with the specified ref
         try:
@@ -743,7 +759,7 @@ class GitHubPackageDownloader:
                 # Retry without auth  -- the repo might be public.
                 # Applies to github.com and GHES (custom domains can have public repos).
                 # Excluded: *.ghe.com (Enterprise Cloud Data Residency has no public repos).
-                if self.github_token and not host.lower().endswith(".ghe.com"):
+                if token and not host.lower().endswith(".ghe.com"):
                     try:
                         unauth_headers = {'Accept': 'application/vnd.github.v3.raw'}
                         response = self._resilient_get(api_url, headers=unauth_headers, timeout=30)
@@ -752,9 +768,13 @@ class GitHubPackageDownloader:
                     except requests.exceptions.HTTPError:
                         pass  # Fall through to the original error
                 error_msg = f"Authentication failed for {dep_ref.repo_url} (file: {file_path}, ref: {ref}). "
-                if not self.github_token:
-                    error_msg += "This might be a private repository. Please set GITHUB_APM_PAT or GITHUB_TOKEN."
-                elif self.github_token and not host.lower().endswith(".ghe.com"):
+                if not token:
+                    error_msg += (
+                        "This might be a private repository. "
+                        "Set GITHUB_APM_PAT or GITHUB_TOKEN, or run 'gh auth login' "
+                        "so APM can discover your credentials automatically."
+                    )
+                elif token and not host.lower().endswith(".ghe.com"):
                     error_msg += (
                         "Both authenticated and unauthenticated access were attempted. "
                         "The repository may be private, or your token may lack SSO/SAML authorization for this organization."

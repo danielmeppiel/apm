@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Fixed
+
+- `git credential fill` fallback for single-file downloads from private repos — APM now discovers credentials from git credential helpers (macOS Keychain, `gh auth login`, Windows Credential Manager, etc.) when no `GITHUB_APM_PAT`/`GITHUB_TOKEN` is set, closing the auth asymmetry between folder and file downloads (#331, #319)
+
+### Changed
+
+- `GH_TOKEN` environment variable is now recognized for APM module access, matching the token used by the GitHub CLI (#331)
+- Improved authentication error messages to suggest `gh auth login` as a zero-config solution (#331)
+
 ## [0.8.0] - 2026-03-16
 
 ### Added
