@@ -113,6 +113,7 @@ apm audit                              # Scan all installed packages
 apm audit <package>                    # Scan a specific package
 apm audit --file .cursorrules          # Scan any file (even non-APM-managed)
 apm audit --strip                      # Remove hidden characters (preserves emoji)
+apm audit --strip --dry-run            # Preview what --strip would remove
 ```
 
 ### Exit codes

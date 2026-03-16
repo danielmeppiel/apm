@@ -311,6 +311,79 @@ def _apply_strip(
     return modified
 
 
+def _preview_strip(
+    findings_by_file: Dict[str, List[ScanFinding]],
+) -> int:
+    """Preview what --strip would remove without modifying files.
+
+    Shows a summary of strippable characters per file.
+    Returns the number of files that would be modified.
+    """
+    console = _get_console()
+    affected = 0
+
+    for rel_path, findings in findings_by_file.items():
+        # Only critical+warning chars are stripped
+        strippable = [f for f in findings if f.severity in ("critical", "warning")]
+        if not strippable:
+            continue
+        affected += 1
+
+    if affected == 0:
+        _rich_info("Nothing to clean — no strippable characters found")
+        return 0
+
+    _rich_echo("")
+    _rich_info(f"Dry run — the following would be removed by --strip:", symbol="search")
+    _rich_echo("")
+
+    if console:
+        try:
+            from rich.table import Table
+
+            table = Table(
+                show_header=True,
+                header_style="bold cyan",
+            )
+            table.add_column("File", style="white")
+            table.add_column("Critical", style="bold red", justify="right", width=10)
+            table.add_column("Warning", style="yellow", justify="right", width=10)
+            table.add_column("Total", style="bold white", justify="right", width=10)
+
+            for rel_path, findings in findings_by_file.items():
+                strippable = [f for f in findings if f.severity in ("critical", "warning")]
+                if not strippable:
+                    continue
+                crit = sum(1 for f in strippable if f.severity == "critical")
+                warn = sum(1 for f in strippable if f.severity == "warning")
+                table.add_row(
+                    rel_path,
+                    str(crit) if crit else "-",
+                    str(warn) if warn else "-",
+                    str(len(strippable)),
+                )
+
+            console.print(table)
+        except (ImportError, Exception):
+            # Fallback: plain text
+            for rel_path, findings in findings_by_file.items():
+                strippable = [f for f in findings if f.severity in ("critical", "warning")]
+                if not strippable:
+                    continue
+                _rich_echo(f"  {rel_path}: {len(strippable)} character(s)", color="white")
+    else:
+        for rel_path, findings in findings_by_file.items():
+            strippable = [f for f in findings if f.severity in ("critical", "warning")]
+            if not strippable:
+                continue
+            _rich_echo(f"  {rel_path}: {len(strippable)} character(s)", color="white")
+
+    _rich_echo("")
+    _rich_info(f"{affected} file(s) would be modified")
+    _rich_info("Run 'apm audit --strip' to apply")
+    return affected
+
+
 # ── Command ────────────────────────────────────────────────────────
 
 
@@ -333,8 +406,13 @@ def _apply_strip(
     is_flag=True,
     help="Show all findings including harmless ones",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview what --strip would remove without modifying files",
+)
 @click.pass_context
-def audit(ctx, package, file_path, strip, verbose):
+def audit(ctx, package, file_path, strip, verbose, dry_run):
     """Scan deployed prompt files for hidden Unicode characters.
 
     Detects invisible characters that could embed hidden instructions in
@@ -388,10 +466,17 @@ def audit(ctx, package, file_path, strip, verbose):
                 _rich_info("No deployed files found in apm.lock.yaml")
             sys.exit(0)
 
+    # -- Warn if --dry-run used without --strip --
+    if dry_run and not strip:
+        _rich_info("--dry-run only works with --strip (e.g. apm audit --strip --dry-run)")
+
     # -- Strip mode --
     if strip:
         if not findings_by_file:
             _rich_info("Nothing to clean — no hidden characters found")
+            sys.exit(0)
+        if dry_run:
+            _preview_strip(findings_by_file)
             sys.exit(0)
         modified = _apply_strip(findings_by_file, project_root)
         if modified > 0:

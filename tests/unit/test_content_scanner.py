@@ -93,12 +93,83 @@ class TestScanText:
         assert findings[0].category == "zero-width"
 
     def test_zwj_detected(self):
-        """U+200D zero-width joiner."""
+        """U+200D zero-width joiner between non-emoji text is warning."""
         content = f"hello\u200Dworld"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "warning"
         assert findings[0].codepoint == "U+200D"
+
+    def test_zwj_between_emoji_is_info(self):
+        """ZWJ between two emoji characters is info (legitimate sequence)."""
+        # 👨 + ZWJ + 👩 (family emoji base)
+        content = f"\U0001F468\u200D\U0001F469"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 1
+        assert zwj_findings[0].severity == "info"
+
+    def test_zwj_emoji_sequence_with_vs16(self):
+        """ZWJ after VS16 in emoji sequence is info (e.g. ❤️‍🔥)."""
+        # ❤ + FE0F + ZWJ + 🔥
+        content = f"\u2764\uFE0F\u200D\U0001F525"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 1
+        assert zwj_findings[0].severity == "info"
+
+    def test_zwj_emoji_with_skin_tone(self):
+        """ZWJ after skin-tone modifier is info (e.g. 👩🏽‍🚀)."""
+        # 👩 + skin-tone-medium + ZWJ + 🚀
+        content = f"\U0001F469\U0001F3FD\u200D\U0001F680"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 1
+        assert zwj_findings[0].severity == "info"
+
+    def test_zwj_complex_family_emoji(self):
+        """Multiple ZWJs in family emoji are all info."""
+        # 👨‍👩‍👧‍👦 = 👨 + ZWJ + 👩 + ZWJ + 👧 + ZWJ + 👦
+        content = f"\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 3
+        assert all(f.severity == "info" for f in zwj_findings)
+
+    def test_zwj_at_start_of_line_is_warning(self):
+        """ZWJ at start of line (no preceding char) is warning."""
+        content = f"\u200D\U0001F600"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 1
+        assert zwj_findings[0].severity == "warning"
+
+    def test_zwj_at_end_of_line_is_warning(self):
+        """ZWJ at end of line (no following char) is warning."""
+        content = f"\U0001F600\u200D"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 1
+        assert zwj_findings[0].severity == "warning"
+
+    def test_zwj_between_text_and_emoji_is_warning(self):
+        """ZWJ between text and emoji is warning (not a real emoji sequence)."""
+        content = f"hello\u200D\U0001F600"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 1
+        assert zwj_findings[0].severity == "warning"
+
+    def test_mixed_zwj_contexts(self):
+        """Same file: legitimate emoji ZWJ + suspicious isolated ZWJ."""
+        emoji_part = f"\U0001F468\u200D\U0001F469"  # family: info
+        text_part = f"hello\u200Dworld"  # isolated: warning
+        content = f"{emoji_part} {text_part}"
+        findings = ContentScanner.scan_text(content)
+        zwj_findings = [f for f in findings if f.codepoint == "U+200D"]
+        assert len(zwj_findings) == 2
+        severities = sorted(f.severity for f in zwj_findings)
+        assert severities == ["info", "warning"]
 
     def test_zwnj_detected(self):
         """U+200C zero-width non-joiner."""
@@ -532,3 +603,25 @@ class TestStripDangerous:
         content = f"text\u206Ainner\u206Fend"
         result = ContentScanner.strip_dangerous(content)
         assert result == "textinnerend"
+
+    def test_preserves_zwj_in_emoji_sequence(self):
+        """ZWJ between emoji chars is info-level — preserved by strip."""
+        # 👨‍👩 = 👨 + ZWJ + 👩
+        content = f"\U0001F468\u200D\U0001F469"
+        result = ContentScanner.strip_dangerous(content)
+        assert result == content  # unchanged
+
+    def test_strips_isolated_zwj(self):
+        """ZWJ between non-emoji text is warning — stripped."""
+        content = f"hello\u200Dworld"
+        result = ContentScanner.strip_dangerous(content)
+        assert result == "helloworld"
+
+    def test_preserves_complex_emoji_strips_isolated(self):
+        """Mixed: preserve emoji ZWJ, strip isolated ZWJ."""
+        emoji = f"\U0001F468\u200D\U0001F469"
+        isolated = f"text\u200Dmore"
+        content = f"{emoji} {isolated}"
+        result = ContentScanner.strip_dangerous(content)
+        assert f"\U0001F468\u200D\U0001F469" in result
+        assert "textmore" in result

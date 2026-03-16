@@ -73,7 +73,7 @@ Researchers have found hidden Unicode characters embedded in popular shared rule
 |----------|-----------|------|
 | Critical | Tag characters (U+E0001–E007F), bidi overrides (U+202A–E, U+2066–9) | Hidden instruction embedding. Zero legitimate use in prompt files. |
 | Critical | Variation selectors 17–256 (U+E0100–E01EF) | Glassworm attack vector — invisible payload encoding. Zero legitimate use in prompt files. |
-| Warning | Zero-width spaces/joiners (U+200B–D), mid-file BOM (U+FEFF) | Common copy-paste debris, but can hide content. |
+| Warning | Zero-width spaces/joiners (U+200B–D), mid-file BOM (U+FEFF) | Common copy-paste debris, but can hide content. ZWJ inside emoji sequences is downgraded to info. |
 | Warning | Variation selectors 1–15 (U+FE00–FE0E) | CJK typography / text presentation selectors. Uncommon in prompt files. |
 | Warning | Bidi marks (U+200E–F, U+061C) | Invisible directional marks. No legitimate use in prompt files. |
 | Warning | Invisible operators (U+2061–4) | Zero-width math operators. No legitimate use in prompt files. |
@@ -110,6 +110,7 @@ Content scanning extends beyond install:
 apm audit                        # Scan all installed packages
 apm audit --file .cursorrules    # Scan any file
 apm audit --strip                # Remove hidden characters (preserves emoji)
+apm audit --strip --dry-run      # Preview what --strip would remove
 ```
 
 The `--file` flag is useful for inspecting files obtained outside APM — downloaded rules files, copy-pasted instructions, or files from pull requests.
@@ -125,7 +126,7 @@ Content scanning detects hidden Unicode characters. It does not detect:
 - Semantic manipulation (subtly misleading but syntactically normal text)
 - Binary payload embedding
 
-`--strip` removes dangerous and suspicious characters (critical and warning) from deployed copies while preserving legitimate content like emoji and whitespace. It does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
+`--strip` removes dangerous and suspicious characters (critical and warning) from deployed copies while preserving legitimate content like emoji and whitespace. Zero-width joiners inside emoji sequences (e.g. 👨‍👩‍👧) are recognized and preserved. Use `--strip --dry-run` to preview what would be removed before modifying files. Strip does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
 
 ### Planned hardening
 

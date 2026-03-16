@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from apm_cli.commands.audit import audit, _scan_single_file, _apply_strip
+from apm_cli.commands.audit import audit, _scan_single_file, _apply_strip, _preview_strip
 from apm_cli.security.content_scanner import ContentScanner
 
 
@@ -413,6 +413,41 @@ class TestStripMode:
         assert result.exit_code == 0
         content = vs_critical_file.read_text(encoding="utf-8")
         assert chr(0xE0100) not in content
+
+    def test_dry_run_shows_preview(self, runner, warning_file):
+        """--strip --dry-run shows what would be removed."""
+        result = runner.invoke(audit, ["--file", str(warning_file), "--strip", "--dry-run"])
+        assert result.exit_code == 0
+        assert "dry run" in result.output.lower()
+        # File should NOT be modified
+        content = warning_file.read_text(encoding="utf-8")
+        assert "\u200B" in content  # zero-width space still present
+
+    def test_dry_run_critical_shows_preview(self, runner, critical_file):
+        """--strip --dry-run shows critical chars that would be removed."""
+        result = runner.invoke(audit, ["--file", str(critical_file), "--strip", "--dry-run"])
+        assert result.exit_code == 0
+        assert "dry run" in result.output.lower()
+        # File should NOT be modified
+        content = critical_file.read_text(encoding="utf-8")
+        assert "\U000E0001" in content  # tag char still present
+
+    def test_dry_run_clean_file(self, runner, clean_file):
+        """--strip --dry-run on clean file says nothing to clean."""
+        result = runner.invoke(audit, ["--file", str(clean_file), "--strip", "--dry-run"])
+        assert result.exit_code == 0
+        assert "nothing to clean" in result.output.lower()
+
+    def test_dry_run_without_strip_hints(self, runner, warning_file):
+        """--dry-run without --strip gives a helpful hint."""
+        result = runner.invoke(audit, ["--file", str(warning_file), "--dry-run"])
+        assert "only works with --strip" in result.output.lower()
+
+    def test_dry_run_info_only_nothing_to_strip(self, runner, info_only_file):
+        """--strip --dry-run on info-only file says nothing to clean."""
+        result = runner.invoke(audit, ["--file", str(info_only_file), "--strip", "--dry-run"])
+        assert result.exit_code == 0
+        assert "nothing to clean" in result.output.lower()
 
 
 # ── _scan_single_file helper tests ───────────────────────────────

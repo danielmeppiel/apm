@@ -9,6 +9,7 @@ This module is intentionally dependency-free (no APM internals) so it can
 be tested and used independently.
 """
 
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -126,6 +127,36 @@ for _start, _end, _sev, _cat, _desc in _SUSPICIOUS_RANGES:
         _CHAR_LOOKUP[_cp] = (_sev, _cat, _desc)
 
 
+def _is_emoji_char(ch: str) -> bool:
+    """Return True if *ch* is an emoji base character (Unicode category So)."""
+    return unicodedata.category(ch) == "So"
+
+
+def _zwj_in_emoji_context(text: str, idx: int) -> bool:
+    """Return True if a ZWJ at *idx* sits between two emoji-like characters.
+
+    Looks backward past FE0F (VS16) and skin-tone modifiers (U+1F3FB–1F3FF)
+    because emoji ZWJ sequences frequently interpose these between the base
+    character and the joiner, e.g. 👩🏽‍🚀 = 👩 + 🏽 + ZWJ + 🚀.
+    """
+    # Look backward, skipping VS16 and skin-tone modifiers
+    prev = idx - 1
+    while prev >= 0:
+        cp = ord(text[prev])
+        if cp == 0xFE0F or 0x1F3FB <= cp <= 0x1F3FF:
+            prev -= 1
+            continue
+        break
+
+    prev_ok = prev >= 0 and _is_emoji_char(text[prev])
+
+    # Look forward — next char must be an emoji base
+    nxt = idx + 1
+    next_ok = nxt < len(text) and _is_emoji_char(text[nxt])
+
+    return prev_ok and next_ok
+
+
 class ContentScanner:
     """Scans text content for hidden or suspicious Unicode characters."""
 
@@ -184,6 +215,10 @@ class ContentScanner:
                 entry = _CHAR_LOOKUP.get(cp)
                 if entry is not None:
                     sev, cat, desc = entry
+                    # ZWJ between emoji is legitimate (e.g. 👨‍👩‍👧)
+                    if cp == 0x200D and _zwj_in_emoji_context(line_text, col_idx):
+                        sev = "info"
+                        desc = "Zero-width joiner (emoji sequence)"
                     findings.append(ScanFinding(
                         file=filename,
                         line=line_idx + 1,
@@ -246,13 +281,20 @@ class ContentScanner:
         Info-level characters (emoji selectors, non-breaking spaces, unusual
         whitespace) are preserved — they are legitimate and stripping them
         would break content (e.g. ❤️ → ❤).
+
+        ZWJ between emoji characters is treated as info (preserved) to
+        keep compound emoji like 👨‍👩‍👧 intact.
         """
         result: List[str] = []
-        for ch in content:
+        for i, ch in enumerate(content):
             cp = ord(ch)
             entry = _CHAR_LOOKUP.get(cp)
             if entry is not None:
                 sev = entry[0]
+                # ZWJ between emoji is info-level — preserve it
+                if cp == 0x200D and _zwj_in_emoji_context(content, i):
+                    result.append(ch)
+                    continue
                 if sev in ("critical", "warning"):
                     continue  # strip it
             elif cp == 0xFEFF:
