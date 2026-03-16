@@ -254,7 +254,7 @@ def _render_summary(
             f"{STATUS_SYMBOLS['warning']} {warning} warning(s) in "
             f"{affected} file(s) — hidden characters detected"
         )
-        _rich_info("  Run 'apm audit --strip' to remove non-critical characters")
+        _rich_info("  Run 'apm audit --strip' to remove hidden characters")
     elif info > 0:
         _rich_info(
             f"{STATUS_SYMBOLS['info']} {info} info-level finding(s) in "
@@ -276,7 +276,7 @@ def _apply_strip(
     findings_by_file: Dict[str, List[ScanFinding]],
     project_root: Path,
 ) -> int:
-    """Strip non-critical characters from affected files.
+    """Strip dangerous and suspicious characters from affected files.
 
     Only modifies files that resolve within *project_root* (for lockfile
     paths) or that are given as absolute paths (for ``--file`` mode).
@@ -284,9 +284,6 @@ def _apply_strip(
     """
     modified = 0
     for rel_path, findings in findings_by_file.items():
-        # Skip files with only critical findings (require manual review)
-        if all(f.severity == "critical" for f in findings):
-            continue
 
         abs_path = Path(rel_path)
         if not abs_path.is_absolute():
@@ -303,7 +300,7 @@ def _apply_strip(
 
         try:
             original = abs_path.read_text(encoding="utf-8")
-            cleaned = ContentScanner.strip_non_critical(original)
+            cleaned = ContentScanner.strip_dangerous(original)
             if cleaned != original:
                 abs_path.write_text(cleaned, encoding="utf-8")
                 modified += 1
@@ -328,7 +325,7 @@ def _apply_strip(
 @click.option(
     "--strip",
     is_flag=True,
-    help="Strip non-critical hidden characters (zero-width, variation selectors, whitespace)",
+    help="Strip dangerous and suspicious hidden characters (preserves legitimate info-level chars)",
 )
 @click.option(
     "--verbose",
@@ -342,14 +339,14 @@ def audit(ctx, package, file_path, strip, verbose):
 
     Detects invisible characters that could embed hidden instructions in
     prompt, instruction, and rules files. Critical findings require manual
-    review. Warnings can be removed with --strip.
+    review. Dangerous and suspicious characters can be removed with --strip.
 
     \b
     Examples:
         apm audit                      # Scan all installed packages
         apm audit my-package           # Scan a specific package
         apm audit --file .cursorrules  # Scan any file
-        apm audit --strip              # Remove non-critical chars
+        apm audit --strip              # Remove dangerous/suspicious chars
     """
     project_root = Path.cwd()
 
@@ -387,20 +384,11 @@ def audit(ctx, package, file_path, strip, verbose):
 
     # -- Strip mode --
     if strip and findings_by_file:
-        has_critical = any(
-            ContentScanner.has_critical(f) for f in findings_by_file.values()
-        )
         modified = _apply_strip(findings_by_file, project_root)
         if modified > 0:
             _rich_success(
                 f"{STATUS_SYMBOLS['success']} Cleaned {modified} file(s)"
             )
-        if has_critical:
-            _rich_warning(
-                "Critical findings were preserved — they require manual review"
-            )
-            _rich_info("  Inspect flagged files and remove suspicious characters")
-            sys.exit(1)
         sys.exit(0)
 
     # -- Display findings --

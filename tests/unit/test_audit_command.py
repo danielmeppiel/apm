@@ -357,20 +357,20 @@ class TestStripMode:
         assert "\u200B" not in content
         assert "\u200D" not in content
 
-    def test_strip_preserves_critical(self, runner, critical_file):
+    def test_strip_removes_critical(self, runner, critical_file):
         result = runner.invoke(audit, ["--file", str(critical_file), "--strip"])
-        # Should still exit 1 because critical chars remain
-        assert result.exit_code == 1
+        # Critical chars are stripped → file is clean → exit 0
+        assert result.exit_code == 0
         content = critical_file.read_text(encoding="utf-8")
-        # Critical tag chars should still be present
-        assert "\U000E0001" in content
+        # Critical tag chars should be removed
+        assert "\U000E0001" not in content
 
-    def test_strip_mixed_removes_warnings_keeps_critical(self, runner, mixed_file):
+    def test_strip_mixed_removes_all_dangerous(self, runner, mixed_file):
         result = runner.invoke(audit, ["--file", str(mixed_file), "--strip"])
-        assert result.exit_code == 1  # critical still present
+        assert result.exit_code == 0  # all dangerous chars removed
         content = mixed_file.read_text(encoding="utf-8")
         assert "\u200B" not in content  # warning stripped
-        assert "\U000E0041" in content  # critical preserved
+        assert "\U000E0041" not in content  # critical stripped
 
     def test_strip_clean_file_noop(self, runner, clean_file):
         original = clean_file.read_text(encoding="utf-8")
@@ -394,12 +394,12 @@ class TestStripMode:
         content = vs_warning_file.read_text(encoding="utf-8")
         assert chr(0xFE00) not in content
 
-    def test_strip_vs_critical_preserves(self, runner, vs_critical_file):
-        """Strip preserves SMP variation selector (critical-level)."""
+    def test_strip_vs_critical_removes(self, runner, vs_critical_file):
+        """Strip removes SMP variation selector (critical-level)."""
         result = runner.invoke(audit, ["--file", str(vs_critical_file), "--strip"])
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         content = vs_critical_file.read_text(encoding="utf-8")
-        assert chr(0xE0100) in content
+        assert chr(0xE0100) not in content
 
 
 # ── _scan_single_file helper tests ───────────────────────────────
@@ -432,11 +432,13 @@ class TestApplyStrip:
         modified = _apply_strip(findings, warning_file.parent)
         assert modified == 1
 
-    def test_skips_critical_only_files(self, critical_file):
+    def test_modifies_critical_only_files(self, critical_file):
         findings, _ = _scan_single_file(critical_file)
         modified = _apply_strip(findings, critical_file.parent)
-        # File has only critical findings → should not be modified
-        assert modified == 0
+        # File has only critical findings → should be modified (dangerous chars stripped)
+        assert modified == 1
+        content = critical_file.read_text(encoding="utf-8")
+        assert "\U000E0001" not in content
 
     def test_rejects_path_outside_root(self, tmp_path):
         """_apply_strip must not write files outside project root."""

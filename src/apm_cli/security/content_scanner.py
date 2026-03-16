@@ -214,22 +214,20 @@ class ContentScanner:
         return critical, counts
 
     @staticmethod
-    def strip_non_critical(content: str) -> str:
-        """Remove warning and info-level characters from content.
+    def strip_dangerous(content: str) -> str:
+        """Remove critical and warning-level characters from content.
 
-        Critical characters (tag chars, bidi overrides) are preserved —
-        they require manual review.
+        Info-level characters (emoji selectors, non-breaking spaces, unusual
+        whitespace) are preserved — they are legitimate and stripping them
+        would break content (e.g. ❤️ → ❤).
         """
         result: List[str] = []
         for ch in content:
             cp = ord(ch)
-            # Strip leading BOM (info-level)
-            if cp == 0xFEFF and not result:
-                continue  # strip leading BOM too (it's info-level)
             entry = _CHAR_LOOKUP.get(cp)
             if entry is not None:
                 sev = entry[0]
-                if sev in ("warning", "info"):
+                if sev in ("critical", "warning"):
                     continue  # strip it
             elif cp == 0xFEFF:
                 continue  # mid-file BOM is warning-level

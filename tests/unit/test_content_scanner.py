@@ -350,59 +350,61 @@ class TestSummarize:
         assert result == {"critical": 2, "warning": 1, "info": 1}
 
 
-class TestStripNonCritical:
+class TestStripDangerous:
     def test_strips_zero_width_chars(self):
         content = f"hello\u200Bworld"
-        result = ContentScanner.strip_non_critical(content)
+        result = ContentScanner.strip_dangerous(content)
         assert result == "helloworld"
 
-    def test_strips_nbsp(self):
+    def test_preserves_nbsp(self):
+        """NBSP (U+00A0) is info-level — preserved by strip_dangerous."""
         content = f"hello\u00A0world"
-        result = ContentScanner.strip_non_critical(content)
-        assert result == "helloworld"
+        result = ContentScanner.strip_dangerous(content)
+        assert result == content
 
-    def test_preserves_critical_chars(self):
-        """Tag characters and bidi overrides are NOT stripped."""
+    def test_strips_critical_chars(self):
+        """Tag characters are critical — stripped by strip_dangerous."""
         tag = chr(0xE0041)
         content = f"hello{tag}world"
-        result = ContentScanner.strip_non_critical(content)
-        assert tag in result
+        result = ContentScanner.strip_dangerous(content)
+        assert tag not in result
 
     def test_strips_leading_bom(self):
+        """Leading BOM (U+FEFF) is stripped — strip_dangerous removes all BOM."""
         content = f"\uFEFF# Title"
-        result = ContentScanner.strip_non_critical(content)
+        result = ContentScanner.strip_dangerous(content)
         assert result == "# Title"
 
     def test_strips_mid_file_bom(self):
         content = f"line1\n\uFEFFline2"
-        result = ContentScanner.strip_non_critical(content)
+        result = ContentScanner.strip_dangerous(content)
         assert result == "line1\nline2"
 
     def test_clean_content_unchanged(self):
         content = "# Normal content\nWith normal text."
-        result = ContentScanner.strip_non_critical(content)
+        result = ContentScanner.strip_dangerous(content)
         assert result == content
 
     def test_strips_soft_hyphen(self):
         content = f"hel\u00ADlo"
-        result = ContentScanner.strip_non_critical(content)
+        result = ContentScanner.strip_dangerous(content)
         assert result == "hello"
 
     def test_strip_removes_warning_variation_selectors(self):
         """BMP variation selectors (warning) should be stripped."""
         content = f"hello{chr(0xFE00)}world"
-        result = ContentScanner.strip_non_critical(content)
+        result = ContentScanner.strip_dangerous(content)
         assert result == "helloworld"
 
-    def test_strip_removes_info_variation_selector_vs16(self):
-        """VS16 (info) should be stripped."""
+    def test_preserves_info_variation_selector_vs16(self):
+        """VS16 (U+FE0F) is info-level — preserved by strip_dangerous."""
         content = f"hello{chr(0xFE0F)}world"
-        result = ContentScanner.strip_non_critical(content)
-        assert result == "helloworld"
+        result = ContentScanner.strip_dangerous(content)
+        assert result == content
 
-    def test_strip_preserves_critical_variation_selectors(self):
-        """SMP variation selectors (critical) are NOT stripped."""
+    def test_strips_critical_variation_selectors(self):
+        """SMP variation selectors (critical) are stripped by strip_dangerous."""
         vs17 = chr(0xE0100)
         content = f"hello{vs17}world"
-        result = ContentScanner.strip_non_critical(content)
-        assert vs17 in result
+        result = ContentScanner.strip_dangerous(content)
+        assert vs17 not in result
