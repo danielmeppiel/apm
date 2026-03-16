@@ -112,7 +112,7 @@ APM scans for hidden Unicode characters that can embed invisible instructions in
 apm audit                              # Scan all installed packages
 apm audit <package>                    # Scan a specific package
 apm audit --file .cursorrules          # Scan any file (even non-APM-managed)
-apm audit --strip                      # Remove non-critical characters
+apm audit --strip                      # Remove hidden characters (preserves emoji)
 ```
 
 ### Exit codes

@@ -208,6 +208,7 @@ class TestFileMode:
     def test_critical_file_exit_one(self, runner, critical_file):
         result = runner.invoke(audit, ["--file", str(critical_file)])
         assert result.exit_code == 1
+        assert "--strip" in result.output
 
     def test_mixed_file_exit_one(self, runner, mixed_file):
         """Critical findings take precedence over warnings."""
@@ -377,6 +378,18 @@ class TestStripMode:
         result = runner.invoke(audit, ["--file", str(clean_file), "--strip"])
         assert result.exit_code == 0
         assert clean_file.read_text(encoding="utf-8") == original
+
+    def test_strip_clean_file_says_nothing_to_clean(self, runner, clean_file):
+        """Strip on clean file should say nothing to clean."""
+        result = runner.invoke(audit, ["--file", str(clean_file), "--strip"])
+        assert result.exit_code == 0
+        assert "nothing to clean" in result.output.lower()
+
+    def test_strip_info_only_says_nothing_to_clean(self, runner, info_only_file):
+        """Strip on info-only file should say nothing to clean (info preserved)."""
+        result = runner.invoke(audit, ["--file", str(info_only_file), "--strip"])
+        assert result.exit_code == 0
+        assert "nothing to clean" in result.output.lower()
 
     def test_strip_lockfile_mode(self, runner, lockfile_project, monkeypatch):
         monkeypatch.chdir(lockfile_project)

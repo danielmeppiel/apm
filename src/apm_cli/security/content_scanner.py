@@ -76,6 +76,32 @@ _SUSPICIOUS_RANGES: List[Tuple[int, int, str, str, str]] = [
      "Text presentation selector"),
     (0x00AD, 0x00AD, "warning", "invisible-formatting",
      "Soft hyphen"),
+    # Bidirectional marks — invisible, no legitimate use in prompt files
+    (0x200E, 0x200E, "warning", "bidi-mark",
+     "Left-to-right mark (LRM)"),
+    (0x200F, 0x200F, "warning", "bidi-mark",
+     "Right-to-left mark (RLM)"),
+    (0x061C, 0x061C, "warning", "bidi-mark",
+     "Arabic letter mark (ALM)"),
+    # Invisible math operators — zero-width, no use in prompt files
+    (0x2061, 0x2061, "warning", "invisible-formatting",
+     "Function application (invisible operator)"),
+    (0x2062, 0x2062, "warning", "invisible-formatting",
+     "Invisible times"),
+    (0x2063, 0x2063, "warning", "invisible-formatting",
+     "Invisible separator"),
+    (0x2064, 0x2064, "warning", "invisible-formatting",
+     "Invisible plus"),
+    # Interlinear annotation markers — can hide text between delimiters
+    (0xFFF9, 0xFFF9, "warning", "annotation-marker",
+     "Interlinear annotation anchor"),
+    (0xFFFA, 0xFFFA, "warning", "annotation-marker",
+     "Interlinear annotation separator"),
+    (0xFFFB, 0xFFFB, "warning", "annotation-marker",
+     "Interlinear annotation terminator"),
+    # Deprecated formatting — invisible, deprecated since Unicode 3.0
+    (0x206A, 0x206F, "warning", "deprecated-formatting",
+     "Deprecated formatting character"),
     # FEFF as mid-file BOM is handled separately in scan logic
     # ── Info: unusual whitespace, mostly harmless ──
     (0xFE0F, 0xFE0F, "info", "variation-selector",

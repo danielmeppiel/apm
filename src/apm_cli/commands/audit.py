@@ -247,8 +247,8 @@ def _render_summary(
             color="red",
             bold=True,
         )
-        _rich_info("  Critical findings require manual review")
         _rich_info("  These characters may embed invisible instructions")
+        _rich_info("  Review file contents, then run 'apm audit --strip' to remove")
     elif warning > 0:
         _rich_warning(
             f"{STATUS_SYMBOLS['warning']} {warning} warning(s) in "
@@ -325,21 +325,27 @@ def _apply_strip(
 @click.option(
     "--strip",
     is_flag=True,
-    help="Strip dangerous and suspicious hidden characters (preserves legitimate info-level chars)",
+    help="Remove hidden characters from scanned files (preserves emoji and whitespace)",
 )
 @click.option(
     "--verbose",
     "-v",
     is_flag=True,
-    help="Show info-level findings and file details",
+    help="Show all findings including harmless ones",
 )
 @click.pass_context
 def audit(ctx, package, file_path, strip, verbose):
     """Scan deployed prompt files for hidden Unicode characters.
 
     Detects invisible characters that could embed hidden instructions in
-    prompt, instruction, and rules files. Critical findings require manual
-    review. Dangerous and suspicious characters can be removed with --strip.
+    prompt, instruction, and rules files. Dangerous and suspicious
+    characters can be removed with --strip.
+
+    \b
+    Exit codes:
+        0  Clean, info-only findings, or successful strip
+        1  Critical findings detected (hidden instructions)
+        2  Warning-only findings (suspicious but not critical)
 
     \b
     Examples:
@@ -383,12 +389,17 @@ def audit(ctx, package, file_path, strip, verbose):
             sys.exit(0)
 
     # -- Strip mode --
-    if strip and findings_by_file:
+    if strip:
+        if not findings_by_file:
+            _rich_info("Nothing to clean — no hidden characters found")
+            sys.exit(0)
         modified = _apply_strip(findings_by_file, project_root)
         if modified > 0:
             _rich_success(
                 f"{STATUS_SYMBOLS['success']} Cleaned {modified} file(s)"
             )
+        else:
+            _rich_info("Nothing to clean — no strippable characters found")
         sys.exit(0)
 
     # -- Display findings --

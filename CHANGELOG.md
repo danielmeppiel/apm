@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Content security scanning: `apm audit` command with `--file`, `--strip`; install-time pre-deployment gate that blocks critical hidden Unicode characters (override with `--force`); advisory scanning in `compile` and `pack` (#313)
-- Variation selector detection (U+FE00–FE0F, U+E0100–E01EF) in content scanner — Glassworm supply-chain attack vector (#320) — thanks @raye-deng for the detailed analysis in #312
+- Detect hidden Unicode characters: variation selectors (Glassworm attack vector), invisible math operators, bidi marks, annotation markers, and deprecated formatting characters in `apm audit` and install-time scanning — by @raye-deng ([#320](https://github.com/microsoft/apm/issues/320))
+- `apm audit --strip` now removes all dangerous characters (critical + warning) while preserving legitimate content like emoji; improved help text and strip feedback messages
 - Native Cursor IDE integration — `apm install` deploys primitives to `.cursor/` when the directory exists: instructions→rules (`.mdc`), agents, skills, hooks (`hooks.json`), and MCP (`mcp.json`)
 - Native OpenCode integration — `apm install` deploys primitives to `.opencode/` when the directory exists: agents, commands (from prompts), skills, and MCP (`opencode.json`) — inspired by @timvw (#257, #306)
 - `TargetProfile` data layer (`src/apm_cli/integration/targets.py`) — data-driven target definitions for scalable multi-target architecture

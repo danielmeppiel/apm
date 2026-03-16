@@ -75,6 +75,10 @@ Researchers have found hidden Unicode characters embedded in popular shared rule
 | Critical | Variation selectors 17–256 (U+E0100–E01EF) | Glassworm attack vector — invisible payload encoding. Zero legitimate use in prompt files. |
 | Warning | Zero-width spaces/joiners (U+200B–D), mid-file BOM (U+FEFF) | Common copy-paste debris, but can hide content. |
 | Warning | Variation selectors 1–15 (U+FE00–FE0E) | CJK typography / text presentation selectors. Uncommon in prompt files. |
+| Warning | Bidi marks (U+200E–F, U+061C) | Invisible directional marks. No legitimate use in prompt files. |
+| Warning | Invisible operators (U+2061–4) | Zero-width math operators. No legitimate use in prompt files. |
+| Warning | Annotation markers (U+FFF9–B) | Interlinear annotation delimiters that can hide text. |
+| Warning | Deprecated formatting (U+206A–F) | Deprecated since Unicode 3.0, invisible. |
 | Info | Non-breaking spaces (U+00A0), unusual whitespace (U+2000–200A) | Mostly harmless, flagged for awareness. |
 | Info | Emoji presentation selector (U+FE0F) | Common with emoji, informational only. |
 
@@ -105,7 +109,7 @@ Content scanning extends beyond install:
 ```bash
 apm audit                        # Scan all installed packages
 apm audit --file .cursorrules    # Scan any file
-apm audit --strip                # Remove non-critical characters
+apm audit --strip                # Remove hidden characters (preserves emoji)
 ```
 
 The `--file` flag is useful for inspecting files obtained outside APM — downloaded rules files, copy-pasted instructions, or files from pull requests.
@@ -121,7 +125,7 @@ Content scanning detects hidden Unicode characters. It does not detect:
 - Semantic manipulation (subtly misleading but syntactically normal text)
 - Binary payload embedding
 
-`--strip` removes non-critical characters from deployed copies. It does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
+`--strip` removes dangerous and suspicious characters (critical and warning) from deployed copies while preserving legitimate content like emoji and whitespace. It does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
 
 ### Planned hardening
 
