@@ -7,8 +7,8 @@ detection (``--drift``) are planned as future modes.
 
 Exit codes:
     0 — clean (no findings, or info-only)
-    1 — critical findings (tag characters, bidi overrides)
-    2 — warnings (zero-width chars, no critical)
+    1 — critical findings detected
+    2 — warnings only (no critical)
 """
 
 import sys
@@ -252,13 +252,13 @@ def _render_summary(
     elif warning > 0:
         _rich_warning(
             f"{STATUS_SYMBOLS['warning']} {warning} warning(s) in "
-            f"{affected} file(s) — zero-width or hidden characters"
+            f"{affected} file(s) — hidden characters detected"
         )
         _rich_info("  Run 'apm audit --strip' to remove non-critical characters")
     elif info > 0:
         _rich_info(
             f"{STATUS_SYMBOLS['info']} {info} info-level finding(s) in "
-            f"{affected} file(s) — unusual whitespace (use --verbose to see)"
+            f"{affected} file(s) — unusual characters (use --verbose to see)"
         )
     else:
         _rich_success(
@@ -341,9 +341,8 @@ def audit(ctx, package, file_path, strip, verbose):
     """Scan deployed prompt files for hidden Unicode characters.
 
     Detects invisible characters that could embed hidden instructions in
-    prompt, instruction, and rules files. Critical findings (tag characters,
-    bidi overrides) require manual review. Warnings (zero-width chars) can
-    be removed with --strip.
+    prompt, instruction, and rules files. Critical findings require manual
+    review. Warnings can be removed with --strip.
 
     \b
     Examples:
@@ -400,7 +399,7 @@ def audit(ctx, package, file_path, strip, verbose):
             _rich_warning(
                 "Critical findings were preserved — they require manual review"
             )
-            _rich_info("  Inspect flagged files and remove tag/bidi characters")
+            _rich_info("  Inspect flagged files and remove suspicious characters")
             sys.exit(1)
         sys.exit(0)
 
