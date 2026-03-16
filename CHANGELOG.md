@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - GitHub API rate-limit 403 responses no longer misdiagnosed as authentication failures — unauthenticated users now see actionable "rate limit exceeded" guidance instead of misleading "private repository" errors
+- Virtual file downloads from public github.com repos no longer require authentication — uses `raw.githubusercontent.com` CDN (no rate limit) before falling back to the Contents API
 
 ## [0.7.9] - 2026-03-13
 

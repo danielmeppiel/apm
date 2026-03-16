@@ -697,7 +697,7 @@ class GitHubPackageDownloader:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
     
-    def _try_raw_download(self, owner: str, repo: str, ref: str, file_path: str) -> bytes | None:
+    def _try_raw_download(self, owner: str, repo: str, ref: str, file_path: str) -> Optional[bytes]:
         """Attempt to fetch a file via raw.githubusercontent.com (CDN).
 
         Returns the raw bytes on success, or ``None`` if the file was not found
@@ -738,7 +738,7 @@ class GitHubPackageDownloader:
         # raw.githubusercontent.com is served from GitHub's CDN and is not
         # subject to the REST API rate limit (60 req/h unauthenticated).
         # Only available for github.com — GHES/GHE-DR have no equivalent.
-        if host == "github.com" and not self.github_token:
+        if host.lower() == "github.com" and not self.github_token:
             content = self._try_raw_download(owner, repo, ref, file_path)
             if content is not None:
                 return content
