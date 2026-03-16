@@ -108,7 +108,11 @@ apm install
 
 ## Governance with `apm audit`
 
-Run `apm audit --ci` in pull requests to verify the lock file matches the installed state. This catches configuration drift before it reaches your default branch.
+Run `apm audit` in pull requests to scan for hidden Unicode characters and other content issues. The command uses exit codes to signal results: **0** = clean, **1** = critical findings, **2** = warnings only. This lets CI gate on the result without any special flags.
+
+:::note[Planned]
+Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. The workflow below uses `apm audit` exit codes, which work today.
+:::
 
 ```yaml
 # .github/workflows/apm-audit.yml
@@ -123,12 +127,12 @@ jobs:
         with:
           commands: |
             apm install
-            apm audit --ci
+            apm audit
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
 
-Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce config drift. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
+Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce content issues. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
 
 ## Pack & Distribute
 

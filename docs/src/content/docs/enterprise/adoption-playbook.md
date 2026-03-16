@@ -124,8 +124,8 @@ reach production.
    # - name: Compile configuration
    #   run: apm compile
 
-   - name: Audit for drift
-     run: apm audit --ci
+   - name: Audit for content issues
+     run: apm audit
    ```
 
 2. Make the audit step a **required status check** on pull requests.

@@ -130,21 +130,17 @@ apm audit --strip --dry-run            # Preview what --strip would remove
 
 ---
 
-## CI enforcement with `apm audit --ci`
+## CI enforcement with `apm audit`
+
+Today, `apm audit` runs content scanning and returns exit codes (**0** = clean, **1** = critical findings, **2** = warnings), making it usable as a CI gate.
 
 :::note[Planned Feature]
-`apm audit --ci` is not yet available. The following describes planned behavior and is provided to illustrate the intended workflow.
+Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. The planned behavior — verifying that the lock file matches the manifest and that deployed files are present — is described below for reference.
 :::
 
-The `apm audit --ci` command is designed to run as a required status check in your CI pipeline. It verifies that the lock file is in sync with the declared manifest and that deployed files match expectations.
+### What works today
 
-### What it catches
-
-- **Lock file out of sync.** A dependency was added to `apm.yml` but `apm install` was not re-run.
-- **Unapproved manual changes.** Someone hand-edited an agent instruction file that APM manages.
-- **Missing dependencies.** A declared package failed to resolve or deploy.
-
-### GitHub Actions workflow
+`apm audit` scans installed packages for hidden Unicode characters and content issues. Use it in CI to block PRs with critical findings:
 
 ```yaml
 name: APM Audit
@@ -167,8 +163,17 @@ jobs:
         uses: microsoft/apm-action@v1
         with:
           commands: |
-            apm audit --ci
+            apm install
+            apm audit
 ```
+
+### Planned: lockfile consistency checking
+
+When `apm audit --ci` is available, it will additionally catch:
+
+- **Lock file out of sync.** A dependency was added to `apm.yml` but `apm install` was not re-run.
+- **Unapproved manual changes.** Someone hand-edited an agent instruction file that APM manages.
+- **Missing dependencies.** A declared package failed to resolve or deploy.
 
 ### Configuring as a required check
 
@@ -177,9 +182,9 @@ Once the workflow runs on PRs, configure it as a required status check:
 1. Navigate to your repository settings.
 2. Under **Rules** (or **Branches** for legacy branch protection), select the target branch.
 3. Add the `APM Audit` workflow job as a required status check.
-4. PRs that fail the audit cannot be merged until the configuration is corrected.
+4. PRs that fail the audit cannot be merged until the issue is corrected.
 
-This ensures every merge to a protected branch has a verified, consistent agent configuration.
+This ensures every merge to a protected branch passes content scanning.
 
 ---
 
@@ -314,7 +319,7 @@ GitHub Rulesets provide a scalable way to enforce APM governance across multiple
 
 ### Level 1: Required status check
 
-Once `apm audit --ci` is available (see [CI enforcement](#ci-enforcement-with-apm-audit---ci) above), configure it as a required status check through Rulesets:
+Configure `apm audit` as a required status check through Rulesets (see [CI enforcement](#ci-enforcement-with-apm-audit) above):
 
 1. Create a new Ruleset at the organization or repository level.
 2. Target the branches you want to protect (e.g., `main`, `release/*`).
@@ -363,7 +368,7 @@ APM enforces change management by design:
 1. **Declaration.** Changes start in `apm.yml`, which is a committed, reviewable file.
 2. **Resolution.** `apm install` resolves declarations to exact commits in `apm.lock.yaml`.
 3. **Review.** Both files are included in the PR diff for peer review.
-4. **Verification.** `apm audit --ci` confirms consistency before merge (planned — currently achieved through PR review of `apm.lock.yaml` diffs).
+4. **Verification.** `apm audit` scans for content issues before merge. Lockfile consistency checking (`apm audit --ci`) is planned — currently achieved through PR review of `apm.lock.yaml` diffs.
 5. **Traceability.** Git history provides a permanent record of who changed what and when.
 
 No agent configuration change can reach a protected branch without passing through this pipeline.
@@ -379,7 +384,8 @@ No agent configuration change can reach a protected branch without passing throu
 | Constitution injection | `memory/constitution.md` with hash verification | Available |
 | Transitive MCP trust control | `--trust-transitive-mcp` flag | Available |
 | Content scanning | Pre-deploy gate blocks critical hidden Unicode; `apm audit` for on-demand checks | Available |
-| CI enforcement | `apm audit --ci` as required status check | Planned |
+| CI enforcement (content scanning) | `apm audit` exit codes as required status check | Available |
+| CI enforcement (lockfile consistency) | `apm audit --ci` for manifest/lockfile verification | Planned |
 | Drift detection | `apm audit --drift` | Planned |
 | Approved source policies | CODEOWNERS + PR review | Available (manual) |
 | GitHub Rulesets integration | Required status checks | Available |
