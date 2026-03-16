@@ -509,6 +509,129 @@ class TestErrorHandling:
         # Would require mocking 404 errors
         pass
 
+    def test_download_github_file_403_rate_limit_no_token(self):
+        """Test that 403 with X-RateLimit-Remaining: 0 and no token gives a rate-limit error."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('github/awesome-copilot/agents/api-architect.agent.md')
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            mock_response_403.headers = {'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '0'}
+            mock_response_403.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_403)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get, \
+                 patch('apm_cli.deps.github_downloader.time.sleep'):
+                # _resilient_get retries 3 times on rate-limit 403, all return same
+                mock_get.return_value = mock_response_403
+
+                with pytest.raises(RuntimeError, match="rate limit exceeded") as exc_info:
+                    downloader.download_raw_file(dep_ref, 'agents/api-architect.agent.md', 'main')
+
+                # Must NOT mention "private repository" — that's the old misleading message
+                assert "private repository" not in str(exc_info.value).lower()
+                assert "60/hour" in str(exc_info.value)
+
+    def test_download_github_file_403_rate_limit_with_token(self):
+        """Test that 403 with X-RateLimit-Remaining: 0 and a token gives a rate-limit error."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'my-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('github/awesome-copilot/agents/api-architect.agent.md')
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            mock_response_403.headers = {'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '0'}
+            mock_response_403.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_403)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get, \
+                 patch('apm_cli.deps.github_downloader.time.sleep'):
+                mock_get.return_value = mock_response_403
+
+                with pytest.raises(RuntimeError, match="rate limit exceeded") as exc_info:
+                    downloader.download_raw_file(dep_ref, 'agents/api-architect.agent.md', 'main')
+
+                assert "Authenticated rate limit exhausted" in str(exc_info.value)
+                assert "SSO/SAML" not in str(exc_info.value)
+
+    def test_download_github_file_403_non_rate_limit_still_auth_error(self):
+        """Test that 403 WITHOUT rate-limit headers still produces the auth error."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/private-repo/sub/file.agent.md')
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            # No rate-limit headers — this is a genuine auth failure
+            mock_response_403.headers = {}
+            mock_response_403.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_response_403)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_response_403
+
+                with pytest.raises(RuntimeError, match="Authentication failed"):
+                    downloader.download_raw_file(dep_ref, 'sub/file.agent.md', 'main')
+
+    def test_resilient_get_retries_on_403_rate_limit(self):
+        """Test that _resilient_get retries when 403 has X-RateLimit-Remaining: 0."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            mock_response_403.headers = {'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '0'}
+
+            mock_response_200 = Mock()
+            mock_response_200.status_code = 200
+            mock_response_200.headers = {'X-RateLimit-Remaining': '50'}
+            mock_response_200.content = b'success'
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get, \
+                 patch('apm_cli.deps.github_downloader.time.sleep'):
+                mock_get.side_effect = [mock_response_403, mock_response_200]
+
+                response = downloader._resilient_get('https://api.github.com/repos/test', {})
+                assert response.status_code == 200
+                assert mock_get.call_count == 2
+
+    def test_resilient_get_does_not_retry_403_without_rate_limit_header(self):
+        """Test that _resilient_get does NOT retry 403 without rate-limit exhaustion."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            mock_response_403.headers = {}  # No rate-limit headers
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_response_403
+
+                response = downloader._resilient_get('https://api.github.com/repos/test', {})
+                # Should return immediately — no retry for non-rate-limit 403
+                assert response.status_code == 403
+                assert mock_get.call_count == 1
+
+    def test_resilient_get_403_with_nonzero_remaining_not_retried(self):
+        """Test that 403 with X-RateLimit-Remaining > 0 is NOT retried as rate limiting."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+            mock_response_403 = Mock()
+            mock_response_403.status_code = 403
+            mock_response_403.headers = {'X-RateLimit-Remaining': '42'}
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_response_403
+
+                response = downloader._resilient_get('https://api.github.com/repos/test', {})
+                assert response.status_code == 403
+                assert mock_get.call_count == 1
+
 
 class TestAzureDevOpsSupport:
     """Test Azure DevOps package support."""

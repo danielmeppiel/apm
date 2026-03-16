@@ -227,18 +227,36 @@ class GitHubPackageDownloader:
             requests.exceptions.RequestException: After all retries exhausted
         """
         last_exc = None
+        last_response = None
         for attempt in range(max_retries):
             try:
                 response = requests.get(url, headers=headers, timeout=timeout)
                 
-                # Handle rate limiting
-                if response.status_code in (429, 503):
+                # Handle rate limiting — GitHub returns 429 for secondary limits
+                # and 403 with X-RateLimit-Remaining: 0 for primary limits.
+                is_rate_limited = response.status_code in (429, 503)
+                if not is_rate_limited and response.status_code == 403:
+                    try:
+                        remaining = response.headers.get("X-RateLimit-Remaining")
+                        if remaining is not None and int(remaining) == 0:
+                            is_rate_limited = True
+                    except (TypeError, ValueError):
+                        pass
+
+                if is_rate_limited:
+                    last_response = response
                     retry_after = response.headers.get("Retry-After")
+                    reset_at = response.headers.get("X-RateLimit-Reset")
                     if retry_after:
                         try:
                             wait = min(float(retry_after), 60)
                         except (TypeError, ValueError):
                             # Retry-After may be an HTTP-date; fall back to exponential backoff
+                            wait = min(2 ** attempt, 30) * (0.5 + random.random())
+                    elif reset_at:
+                        try:
+                            wait = max(0, min(int(reset_at) - time.time(), 60))
+                        except (TypeError, ValueError):
                             wait = min(2 ** attempt, 30) * (0.5 + random.random())
                     else:
                         wait = min(2 ** attempt, 30) * (0.5 + random.random())
@@ -266,6 +284,12 @@ class GitHubPackageDownloader:
                 if attempt < max_retries - 1:
                     _debug(f"Timeout, retrying (attempt {attempt + 1}/{max_retries})")
         
+        # If rate limiting exhausted all retries, return the last response so
+        # callers can inspect headers (e.g. X-RateLimit-Remaining) and raise
+        # an appropriate user-facing error.
+        if last_response is not None:
+            return last_response
+
         if last_exc:
             raise last_exc
         raise requests.exceptions.RequestException(f"All {max_retries} attempts failed for {url}")
@@ -739,6 +763,33 @@ class GitHubPackageDownloader:
                         f"(tried refs: {ref}, {fallback_ref})"
                     )
             elif e.response.status_code == 401 or e.response.status_code == 403:
+                # Distinguish rate limiting from auth failure.
+                # GitHub returns 403 with X-RateLimit-Remaining: 0 when the
+                # primary rate limit is exhausted — even for public repos.
+                # _resilient_get already retries these, so if we still land
+                # here the retries were exhausted; surface the real cause.
+                is_rate_limit = False
+                try:
+                    rl_remaining = e.response.headers.get("X-RateLimit-Remaining")
+                    if rl_remaining is not None and int(rl_remaining) == 0:
+                        is_rate_limit = True
+                except (TypeError, ValueError):
+                    pass
+
+                if is_rate_limit:
+                    error_msg = f"GitHub API rate limit exceeded for {dep_ref.repo_url}. "
+                    if not self.github_token:
+                        error_msg += (
+                            "Unauthenticated requests are limited to 60/hour (shared per IP). "
+                            "Set GITHUB_APM_PAT or GITHUB_TOKEN to increase the limit to 5,000/hour."
+                        )
+                    else:
+                        error_msg += (
+                            "Authenticated rate limit exhausted. "
+                            "Wait a few minutes or check your token's rate-limit quota."
+                        )
+                    raise RuntimeError(error_msg)
+
                 # Token may lack SSO/SAML authorization for this org.
                 # Retry without auth  -- the repo might be public.
                 # Applies to github.com and GHES (custom domains can have public repos).

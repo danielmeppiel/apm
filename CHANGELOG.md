@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CursorClientAdapter` for MCP server management in `.cursor/mcp.json`
 - `OpenCodeClientAdapter` for MCP server management in `opencode.json`
 
+### Fixed
+
+- GitHub API rate-limit 403 responses no longer misdiagnosed as authentication failures — unauthenticated users now see actionable "rate limit exceeded" guidance instead of misleading "private repository" errors
+
 ## [0.7.9] - 2026-03-13
 
 ### Added
