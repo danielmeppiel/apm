@@ -166,7 +166,7 @@ def unpack_bundle(
                     f"with critical hidden characters\n\n"
                     f"Affected files:\n" + "\n".join(affected) + "\n\n"
                     "Next steps:\n"
-                    "  - Run: apm audit --file <file> to see details\n"
+                    "  - Extract the bundle and run: apm audit --file <path> to inspect\n"
                     "  - Run: apm unpack --force to deploy anyway "
                     "(not recommended)\n\n"
                     "Learn more: https://apm.github.io/apm/enterprise/security/"
@@ -200,6 +200,10 @@ def unpack_bundle(
                     f"Refusing to unpack path that escapes output directory: {rel_path!r}"
                 )
             src = source_dir / rel_path
+            if src.is_symlink():
+                # Security: skip symlinks to prevent scanning bypass
+                skipped += 1
+                continue
             if not src.exists():
                 skipped += 1
                 continue  # skip_verify may allow missing files

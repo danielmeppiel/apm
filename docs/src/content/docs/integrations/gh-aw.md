@@ -168,7 +168,7 @@ In a separate CI workflow, you can audit installed packages:
     sarif_file: apm-audit.sarif
 ```
 
-See [Content scanning](/enterprise/security/#content-scanning) for details on what APM detects.
+See [Content scanning](../../enterprise/security/#content-scanning) for details on what APM detects.
 
 ## Isolated Mode
 

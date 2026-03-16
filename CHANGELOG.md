@@ -10,12 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Content scanning for `apm unpack` — bundles are now scanned for hidden Unicode characters before deployment, with `--force` override for critical findings
-- `apm audit --format sarif/json` and `--output` for machine-readable audit reports — SARIF for GitHub Code Scanning, JSON for CI pipelines
+- Content scanning for `apm unpack` — bundles are now scanned for hidden Unicode characters before deployment, with `--force` override for critical findings (#330)
+- `apm audit --format sarif/json/markdown` and `--output` for machine-readable audit reports — SARIF for GitHub Code Scanning, JSON for CI pipelines, Markdown for `$GITHUB_STEP_SUMMARY` (#330)
 
 ### Fixed
 
-- Documentation references to `apm audit --ci` now correctly indicate it is planned, not yet available
+- Documentation references to `apm audit --ci` now correctly indicate it is planned, not yet available (#330)
 
 ## [0.8.0] - 2026-03-16
 

@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Union
 
 import pytest
 
@@ -9,7 +10,7 @@ from apm_cli.bundle.unpacker import unpack_bundle, UnpackResult
 from apm_cli.deps.lockfile import LockFile, LockedDependency
 
 
-def _build_bundle_dir(tmp_path: Path, deployed_files: dict[str, str]) -> Path:
+def _build_bundle_dir(tmp_path: Path, deployed_files: dict[str, Union[str, bytes]]) -> Path:
     """Create a bundle directory with a lockfile and file contents.
 
     Args:
@@ -116,7 +117,10 @@ class TestUnpackSecurity:
         malicious_target = tmp_path / "outside.md"
         malicious_target.write_text("Text with \U000E0001 tag", encoding="utf-8")
         link = bundle / ".github/prompts/linked.md"
-        link.symlink_to(malicious_target)
+        try:
+            link.symlink_to(malicious_target)
+        except OSError:
+            pytest.skip("Platform does not support symlinks")
 
         # Add the symlink to the lockfile so unpacker tries to process it
         lockfile = LockFile.read(bundle / "apm.lock.yaml")

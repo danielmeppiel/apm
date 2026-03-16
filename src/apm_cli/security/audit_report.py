@@ -6,6 +6,18 @@ from typing import Any, Dict, List
 
 from .content_scanner import ScanFinding
 
+
+def _relative_path(file_path: str) -> str:
+    """Ensure paths in reports are relative (never absolute)."""
+    p = Path(file_path)
+    if p.is_absolute():
+        try:
+            return str(p.relative_to(Path.cwd()))
+        except ValueError:
+            return p.name
+    return file_path.replace("\\", "/")
+
+
 # SARIF schema version
 _SARIF_VERSION = "2.1.0"
 _SARIF_SCHEMA = (
@@ -48,7 +60,7 @@ def findings_to_json(
     for finding in all_findings:
         items.append({
             "severity": finding.severity,
-            "file": finding.file,
+            "file": _relative_path(finding.file),
             "line": finding.line,
             "column": finding.column,
             "codepoint": finding.codepoint,
@@ -102,7 +114,7 @@ def findings_to_sarif(
                 {
                     "physicalLocation": {
                         "artifactLocation": {
-                            "uri": finding.file.replace("\\", "/"),
+                            "uri": _relative_path(finding.file),
                         },
                         "region": {
                             "startLine": finding.line,
