@@ -200,6 +200,82 @@ class TestScanText:
         findings = ContentScanner.scan_text(content)
         assert findings == []
 
+    # ── Variation selectors ──
+
+    def test_variation_selector_smp_detected_as_critical(self):
+        """U+E0100 (VS17) in the SMP range must be flagged as critical."""
+        content = f"hello {chr(0xE0100)} world"
+        findings = ContentScanner.scan_text(content, filename="test.md")
+        assert len(findings) == 1
+        assert findings[0].severity == "critical"
+        assert findings[0].category == "variation-selector"
+        assert findings[0].codepoint == "U+E0100"
+        assert findings[0].file == "test.md"
+
+    def test_variation_selector_smp_boundary(self):
+        """U+E01EF (VS256) at the upper SMP boundary must be critical."""
+        content = f"text{chr(0xE01EF)}end"
+        findings = ContentScanner.scan_text(content)
+        assert len(findings) == 1
+        assert findings[0].severity == "critical"
+        assert findings[0].category == "variation-selector"
+        assert findings[0].codepoint == "U+E01EF"
+
+    def test_variation_selector_bmp_detected_as_warning(self):
+        """U+FE00 (VS1) in the BMP range must be flagged as warning."""
+        content = f"hello {chr(0xFE00)} world"
+        findings = ContentScanner.scan_text(content, filename="test.md")
+        assert len(findings) == 1
+        assert findings[0].severity == "warning"
+        assert findings[0].category == "variation-selector"
+        assert findings[0].codepoint == "U+FE00"
+
+    def test_variation_selector_bmp_boundary(self):
+        """U+FE0D (VS14) at the upper BMP warning boundary."""
+        content = f"text{chr(0xFE0D)}end"
+        findings = ContentScanner.scan_text(content)
+        assert len(findings) == 1
+        assert findings[0].severity == "warning"
+        assert findings[0].category == "variation-selector"
+        assert findings[0].codepoint == "U+FE0D"
+
+    def test_text_presentation_selector_detected(self):
+        """U+FE0E (VS15) text presentation selector is warning."""
+        content = f"text{chr(0xFE0E)}end"
+        findings = ContentScanner.scan_text(content)
+        assert len(findings) == 1
+        assert findings[0].severity == "warning"
+        assert findings[0].category == "variation-selector"
+        assert findings[0].codepoint == "U+FE0E"
+
+    def test_emoji_presentation_selector_detected_as_info(self):
+        """U+FE0F (VS16) emoji presentation selector is info."""
+        content = f"text{chr(0xFE0F)}end"
+        findings = ContentScanner.scan_text(content)
+        assert len(findings) == 1
+        assert findings[0].severity == "info"
+        assert findings[0].category == "variation-selector"
+        assert findings[0].codepoint == "U+FE0F"
+
+    def test_glassworm_style_injection(self):
+        """Multiple SMP variation selectors between visible tokens (attack pattern)."""
+        content = (
+            f"You are a helpful assistant."
+            f"{chr(0xE0100)}{chr(0xE0101)}{chr(0xE0102)}"
+            f" Follow security best practices."
+        )
+        findings = ContentScanner.scan_text(content, filename="prompt.md")
+        assert len(findings) == 3
+        assert all(f.severity == "critical" for f in findings)
+        assert all(f.category == "variation-selector" for f in findings)
+
+    def test_emoji_with_vs16_is_info_not_warning(self):
+        """Legitimate emoji usage with VS16 should only produce info findings."""
+        content = f"Great work! {chr(0x2764)}{chr(0xFE0F)}"
+        findings = ContentScanner.scan_text(content)
+        assert len(findings) >= 1
+        assert all(f.severity == "info" for f in findings)
+
 
 class TestScanFile:
     """Tests for ContentScanner.scan_file()."""
@@ -311,3 +387,22 @@ class TestStripNonCritical:
         content = f"hel\u00ADlo"
         result = ContentScanner.strip_non_critical(content)
         assert result == "hello"
+
+    def test_strip_removes_warning_variation_selectors(self):
+        """BMP variation selectors (warning) should be stripped."""
+        content = f"hello{chr(0xFE00)}world"
+        result = ContentScanner.strip_non_critical(content)
+        assert result == "helloworld"
+
+    def test_strip_removes_info_variation_selector_vs16(self):
+        """VS16 (info) should be stripped."""
+        content = f"hello{chr(0xFE0F)}world"
+        result = ContentScanner.strip_non_critical(content)
+        assert result == "helloworld"
+
+    def test_strip_preserves_critical_variation_selectors(self):
+        """SMP variation selectors (critical) are NOT stripped."""
+        vs17 = chr(0xE0100)
+        content = f"hello{vs17}world"
+        result = ContentScanner.strip_non_critical(content)
+        assert vs17 in result

@@ -65,15 +65,18 @@ APM does not use a package registry. Dependencies are specified as git repositor
 
 ### The threat
 
-Researchers have found hidden Unicode characters embedded in popular shared rules files. Tag characters (U+E0001–E007F) map 1:1 to invisible ASCII. Bidirectional overrides can reorder visible text. Zero-width joiners create invisible gaps. LLMs tokenize all of these individually, meaning models process instructions that developers cannot see on screen.
+Researchers have found hidden Unicode characters embedded in popular shared rules files. Tag characters (U+E0001–E007F) map 1:1 to invisible ASCII. Bidirectional overrides can reorder visible text. Zero-width joiners create invisible gaps. Variation selectors attach to visible characters, embedding invisible payload bytes that AST-based tools cannot detect. The Glassworm campaign (2026) exploited this mechanism to compromise repositories and VS Code extensions. LLMs tokenize all of these individually, meaning models process instructions that developers cannot see on screen.
 
 ### What APM detects
 
 | Severity | Characters | Risk |
 |----------|-----------|------|
 | Critical | Tag characters (U+E0001–E007F), bidi overrides (U+202A–E, U+2066–9) | Hidden instruction embedding. Zero legitimate use in prompt files. |
+| Critical | Variation selectors 17–256 (U+E0100–E01EF) | Glassworm attack vector — invisible payload encoding. Zero legitimate use in prompt files. |
 | Warning | Zero-width spaces/joiners (U+200B–D), mid-file BOM (U+FEFF) | Common copy-paste debris, but can hide content. |
+| Warning | Variation selectors 1–15 (U+FE00–FE0E) | CJK typography / text presentation selectors. Uncommon in prompt files. |
 | Info | Non-breaking spaces (U+00A0), unusual whitespace (U+2000–200A) | Mostly harmless, flagged for awareness. |
+| Info | Emoji presentation selector (U+FE0F) | Common with emoji, informational only. |
 
 ### Pre-deployment gate
 

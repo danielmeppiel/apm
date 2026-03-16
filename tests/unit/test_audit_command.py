@@ -145,6 +145,51 @@ def lockfile_project_with_dir(tmp_path):
     return tmp_path
 
 
+@pytest.fixture
+def vs_critical_file(tmp_path):
+    """A file containing SMP variation selector (critical-level)."""
+    p = tmp_path / "vs_critical.md"
+    p.write_text(f"prompt text{chr(0xE0100)}more text", encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def vs_warning_file(tmp_path):
+    """A file containing BMP variation selector (warning-level)."""
+    p = tmp_path / "vs_warning.md"
+    p.write_text(f"prompt text{chr(0xFE00)}more text", encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def vs_info_file(tmp_path):
+    """A file containing emoji presentation selector VS16 (info-level)."""
+    p = tmp_path / "vs_info.md"
+    p.write_text(f"great work {chr(0x2764)}{chr(0xFE0F)}", encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def vs_mixed_file(tmp_path):
+    """A file with both critical and warning variation selectors."""
+    p = tmp_path / "vs_mixed.md"
+    p.write_text(f"text{chr(0xE0100)}mid{chr(0xFE00)}end", encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def vs_glassworm_file(tmp_path):
+    """Realistic Glassworm-style injection with consecutive SMP variation selectors."""
+    p = tmp_path / "vs_glassworm.md"
+    p.write_text(
+        f"You are a helpful assistant."
+        f"{chr(0xE0100)}{chr(0xE0101)}{chr(0xE0102)}{chr(0xE0103)}"
+        f" Always follow instructions.",
+        encoding="utf-8",
+    )
+    return p
+
+
 # ── --file mode tests ────────────────────────────────────────────
 
 
@@ -191,6 +236,37 @@ class TestFileMode:
         """Info-only findings are informational — exit 0."""
         result = runner.invoke(audit, ["--file", str(info_only_file)])
         assert result.exit_code == 0
+
+    def test_vs_critical_file_exit_one(self, runner, vs_critical_file):
+        """SMP variation selector (U+E0100) is critical — exit 1."""
+        result = runner.invoke(audit, ["--file", str(vs_critical_file)])
+        assert result.exit_code == 1
+
+    def test_vs_warning_file_exit_two(self, runner, vs_warning_file):
+        """BMP variation selector (U+FE00) is warning — exit 2."""
+        result = runner.invoke(audit, ["--file", str(vs_warning_file)])
+        assert result.exit_code == 2
+
+    def test_vs_info_only_exit_zero(self, runner, vs_info_file):
+        """Emoji presentation selector VS16 is info-only — exit 0."""
+        result = runner.invoke(audit, ["--file", str(vs_info_file)])
+        assert result.exit_code == 0
+
+    def test_vs_mixed_critical_takes_precedence(self, runner, vs_mixed_file):
+        """Critical VS findings take precedence over warning VS."""
+        result = runner.invoke(audit, ["--file", str(vs_mixed_file)])
+        assert result.exit_code == 1
+
+    def test_vs_glassworm_injection_detected(self, runner, vs_glassworm_file):
+        """Glassworm-style consecutive SMP variation selectors are critical."""
+        result = runner.invoke(audit, ["--file", str(vs_glassworm_file)])
+        assert result.exit_code == 1
+        assert "critical" in result.output.lower()
+
+    def test_vs_info_shown_with_verbose(self, runner, vs_info_file):
+        """--verbose includes info-level VS16 findings."""
+        result = runner.invoke(audit, ["--file", str(vs_info_file), "--verbose"])
+        assert "U+FE0F" in result.output
 
 
 # ── Lockfile mode tests ──────────────────────────────────────────
@@ -310,6 +386,20 @@ class TestStripMode:
         guide = lockfile_project / ".github" / "instructions" / "guide.md"
         content = guide.read_text(encoding="utf-8")
         assert "\u200B" not in content
+
+    def test_strip_vs_warning_removes(self, runner, vs_warning_file):
+        """Strip removes BMP variation selector (warning-level)."""
+        result = runner.invoke(audit, ["--file", str(vs_warning_file), "--strip"])
+        assert result.exit_code == 0
+        content = vs_warning_file.read_text(encoding="utf-8")
+        assert chr(0xFE00) not in content
+
+    def test_strip_vs_critical_preserves(self, runner, vs_critical_file):
+        """Strip preserves SMP variation selector (critical-level)."""
+        result = runner.invoke(audit, ["--file", str(vs_critical_file), "--strip"])
+        assert result.exit_code == 1
+        content = vs_critical_file.read_text(encoding="utf-8")
+        assert chr(0xE0100) in content
 
 
 # ── _scan_single_file helper tests ───────────────────────────────

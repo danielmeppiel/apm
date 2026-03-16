@@ -328,7 +328,7 @@ def _apply_strip(
 @click.option(
     "--strip",
     is_flag=True,
-    help="Strip non-critical hidden characters (zero-width spaces, unusual whitespace)",
+    help="Strip non-critical hidden characters (zero-width, variation selectors, whitespace)",
 )
 @click.option(
     "--verbose",

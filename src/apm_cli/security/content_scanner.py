@@ -54,6 +54,12 @@ _SUSPICIOUS_RANGES: List[Tuple[int, int, str, str, str]] = [
      "First strong isolate (FSI)"),
     (0x2069, 0x2069, "critical", "bidi-override",
      "Pop directional isolate (PDI)"),
+    # Variation selectors — Glassworm supply-chain attack vector.
+    # These attach to visible characters, embedding invisible payload bytes
+    # that AST-based tools skip entirely.  Sequences of variation selectors
+    # can encode arbitrary hidden data/instructions.
+    (0xE0100, 0xE01EF, "critical", "variation-selector",
+     "Variation selector (SMP) — no legitimate use in prompt files"),
     # ── Warning: common copy-paste debris but can hide instructions ──
     (0x200B, 0x200B, "warning", "zero-width",
      "Zero-width space"),
@@ -63,10 +69,17 @@ _SUSPICIOUS_RANGES: List[Tuple[int, int, str, str, str]] = [
      "Zero-width joiner (ZWJ)"),
     (0x2060, 0x2060, "warning", "zero-width",
      "Word joiner"),
+    # BMP variation selectors — uncommon in prompt files
+    (0xFE00, 0xFE0D, "warning", "variation-selector",
+     "Variation selector (CJK typography variant)"),
+    (0xFE0E, 0xFE0E, "warning", "variation-selector",
+     "Text presentation selector"),
     (0x00AD, 0x00AD, "warning", "invisible-formatting",
      "Soft hyphen"),
     # FEFF as mid-file BOM is handled separately in scan logic
     # ── Info: unusual whitespace, mostly harmless ──
+    (0xFE0F, 0xFE0F, "info", "variation-selector",
+     "Emoji presentation selector"),
     (0x00A0, 0x00A0, "info", "unusual-whitespace",
      "Non-breaking space"),
     (0x2000, 0x200A, "info", "unusual-whitespace",
