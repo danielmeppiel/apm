@@ -6,20 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [0.8.0] - 2026-03-16
 
 ### Added
 
-- Content security scanning: `apm audit` command with `--file`, `--strip`; install-time pre-deployment gate that blocks critical hidden Unicode characters (override with `--force`); advisory scanning in `compile` and `pack` (#313)
-- Detect hidden Unicode characters: variation selectors (Glassworm attack vector), invisible math operators, bidi marks, annotation markers, and deprecated formatting characters in `apm audit` and install-time scanning — by @raye-deng ([#320](https://github.com/microsoft/apm/issues/320))
-- `apm audit --strip` now removes all dangerous characters (critical + warning) while preserving legitimate content like emoji; improved help text and strip feedback messages
-- Context-aware ZWJ detection — zero-width joiners inside emoji sequences (e.g. 👨‍👩‍👧) are recognized as info-level and preserved by `--strip`
-- `apm audit --strip --dry-run` preview mode — shows per-file counts of strippable characters without modifying files
-- Native Cursor IDE integration — `apm install` deploys primitives to `.cursor/` when the directory exists: instructions→rules (`.mdc`), agents, skills, hooks (`hooks.json`), and MCP (`mcp.json`)
-- Native OpenCode integration — `apm install` deploys primitives to `.opencode/` when the directory exists: agents, commands (from prompts), skills, and MCP (`opencode.json`) — inspired by @timvw (#257, #306)
-- `TargetProfile` data layer (`src/apm_cli/integration/targets.py`) — data-driven target definitions for scalable multi-target architecture
-- `CursorClientAdapter` for MCP server management in `.cursor/mcp.json`
-- `OpenCodeClientAdapter` for MCP server management in `opencode.json`
+- Native Cursor IDE integration — `apm install` deploys instructions→rules (`.mdc`), agents, skills, hooks (`hooks.json`), and MCP (`mcp.json`) to `.cursor/` (#301)
+- Native OpenCode integration — `apm install` deploys agents, commands, skills, and MCP (`opencode.json`) to `.opencode/` — inspired by @timvw (#306)
+- Content security scanning with `apm audit` command — `--file`, `--strip`, `--dry-run`; install-time pre-deployment gate blocks critical hidden Unicode characters (#313)
+- Detect variation selectors (Glassworm attack vector), invisible math operators, bidi marks, annotation markers, and deprecated formatting in content scanning — by @raye-deng (#321, #320)
+- Context-aware ZWJ detection — emoji joiners preserved by `--strip`; `--strip --dry-run` preview mode (#321)
+- `TargetProfile` data layer for scalable multi-target architecture (#301)
+- `CursorClientAdapter` for MCP server management in `.cursor/mcp.json` (#301)
+- `OpenCodeClientAdapter` for MCP server management in `opencode.json` (#306)
+- Private packages guide and enhanced authentication documentation (#314)
+
+### Changed
+
+- Updated docs landing page to include Cursor and OpenCode (#310)
+- Updated all doc pages to reflect full Cursor native support (#304)
+- Added OpenCode to README headline and compile description (#308)
 
 ## [0.7.9] - 2026-03-13
 
