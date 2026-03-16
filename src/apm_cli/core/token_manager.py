@@ -71,7 +71,7 @@ class GitHubTokenManager:
                 capture_output=True,
                 text=True,
                 timeout=5,
-                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'},
+                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': 'echo'},
             )
             if result.returncode != 0:
                 return None

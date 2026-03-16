@@ -8,7 +8,7 @@ APM works without any tokens for public packages. Authentication is only needed 
 
 ## How APM Authenticates
 
-APM resolves every dependency to a git URL and clones it. Authentication depends on the host:
+APM resolves dependencies either via `git clone` (for full packages) or the GitHub API (for individual files). Authentication depends on the host:
 
 | Host | Token variable | How it's used |
 |------|---------------|---------------|
