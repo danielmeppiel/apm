@@ -125,6 +125,27 @@ def unsupported_host_error(hostname: str, context: Optional[str] = None) -> str:
     return msg
 
 
+def build_raw_content_url(owner: str, repo: str, ref: str, file_path: str) -> str:
+    """Build a raw.githubusercontent.com URL for fetching file content.
+
+    This CDN endpoint is not subject to the GitHub REST API rate limit and
+    does not require authentication for public repositories.
+
+    Only valid for github.com — GitHub Enterprise Server and GHE Cloud Data
+    Residency hosts do not have a ``raw.githubusercontent.com`` equivalent.
+
+    Args:
+        owner: Repository owner (user or organisation)
+        repo: Repository name
+        ref: Git reference (branch, tag, or commit SHA)
+        file_path: Path to file within the repository
+
+    Returns:
+        str: ``https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{file_path}``
+    """
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{file_path}"
+
+
 def build_ssh_url(host: str, repo_ref: str) -> str:
     """Build an SSH clone URL for the given host and repo_ref (owner/repo)."""
     return f"git@{host}:{repo_ref}.git"

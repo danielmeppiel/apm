@@ -1270,5 +1270,203 @@ class TestGitEnvironmentPlatformBehavior:
             assert dl.git_env['GIT_CONFIG_GLOBAL'] == '/dev/null'
 
 
+class TestRawContentCDNDownload:
+    """Tests for CDN-first (raw.githubusercontent.com) download strategy."""
+
+    def test_raw_cdn_used_for_github_com_without_token(self):
+        """Unauthenticated github.com requests should try raw.githubusercontent.com first."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo/agents/bot.agent.md')
+
+            mock_raw_response = Mock()
+            mock_raw_response.status_code = 200
+            mock_raw_response.content = b'# Agent content'
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_raw_response
+
+                result = downloader._download_github_file(dep_ref, 'agents/bot.agent.md', 'main')
+
+            assert result == b'# Agent content'
+            # Should have hit raw.githubusercontent.com, not API
+            call_url = mock_get.call_args[0][0]
+            assert 'raw.githubusercontent.com' in call_url
+            assert 'api.github.com' not in call_url
+
+    def test_raw_cdn_not_used_when_token_present(self):
+        """Authenticated requests should go straight to Contents API."""
+        with patch.dict(os.environ, {'GITHUB_APM_PAT': 'my-token'}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo/agents/bot.agent.md')
+
+            mock_api_response = Mock()
+            mock_api_response.status_code = 200
+            mock_api_response.headers = {'X-RateLimit-Remaining': '4999'}
+            mock_api_response.content = b'# Agent content'
+            mock_api_response.raise_for_status = Mock()
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_api_response
+
+                result = downloader._download_github_file(dep_ref, 'agents/bot.agent.md', 'main')
+
+            assert result == b'# Agent content'
+            # Should use API with auth, not raw CDN
+            call_url = mock_get.call_args[0][0]
+            assert 'api.github.com' in call_url
+
+    def test_raw_cdn_not_used_for_enterprise_host(self):
+        """Enterprise hosts should use API directly (no raw.githubusercontent.com)."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo/agents/bot.agent.md')
+            dep_ref.host = 'github.mycompany.com'
+
+            mock_api_response = Mock()
+            mock_api_response.status_code = 200
+            mock_api_response.headers = {}
+            mock_api_response.content = b'# Agent content'
+            mock_api_response.raise_for_status = Mock()
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.return_value = mock_api_response
+
+                result = downloader._download_github_file(dep_ref, 'agents/bot.agent.md', 'main')
+
+            assert result == b'# Agent content'
+            call_url = mock_get.call_args[0][0]
+            assert 'raw.githubusercontent.com' not in call_url
+            assert 'github.mycompany.com' in call_url
+
+    def test_raw_cdn_fallback_to_api_on_404(self):
+        """If raw CDN returns 404, should fall through to the API path."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/private-repo/agents/bot.agent.md')
+
+            # Raw CDN returns 404 (private repo or file doesn't exist)
+            mock_raw_404 = Mock()
+            mock_raw_404.status_code = 404
+            mock_raw_404.content = b'404: Not Found'
+
+            # API also returns 404 with proper error handling
+            mock_api_404 = Mock()
+            mock_api_404.status_code = 404
+            mock_api_404.headers = {}
+            mock_api_404.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_api_404)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                # First 2 calls: raw CDN (main + master fallback) → 404
+                # Third call: API → 404
+                mock_get.side_effect = [mock_raw_404, mock_raw_404, mock_api_404, mock_api_404]
+
+                with pytest.raises(RuntimeError, match="File not found"):
+                    downloader._download_github_file(dep_ref, 'agents/bot.agent.md', 'main')
+
+    def test_raw_cdn_fallback_main_to_master(self):
+        """If raw CDN 404s on 'main', should try 'master' before API fallback."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo/agents/bot.agent.md')
+
+            # raw CDN: main → 404, master → 200
+            mock_raw_404 = Mock()
+            mock_raw_404.status_code = 404
+
+            mock_raw_200 = Mock()
+            mock_raw_200.status_code = 200
+            mock_raw_200.content = b'# Found on master'
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                mock_get.side_effect = [mock_raw_404, mock_raw_200]
+
+                result = downloader._download_github_file(dep_ref, 'agents/bot.agent.md', 'main')
+
+            assert result == b'# Found on master'
+            # Second call should be to master
+            assert mock_get.call_count == 2
+            second_url = mock_get.call_args_list[1][0][0]
+            assert '/master/' in second_url
+
+    def test_raw_cdn_network_error_falls_through(self):
+        """If raw CDN raises a network error, should fall through to API."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo/agents/bot.agent.md')
+
+            mock_api_response = Mock()
+            mock_api_response.status_code = 200
+            mock_api_response.headers = {}
+            mock_api_response.content = b'# From API'
+            mock_api_response.raise_for_status = Mock()
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                # Raw CDN: network error; API: success
+                mock_get.side_effect = [
+                    requests_lib.exceptions.ConnectionError("CDN unreachable"),
+                    mock_api_response,
+                ]
+
+                result = downloader._download_github_file(dep_ref, 'agents/bot.agent.md', 'v1.0.0')
+
+            assert result == b'# From API'
+
+    def test_raw_cdn_no_branch_fallback_for_specific_ref(self):
+        """For a specific ref (not main/master), raw CDN should not try branch fallback."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+            dep_ref = DependencyReference.parse('owner/repo/agents/bot.agent.md')
+
+            mock_raw_404 = Mock()
+            mock_raw_404.status_code = 404
+
+            mock_api_404 = Mock()
+            mock_api_404.status_code = 404
+            mock_api_404.headers = {}
+            mock_api_404.raise_for_status = Mock(
+                side_effect=requests_lib.exceptions.HTTPError(response=mock_api_404)
+            )
+
+            with patch('apm_cli.deps.github_downloader.requests.get') as mock_get:
+                # Raw CDN: 404, then API: 404 with specific ref error
+                mock_get.side_effect = [mock_raw_404, mock_api_404]
+
+                with pytest.raises(RuntimeError, match="File not found.*at ref 'v2.0.0'"):
+                    downloader._download_github_file(dep_ref, 'agents/bot.agent.md', 'v2.0.0')
+
+            # Should be exactly 2 calls: 1 raw CDN (no master fallback) + 1 API
+            assert mock_get.call_count == 2
+
+    def test_try_raw_download_returns_none_on_404(self):
+        """_try_raw_download should return None on 404."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+            mock_response = Mock()
+            mock_response.status_code = 404
+
+            with patch('apm_cli.deps.github_downloader.requests.get', return_value=mock_response):
+                result = downloader._try_raw_download('owner', 'repo', 'main', 'file.md')
+
+            assert result is None
+
+    def test_try_raw_download_returns_content_on_200(self):
+        """_try_raw_download should return bytes on success."""
+        with patch.dict(os.environ, {}, clear=True):
+            downloader = GitHubPackageDownloader()
+
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.content = b'hello world'
+
+            with patch('apm_cli.deps.github_downloader.requests.get', return_value=mock_response):
+                result = downloader._try_raw_download('owner', 'repo', 'main', 'file.md')
+
+            assert result == b'hello world'
+
+
 if __name__ == '__main__':
     pytest.main([__file__])

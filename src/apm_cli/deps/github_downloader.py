@@ -33,6 +33,7 @@ from ..utils.github_host import (
     build_ado_https_clone_url,
     build_ado_ssh_url,
     build_ado_api_url,
+    build_raw_content_url,
     sanitize_token_url_in_message, 
     default_host,
     is_azure_devops_hostname,
@@ -696,8 +697,29 @@ class GitHubPackageDownloader:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
     
+    def _try_raw_download(self, owner: str, repo: str, ref: str, file_path: str) -> bytes | None:
+        """Attempt to fetch a file via raw.githubusercontent.com (CDN).
+
+        Returns the raw bytes on success, or ``None`` if the file was not found
+        (HTTP 404) or the request failed for any reason.  This is intentionally
+        best-effort: callers fall back to the Contents API when ``None`` is
+        returned.
+        """
+        raw_url = build_raw_content_url(owner, repo, ref, file_path)
+        try:
+            response = requests.get(raw_url, timeout=30)
+            if response.status_code == 200:
+                return response.content
+        except requests.exceptions.RequestException:
+            pass
+        return None
+
     def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
         """Download a file from GitHub repository.
+        
+        For github.com without a token, tries raw.githubusercontent.com first
+        (CDN, no rate limit) before falling back to the Contents API.  Authenticated
+        requests and non-github.com hosts always use the Contents API directly.
         
         Args:
             dep_ref: Parsed dependency reference
@@ -712,15 +734,31 @@ class GitHubPackageDownloader:
         # Parse owner/repo from repo_url
         owner, repo = dep_ref.repo_url.split('/', 1)
         
+        # --- CDN fast-path for github.com without a token ---
+        # raw.githubusercontent.com is served from GitHub's CDN and is not
+        # subject to the REST API rate limit (60 req/h unauthenticated).
+        # Only available for github.com — GHES/GHE-DR have no equivalent.
+        if host == "github.com" and not self.github_token:
+            content = self._try_raw_download(owner, repo, ref, file_path)
+            if content is not None:
+                return content
+            # raw download returned 404 — could be wrong default branch.
+            # Try the other default branch before falling through to the API.
+            if ref in ("main", "master"):
+                fallback_ref = "master" if ref == "main" else "main"
+                content = self._try_raw_download(owner, repo, fallback_ref, file_path)
+                if content is not None:
+                    return content
+            # All raw attempts failed — fall through to API path which
+            # handles private repos, rate-limit messaging, and SAML errors.
+        
+        # --- Contents API path (authenticated, enterprise, or raw fallback) ---
         # Build GitHub API URL - format differs by host type
         if host == "github.com":
-            # GitHub.com: https://api.github.com/repos/owner/repo/contents/path
             api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         elif host.lower().endswith(".ghe.com"):
-            # GitHub Enterprise Cloud Data Residency: https://api.{subdomain}.ghe.com/repos/owner/repo/contents/path
             api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         else:
-            # GitHub Enterprise Server: https://{host}/api/v3/repos/owner/repo/contents/path
             api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         
         # Set up authentication headers
