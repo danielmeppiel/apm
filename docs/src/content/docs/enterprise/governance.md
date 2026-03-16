@@ -120,9 +120,9 @@ apm audit --strip --dry-run            # Preview what --strip would remove
 
 | Code | Meaning |
 |------|---------|
-| 0 | Clean — no findings, or info-only |
-| 1 | Critical findings — tag characters or bidi overrides detected |
-| 2 | Warnings only — zero-width characters or mid-file BOM |
+| 0 | Clean — no findings, info-only, or successful strip |
+| 1 | Critical findings — tag characters, bidi overrides, or variation selectors 17–256 |
+| 2 | Warnings only — zero-width characters, bidi marks, or other suspicious content |
 
 ### The `--file` escape hatch
 

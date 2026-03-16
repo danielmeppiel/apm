@@ -343,7 +343,8 @@ apm audit [PACKAGE] [OPTIONS]
 
 **Options:**
 - `--file PATH` - Scan an arbitrary file instead of installed packages
-- `--strip` - Strip non-critical hidden characters (zero-width spaces, unusual whitespace). Critical findings are preserved for manual review.
+- `--strip` - Remove dangerous characters (critical + warning severity) while preserving info-level content like emoji. ZWJ inside emoji sequences is preserved.
+- `--dry-run` - Preview what `--strip` would remove without modifying files (requires `--strip`)
 - `-v, --verbose` - Show info-level findings and file details
 
 **Examples:**
@@ -357,8 +358,11 @@ apm audit https://github.com/owner/repo
 # Scan any file (even non-APM-managed)
 apm audit --file .cursorrules
 
-# Auto-strip zero-width characters
+# Remove dangerous characters (preserves emoji)
 apm audit --strip
+
+# Preview what --strip would remove
+apm audit --strip --dry-run
 
 # Verbose output with info-level findings
 apm audit --verbose
@@ -367,14 +371,14 @@ apm audit --verbose
 **Exit codes:**
 | Code | Meaning |
 |------|---------|
-| 0 | Clean — no findings, or info-only |
-| 1 | Critical findings — tag characters or bidi overrides detected |
-| 2 | Warnings only — zero-width characters or mid-file BOM |
+| 0 | Clean — no findings, info-only, or successful strip |
+| 1 | Critical findings — tag characters, bidi overrides, or variation selectors 17–256 |
+| 2 | Warnings only — zero-width characters, bidi marks, or other suspicious content |
 
 **What it detects:**
-- **Critical**: Unicode tag characters (U+E0001–E007F), bidirectional overrides — these have zero legitimate use in prompt files
-- **Warning**: Zero-width spaces/joiners, mid-file BOM — common copy-paste debris
-- **Info**: Non-breaking spaces, unusual whitespace — mostly harmless
+- **Critical**: Tag characters (U+E0001–E007F), bidi overrides (U+202A–E, U+2066–9), variation selectors 17–256 (U+E0100–E01EF, Glassworm attack vector)
+- **Warning**: Zero-width spaces/joiners (U+200B–D), variation selectors 1–15 (U+FE00–FE0E), bidi marks (U+200E–F, U+061C), invisible operators (U+2061–4), annotation markers (U+FFF9–B), deprecated formatting (U+206A–F), soft hyphen (U+00AD), mid-file BOM
+- **Info**: Non-breaking spaces, unusual whitespace, emoji presentation selector (U+FE0F). ZWJ between emoji characters is context-downgraded to info.
 
 ### `apm pack` - Create a portable bundle
 
