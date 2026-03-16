@@ -116,11 +116,12 @@ apm audit --strip --dry-run      # Preview what --strip would remove
 
 The `--file` flag is useful for inspecting files obtained outside APM — downloaded rules files, copy-pasted instructions, or files from pull requests.
 
-For CI pipelines, `apm audit` supports SARIF and JSON output:
+For CI pipelines, `apm audit` supports SARIF, JSON, and Markdown output:
 
 ```bash
-apm audit -f sarif -o audit.sarif  # GitHub Code Scanning
-apm audit -f json -o report.json   # Machine-readable
+apm audit -f sarif -o audit.sarif      # GitHub Code Scanning
+apm audit -f json -o report.json       # Machine-readable
+apm audit -f markdown -o report.md     # Step summaries
 ```
 
 See [Content scanning with `apm audit`](../governance/#content-scanning-with-apm-audit) for usage details and exit codes.

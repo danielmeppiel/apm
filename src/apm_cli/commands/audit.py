@@ -415,9 +415,9 @@ def _preview_strip(
     "--format",
     "-f",
     "output_format",
-    type=click.Choice(["text", "json", "sarif"], case_sensitive=False),
+    type=click.Choice(["text", "json", "sarif", "markdown"], case_sensitive=False),
     default="text",
-    help="Output format: text (default), json (machine-readable), sarif (GitHub Code Scanning).",
+    help="Output format: text (default), json, sarif (GitHub Code Scanning), markdown (step summaries).",
 )
 @click.option(
     "--output",
@@ -425,7 +425,7 @@ def _preview_strip(
     "output_path",
     type=click.Path(),
     default=None,
-    help="Write output to file (auto-detects format from extension: .sarif, .json).",
+    help="Write output to file (auto-detects format from extension: .sarif, .json, .md).",
 )
 @click.pass_context
 def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, output_path):
@@ -448,13 +448,21 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         apm audit --file .cursorrules  # Scan any file
         apm audit --strip              # Remove dangerous/suspicious chars
         apm audit -f sarif             # SARIF output to stdout
+        apm audit -f markdown          # Markdown to stdout
         apm audit -o report.sarif      # Write SARIF to file
         apm audit -f json -o out.json  # JSON report to file
     """
-    # --format json/sarif is incompatible with --strip / --dry-run
-    if output_format != "text" and (strip or dry_run):
+    # Resolve effective format (auto-detect from extension when needed)
+    effective_format = output_format
+    if output_path and effective_format == "text":
+        from ..security.audit_report import detect_format_from_extension
+
+        effective_format = detect_format_from_extension(Path(output_path))
+
+    # --format json/sarif/markdown is incompatible with --strip / --dry-run
+    if effective_format != "text" and (strip or dry_run):
         _rich_error(
-            "--format json/sarif cannot be combined with --strip or --dry-run"
+            f"--format {effective_format} cannot be combined with --strip or --dry-run"
         )
         sys.exit(1)
 
@@ -521,17 +529,20 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         all_findings = [f for ff in findings_by_file.values() for f in ff]
         exit_code = 1 if ContentScanner.has_critical(all_findings) else 2
 
-    # Resolve effective format (auto-detect from extension when needed)
-    effective_format = output_format
-    if output_path and effective_format == "text":
-        from ..security.audit_report import detect_format_from_extension
-
-        effective_format = detect_format_from_extension(Path(output_path))
-
     if effective_format == "text":
         if findings_by_file:
             _render_findings_table(findings_by_file, verbose=verbose)
         _render_summary(findings_by_file, files_scanned)
+    elif effective_format == "markdown":
+        from ..security.audit_report import findings_to_markdown
+
+        md_report = findings_to_markdown(findings_by_file, files_scanned=files_scanned)
+        if output_path:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(output_path).write_text(md_report, encoding="utf-8")
+            _rich_success(f"Audit report written to {output_path}")
+        else:
+            click.echo(md_report)
     else:
         from ..security.audit_report import (
             findings_to_json,

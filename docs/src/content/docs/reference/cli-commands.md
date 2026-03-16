@@ -346,8 +346,8 @@ apm audit [PACKAGE] [OPTIONS]
 - `--strip` - Remove dangerous characters (critical + warning severity) while preserving info-level content like emoji. ZWJ inside emoji sequences is preserved.
 - `--dry-run` - Preview what `--strip` would remove without modifying files (requires `--strip`)
 - `-v, --verbose` - Show info-level findings and file details
-- `-f, --format [text|json|sarif]` - Output format: `text` (default), `json` (machine-readable), `sarif` (GitHub Code Scanning). Cannot be combined with `--strip` or `--dry-run`.
-- `-o, --output PATH` - Write report to file. Auto-detects format from extension (`.sarif`, `.sarif.json` → SARIF; `.json` → JSON) when `--format` is not specified.
+- `-f, --format [text|json|sarif|markdown]` - Output format: `text` (default), `json` (machine-readable), `sarif` (GitHub Code Scanning), `markdown` (step summaries). Cannot be combined with `--strip` or `--dry-run`.
+- `-o, --output PATH` - Write report to file. Auto-detects format from extension (`.sarif`, `.sarif.json` → SARIF; `.json` → JSON; `.md` → Markdown) when `--format` is not specified.
 
 **Examples:**
 ```bash
@@ -371,6 +371,9 @@ apm audit --verbose
 
 # SARIF output to stdout (for CI pipelines)
 apm audit -f sarif
+
+# Markdown output (for GitHub step summaries)
+apm audit -f markdown
 
 # Write SARIF report to file
 apm audit -o report.sarif

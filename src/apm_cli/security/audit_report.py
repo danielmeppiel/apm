@@ -170,14 +170,82 @@ def serialize_report(report: dict) -> str:
     return json.dumps(report, indent=2, ensure_ascii=False)
 
 
+def findings_to_markdown(
+    findings_by_file: Dict[str, List[ScanFinding]],
+    files_scanned: int,
+) -> str:
+    """Convert scan findings to GitHub-Flavored Markdown.
+
+    Designed for ``$GITHUB_STEP_SUMMARY`` and ``-o report.md``.
+    """
+    all_findings = [f for ff in findings_by_file.values() for f in ff]
+
+    if not all_findings:
+        return (
+            f"## APM Audit Report\n\n"
+            f"**Clean** — no security findings across {files_scanned} files.\n"
+        )
+
+    # Count severities
+    critical = sum(1 for f in all_findings if f.severity == "critical")
+    warning = sum(1 for f in all_findings if f.severity == "warning")
+    info = sum(1 for f in all_findings if f.severity == "info")
+    affected = len(findings_by_file)
+
+    # Summary line
+    parts = []
+    if critical:
+        parts.append(f"{critical} critical")
+    if warning:
+        parts.append(f"{warning} warning{'s' if warning != 1 else ''}")
+    if info:
+        parts.append(f"{info} info")
+    total = len(all_findings)
+    count_label = f"**{total} finding{'s' if total != 1 else ''}**"
+    summary = (
+        f"{count_label} across {affected} file{'s' if affected != 1 else ''}"
+        f" ({', '.join(parts)}) | {files_scanned} files scanned"
+    )
+
+    # Sort: severity (critical first), then file, then line
+    severity_order = {"critical": 0, "warning": 1, "info": 2}
+    sorted_findings = sorted(
+        all_findings,
+        key=lambda f: (severity_order.get(f.severity, 3), f.file, f.line),
+    )
+
+    # Table
+    lines = [
+        "## APM Audit Report",
+        "",
+        summary,
+        "",
+        "| Severity | File | Location | Codepoint | Description |",
+        "|----------|------|----------|-----------|-------------|",
+    ]
+    for f in sorted_findings:
+        sev = f.severity.upper()
+        lines.append(
+            f"| {sev} | `{f.file}` | {f.line}:{f.column}"
+            f" | `{f.codepoint}` | {f.description} |"
+        )
+    lines.append("")
+    lines.append("Run `apm audit --strip` to remove flagged characters.\n")
+
+    return "\n".join(lines)
+
+
 def detect_format_from_extension(path: Path) -> str:
     """Auto-detect output format from file extension.
 
-    Returns 'sarif' for .sarif/.sarif.json, 'json' for .json, 'sarif' as default.
+    Returns 'sarif' for .sarif/.sarif.json, 'json' for .json,
+    'markdown' for .md, 'text' as default.
     """
     name = path.name.lower()
     if name.endswith(".sarif.json") or name.endswith(".sarif"):
         return "sarif"
     if name.endswith(".json"):
         return "json"
-    return "sarif"
+    if name.endswith(".md"):
+        return "markdown"
+    return "text"

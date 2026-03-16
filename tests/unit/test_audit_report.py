@@ -6,6 +6,7 @@ from pathlib import Path
 from apm_cli.security.audit_report import (
     detect_format_from_extension,
     findings_to_json,
+    findings_to_markdown,
     findings_to_sarif,
     serialize_report,
     write_report,
@@ -146,8 +147,11 @@ class TestFormatDetection:
     def test_json_extension(self):
         assert detect_format_from_extension(Path("report.json")) == "json"
 
-    def test_unknown_extension_defaults_sarif(self):
-        assert detect_format_from_extension(Path("report.txt")) == "sarif"
+    def test_unknown_extension_defaults_text(self):
+        assert detect_format_from_extension(Path("report.txt")) == "text"
+
+    def test_md_extension(self):
+        assert detect_format_from_extension(Path("report.md")) == "markdown"
 
 
 class TestWriteReport:
@@ -164,3 +168,53 @@ class TestWriteReport:
         out = tmp_path / "report.json"
         write_report(report, out)
         assert out.read_text(encoding="utf-8").endswith("\n")
+
+
+class TestMarkdownReport:
+    def test_clean_report(self):
+        md = findings_to_markdown({}, files_scanned=15)
+        assert "## APM Audit Report" in md
+        assert "**Clean**" in md
+        assert "15 files" in md
+
+    def test_findings_report_header(self):
+        findings = {
+            "skills/fix.md": [_make_finding(severity="critical", file="skills/fix.md", line=42)],
+            "rules/.cursorrules": [
+                _make_finding(severity="warning", file="rules/.cursorrules", line=1),
+                _make_finding(severity="warning", file="rules/.cursorrules", line=3),
+            ],
+        }
+        md = findings_to_markdown(findings, files_scanned=15)
+        assert "**3 findings**" in md
+        assert "2 files" in md
+        assert "1 critical" in md
+        assert "2 warnings" in md
+        assert "15 files scanned" in md
+
+    def test_findings_sorted_critical_first(self):
+        findings = {
+            "b.md": [_make_finding(severity="warning", file="b.md", line=5)],
+            "a.md": [_make_finding(severity="critical", file="a.md", line=1)],
+        }
+        md = findings_to_markdown(findings, files_scanned=2)
+        lines = md.split("\n")
+        table_rows = [l for l in lines if l.startswith("| CRITICAL") or l.startswith("| WARNING")]
+        assert table_rows[0].startswith("| CRITICAL")
+        assert table_rows[1].startswith("| WARNING")
+
+    def test_table_has_backticks(self):
+        findings = {"test.md": [_make_finding(file="test.md")]}
+        md = findings_to_markdown(findings, files_scanned=1)
+        assert "`test.md`" in md
+        assert "`U+E0041`" in md
+
+    def test_info_findings_included(self):
+        findings = {"test.md": [_make_finding(severity="info", file="test.md")]}
+        md = findings_to_markdown(findings, files_scanned=1)
+        assert "| INFO |" in md
+
+    def test_strip_hint_present(self):
+        findings = {"test.md": [_make_finding(file="test.md")]}
+        md = findings_to_markdown(findings, files_scanned=1)
+        assert "`apm audit --strip`" in md
