@@ -112,16 +112,17 @@ APM scans for hidden Unicode characters that can embed invisible instructions in
 apm audit                              # Scan all installed packages
 apm audit <package>                    # Scan a specific package
 apm audit --file .cursorrules          # Scan any file (even non-APM-managed)
-apm audit --strip                      # Remove non-critical characters
+apm audit --strip                      # Remove hidden characters (preserves emoji)
+apm audit --strip --dry-run            # Preview what --strip would remove
 ```
 
 ### Exit codes
 
 | Code | Meaning |
 |------|---------|
-| 0 | Clean — no findings, or info-only |
-| 1 | Critical findings — tag characters or bidi overrides detected |
-| 2 | Warnings only — zero-width characters or mid-file BOM |
+| 0 | Clean — no findings, info-only, or successful strip |
+| 1 | Critical findings — tag characters, bidi overrides, or variation selectors 17–256 |
+| 2 | Warnings only — zero-width characters, bidi marks, or other suspicious content |
 
 ### The `--file` escape hatch
 

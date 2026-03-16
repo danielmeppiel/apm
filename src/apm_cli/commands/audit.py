@@ -7,8 +7,8 @@ detection (``--drift``) are planned as future modes.
 
 Exit codes:
     0 — clean (no findings, or info-only)
-    1 — critical findings (tag characters, bidi overrides)
-    2 — warnings (zero-width chars, no critical)
+    1 — critical findings detected
+    2 — warnings only (no critical)
 """
 
 import sys
@@ -247,18 +247,18 @@ def _render_summary(
             color="red",
             bold=True,
         )
-        _rich_info("  Critical findings require manual review")
         _rich_info("  These characters may embed invisible instructions")
+        _rich_info("  Review file contents, then run 'apm audit --strip' to remove")
     elif warning > 0:
         _rich_warning(
             f"{STATUS_SYMBOLS['warning']} {warning} warning(s) in "
-            f"{affected} file(s) — zero-width or hidden characters"
+            f"{affected} file(s) — hidden characters detected"
         )
-        _rich_info("  Run 'apm audit --strip' to remove non-critical characters")
+        _rich_info("  Run 'apm audit --strip' to remove hidden characters")
     elif info > 0:
         _rich_info(
             f"{STATUS_SYMBOLS['info']} {info} info-level finding(s) in "
-            f"{affected} file(s) — unusual whitespace (use --verbose to see)"
+            f"{affected} file(s) — unusual characters (use --verbose to see)"
         )
     else:
         _rich_success(
@@ -276,7 +276,7 @@ def _apply_strip(
     findings_by_file: Dict[str, List[ScanFinding]],
     project_root: Path,
 ) -> int:
-    """Strip non-critical characters from affected files.
+    """Strip dangerous and suspicious characters from affected files.
 
     Only modifies files that resolve within *project_root* (for lockfile
     paths) or that are given as absolute paths (for ``--file`` mode).
@@ -284,9 +284,6 @@ def _apply_strip(
     """
     modified = 0
     for rel_path, findings in findings_by_file.items():
-        # Skip files with only critical findings (require manual review)
-        if all(f.severity == "critical" for f in findings):
-            continue
 
         abs_path = Path(rel_path)
         if not abs_path.is_absolute():
@@ -303,7 +300,7 @@ def _apply_strip(
 
         try:
             original = abs_path.read_text(encoding="utf-8")
-            cleaned = ContentScanner.strip_non_critical(original)
+            cleaned = ContentScanner.strip_dangerous(original)
             if cleaned != original:
                 abs_path.write_text(cleaned, encoding="utf-8")
                 modified += 1
@@ -312,6 +309,79 @@ def _apply_strip(
             _rich_warning(f"  Could not clean {rel_path}: {exc}")
 
     return modified
+
+
+def _preview_strip(
+    findings_by_file: Dict[str, List[ScanFinding]],
+) -> int:
+    """Preview what --strip would remove without modifying files.
+
+    Shows a summary of strippable characters per file.
+    Returns the number of files that would be modified.
+    """
+    console = _get_console()
+    affected = 0
+
+    for rel_path, findings in findings_by_file.items():
+        # Only critical+warning chars are stripped
+        strippable = [f for f in findings if f.severity in ("critical", "warning")]
+        if not strippable:
+            continue
+        affected += 1
+
+    if affected == 0:
+        _rich_info("Nothing to clean — no strippable characters found")
+        return 0
+
+    _rich_echo("")
+    _rich_info(f"Dry run — the following would be removed by --strip:", symbol="search")
+    _rich_echo("")
+
+    if console:
+        try:
+            from rich.table import Table
+
+            table = Table(
+                show_header=True,
+                header_style="bold cyan",
+            )
+            table.add_column("File", style="white")
+            table.add_column("Critical", style="bold red", justify="right", width=10)
+            table.add_column("Warning", style="yellow", justify="right", width=10)
+            table.add_column("Total", style="bold white", justify="right", width=10)
+
+            for rel_path, findings in findings_by_file.items():
+                strippable = [f for f in findings if f.severity in ("critical", "warning")]
+                if not strippable:
+                    continue
+                crit = sum(1 for f in strippable if f.severity == "critical")
+                warn = sum(1 for f in strippable if f.severity == "warning")
+                table.add_row(
+                    rel_path,
+                    str(crit) if crit else "-",
+                    str(warn) if warn else "-",
+                    str(len(strippable)),
+                )
+
+            console.print(table)
+        except (ImportError, Exception):
+            # Fallback: plain text
+            for rel_path, findings in findings_by_file.items():
+                strippable = [f for f in findings if f.severity in ("critical", "warning")]
+                if not strippable:
+                    continue
+                _rich_echo(f"  {rel_path}: {len(strippable)} character(s)", color="white")
+    else:
+        for rel_path, findings in findings_by_file.items():
+            strippable = [f for f in findings if f.severity in ("critical", "warning")]
+            if not strippable:
+                continue
+            _rich_echo(f"  {rel_path}: {len(strippable)} character(s)", color="white")
+
+    _rich_echo("")
+    _rich_info(f"{affected} file(s) would be modified")
+    _rich_info("Run 'apm audit --strip' to apply")
+    return affected
 
 
 # ── Command ────────────────────────────────────────────────────────
@@ -328,29 +398,39 @@ def _apply_strip(
 @click.option(
     "--strip",
     is_flag=True,
-    help="Strip non-critical hidden characters (zero-width spaces, unusual whitespace)",
+    help="Remove hidden characters from scanned files (preserves emoji and whitespace)",
 )
 @click.option(
     "--verbose",
     "-v",
     is_flag=True,
-    help="Show info-level findings and file details",
+    help="Show all findings including harmless ones",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview what --strip would remove without modifying files",
 )
 @click.pass_context
-def audit(ctx, package, file_path, strip, verbose):
+def audit(ctx, package, file_path, strip, verbose, dry_run):
     """Scan deployed prompt files for hidden Unicode characters.
 
     Detects invisible characters that could embed hidden instructions in
-    prompt, instruction, and rules files. Critical findings (tag characters,
-    bidi overrides) require manual review. Warnings (zero-width chars) can
-    be removed with --strip.
+    prompt, instruction, and rules files. Dangerous and suspicious
+    characters can be removed with --strip.
+
+    \b
+    Exit codes:
+        0  Clean, info-only findings, or successful strip
+        1  Critical findings detected (hidden instructions)
+        2  Warning-only findings (suspicious but not critical)
 
     \b
     Examples:
         apm audit                      # Scan all installed packages
         apm audit my-package           # Scan a specific package
         apm audit --file .cursorrules  # Scan any file
-        apm audit --strip              # Remove non-critical chars
+        apm audit --strip              # Remove dangerous/suspicious chars
     """
     project_root = Path.cwd()
 
@@ -386,22 +466,25 @@ def audit(ctx, package, file_path, strip, verbose):
                 _rich_info("No deployed files found in apm.lock.yaml")
             sys.exit(0)
 
+    # -- Warn if --dry-run used without --strip --
+    if dry_run and not strip:
+        _rich_info("--dry-run only works with --strip (e.g. apm audit --strip --dry-run)")
+
     # -- Strip mode --
-    if strip and findings_by_file:
-        has_critical = any(
-            ContentScanner.has_critical(f) for f in findings_by_file.values()
-        )
+    if strip:
+        if not findings_by_file:
+            _rich_info("Nothing to clean — no hidden characters found")
+            sys.exit(0)
+        if dry_run:
+            _preview_strip(findings_by_file)
+            sys.exit(0)
         modified = _apply_strip(findings_by_file, project_root)
         if modified > 0:
             _rich_success(
                 f"{STATUS_SYMBOLS['success']} Cleaned {modified} file(s)"
             )
-        if has_critical:
-            _rich_warning(
-                "Critical findings were preserved — they require manual review"
-            )
-            _rich_info("  Inspect flagged files and remove tag/bidi characters")
-            sys.exit(1)
+        else:
+            _rich_info("Nothing to clean — no strippable characters found")
         sys.exit(0)
 
     # -- Display findings --

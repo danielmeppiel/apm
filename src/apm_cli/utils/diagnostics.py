@@ -238,7 +238,7 @@ class DiagnosticCollector:
 
         if warnings:
             _rich_warning(
-                f"  [!] {len(warnings)} file(s) contain zero-width or hidden characters"
+                f"  [!] {len(warnings)} file(s) contain hidden characters"
             )
             if not self.verbose:
                 _rich_info("    Run with --verbose to see details")
@@ -252,7 +252,7 @@ class DiagnosticCollector:
 
         if info and self.verbose:
             _rich_info(
-                f"  [i] {len(info)} file(s) contain unusual whitespace characters"
+                f"  [i] {len(info)} file(s) contain unusual characters"
             )
 
     def _render_collision_group(self, items: List[Diagnostic]) -> None:

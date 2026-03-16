@@ -65,15 +65,22 @@ APM does not use a package registry. Dependencies are specified as git repositor
 
 ### The threat
 
-Researchers have found hidden Unicode characters embedded in popular shared rules files. Tag characters (U+E0001–E007F) map 1:1 to invisible ASCII. Bidirectional overrides can reorder visible text. Zero-width joiners create invisible gaps. LLMs tokenize all of these individually, meaning models process instructions that developers cannot see on screen.
+Researchers have found hidden Unicode characters embedded in popular shared rules files. Tag characters (U+E0001–E007F) map 1:1 to invisible ASCII. Bidirectional overrides can reorder visible text. Zero-width joiners create invisible gaps. Variation selectors attach to visible characters, embedding invisible payload bytes that AST-based tools cannot detect. The Glassworm campaign (2026) exploited this mechanism to compromise repositories and VS Code extensions. LLMs tokenize all of these individually, meaning models process instructions that developers cannot see on screen.
 
 ### What APM detects
 
 | Severity | Characters | Risk |
 |----------|-----------|------|
 | Critical | Tag characters (U+E0001–E007F), bidi overrides (U+202A–E, U+2066–9) | Hidden instruction embedding. Zero legitimate use in prompt files. |
-| Warning | Zero-width spaces/joiners (U+200B–D), mid-file BOM (U+FEFF) | Common copy-paste debris, but can hide content. |
+| Critical | Variation selectors 17–256 (U+E0100–E01EF) | Glassworm attack vector — invisible payload encoding. Zero legitimate use in prompt files. |
+| Warning | Zero-width spaces/joiners (U+200B–D), mid-file BOM (U+FEFF) | Common copy-paste debris, but can hide content. ZWJ inside emoji sequences is downgraded to info. |
+| Warning | Variation selectors 1–15 (U+FE00–FE0E) | CJK typography / text presentation selectors. Uncommon in prompt files. |
+| Warning | Bidi marks (U+200E–F, U+061C) | Invisible directional marks. No legitimate use in prompt files. |
+| Warning | Invisible operators (U+2061–4) | Zero-width math operators. No legitimate use in prompt files. |
+| Warning | Annotation markers (U+FFF9–B) | Interlinear annotation delimiters that can hide text. |
+| Warning | Deprecated formatting (U+206A–F) | Deprecated since Unicode 3.0, invisible. |
 | Info | Non-breaking spaces (U+00A0), unusual whitespace (U+2000–200A) | Mostly harmless, flagged for awareness. |
+| Info | Emoji presentation selector (U+FE0F) | Common with emoji, informational only. |
 
 ### Pre-deployment gate
 
@@ -102,7 +109,8 @@ Content scanning extends beyond install:
 ```bash
 apm audit                        # Scan all installed packages
 apm audit --file .cursorrules    # Scan any file
-apm audit --strip                # Remove non-critical characters
+apm audit --strip                # Remove hidden characters (preserves emoji)
+apm audit --strip --dry-run      # Preview what --strip would remove
 ```
 
 The `--file` flag is useful for inspecting files obtained outside APM — downloaded rules files, copy-pasted instructions, or files from pull requests.
@@ -118,7 +126,7 @@ Content scanning detects hidden Unicode characters. It does not detect:
 - Semantic manipulation (subtly misleading but syntactically normal text)
 - Binary payload embedding
 
-`--strip` removes non-critical characters from deployed copies. It does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
+`--strip` removes dangerous and suspicious characters (critical and warning) from deployed copies while preserving legitimate content like emoji and whitespace. Zero-width joiners inside emoji sequences (e.g. 👨‍👩‍👧) are recognized and preserved. Use `--strip --dry-run` to preview what would be removed before modifying files. Strip does not modify the source package — the next `apm install` restores them. For persistent remediation, fix the upstream package or pin to a clean commit.
 
 ### Planned hardening
 
