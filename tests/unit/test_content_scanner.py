@@ -29,7 +29,7 @@ class TestScanText:
 
     def test_tag_character_detected_as_critical(self):
         """U+E0001 (language tag) must be flagged as critical."""
-        content = f"Hello \U000E0001 world"
+        content = f"Hello \U000e0001 world"
         findings = ContentScanner.scan_text(content, filename="test.md")
         assert len(findings) == 1
         assert findings[0].severity == "critical"
@@ -61,7 +61,7 @@ class TestScanText:
 
     def test_bidi_lro_detected(self):
         """U+202D (LRO) left-to-right override."""
-        content = f"normal \u202D overridden"
+        content = f"normal \u202d overridden"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "critical"
@@ -69,7 +69,7 @@ class TestScanText:
 
     def test_bidi_rlo_detected(self):
         """U+202E (RLO) right-to-left override."""
-        content = f"normal \u202E reversed"
+        content = f"normal \u202e reversed"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "critical"
@@ -86,7 +86,7 @@ class TestScanText:
 
     def test_zero_width_space_detected(self):
         """U+200B zero-width space."""
-        content = f"hello\u200Bworld"
+        content = f"hello\u200bworld"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "warning"
@@ -94,7 +94,7 @@ class TestScanText:
 
     def test_zwj_detected(self):
         """U+200D zero-width joiner."""
-        content = f"hello\u200Dworld"
+        content = f"hello\u200dworld"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "warning"
@@ -102,7 +102,7 @@ class TestScanText:
 
     def test_zwnj_detected(self):
         """U+200C zero-width non-joiner."""
-        content = f"hello\u200Cworld"
+        content = f"hello\u200cworld"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "warning"
@@ -116,7 +116,7 @@ class TestScanText:
 
     def test_soft_hyphen_detected(self):
         """U+00AD soft hyphen."""
-        content = f"hel\u00ADlo"
+        content = f"hel\u00adlo"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "warning"
@@ -126,7 +126,7 @@ class TestScanText:
 
     def test_nbsp_detected_as_info(self):
         """U+00A0 non-breaking space."""
-        content = f"hello\u00A0world"
+        content = f"hello\u00a0world"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "info"
@@ -150,7 +150,7 @@ class TestScanText:
 
     def test_bom_at_start_is_info(self):
         """BOM (U+FEFF) at file start is standard — info severity."""
-        content = "\uFEFF# My Document"
+        content = "\ufeff# My Document"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "info"
@@ -160,7 +160,7 @@ class TestScanText:
 
     def test_bom_mid_file_is_warning(self):
         """BOM in the middle of a file is suspicious."""
-        content = "line one\n\uFEFFline two"
+        content = "line one\n\ufeffline two"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].severity == "warning"
@@ -172,14 +172,14 @@ class TestScanText:
     def test_line_column_accuracy(self):
         """Findings report correct 1-based line and column numbers."""
         # Place a zero-width space at line 3, col 6
-        content = "line1\nline2\nline3\u200Brest"
+        content = "line1\nline2\nline3\u200brest"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 1
         assert findings[0].line == 3
         assert findings[0].column == 6
 
     def test_multiple_findings_on_same_line(self):
-        content = f"a\u200Bb\u200Cc"
+        content = f"a\u200bb\u200cc"
         findings = ContentScanner.scan_text(content)
         assert len(findings) == 2
         assert findings[0].column == 2
@@ -189,7 +189,7 @@ class TestScanText:
 
     def test_mixed_severities(self):
         """Content with chars from all severity levels."""
-        content = f"\u00A0visible\u200Btext\u202Ehidden"
+        content = f"\u00a0visible\u200btext\u202ehidden"
         findings = ContentScanner.scan_text(content)
         severities = {f.severity for f in findings}
         assert severities == {"info", "warning", "critical"}
@@ -212,7 +212,7 @@ class TestScanFile:
 
     def test_scan_file_with_findings(self, tmp_path):
         f = tmp_path / "suspicious.md"
-        f.write_text(f"hello\u200Bworld", encoding="utf-8")
+        f.write_text(f"hello\u200bworld", encoding="utf-8")
         findings = ContentScanner.scan_file(f)
         assert len(findings) == 1
         assert findings[0].file == str(f)
@@ -238,7 +238,7 @@ class TestScanFile:
     def test_bom_plus_critical_detected(self, tmp_path):
         """Files with BOM and critical chars should report both."""
         f = tmp_path / "bom_critical.md"
-        f.write_text("\ufeff" + "tag\U000E0041char\n", encoding="utf-8")
+        f.write_text("\ufeff" + "tag\U000e0041char\n", encoding="utf-8")
         findings = ContentScanner.scan_file(f)
         severities = {fnd.severity for fnd in findings}
         assert "critical" in severities
@@ -274,14 +274,59 @@ class TestSummarize:
         assert result == {"critical": 2, "warning": 1, "info": 1}
 
 
+class TestClassify:
+    """Tests for ContentScanner.classify() — combined has_critical + summarize."""
+
+    def test_empty_returns_false_and_zero_counts(self):
+        has_crit, counts = ContentScanner.classify([])
+        assert has_crit is False
+        assert counts == {"critical": 0, "warning": 0, "info": 0}
+
+    def test_critical_finding_sets_flag(self):
+        findings = [
+            ScanFinding("f", 1, 1, "", "U+E0001", "critical", "tag-character", "")
+        ]
+        has_crit, counts = ContentScanner.classify(findings)
+        assert has_crit is True
+        assert counts["critical"] == 1
+
+    def test_warning_only_does_not_set_flag(self):
+        findings = [ScanFinding("f", 1, 1, "", "U+200B", "warning", "zero-width", "")]
+        has_crit, counts = ContentScanner.classify(findings)
+        assert has_crit is False
+        assert counts["warning"] == 1
+        assert counts["critical"] == 0
+
+    def test_mixed_findings_comprehensive(self):
+        findings = [
+            ScanFinding("f", 1, 1, "", "U+E0041", "critical", "tag-character", ""),
+            ScanFinding("f", 1, 2, "", "U+200B", "warning", "zero-width", ""),
+            ScanFinding("f", 1, 3, "", "U+00A0", "info", "unusual-whitespace", ""),
+        ]
+        has_crit, counts = ContentScanner.classify(findings)
+        assert has_crit is True
+        assert counts == {"critical": 1, "warning": 1, "info": 1}
+
+    def test_multiple_critical_all_counted(self):
+        findings = [
+            ScanFinding(
+                "f", 1, i, "", f"U+E{0x0041 + i:04X}", "critical", "tag-character", ""
+            )
+            for i in range(3)
+        ]
+        has_crit, counts = ContentScanner.classify(findings)
+        assert has_crit is True
+        assert counts["critical"] == 3
+
+
 class TestStripNonCritical:
     def test_strips_zero_width_chars(self):
-        content = f"hello\u200Bworld"
+        content = f"hello\u200bworld"
         result = ContentScanner.strip_non_critical(content)
         assert result == "helloworld"
 
     def test_strips_nbsp(self):
-        content = f"hello\u00A0world"
+        content = f"hello\u00a0world"
         result = ContentScanner.strip_non_critical(content)
         assert result == "helloworld"
 
@@ -293,12 +338,12 @@ class TestStripNonCritical:
         assert tag in result
 
     def test_strips_leading_bom(self):
-        content = f"\uFEFF# Title"
+        content = f"\ufeff# Title"
         result = ContentScanner.strip_non_critical(content)
         assert result == "# Title"
 
     def test_strips_mid_file_bom(self):
-        content = f"line1\n\uFEFFline2"
+        content = f"line1\n\ufeffline2"
         result = ContentScanner.strip_non_critical(content)
         assert result == "line1\nline2"
 
@@ -308,6 +353,6 @@ class TestStripNonCritical:
         assert result == content
 
     def test_strips_soft_hyphen(self):
-        content = f"hel\u00ADlo"
+        content = f"hel\u00adlo"
         result = ContentScanner.strip_non_critical(content)
         assert result == "hello"
