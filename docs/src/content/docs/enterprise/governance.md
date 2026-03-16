@@ -114,6 +114,9 @@ apm audit <package>                    # Scan a specific package
 apm audit --file .cursorrules          # Scan any file (even non-APM-managed)
 apm audit --strip                      # Remove hidden characters (preserves emoji)
 apm audit --strip --dry-run            # Preview what --strip would remove
+apm audit -f sarif                     # SARIF output (for GitHub Code Scanning)
+apm audit -o report.sarif              # Write SARIF report to file
+apm audit -f json -o results.json      # JSON report to file
 ```
 
 ### Exit codes
@@ -165,6 +168,21 @@ jobs:
           commands: |
             apm install
             apm audit
+
+      # Optional: upload SARIF to GitHub Code Scanning
+      - name: SARIF audit report
+        if: always()
+        uses: microsoft/apm-action@v1
+        with:
+          commands: |
+            apm audit -f sarif -o results.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
 ```
 
 ### Planned: lockfile consistency checking
