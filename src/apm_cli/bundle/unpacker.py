@@ -20,6 +20,8 @@ class UnpackResult:
     verified: bool = False
     dependency_files: Dict[str, List[str]] = field(default_factory=dict)
     skipped_count: int = 0
+    security_warnings: int = 0
+    security_critical: int = 0
 
 
 def unpack_bundle(
@@ -27,6 +29,7 @@ def unpack_bundle(
     output_dir: Path = Path("."),
     skip_verify: bool = False,
     dry_run: bool = False,
+    force: bool = False,
 ) -> UnpackResult:
     """Extract and apply an APM bundle to a project directory.
 
@@ -39,6 +42,7 @@ def unpack_bundle(
         output_dir: Target project directory to copy files into.
         skip_verify: If *True*, skip completeness verification against the lockfile.
         dry_run: If *True*, resolve the file list but write nothing to disk.
+        force: If *True*, deploy even when critical hidden characters are found.
 
     Returns:
         :class:`UnpackResult` describing what was (or would be) extracted.
@@ -131,6 +135,43 @@ def unpack_bundle(
         if skip_verify:
             verified = False
 
+        # 3b. Security scan: check bundle contents for hidden Unicode characters
+        from ..security.content_scanner import ContentScanner
+
+        security_warnings = 0
+        security_critical = 0
+        scanner = ContentScanner()
+        all_findings = {}
+        for rel_path in unique_files:
+            source_file = source_dir / rel_path
+            if source_file.is_file() and not source_file.is_symlink():
+                findings = scanner.scan_file(source_file)
+                if findings:
+                    all_findings[rel_path] = findings
+
+        if all_findings:
+            flat = [f for ff in all_findings.values() for f in ff]
+            has_critical, counts = scanner.classify(flat)
+            security_critical = counts.get("critical", 0)
+            security_warnings = counts.get("warning", 0)
+
+            if has_critical and not force:
+                affected = []
+                for path, findings in all_findings.items():
+                    c = sum(1 for f in findings if f.severity == "critical")
+                    if c > 0:
+                        affected.append(f"  {path}  ({c} critical)")
+                raise ValueError(
+                    f"Blocked: bundle contains {len(affected)} file(s) "
+                    f"with critical hidden characters\n\n"
+                    f"Affected files:\n" + "\n".join(affected) + "\n\n"
+                    "Next steps:\n"
+                    "  - Run: apm audit --file <file> to see details\n"
+                    "  - Run: apm unpack --force to deploy anyway "
+                    "(not recommended)\n\n"
+                    "Learn more: https://apm.github.io/apm/enterprise/security/"
+                )
+
         # Dry-run: return file list without writing
         if dry_run:
             return UnpackResult(
@@ -138,6 +179,8 @@ def unpack_bundle(
                 files=unique_files,
                 verified=verified,
                 dependency_files=dep_file_map,
+                security_warnings=security_warnings,
+                security_critical=security_critical,
             )
 
         # 4. Copy target files to output_dir (additive, no deletes)
@@ -172,6 +215,8 @@ def unpack_bundle(
             verified=verified,
             dependency_files=dep_file_map,
             skipped_count=skipped,
+            security_warnings=security_warnings,
+            security_critical=security_critical,
         )
     finally:
         # Clean up temp dir if we created one
