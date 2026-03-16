@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+
+- Content scanning for `apm unpack` — bundles are now scanned for hidden Unicode characters before deployment, with `--force` override for critical findings
+- `apm audit --format sarif/json` and `--output` for machine-readable audit reports — SARIF for GitHub Code Scanning, JSON for CI pipelines
+
+### Fixed
+
+- Documentation references to `apm audit --ci` now correctly indicate it is planned, not yet available
+
 ## [0.8.0] - 2026-03-16
 
 ### Added

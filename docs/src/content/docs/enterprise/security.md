@@ -101,6 +101,7 @@ Content scanning extends beyond install:
 
 - **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, commands) before writing to disk. This is defense-in-depth — source files were already scanned at install, but compilation assembles content from multiple sources and the final output is what agents read.
 - **`apm pack`** scans files before bundling. This catches hidden characters before a package is published, preventing authors from accidentally distributing tainted content.
+- **`apm unpack`** scans bundle contents before deployment. This is a pre-deployment gate matching `apm install` — critical findings block deployment unless `--force` is used.
 
 ### On-demand scanning
 
@@ -114,6 +115,13 @@ apm audit --strip --dry-run      # Preview what --strip would remove
 ```
 
 The `--file` flag is useful for inspecting files obtained outside APM — downloaded rules files, copy-pasted instructions, or files from pull requests.
+
+For CI pipelines, `apm audit` supports SARIF and JSON output:
+
+```bash
+apm audit -f sarif -o audit.sarif  # GitHub Code Scanning
+apm audit -f json -o report.json   # Machine-readable
+```
 
 See [Content scanning with `apm audit`](../governance/#content-scanning-with-apm-audit) for usage details and exit codes.
 

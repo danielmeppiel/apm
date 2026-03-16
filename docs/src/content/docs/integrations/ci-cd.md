@@ -132,6 +132,33 @@ jobs:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
 
+### SARIF reports for Code Scanning
+
+For richer integration, generate a SARIF report and upload it to GitHub Code Scanning. Findings appear inline on PR diffs and in the Security tab:
+
+```yaml
+# .github/workflows/apm-audit.yml
+name: APM Audit
+on: [pull_request]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/apm-action@v1
+        with:
+          commands: apm install
+        env:
+          GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
+      - run: apm audit -f sarif -o apm-audit.sarif
+        if: always()
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: apm-audit.sarif
+          category: apm-audit
+```
+
 Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce content issues. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
 
 ## Pack & Distribute

@@ -131,6 +131,45 @@ Bundles resolve full dependency trees ahead of time, so workflows need zero netw
 
 See the [CI/CD Integration guide](../ci-cd/) for details on building and distributing bundles.
 
+## Content Scanning
+
+APM automatically scans dependencies for hidden Unicode characters during installation — the same scan that runs for `apm install` also runs when gh-aw resolves frontmatter dependencies. Critical findings (tag characters, bidirectional overrides) block deployment; warnings are non-blocking.
+
+If `apm install` fails due to critical findings, the activation job fails and the agent job does not run. This is the intended behavior — it prevents agents from reading compromised instructions.
+
+For visibility into scan results, add a SARIF upload step after your workflow:
+
+```yaml
+---
+on:
+  pull_request:
+    types: [opened]
+engine: copilot
+
+dependencies:
+  - microsoft/apm-sample-package
+---
+
+# Review the PR
+...
+```
+
+In a separate CI workflow, you can audit installed packages:
+
+```yaml
+- uses: microsoft/apm-action@v1
+  with:
+    commands: apm install
+- run: apm audit -f sarif -o apm-audit.sarif
+  if: always()
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: apm-audit.sarif
+```
+
+See [Content scanning](/enterprise/security/#content-scanning) for details on what APM detects.
+
 ## Isolated Mode
 
 When a gh-aw workflow runs in a repository that already has developer-focused instructions (like "use 4-space tabs" or "prefer functional style"), those instructions become noise for an automated agent that should only follow its declared dependencies.
