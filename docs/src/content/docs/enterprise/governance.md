@@ -183,6 +183,10 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
+
+      - name: Step summary
+        if: always()
+        run: apm audit -f markdown >> $GITHUB_STEP_SUMMARY
 ```
 
 ### Planned: lockfile consistency checking

@@ -162,11 +162,15 @@ In a separate CI workflow, you can audit installed packages:
     commands: apm install
 - run: apm audit -f sarif -o apm-audit.sarif
   if: always()
+- run: apm audit -f markdown >> $GITHUB_STEP_SUMMARY
+  if: always()
 - uses: github/codeql-action/upload-sarif@v3
   if: always()
   with:
     sarif_file: apm-audit.sarif
 ```
+
+Use `-f markdown` alongside SARIF to surface a human-readable summary directly in the Actions run.
 
 See [Content scanning](../../enterprise/security/#content-scanning) for details on what APM detects.
 

@@ -152,12 +152,16 @@ jobs:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
       - run: apm audit -f sarif -o apm-audit.sarif
         if: always()
+      - run: apm audit -f markdown >> $GITHUB_STEP_SUMMARY
+        if: always()
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: apm-audit.sarif
           category: apm-audit
 ```
+
+The markdown format (`-f markdown`) is designed for GitHub Actions step summaries — pipe it directly to `$GITHUB_STEP_SUMMARY` to surface findings in the workflow run without leaving the Actions UI. It pairs well with SARIF: SARIF feeds Code Scanning, markdown gives reviewers an at-a-glance summary.
 
 Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce content issues. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
 
