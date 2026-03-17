@@ -30,7 +30,7 @@ apm.yml (declare) -> apm.lock.yaml (pin) -> apm audit (verify) -> CI gate (enfor
 |-------|---------|----------|
 | **Declare** | Define dependencies and their sources | `apm.yml` |
 | **Pin** | Resolve every dependency to an exact commit | `apm.lock.yaml` |
-| **Verify** | Confirm on-disk state matches the lock file | `apm audit` output |
+| **Verify** | Scan deployed content for hidden threats | `apm audit` output |
 | **Enforce** | Block merges when verification fails | Required status check |
 
 Each stage builds on the previous one. The lock file provides the audit trail, content scanning verifies file safety, and the CI gate prevents unapproved changes from reaching protected branches.
