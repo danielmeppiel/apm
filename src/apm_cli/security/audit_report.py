@@ -226,7 +226,7 @@ def findings_to_markdown(
     for f in sorted_findings:
         sev = f.severity.upper()
         lines.append(
-            f"| {sev} | `{f.file}` | {f.line}:{f.column}"
+            f"| {sev} | `{_relative_path(f.file)}` | {f.line}:{f.column}"
             f" | `{f.codepoint}` | {f.description} |"
         )
     lines.append("")

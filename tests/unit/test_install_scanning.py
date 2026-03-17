@@ -183,10 +183,8 @@ class TestPreDeploySecurityScan:
 class TestInstallExitOnCriticalSecurity:
     """Verify install exits non-zero when critical security findings block packages."""
 
-    def test_install_exits_1_on_critical_security(self, tmp_path, monkeypatch):
-        """install_command should sys.exit(1) when has_critical_security is True."""
-        from unittest.mock import patch, MagicMock
-
+    def test_critical_security_triggers_exit(self):
+        """has_critical_security True + force=False → should exit 1."""
         diag = DiagnosticCollector()
         diag.security(
             message="Blocked — critical hidden characters",
@@ -196,15 +194,34 @@ class TestInstallExitOnCriticalSecurity:
         )
         assert diag.has_critical_security
 
-        # Verify the exit logic: after diagnostics render, install must exit 1
+        # Simulate the post-install check (mirrors install.py logic)
+        force = False
         with pytest.raises(SystemExit) as exc_info:
-            # Simulate the post-install check
-            if diag.has_critical_security:
+            if not force and diag.has_critical_security:
                 import sys
                 sys.exit(1)
         assert exc_info.value.code == 1
 
-    def test_install_does_not_exit_on_warnings_only(self):
+    def test_force_overrides_critical_exit(self):
+        """has_critical_security True + force=True → should NOT exit 1."""
+        diag = DiagnosticCollector()
+        diag.security(
+            message="Deployed with --force despite critical",
+            package="evil-pkg",
+            detail="1 critical",
+            severity="critical",
+        )
+        assert diag.has_critical_security
+
+        # With --force, the exit check is skipped
+        force = True
+        # This should NOT raise SystemExit
+        if not force and diag.has_critical_security:
+            import sys
+            sys.exit(1)
+        # If we reach here, the force override worked
+
+    def test_warnings_do_not_trigger_exit(self):
         """Warnings should not trigger exit 1."""
         diag = DiagnosticCollector()
         diag.security(

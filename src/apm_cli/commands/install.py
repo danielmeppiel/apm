@@ -501,7 +501,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # Hard-fail when critical security findings blocked any package.
         # Consistent with apm unpack which also hard-fails on critical.
         # Use --force to override.
-        if apm_diagnostics and apm_diagnostics.has_critical_security:
+        if not force and apm_diagnostics and apm_diagnostics.has_critical_security:
             sys.exit(1)
 
     except Exception as e:

@@ -208,7 +208,7 @@ def unpack_bundle(
                 skipped += 1
                 continue  # skip_verify may allow missing files
             if src.is_dir():
-                shutil.copytree(src, dest, dirs_exist_ok=True)
+                shutil.copytree(src, dest, dirs_exist_ok=True, symlinks=True)
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)

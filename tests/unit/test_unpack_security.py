@@ -134,6 +134,8 @@ class TestUnpackSecurity:
         # Should not raise — symlinks are skipped during scanning
         result = unpack_bundle(bundle, output_dir=output)
         assert result.security_critical == 0
+        # Symlinked file must NOT be deployed
+        assert not (output / ".github/prompts/linked.md").exists()
 
     def test_unpack_binary_files_skip(self, tmp_path):
         """Binary files don't cause scan errors."""
