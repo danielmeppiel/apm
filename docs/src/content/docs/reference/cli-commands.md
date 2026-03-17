@@ -936,7 +936,7 @@ apm compile --no-constitution
 - No output file generation in validation-only mode
 
 **Content Scanning:**
-Compiled output is scanned for hidden Unicode characters before writing to disk. If findings are detected, a warning is displayed with instructions to run `apm audit --file` for details. This is defense-in-depth — source files are already scanned during `apm install`.
+Compiled output is scanned for hidden Unicode characters before writing to disk. Critical findings cause `apm compile` to exit with code 1 — defense-in-depth since source files are already scanned during `apm install`.
 
 **Configuration Integration:**
 The compile command supports configuration via `apm.yml`:
