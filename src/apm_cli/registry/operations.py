@@ -5,6 +5,8 @@ import os
 from typing import List, Dict, Set, Optional, Tuple
 from pathlib import Path
 
+import requests
+
 from .client import SimpleRegistryClient
 
 logger = logging.getLogger(__name__)
@@ -155,7 +157,7 @@ class MCPServerOperations:
                     valid_servers.append(server_ref)
                 else:
                     invalid_servers.append(server_ref)
-            except Exception:
+            except requests.RequestException:
                 # Network/transient error — assume server exists and let
                 # downstream installation attempt the actual resolution.
                 logger.debug(
