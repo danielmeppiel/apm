@@ -8,15 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Content scanning for `apm unpack` — bundles are now scanned for hidden Unicode characters before deployment, with `--force` override for critical findings (#330)
-- `apm audit --format sarif/json/markdown` and `--output` for machine-readable audit reports — SARIF for GitHub Code Scanning, JSON for CI pipelines, Markdown for `$GITHUB_STEP_SUMMARY` (#330)
-
-### Fixed
-
-- Documentation references to `apm audit --ci` now correctly indicate it is planned, not yet available (#330)
-
 ## [0.8.0] - 2026-03-16
 
 ### Added
@@ -36,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated docs landing page to include Cursor and OpenCode (#310)
 - Updated all doc pages to reflect full Cursor native support (#304)
 - Added OpenCode to README headline and compile description (#308)
+
+### Fixed
+
+- GitHub API rate-limit 403 responses no longer misdiagnosed as authentication failures — unauthenticated users now see actionable "rate limit exceeded" guidance instead of misleading "private repository" errors
 
 ## [0.7.9] - 2026-03-13
 

@@ -1,6 +1,24 @@
 import pytest
 
-from apm_cli.utils.github_host import is_valid_fqdn
+from apm_cli.utils.github_host import is_valid_fqdn, build_raw_content_url
+
+
+def test_build_raw_content_url():
+    """build_raw_content_url returns the correct raw.githubusercontent.com URL."""
+    url = build_raw_content_url("microsoft", "apm", "main", "README.md")
+    assert url == "https://raw.githubusercontent.com/microsoft/apm/main/README.md"
+
+
+def test_build_raw_content_url_nested_path():
+    """build_raw_content_url handles nested file paths."""
+    url = build_raw_content_url("owner", "repo", "v1.0.0", "agents/api-architect.agent.md")
+    assert url == "https://raw.githubusercontent.com/owner/repo/v1.0.0/agents/api-architect.agent.md"
+
+
+def test_build_raw_content_url_slashed_ref():
+    """build_raw_content_url encodes slashes in refs (e.g. feature/foo)."""
+    url = build_raw_content_url("owner", "repo", "feature/foo", "README.md")
+    assert url == "https://raw.githubusercontent.com/owner/repo/feature%2Ffoo/README.md"
 
 
 def test_valid_fqdns():

@@ -33,6 +33,7 @@ from ..utils.github_host import (
     build_ado_https_clone_url,
     build_ado_ssh_url,
     build_ado_api_url,
+    build_raw_content_url,
     sanitize_token_url_in_message, 
     default_host,
     is_azure_devops_hostname,
@@ -185,15 +186,22 @@ class GitHubPackageDownloader:
         env = self.token_manager.setup_environment()
         
         # Get tokens for modules (APM package access)
-        # GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN
-        self.github_token = self.token_manager.get_token_for_purpose('modules', env)
+        # GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN -> git credential helpers
+        self.github_token = self.token_manager.get_token_with_credential_fallback(
+            'modules', default_host(), env
+        )
         self.has_github_token = self.github_token is not None
+        self._github_token_from_credential_fill = (
+            self.has_github_token
+            and self.token_manager.get_token_for_purpose('modules', env) is None
+        )
         
         # Azure DevOps: ADO_APM_PAT
         self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
         self.has_ado_token = self.ado_token is not None
         
-        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}")
+        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}"
+               f"{', source=credential_helper' if self._github_token_from_credential_fill else ''}")
         
         # Configure Git security settings
         env['GIT_TERMINAL_PROMPT'] = '0'
@@ -227,18 +235,36 @@ class GitHubPackageDownloader:
             requests.exceptions.RequestException: After all retries exhausted
         """
         last_exc = None
+        last_response = None
         for attempt in range(max_retries):
             try:
                 response = requests.get(url, headers=headers, timeout=timeout)
                 
-                # Handle rate limiting
-                if response.status_code in (429, 503):
+                # Handle rate limiting — GitHub returns 429 for secondary limits
+                # and 403 with X-RateLimit-Remaining: 0 for primary limits.
+                is_rate_limited = response.status_code in (429, 503)
+                if not is_rate_limited and response.status_code == 403:
+                    try:
+                        remaining = response.headers.get("X-RateLimit-Remaining")
+                        if remaining is not None and int(remaining) == 0:
+                            is_rate_limited = True
+                    except (TypeError, ValueError):
+                        pass
+
+                if is_rate_limited:
+                    last_response = response
                     retry_after = response.headers.get("Retry-After")
+                    reset_at = response.headers.get("X-RateLimit-Reset")
                     if retry_after:
                         try:
                             wait = min(float(retry_after), 60)
                         except (TypeError, ValueError):
                             # Retry-After may be an HTTP-date; fall back to exponential backoff
+                            wait = min(2 ** attempt, 30) * (0.5 + random.random())
+                    elif reset_at:
+                        try:
+                            wait = max(0, min(int(reset_at) - time.time(), 60))
+                        except (TypeError, ValueError):
                             wait = min(2 ** attempt, 30) * (0.5 + random.random())
                     else:
                         wait = min(2 ** attempt, 30) * (0.5 + random.random())
@@ -266,6 +292,12 @@ class GitHubPackageDownloader:
                 if attempt < max_retries - 1:
                     _debug(f"Timeout, retrying (attempt {attempt + 1}/{max_retries})")
         
+        # If rate limiting exhausted all retries, return the last response so
+        # callers can inspect headers (e.g. X-RateLimit-Remaining) and raise
+        # an appropriate user-facing error.
+        if last_response is not None:
+            return last_response
+
         if last_exc:
             raise last_exc
         raise requests.exceptions.RequestException(f"All {max_retries} attempts failed for {url}")
@@ -672,8 +704,29 @@ class GitHubPackageDownloader:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
     
+    def _try_raw_download(self, owner: str, repo: str, ref: str, file_path: str) -> Optional[bytes]:
+        """Attempt to fetch a file via raw.githubusercontent.com (CDN).
+
+        Returns the raw bytes on success, or ``None`` if the file was not found
+        (HTTP 404) or the request failed for any reason.  This is intentionally
+        best-effort: callers fall back to the Contents API when ``None`` is
+        returned.
+        """
+        raw_url = build_raw_content_url(owner, repo, ref, file_path)
+        try:
+            response = requests.get(raw_url, timeout=30)
+            if response.status_code == 200:
+                return response.content
+        except requests.exceptions.RequestException:
+            pass
+        return None
+
     def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
         """Download a file from GitHub repository.
+        
+        For github.com without a token, tries raw.githubusercontent.com first
+        (CDN, no rate limit) before falling back to the Contents API.  Authenticated
+        requests and non-github.com hosts always use the Contents API directly.
         
         Args:
             dep_ref: Parsed dependency reference
@@ -688,23 +741,48 @@ class GitHubPackageDownloader:
         # Parse owner/repo from repo_url
         owner, repo = dep_ref.repo_url.split('/', 1)
         
+        # --- CDN fast-path for github.com without a token ---
+        # raw.githubusercontent.com is served from GitHub's CDN and is not
+        # subject to the REST API rate limit (60 req/h unauthenticated).
+        # Only available for github.com — GHES/GHE-DR have no equivalent.
+        if host.lower() == "github.com" and not self.github_token:
+            content = self._try_raw_download(owner, repo, ref, file_path)
+            if content is not None:
+                return content
+            # raw download returned 404 — could be wrong default branch.
+            # Try the other default branch before falling through to the API.
+            if ref in ("main", "master"):
+                fallback_ref = "master" if ref == "main" else "main"
+                content = self._try_raw_download(owner, repo, fallback_ref, file_path)
+                if content is not None:
+                    return content
+            # All raw attempts failed — fall through to API path which
+            # handles private repos, rate-limit messaging, and SAML errors.
+        
+        # --- Contents API path (authenticated, enterprise, or raw fallback) ---
         # Build GitHub API URL - format differs by host type
         if host == "github.com":
-            # GitHub.com: https://api.github.com/repos/owner/repo/contents/path
             api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         elif host.lower().endswith(".ghe.com"):
-            # GitHub Enterprise Cloud Data Residency: https://api.{subdomain}.ghe.com/repos/owner/repo/contents/path
             api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         else:
-            # GitHub Enterprise Server: https://{host}/api/v3/repos/owner/repo/contents/path
             api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+        
+        # Resolve the best available token for this host.
+        # self.github_token is pre-resolved for the default host during __init__;
+        # for non-default hosts, query credential fill for that specific host
+        # (env vars like GITHUB_APM_PAT are intended for the default host).
+        if host.lower() == default_host().lower():
+            token = self.github_token
+        else:
+            token = self.token_manager.resolve_credential_from_git(host)
         
         # Set up authentication headers
         headers = {
             'Accept': 'application/vnd.github.v3.raw'  # Returns raw content directly
         }
-        if self.github_token:
-            headers['Authorization'] = f'token {self.github_token}'
+        if token:
+            headers['Authorization'] = f'token {token}'
         
         # Try to download with the specified ref
         try:
@@ -739,11 +817,38 @@ class GitHubPackageDownloader:
                         f"(tried refs: {ref}, {fallback_ref})"
                     )
             elif e.response.status_code == 401 or e.response.status_code == 403:
+                # Distinguish rate limiting from auth failure.
+                # GitHub returns 403 with X-RateLimit-Remaining: 0 when the
+                # primary rate limit is exhausted — even for public repos.
+                # _resilient_get already retries these, so if we still land
+                # here the retries were exhausted; surface the real cause.
+                is_rate_limit = False
+                try:
+                    rl_remaining = e.response.headers.get("X-RateLimit-Remaining")
+                    if rl_remaining is not None and int(rl_remaining) == 0:
+                        is_rate_limit = True
+                except (TypeError, ValueError):
+                    pass
+
+                if is_rate_limit:
+                    error_msg = f"GitHub API rate limit exceeded for {dep_ref.repo_url}. "
+                    if not token:
+                        error_msg += (
+                            "Unauthenticated requests are limited to 60/hour (shared per IP). "
+                            "Set GITHUB_APM_PAT, GITHUB_TOKEN, or GH_TOKEN to increase the limit to 5,000/hour."
+                        )
+                    else:
+                        error_msg += (
+                            "Authenticated rate limit exhausted. "
+                            "Wait a few minutes or check your token's rate-limit quota."
+                        )
+                    raise RuntimeError(error_msg)
+
                 # Token may lack SSO/SAML authorization for this org.
                 # Retry without auth  -- the repo might be public.
                 # Applies to github.com and GHES (custom domains can have public repos).
                 # Excluded: *.ghe.com (Enterprise Cloud Data Residency has no public repos).
-                if self.github_token and not host.lower().endswith(".ghe.com"):
+                if token and not host.lower().endswith(".ghe.com"):
                     try:
                         unauth_headers = {'Accept': 'application/vnd.github.v3.raw'}
                         response = self._resilient_get(api_url, headers=unauth_headers, timeout=30)
@@ -752,9 +857,13 @@ class GitHubPackageDownloader:
                     except requests.exceptions.HTTPError:
                         pass  # Fall through to the original error
                 error_msg = f"Authentication failed for {dep_ref.repo_url} (file: {file_path}, ref: {ref}). "
-                if not self.github_token:
-                    error_msg += "This might be a private repository. Please set GITHUB_APM_PAT or GITHUB_TOKEN."
-                elif self.github_token and not host.lower().endswith(".ghe.com"):
+                if not token:
+                    error_msg += (
+                        "This might be a private repository. "
+                        "Set GITHUB_APM_PAT, GITHUB_TOKEN, or GH_TOKEN, or run 'gh auth login' "
+                        "so APM can discover your credentials automatically."
+                    )
+                elif token and not host.lower().endswith(".ghe.com"):
                     error_msg += (
                         "Both authenticated and unauthenticated access were attempted. "
                         "The repository may be private, or your token may lack SSO/SAML authorization for this organization."

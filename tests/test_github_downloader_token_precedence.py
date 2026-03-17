@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from src.apm_cli.deps.github_downloader import GitHubPackageDownloader
+from src.apm_cli.core.token_manager import GitHubTokenManager
 from apm_cli.utils import github_host
 
 
@@ -50,7 +51,8 @@ class TestGitHubDownloaderTokenPrecedence:
     
     def test_no_tokens_available(self):
         """Test behavior when no GitHub tokens are available."""
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(GitHubTokenManager, 'resolve_credential_from_git', return_value=None):
             downloader = GitHubPackageDownloader()
             
             # Should have no token
@@ -59,7 +61,8 @@ class TestGitHubDownloaderTokenPrecedence:
     
     def test_public_repo_access_without_token(self):
         """Test that public repos can be accessed without tokens."""
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(GitHubTokenManager, 'resolve_credential_from_git', return_value=None):
             downloader = GitHubPackageDownloader()
             
             # Should work for public repos

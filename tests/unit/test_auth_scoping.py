@@ -29,7 +29,10 @@ def _make_downloader(github_token=None, ado_token=None):
     with patch.dict(os.environ, {
         **({"GITHUB_APM_PAT": github_token} if github_token else {}),
         **({"ADO_APM_PAT": ado_token} if ado_token else {}),
-    }, clear=True):
+    }, clear=True), patch(
+        "apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git",
+        return_value=None,
+    ):
         return GitHubPackageDownloader()
 
 
@@ -494,9 +497,10 @@ class TestValidatePackageExistsEnv:
     like GitLab. The clone step already relaxed this, but validation didn't.
     """
 
+    @patch("apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git", return_value=None)
     @patch("subprocess.run")
     @patch.dict(os.environ, {}, clear=True)
-    def test_generic_host_validation_allows_credential_helpers(self, mock_run):
+    def test_generic_host_validation_allows_credential_helpers(self, mock_run, _mock_cred):
         """git ls-remote for a generic host should NOT have GIT_ASKPASS=echo."""
         from apm_cli.commands.install import _validate_package_exists
 
@@ -517,9 +521,10 @@ class TestValidatePackageExistsEnv:
         # GIT_TERMINAL_PROMPT should still be '0' (no interactive prompts)
         assert env_used.get("GIT_TERMINAL_PROMPT") == "0"
 
+    @patch("apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git", return_value=None)
     @patch("subprocess.run")
     @patch.dict(os.environ, {"ADO_APM_PAT": "test-ado-token"}, clear=True)
-    def test_ado_host_validation_uses_locked_env(self, mock_run):
+    def test_ado_host_validation_uses_locked_env(self, mock_run, _mock_cred):
         """git ls-remote for ADO should use the locked-down env (APM manages auth)."""
         from apm_cli.commands.install import _validate_package_exists
 
