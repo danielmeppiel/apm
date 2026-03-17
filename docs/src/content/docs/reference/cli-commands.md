@@ -854,7 +854,7 @@ apm compile [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output file path (for single-file mode)
-- `-t, --target [vscode|agents|claude|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
+- `-t, --target [vscode|agents|claude|opencode|all]` - Target agent format. `agents` is an alias for `vscode`; `opencode` generates `AGENTS.md`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Preview compilation without writing files (shows placement decisions)
 - `--no-links` - Skip markdown link resolution
@@ -916,9 +916,10 @@ apm compile --watch
 apm compile --watch --dry-run
 
 # Target specific agent formats
-apm compile --target vscode    # AGENTS.md + .github/ only
-apm compile --target claude    # CLAUDE.md + .claude/ only
-apm compile --target all       # All formats (default)
+apm compile --target vscode      # AGENTS.md + .github/ only
+apm compile --target claude      # CLAUDE.md + .claude/ only
+apm compile --target opencode    # AGENTS.md only (opencode)
+apm compile --target all         # All formats (default)
 
 # Compile injecting Spec Kit constitution (auto-detected)
 apm compile --with-constitution
