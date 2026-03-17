@@ -328,7 +328,7 @@ class DiagnosticCollector:
         for d in items:
             _rich_info(f"  [i] {d.message}")
             if d.detail and self.verbose:
-                _rich_echo(f"      └─ {d.detail}", color="dim")
+                _rich_echo(f"    └─ {d.detail}", color="dim")
 
 
 def _group_by_package(items: List[Diagnostic]) -> Dict[str, List[Diagnostic]]:

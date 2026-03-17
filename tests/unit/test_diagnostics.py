@@ -389,6 +389,44 @@ class TestInfoCategory:
         dc = DiagnosticCollector()
         dc.info("hint message")
         dc.warn("a warning", package="pkg")
-        # Info should still render (and after warnings)
-        assert dc.has_diagnostics is True
-        assert len(dc._diagnostics) == 2
+
+        call_order = []
+        with patch(f"{_MOCK_BASE}._get_console", return_value=None), \
+             patch(f"{_MOCK_BASE}._rich_echo") as mock_echo, \
+             patch(f"{_MOCK_BASE}._rich_warning", side_effect=lambda *a, **k: call_order.append("warning")), \
+             patch(f"{_MOCK_BASE}._rich_info", side_effect=lambda *a, **k: call_order.append("info")):
+            dc.render_summary()
+        # Warning must render before info
+        warn_idx = next(i for i, c in enumerate(call_order) if c == "warning")
+        info_idx = next(i for i, c in enumerate(call_order) if c == "info")
+        assert warn_idx < info_idx, f"warning at {warn_idx} should precede info at {info_idx}"
+
+    def test_info_unpinned_deps_singular(self):
+        dc = DiagnosticCollector()
+        dc.info(
+            "1 dependency has no pinned version "
+            "-- pin with #tag or #sha to prevent drift"
+        )
+        with patch(f"{_MOCK_BASE}._get_console", return_value=None), \
+             patch(f"{_MOCK_BASE}._rich_echo"), \
+             patch(f"{_MOCK_BASE}._rich_info") as mock_info:
+            dc.render_summary()
+            mock_info.assert_any_call(
+                "  [i] 1 dependency has no pinned version "
+                "-- pin with #tag or #sha to prevent drift"
+            )
+
+    def test_info_unpinned_deps_plural(self):
+        dc = DiagnosticCollector()
+        dc.info(
+            "3 dependencies have no pinned version "
+            "-- pin with #tag or #sha to prevent drift"
+        )
+        with patch(f"{_MOCK_BASE}._get_console", return_value=None), \
+             patch(f"{_MOCK_BASE}._rich_echo"), \
+             patch(f"{_MOCK_BASE}._rich_info") as mock_info:
+            dc.render_summary()
+            mock_info.assert_any_call(
+                "  [i] 3 dependencies have no pinned version "
+                "-- pin with #tag or #sha to prevent drift"
+            )
