@@ -141,6 +141,7 @@ class CompilationResult:
     warnings: List[str]
     errors: List[str]
     stats: Dict[str, Any]
+    has_critical_security: bool = False
 
 
 class AgentsCompiler:
@@ -448,7 +449,8 @@ class AgentsCompiler:
         
         # Write CLAUDE.md files
         files_written = 0
-        from ..security.content_scanner import ContentScanner
+        critical_security_found = False
+        from ..security.gate import WARN_POLICY, SecurityGate
         for claude_path, content in claude_result.content_map.items():
             try:
                 # Create directory if needed
@@ -469,13 +471,15 @@ class AgentsCompiler:
                         pass  # Use original content if injection fails
                 
                 # Defense-in-depth: scan compiled output before writing
-                findings = ContentScanner.scan_text(
-                    final_content, filename=str(claude_path)
+                verdict = SecurityGate.scan_text(
+                    final_content, str(claude_path), policy=WARN_POLICY
                 )
-                actionable = [f for f in findings if f.severity != "info"]
+                actionable = verdict.critical_count + verdict.warning_count
                 if actionable:
+                    if verdict.has_critical:
+                        critical_security_found = True
                     all_warnings.append(
-                        f"CLAUDE.md contains {len(actionable)} hidden character(s) "
+                        f"CLAUDE.md contains {actionable} hidden character(s) "
                         f"— run 'apm audit --file {claude_path}' to inspect"
                     )
 
@@ -536,7 +540,8 @@ class AgentsCompiler:
             content="\n".join(summary_lines),
             warnings=all_warnings,
             errors=all_errors,
-            stats=stats
+            stats=stats,
+            has_critical_security=critical_security_found,
         )
     
     def _merge_results(self, results: List[CompilationResult]) -> CompilationResult:
@@ -598,7 +603,8 @@ class AgentsCompiler:
             content="\n\n---\n\n".join(content_parts) if content_parts else "",
             warnings=merged_warnings,
             errors=merged_errors,
-            stats=merged_stats
+            stats=merged_stats,
+            has_critical_security=any(r.has_critical_security for r in results),
         )
     
     def validate_primitives(self, primitives: PrimitiveCollection) -> List[str]:

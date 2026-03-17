@@ -230,8 +230,8 @@ git show v4.2.1:apm.lock.yaml
 git log -1 --format='%an <%ae> %ai' -- apm.lock.yaml
 ```
 
-In CI pipelines, `apm audit --ci` verifies the lock file is in sync with the
-manifest and that all deployed files are present.
+In CI pipelines, `apm audit` scans for content issues and exits with non-zero
+status on findings. Lockfile consistency checking (`apm audit --ci`) is planned.
 
 ## 10. Example: Complete Lock File
 

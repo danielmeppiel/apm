@@ -383,20 +383,23 @@ class ClaudeFormatter:
         
         # Write files if not dry run
         files_written = 0
+        critical_security_found = False
         if not dry_run and generated_commands:
             try:
-                from ..security.content_scanner import ContentScanner
+                from ..security.gate import WARN_POLICY, SecurityGate
                 commands_dir.mkdir(parents=True, exist_ok=True)
                 
                 for command_path, content in generated_commands.items():
                     # Defense-in-depth: scan compiled command before writing
-                    findings = ContentScanner.scan_text(
-                        content, filename=str(command_path)
+                    verdict = SecurityGate.scan_text(
+                        content, str(command_path), policy=WARN_POLICY
                     )
-                    actionable = [f for f in findings if f.severity != "info"]
+                    actionable = verdict.critical_count + verdict.warning_count
                     if actionable:
+                        if verdict.has_critical:
+                            critical_security_found = True
                         warnings.append(
-                            f"{command_path.name}: {len(actionable)} hidden character(s) "
+                            f"{command_path.name}: {actionable} hidden character(s) "
                             f"— run 'apm audit --file {command_path}' to inspect"
                         )
                     command_path.write_text(content, encoding='utf-8')
@@ -411,7 +414,8 @@ class ClaudeFormatter:
             commands_dir=commands_dir,
             files_written=files_written,
             warnings=warnings,
-            errors=errors
+            errors=errors,
+            has_critical_security=critical_security_found,
         )
     
     def _transform_prompt_to_command(
@@ -570,6 +574,7 @@ class CommandGenerationResult:
     files_written: int
     warnings: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    has_critical_security: bool = False
 
 
 def format_claude_md(
