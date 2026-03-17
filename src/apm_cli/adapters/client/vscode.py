@@ -7,9 +7,8 @@ https://code.visualstudio.com/docs/copilot/chat/mcp-servers
 
 import json
 import os
-import re
 from pathlib import Path
-from .base import MCPClientAdapter
+from .base import MCPClientAdapter, _INPUT_VAR_RE
 from ...registry.client import SimpleRegistryClient
 from ...registry.integration import RegistryIntegration
 
@@ -330,8 +329,6 @@ class VSCodeClientAdapter(MCPClientAdapter):
         
         return server_config, input_vars
 
-    _INPUT_VAR_RE = re.compile(r"\$\{input:([^}]+)\}")
-
     def _extract_input_variables(self, mapping, server_name):
         """Scan dict values for ${input:...} references and return input variable definitions.
 
@@ -349,7 +346,7 @@ class VSCodeClientAdapter(MCPClientAdapter):
         for value in (mapping or {}).values():
             if not isinstance(value, str):
                 continue
-            for match in self._INPUT_VAR_RE.finditer(value):
+            for match in _INPUT_VAR_RE.finditer(value):
                 var_id = match.group(1)
                 if var_id in seen:
                     continue

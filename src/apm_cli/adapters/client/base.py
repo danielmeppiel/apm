@@ -103,12 +103,17 @@ class MCPClientAdapter(ABC):
         """
         if not mapping:
             return
+        seen: set = set()
         for value in mapping.values():
             if not isinstance(value, str):
                 continue
             for match in _INPUT_VAR_RE.finditer(value):
+                var_id = match.group(1)
+                if var_id in seen:
+                    continue
+                seen.add(var_id)
                 print(
-                    f"[!]  Warning: ${{input:{match.group(1)}}} in server "
-                    f"'{server_name}' will not be resolved — "
+                    f"[!]  Warning: ${{input:{var_id}}} in server "
+                    f"'{server_name}' will not be resolved \u2014 "
                     f"{runtime_label} does not support input variable prompts"
                 )
