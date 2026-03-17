@@ -107,35 +107,37 @@ automatically.
 
 ## Phase 3 -- CI Integration (Month 2)
 
-**Goal:** Enforce declared configuration in the pipeline so drift cannot
-reach production.
+**Goal:** Enforce content safety in the pipeline so compromised packages
+cannot reach production.
 
 ### Steps
 
-1. Add APM commands to your CI pipeline:
+1. Add APM to your CI pipeline. `apm install` blocks deployment if any
+   package contains critical hidden-character findings — no additional
+   configuration needed:
 
    ```yaml
-   # Example CI step
-   - name: Install APM packages
-     run: apm install
-
-   # Optional: only needed if targeting Codex, Gemini, or other
-   # tools without native APM integration
-   # - name: Compile configuration
-   #   run: apm compile
-
-   - name: Audit for content issues
-     run: apm audit
+   - uses: microsoft/apm-action@v1
+     with:
+       audit-report: true   # Generate SARIF report for Code Scanning
    ```
 
-2. Make the audit step a **required status check** on pull requests.
-3. Ensure `apm.lock.yaml` is committed. Any version drift will cause the audit
-   to fail, surfacing the problem before merge.
+   For SARIF upload to GitHub Code Scanning, add:
+
+   ```yaml
+   - uses: github/codeql-action/upload-sarif@v3
+     if: always() && steps.apm.outputs.audit-report-path
+     with:
+       sarif_file: ${{ steps.apm.outputs.audit-report-path }}
+       category: apm-audit
+   ```
+
+2. Ensure `apm.lock.yaml` is committed so installs are reproducible.
 
 ### Success Metric
 
-Pull requests are blocked when agent configuration drifts from the
-declared manifest. No undeclared changes slip through.
+Pull requests are blocked when packages contain critical hidden-character
+findings. No unsafe content reaches the default branch.
 
 ### What to Watch
 
@@ -190,14 +192,14 @@ tool configuration across the organization.
      registry authentication).
 2. Mandate `apm.yml` for new projects. For existing projects, adoption can
    be voluntary initially.
-3. Enable drift detection across repositories using CI audit steps.
+3. Enable content scanning across repositories using CI audit steps.
 4. Assign package ownership. Each shared package should have a
    maintainer or a maintaining team.
 
 ### Success Metric
 
 80% or more of active repositories contain an `apm.yml` and pass
-`apm audit` in CI.
+`apm install` content scanning in CI.
 
 ### What to Watch
 

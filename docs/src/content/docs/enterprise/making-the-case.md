@@ -197,4 +197,4 @@ With APM, setup reduces to `apm install` (under 30 seconds). Standards updates r
 1. Review the [Adoption Playbook](../adoption-playbook/) for a phased rollout plan.
 2. Start with a single team or repository as a pilot.
 3. Publish a shared package with your organization's standards using the [APM for Teams](../teams/) guide.
-4. Add `apm audit` to CI and measure drift reduction over 30 days.
+4. Add APM to CI and measure adoption over 30 days.
