@@ -484,9 +484,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             MCPIntegrator.update_lockfile(old_mcp_servers, mcp_configs=old_mcp_configs)
 
         # Show beautiful post-install summary
-        _rich_blank_line()
         if apm_diagnostics and apm_diagnostics.has_diagnostics:
             apm_diagnostics.render_summary()
+        else:
+            _rich_blank_line()
         if not only:
             # Load apm.yml config for summary
             apm_config = _load_apm_config()
@@ -1079,7 +1080,7 @@ def _install_apm_dependencies(
 
         # downloader already created above for transitive resolution
         installed_count = 0
-        has_unpinned_deps = False
+        unpinned_count = 0
 
         # Phase 4 (#171): Parallel package downloads using ThreadPoolExecutor
         # Pre-download all non-cached packages in parallel for wall-clock speedup.
@@ -1366,7 +1367,7 @@ def _install_apm_dependencies(
                     _rich_info(f"✓ {display_name}{ref_str} (cached)")
                     installed_count += 1
                     if not dep_ref.reference:
-                        has_unpinned_deps = True
+                        unpinned_count += 1
 
                     # Still need to integrate prompts for cached packages (zero-config behavior)
                     if integrate_vscode or integrate_claude or integrate_opencode:
@@ -1767,9 +1768,9 @@ def _install_apm_dependencies(
                     ref_suffix = f" @ {resolved}" if resolved else ""
                     _rich_success(f"✓ {display_name}{ref_suffix}")
 
-                    # Track whether any dep had no explicit ref (for hint)
+                    # Track unpinned deps for aggregated diagnostic
                     if not dep_ref.reference:
-                        has_unpinned_deps = True
+                        unpinned_count += 1
 
                     # Collect for lockfile: get resolved commit and depth
                     resolved_commit = None
@@ -2199,8 +2200,12 @@ def _install_apm_dependencies(
 
         _rich_success(f"Installed {installed_count} APM dependencies")
 
-        if has_unpinned_deps:
-            _rich_info("Tip: Pin versions with #tag or #sha for reproducible installs (e.g. owner/repo#v1.0.0)")
+        if unpinned_count:
+            noun = "dependency has" if unpinned_count == 1 else "dependencies have"
+            diagnostics.info(
+                f"{unpinned_count} {noun} no pinned version "
+                f"-- pin with #tag or #sha to prevent drift"
+            )
 
         return installed_count, total_prompts_integrated, total_agents_integrated, diagnostics
 

@@ -134,7 +134,7 @@ class TestLocalInstall:
         assert (install_dir / ".apm" / "instructions" / "test-skill.instructions.md").exists()
 
         # Verify lockfile
-        lock_path = consumer / "apm.lock"
+        lock_path = consumer / "apm.lock.yaml"
         assert lock_path.exists(), "Lockfile not created"
         with open(lock_path) as f:
             lock_data = yaml.safe_load(f)
@@ -365,7 +365,7 @@ class TestLocalPackMixed:
             source="local",
             local_path="../packages/local-skills",
         ))
-        _lock.write(consumer / "apm.lock")
+        _lock.write(consumer / "apm.lock.yaml")
 
         result = subprocess.run(
             [apm_command, "pack"],
