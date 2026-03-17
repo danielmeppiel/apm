@@ -80,7 +80,7 @@ version: 1.0.0
 dependencies:
   apm:
     # GitHub shorthand (default)
-    - microsoft/apm-sample-package
+    - microsoft/apm-sample-package#v1.0.0
     - github/awesome-copilot/skills/review-and-refactor
 
     # Full HTTPS git URL (any host)
@@ -405,7 +405,7 @@ version: 1.0.0
 description: Corporate website with design standards and code review
 dependencies:
   apm:
-    - microsoft/apm-sample-package
+    - microsoft/apm-sample-package#v1.0.0
     - github/awesome-copilot/skills/review-and-refactor
   mcp:
     - io.github.github/github-mcp-server

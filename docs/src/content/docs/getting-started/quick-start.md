@@ -58,7 +58,7 @@ dependencies:
 This is where it gets interesting. Install a package and watch what happens:
 
 ```bash
-apm install microsoft/apm-sample-package
+apm install microsoft/apm-sample-package#v1.0.0
 ```
 
 APM downloads the package, resolves its dependencies, and deploys files directly into the directories your AI tools already watch:
@@ -107,7 +107,7 @@ name: my-project
 version: 1.0.0
 dependencies:
   apm:
-    - microsoft/apm-sample-package
+    - microsoft/apm-sample-package#v1.0.0
 ```
 
 ## That's it

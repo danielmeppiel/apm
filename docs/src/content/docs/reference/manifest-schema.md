@@ -189,9 +189,9 @@ local_path_form = ("./" / "../" / "/" / "~/" / ".\\" / "..\\" / "~\\") path
 dependencies:
   apm:
     # GitHub shorthand (default host)
-    - microsoft/apm-sample-package
-    - microsoft/apm-sample-package#v1.0.0
-    - microsoft/apm-sample-package@standards
+    - microsoft/apm-sample-package                # latest (lockfile pins commit SHA)
+    - microsoft/apm-sample-package#v1.0.0         # pinned to tag
+    - microsoft/apm-sample-package@standards      # pinned to branch
 
     # Non-GitHub hosts (FQDN preserved)
     - gitlab.com/acme/coding-standards
@@ -418,8 +418,8 @@ scripts:
 
 dependencies:
   apm:
-    - microsoft/apm-sample-package
-    - gitlab.com/acme/coding-standards
+    - microsoft/apm-sample-package#v1.0.0
+    - gitlab.com/acme/coding-standards#main
     - git: https://gitlab.com/acme/repo.git
       path: instructions/security
       ref: v2.0

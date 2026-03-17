@@ -27,7 +27,7 @@ dependencies:
     # Specific agent primitives from any repository
     - github/awesome-copilot/agents/api-architect.agent.md
     # A full APM package with instructions, skills, prompts, hooks...
-    - microsoft/apm-sample-package
+    - microsoft/apm-sample-package#v1.0.0
 ```
 
 ```bash
@@ -88,7 +88,7 @@ pip install apm-cli
 Then start adding packages:
 
 ```bash
-apm install microsoft/apm-sample-package
+apm install microsoft/apm-sample-package#v1.0.0
 ```
 
 See the **[Getting Started guide](https://microsoft.github.io/apm/getting-started/quick-start/)** for the full walkthrough.

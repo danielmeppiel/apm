@@ -10,7 +10,7 @@ scripts:
 
 dependencies:
   apm:
-    - microsoft/apm-sample-package  # Design standards, prompts, and skills
+    - microsoft/apm-sample-package#v1.0.0  # Design standards, prompts, and skills
   mcp:
     - microsoft/azure-devops-mcp
 
