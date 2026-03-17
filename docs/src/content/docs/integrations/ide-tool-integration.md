@@ -535,6 +535,32 @@ apm mcp info ghcr.io/github/github-mcp-server
 apm mcp list
 ```
 
+#### `${input:...}` Variables in `headers` and `env`
+
+Values in `headers` and `env` can reference VS Code input variables using `${input:<variable-id>}`. At runtime, VS Code prompts the user for each referenced input before starting the server.
+
+For registry-backed servers, APM auto-generates input prompts from registry metadata. For self-defined servers, APM detects the `${input:...}` patterns in your `apm.yml` and generates matching input definitions.
+
+```yaml
+dependencies:
+  mcp:
+    - name: my-server
+      registry: false
+      transport: http
+      url: https://my-server.example.com/mcp/
+      headers:
+        Authorization: "Bearer ${input:my-server-token}"
+        X-Project: "${input:my-server-project}"
+```
+
+**Runtime support:**
+
+| Runtime | `${input:...}` support |
+|---------|----------------------|
+| VS Code | ✅ Prompts user at runtime |
+| Copilot CLI | ❌ Use environment variables instead |
+| Codex | ❌ Use environment variables instead |
+
 ## Roadmap
 
 The following IDE integrations are planned for future releases:
