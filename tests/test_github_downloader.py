@@ -1460,7 +1460,7 @@ class TestRawContentCDNDownload:
             assert result == b'# Agent content'
             call_url = mock_get.call_args[0][0]
             assert not call_url.startswith("https://raw.githubusercontent.com/")
-            assert "github.mycompany.com" in call_url
+            assert call_url.startswith("https://github.mycompany.com/")
 
     def test_raw_cdn_fallback_to_api_on_404(self):
         """If raw CDN returns 404, should fall through to the API path."""
