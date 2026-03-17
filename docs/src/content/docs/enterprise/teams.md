@@ -120,7 +120,7 @@ APM addresses these through mechanisms that engineering leadership and platform 
 
 - **Reproducibility.** `apm.lock.yaml` guarantees that every environment — developer workstation, CI runner, staging — uses identical configuration. "Works on my machine" stops applying to agent setup.
 - **Audit trail.** `git log apm.lock.yaml` provides a complete, timestamped history of every configuration change, who made it, and which pull request approved it.
-- **CI enforcement.** `apm audit` in a CI pipeline fails the build if local configuration has drifted from the declared and locked state, catching unauthorized or accidental changes before they reach production.
+- **CI enforcement.** `apm install` blocks deployment of packages containing critical hidden-character findings. `apm audit` generates SARIF reports for GitHub Code Scanning integration, providing visibility into all findings across installed packages.
 - **Centralized standards.** Organization-wide packages are published once and consumed by every repository. Updates propagate through version bumps in `apm.yml`, reviewed and approved through the normal pull request process.
 
 ## What APM adds on top of native plugin systems
@@ -132,7 +132,7 @@ Each AI tool has its own plugin or extension system. APM does not replace these 
 | Install plugins for one tool | Yes | Yes |
 | Install across all tools, one command | No | Yes |
 | Consumer-side version lock | No | Yes (`apm.lock.yaml`) |
-| CI gate for configuration drift | No | Yes (`apm audit`) |
+| CI gate (content scanning) | No | Yes (built into `apm install`) |
 | Audit trail | No | Yes (`git log apm.lock.yaml`) |
 | Multi-source composition | No | Yes |
 

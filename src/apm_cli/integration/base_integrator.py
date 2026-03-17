@@ -123,7 +123,10 @@ class BaseIntegrator:
         if not rel_path.startswith(allowed_prefixes):
             return False
         target = project_root / rel_path
-        if not str(target.resolve()).startswith(str(project_root.resolve())):
+        try:
+            if not target.resolve().is_relative_to(project_root.resolve()):
+                return False
+        except (ValueError, OSError):
             return False
         return True
 

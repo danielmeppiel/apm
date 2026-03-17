@@ -93,14 +93,15 @@ download → scan source → block or deploy → report
 - **Critical findings block deployment.** The package is downloaded and cached so you can inspect it (`apm_modules/owner/package/`), but nothing reaches agent-readable directories.
 - **Warnings are non-blocking.** Zero-width characters are flagged in the diagnostics summary. Files are deployed normally.
 - **`--force` overrides the block.** Consistent with existing collision semantics — an explicit "I know what I'm doing."
-- **Multi-package installs continue.** A blocked package doesn't stop other packages from installing.
+- **Multi-package installs continue.** A blocked package doesn't stop other packages from installing. After all packages are processed, `apm install` exits with code 1 if any package was blocked — failing the CI step.
 
 ### Compile and pack scanning
 
 Content scanning extends beyond install:
 
-- **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, commands) before writing to disk. This is defense-in-depth — source files were already scanned at install, but compilation assembles content from multiple sources and the final output is what agents read.
+- **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, commands) before writing to disk. Critical findings cause `apm compile` to exit with code 1 after writing — defense-in-depth since source files were already scanned at install, but compilation assembles content from multiple sources.
 - **`apm pack`** scans files before bundling. This catches hidden characters before a package is published, preventing authors from accidentally distributing tainted content.
+- **`apm unpack`** scans bundle contents before deployment. This is a pre-deployment gate matching `apm install` — critical findings block deployment unless `--force` is used.
 
 ### On-demand scanning
 
@@ -114,6 +115,14 @@ apm audit --strip --dry-run      # Preview what --strip would remove
 ```
 
 The `--file` flag is useful for inspecting files obtained outside APM — downloaded rules files, copy-pasted instructions, or files from pull requests.
+
+For CI pipelines, `apm audit` supports SARIF, JSON, and Markdown output:
+
+```bash
+apm audit -f sarif -o audit.sarif      # GitHub Code Scanning
+apm audit -f json -o report.json       # Machine-readable
+apm audit -f markdown -o report.md     # Step summaries
+```
 
 See [Content scanning with `apm audit`](../governance/#content-scanning-with-apm-audit) for usage details and exit codes.
 

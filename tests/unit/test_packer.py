@@ -1,7 +1,9 @@
 """Unit tests for apm_cli.bundle.packer."""
 
+import os
 import tarfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -227,6 +229,72 @@ class TestPackBundle:
         with pytest.raises(ValueError, match="unsafe path"):
             pack_bundle(project, tmp_path / "out")
 
+
+class TestPackSecurityScan:
+    """Tests for hidden-Unicode scanning during pack (warn-only, never blocks)."""
+
+    def test_pack_clean_files_no_warning(self, tmp_path):
+        """Clean files produce no security warning."""
+        deployed = [".github/agents/clean.md"]
+        project = _setup_project(tmp_path, deployed, target="vscode")
+        out = tmp_path / "build"
+
+        with patch("apm_cli.utils.console._rich_warning") as mock_warn:
+            result = pack_bundle(project, out)
+
+        mock_warn.assert_not_called()
+        assert result.bundle_path.exists()
+        assert set(result.files) == set(deployed)
+
+    def test_pack_hidden_chars_warns_but_succeeds(self, tmp_path):
+        """Files with hidden Unicode chars trigger a warning but bundle still succeeds."""
+        deployed = [".github/agents/sneaky.md"]
+        project = _setup_project(tmp_path, deployed, target="vscode")
+
+        # Inject a Unicode tag character (U+E0001) into the file
+        sneaky = project / ".github/agents/sneaky.md"
+        sneaky.write_text(f"Hello \U000E0001 world", encoding="utf-8")
+
+        out = tmp_path / "build"
+
+        with patch("apm_cli.utils.console._rich_warning") as mock_warn:
+            result = pack_bundle(project, out)
+
+        # Bundle created successfully — pack never blocks
+        assert result.bundle_path.exists()
+        assert (result.bundle_path / ".github/agents/sneaky.md").exists()
+        # Warning was emitted about hidden characters
+        mock_warn.assert_called_once()
+        assert "hidden character" in mock_warn.call_args[0][0]
+
+    def test_pack_skips_symlinks(self, tmp_path):
+        """Symlinks are skipped during scanning — no crash, no findings from target."""
+        deployed = [".github/agents/real.md", ".github/agents/link.md"]
+        project = _setup_project(tmp_path, deployed, target="vscode")
+
+        # Create a file with hidden chars inside the project tree
+        poisoned = project / ".github/agents/poisoned.md"
+        poisoned.write_text(f"hidden \U000E0001 payload", encoding="utf-8")
+
+        # Replace link.md with a symlink to the poisoned file (within project)
+        link_file = project / ".github/agents/link.md"
+        link_file.unlink()
+        try:
+            os.symlink(poisoned, link_file)
+        except OSError:
+            pytest.skip("symlinks not supported on this platform")
+
+        out = tmp_path / "build"
+
+        with patch("apm_cli.utils.console._rich_warning") as mock_warn:
+            result = pack_bundle(project, out)
+
+        # No warning — the symlink target's hidden chars are not scanned
+        mock_warn.assert_not_called()
+        assert result.bundle_path.exists()
+
+
+class TestPackBundleTraversalDeployed:
     def test_pack_rejects_traversal_deployed_path(self, tmp_path):
         """pack_bundle must reject path-traversal entries in deployed_files."""
         project = _setup_project(tmp_path, [])
