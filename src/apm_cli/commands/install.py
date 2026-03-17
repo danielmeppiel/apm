@@ -1353,7 +1353,16 @@ def _install_apm_dependencies(
                     display_name = (
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
                     )
-                    ref_str = f" @{dep_ref.reference}" if dep_ref.reference else ""
+                    # Show resolved ref from lockfile for consistency with fresh installs
+                    ref_str = ""
+                    if _dep_locked_chk and _dep_locked_chk.resolved_commit and _dep_locked_chk.resolved_commit != "cached":
+                        short_sha = _dep_locked_chk.resolved_commit[:8]
+                        if dep_ref.reference:
+                            ref_str = f" @ {dep_ref.reference} ({short_sha})"
+                        else:
+                            ref_str = f" @ {short_sha}"
+                    elif dep_ref.reference:
+                        ref_str = f" @ {dep_ref.reference}"
                     _rich_info(f"✓ {display_name}{ref_str} (cached)")
                     installed_count += 1
                     if not dep_ref.reference:
@@ -1754,9 +1763,8 @@ def _install_apm_dependencies(
                     installed_count += 1
 
                     # Show resolved ref alongside package name for visibility
-                    ref_suffix = ""
-                    if hasattr(package_info, 'resolved_reference') and package_info.resolved_reference:
-                        ref_suffix = f" @ {package_info.resolved_reference}"
+                    resolved = getattr(package_info, 'resolved_reference', None)
+                    ref_suffix = f" @ {resolved}" if resolved else ""
                     _rich_success(f"✓ {display_name}{ref_suffix}")
 
                     # Track whether any dep had no explicit ref (for hint)
@@ -1765,7 +1773,7 @@ def _install_apm_dependencies(
 
                     # Collect for lockfile: get resolved commit and depth
                     resolved_commit = None
-                    if hasattr(package_info, 'resolved_reference') and package_info.resolved_reference:
+                    if resolved:
                         resolved_commit = package_info.resolved_reference.resolved_commit
                     # Get depth from dependency tree
                     node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())

@@ -190,8 +190,8 @@ dependencies:
   apm:
     # GitHub shorthand (default host)
     - microsoft/apm-sample-package                # latest (lockfile pins commit SHA)
-    - microsoft/apm-sample-package#v1.0.0         # pinned to tag
-    - microsoft/apm-sample-package@standards      # pinned to branch
+    - microsoft/apm-sample-package#v1.0.0         # pinned to tag (immutable)
+    - microsoft/apm-sample-package@standards      # branch ref (may change over time)
 
     # Non-GitHub hosts (FQDN preserved)
     - gitlab.com/acme/coding-standards
