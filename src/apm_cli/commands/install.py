@@ -498,6 +498,12 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         elif only == "mcp":
             _rich_success(f"Configured {mcp_count} MCP servers")
 
+        # Hard-fail when critical security findings blocked any package.
+        # Consistent with apm unpack which also hard-fails on critical.
+        # Use --force to override.
+        if apm_diagnostics and apm_diagnostics.has_critical_security:
+            sys.exit(1)
+
     except Exception as e:
         _rich_error(f"Error installing dependencies: {e}")
         sys.exit(1)

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `apm install` now exits non-zero when critical security findings block packages — consistent with `apm unpack` behavior (#330)
+
 ## [0.8.0] - 2026-03-16
 
 ### Added
