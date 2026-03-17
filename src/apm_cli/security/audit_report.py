@@ -227,7 +227,7 @@ def findings_to_markdown(
         sev = f.severity.upper()
         lines.append(
             f"| {sev} | `{relative_path_for_report(f.file)}` | {f.line}:{f.column}"
-            f" | `{f.codepoint}` | {f.description} |"
+            f" | `{f.codepoint}` | {f.description.replace('|', '\\|')} |"
         )
     lines.append("")
     lines.append("Run `apm audit --strip` to remove flagged characters.\n")
