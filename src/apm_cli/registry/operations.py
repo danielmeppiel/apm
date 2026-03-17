@@ -1,10 +1,13 @@
 """MCP server operations and installation logic."""
 
+import logging
 import os
 from typing import List, Dict, Set, Optional, Tuple
 from pathlib import Path
 
 from .client import SimpleRegistryClient
+
+logger = logging.getLogger(__name__)
 
 
 class MCPServerOperations:
@@ -133,6 +136,8 @@ class MCPServerOperations:
         """Validate that all servers exist in the registry before attempting installation.
         
         This implements fail-fast validation similar to npm's behavior.
+        Network errors are treated as transient — the server is assumed valid
+        so a flaky registry API does not block installation.
         
         Args:
             server_references: List of MCP server references to validate
@@ -151,7 +156,14 @@ class MCPServerOperations:
                 else:
                     invalid_servers.append(server_ref)
             except Exception:
-                invalid_servers.append(server_ref)
+                # Network/transient error — assume server exists and let
+                # downstream installation attempt the actual resolution.
+                logger.debug(
+                    "Registry lookup failed for %s, assuming valid (transient error)",
+                    server_ref,
+                    exc_info=True,
+                )
+                valid_servers.append(server_ref)
                 
         return valid_servers, invalid_servers
     

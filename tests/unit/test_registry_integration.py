@@ -174,5 +174,73 @@ class TestRegistryIntegration(unittest.TestCase):
             self.integration.get_latest_version("test-package")
 
 
+class TestMCPServerOperationsValidation(unittest.TestCase):
+    """Tests for MCPServerOperations.validate_servers_exist resilience."""
+
+    @mock.patch.object(
+        __import__("apm_cli.registry.operations", fromlist=["MCPServerOperations"])
+        .__dict__.get("MCPServerOperations", type("X", (), {})),
+        "__init__",
+        lambda self, **kw: None,
+    )
+    def _make_ops(self):
+        from apm_cli.registry.operations import MCPServerOperations
+        ops = MCPServerOperations.__new__(MCPServerOperations)
+        ops.registry_client = mock.MagicMock()
+        return ops
+
+    def test_valid_server(self):
+        """Server found in registry → valid."""
+        from apm_cli.registry.operations import MCPServerOperations
+        ops = MCPServerOperations.__new__(MCPServerOperations)
+        ops.registry_client = mock.MagicMock()
+        ops.registry_client.find_server_by_reference.return_value = {"id": "abc", "name": "srv"}
+
+        valid, invalid = ops.validate_servers_exist(["io.github.test/srv"])
+        self.assertEqual(valid, ["io.github.test/srv"])
+        self.assertEqual(invalid, [])
+
+    def test_missing_server(self):
+        """Server not in registry (None) → invalid."""
+        from apm_cli.registry.operations import MCPServerOperations
+        ops = MCPServerOperations.__new__(MCPServerOperations)
+        ops.registry_client = mock.MagicMock()
+        ops.registry_client.find_server_by_reference.return_value = None
+
+        valid, invalid = ops.validate_servers_exist(["io.github.test/no-such"])
+        self.assertEqual(valid, [])
+        self.assertEqual(invalid, ["io.github.test/no-such"])
+
+    def test_network_error_assumes_valid(self):
+        """Transient network error → assume server valid (not invalid)."""
+        from apm_cli.registry.operations import MCPServerOperations
+        ops = MCPServerOperations.__new__(MCPServerOperations)
+        ops.registry_client = mock.MagicMock()
+        ops.registry_client.find_server_by_reference.side_effect = requests.ConnectionError("flaky")
+
+        valid, invalid = ops.validate_servers_exist(["io.github.test/flaky-srv"])
+        self.assertEqual(valid, ["io.github.test/flaky-srv"])
+        self.assertEqual(invalid, [])
+
+    def test_mixed_results(self):
+        """Mix of found, missing, and errored servers."""
+        from apm_cli.registry.operations import MCPServerOperations
+        ops = MCPServerOperations.__new__(MCPServerOperations)
+        ops.registry_client = mock.MagicMock()
+
+        def side_effect(ref):
+            if ref == "found":
+                return {"id": "1", "name": "found"}
+            if ref == "missing":
+                return None
+            raise requests.Timeout("timeout")
+
+        ops.registry_client.find_server_by_reference.side_effect = side_effect
+
+        valid, invalid = ops.validate_servers_exist(["found", "missing", "flaky"])
+        self.assertEqual(sorted(valid), ["flaky", "found"])
+        self.assertEqual(invalid, ["missing"])
+
+
 if __name__ == "__main__":
     unittest.main()
