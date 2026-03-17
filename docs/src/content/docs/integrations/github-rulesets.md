@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-GitHub Rulesets and branch protection rules can require status checks before merging. APM's `apm audit` integrates as a required status check to enforce agent configuration governance — it scans for hidden Unicode characters and content issues, using exit codes (**0** = clean, **1** = critical, **2** = warnings) to gate pull requests.
+GitHub Rulesets and branch protection rules can require status checks before merging. APM commands like `apm install`, `apm compile`, and `apm unpack` already block critical hidden-character findings automatically. `apm audit` adds structured reporting (SARIF, JSON, markdown) and exit codes (**0** = clean, **1** = critical, **2** = warnings) for CI integration.
 
 :::note[Planned]
 Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. The workflows below use `apm audit` exit codes, which work today.
@@ -15,10 +15,10 @@ Lockfile consistency checking (`apm audit --ci`) is planned but not yet availabl
 
 The workflow is straightforward:
 
-1. `apm audit` runs in a GitHub Actions workflow on every pull request.
-2. It scans installed packages for hidden Unicode characters and content issues.
+1. `apm install` runs in the workflow and blocks critical findings automatically.
+2. `apm audit` scans installed packages and produces reports (SARIF for GitHub Code Scanning, exit codes for status checks).
 3. You configure this workflow as a required status check in branch protection or Rulesets.
-4. PRs that introduce content issues are blocked from merging (non-zero exit code).
+4. PRs that introduce content issues are blocked from merging.
 
 This turns APM from a development convenience into an enforceable policy.
 
@@ -89,9 +89,9 @@ APM audit complements your existing CI checks — it does not replace them. A ty
 - **Linting and formatting** — code style enforcement
 - **Unit and integration tests** — functional correctness
 - **Security scanning** — vulnerability detection
-- **APM audit** — agent configuration governance
+- **APM audit** — hidden Unicode scanning with CI reporting
 
-Each check has a distinct purpose. APM audit focuses exclusively on whether agent context changes are properly declared and consistent.
+Each check has a distinct purpose. APM audit focuses on detecting hidden Unicode characters that could embed invisible instructions in prompt files.
 
 ## Customizing the Workflow
 
