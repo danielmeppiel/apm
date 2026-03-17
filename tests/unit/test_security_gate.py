@@ -159,6 +159,9 @@ class TestReport:
         diag.security.assert_called_once()
         call_args = diag.security.call_args
         assert "force" in call_args.kwargs.get("message", call_args[1].get("message", "")).lower()
+        # Should include actionable follow-up
+        detail = call_args.kwargs.get("detail", call_args[1].get("detail", ""))
+        assert "apm audit --strip" in detail
 
     def test_warning_only_reports(self):
         diag = MagicMock()
@@ -215,3 +218,55 @@ class TestPolicies:
     def test_custom_policy(self):
         p = ScanPolicy(on_critical="block", force_overrides=False)
         assert not p.force_overrides
+
+    def test_effective_block_blocks_without_force(self):
+        assert BLOCK_POLICY.effective_block(force=False) is True
+
+    def test_effective_block_force_overrides(self):
+        assert BLOCK_POLICY.effective_block(force=True) is False
+
+    def test_effective_block_warn_never_blocks(self):
+        assert WARN_POLICY.effective_block(force=False) is False
+
+    def test_effective_block_no_force_override_ignores_force(self):
+        p = ScanPolicy(on_critical="block", force_overrides=False)
+        assert p.effective_block(force=True) is True
+
+
+# ---------------------------------------------------------------------------
+# Immutability
+# ---------------------------------------------------------------------------
+
+
+class TestImmutability:
+    def test_scan_verdict_is_frozen(self):
+        v = ScanVerdict(has_critical=True, should_block=True)
+        with pytest.raises(AttributeError):
+            v.should_block = False  # type: ignore[misc]
+
+    def test_scan_policy_is_frozen(self):
+        with pytest.raises(AttributeError):
+            BLOCK_POLICY.on_critical = "warn"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Robustness — unreadable files
+# ---------------------------------------------------------------------------
+
+
+class TestRobustness:
+    def test_unreadable_file_skipped(self, tmp_path):
+        """scan_files gracefully skips files that raise OSError."""
+        good = tmp_path / "ok.md"
+        _write_file(good, "clean")
+        bad = tmp_path / "bad.md"
+        _write_file(bad, "also clean")
+        # Make file unreadable
+        bad.chmod(0o000)
+        try:
+            v = SecurityGate.scan_files(tmp_path, policy=BLOCK_POLICY)
+            assert not v.has_findings
+            # At least the readable file was scanned
+            assert v.files_scanned >= 1
+        finally:
+            bad.chmod(0o644)
