@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `apm audit --format sarif|json|markdown --output` for CI artifact capture — SARIF integrates with GitHub Code Scanning (#330)
+- `apm unpack` content scanning — blocks critical hidden characters unless `--force` (#330)
+- `SecurityGate` centralizes security scanning with per-command policies — block (install/unpack), warn (compile/pack), report (audit) (#330)
+
 ### Fixed
 
 - `apm install` now exits non-zero when critical security findings block packages — consistent with `apm unpack` behavior (#330)

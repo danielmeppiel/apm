@@ -486,6 +486,9 @@ apm unpack bundle.tar.gz --skip-verify
 
 # Preview what would be extracted
 apm unpack bundle.tar.gz --dry-run
+
+# Deploy despite critical hidden-character findings
+apm unpack bundle.tar.gz --force
 ```
 
 **Behavior:**

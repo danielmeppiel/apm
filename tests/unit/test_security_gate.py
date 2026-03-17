@@ -83,14 +83,15 @@ class TestScanFiles:
         v = SecurityGate.scan_files(tmp_path, policy=BLOCK_POLICY)
         assert v.files_scanned == 1  # only real.md
 
-    def test_short_circuits_on_critical_block(self, tmp_path):
-        """When blocking, scanning stops at first critical file."""
+    def test_scans_all_files_for_complete_report(self, tmp_path):
+        """All files are scanned even when critical is found — no short-circuit."""
         _write_file(tmp_path / "a.md", f"critical {CRITICAL_CHAR}")
         _write_file(tmp_path / "b.md", f"also critical {CRITICAL_CHAR}")
         v = SecurityGate.scan_files(tmp_path, policy=BLOCK_POLICY)
         assert v.should_block
-        # May have scanned fewer than 2 files due to short-circuit
         assert v.has_critical
+        # Both files must be in findings (no early termination)
+        assert len(v.findings_by_file) == 2
 
     def test_report_policy_ignores_critical(self, tmp_path):
         _write_file(tmp_path / "evil.md", f"critical {CRITICAL_CHAR}")
@@ -175,7 +176,22 @@ class TestReport:
         SecurityGate.report(v, diag, package="pkg")
         diag.security.assert_called_once()
         call_args = diag.security.call_args
-        assert call_args.kwargs.get("severity") == "warning"
+
+    def test_warn_policy_critical_reports(self):
+        """WARN_POLICY with critical findings must still record a diagnostic."""
+        diag = MagicMock()
+        v = ScanVerdict(
+            findings_by_file={"x.md": [MagicMock(severity="critical")]},
+            has_critical=True,
+            should_block=False,
+            critical_count=1,
+            warning_count=0,
+        )
+        # force=False, should_block=False — the WARN_POLICY path
+        SecurityGate.report(v, diag, package="pkg", force=False)
+        diag.security.assert_called_once()
+        call_args = diag.security.call_args
+        assert call_args.kwargs.get("severity") == "critical"
 
 
 # ---------------------------------------------------------------------------

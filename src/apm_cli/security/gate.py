@@ -85,14 +85,11 @@ class SecurityGate:
     ) -> ScanVerdict:
         """Walk *root*, scan every regular file, return a verdict.
 
-        - Symlinks are never followed (``followlinks=False``, ``is_symlink()``).
-        - When *policy* is ``block`` and a critical finding is detected,
-          scanning short-circuits (unless *force* is True).
+        Symlinks are never followed (``followlinks=False``, ``is_symlink()``).
+        All files are scanned to produce a complete findings report.
         """
         findings_by_file: Dict[str, List[ScanFinding]] = {}
         files_scanned = 0
-        found_critical = False
-        should_block_early = policy.effective_block(force)
 
         for dirpath, _dirs, filenames in os.walk(root, followlinks=False):
             for fname in filenames:
@@ -107,12 +104,6 @@ class SecurityGate:
                 if file_findings:
                     rel = str(fpath.relative_to(root))
                     findings_by_file[rel] = file_findings
-                    if should_block_early and not found_critical:
-                        found_critical = ContentScanner.has_critical(file_findings)
-                        if found_critical:
-                            break
-            if found_critical and should_block_early:
-                break
 
         return SecurityGate._build_verdict(
             findings_by_file, files_scanned, policy, force
@@ -168,6 +159,18 @@ class SecurityGate:
                 package=package,
                 detail=f"at least {verdict.critical_count} critical, "
                 f"{verdict.warning_count} warning(s)",
+                severity="critical",
+            )
+        elif verdict.has_critical:
+            # Warn-only policy with critical findings (e.g. pack, compile)
+            diagnostics.security(
+                message="Critical hidden characters in source files",
+                package=package,
+                detail=(
+                    f"{verdict.critical_count} critical, "
+                    f"{verdict.warning_count} warning(s) — "
+                    "run 'apm audit' to inspect"
+                ),
                 severity="critical",
             )
         elif verdict.warning_count > 0:

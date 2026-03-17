@@ -396,7 +396,7 @@ class ClaudeFormatter:
                     )
                     actionable = verdict.critical_count + verdict.warning_count
                     if actionable:
-                        if any(f.severity == "critical" for f in actionable):
+                        if verdict.has_critical:
                             critical_security_found = True
                         warnings.append(
                             f"{command_path.name}: {actionable} hidden character(s) "
