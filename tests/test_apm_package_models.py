@@ -54,19 +54,17 @@ class TestDependencyReference:
         assert dep.reference == "abc123def"
         assert dep.alias is None
     
-    def test_parse_with_alias(self):
-        """Test parsing with alias."""
-        dep = DependencyReference.parse("user/repo@myalias")
-        assert dep.repo_url == "user/repo"
-        assert dep.reference is None
-        assert dep.alias == "myalias"
+    def test_parse_with_alias_shorthand_removed(self):
+        """Shorthand @alias syntax is no longer supported — @ in shorthand is rejected."""
+        with pytest.raises(ValueError):
+            DependencyReference.parse("user/repo@myalias")
     
-    def test_parse_with_reference_and_alias(self):
-        """Test parsing with both reference and alias."""
+    def test_parse_with_reference_and_alias_shorthand_not_parsed(self):
+        """Shorthand #ref@alias — @ is no longer parsed as alias separator."""
         dep = DependencyReference.parse("user/repo#main@myalias")
         assert dep.repo_url == "user/repo"
-        assert dep.reference == "main"
-        assert dep.alias == "myalias"
+        assert dep.reference == "main@myalias"  # @ treated as part of ref
+        assert dep.alias is None
     
     def test_parse_github_urls(self):
         """Test parsing various GitHub URL formats."""
@@ -375,10 +373,10 @@ class TestDependencyReference:
         assert "prompts/code-review.prompt.md" in str(dep)
         assert "#v1.0.0" in str(dep)
         
-        dep_with_alias = DependencyReference.parse("owner/test-repo/prompts/test.prompt.md@myalias")
-        assert "owner/test-repo" in str(dep_with_alias)
-        assert "prompts/test.prompt.md" in str(dep_with_alias)
-        assert "@myalias" in str(dep_with_alias)
+        dep_with_ref = DependencyReference.parse("owner/test-repo/prompts/test.prompt.md#v2.0")
+        assert "owner/test-repo" in str(dep_with_ref)
+        assert "prompts/test.prompt.md" in str(dep_with_ref)
+        assert "#v2.0" in str(dep_with_ref)
     
     def test_regular_package_not_virtual(self):
         """Test that regular packages (2 segments) are not marked as virtual."""
@@ -416,7 +414,8 @@ class TestDependencyReference:
         dep1 = DependencyReference.parse("user/repo")
         assert dep1.get_display_name() == "user/repo"
         
-        dep2 = DependencyReference.parse("user/repo@myalias")
+        # Dict format alias still works for display name
+        dep2 = DependencyReference.parse_from_dict({"git": "https://github.com/user/repo.git", "alias": "myalias"})
         assert dep2.get_display_name() == "myalias"
     
     def test_string_representation(self):
@@ -434,17 +433,6 @@ class TestDependencyReference:
         assert dep2.repo_url == "user/repo"
         assert dep2.reference == "main"
         assert "user/repo" in str(dep2) and "#main" in str(dep2)
-        
-        dep3 = DependencyReference.parse("user/repo@myalias")
-        assert dep3.repo_url == "user/repo"
-        assert dep3.alias == "myalias"
-        assert "user/repo" in str(dep3) and "@myalias" in str(dep3)
-        
-        dep4 = DependencyReference.parse("user/repo#main@myalias")
-        assert dep4.repo_url == "user/repo"
-        assert dep4.reference == "main"
-        assert dep4.alias == "myalias"
-        assert "user/repo" in str(dep4) and "#main" in str(dep4) and "@myalias" in str(dep4)
     
     def test_string_representation_with_enterprise_host(self):
         """Test that string representation includes host for enterprise dependencies.
@@ -459,14 +447,6 @@ class TestDependencyReference:
         # Enterprise host with reference
         dep2 = DependencyReference.parse("company.ghe.com/user/repo#v1.0.0")
         assert str(dep2) == "company.ghe.com/user/repo#v1.0.0"
-        
-        # Enterprise host with alias
-        dep3 = DependencyReference.parse("company.ghe.com/user/repo@myalias")
-        assert str(dep3) == "company.ghe.com/user/repo@myalias"
-        
-        # Enterprise host with reference and alias
-        dep4 = DependencyReference.parse("company.ghe.com/user/repo#main@myalias")
-        assert str(dep4) == "company.ghe.com/user/repo#main@myalias"
         
         # Explicit github.com should also include host
         dep5 = DependencyReference.parse("github.com/user/repo")
@@ -505,7 +485,7 @@ class TestAPMPackage:
             'author': 'Test Author',
             'license': 'MIT',
             'dependencies': {
-                'apm': ['user/repo#main', 'another/repo@alias'],
+                'apm': ['user/repo#main', 'another/repo#v2.0'],
                 'mcp': ['some-mcp-server']
             },
             'scripts': {

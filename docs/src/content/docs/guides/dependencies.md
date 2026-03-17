@@ -97,7 +97,7 @@ dependencies:
     - ./packages/my-shared-skills          # relative to project root
     - /home/user/repos/my-ai-package       # absolute path
 
-    # Object format: git URL + sub-path / ref / alias
+    # Object format: git URL + sub-path / ref
     - git: https://gitlab.com/acme/coding-standards.git
       path: instructions/security
       ref: v2.0
@@ -126,7 +126,7 @@ APM accepts dependencies in two forms:
   - For nested groups + virtual paths, use the object format below
 - **Local path** (`./path`, `../path`, `/absolute/path`) — local filesystem package
 
-**Object format** (when you need `path`, `ref`, or `alias` on a git URL):
+**Object format** (when you need `path` or `ref` on a git URL):
 
 ```yaml
 dependencies:
@@ -136,10 +136,9 @@ dependencies:
       ref: v2.0                          # pin to a tag, branch, or commit
     - git: git@bitbucket.org:team/rules.git
       path: prompts/review.prompt.md
-      alias: review
 ```
 
-Fields: `git` (required), `path`, `ref`, `alias` (all optional). The `git` value is any HTTPS or SSH clone URL.
+Fields: `git` (required), `path`, `ref` (all optional). The `git` value is any HTTPS or SSH clone URL.
 
 > **Nested groups (GitLab, Gitea, etc.):** APM treats all path segments after the host as the repo path, so `gitlab.com/group/subgroup/repo` resolves to a repo at `group/subgroup/repo`. Virtual paths on simple 2-segment repos work with shorthand (`gitlab.com/owner/repo/file.prompt.md`). But for **nested-group repos + virtual paths**, use the object format — the shorthand is ambiguous:
 >
@@ -173,7 +172,7 @@ APM normalizes every dependency entry on write — no matter how you specify a p
 | `./packages/my-skills` | `./packages/my-skills` |
 | `/home/user/repos/my-pkg` | `/home/user/repos/my-pkg` |
 
-Virtual paths, refs, and aliases are preserved:
+Virtual paths and refs are preserved:
 
 | You type | Stored in apm.yml |
 |----------|-------------------|
