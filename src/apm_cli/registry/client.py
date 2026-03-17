@@ -141,19 +141,18 @@ class SimpleRegistryClient:
             Optional[Dict[str, Any]]: Server metadata dictionary or None if not found.
         
         Raises:
-            requests.RequestException: If the request fails.
+            requests.RequestException: If the registry API request fails.
         """
         # Use search API to find by name - more efficient than listing all servers
-        try:
-            search_results = self.search_servers(name)
-            
-            # Look for an exact match in search results
-            for server in search_results:
-                if server.get("name") == name:
+        search_results = self.search_servers(name)
+        
+        # Look for an exact match in search results
+        for server in search_results:
+            if server.get("name") == name:
+                try:
                     return self.get_server_info(server["id"])
-                    
-        except Exception:
-            pass
+                except ValueError:
+                    continue
                     
         return None
     
@@ -173,35 +172,37 @@ class SimpleRegistryClient:
             Optional[Dict[str, Any]]: Server metadata dictionary or None if not found.
         
         Raises:
-            requests.RequestException: If the request fails.
+            requests.RequestException: If the registry API request fails.
         """
         # Strategy 1: Try as server ID first (direct lookup)
         try:
             # Check if it looks like a UUID (contains hyphens and is 36 chars)
             if len(reference) == 36 and reference.count('-') == 4:
                 return self.get_server_info(reference)
-        except (ValueError, Exception):
+        except ValueError:
             pass
         
         # Strategy 2: Use search API to find by name
         # search_servers now handles extracting repository names internally
-        try:
-            search_results = self.search_servers(reference)
-            
-            # Pass 1: exact full-name match (prevents slug collisions)
-            for server in search_results:
-                server_name = server.get("name", "")
-                if server_name == reference:
+        search_results = self.search_servers(reference)
+        
+        # Pass 1: exact full-name match (prevents slug collisions)
+        for server in search_results:
+            server_name = server.get("name", "")
+            if server_name == reference:
+                try:
                     return self.get_server_info(server["id"])
-            
-            # Pass 2: fuzzy slug match (only when reference has no namespace)
-            for server in search_results:
-                server_name = server.get("name", "")
-                if self._is_server_match(reference, server_name):
+                except ValueError:
+                    continue
+        
+        # Pass 2: fuzzy slug match (only when reference has no namespace)
+        for server in search_results:
+            server_name = server.get("name", "")
+            if self._is_server_match(reference, server_name):
+                try:
                     return self.get_server_info(server["id"])
-                    
-        except Exception:
-            pass
+                except ValueError:
+                    continue
                     
         # If not found by ID or exact name, server is not in registry
         return None

@@ -192,7 +192,13 @@ def build_download_ref(
     if existing_lockfile and not update_refs and not ref_changed:
         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
         if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-            base_ref = dep_ref.repo_url
+            # Include the host so the downloader can resolve the correct
+            # server (e.g. GitHub Enterprise custom domains).  Without it
+            # ``DependencyReference.parse()`` would fall back to github.com.
+            if dep_ref.host:
+                base_ref = f"{dep_ref.host}/{dep_ref.repo_url}"
+            else:
+                base_ref = dep_ref.repo_url
             if dep_ref.virtual_path:
                 base_ref = f"{base_ref}/{dep_ref.virtual_path}"
             download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
