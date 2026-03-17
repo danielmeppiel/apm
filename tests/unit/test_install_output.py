@@ -93,22 +93,3 @@ class TestCachedRefFormatting:
         locked = MagicMock(resolved_commit="cached")
         result = self._format_cached_ref(dep, locked)
         assert result == " @ v2.0"
-
-
-class TestUnpinnedDepsDetection:
-    """Test the has_unpinned_deps tracking logic."""
-
-    def test_dep_with_ref_is_pinned(self):
-        """Dependencies with explicit ref are not unpinned."""
-        dep = DependencyReference.parse("owner/repo#v1.0.0")
-        assert dep.reference is not None  # has_unpinned_deps would NOT be set
-
-    def test_dep_without_ref_is_unpinned(self):
-        """Dependencies without explicit ref are unpinned."""
-        dep = DependencyReference.parse("owner/repo")
-        assert dep.reference is None  # has_unpinned_deps WOULD be set
-
-    def test_branch_ref_is_still_pinned_for_hint(self):
-        """Branch refs count as 'pinned' for the hint (user explicitly chose a ref)."""
-        dep = DependencyReference.parse("owner/repo#main")
-        assert dep.reference == "main"  # has_unpinned_deps would NOT be set

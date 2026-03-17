@@ -24,6 +24,7 @@ CATEGORY_OVERWRITE = "overwrite"
 CATEGORY_WARNING = "warning"
 CATEGORY_ERROR = "error"
 CATEGORY_SECURITY = "security"
+CATEGORY_INFO = "info"
 
 _CATEGORY_ORDER = [
     CATEGORY_SECURITY,
@@ -31,6 +32,7 @@ _CATEGORY_ORDER = [
     CATEGORY_OVERWRITE,
     CATEGORY_WARNING,
     CATEGORY_ERROR,
+    CATEGORY_INFO,
 ]
 
 
@@ -128,6 +130,18 @@ class DiagnosticCollector:
                 )
             )
 
+    def info(self, message: str, package: str = "", detail: str = "") -> None:
+        """Record an informational hint (non-blocking, actionable guidance)."""
+        with self._lock:
+            self._diagnostics.append(
+                Diagnostic(
+                    message=message,
+                    category=CATEGORY_INFO,
+                    package=package,
+                    detail=detail,
+                )
+            )
+
     # ------------------------------------------------------------------
     # Query helpers
     # ------------------------------------------------------------------
@@ -204,6 +218,8 @@ class DiagnosticCollector:
                 self._render_warning_group(items)
             elif cat == CATEGORY_ERROR:
                 self._render_error_group(items)
+            elif cat == CATEGORY_INFO:
+                self._render_info_group(items)
 
         if console:
             try:
@@ -307,6 +323,12 @@ class DiagnosticCollector:
             _rich_echo(f"    └─ {pkg_prefix}{d.message}", color="red")
             if d.detail and self.verbose:
                 _rich_echo(f"         {d.detail}", color="dim")
+
+    def _render_info_group(self, items: List[Diagnostic]) -> None:
+        for d in items:
+            _rich_info(f"  [i] {d.message}")
+            if d.detail and self.verbose:
+                _rich_echo(f"      └─ {d.detail}", color="dim")
 
 
 def _group_by_package(items: List[Diagnostic]) -> Dict[str, List[Diagnostic]]:

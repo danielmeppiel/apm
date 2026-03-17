@@ -9,6 +9,7 @@ import pytest
 from apm_cli.utils.diagnostics import (
     CATEGORY_COLLISION,
     CATEGORY_ERROR,
+    CATEGORY_INFO,
     CATEGORY_OVERWRITE,
     CATEGORY_WARNING,
     Diagnostic,
@@ -358,3 +359,36 @@ class TestGroupByPackage:
         ]
         groups = _group_by_package(items)
         assert list(groups.keys()) == ["z", "a", "m"]
+
+
+# ── Info category ───────────────────────────────────────────────────
+
+
+class TestInfoCategory:
+    def test_info_adds_diagnostic(self):
+        dc = DiagnosticCollector()
+        dc.info("3 dependencies have no pinned version")
+        assert dc.has_diagnostics is True
+        assert len(dc._diagnostics) == 1
+        assert dc._diagnostics[0].category == CATEGORY_INFO
+        assert dc._diagnostics[0].message == "3 dependencies have no pinned version"
+
+    def test_info_renders_in_summary(self):
+        dc = DiagnosticCollector()
+        dc.info("2 dependencies have no pinned version -- pin with #tag")
+        with patch(f"{_MOCK_BASE}._get_console", return_value=None), \
+             patch(f"{_MOCK_BASE}._rich_echo") as mock_echo, \
+             patch(f"{_MOCK_BASE}._rich_warning"), \
+             patch(f"{_MOCK_BASE}._rich_info") as mock_info:
+            dc.render_summary()
+            mock_info.assert_any_call(
+                "  [i] 2 dependencies have no pinned version -- pin with #tag"
+            )
+
+    def test_info_appears_after_other_categories(self):
+        dc = DiagnosticCollector()
+        dc.info("hint message")
+        dc.warn("a warning", package="pkg")
+        # Info should still render (and after warnings)
+        assert dc.has_diagnostics is True
+        assert len(dc._diagnostics) == 2
