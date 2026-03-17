@@ -10,18 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- CDN-first download for unauthenticated github.com virtual files via `raw.githubusercontent.com` (#332)
+- `apm audit --format sarif|json|markdown --output` for CI artifact capture — SARIF integrates with GitHub Code Scanning (#330)
+- `apm unpack` content scanning — blocks critical hidden characters unless `--force` (#330)
+- `SecurityGate` centralizes security scanning with per-command policies — block (install/unpack), warn (compile/pack), report (audit) (#330)
 
 ### Fixed
 
-- `git credential fill` fallback for single-file downloads from private repos (#332)
 - GitHub API rate-limit 403 responses no longer misdiagnosed as authentication failures (#332)
 - Lockfile now preserves the host for GitHub Enterprise custom domains so subsequent `apm install` clones from the correct server (#339)
-
-### Changed
-
-- `GH_TOKEN` environment variable recognized for APM module access (#332)
-- Improved authentication error messages to suggest `gh auth login` (#332)
+- `apm install` now exits non-zero when critical security findings block packages — consistent with `apm unpack` behavior (#330)
+- `apm compile` now exits non-zero when critical hidden characters are detected in compiled output (#330)
 
 ## [0.8.0] - 2026-03-16
 

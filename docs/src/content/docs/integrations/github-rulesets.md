@@ -5,16 +5,20 @@ sidebar:
   order: 5
 ---
 
-GitHub Rulesets and branch protection rules can require status checks before merging. APM's `apm audit --ci` integrates as a required status check to enforce agent configuration governance, ensuring that changes to agent context go through the manifest and lock file rather than being made ad hoc.
+GitHub Rulesets and branch protection rules can require status checks before merging. APM commands like `apm install`, `apm compile`, and `apm unpack` already block critical hidden-character findings automatically. `apm audit` adds structured reporting (SARIF, JSON, markdown) and exit codes (**0** = clean, **1** = critical, **2** = warnings) for CI integration.
+
+:::note[Planned]
+Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. The workflows below use `apm audit` exit codes, which work today.
+:::
 
 ## How It Works
 
 The workflow is straightforward:
 
-1. `apm audit --ci` runs in a GitHub Actions workflow on every pull request.
-2. It verifies that the lock file matches the installed state, no undeclared config changes exist, and all dependencies are resolvable.
+1. `apm install` runs in the workflow and blocks critical findings automatically.
+2. `apm audit` scans installed packages and produces reports (SARIF for GitHub Code Scanning, exit codes for status checks).
 3. You configure this workflow as a required status check in branch protection or Rulesets.
-4. PRs that change agent config without updating the manifest or lock file are blocked from merging.
+4. PRs that introduce content issues are blocked from merging.
 
 This turns APM from a development convenience into an enforceable policy.
 
@@ -39,9 +43,7 @@ jobs:
       - name: Install & audit
         uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm audit --ci
+          audit-report: true
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
@@ -56,18 +58,16 @@ The `GITHUB_APM_PAT` secret is only required if your `apm.yml` references privat
 
 Alternatively, in classic branch protection rules under **Settings** > **Branches** > **Branch protection rules**, enable **Require status checks to pass before merging** and search for `APM Audit`.
 
-Once configured, any PR that modifies agent configuration files without a corresponding manifest and lock file update will fail the check.
+Once configured, any PR that introduces content issues detected by `apm audit` will fail the check.
 
 ## What It Catches
 
-`apm audit --ci` detects the following issues:
+`apm audit` detects the following content issues:
 
-- **Lock file out of sync** — `apm.lock.yaml` does not match the current state of `apm.yml`.
-- **Undeclared config changes** — manual edits to files in `.github/instructions/` or other managed paths that bypass the manifest.
-- **Missing dependencies** — packages declared in `apm.yml` that cannot be resolved.
-- **Deleted or modified managed files** — files that APM deployed but were removed or altered outside of APM.
+- **Hidden Unicode characters** — tag characters, bidi overrides, and variation selectors embedded in prompt files.
+- **Zero-width and invisible characters** — characters that could alter agent behavior without visible changes.
 
-When any of these conditions is detected, the command exits with a non-zero status code and the check fails.
+When issues are detected, the command exits with a non-zero status code (1 = critical, 2 = warnings) and the check fails.
 
 ## Governance Levels
 
@@ -75,11 +75,12 @@ APM's integration with GitHub governance is evolving:
 
 | Level | Description | Status |
 |-------|-------------|--------|
-| 1 | `apm audit --ci` as a required status check | Available now |
+| 1 | `apm audit` as a required status check (content scanning via exit codes) | Available now |
+| 1+ | `apm audit --ci` with lockfile consistency checking | Planned |
 | 2 | GitHub recommends apm-action for agent governance | Future |
 | 3 | Native Rulesets UI for agent configuration policy | Future |
 
-Level 1 is fully functional today. Levels 2 and 3 represent deeper platform integration that would reduce setup friction.
+Level 1 is fully functional today using `apm audit` exit codes. Level 1+ (lockfile consistency) and Levels 2–3 represent deeper integration that would reduce setup friction.
 
 ## Combining with Other Checks
 
@@ -88,9 +89,9 @@ APM audit complements your existing CI checks — it does not replace them. A ty
 - **Linting and formatting** — code style enforcement
 - **Unit and integration tests** — functional correctness
 - **Security scanning** — vulnerability detection
-- **APM audit** — agent configuration governance
+- **APM audit** — hidden Unicode scanning with CI reporting
 
-Each check has a distinct purpose. APM audit focuses exclusively on whether agent context changes are properly declared and consistent.
+Each check has a distinct purpose. APM audit focuses on detecting hidden Unicode characters that could embed invisible instructions in prompt files.
 
 ## Customizing the Workflow
 
@@ -108,13 +109,8 @@ jobs:
       - name: APM checks
         uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm audit --ci
-            # Optional: only needed if targeting Codex, Gemini, or similar
-            # apm compile
-            # git diff --exit-code AGENTS.md || \
-            #   (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
+          compile: true
+          audit-report: true
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
@@ -131,9 +127,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm audit --ci
+          audit-report: true
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 
@@ -143,9 +137,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm compile --verbose
+          compile: true
 ```
 
 This lets you require both `audit` and `compile` as independent status checks in your ruleset. The compile job is only needed if your project targets tools that require compiled instruction files.
@@ -154,7 +146,7 @@ This lets you require both `audit` and `compile` as independent status checks in
 
 ### Audit Fails on a Clean PR
 
-If `apm audit --ci` fails on a PR that did not touch agent config, the lock file is likely already out of sync on the base branch. Run `apm install && apm audit` locally on the base branch to confirm, then commit the fix.
+If `apm audit` fails on a PR that did not touch agent config, run `apm install && apm audit` locally on the base branch to confirm, then commit the fix.
 
 ### Status Check Not Appearing in Rulesets
 
