@@ -215,3 +215,35 @@ class TestInstallExitOnCriticalSecurity:
         )
         assert not diag.has_critical_security
         # No sys.exit — this is the normal path
+
+
+# ── Compile exit code on critical security ──────────────────────
+
+
+class TestCompileExitOnCriticalSecurity:
+    """Verify CompilationResult propagates has_critical_security."""
+
+    def test_compilation_result_defaults_false(self):
+        from apm_cli.compilation.agents_compiler import CompilationResult
+        r = CompilationResult(
+            success=True, output_path="", content="",
+            warnings=[], errors=[], stats={},
+        )
+        assert r.has_critical_security is False
+
+    def test_compilation_result_propagates_critical(self):
+        from apm_cli.compilation.agents_compiler import CompilationResult
+        r = CompilationResult(
+            success=True, output_path="", content="",
+            warnings=[], errors=[], stats={},
+            has_critical_security=True,
+        )
+        assert r.has_critical_security is True
+
+    def test_command_generation_result_defaults_false(self):
+        from apm_cli.compilation.claude_formatter import CommandGenerationResult
+        r = CommandGenerationResult(
+            success=True, commands_generated={}, commands_dir=Path("."),
+            files_written=0,
+        )
+        assert r.has_critical_security is False

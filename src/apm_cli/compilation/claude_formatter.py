@@ -383,6 +383,7 @@ class ClaudeFormatter:
         
         # Write files if not dry run
         files_written = 0
+        critical_security_found = False
         if not dry_run and generated_commands:
             try:
                 from ..security.content_scanner import ContentScanner
@@ -395,6 +396,8 @@ class ClaudeFormatter:
                     )
                     actionable = [f for f in findings if f.severity != "info"]
                     if actionable:
+                        if any(f.severity == "critical" for f in actionable):
+                            critical_security_found = True
                         warnings.append(
                             f"{command_path.name}: {len(actionable)} hidden character(s) "
                             f"— run 'apm audit --file {command_path}' to inspect"
@@ -411,7 +414,8 @@ class ClaudeFormatter:
             commands_dir=commands_dir,
             files_written=files_written,
             warnings=warnings,
-            errors=errors
+            errors=errors,
+            has_critical_security=critical_security_found,
         )
     
     def _transform_prompt_to_command(
@@ -570,6 +574,7 @@ class CommandGenerationResult:
     files_written: int
     warnings: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    has_critical_security: bool = False
 
 
 def format_claude_md(

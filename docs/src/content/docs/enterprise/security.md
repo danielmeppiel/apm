@@ -99,7 +99,7 @@ download → scan source → block or deploy → report
 
 Content scanning extends beyond install:
 
-- **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, commands) before writing to disk (non-blocking — warns but does not block). This is defense-in-depth — source files were already scanned at install, but compilation assembles content from multiple sources and the final output is what agents read.
+- **`apm compile`** scans compiled output (AGENTS.md, CLAUDE.md, commands) before writing to disk. Critical findings cause `apm compile` to exit with code 1 after writing — defense-in-depth since source files were already scanned at install, but compilation assembles content from multiple sources.
 - **`apm pack`** scans files before bundling. This catches hidden characters before a package is published, preventing authors from accidentally distributing tainted content.
 - **`apm unpack`** scans bundle contents before deployment. This is a pre-deployment gate matching `apm install` — critical findings block deployment unless `--force` is used.
 
