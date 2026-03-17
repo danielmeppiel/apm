@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+
+- CDN-first download for unauthenticated github.com virtual files via `raw.githubusercontent.com` (#332)
+
+### Fixed
+
+- `git credential fill` fallback for single-file downloads from private repos (#332)
+- GitHub API rate-limit 403 responses no longer misdiagnosed as authentication failures (#332)
+
+### Changed
+
+- `GH_TOKEN` environment variable recognized for APM module access (#332)
+- Improved authentication error messages to suggest `gh auth login` (#332)
+
 ## [0.8.0] - 2026-03-16
 
 ### Added
@@ -25,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated docs landing page to include Cursor and OpenCode (#310)
 - Updated all doc pages to reflect full Cursor native support (#304)
 - Added OpenCode to README headline and compile description (#308)
+
+### Fixed
+
+- GitHub API rate-limit 403 responses no longer misdiagnosed as authentication failures — unauthenticated users now see actionable "rate limit exceeded" guidance instead of misleading "private repository" errors
 
 ## [0.7.9] - 2026-03-13
 
