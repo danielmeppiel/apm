@@ -156,7 +156,12 @@ def pack_bundle(
             lockfile_enriched=True,
         )
 
-    # 5b. Scan files for hidden characters before bundling
+    # 5b. Scan files for hidden characters before bundling.
+    # Intentionally non-blocking (warn only) — pack is an authoring tool.
+    # Critical findings here mean the author's own source files contain
+    # hidden characters. We surface them so the author can fix before
+    # publishing, but don't block the bundle. Consumers are protected by
+    # install/unpack which block on critical.
     from ..security.content_scanner import ContentScanner
     from ..utils.console import _rich_warning
 

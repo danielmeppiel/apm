@@ -173,6 +173,7 @@ def _render_findings_table(
     if console:
         try:
             from rich.table import Table
+            from ..security.audit_report import _relative_path
 
             table = Table(
                 title=f"{STATUS_SYMBOLS['search']} Content Scan Findings",
@@ -193,7 +194,7 @@ def _render_findings_table(
             for f in rows:
                 table.add_row(
                     f.severity.upper(),
-                    f.file,
+                    _relative_path(f.file),
                     f"{f.line}:{f.column}",
                     f.codepoint,
                     f.description,

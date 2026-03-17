@@ -257,6 +257,44 @@ class TestCompileExitOnCriticalSecurity:
         )
         assert r.has_critical_security is True
 
+    def test_merge_results_propagates_critical(self):
+        from apm_cli.compilation.agents_compiler import AgentsCompiler, CompilationResult
+        clean = CompilationResult(
+            success=True, output_path="a.md", content="clean",
+            warnings=[], errors=[], stats={},
+        )
+        critical = CompilationResult(
+            success=True, output_path="b.md", content="bad",
+            warnings=[], errors=[], stats={},
+            has_critical_security=True,
+        )
+        compiler = AgentsCompiler()
+        merged = compiler._merge_results([clean, critical])
+        assert merged.has_critical_security is True
+
+    def test_merge_results_clean_stays_clean(self):
+        from apm_cli.compilation.agents_compiler import AgentsCompiler, CompilationResult
+        r1 = CompilationResult(
+            success=True, output_path="a.md", content="ok",
+            warnings=[], errors=[], stats={},
+        )
+        r2 = CompilationResult(
+            success=True, output_path="b.md", content="ok",
+            warnings=[], errors=[], stats={},
+        )
+        compiler = AgentsCompiler()
+        merged = compiler._merge_results([r1, r2])
+        assert merged.has_critical_security is False
+
+    def test_command_generation_result_propagates_critical(self):
+        from apm_cli.compilation.claude_formatter import CommandGenerationResult
+        r = CommandGenerationResult(
+            success=True, commands_generated={}, commands_dir=Path("."),
+            files_written=0,
+            has_critical_security=True,
+        )
+        assert r.has_critical_security is True
+
     def test_command_generation_result_defaults_false(self):
         from apm_cli.compilation.claude_formatter import CommandGenerationResult
         r = CommandGenerationResult(

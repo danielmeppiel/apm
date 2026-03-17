@@ -207,7 +207,7 @@ When you run `apm install`, APM automatically integrates primitives from install
 - **Smart updates**: Only updates when package version/commit changes
 - **Hooks**: Hook `.json` files → `.github/hooks/*.json` with scripts bundled
 - **Collision detection**: Skips local files that aren't managed by APM; use `--force` to overwrite
-- **Security scanning**: Source files are scanned for hidden Unicode characters before deployment. Critical findings (tag characters, bidi overrides) block deployment; use `--force` to override
+- **Security scanning**: Source files are scanned for hidden Unicode characters before deployment. Critical findings (tag characters, bidi overrides) block deployment; use `--force` to override. Exits with code 1 if any package was blocked.
 
 **Diagnostic Summary:**
 
@@ -429,7 +429,7 @@ apm pack -o dist/
 
 **Behavior:**
 - Reads `apm.lock.yaml` to enumerate all `deployed_files` from installed dependencies
-- Scans files for hidden Unicode characters before bundling — warns if findings are detected
+- Scans files for hidden Unicode characters before bundling — warns if findings are detected (non-blocking; consumers are protected by `apm install`/`apm unpack` which block on critical)
 - Copies files preserving directory structure
 - Writes an enriched `apm.lock.yaml` inside the bundle with a `pack:` metadata section (the project's own `apm.lock.yaml` is never modified)
 
@@ -470,6 +470,7 @@ apm unpack BUNDLE_PATH [OPTIONS]
 **Options:**
 - `-o, --output PATH` - Target project directory (default: current directory)
 - `--skip-verify` - Skip completeness verification against the bundle lockfile
+- `--force` - Deploy despite critical hidden-character findings
 - `--dry-run` - Show what would be extracted without writing anything
 
 **Examples:**
@@ -490,6 +491,7 @@ apm unpack bundle.tar.gz --dry-run
 **Behavior:**
 - **Additive-only**: only writes files listed in the bundle's `apm.lock.yaml`; never deletes existing files
 - If a local file has the same path as a bundle file, the bundle file wins (overwrite)
+- **Security scanning**: Bundle contents are scanned before deployment. Critical findings block deployment unless `--force` is used (exit code 1)
 - Verification checks that all `deployed_files` from the bundle lockfile are present in the bundle
 - The bundle's `apm.lock.yaml` is metadata only — it is **not** copied to the output directory
 
