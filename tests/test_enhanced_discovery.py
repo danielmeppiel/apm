@@ -167,14 +167,14 @@ description: Test {primitive_type} for {name}
             "apm": [
                 "company/standards",
                 "team/workflows#v1.0.0",
-                "user/utilities@util-alias"
+                "user/utilities"
             ]
         }
         self._create_apm_yml(dependencies)
         
         # Test dependency order extraction
         order = get_dependency_declaration_order(str(self.temp_dir_path))
-        expected = ["company/standards", "team/workflows", "util-alias"]  # Full org/repo paths, except alias
+        expected = ["company/standards", "team/workflows", "user/utilities"]
         self.assertEqual(order, expected)
 
     def test_dependency_order_no_apm_yml(self):

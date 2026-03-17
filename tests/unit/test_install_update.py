@@ -106,23 +106,6 @@ class TestDownloadRefLockfileOverride:
     original reference (or default branch).
     """
 
-    @staticmethod
-    def _build_download_ref(dep_ref, existing_lockfile, update_refs):
-        """Reproduce the download_ref construction logic from cli.py.
-
-        This mirrors the sequential download path. The same logic applies
-        to the parallel pre-download path.
-        """
-        download_ref = str(dep_ref)
-        if existing_lockfile and not update_refs:
-            locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
-            if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                base_ref = dep_ref.repo_url
-                if dep_ref.virtual_path:
-                    base_ref = f"{base_ref}/{dep_ref.virtual_path}"
-                download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
-        return download_ref
-
     def _make_subdirectory_dep(self):
         return DependencyReference(
             repo_url="owner/monorepo",
@@ -151,16 +134,16 @@ class TestDownloadRefLockfileOverride:
         dep = self._make_subdirectory_dep()
         lockfile = self._mock_lockfile(dep)
 
-        ref = self._build_download_ref(dep, lockfile, update_refs=False)
+        ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
         assert "#abc123def456" in ref
-        assert ref == "owner/monorepo/packages/my-skill#abc123def456"
+        assert ref == "github.com/owner/monorepo/packages/my-skill#abc123def456"
 
     def test_subdirectory_no_lockfile_override_with_update(self):
         """With --update, subdirectory download ref must NOT use locked SHA."""
         dep = self._make_subdirectory_dep()
         lockfile = self._mock_lockfile(dep)
 
-        ref = self._build_download_ref(dep, lockfile, update_refs=True)
+        ref = build_download_ref(dep, lockfile, update_refs=True, ref_changed=False)
         assert "#abc123def456" not in ref
         assert ref == str(dep)
 
@@ -169,7 +152,7 @@ class TestDownloadRefLockfileOverride:
         dep = self._make_regular_dep()
         lockfile = self._mock_lockfile(dep)
 
-        ref = self._build_download_ref(dep, lockfile, update_refs=False)
+        ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
         assert "#abc123def456" in ref
 
     def test_regular_no_lockfile_override_with_update(self):
@@ -177,13 +160,13 @@ class TestDownloadRefLockfileOverride:
         dep = self._make_regular_dep()
         lockfile = self._mock_lockfile(dep)
 
-        ref = self._build_download_ref(dep, lockfile, update_refs=True)
+        ref = build_download_ref(dep, lockfile, update_refs=True, ref_changed=False)
         assert "#abc123def456" not in ref
 
     def test_no_lockfile_returns_original_ref(self):
         """Without a lockfile, download ref is the original dependency string."""
         dep = self._make_subdirectory_dep()
-        ref = self._build_download_ref(dep, existing_lockfile=None, update_refs=False)
+        ref = build_download_ref(dep, existing_lockfile=None, update_refs=False, ref_changed=False)
         assert ref == str(dep)
 
     def test_cached_lockfile_entry_not_overridden(self):
@@ -191,25 +174,57 @@ class TestDownloadRefLockfileOverride:
         dep = self._make_subdirectory_dep()
         lockfile = self._mock_lockfile(dep, resolved_commit="cached")
 
-        ref = self._build_download_ref(dep, lockfile, update_refs=False)
+        ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
         assert ref == str(dep)
+
+    def test_ghe_custom_domain_host_preserved_in_locked_ref(self):
+        """GHE custom domain host must appear in the locked download ref.
+
+        Regression test: without the host, DependencyReference.parse()
+        defaults to github.com and the clone fails for enterprise hosts.
+        """
+        dep = DependencyReference(
+            repo_url="org/repo",
+            host="github.example.com",
+            reference=None,
+        )
+        lockfile = self._mock_lockfile(dep)
+
+        ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
+        assert ref == "github.example.com/org/repo#abc123def456"
+
+    def test_ghe_custom_domain_subdirectory_host_preserved(self):
+        """GHE custom domain host must appear for virtual/subdirectory deps too."""
+        dep = DependencyReference(
+            repo_url="org/monorepo",
+            host="git.corp.internal",
+            reference=None,
+            virtual_path="packages/my-skill",
+            is_virtual=True,
+        )
+        lockfile = self._mock_lockfile(dep)
+
+        ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
+        assert ref == "git.corp.internal/org/monorepo/packages/my-skill#abc123def456"
+
+    def test_no_host_produces_plain_repo_url(self):
+        """When host is None, download ref uses plain repo_url (no prefix)."""
+        dep = DependencyReference(
+            repo_url="owner/repo",
+            host=None,
+            reference="main",
+        )
+        lockfile = self._mock_lockfile(dep)
+
+        ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
+        assert ref == "owner/repo#abc123def456"
 
 
 class TestPreDownloadRefLockfileOverride:
-    """Same as TestDownloadRefLockfileOverride but for the parallel pre-download path."""
+    """Same as TestDownloadRefLockfileOverride but for the parallel pre-download path.
 
-    @staticmethod
-    def _build_pre_download_ref(dep_ref, existing_lockfile, update_refs):
-        """Reproduce the _pd_dlref construction logic from cli.py's pre-download loop."""
-        _pd_dlref = str(dep_ref)
-        if existing_lockfile and not update_refs:
-            _pd_locked = existing_lockfile.get_dependency(dep_ref.get_unique_key())
-            if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
-                _pd_base = dep_ref.repo_url
-                if dep_ref.virtual_path:
-                    _pd_base = f"{_pd_base}/{dep_ref.virtual_path}"
-                _pd_dlref = f"{_pd_base}#{_pd_locked.resolved_commit}"
-        return _pd_dlref
+    Both paths now use ``build_download_ref()`` from ``drift.py``.
+    """
 
     def _make_subdirectory_dep(self):
         return DependencyReference(
@@ -232,7 +247,7 @@ class TestPreDownloadRefLockfileOverride:
         dep = self._make_subdirectory_dep()
         lockfile = self._mock_lockfile(dep)
 
-        ref = self._build_pre_download_ref(dep, lockfile, update_refs=True)
+        ref = build_download_ref(dep, lockfile, update_refs=True, ref_changed=False)
         assert "#abc123def456" not in ref
 
     def test_pre_download_lockfile_override_without_update(self):
@@ -240,7 +255,7 @@ class TestPreDownloadRefLockfileOverride:
         dep = self._make_subdirectory_dep()
         lockfile = self._mock_lockfile(dep)
 
-        ref = self._build_pre_download_ref(dep, lockfile, update_refs=False)
+        ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
         assert "#abc123def456" in ref
 
 

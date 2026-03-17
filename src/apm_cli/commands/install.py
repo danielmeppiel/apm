@@ -484,9 +484,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             MCPIntegrator.update_lockfile(old_mcp_servers, mcp_configs=old_mcp_configs)
 
         # Show beautiful post-install summary
-        _rich_blank_line()
         if apm_diagnostics and apm_diagnostics.has_diagnostics:
             apm_diagnostics.render_summary()
+        else:
+            _rich_blank_line()
         if not only:
             # Load apm.yml config for summary
             apm_config = _load_apm_config()
@@ -1079,6 +1080,7 @@ def _install_apm_dependencies(
 
         # downloader already created above for transitive resolution
         installed_count = 0
+        unpinned_count = 0
 
         # Phase 4 (#171): Parallel package downloads using ThreadPoolExecutor
         # Pre-download all non-cached packages in parallel for wall-clock speedup.
@@ -1352,9 +1354,20 @@ def _install_apm_dependencies(
                     display_name = (
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
                     )
-                    ref_str = f" @{dep_ref.reference}" if dep_ref.reference else ""
+                    # Show resolved ref from lockfile for consistency with fresh installs
+                    ref_str = ""
+                    if _dep_locked_chk and _dep_locked_chk.resolved_commit and _dep_locked_chk.resolved_commit != "cached":
+                        short_sha = _dep_locked_chk.resolved_commit[:8]
+                        if dep_ref.reference:
+                            ref_str = f" @ {dep_ref.reference} ({short_sha})"
+                        else:
+                            ref_str = f" @ {short_sha}"
+                    elif dep_ref.reference:
+                        ref_str = f" @ {dep_ref.reference}"
                     _rich_info(f"✓ {display_name}{ref_str} (cached)")
                     installed_count += 1
+                    if not dep_ref.reference:
+                        unpinned_count += 1
 
                     # Still need to integrate prompts for cached packages (zero-config behavior)
                     if integrate_vscode or integrate_claude or integrate_opencode:
@@ -1749,11 +1762,19 @@ def _install_apm_dependencies(
                     progress.refresh()  # Force immediate refresh to hide the bar
 
                     installed_count += 1
-                    _rich_success(f"✓ {display_name}")
+
+                    # Show resolved ref alongside package name for visibility
+                    resolved = getattr(package_info, 'resolved_reference', None)
+                    ref_suffix = f" @ {resolved}" if resolved else ""
+                    _rich_success(f"✓ {display_name}{ref_suffix}")
+
+                    # Track unpinned deps for aggregated diagnostic
+                    if not dep_ref.reference:
+                        unpinned_count += 1
 
                     # Collect for lockfile: get resolved commit and depth
                     resolved_commit = None
-                    if hasattr(package_info, 'resolved_reference') and package_info.resolved_reference:
+                    if resolved:
                         resolved_commit = package_info.resolved_reference.resolved_commit
                     # Get depth from dependency tree
                     node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
@@ -2178,6 +2199,13 @@ def _install_apm_dependencies(
             _rich_info(f"✓ Integrated {total_instructions_integrated} instruction(s)")
 
         _rich_success(f"Installed {installed_count} APM dependencies")
+
+        if unpinned_count:
+            noun = "dependency has" if unpinned_count == 1 else "dependencies have"
+            diagnostics.info(
+                f"{unpinned_count} {noun} no pinned version "
+                f"-- pin with #tag or #sha to prevent drift"
+            )
 
         return installed_count, total_prompts_integrated, total_agents_integrated, diagnostics
 

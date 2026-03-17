@@ -219,10 +219,24 @@ class CodexClientAdapter(MCPClientAdapter):
                 # Generate command and args based on package type
                 if registry_name == "npm":
                     config["command"] = runtime_hint or "npx"
-                    # Always include package name; filter duplicates from legacy runtime_arguments
                     all_args = processed_runtime_args + processed_package_args
-                    extra_args = [a for a in all_args if a != package_name] if all_args else []
-                    config["args"] = ["-y", package_name] + extra_args
+                    if all_args:
+                        # If runtime_arguments already include the package (bare or
+                        # versioned), use them as-is — they are authoritative from
+                        # the registry and may carry a version pin.
+                        has_pkg = any(
+                            a == package_name or a.startswith(f"{package_name}@")
+                            for a in all_args
+                        )
+                        if has_pkg:
+                            config["args"] = all_args
+                        else:
+                            # Legacy: runtime_arguments don't mention the package,
+                            # prepend -y + bare name ourselves.
+                            extra_args = [a for a in all_args if a != "-y"]
+                            config["args"] = ["-y", package_name] + extra_args
+                    else:
+                        config["args"] = ["-y", package_name]
                     # For NPM packages, also use env block for environment variables
                     if resolved_env:
                         config["env"] = resolved_env

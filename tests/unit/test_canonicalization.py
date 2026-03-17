@@ -31,15 +31,16 @@ class TestToCanonical:
         dep = DependencyReference.parse("microsoft/apm-sample-package#v1.0")
         assert dep.to_canonical() == "microsoft/apm-sample-package#v1.0"
 
-    def test_shorthand_with_alias(self):
-        """Shorthand with alias preserves the alias."""
-        dep = DependencyReference.parse("microsoft/apm-sample-package@my-alias")
-        assert dep.to_canonical() == "microsoft/apm-sample-package@my-alias"
+    def test_shorthand_with_alias_shorthand_removed(self):
+        """Shorthand @alias syntax is no longer supported in parsing."""
+        with pytest.raises(ValueError):
+            DependencyReference.parse("microsoft/apm-sample-package@my-alias")
 
-    def test_shorthand_with_ref_and_alias(self):
-        """Shorthand with both ref and alias preserves both."""
+    def test_shorthand_with_ref_and_alias_shorthand_not_parsed(self):
+        """Shorthand #ref@alias — @ is no longer parsed as alias separator."""
         dep = DependencyReference.parse("microsoft/apm-sample-package#main@my-alias")
         assert dep.to_canonical() == "microsoft/apm-sample-package#main@my-alias"
+        assert dep.alias is None  # @ is part of the ref, not an alias
 
     def test_fqdn_github(self):
         """FQDN with default host strips the host."""
@@ -142,13 +143,13 @@ class TestGetIdentity:
         dep = DependencyReference.parse("owner/repo#v1.0")
         assert dep.get_identity() == "owner/repo"
 
-    def test_shorthand_with_alias(self):
-        """Alias is stripped from identity."""
-        dep = DependencyReference.parse("owner/repo@my-alias")
-        assert dep.get_identity() == "owner/repo"
+    def test_shorthand_with_alias_shorthand_removed(self):
+        """Shorthand @alias syntax is no longer supported."""
+        with pytest.raises(ValueError):
+            DependencyReference.parse("owner/repo@my-alias")
 
-    def test_shorthand_with_ref_and_alias(self):
-        """Both ref and alias are stripped from identity."""
+    def test_shorthand_with_ref_and_alias_shorthand_not_parsed(self):
+        """Shorthand #ref@alias — @ becomes part of the ref, identity still strips ref."""
         dep = DependencyReference.parse("owner/repo#main@my-alias")
         assert dep.get_identity() == "owner/repo"
 
@@ -201,7 +202,6 @@ class TestGetIdentity:
             "git@github.com:microsoft/apm-sample-package.git",
             "ssh://git@github.com/microsoft/apm-sample-package.git",
             "microsoft/apm-sample-package#main",
-            "microsoft/apm-sample-package@alias",
         ]
         identities = {DependencyReference.parse(f).get_identity() for f in forms}
         assert len(identities) == 1, f"Expected 1 identity, got {identities}"

@@ -80,7 +80,7 @@ version: 1.0.0
 dependencies:
   apm:
     # GitHub shorthand (default)
-    - microsoft/apm-sample-package
+    - microsoft/apm-sample-package#v1.0.0
     - github/awesome-copilot/skills/review-and-refactor
 
     # Full HTTPS git URL (any host)
@@ -136,7 +136,7 @@ dependencies:
       ref: v2.0                          # pin to a tag, branch, or commit
     - git: git@bitbucket.org:team/rules.git
       path: prompts/review.prompt.md
-      alias: review
+      alias: review                      # local alias (controls install directory name)
 ```
 
 Fields: `git` (required), `path`, `ref`, `alias` (all optional). The `git` value is any HTTPS or SSH clone URL.
@@ -173,7 +173,7 @@ APM normalizes every dependency entry on write — no matter how you specify a p
 | `./packages/my-skills` | `./packages/my-skills` |
 | `/home/user/repos/my-pkg` | `/home/user/repos/my-pkg` |
 
-Virtual paths, refs, and aliases are preserved:
+Virtual paths and refs are preserved:
 
 | You type | Stored in apm.yml |
 |----------|-------------------|
@@ -405,7 +405,7 @@ version: 1.0.0
 description: Corporate website with design standards and code review
 dependencies:
   apm:
-    - microsoft/apm-sample-package
+    - microsoft/apm-sample-package#v1.0.0
     - github/awesome-copilot/skills/review-and-refactor
   mcp:
     - io.github.github/github-mcp-server

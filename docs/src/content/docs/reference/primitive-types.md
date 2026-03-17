@@ -129,7 +129,7 @@ version: 1.0.0
 dependencies:
   apm:
     - company/standards#v1.0.0
-    - team/workflows@workflow-alias  
+    - team/workflows
     - user/utilities
 ```
 
@@ -151,9 +151,10 @@ project/
     │   └── .apm/
     │       ├── chatmodes/
     │       └── instructions/
-    ├── workflow-alias/               # From team/workflows (uses alias)
-    │   └── .apm/
-    │       └── contexts/
+    ├── team/
+    │   └── workflows/                # From team/workflows
+    │       └── .apm/
+    │           └── contexts/
     └── utilities/                    # From user/utilities
         └── .apm/
             └── instructions/

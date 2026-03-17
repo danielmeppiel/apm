@@ -64,18 +64,18 @@ class TestGitLabHTTPS:
         assert dep.repo_url == "acme/coding-standards"
         assert dep.reference == "v2.0"
 
-    def test_gitlab_https_url_with_alias(self):
-        dep = DependencyReference.parse("https://gitlab.com/acme/coding-standards.git@my-rules")
-        assert dep.host == "gitlab.com"
-        assert dep.repo_url == "acme/coding-standards"
-        assert dep.alias == "my-rules"
+    def test_gitlab_https_url_with_alias_shorthand_removed(self):
+        """Shorthand @alias on HTTPS URLs is no longer supported."""
+        with pytest.raises(ValueError):
+            DependencyReference.parse("https://gitlab.com/acme/coding-standards.git@my-rules")
 
-    def test_gitlab_https_url_with_ref_and_alias(self):
+    def test_gitlab_https_url_with_ref_and_alias_shorthand_not_parsed(self):
+        """Shorthand #ref@alias on HTTPS URLs — @ is no longer parsed as alias separator."""
         dep = DependencyReference.parse("https://gitlab.com/acme/coding-standards.git#main@rules")
         assert dep.host == "gitlab.com"
         assert dep.repo_url == "acme/coding-standards"
-        assert dep.reference == "main"
-        assert dep.alias == "rules"
+        assert dep.reference == "main@rules"
+        assert dep.alias is None
 
     def test_gitlab_fqdn_format(self):
         """Test gitlab.com/owner/repo format (without https://)."""
@@ -431,17 +431,17 @@ class TestNestedGroupSupport:
         assert dep.reference == "v2.0"
         assert dep.is_virtual is False
 
-    def test_nested_group_with_alias(self):
-        dep = DependencyReference.parse("gitlab.com/group/subgroup/repo@my-alias")
-        assert dep.host == "gitlab.com"
-        assert dep.repo_url == "group/subgroup/repo"
-        assert dep.alias == "my-alias"
+    def test_nested_group_with_alias_shorthand_removed(self):
+        """Shorthand @alias on nested groups is no longer supported."""
+        with pytest.raises(ValueError):
+            DependencyReference.parse("gitlab.com/group/subgroup/repo@my-alias")
 
-    def test_nested_group_with_ref_and_alias(self):
+    def test_nested_group_with_ref_and_alias_shorthand_not_parsed(self):
+        """Shorthand #ref@alias on nested groups — @ is no longer parsed as alias separator."""
         dep = DependencyReference.parse("gitlab.com/group/subgroup/repo#main@alias")
         assert dep.repo_url == "group/subgroup/repo"
-        assert dep.reference == "main"
-        assert dep.alias == "alias"
+        assert dep.reference == "main@alias"
+        assert dep.alias is None
 
     # --- SSH URLs ---
 

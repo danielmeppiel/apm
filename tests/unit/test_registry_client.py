@@ -3,6 +3,7 @@
 import unittest
 import os
 from unittest import mock
+import requests
 from apm_cli.registry.client import SimpleRegistryClient
 from apm_cli.utils import github_host
 
@@ -279,7 +280,7 @@ class TestSimpleRegistryClient(unittest.TestCase):
     @mock.patch('apm_cli.registry.client.SimpleRegistryClient.get_server_info')
     @mock.patch('apm_cli.registry.client.SimpleRegistryClient.search_servers')
     def test_find_server_by_reference_name_match_get_server_info_fails(self, mock_search_servers, mock_get_server_info):
-        """Test finding a server by name when get_server_info fails."""
+        """Test finding a server by name when get_server_info raises ValueError (stale ID)."""
         # Mock search_servers
         mock_search_servers.return_value = [
             {
@@ -288,16 +289,30 @@ class TestSimpleRegistryClient(unittest.TestCase):
             }
         ]
         
-        # Mock get_server_info to fail
-        mock_get_server_info.side_effect = Exception("Network error")
+        # Mock get_server_info to fail with ValueError (server not found by ID)
+        mock_get_server_info.side_effect = ValueError("Server not found")
         
-        # Call the method
+        # Should return None when get_server_info fails with ValueError
         result = self.client.find_server_by_reference("test-server")
         
-        # Should return None when get_server_info fails
         self.assertIsNone(result)
         mock_search_servers.assert_called_once_with("test-server")
-        mock_get_server_info.assert_called_once_with("123e4567-e89b-12d3-a456-426614174000")
+
+    @mock.patch('apm_cli.registry.client.SimpleRegistryClient.get_server_info')
+    @mock.patch('apm_cli.registry.client.SimpleRegistryClient.search_servers')
+    def test_find_server_by_reference_name_match_network_error_propagates(self, mock_search_servers, mock_get_server_info):
+        """Test that network errors in get_server_info propagate to the caller."""
+        mock_search_servers.return_value = [
+            {
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "name": "test-server"
+            }
+        ]
+        
+        mock_get_server_info.side_effect = requests.ConnectionError("Network error")
+        
+        with self.assertRaises(requests.ConnectionError):
+            self.client.find_server_by_reference("test-server")
 
     @mock.patch('apm_cli.registry.client.SimpleRegistryClient.search_servers')
     def test_find_server_by_reference_invalid_format(self, mock_search_servers):
