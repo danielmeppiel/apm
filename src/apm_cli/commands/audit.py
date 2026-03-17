@@ -47,28 +47,19 @@ def _scan_files_in_dir(
     dir_path: Path,
     base_label: str,
 ) -> Tuple[Dict[str, List[ScanFinding]], int]:
-    """Recursively scan all files under a directory.
-
-    Uses ``os.walk(followlinks=False)`` to avoid following symlinked
-    directories outside the intended package tree.
+    """Recursively scan all files under a directory via SecurityGate.
 
     Returns (findings_by_file, files_scanned).
     """
-    import os
+    from ..security.gate import REPORT_POLICY, SecurityGate
 
+    verdict = SecurityGate.scan_files(dir_path, policy=REPORT_POLICY)
+    # Re-key findings with the base_label prefix for display
     findings: Dict[str, List[ScanFinding]] = {}
-    count = 0
-    for dirpath, _dirs, filenames in os.walk(dir_path, followlinks=False):
-        for fname in filenames:
-            f = Path(dirpath) / fname
-            if f.is_symlink():
-                continue
-            count += 1
-            result = ContentScanner.scan_file(f)
-            if result:
-                label = f"{base_label}/{f.relative_to(dir_path).as_posix()}"
-                findings[label] = result
-    return findings, count
+    for rel_path, file_findings in verdict.findings_by_file.items():
+        label = f"{base_label}/{rel_path}"
+        findings[label] = file_findings
+    return findings, verdict.files_scanned
 
 
 def _scan_lockfile_packages(

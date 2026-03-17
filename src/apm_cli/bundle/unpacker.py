@@ -1,6 +1,5 @@
 """Bundle unpacker  -- extracts and verifies APM bundles."""
 
-import os
 import shutil
 import sys
 import tarfile
@@ -141,56 +140,32 @@ def unpack_bundle(
             verified = False
 
         # 3b. Security scan: check bundle contents for hidden Unicode characters
-        from ..security.content_scanner import ContentScanner
+        from ..security.gate import BLOCK_POLICY, SecurityGate
 
-        security_warnings = 0
-        security_critical = 0
-        scanner = ContentScanner()
-        all_findings = {}
-        for rel_path in unique_files:
-            source_file = source_dir / rel_path
-            if source_file.is_symlink():
-                continue
-            if source_file.is_file():
-                findings = scanner.scan_file(source_file)
-                if findings:
-                    all_findings[rel_path] = findings
-            elif source_file.is_dir():
-                # Recursively scan directory contents (e.g. skill dirs)
-                for dirpath, _dirs, filenames in os.walk(
-                    source_file, followlinks=False
-                ):
-                    for fname in filenames:
-                        fpath = Path(dirpath) / fname
-                        if fpath.is_symlink():
-                            continue
-                        findings = scanner.scan_file(fpath)
-                        if findings:
-                            nested_rel = str(fpath.relative_to(source_dir))
-                            all_findings[nested_rel] = findings
+        # Scan all files under source_dir (SecurityGate handles symlink
+        # skipping, directory recursion, and OSError resilience)
+        verdict = SecurityGate.scan_files(
+            source_dir, policy=BLOCK_POLICY, force=force
+        )
+        security_warnings = verdict.warning_count
+        security_critical = verdict.critical_count
 
-        if all_findings:
-            flat = [f for ff in all_findings.values() for f in ff]
-            has_critical, counts = scanner.classify(flat)
-            security_critical = counts.get("critical", 0)
-            security_warnings = counts.get("warning", 0)
-
-            if has_critical and not force:
-                affected = []
-                for path, findings in all_findings.items():
-                    c = sum(1 for f in findings if f.severity == "critical")
-                    if c > 0:
-                        affected.append(f"  {path}  ({c} critical)")
-                raise ValueError(
-                    f"Blocked: bundle contains {len(affected)} file(s) "
-                    f"with critical hidden characters\n\n"
-                    f"Affected files:\n" + "\n".join(affected) + "\n\n"
-                    "Next steps:\n"
-                    "  - Extract the bundle and run: apm audit --file <path> to inspect\n"
-                    "  - Run: apm unpack --force to deploy anyway "
-                    "(not recommended)\n\n"
-                    "Learn more: https://apm.github.io/apm/enterprise/security/"
-                )
+        if verdict.should_block:
+            affected = []
+            for path, findings in verdict.findings_by_file.items():
+                c = sum(1 for f in findings if f.severity == "critical")
+                if c > 0:
+                    affected.append(f"  {path}  ({c} critical)")
+            raise ValueError(
+                f"Blocked: bundle contains {len(affected)} file(s) "
+                f"with critical hidden characters\n\n"
+                f"Affected files:\n" + "\n".join(affected) + "\n\n"
+                "Next steps:\n"
+                "  - Extract the bundle and run: apm audit --file <path> to inspect\n"
+                "  - Run: apm unpack --force to deploy anyway "
+                "(not recommended)\n\n"
+                "Learn more: https://apm.github.io/apm/enterprise/security/"
+            )
 
         # Dry-run: return file list without writing
         if dry_run:
@@ -228,14 +203,9 @@ def unpack_bundle(
                 skipped += 1
                 continue  # skip_verify may allow missing files
             if src.is_dir():
-                def _ignore_symlinks(directory, contents):
-                    """Exclude symlinks from copytree to prevent scan bypass."""
-                    return [
-                        c for c in contents
-                        if (Path(directory) / c).is_symlink()
-                    ]
+                from ..security.gate import ignore_symlinks
                 shutil.copytree(
-                    src, dest, dirs_exist_ok=True, ignore=_ignore_symlinks
+                    src, dest, dirs_exist_ok=True, ignore=ignore_symlinks
                 )
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)

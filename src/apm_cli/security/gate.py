@@ -210,3 +210,13 @@ class SecurityGate:
             warning_count=counts.get("warning", 0),
             files_scanned=files_scanned,
         )
+
+
+# ---------------------------------------------------------------------------
+# Shared utilities
+# ---------------------------------------------------------------------------
+
+
+def ignore_symlinks(directory, contents):
+    """``shutil.copytree`` ignore callback that filters out symlinks."""
+    return [c for c in contents if (Path(directory) / c).is_symlink()]

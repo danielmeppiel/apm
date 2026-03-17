@@ -196,12 +196,8 @@ def pack_bundle(
             continue  # Never bundle symlinks
         dest = bundle_dir / rel_path
         if src.is_dir():
-            def _ignore_symlinks(directory, contents):
-                return [
-                    c for c in contents
-                    if (Path(directory) / c).is_symlink()
-                ]
-            shutil.copytree(src, dest, dirs_exist_ok=True, ignore=_ignore_symlinks)
+            from ..security.gate import ignore_symlinks
+            shutil.copytree(src, dest, dirs_exist_ok=True, ignore=ignore_symlinks)
         else:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest, follow_symlinks=False)
