@@ -132,7 +132,7 @@ jobs:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
 
-### SARIF reports for Code Scanning
+### Content scanning in CI
 
 For richer integration, generate a SARIF report and upload it to GitHub Code Scanning. Findings appear inline on PR diffs and in the Security tab:
 
@@ -161,7 +161,7 @@ jobs:
           category: apm-audit
 ```
 
-The markdown format (`-f markdown`) is designed for GitHub Actions step summaries — pipe it directly to `$GITHUB_STEP_SUMMARY` to surface findings in the workflow run without leaving the Actions UI. It pairs well with SARIF: SARIF feeds Code Scanning, markdown gives reviewers an at-a-glance summary.
+The markdown step summary gives reviewers an at-a-glance overview alongside the SARIF findings in Code Scanning.
 
 Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce content issues. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
 

@@ -66,9 +66,8 @@ Once configured, any PR that introduces content issues detected by `apm audit` w
 
 `apm audit` detects the following content issues:
 
-- **Hidden Unicode characters** — tag characters, bidi overrides, or variation selectors embedded in prompt files.
-- **Zero-width characters** — invisible characters that could alter agent behavior.
-- **Suspicious content patterns** — bidi marks and other non-visible content in managed files.
+- **Hidden Unicode characters** — tag characters, bidi overrides, and variation selectors embedded in prompt files.
+- **Zero-width and invisible characters** — characters that could alter agent behavior without visible changes.
 
 When issues are detected, the command exits with a non-zero status code (1 = critical, 2 = warnings) and the check fails.
 

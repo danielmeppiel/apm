@@ -169,25 +169,9 @@ jobs:
             apm install
             apm audit
 
-      # Optional: upload SARIF to GitHub Code Scanning
-      - name: SARIF audit report
-        if: always()
-        uses: microsoft/apm-action@v1
-        with:
-          commands: |
-            apm audit -f sarif -o results.sarif
-        continue-on-error: true
-
-      - name: Upload SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: results.sarif
-
-      - name: Step summary
-        if: always()
-        run: apm audit -f markdown >> $GITHUB_STEP_SUMMARY
 ```
+
+For SARIF reports and GitHub Code Scanning integration, see the [CI/CD Integration guide](../../integrations/ci-cd/#content-scanning-in-ci).
 
 ### Planned: lockfile consistency checking
 

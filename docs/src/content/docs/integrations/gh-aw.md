@@ -133,46 +133,11 @@ See the [CI/CD Integration guide](../ci-cd/) for details on building and distrib
 
 ## Content Scanning
 
-APM automatically scans dependencies for hidden Unicode characters during installation — the same scan that runs for `apm install` also runs when gh-aw resolves frontmatter dependencies. Critical findings (tag characters, bidirectional overrides) block deployment; warnings are non-blocking.
+APM automatically scans dependencies for hidden Unicode characters during installation. Critical findings block deployment. This applies to both direct `apm install` and when GitHub Agentic Workflows resolves frontmatter dependencies via apm-action.
 
-If `apm install` fails due to critical findings, the activation job fails and the agent job does not run. This is the intended behavior — it prevents agents from reading compromised instructions.
+For CI visibility into scan results (SARIF reports, step summaries), see the [CI/CD Integration guide](../../integrations/ci-cd/#content-scanning-in-ci).
 
-For visibility into scan results, add a SARIF upload step after your workflow:
-
-```yaml
----
-on:
-  pull_request:
-    types: [opened]
-engine: copilot
-
-dependencies:
-  - microsoft/apm-sample-package
----
-
-# Review the PR
-...
-```
-
-In a separate CI workflow, you can audit installed packages:
-
-```yaml
-- uses: microsoft/apm-action@v1
-  with:
-    commands: apm install
-- run: apm audit -f sarif -o apm-audit.sarif
-  if: always()
-- run: apm audit -f markdown >> $GITHUB_STEP_SUMMARY
-  if: always()
-- uses: github/codeql-action/upload-sarif@v3
-  if: always()
-  with:
-    sarif_file: apm-audit.sarif
-```
-
-Use `-f markdown` alongside SARIF to surface a human-readable summary directly in the Actions run.
-
-See [Content scanning](../../enterprise/security/#content-scanning) for details on what APM detects.
+For details on what APM detects, see [Content scanning](../../enterprise/security/#content-scanning).
 
 ## Isolated Mode
 
