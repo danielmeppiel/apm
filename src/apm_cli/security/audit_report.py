@@ -7,12 +7,12 @@ from typing import Any, Dict, List
 from .content_scanner import ScanFinding
 
 
-def _relative_path(file_path: str) -> str:
-    """Ensure paths in reports are relative (never absolute)."""
+def relative_path(file_path: str) -> str:
+    """Ensure paths in reports are relative with forward slashes (never absolute)."""
     p = Path(file_path)
     if p.is_absolute():
         try:
-            return str(p.relative_to(Path.cwd()))
+            return p.relative_to(Path.cwd()).as_posix()
         except ValueError:
             return p.name
     return file_path.replace("\\", "/")
@@ -60,7 +60,7 @@ def findings_to_json(
     for finding in all_findings:
         items.append({
             "severity": finding.severity,
-            "file": _relative_path(finding.file),
+            "file": relative_path(finding.file),
             "line": finding.line,
             "column": finding.column,
             "codepoint": finding.codepoint,
@@ -114,7 +114,7 @@ def findings_to_sarif(
                 {
                     "physicalLocation": {
                         "artifactLocation": {
-                            "uri": _relative_path(finding.file),
+                            "uri": relative_path(finding.file),
                         },
                         "region": {
                             "startLine": finding.line,
@@ -226,7 +226,7 @@ def findings_to_markdown(
     for f in sorted_findings:
         sev = f.severity.upper()
         lines.append(
-            f"| {sev} | `{_relative_path(f.file)}` | {f.line}:{f.column}"
+            f"| {sev} | `{relative_path(f.file)}` | {f.line}:{f.column}"
             f" | `{f.codepoint}` | {f.description} |"
         )
     lines.append("")

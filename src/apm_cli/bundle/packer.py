@@ -196,12 +196,21 @@ def pack_bundle(
     # 7. Copy files preserving directory structure
     for rel_path in unique_files:
         src = project_root / rel_path
+        if src.is_symlink():
+            continue
         dest = bundle_dir / rel_path
         if src.is_dir():
-            shutil.copytree(src, dest, dirs_exist_ok=True)
+            def _ignore_symlinks(directory, entries):
+                return [
+                    e for e in entries
+                    if os.path.islink(os.path.join(directory, e))
+                ]
+            shutil.copytree(
+                src, dest, dirs_exist_ok=True, ignore=_ignore_symlinks,
+            )
         else:
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest)
+            shutil.copy2(src, dest, follow_symlinks=False)
 
     # 8. Enrich lockfile copy and write to bundle
     enriched_yaml = enrich_lockfile_for_pack(lockfile, fmt, effective_target)

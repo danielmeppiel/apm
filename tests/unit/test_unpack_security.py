@@ -153,3 +153,69 @@ class TestUnpackSecurity:
         assert len(result.files) == 2
         assert result.security_warnings == 0
         assert result.security_critical == 0
+
+    def test_unpack_scans_directory_contents(self, tmp_path):
+        """Directory entries have their nested files scanned for hidden chars."""
+        bundle = tmp_path / "bundle" / "test-pkg-1.0.0"
+        bundle.mkdir(parents=True)
+
+        # Create a directory with a poisoned nested file
+        skills_dir = bundle / ".github" / "agents"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "safe.md").write_text("Safe content\n", encoding="utf-8")
+        (skills_dir / "poisoned.md").write_text(
+            "Hidden \U000E0001 tag", encoding="utf-8"
+        )
+
+        # Lockfile references the directory
+        lockfile = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            deployed_files=[".github/agents"],
+        )
+        lockfile.add_dependency(dep)
+        lockfile.write(bundle / "apm.lock.yaml")
+
+        output = tmp_path / "target"
+        output.mkdir()
+
+        with pytest.raises(ValueError, match="Blocked.*critical hidden characters"):
+            unpack_bundle(bundle, output_dir=output)
+
+    def test_unpack_directory_skips_nested_symlinks(self, tmp_path):
+        """Nested symlinks inside deployed directories must not be deployed."""
+        bundle = tmp_path / "bundle" / "test-pkg-1.0.0"
+        bundle.mkdir(parents=True)
+
+        # Create a directory with a regular file and a nested symlink
+        skills_dir = bundle / ".github" / "agents"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "real.md").write_text("Real content\n", encoding="utf-8")
+
+        # Create a symlink pointing outside the bundle
+        outside = tmp_path / "secret.md"
+        outside.write_text("Secret content\n", encoding="utf-8")
+        try:
+            (skills_dir / "linked.md").symlink_to(outside)
+        except OSError:
+            pytest.skip("Platform does not support symlinks")
+
+        # Lockfile references the directory
+        lockfile = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            deployed_files=[".github/agents"],
+        )
+        lockfile.add_dependency(dep)
+        lockfile.write(bundle / "apm.lock.yaml")
+
+        output = tmp_path / "target"
+        output.mkdir()
+
+        result = unpack_bundle(bundle, output_dir=output)
+
+        # Real file deployed, symlink filtered out
+        assert (output / ".github/agents/real.md").exists()
+        assert not (output / ".github/agents/linked.md").exists()

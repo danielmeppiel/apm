@@ -269,6 +269,14 @@ class TestFileMode:
         result = runner.invoke(audit, ["--file", str(vs_info_file), "--verbose"])
         assert "U+FE0F" in result.output
 
+    def test_text_format_with_output_errors(self, runner, clean_file):
+        """--output with text format (or unknown extension) should error."""
+        result = runner.invoke(
+            audit, ["--file", str(clean_file), "-o", "report.txt"]
+        )
+        assert result.exit_code == 1
+        assert "Cannot write text format" in result.output
+
 
 # ── Lockfile mode tests ──────────────────────────────────────────
 

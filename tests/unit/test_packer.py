@@ -279,7 +279,10 @@ class TestPackSecurityScan:
         # Replace link.md with a symlink to the poisoned file (within project)
         link_file = project / ".github/agents/link.md"
         link_file.unlink()
-        os.symlink(poisoned, link_file)
+        try:
+            os.symlink(poisoned, link_file)
+        except OSError:
+            pytest.skip("symlinks not supported on this platform")
 
         out = tmp_path / "build"
 
