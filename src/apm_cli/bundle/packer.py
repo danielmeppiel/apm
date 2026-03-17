@@ -156,8 +156,9 @@ def pack_bundle(
             lockfile_enriched=True,
         )
 
-    # 5b. Scan files for hidden characters before bundling
-    from ..security.content_scanner import ContentScanner
+    # 5b. Scan files for hidden characters before bundling (warn-only by design
+    # — pack is an authoring tool; consumers are protected by install/unpack)
+    from ..security.gate import WARN_POLICY, SecurityGate
     from ..utils.console import _rich_warning
 
     _scan_findings_total = 0
@@ -165,19 +166,15 @@ def pack_bundle(
         src = project_root / rel_path
         if src.is_symlink():
             continue
-        if src.is_file():
-            findings = ContentScanner.scan_file(src)
-            if findings:
-                _scan_findings_total += len(findings)
-        elif src.is_dir():
-            for dirpath, _dirnames, filenames in os.walk(src, followlinks=False):
-                for fname in filenames:
-                    fpath = Path(dirpath) / fname
-                    if fpath.is_symlink():
-                        continue
-                    findings = ContentScanner.scan_file(fpath)
-                    if findings:
-                        _scan_findings_total += len(findings)
+        if src.is_dir():
+            verdict = SecurityGate.scan_files(src, policy=WARN_POLICY)
+            _scan_findings_total += len(verdict.all_findings)
+        elif src.is_file():
+            verdict = SecurityGate.scan_text(
+                src.read_text(encoding="utf-8", errors="replace"),
+                str(src), policy=WARN_POLICY,
+            )
+            _scan_findings_total += len(verdict.all_findings)
     if _scan_findings_total:
         _rich_warning(
             f"Bundle contains {_scan_findings_total} hidden character(s) across source files "
