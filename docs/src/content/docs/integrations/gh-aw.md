@@ -131,6 +131,14 @@ Bundles resolve full dependency trees ahead of time, so workflows need zero netw
 
 See the [CI/CD Integration guide](../ci-cd/) for details on building and distributing bundles.
 
+## Content Scanning
+
+APM automatically scans dependencies for hidden Unicode characters during installation. Critical findings block deployment. This applies to both direct `apm install` and when GitHub Agentic Workflows resolves frontmatter dependencies via apm-action.
+
+For CI visibility into scan results (SARIF reports, step summaries), see the [CI/CD Integration guide](../../integrations/ci-cd/#content-scanning-in-ci).
+
+For details on what APM detects, see [Content scanning](../../enterprise/security/#content-scanning).
+
 ## Isolated Mode
 
 When a gh-aw workflow runs in a repository that already has developer-focused instructions (like "use 4-space tabs" or "prefer functional style"), those instructions become noise for an automated agent that should only follow its declared dependencies.

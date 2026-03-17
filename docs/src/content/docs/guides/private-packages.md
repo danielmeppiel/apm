@@ -56,8 +56,6 @@ Inject the token as a secret:
 ```yaml
 # GitHub Actions
 - uses: microsoft/apm-action@v1
-  with:
-    commands: apm install
   env:
     GITHUB_APM_PAT: ${{ secrets.GITHUB_APM_PAT }}
 ```

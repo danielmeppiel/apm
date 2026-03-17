@@ -299,7 +299,7 @@ def _validate_package_exists(package):
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be installed without installing"
 )
-@click.option("--force", is_flag=True, help="Overwrite locally-authored files on collision")
+@click.option("--force", is_flag=True, help="Overwrite locally-authored files on collision and deploy despite critical security findings")
 @click.option("--verbose", is_flag=True, help="Show detailed installation information")
 @click.option(
     "--trust-transitive-mcp",
@@ -498,6 +498,12 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         elif only == "mcp":
             _rich_success(f"Configured {mcp_count} MCP servers")
 
+        # Hard-fail when critical security findings blocked any package.
+        # Consistent with apm unpack which also hard-fails on critical.
+        # Use --force to override.
+        if not force and apm_diagnostics and apm_diagnostics.has_critical_security:
+            sys.exit(1)
+
     except Exception as e:
         _rich_error(f"Error installing dependencies: {e}")
         sys.exit(1)
@@ -516,53 +522,25 @@ def _pre_deploy_security_scan(
 ) -> bool:
     """Scan package source files for hidden characters BEFORE deployment.
 
-    Prompt files are read by IDE agents the moment they land on disk —
-    unlike JavaScript, there is no gap between "install" and "execute".
-    This function acts as a gate: critical findings block deployment
-    entirely (unless ``--force``), while warnings are recorded but
-    allow deployment to proceed.
+    Delegates to :class:`SecurityGate` for the scan→classify→decide pipeline.
+    Inline CLI feedback (error/info lines) is kept here because it is
+    install-specific formatting.
 
     Returns:
         True if deployment should proceed, False to block.
     """
-    from ..security.content_scanner import ContentScanner
+    from ..security.gate import BLOCK_POLICY, SecurityGate
 
-    all_findings: list = []
-    found_critical = False
-    # os.walk with followlinks=False prevents traversal into symlinked dirs
-    import os
-    for dirpath, _dirnames, filenames in os.walk(install_path, followlinks=False):
-        for fname in filenames:
-            f = Path(dirpath) / fname
-            if f.is_symlink():
-                continue
-            findings = ContentScanner.scan_file(f)
-            if findings:
-                all_findings.extend(findings)
-                if not force and not found_critical:
-                    found_critical = ContentScanner.has_critical(findings)
-                    if found_critical:
-                        break
-        if found_critical and not force:
-            break
-
-    if not all_findings:
+    verdict = SecurityGate.scan_files(
+        install_path, policy=BLOCK_POLICY, force=force
+    )
+    if not verdict.has_findings:
         return True
 
-    has_critical, summary = ContentScanner.classify(all_findings)
-    crit_count = summary.get("critical", 0)
-    warn_count = summary.get("warning", 0)
+    # Record into diagnostics (consistent messaging via gate)
+    SecurityGate.report(verdict, diagnostics, package=package_name, force=force)
 
-    if has_critical and not force:
-        diagnostics.security(
-            message=(
-                "Blocked — critical hidden characters in source. "
-                "Use --force to override."
-            ),
-            package=package_name,
-            detail=f"at least {crit_count} critical, {warn_count} warning(s)",
-            severity="critical",
-        )
+    if verdict.should_block:
         _rich_error(
             f"  Blocked: {package_name or 'package'} contains "
             f"critical hidden character(s)"
@@ -570,25 +548,6 @@ def _pre_deploy_security_scan(
         _rich_info(f"  └─ Inspect source: {install_path}")
         _rich_info("  └─ Use --force to deploy anyway")
         return False
-
-    if has_critical:
-        # --force: deploy but warn loudly
-        diagnostics.security(
-            message="Deployed with --force despite critical hidden characters",
-            package=package_name,
-            detail=f"{crit_count} critical finding(s)",
-            severity="critical",
-        )
-    elif warn_count > 0:
-        diagnostics.security(
-            message="Hidden characters in source files",
-            package=package_name,
-            detail=(
-                f"{warn_count} warning(s) — "
-                "run 'apm audit --strip' after install"
-            ),
-            severity="warning",
-        )
 
     return True
 

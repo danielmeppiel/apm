@@ -78,8 +78,9 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
 )
 @click.option("--skip-verify", is_flag=True, default=False, help="Skip bundle completeness check.")
 @click.option("--dry-run", is_flag=True, default=False, help="Show what would be unpacked without writing.")
+@click.option("--force", is_flag=True, default=False, help="Deploy despite critical hidden-character findings.")
 @click.pass_context
-def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run):
+def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
     """Extract an APM bundle into the project."""
     try:
         _rich_info(f"Unpacking {bundle_path} → {output}")
@@ -89,6 +90,7 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run):
             output_dir=Path(output),
             skip_verify=skip_verify,
             dry_run=dry_run,
+            force=force,
         )
 
         if dry_run:
@@ -107,6 +109,16 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run):
             if result.skipped_count > 0:
                 _rich_warning(
                     f"  {result.skipped_count} file(s) skipped (missing from bundle)"
+                )
+            if result.security_critical > 0:
+                _rich_warning(
+                    f"  Deployed with --force despite {result.security_critical} "
+                    f"critical hidden-character finding(s)"
+                )
+            elif result.security_warnings > 0:
+                _rich_warning(
+                    f"  {result.security_warnings} hidden-character warning(s) "
+                    f"-- run 'apm audit' to inspect"
                 )
             verified_msg = " (verified)" if result.verified else ""
             _rich_success(f"Unpacked {len(result.files)} file(s){verified_msg}")
