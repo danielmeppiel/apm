@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-16T01:06:54Z",
-  "last_run_tasks": ["task3", "task4", "task7"],
+  "last_updated": "2026-03-17T01:08:22Z",
+  "last_run_tasks": ["task1", "task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -9,29 +9,39 @@
     "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'"
   },
   "coverage_baseline": {
-    "total": "57%",
-    "run_date": "2026-03-15",
-    "test_count": 1868,
-    "passing": 1868,
+    "total": "58%",
+    "run_date": "2026-03-17",
+    "test_count": 1938,
+    "passing": 1938,
     "pre_existing_failures": 0,
-    "notes": "ANSI failures fully resolved as of 2026-03-16. All 1868 tests pass."
+    "notes": "All 1938 tests pass as of 2026-03-17."
   },
   "monthly_activity_issue": "open-2026-03",
   "yaml_pollution_note": "Running tests with --cov causes PyYAML global state corruption from some earlier test. Affects parse_skill_file and parse_primitive_file calls when run in full suite with coverage. Not a new issue. Tests pass without --cov.",
   "ansi_strip_note": "7 ANSI failures fully resolved as of 2026-03-16 (likely fixed in or around PR #313). No longer a concern.",
   "testing_backlog": [
-    {"id": "commands-helpers-io", "file": "src/apm_cli/commands/_helpers.py", "coverage": "59%", "priority": "high", "notes": "Uncovered: _atomic_write (263-275), _update_gitignore_for_apm_modules (278-307), _load_apm_config (314-320), _list_available_scripts (331-336). Pure I/O - easy to test, high value as shared by all commands."},
     {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "58%", "priority": "medium", "notes": "STATUS_SYMBOLS verified, uncovered edge cases in _rich_echo, _rich_error, _rich_warning fallback paths. console.py:15-20, 27-30, 63-65, 86-106, 137-145."},
+    {"id": "commands-helpers-io", "file": "src/apm_cli/commands/_helpers.py", "coverage": "80%", "priority": "done", "notes": "PR created 2026-03-17: test-assist/command-helpers-coverage-1773710009. Remaining uncovered: lazy import fallbacks, print_version, _auto_detect functions."},
     {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "PR #221 open. Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
     {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "49%", "priority": "medium", "notes": "Branch test-assist/core-operations-runtime-manager-coverage exists - may have open PR"},
     {"id": "registry-operations", "file": "src/apm_cli/registry/operations.py", "coverage": "6%", "priority": "low", "notes": "Branch test-assist/registry-operations-coverage exists - may have open PR. Heavy network dependency."},
     {"id": "security-scanner-remaining", "file": "src/apm_cli/commands/audit.py", "coverage": "96%", "priority": "low", "notes": "Lines 205-220 (Rich fallback rendering) still uncovered. Requires mocking Rich imports - complexity not worth it."}
   ],
-  "backlog_cursor": "commands-helpers-io",
+  "backlog_cursor": "utils-console",
   "open_test_assist_branches": [
-    "test-assist/security-scanner-coverage-73623316"
+    "test-assist/security-scanner-coverage-73623316",
+    "test-assist/command-helpers-coverage-1773710009"
   ],
   "completed_work": [
+    {
+      "run": "2026-03-17T01:08:22Z",
+      "tasks": ["task1", "task3", "task7"],
+      "branch": "test-assist/command-helpers-coverage-1773710009",
+      "pr_status": "pr_created",
+      "coverage_before": {"helpers": "59%"},
+      "coverage_after": {"helpers": "80%"},
+      "description": "Added 30 tests for commands/_helpers.py. Coverage: 59%->80% (+21pp). Full suite: 1938 passing (up from 1908)."
+    },
     {
       "run": "2026-03-16T01:06:54Z",
       "tasks": ["task3", "task4", "task7"],
