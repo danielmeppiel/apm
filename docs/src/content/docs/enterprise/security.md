@@ -93,7 +93,7 @@ download → scan source → block or deploy → report
 - **Critical findings block deployment.** The package is downloaded and cached so you can inspect it (`apm_modules/owner/package/`), but nothing reaches agent-readable directories.
 - **Warnings are non-blocking.** Zero-width characters are flagged in the diagnostics summary. Files are deployed normally.
 - **`--force` overrides the block.** Consistent with existing collision semantics — an explicit "I know what I'm doing."
-- **Multi-package installs continue.** A blocked package doesn't stop other packages from installing.
+- **Multi-package installs continue.** A blocked package doesn't stop other packages from installing. After all packages are processed, `apm install` exits with code 1 if any package was blocked — failing the CI step.
 
 ### Compile and pack scanning
 
