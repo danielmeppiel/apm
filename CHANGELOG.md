@@ -10,14 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `apm audit --format sarif|json|markdown --output` for CI artifact capture — SARIF integrates with GitHub Code Scanning (#330)
-- `apm unpack` content scanning — blocks critical hidden characters unless `--force` (#330)
-- `SecurityGate` centralizes security scanning with per-command policies — block (install/unpack), warn (compile/pack), report (audit) (#330)
+- Audit hardening — `apm unpack` content scanning, SARIF/JSON/Markdown `--format`/`--output` for CI capture, `SecurityGate` policy engine, non-zero exits on critical findings (#330)
 
 ### Fixed
 
-- `apm install` now exits non-zero when critical security findings block packages — consistent with `apm unpack` behavior (#330)
-- `apm compile` now exits non-zero when critical hidden characters are detected in compiled output (#330)
+- File-level downloads from private repos now use OS credential helpers (macOS Keychain, `gh auth login`, Windows Credential Manager) — closes auth gap between folder and file dependencies (#332)
+- Lockfile now preserves the host for GitHub Enterprise custom domains so subsequent `apm install` clones from the correct server (#338)
 
 ## [0.8.0] - 2026-03-16
 
