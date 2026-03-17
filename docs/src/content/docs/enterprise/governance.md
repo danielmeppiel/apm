@@ -165,9 +165,7 @@ jobs:
       - name: Install and audit APM
         uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm audit
+          audit-report: true
 
 ```
 

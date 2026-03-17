@@ -43,9 +43,7 @@ jobs:
       - name: Install & audit
         uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm audit
+          audit-report: true
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
@@ -111,13 +109,8 @@ jobs:
       - name: APM checks
         uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm audit
-            # Optional: only needed if targeting Codex, Gemini, or similar
-            # apm compile
-            # git diff --exit-code AGENTS.md || \
-            #   (echo "Compiled output is out of date. Run 'apm compile' locally." && exit 1)
+          compile: true
+          audit-report: true
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
@@ -134,9 +127,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm audit
+          audit-report: true
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 
@@ -146,9 +137,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: microsoft/apm-action@v1
         with:
-          commands: |
-            apm install
-            apm compile --verbose
+          compile: true
 ```
 
 This lets you require both `audit` and `compile` as independent status checks in your ruleset. The compile job is only needed if your project targets tools that require compiled instruction files.
