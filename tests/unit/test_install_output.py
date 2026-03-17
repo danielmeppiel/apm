@@ -54,11 +54,11 @@ class TestCachedRefFormatting:
         if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
             short_sha = locked_dep.resolved_commit[:8]
             if dep_ref.reference:
-                ref_str = f" @ {dep_ref.reference} ({short_sha})"
+                ref_str = f"#{dep_ref.reference} ({short_sha})"
             else:
-                ref_str = f" @ {short_sha}"
+                ref_str = f"#{short_sha}"
         elif dep_ref.reference:
-            ref_str = f" @ {dep_ref.reference}"
+            ref_str = f"#{dep_ref.reference}"
         return ref_str
 
     def test_cached_with_lockfile_and_ref(self):
@@ -66,20 +66,20 @@ class TestCachedRefFormatting:
         dep = DependencyReference.parse("owner/repo#v1.0.0")
         locked = MagicMock(resolved_commit="a1b2c3d4e5f6a1b2")
         result = self._format_cached_ref(dep, locked)
-        assert result == " @ v1.0.0 (a1b2c3d4)"
+        assert result == "#v1.0.0 (a1b2c3d4)"
 
     def test_cached_with_lockfile_no_ref(self):
         """Cached dep with lockfile SHA but no user ref shows SHA only."""
         dep = DependencyReference.parse("owner/repo")
         locked = MagicMock(resolved_commit="deadbeef12345678")
         result = self._format_cached_ref(dep, locked)
-        assert result == " @ deadbeef"
+        assert result == "#deadbeef"
 
     def test_cached_no_lockfile_with_ref(self):
         """Cached dep without lockfile shows user ref only."""
         dep = DependencyReference.parse("owner/repo#main")
         result = self._format_cached_ref(dep, None)
-        assert result == " @ main"
+        assert result == "#main"
 
     def test_cached_no_lockfile_no_ref(self):
         """Cached dep without lockfile and no ref shows nothing."""
@@ -92,4 +92,4 @@ class TestCachedRefFormatting:
         dep = DependencyReference.parse("owner/repo#v2.0")
         locked = MagicMock(resolved_commit="cached")
         result = self._format_cached_ref(dep, locked)
-        assert result == " @ v2.0"
+        assert result == "#v2.0"

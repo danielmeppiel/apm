@@ -1359,11 +1359,11 @@ def _install_apm_dependencies(
                     if _dep_locked_chk and _dep_locked_chk.resolved_commit and _dep_locked_chk.resolved_commit != "cached":
                         short_sha = _dep_locked_chk.resolved_commit[:8]
                         if dep_ref.reference:
-                            ref_str = f" @ {dep_ref.reference} ({short_sha})"
+                            ref_str = f"#{dep_ref.reference} ({short_sha})"
                         else:
-                            ref_str = f" @ {short_sha}"
+                            ref_str = f"#{short_sha}"
                     elif dep_ref.reference:
-                        ref_str = f" @ {dep_ref.reference}"
+                        ref_str = f"#{dep_ref.reference}"
                     _rich_info(f"✓ {display_name}{ref_str} (cached)")
                     installed_count += 1
                     if not dep_ref.reference:
@@ -1765,7 +1765,7 @@ def _install_apm_dependencies(
 
                     # Show resolved ref alongside package name for visibility
                     resolved = getattr(package_info, 'resolved_reference', None)
-                    ref_suffix = f" @ {resolved}" if resolved else ""
+                    ref_suffix = f"#{resolved}" if resolved else ""
                     _rich_success(f"✓ {display_name}{ref_suffix}")
 
                     # Track unpinned deps for aggregated diagnostic

@@ -8,20 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.8.1] - 2026-03-17
+
 ### Added
 
 - Audit hardening — `apm unpack` content scanning, SARIF/JSON/Markdown `--format`/`--output` for CI capture, `SecurityGate` policy engine, non-zero exits on critical findings (#330)
-- Install output now shows resolved git ref alongside package name (e.g. `✓ owner/repo @ main (a1b2c3d4)`) (#340)
-- One-time info hint when dependencies have no explicit ref: `Tip: Pin versions with #tag or #sha for reproducible installs` (#340)
+- Install output now shows resolved git ref alongside package name (e.g. `✓ owner/repo#main (a1b2c3d4)`) (#340)
+- `${input:...}` variable resolution for self-defined MCP server headers and env values — by @sergio-sisternes-epam (#344)
+
+### Changed
+
+- Pinning hint moved from inline tip to `── Diagnostics ──` section with aggregated count (#347)
+- Install ref display uses `#` separator instead of `@` for consistency with dependency syntax (#340)
+- Shorthand `@alias` syntax removed from dependency strings — use the dict format `alias:` field instead (#340)
 
 ### Fixed
 
-- File-level downloads from private repos now use OS credential helpers (macOS Keychain, `gh auth login`, Windows Credential Manager) — closes auth gap between folder and file dependencies (#332)
+- File-level downloads from private repos now use OS credential helpers (macOS Keychain, `gh auth login`, Windows Credential Manager) (#332)
 - Lockfile now preserves the host for GitHub Enterprise custom domains so subsequent `apm install` clones from the correct server (#338)
-
-### Removed
-
-- Shorthand `@alias` syntax removed from dependency strings — the `@` separator conflicted with conventions in npm, Go, and Cargo where `@` denotes scope or version. Use the dict format `alias:` field instead (#340)
+- MCP registry validation no longer fails on transient network errors (#337)
 
 ## [0.8.0] - 2026-03-16
 
