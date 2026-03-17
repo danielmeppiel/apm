@@ -7,7 +7,7 @@ import click
 
 from ..compilation import AgentsCompiler, CompilationConfig
 from ..primitives.discovery import discover_primitives
-from ..security.content_scanner import ContentScanner
+
 from ..utils.console import (
     STATUS_SYMBOLS,
     _rich_echo,
@@ -554,13 +554,14 @@ def compile(
                         # Only rewrite when content materially changes (creation, update, missing constitution case)
                         if c_status in ("CREATED", "UPDATED", "MISSING"):
                             # Defense-in-depth: scan compiled output before writing
-                            findings = ContentScanner.scan_text(
-                                final_content, filename=str(output_path)
+                            from ..security.gate import WARN_POLICY, SecurityGate
+
+                            verdict = SecurityGate.scan_text(
+                                final_content, str(output_path), policy=WARN_POLICY
                             )
-                            if findings:
-                                _, summary = ContentScanner.classify(findings)
-                                actionable = summary.get("critical", 0) + summary.get("warning", 0)
-                                if summary.get("critical", 0):
+                            if verdict.has_findings:
+                                actionable = verdict.critical_count + verdict.warning_count
+                                if verdict.has_critical:
                                     compile_has_critical = True
                                 if actionable:
                                     _rich_warning(
