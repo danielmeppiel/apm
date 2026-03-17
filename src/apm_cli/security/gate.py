@@ -34,6 +34,12 @@ class ScanPolicy:
     on_critical: Literal["block", "warn", "ignore"] = "block"
     force_overrides: bool = True
 
+    def effective_block(self, force: bool) -> bool:
+        """Return True when this policy would block deployment."""
+        return self.on_critical == "block" and not (
+            self.force_overrides and force
+        )
+
 
 # Pre-built policies — import these instead of constructing ad-hoc ones.
 BLOCK_POLICY = ScanPolicy(on_critical="block", force_overrides=True)
@@ -41,7 +47,7 @@ WARN_POLICY = ScanPolicy(on_critical="warn", force_overrides=False)
 REPORT_POLICY = ScanPolicy(on_critical="ignore", force_overrides=False)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ScanVerdict:
     """Result of a SecurityGate check."""
 
@@ -86,9 +92,7 @@ class SecurityGate:
         findings_by_file: Dict[str, List[ScanFinding]] = {}
         files_scanned = 0
         found_critical = False
-        effective_block = policy.on_critical == "block" and not (
-            policy.force_overrides and force
-        )
+        should_block_early = policy.effective_block(force)
 
         for dirpath, _dirs, filenames in os.walk(root, followlinks=False):
             for fname in filenames:
@@ -96,15 +100,18 @@ class SecurityGate:
                 if fpath.is_symlink():
                     continue
                 files_scanned += 1
-                file_findings = ContentScanner.scan_file(fpath)
+                try:
+                    file_findings = ContentScanner.scan_file(fpath)
+                except OSError:
+                    continue
                 if file_findings:
                     rel = str(fpath.relative_to(root))
                     findings_by_file[rel] = file_findings
-                    if effective_block and not found_critical:
+                    if should_block_early and not found_critical:
                         found_critical = ContentScanner.has_critical(file_findings)
                         if found_critical:
                             break
-            if found_critical and effective_block:
+            if found_critical and should_block_early:
                 break
 
         return SecurityGate._build_verdict(
@@ -142,9 +149,14 @@ class SecurityGate:
         if verdict.has_critical and not verdict.should_block and force:
             # --force: deployed despite critical
             diagnostics.security(
-                message="Deployed with --force despite critical hidden characters",
+                message=(
+                    "Deployed with --force despite critical hidden characters"
+                ),
                 package=package,
-                detail=f"{verdict.critical_count} critical finding(s)",
+                detail=(
+                    f"{verdict.critical_count} critical finding(s) — "
+                    "run 'apm audit --strip' to clean up"
+                ),
                 severity="critical",
             )
         elif verdict.has_critical and verdict.should_block:
@@ -185,10 +197,7 @@ class SecurityGate:
 
         flat = [f for ff in findings_by_file.values() for f in ff]
         has_critical, counts = ContentScanner.classify(flat)
-        effective_block = policy.on_critical == "block" and not (
-            policy.force_overrides and force
-        )
-        should_block = has_critical and effective_block
+        should_block = has_critical and policy.effective_block(force)
 
         return ScanVerdict(
             findings_by_file=findings_by_file,
