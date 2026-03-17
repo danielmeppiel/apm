@@ -192,7 +192,6 @@ class TestDownloadRefLockfileOverride:
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
         assert ref == "github.example.com/org/repo#abc123def456"
-        assert "github.example.com" in ref
 
     def test_ghe_custom_domain_subdirectory_host_preserved(self):
         """GHE custom domain host must appear for virtual/subdirectory deps too."""
