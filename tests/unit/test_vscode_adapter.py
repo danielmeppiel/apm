@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from unittest.mock import patch, MagicMock
 from apm_cli.adapters.client.vscode import VSCodeClientAdapter
+from apm_cli.adapters.client.base import MCPClientAdapter
 
 
 class TestVSCodeClientAdapter(unittest.TestCase):
@@ -722,6 +723,210 @@ class TestVSCodeRealApiFormat(unittest.TestCase):
         self.assertEqual(server["type"], "stdio")
         self.assertEqual(server["command"], "uvx")
         self.assertEqual(server["args"], ["my-mcp-server"])
+
+
+class TestExtractInputVariables(unittest.TestCase):
+    """Tests for ${input:...} variable extraction in self-defined MCP servers."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.vscode_dir = os.path.join(self.temp_dir.name, ".vscode")
+        os.makedirs(self.vscode_dir, exist_ok=True)
+        self.temp_path = os.path.join(self.vscode_dir, "mcp.json")
+        with open(self.temp_path, "w") as f:
+            json.dump({"servers": {}, "inputs": []}, f)
+
+        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_class = self.mock_registry_patcher.start()
+        self.mock_registry = MagicMock()
+        self.mock_registry_class.return_value = self.mock_registry
+
+        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_class = self.mock_integration_patcher.start()
+        self.mock_integration = MagicMock()
+        self.mock_integration_class.return_value = self.mock_integration
+
+    def tearDown(self):
+        self.mock_registry_patcher.stop()
+        self.mock_integration_patcher.stop()
+        self.temp_dir.cleanup()
+
+    def test_extract_single_input_variable(self):
+        adapter = VSCodeClientAdapter()
+        result = adapter._extract_input_variables(
+            {"Authorization": "Bearer ${input:my-token}"}, "my-server"
+        )
+        assert len(result) == 1
+        assert result[0]["id"] == "my-token"
+        assert result[0]["type"] == "promptString"
+        assert result[0]["password"] is True
+        assert "my-server" in result[0]["description"]
+
+    def test_extract_multiple_input_variables(self):
+        adapter = VSCodeClientAdapter()
+        result = adapter._extract_input_variables(
+            {
+                "Authorization": "Bearer ${input:my-token}",
+                "X-Project": "${input:my-project}",
+            },
+            "my-server",
+        )
+        ids = {v["id"] for v in result}
+        assert ids == {"my-token", "my-project"}
+
+    def test_dedup_same_variable(self):
+        adapter = VSCodeClientAdapter()
+        result = adapter._extract_input_variables(
+            {
+                "Authorization": "Bearer ${input:shared-token}",
+                "X-Alt-Auth": "Token ${input:shared-token}",
+            },
+            "my-server",
+        )
+        assert len(result) == 1
+        assert result[0]["id"] == "shared-token"
+
+    def test_no_input_variables(self):
+        adapter = VSCodeClientAdapter()
+        result = adapter._extract_input_variables(
+            {"Content-Type": "application/json"}, "my-server"
+        )
+        assert result == []
+
+    def test_empty_mapping(self):
+        adapter = VSCodeClientAdapter()
+        assert adapter._extract_input_variables({}, "s") == []
+        assert adapter._extract_input_variables(None, "s") == []
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_self_defined_http_headers_generate_inputs(self, mock_get_path):
+        """End-to-end: self-defined HTTP server with ${input:} in headers."""
+        mock_get_path.return_value = self.temp_path
+
+        server_info = {
+            "name": "my-server",
+            "remotes": [
+                {
+                    "transport_type": "http",
+                    "url": "https://my-server.example.com/mcp/",
+                    "headers": [
+                        {"name": "Authorization", "value": "Bearer ${input:my-server-token}"},
+                        {"name": "X-Project", "value": "${input:my-server-project}"},
+                    ],
+                }
+            ],
+        }
+        self.mock_registry.find_server_by_reference.return_value = server_info
+
+        adapter = VSCodeClientAdapter()
+        result = adapter.configure_mcp_server(
+            server_url="my-server", server_name="my-server"
+        )
+
+        assert result is True
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        inputs = config["inputs"]
+        input_ids = {v["id"] for v in inputs}
+        assert "my-server-token" in input_ids
+        assert "my-server-project" in input_ids
+        for inp in inputs:
+            assert inp["type"] == "promptString"
+            assert inp["password"] is True
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_self_defined_stdio_env_generates_inputs(self, mock_get_path):
+        """End-to-end: self-defined stdio server with ${input:} in env."""
+        mock_get_path.return_value = self.temp_path
+
+        server_info = {
+            "name": "my-cli",
+            "_raw_stdio": {
+                "command": "my-cli",
+                "args": ["serve"],
+                "env": {"API_KEY": "${input:my-cli-api-key}"},
+            },
+        }
+        self.mock_registry.find_server_by_reference.return_value = server_info
+
+        adapter = VSCodeClientAdapter()
+        result = adapter.configure_mcp_server(
+            server_url="my-cli", server_name="my-cli"
+        )
+
+        assert result is True
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        inputs = config["inputs"]
+        assert len(inputs) == 1
+        assert inputs[0]["id"] == "my-cli-api-key"
+
+    @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
+    def test_input_variables_dedup_across_servers(self, mock_get_path):
+        """Input variables already present in config are not duplicated."""
+        mock_get_path.return_value = self.temp_path
+
+        # Pre-populate with an existing input
+        with open(self.temp_path, "w") as f:
+            json.dump(
+                {
+                    "servers": {},
+                    "inputs": [
+                        {"type": "promptString", "id": "my-server-token", "description": "existing", "password": True}
+                    ],
+                },
+                f,
+            )
+
+        server_info = {
+            "name": "my-server",
+            "remotes": [
+                {
+                    "transport_type": "http",
+                    "url": "https://example.com/mcp/",
+                    "headers": [
+                        {"name": "Authorization", "value": "Bearer ${input:my-server-token}"},
+                    ],
+                }
+            ],
+        }
+        self.mock_registry.find_server_by_reference.return_value = server_info
+
+        adapter = VSCodeClientAdapter()
+        adapter.configure_mcp_server(server_url="my-server", server_name="my-server")
+
+        with open(self.temp_path, "r") as f:
+            config = json.load(f)
+
+        token_entries = [i for i in config["inputs"] if i["id"] == "my-server-token"]
+        assert len(token_entries) == 1
+
+
+class TestWarnInputVariables(unittest.TestCase):
+    """Tests for _warn_input_variables on adapters that don't support input prompts."""
+
+    def test_warning_emitted_for_input_reference(self, ):
+        mapping = {"Authorization": "Bearer ${input:my-token}"}
+        with patch("builtins.print") as mock_print:
+            MCPClientAdapter._warn_input_variables(mapping, "my-server", "Copilot CLI")
+        mock_print.assert_called_once()
+        msg = mock_print.call_args[0][0]
+        assert "my-token" in msg
+        assert "Copilot CLI" in msg
+
+    def test_no_warning_for_plain_values(self):
+        mapping = {"Content-Type": "application/json"}
+        with patch("builtins.print") as mock_print:
+            MCPClientAdapter._warn_input_variables(mapping, "s", "Codex CLI")
+        mock_print.assert_not_called()
+
+    def test_no_warning_for_empty_mapping(self):
+        with patch("builtins.print") as mock_print:
+            MCPClientAdapter._warn_input_variables({}, "s", "Codex CLI")
+            MCPClientAdapter._warn_input_variables(None, "s", "Codex CLI")
+        mock_print.assert_not_called()
 
 
 if __name__ == "__main__":
