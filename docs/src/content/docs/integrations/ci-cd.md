@@ -27,12 +27,8 @@ jobs:
 
       - name: Install APM packages
         uses: microsoft/apm-action@v1
-        with:
-          commands: |
-            apm install
-            # Optional: only needed if targeting Codex, Gemini, or other
-            # tools without native APM integration
-            # apm compile --verbose
+        # Optional: add compile: true if targeting Codex, Gemini,
+        # or other tools without native APM integration
 ```
 
 ### Private Dependencies
@@ -42,9 +38,6 @@ For private repositories, pass a GitHub token:
 ```yaml
       - name: Install APM packages
         uses: microsoft/apm-action@v1
-        with:
-          commands: |
-            apm install
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
@@ -108,7 +101,15 @@ apm install
 
 ## Governance with `apm audit`
 
-Run `apm audit --ci` in pull requests to verify the lock file matches the installed state. This catches configuration drift before it reaches your default branch.
+`apm install` automatically scans all source files for hidden Unicode characters before deployment — critical findings block the package from being deployed. Run `apm audit` in CI to generate machine-readable reports (SARIF, JSON) for GitHub Code Scanning integration. Exit codes: **0** = clean, **1** = critical findings, **2** = warnings only.
+
+:::note[Planned]
+Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. The workflow below uses `apm audit` exit codes, which work today.
+:::
+
+### Content scanning in CI
+
+Use the `audit-report` input to generate a SARIF report and upload it to GitHub Code Scanning. Findings appear inline on PR diffs and in the Security tab:
 
 ```yaml
 # .github/workflows/apm-audit.yml
@@ -120,15 +121,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/apm-action@v1
+        id: apm
         with:
-          commands: |
-            apm install
-            apm audit --ci
+          audit-report: true
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && steps.apm.outputs.audit-report-path
+        with:
+          sarif_file: ${{ steps.apm.outputs.audit-report-path }}
+          category: apm-audit
 ```
 
-Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce config drift. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
+Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce content issues. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
 
 ## Pack & Distribute
 
@@ -139,9 +144,7 @@ Use `apm pack` in CI to build a distributable bundle once, then consume it in do
 ```yaml
 - uses: microsoft/apm-action@v1
   with:
-    commands: |
-      apm install
-      apm pack --archive --target all
+    pack: true
 - uses: actions/upload-artifact@v4
   with:
     name: agent-config

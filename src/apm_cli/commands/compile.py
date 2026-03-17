@@ -7,7 +7,7 @@ import click
 
 from ..compilation import AgentsCompiler, CompilationConfig
 from ..primitives.discovery import discover_primitives
-from ..security.content_scanner import ContentScanner
+
 from ..utils.console import (
     STATUS_SYMBOLS,
     _rich_echo,
@@ -491,6 +491,7 @@ def compile(
         # Perform compilation
         compiler = AgentsCompiler(".")
         result = compiler.compile(config)
+        compile_has_critical = result.has_critical_security
 
         if result.success:
             # Handle different compilation modes
@@ -553,12 +554,15 @@ def compile(
                         # Only rewrite when content materially changes (creation, update, missing constitution case)
                         if c_status in ("CREATED", "UPDATED", "MISSING"):
                             # Defense-in-depth: scan compiled output before writing
-                            findings = ContentScanner.scan_text(
-                                final_content, filename=str(output_path)
+                            from ..security.gate import WARN_POLICY, SecurityGate
+
+                            verdict = SecurityGate.scan_text(
+                                final_content, str(output_path), policy=WARN_POLICY
                             )
-                            if findings:
-                                _, summary = ContentScanner.classify(findings)
-                                actionable = summary.get("critical", 0) + summary.get("warning", 0)
+                            if verdict.has_findings:
+                                actionable = verdict.critical_count + verdict.warning_count
+                                if verdict.has_critical:
+                                    compile_has_critical = True
                                 if actionable:
                                     _rich_warning(
                                         f"Compiled output contains {actionable} hidden character(s) "
@@ -742,6 +746,15 @@ def compile(
                 _rich_info(" Run 'apm prune' to remove orphaned packages")
         except Exception:
             pass  # Continue if orphan check fails
+
+        # Hard-fail when critical security findings were detected in compiled
+        # output. Consistent with apm install and apm unpack behavior.
+        if compile_has_critical:
+            _rich_error(
+                "Compiled output contains critical hidden characters"
+                " — run 'apm audit' to inspect, 'apm audit --strip' to clean"
+            )
+            sys.exit(1)
 
     except ImportError as e:
         _rich_error(f"Compilation module not available: {e}")

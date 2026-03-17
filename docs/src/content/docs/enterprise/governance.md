@@ -30,10 +30,10 @@ apm.yml (declare) -> apm.lock.yaml (pin) -> apm audit (verify) -> CI gate (enfor
 |-------|---------|----------|
 | **Declare** | Define dependencies and their sources | `apm.yml` |
 | **Pin** | Resolve every dependency to an exact commit | `apm.lock.yaml` |
-| **Verify** | Confirm on-disk state matches the lock file | `apm audit` output |
+| **Verify** | Scan deployed content for hidden threats | `apm audit` output |
 | **Enforce** | Block merges when verification fails | Required status check |
 
-Each stage builds on the previous one. The lock file provides the audit trail, the audit command detects drift, and the CI gate prevents unapproved changes from reaching protected branches.
+Each stage builds on the previous one. The lock file provides the audit trail, content scanning verifies file safety, and the CI gate prevents unapproved changes from reaching protected branches.
 
 ---
 
@@ -102,9 +102,7 @@ No additional tooling is required. The lock file turns git into an agent configu
 
 ## Content scanning with `apm audit`
 
-APM scans for hidden Unicode characters that can embed invisible instructions in prompt files. For background on the threat model, severity levels, and the pre-deployment gate that blocks critical findings during `apm install`, see [Content scanning](../security/#content-scanning) in the security model.
-
-`apm audit` provides on-demand scanning independent of the install flow.
+APM uses a two-layer security model for hidden Unicode threats. **Layer 1 is automatic:** `apm install`, `apm compile`, and `apm unpack` all scan for hidden characters and block critical findings before deployment — zero configuration required. **Layer 2 is explicit:** `apm audit` provides reporting (SARIF/JSON/markdown for CI artifacts), remediation (`--strip`), and standalone scanning (`--file`) independent of the install flow. For the threat model, severity levels, and gate behavior, see [Content scanning](../security/#content-scanning) in the security model.
 
 ### Usage
 
@@ -114,6 +112,9 @@ apm audit <package>                    # Scan a specific package
 apm audit --file .cursorrules          # Scan any file (even non-APM-managed)
 apm audit --strip                      # Remove hidden characters (preserves emoji)
 apm audit --strip --dry-run            # Preview what --strip would remove
+apm audit -f sarif                     # SARIF output (for GitHub Code Scanning)
+apm audit -o report.sarif              # Write SARIF report to file
+apm audit -f json -o results.json      # JSON report to file
 ```
 
 ### Exit codes
@@ -130,24 +131,22 @@ apm audit --strip --dry-run            # Preview what --strip would remove
 
 ---
 
-## CI enforcement with `apm audit --ci`
+## CI enforcement
+
+`apm install` is the CI gate — it blocks deployment of packages with critical content findings, exiting with code 1. No additional configuration is needed.
+
+`apm audit` adds reporting on top. Run it after install to generate SARIF reports for GitHub Code Scanning, JSON for tooling, or markdown for step summaries.
 
 :::note[Planned Feature]
-`apm audit --ci` is not yet available. The following describes planned behavior and is provided to illustrate the intended workflow.
+Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. When available, it will additionally verify that the lock file matches the manifest and that deployed files are present.
 :::
 
-The `apm audit --ci` command is designed to run as a required status check in your CI pipeline. It verifies that the lock file is in sync with the declared manifest and that deployed files match expectations.
+### Recommended workflow
 
-### What it catches
-
-- **Lock file out of sync.** A dependency was added to `apm.yml` but `apm install` was not re-run.
-- **Unapproved manual changes.** Someone hand-edited an agent instruction file that APM manages.
-- **Missing dependencies.** A declared package failed to resolve or deploy.
-
-### GitHub Actions workflow
+Use `microsoft/apm-action@v1` to install packages and optionally generate an audit report in one step:
 
 ```yaml
-name: APM Audit
+name: APM
 on:
   pull_request:
     paths:
@@ -158,16 +157,24 @@ on:
       - '.copilot/agents/**'
 
 jobs:
-  audit:
+  install:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install and audit APM
-        uses: microsoft/apm-action@v1
+      - uses: microsoft/apm-action@v1
+        id: apm
         with:
-          commands: |
-            apm audit --ci
+          audit-report: true
+        env:
+          GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && steps.apm.outputs.audit-report-path
+        with:
+          sarif_file: ${{ steps.apm.outputs.audit-report-path }}
+          category: apm-audit
 ```
 
 ### Configuring as a required check
@@ -176,10 +183,8 @@ Once the workflow runs on PRs, configure it as a required status check:
 
 1. Navigate to your repository settings.
 2. Under **Rules** (or **Branches** for legacy branch protection), select the target branch.
-3. Add the `APM Audit` workflow job as a required status check.
-4. PRs that fail the audit cannot be merged until the configuration is corrected.
-
-This ensures every merge to a protected branch has a verified, consistent agent configuration.
+3. Add the `APM` workflow job as a required status check.
+4. PRs that introduce packages with critical findings cannot be merged.
 
 ---
 
@@ -314,14 +319,14 @@ GitHub Rulesets provide a scalable way to enforce APM governance across multiple
 
 ### Level 1: Required status check
 
-Once `apm audit --ci` is available (see [CI enforcement](#ci-enforcement-with-apm-audit---ci) above), configure it as a required status check through Rulesets:
+Configure the APM workflow as a required status check through Rulesets (see [CI enforcement](#ci-enforcement) above):
 
 1. Create a new Ruleset at the organization or repository level.
 2. Target the branches you want to protect (e.g., `main`, `release/*`).
 3. Add a **Require status checks to pass** rule.
-4. Select the `APM Audit` workflow job as a required check.
+4. Select the `APM` workflow job as a required check.
 
-This blocks any PR that introduces agent configuration drift from merging into protected branches.
+This blocks any PR that introduces packages with critical content findings from merging into protected branches.
 
 For detailed setup instructions, see the [CI/CD integration guide](../../integrations/ci-cd/).
 
@@ -363,7 +368,7 @@ APM enforces change management by design:
 1. **Declaration.** Changes start in `apm.yml`, which is a committed, reviewable file.
 2. **Resolution.** `apm install` resolves declarations to exact commits in `apm.lock.yaml`.
 3. **Review.** Both files are included in the PR diff for peer review.
-4. **Verification.** `apm audit --ci` confirms consistency before merge (planned — currently achieved through PR review of `apm.lock.yaml` diffs).
+4. **Verification.** `apm audit` scans for content issues before merge. Lockfile consistency checking (`apm audit --ci`) is planned — currently achieved through PR review of `apm.lock.yaml` diffs.
 5. **Traceability.** Git history provides a permanent record of who changed what and when.
 
 No agent configuration change can reach a protected branch without passing through this pipeline.
@@ -379,7 +384,8 @@ No agent configuration change can reach a protected branch without passing throu
 | Constitution injection | `memory/constitution.md` with hash verification | Available |
 | Transitive MCP trust control | `--trust-transitive-mcp` flag | Available |
 | Content scanning | Pre-deploy gate blocks critical hidden Unicode; `apm audit` for on-demand checks | Available |
-| CI enforcement | `apm audit --ci` as required status check | Planned |
+| CI enforcement (content scanning) | Built into `apm install`; `apm audit` for SARIF reporting | Available |
+| CI enforcement (lockfile consistency) | `apm audit --ci` for manifest/lockfile verification | Planned |
 | Drift detection | `apm audit --drift` | Planned |
 | Approved source policies | CODEOWNERS + PR review | Available (manual) |
 | GitHub Rulesets integration | Required status checks | Available |

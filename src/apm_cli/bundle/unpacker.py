@@ -20,6 +20,8 @@ class UnpackResult:
     verified: bool = False
     dependency_files: Dict[str, List[str]] = field(default_factory=dict)
     skipped_count: int = 0
+    security_warnings: int = 0
+    security_critical: int = 0
 
 
 def unpack_bundle(
@@ -27,6 +29,7 @@ def unpack_bundle(
     output_dir: Path = Path("."),
     skip_verify: bool = False,
     dry_run: bool = False,
+    force: bool = False,
 ) -> UnpackResult:
     """Extract and apply an APM bundle to a project directory.
 
@@ -39,6 +42,7 @@ def unpack_bundle(
         output_dir: Target project directory to copy files into.
         skip_verify: If *True*, skip completeness verification against the lockfile.
         dry_run: If *True*, resolve the file list but write nothing to disk.
+        force: If *True*, deploy even when critical hidden characters are found.
 
     Returns:
         :class:`UnpackResult` describing what was (or would be) extracted.
@@ -55,11 +59,15 @@ def unpack_bundle(
         cleanup_temp = True
         try:
             with tarfile.open(bundle_path, "r:gz") as tar:
-                # Security: prevent path traversal
+                # Security: prevent path traversal and special entries
                 for member in tar.getmembers():
                     if member.name.startswith("/") or ".." in member.name:
                         raise ValueError(
                             f"Refusing to extract path-traversal entry: {member.name}"
+                        )
+                    if member.issym() or member.islnk():
+                        raise ValueError(
+                            f"Refusing to extract symlink/hardlink: {member.name}"
                         )
                 # filter="data" was added in Python 3.12; use it when available
                 if sys.version_info >= (3, 12):
@@ -131,6 +139,34 @@ def unpack_bundle(
         if skip_verify:
             verified = False
 
+        # 3b. Security scan: check bundle contents for hidden Unicode characters
+        from ..security.gate import BLOCK_POLICY, SecurityGate
+
+        # Scan all files under source_dir (SecurityGate handles symlink
+        # skipping, directory recursion, and OSError resilience)
+        verdict = SecurityGate.scan_files(
+            source_dir, policy=BLOCK_POLICY, force=force
+        )
+        security_warnings = verdict.warning_count
+        security_critical = verdict.critical_count
+
+        if verdict.should_block:
+            affected = []
+            for path, findings in verdict.findings_by_file.items():
+                c = sum(1 for f in findings if f.severity == "critical")
+                if c > 0:
+                    affected.append(f"  {path}  ({c} critical)")
+            raise ValueError(
+                f"Blocked: bundle contains {len(affected)} file(s) "
+                f"with critical hidden characters\n\n"
+                f"Affected files:\n" + "\n".join(affected) + "\n\n"
+                "Next steps:\n"
+                "  - Extract the bundle and run: apm audit --file <path> to inspect\n"
+                "  - Run: apm unpack --force to deploy anyway "
+                "(not recommended)\n\n"
+                "Learn more: https://apm.github.io/apm/enterprise/security/"
+            )
+
         # Dry-run: return file list without writing
         if dry_run:
             return UnpackResult(
@@ -138,6 +174,8 @@ def unpack_bundle(
                 files=unique_files,
                 verified=verified,
                 dependency_files=dep_file_map,
+                security_warnings=security_warnings,
+                security_critical=security_critical,
             )
 
         # 4. Copy target files to output_dir (additive, no deletes)
@@ -157,14 +195,21 @@ def unpack_bundle(
                     f"Refusing to unpack path that escapes output directory: {rel_path!r}"
                 )
             src = source_dir / rel_path
+            if src.is_symlink():
+                # Security: skip symlinks to prevent scanning bypass
+                skipped += 1
+                continue
             if not src.exists():
                 skipped += 1
                 continue  # skip_verify may allow missing files
             if src.is_dir():
-                shutil.copytree(src, dest, dirs_exist_ok=True)
+                from ..security.gate import ignore_symlinks
+                shutil.copytree(
+                    src, dest, dirs_exist_ok=True, ignore=ignore_symlinks
+                )
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest)
+                shutil.copy2(src, dest, follow_symlinks=False)
 
         return UnpackResult(
             extracted_dir=bundle_path,
@@ -172,6 +217,8 @@ def unpack_bundle(
             verified=verified,
             dependency_files=dep_file_map,
             skipped_count=skipped,
+            security_warnings=security_warnings,
+            security_critical=security_critical,
         )
     finally:
         # Clean up temp dir if we created one
