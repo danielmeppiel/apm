@@ -1,6 +1,9 @@
 """Base adapter interface for MCP clients."""
 
+import re
 from abc import ABC, abstractmethod
+
+_INPUT_VAR_RE = re.compile(r"\$\{input:([^}]+)\}")
 
 
 class MCPClientAdapter(ABC):
@@ -84,3 +87,28 @@ class MCPClientAdapter(ABC):
             return "nuget"
 
         return ""
+
+    @staticmethod
+    def _warn_input_variables(mapping, server_name, runtime_label):
+        """Emit a warning for each ``${input:...}`` reference found in *mapping*.
+
+        Runtimes that do not support VS Code-style input prompts (Copilot CLI,
+        Codex CLI, etc.) should call this so users know their placeholders
+        will not be resolved at runtime.
+
+        Args:
+            mapping (dict): Header or env dict to scan.
+            server_name (str): Server name for the warning message.
+            runtime_label (str): Human-readable runtime name (e.g. "Copilot CLI").
+        """
+        if not mapping:
+            return
+        for value in mapping.values():
+            if not isinstance(value, str):
+                continue
+            for match in _INPUT_VAR_RE.finditer(value):
+                print(
+                    f"[!]  Warning: ${{input:{match.group(1)}}} in server "
+                    f"'{server_name}' will not be resolved — "
+                    f"{runtime_label} does not support input variable prompts"
+                )

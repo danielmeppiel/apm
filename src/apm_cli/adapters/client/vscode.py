@@ -7,6 +7,7 @@ https://code.visualstudio.com/docs/copilot/chat/mcp-servers
 
 import json
 import os
+import re
 from pathlib import Path
 from .base import MCPClientAdapter
 from ...registry.client import SimpleRegistryClient
@@ -197,6 +198,9 @@ class VSCodeClientAdapter(MCPClientAdapter):
             }
             if raw.get("env"):
                 server_config["env"] = raw["env"]
+                input_vars.extend(
+                    self._extract_input_variables(raw["env"], server_info.get("name", ""))
+                )
             return server_config, input_vars
         
         # Check for packages information
@@ -308,6 +312,9 @@ class VSCodeClientAdapter(MCPClientAdapter):
                         "url": remote.get("url", ""),
                         "headers": headers,
                     }
+                    input_vars.extend(
+                        self._extract_input_variables(headers, server_info.get("name", ""))
+                    )
             # If no packages AND no endpoints/remotes, fail with clear error
             else:
                 packages = server_info.get("packages", [])
@@ -322,6 +329,38 @@ class VSCodeClientAdapter(MCPClientAdapter):
                                f"Server: {server_info.get('name', 'unknown')}")
         
         return server_config, input_vars
+
+    _INPUT_VAR_RE = re.compile(r"\$\{input:([^}]+)\}")
+
+    def _extract_input_variables(self, mapping, server_name):
+        """Scan dict values for ${input:...} references and return input variable definitions.
+
+        Args:
+            mapping (dict): Header or env dict whose values may contain
+                ``${input:<id>}`` placeholders.
+            server_name (str): Server name used in the description field.
+
+        Returns:
+            list[dict]: Input variable definitions (``promptString``, ``password: true``).
+                Duplicates within *mapping* are already deduplicated.
+        """
+        seen: set = set()
+        result: list = []
+        for value in (mapping or {}).values():
+            if not isinstance(value, str):
+                continue
+            for match in self._INPUT_VAR_RE.finditer(value):
+                var_id = match.group(1)
+                if var_id in seen:
+                    continue
+                seen.add(var_id)
+                result.append({
+                    "type": "promptString",
+                    "id": var_id,
+                    "description": f"{var_id} for MCP server {server_name}",
+                    "password": True,
+                })
+        return result
 
     @staticmethod
     def _extract_package_args(package):

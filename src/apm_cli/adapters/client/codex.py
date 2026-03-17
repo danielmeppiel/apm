@@ -181,6 +181,7 @@ class CodexClientAdapter(MCPClientAdapter):
             config["args"] = raw["args"]
             if raw.get("env"):
                 config["env"] = raw["env"]
+                self._warn_input_variables(raw["env"], server_info.get("name", ""), "Codex CLI")
             return config
         
         # Note: Remote servers (SSE type) are handled in configure_mcp_server and rejected early
