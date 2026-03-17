@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `git credential fill` fallback for single-file downloads from private repos (#332)
 - GitHub API rate-limit 403 responses no longer misdiagnosed as authentication failures (#332)
+- Lockfile now preserves the host for GitHub Enterprise custom domains so subsequent `apm install` clones from the correct server (#339)
 
 ### Changed
 
