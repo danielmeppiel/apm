@@ -173,7 +173,7 @@ def _render_findings_table(
     if console:
         try:
             from rich.table import Table
-            from ..security.audit_report import _relative_path
+            from ..security.audit_report import relative_path_for_report
 
             table = Table(
                 title=f"{STATUS_SYMBOLS['search']} Content Scan Findings",
@@ -194,7 +194,7 @@ def _render_findings_table(
             for f in rows:
                 table.add_row(
                     f.severity.upper(),
-                    _relative_path(f.file),
+                    relative_path_for_report(f.file),
                     f"{f.line}:{f.column}",
                     f.codepoint,
                     f.description,
@@ -531,6 +531,12 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         exit_code = 1 if ContentScanner.has_critical(all_findings) else 2
 
     if effective_format == "text":
+        if output_path:
+            _rich_error(
+                "Text format does not support --output. "
+                "Use --format json, sarif, or markdown to write to a file."
+            )
+            sys.exit(1)
         if findings_by_file:
             _render_findings_table(findings_by_file, verbose=verbose)
         _render_summary(findings_by_file, files_scanned)

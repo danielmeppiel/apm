@@ -1,5 +1,6 @@
 """Bundle unpacker  -- extracts and verifies APM bundles."""
 
+import os
 import shutil
 import sys
 import tarfile
@@ -144,10 +145,25 @@ def unpack_bundle(
         all_findings = {}
         for rel_path in unique_files:
             source_file = source_dir / rel_path
-            if source_file.is_file() and not source_file.is_symlink():
+            if source_file.is_symlink():
+                continue
+            if source_file.is_file():
                 findings = scanner.scan_file(source_file)
                 if findings:
                     all_findings[rel_path] = findings
+            elif source_file.is_dir():
+                # Recursively scan directory contents (e.g. skill dirs)
+                for dirpath, _dirs, filenames in os.walk(
+                    source_file, followlinks=False
+                ):
+                    for fname in filenames:
+                        fpath = Path(dirpath) / fname
+                        if fpath.is_symlink():
+                            continue
+                        findings = scanner.scan_file(fpath)
+                        if findings:
+                            nested_rel = str(fpath.relative_to(source_dir))
+                            all_findings[nested_rel] = findings
 
         if all_findings:
             flat = [f for ff in all_findings.values() for f in ff]
@@ -208,10 +224,18 @@ def unpack_bundle(
                 skipped += 1
                 continue  # skip_verify may allow missing files
             if src.is_dir():
-                shutil.copytree(src, dest, dirs_exist_ok=True, symlinks=True)
+                def _ignore_symlinks(directory, contents):
+                    """Exclude symlinks from copytree to prevent scan bypass."""
+                    return [
+                        c for c in contents
+                        if (Path(directory) / c).is_symlink()
+                    ]
+                shutil.copytree(
+                    src, dest, dirs_exist_ok=True, ignore=_ignore_symlinks
+                )
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest)
+                shutil.copy2(src, dest, follow_symlinks=False)
 
         return UnpackResult(
             extracted_dir=bundle_path,
