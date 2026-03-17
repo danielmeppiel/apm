@@ -172,7 +172,6 @@ class DependencyReference:
         - Non-default hosts are preserved         ->  gitlab.com/owner/repo
         - Virtual paths are appended              ->  owner/repo/path/to/thing
         - Refs are appended with #                ->  owner/repo#v1.0
-        - Aliases are appended with @             ->  owner/repo@my-alias
         - Local paths are returned as-is          ->  ./packages/my-pkg
         
         No .git suffix, no https://, no git@  -- just the canonical identifier.
@@ -199,10 +198,6 @@ class DependencyReference:
         # Append reference (branch, tag, commit)
         if self.reference:
             result = f"{result}#{self.reference}"
-        
-        # Append alias
-        if self.alias:
-            result = f"{result}@{self.alias}"
         
         return result
     
@@ -433,7 +428,10 @@ class DependencyReference:
         if alias_override is not None:
             if not isinstance(alias_override, str) or not alias_override.strip():
                 raise ValueError("'alias' field must be a non-empty string")
-            dep.alias = alias_override.strip()
+            alias_override = alias_override.strip()
+            if not re.match(r'^[a-zA-Z0-9._-]+$', alias_override):
+                raise ValueError(f"Invalid alias: {alias_override}. Aliases can only contain letters, numbers, dots, underscores, and hyphens")
+            dep.alias = alias_override
         
         # Apply sub-path as virtual package
         if sub_path:
@@ -452,8 +450,6 @@ class DependencyReference:
         - user/repo#v1.0.0
         - user/repo#commit_sha
         - github.com/user/repo#ref
-        - user/repo@alias
-        - user/repo#ref@alias
         - user/repo/path/to/file.prompt.md (virtual file package)
         - user/repo/collections/name (virtual collection package)
         - https://gitlab.com/owner/repo.git (generic HTTPS git URL)
@@ -515,10 +511,8 @@ class DependencyReference:
         # Extract the core path before processing reference (#) and alias (@)
         work_str = dependency_str
         
-        # Temporarily remove reference and alias for path segment counting
+        # Temporarily remove reference for path segment counting
         temp_str = work_str
-        if '@' in temp_str and not temp_str.startswith('git@'):
-            temp_str = temp_str.rsplit('@', 1)[0]
         if '#' in temp_str:
             temp_str = temp_str.rsplit('#', 1)[0]
         
@@ -653,13 +647,9 @@ class DependencyReference:
             host = ssh_match.group(1)
             ssh_repo_part = ssh_match.group(2)
 
-            # Handle reference and alias in SSH URL (extract before .git stripping)
+            # Handle reference in SSH URL (extract before .git stripping)
             reference = None
             alias = None
-
-            if "@" in ssh_repo_part:
-                ssh_repo_part, alias = ssh_repo_part.rsplit("@", 1)
-                alias = alias.strip()
 
             if "#" in ssh_repo_part:
                 repo_part, reference = ssh_repo_part.rsplit("#", 1)
@@ -673,13 +663,8 @@ class DependencyReference:
 
             repo_url = repo_part.strip()
         else:
-            # Handle alias (@alias) for non-SSH URLs
-            alias = None
-            if "@" in dependency_str:
-                dependency_str, alias = dependency_str.rsplit("@", 1)
-                alias = alias.strip()
-            
             # Handle reference (#ref)
+            alias = None
             reference = None
             if "#" in dependency_str:
                 repo_part, reference = dependency_str.rsplit("#", 1)
@@ -881,10 +866,6 @@ class DependencyReference:
             ado_project = None
             ado_repo = None
         
-        # Validate alias characters if present
-        if alias and not re.match(r'^[a-zA-Z0-9._-]+$', alias):
-            raise ValueError(f"Invalid alias: {alias}. Aliases can only contain letters, numbers, dots, underscores, and hyphens")
-
         return cls(
             repo_url=repo_url,
             host=host,
@@ -943,8 +924,6 @@ class DependencyReference:
             result += f"/{self.virtual_path}"
         if self.reference:
             result += f"#{self.reference}"
-        if self.alias:
-            result += f"@{self.alias}"
         return result
 
 

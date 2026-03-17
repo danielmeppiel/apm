@@ -171,7 +171,7 @@ Grammar (ABNF-style):
 ```
 dependency     = url_form / shorthand_form / local_path_form
 url_form       = ("https://" / "http://" / "ssh://git@" / "git@") clone-url
-shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref] ["@" alias]
+shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref]
 local_path_form = ("./" / "../" / "/" / "~/" / ".\\" / "..\\" / "~\\") path
 ```
 
@@ -181,17 +181,16 @@ local_path_form = ("./" / "../" / "/" / "~/" / ".\\" / "..\\" / "~\\") path
 | `owner/repo` | REQUIRED | 2+ path segments of `[a-zA-Z0-9._-]+` | Repository path. GitHub uses exactly 2 segments (`owner/repo`). Non-GitHub hosts MAY use nested groups (e.g. `gitlab.com/group/sub/repo`). |
 | `virtual_path` | OPTIONAL | Path segments after repo | Subdirectory, file, or collection within the repo. See §4.1.3. |
 | `ref` | OPTIONAL | Branch, tag, or commit SHA | Git reference. Commit SHAs matched by `^[a-f0-9]{7,40}$`. Semver tags matched by `^v?\d+\.\d+\.\d+`. |
-| `alias` | OPTIONAL | `^[a-zA-Z0-9._-]+$` | Local alias for the dependency. Appears after `#ref` in the string. |
 
 **Examples:**
 
 ```yaml
 dependencies:
   apm:
-    # GitHub shorthand (default host)
-    - microsoft/apm-sample-package
-    - microsoft/apm-sample-package#v1.0.0
-    - microsoft/apm-sample-package@standards
+    # GitHub shorthand (default host) — each line shows a syntax variant
+    - microsoft/apm-sample-package                # latest (lockfile pins commit SHA)
+    - microsoft/apm-sample-package#v1.0.0         # pinned to tag (immutable)
+    - microsoft/apm-sample-package#main           # branch ref (may change over time)
 
     # Non-GitHub hosts (FQDN preserved)
     - gitlab.com/acme/coding-standards
@@ -418,12 +417,11 @@ scripts:
 
 dependencies:
   apm:
-    - microsoft/apm-sample-package
-    - gitlab.com/acme/coding-standards
+    - microsoft/apm-sample-package#v1.0.0
+    - gitlab.com/acme/coding-standards#main
     - git: https://gitlab.com/acme/repo.git
       path: instructions/security
       ref: v2.0
-      alias: acme-sec
   mcp:
     - io.github.github/github-mcp-server
     - name: my-private-server
