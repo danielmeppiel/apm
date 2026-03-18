@@ -879,10 +879,13 @@ def _install_apm_dependencies(
                     return result_path
                 return None
 
-            # Build repo_ref string - include host for GHE/ADO, plus reference if specified
+            # Build repo_ref string - include host for GHE/ADO/Artifactory, plus reference if specified
             repo_ref = dep_ref.repo_url
             if dep_ref.host and dep_ref.host not in ("github.com", None):
-                repo_ref = f"{dep_ref.host}/{dep_ref.repo_url}"
+                if dep_ref.artifactory_prefix:
+                    repo_ref = f"{dep_ref.host}/{dep_ref.artifactory_prefix}/{dep_ref.repo_url}"
+                else:
+                    repo_ref = f"{dep_ref.host}/{dep_ref.repo_url}"
             if dep_ref.virtual_path:
                 repo_ref = f"{repo_ref}/{dep_ref.virtual_path}"
 

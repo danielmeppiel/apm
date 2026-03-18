@@ -10,9 +10,11 @@ from typing import Any, Dict, List, Optional
 from ..utils.path_security import PathTraversalError, ensure_path_within
 from ..utils.github_host import (
     default_host,
+    is_artifactory_path,
     is_azure_devops_hostname,
     is_github_hostname,
     is_supported_git_host,
+    parse_artifactory_path,
     unsupported_host_error,
 )
 from .validation import InvalidVirtualPackageExtensionError
@@ -30,11 +32,13 @@ class ResolvedReference:
     """Represents a resolved Git reference."""
     original_ref: str
     ref_type: GitReferenceType
-    resolved_commit: str
-    ref_name: str  # The actual branch/tag/commit name
+    resolved_commit: Optional[str] = None
+    ref_name: str = ""  # The actual branch/tag/commit name
     
     def __str__(self) -> str:
         """String representation of resolved reference."""
+        if not self.resolved_commit:
+            return self.ref_name
         if self.ref_type == GitReferenceType.COMMIT:
             return f"{self.resolved_commit[:8]}"
         return f"{self.ref_name} ({self.resolved_commit[:8]})"
@@ -58,10 +62,16 @@ class DependencyReference:
     # Local path dependency fields
     is_local: bool = False  # True if this is a local filesystem dependency
     local_path: Optional[str] = None  # Original local path string (e.g., "./packages/my-pkg")
-    
+
+    artifactory_prefix: Optional[str] = None  # e.g., "artifactory/github" (repo key path)
+
     # Supported file extensions for virtual packages
     VIRTUAL_FILE_EXTENSIONS = ('.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md')
-    
+
+    def is_artifactory(self) -> bool:
+        """Check if this reference points to a JFrog Artifactory VCS repository."""
+        return self.artifactory_prefix is not None
+
     def is_azure_devops(self) -> bool:
         """Check if this reference points to Azure DevOps."""
         from ..utils.github_host import is_azure_devops_hostname
@@ -187,11 +197,13 @@ class DependencyReference:
         is_default = host.lower() == default_host().lower()
         
         # Start with optional host prefix
-        if is_default:
+        if is_default and not self.artifactory_prefix:
             result = self.repo_url
+        elif self.artifactory_prefix:
+            result = f"{host}/{self.artifactory_prefix}/{self.repo_url}"
         else:
             result = f"{host}/{self.repo_url}"
-        
+
         # Append virtual path for virtual packages
         if self.is_virtual and self.virtual_path:
             result = f"{result}/{self.virtual_path}"
@@ -217,11 +229,13 @@ class DependencyReference:
         host = self.host or default_host()
         is_default = host.lower() == default_host().lower()
         
-        if is_default:
+        if is_default and not self.artifactory_prefix:
             result = self.repo_url
+        elif self.artifactory_prefix:
+            result = f"{host}/{self.artifactory_prefix}/{self.repo_url}"
         else:
             result = f"{host}/{self.repo_url}"
-        
+
         if self.is_virtual and self.virtual_path:
             result = f"{result}/{self.virtual_path}"
         
@@ -594,7 +608,10 @@ class DependencyReference:
             is_generic_host = (validated_host is not None
                                and not is_github_hostname(validated_host)
                                and not is_azure_devops_hostname(validated_host))
-            
+
+            # Detect Artifactory VCS paths (artifactory/{repo-key}/{owner}/{repo})
+            is_artifactory = is_generic_host and is_artifactory_path(path_segments)
+
             # Handle _git in ADO URLs: org/project/_git/repo -> org/project/repo
             if is_ado and '_git' in path_segments:
                 git_idx = path_segments.index('_git')
@@ -603,6 +620,9 @@ class DependencyReference:
             
             if is_ado:
                 min_base_segments = 3
+            elif is_artifactory:
+                # Artifactory: artifactory/{repo-key}/{owner}/{repo}
+                min_base_segments = 4
             elif is_generic_host:
                 # For generic hosts (GitLab, Gitea), check for virtual indicators
                 # If present, use 2-segment base (simple owner/repo + virtual path)
@@ -717,6 +737,10 @@ class DependencyReference:
                         if len(parts) < 5:  # host + org + project + repo + at least one path segment
                             raise ValueError("Invalid Azure DevOps virtual package format: must be dev.azure.com/org/project/repo/path")
                         repo_url = "/".join(parts[1:4])  # org/project/repo
+                    elif is_artifactory_path(parts[1:]):
+                        art_result = parse_artifactory_path(parts[1:])
+                        if art_result:
+                            repo_url = f"{art_result[1]}/{art_result[2]}"
                     else:
                         # For virtual packages with host prefix, base is always 2 segments
                         # (virtual indicators already detected in early detection)
@@ -730,6 +754,10 @@ class DependencyReference:
                         if len(parts) < 4:  # org + project + repo + at least one path segment
                             raise ValueError("Invalid Azure DevOps virtual package format: expected at least org/project/repo/path")
                         repo_url = "/".join(parts[:3])  # org/project/repo
+                    elif is_artifactory_path(parts[1:]):
+                        art_result = parse_artifactory_path(parts[1:])
+                        if art_result:
+                            repo_url = f"{art_result[1]}/{art_result[2]}"
                     else:
                         repo_url = "/".join(parts[:2])  # owner/repo
             
@@ -756,8 +784,14 @@ class DependencyReference:
                         # ADO format: dev.azure.com/org/project/repo
                         user_repo = "/".join(parts[1:4])
                     elif not is_github_hostname(host) and not is_azure_devops_hostname(host):
-                        # Generic host (GitLab, Gitea, etc.): all segments after host = repo path
-                        user_repo = "/".join(parts[1:])
+                        if is_artifactory_path(parts[1:]):
+                            art_result = parse_artifactory_path(parts[1:])
+                            if art_result:
+                                user_repo = f"{art_result[1]}/{art_result[2]}"
+                            else:
+                                user_repo = "/".join(parts[1:])
+                        else:
+                            user_repo = "/".join(parts[1:])
                     else:
                         # GitHub format: github.com/user/repo
                         user_repo = "/".join(parts[1:3])
@@ -891,6 +925,19 @@ class DependencyReference:
             ado_project = None
             ado_repo = None
         
+        # Extract Artifactory prefix from the original path if applicable
+        artifactory_prefix = None
+        if host and not is_ado_final:
+            _art_str = original_str.split('#')[0].split('@')[0]
+            # Strip scheme if present (e.g., https://host/artifactory/...)
+            if '://' in _art_str:
+                _art_str = _art_str.split('://', 1)[1]
+            _art_segs = _art_str.replace(f"{host}/", "", 1).split("/")
+            if is_artifactory_path(_art_segs):
+                art_result = parse_artifactory_path(_art_segs)
+                if art_result:
+                    artifactory_prefix = art_result[0]
+
         return cls(
             repo_url=repo_url,
             host=host,
@@ -900,7 +947,8 @@ class DependencyReference:
             is_virtual=is_virtual_package,
             ado_organization=ado_organization,
             ado_project=ado_project,
-            ado_repo=ado_repo
+            ado_repo=ado_repo,
+            artifactory_prefix=artifactory_prefix
         )
 
     def to_github_url(self) -> str:
@@ -919,6 +967,8 @@ class DependencyReference:
             # ADO format: https://dev.azure.com/org/project/_git/repo
             project = urllib.parse.quote(self.ado_project, safe='')
             return f"https://{host}/{self.ado_organization}/{project}/_git/{self.ado_repo}"
+        elif self.is_artifactory():
+            return f"https://{host}/{self.artifactory_prefix}/{self.repo_url}"
         else:
             # GitHub format: https://github.com/owner/repo
             return f"https://{host}/{self.repo_url}"
@@ -942,7 +992,10 @@ class DependencyReference:
         if self.is_local and self.local_path:
             return self.local_path
         if self.host:
-            result = f"{self.host}/{self.repo_url}"
+            if self.artifactory_prefix:
+                result = f"{self.host}/{self.artifactory_prefix}/{self.repo_url}"
+            else:
+                result = f"{self.host}/{self.repo_url}"
         else:
             result = self.repo_url
         if self.virtual_path:

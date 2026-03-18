@@ -32,6 +32,7 @@ class GitHubTokenManager:
         'models': ['GITHUB_TOKEN', 'GITHUB_APM_PAT'],  # GitHub Models prefers user-scoped PAT, falls back to APM PAT
         'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN', 'GH_TOKEN'],  # APM module access (GitHub)
         'ado_modules': ['ADO_APM_PAT'],  # APM module access (Azure DevOps)
+        'artifactory_modules': ['ARTIFACTORY_APM_TOKEN'],  # APM module access (JFrog Artifactory)
     }
     
     # Runtime-specific environment variable mappings

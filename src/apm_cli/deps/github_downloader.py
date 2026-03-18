@@ -28,13 +28,14 @@ from ..models.apm_package import (
     APMPackage
 )
 from ..utils.github_host import (
-    build_https_clone_url, 
-    build_ssh_url, 
+    build_https_clone_url,
+    build_ssh_url,
     build_ado_https_clone_url,
     build_ado_ssh_url,
     build_ado_api_url,
     build_raw_content_url,
-    sanitize_token_url_in_message, 
+    build_artifactory_archive_url,
+    sanitize_token_url_in_message,
     default_host,
     is_azure_devops_hostname,
     is_github_hostname
@@ -199,8 +200,12 @@ class GitHubPackageDownloader:
         # Azure DevOps: ADO_APM_PAT
         self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
         self.has_ado_token = self.ado_token is not None
-        
-        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}"
+
+        # JFrog Artifactory: ARTIFACTORY_APM_TOKEN
+        self.artifactory_token = self.token_manager.get_token_for_purpose('artifactory_modules', env)
+        self.has_artifactory_token = self.artifactory_token is not None
+
+        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}, has_artifactory_token={self.has_artifactory_token}"
                f"{', source=credential_helper' if self._github_token_from_credential_fill else ''}")
         
         # Configure Git security settings
@@ -218,7 +223,157 @@ class GitHubPackageDownloader:
             env['GIT_CONFIG_GLOBAL'] = '/dev/null'
         
         return env
-    
+
+    # --- Artifactory VCS archive download support ---
+
+    def _get_artifactory_headers(self) -> Dict[str, str]:
+        """Build HTTP headers for Artifactory requests."""
+        headers = {}
+        if self.artifactory_token:
+            headers['Authorization'] = f'Bearer {self.artifactory_token}'
+        return headers
+
+    def _download_artifactory_archive(self, host: str, prefix: str, owner: str, repo: str,
+                                       ref: str, target_path: Path, scheme: str = "https") -> None:
+        """Download and extract a zip archive from Artifactory VCS proxy.
+
+        Tries multiple URL patterns (GitHub-style and GitLab-style).
+        GitHub archives contain a single root directory named {repo}-{ref}/;
+        this method strips that prefix on extraction so files land directly
+        in *target_path*.
+
+        Raises RuntimeError on failure.
+        """
+        import io
+        import zipfile
+
+        archive_urls = build_artifactory_archive_url(host, prefix, owner, repo, ref, scheme=scheme)
+        headers = self._get_artifactory_headers()
+
+        # Guard: reject unreasonably large archives (default 500 MB)
+        max_archive_bytes = int(
+            os.environ.get('ARTIFACTORY_MAX_ARCHIVE_MB', '500')
+        ) * 1024 * 1024
+
+        last_error = None
+        for url in archive_urls:
+            _debug(f"Trying Artifactory archive: {url}")
+            try:
+                resp = self._resilient_get(url, headers=headers, timeout=60)
+                if resp.status_code == 200:
+                    if len(resp.content) > max_archive_bytes:
+                        last_error = f"Archive too large ({len(resp.content)} bytes) from {url}"
+                        _debug(last_error)
+                        continue
+                    # Extract zip, stripping the top-level directory
+                    target_path.mkdir(parents=True, exist_ok=True)
+                    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+                        # Identify the root prefix (e.g., "repo-main/")
+                        names = zf.namelist()
+                        if not names:
+                            raise RuntimeError(f"Empty archive from {url}")
+                        root_prefix = names[0]
+                        if not root_prefix.endswith('/'):
+                            # Single file archive; extract as-is
+                            zf.extractall(target_path)
+                            return
+                        for member in zf.infolist():
+                            # Strip root prefix
+                            if member.filename == root_prefix:
+                                continue
+                            rel = member.filename[len(root_prefix):]
+                            if not rel:
+                                continue
+                            # Guard: prevent zip path traversal (CWE-22)
+                            dest = target_path / rel
+                            if not dest.resolve().is_relative_to(target_path.resolve()):
+                                _debug(f"Skipping zip entry escaping target: {member.filename}")
+                                continue
+                            if member.is_dir():
+                                dest.mkdir(parents=True, exist_ok=True)
+                            else:
+                                dest.parent.mkdir(parents=True, exist_ok=True)
+                                with zf.open(member) as src, open(dest, 'wb') as dst:
+                                    dst.write(src.read())
+                    _debug(f"Extracted Artifactory archive to {target_path}")
+                    return
+                else:
+                    last_error = f"HTTP {resp.status_code} from {url}"
+                    _debug(last_error)
+            except zipfile.BadZipFile:
+                last_error = f"Invalid zip archive from {url}"
+                _debug(last_error)
+            except requests.RequestException as e:
+                last_error = str(e)
+                _debug(f"Request failed: {last_error}")
+
+        raise RuntimeError(
+            f"Failed to download package {owner}/{repo}#{ref} from Artifactory "
+            f"({host}/{prefix}). Last error: {last_error}"
+        )
+
+    def _download_file_from_artifactory(self, host: str, prefix: str, owner: str,
+                                         repo: str, file_path: str, ref: str, scheme: str = "https") -> bytes:
+        """Download a single file from Artifactory by fetching the full archive and extracting it."""
+        import io
+        import zipfile
+
+        archive_urls = build_artifactory_archive_url(host, prefix, owner, repo, ref, scheme=scheme)
+        headers = self._get_artifactory_headers()
+
+        for url in archive_urls:
+            try:
+                resp = self._resilient_get(url, headers=headers, timeout=60)
+                if resp.status_code != 200:
+                    continue
+                with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+                    names = zf.namelist()
+                    root_prefix = names[0] if names else ""
+                    target_name = root_prefix + file_path
+                    if target_name in names:
+                        return zf.read(target_name)
+                    if file_path in names:
+                        return zf.read(file_path)
+            except (zipfile.BadZipFile, requests.RequestException):
+                continue
+
+        raise RuntimeError(
+            f"Failed to download file '{file_path}' from Artifactory "
+            f"({host}/{prefix}/{owner}/{repo}#{ref})"
+        )
+
+    @staticmethod
+    def _is_artifactory_only() -> bool:
+        """Return True when ARTIFACTORY_ONLY is set, blocking all direct git operations."""
+        return os.environ.get('ARTIFACTORY_ONLY', '').strip().lower() in ('1', 'true', 'yes')
+
+    def _should_use_artifactory_proxy(self, dep_ref: 'DependencyReference') -> bool:
+        """Check if a dependency should be routed through the Artifactory transparent proxy."""
+        if dep_ref.is_artifactory():
+            return False  # already explicit Artifactory
+        if self._is_artifactory_only():
+            return True
+        if dep_ref.is_azure_devops():
+            return False
+        host = dep_ref.host or default_host()
+        return is_github_hostname(host)
+
+    def _parse_artifactory_base_url(self) -> Optional[tuple]:
+        """Parse ARTIFACTORY_BASE_URL into (host, prefix, scheme)."""
+        import urllib.parse as urlparse
+        base_url = os.environ.get('ARTIFACTORY_BASE_URL', '').strip().rstrip('/')
+        if not base_url:
+            return None
+        parsed = urlparse.urlparse(base_url)
+        if parsed.scheme not in ('https', 'http'):
+            _debug(f"ARTIFACTORY_BASE_URL has unsupported scheme: {parsed.scheme}")
+            return None
+        host = parsed.hostname
+        path = parsed.path.strip('/')
+        if not host or not path:
+            return None
+        return (host, path, parsed.scheme)
+
     def _resilient_get(self, url: str, headers: Dict[str, str], timeout: int = 30, max_retries: int = 3) -> requests.Response:
         """HTTP GET with retry on 429/503 and rate-limit header awareness (#171).
         
@@ -514,7 +669,20 @@ class GitHubPackageDownloader:
         
         # Default to main branch if no reference specified
         ref = dep_ref.reference or "main"
-        
+
+        # Artifactory: no git repo to query, return ref-based resolution
+        if dep_ref.is_artifactory() or (
+            self._parse_artifactory_base_url()
+            and self._should_use_artifactory_proxy(dep_ref)
+        ):
+            is_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
+            return ResolvedReference(
+                original_ref=repo_ref,
+                ref_type=GitReferenceType.COMMIT if is_commit else GitReferenceType.BRANCH,
+                resolved_commit=None,
+                ref_name=ref
+            )
+
         # Pre-analyze the reference type to determine the best approach
         is_likely_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
         
@@ -618,11 +786,30 @@ class GitHubPackageDownloader:
             RuntimeError: If download fails or file not found
         """
         host = dep_ref.host or default_host()
-        
+
+        # Check if this is Artifactory (Mode 1: explicit FQDN)
+        if dep_ref.is_artifactory():
+            repo_parts = dep_ref.repo_url.split('/')
+            return self._download_file_from_artifactory(
+                dep_ref.host, dep_ref.artifactory_prefix,
+                repo_parts[0], repo_parts[1] if len(repo_parts) > 1 else repo_parts[0],
+                file_path, ref,
+            )
+
+        # Check if this should go through Artifactory proxy (Mode 2)
+        art_proxy = self._parse_artifactory_base_url()
+        if art_proxy and self._should_use_artifactory_proxy(dep_ref):
+            repo_parts = dep_ref.repo_url.split('/')
+            return self._download_file_from_artifactory(
+                art_proxy[0], art_proxy[1],
+                repo_parts[0], repo_parts[1] if len(repo_parts) > 1 else repo_parts[0],
+                file_path, ref, scheme=art_proxy[2],
+            )
+
         # Check if this is Azure DevOps
         if dep_ref.is_azure_devops():
             return self._download_ado_file(dep_ref, file_path, ref)
-        
+
         # GitHub API
         return self._download_github_file(dep_ref, file_path, ref)
     
@@ -1468,6 +1655,116 @@ author: {dep_ref.repo_url.split('/')[0]}
             package_type=validation_result.package_type
         )
     
+    def _download_subdirectory_from_artifactory(
+        self, dep_ref: 'DependencyReference', target_path: Path,
+        proxy_info: tuple, progress_task_id=None, progress_obj=None,
+    ) -> PackageInfo:
+        """Download an archive from Artifactory and extract a subdirectory."""
+        import tempfile
+        ref = dep_ref.reference or "main"
+        subdir_path = dep_ref.virtual_path
+        repo_parts = dep_ref.repo_url.split('/')
+        owner, repo = repo_parts[0], repo_parts[1] if len(repo_parts) > 1 else repo_parts[0]
+        host, prefix, scheme = proxy_info
+
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=10, total=100)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir) / "full_pkg"
+            self._download_artifactory_archive(host, prefix, owner, repo, ref, temp_path, scheme=scheme)
+            if progress_obj and progress_task_id is not None:
+                progress_obj.update(progress_task_id, completed=60, total=100)
+            source_subdir = temp_path / subdir_path
+            if not source_subdir.exists() or not source_subdir.is_dir():
+                raise RuntimeError(
+                    f"Subdirectory '{subdir_path}' not found in archive from "
+                    f"Artifactory ({host}/{prefix}/{owner}/{repo}#{ref})"
+                )
+            target_path.mkdir(parents=True, exist_ok=True)
+            if target_path.exists() and any(target_path.iterdir()):
+                shutil.rmtree(target_path)
+                target_path.mkdir(parents=True, exist_ok=True)
+            for item in source_subdir.iterdir():
+                src = source_subdir / item.name
+                dst = target_path / item.name
+                if src.is_dir():
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=80, total=100)
+        validation_result = validate_apm_package(target_path)
+        if not validation_result.is_valid:
+            raise RuntimeError(f"Subdirectory is not a valid APM package: {'; '.join(validation_result.errors)}")
+        resolved_ref = ResolvedReference(original_ref=ref, ref_name=ref, ref_type=GitReferenceType.BRANCH, resolved_commit=None)
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=100, total=100)
+        return PackageInfo(
+            package=validation_result.package, install_path=target_path,
+            resolved_reference=resolved_ref, installed_at=datetime.now().isoformat(),
+            dependency_ref=dep_ref, package_type=validation_result.package_type
+        )
+
+    def _download_package_from_artifactory(
+        self, dep_ref: 'DependencyReference', target_path: Path,
+        proxy_info: Optional[tuple] = None, progress_task_id=None, progress_obj=None,
+    ) -> PackageInfo:
+        """Download a package via Artifactory VCS archive."""
+        ref = dep_ref.reference or "main"
+        repo_parts = dep_ref.repo_url.split('/')
+        if len(repo_parts) < 2 or not repo_parts[0] or not repo_parts[1]:
+            raise ValueError(f"Invalid Artifactory repo reference '{dep_ref.repo_url}': expected 'owner/repo' format")
+        owner, repo = repo_parts[0], repo_parts[1]
+
+        scheme = "https"
+        if dep_ref.is_artifactory():
+            host, prefix = dep_ref.host, dep_ref.artifactory_prefix
+            if not host or not prefix:
+                raise ValueError(f"Artifactory dependency '{dep_ref.repo_url}' is missing host or artifactory prefix")
+        elif proxy_info:
+            host, prefix, scheme = proxy_info
+        else:
+            raise RuntimeError("Artifactory download requires either FQDN or ARTIFACTORY_BASE_URL")
+
+        _debug(f"Downloading from Artifactory: {host}/{prefix}/{owner}/{repo}#{ref}")
+        if target_path.exists() and any(target_path.iterdir()):
+            shutil.rmtree(target_path)
+        target_path.mkdir(parents=True, exist_ok=True)
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, total=100, completed=10)
+        try:
+            self._download_artifactory_archive(host, prefix, owner, repo, ref, target_path, scheme=scheme)
+        except RuntimeError:
+            if target_path.exists():
+                shutil.rmtree(target_path, ignore_errors=True)
+            raise
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=70, total=100)
+
+        validation_result = validate_apm_package(target_path)
+        if not validation_result.is_valid:
+            if target_path.exists():
+                shutil.rmtree(target_path, ignore_errors=True)
+            error_msg = f"Invalid APM package {dep_ref.repo_url}:\n"
+            for error in validation_result.errors:
+                error_msg += f"  - {error}\n"
+            raise RuntimeError(error_msg.strip())
+        if not validation_result.package:
+            raise RuntimeError(f"Package validation succeeded but no package metadata found for {dep_ref.repo_url}")
+        package = validation_result.package
+        package.source = dep_ref.to_github_url()
+        package.resolved_commit = None
+        resolved_ref = ResolvedReference(original_ref=f"{dep_ref.repo_url}#{ref}", ref_type=GitReferenceType.BRANCH, resolved_commit=None, ref_name=ref)
+        if progress_obj and progress_task_id is not None:
+            progress_obj.update(progress_task_id, completed=100, total=100)
+        return PackageInfo(
+            package=package, install_path=target_path, resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(), dependency_ref=dep_ref,
+            package_type=validation_result.package_type
+        )
+
     def download_package(
         self, 
         repo_ref: str, 
@@ -1502,19 +1799,41 @@ author: {dep_ref.repo_url.split('/')[0]}
         # Handle virtual packages differently
         if dep_ref.is_virtual:
             if dep_ref.is_virtual_file():
-                # Individual file virtual package
                 return self.download_virtual_file_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_collection():
-                # Collection virtual package
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_subdirectory():
-                # Subdirectory package (e.g., Claude Skill in a monorepo)
+                # When ARTIFACTORY_ONLY is set, download full archive and extract subdir
+                art_proxy = self._parse_artifactory_base_url()
+                if self._is_artifactory_only() and art_proxy:
+                    return self._download_subdirectory_from_artifactory(
+                        dep_ref, target_path, art_proxy, progress_task_id, progress_obj
+                    )
                 return self.download_subdirectory_package(dep_ref, target_path, progress_task_id, progress_obj)
             else:
                 raise ValueError(f"Unknown virtual package type for {dep_ref.virtual_path}")
-        
+
+        # Artifactory download path (Mode 1: explicit FQDN, Mode 2: transparent proxy)
+        use_artifactory = dep_ref.is_artifactory()
+        art_proxy = None
+        if not use_artifactory:
+            art_proxy = self._parse_artifactory_base_url()
+            if art_proxy and self._should_use_artifactory_proxy(dep_ref):
+                use_artifactory = True
+
+        if use_artifactory:
+            return self._download_package_from_artifactory(
+                dep_ref, target_path, art_proxy, progress_task_id, progress_obj
+            )
+
+        # When ARTIFACTORY_ONLY is set but no Artifactory proxy matched, block direct git
+        if self._is_artifactory_only():
+            raise RuntimeError(
+                f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+            )
+
         # Regular package download (existing logic)
-        # Resolve the Git reference to get specific commit
         resolved_ref = self.resolve_git_reference(repo_ref)
         
         # Create target directory if it doesn't exist

@@ -8,12 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-03-19
+
 ### Security
 
-- Harden dependency path validation — reject invalid path segments at parse time, enforce install-path containment in `get_install_path()`, and wrap filesystem deletions with safe containment checks across `uninstall`, `prune`, and `install` commands. New `utils/path_security` module provides centralized path validation.
+- Harden dependency path validation (#364)
 
+### Added
 
-## [0.8.2] - 2026-03-18
+- JFrog Artifactory VCS repository support (#354)
 
 ### Fixed
 
