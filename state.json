@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-17T01:08:22Z",
-  "last_run_tasks": ["task1", "task3", "task7"],
+  "last_updated": "2026-03-18T01:07:39Z",
+  "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -10,34 +10,46 @@
   },
   "coverage_baseline": {
     "total": "58%",
-    "run_date": "2026-03-17",
-    "test_count": 1938,
-    "passing": 1938,
+    "run_date": "2026-03-18",
+    "test_count": 2047,
+    "passing": 2047,
     "pre_existing_failures": 0,
-    "notes": "All 1938 tests pass as of 2026-03-17."
+    "notes": "All 2047 tests pass as of 2026-03-18."
   },
   "monthly_activity_issue": "open-2026-03",
   "yaml_pollution_note": "Running tests with --cov causes PyYAML global state corruption from some earlier test. Affects parse_skill_file and parse_primitive_file calls when run in full suite with coverage. Not a new issue. Tests pass without --cov.",
   "ansi_strip_note": "7 ANSI failures fully resolved as of 2026-03-16 (likely fixed in or around PR #313). No longer a concern.",
   "testing_backlog": [
-    {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "58%", "priority": "medium", "notes": "STATUS_SYMBOLS verified, uncovered edge cases in _rich_echo, _rich_error, _rich_warning fallback paths. console.py:15-20, 27-30, 63-65, 86-106, 137-145."},
-    {"id": "commands-helpers-io", "file": "src/apm_cli/commands/_helpers.py", "coverage": "80%", "priority": "done", "notes": "PR created 2026-03-17: test-assist/command-helpers-coverage-1773710009. Remaining uncovered: lazy import fallbacks, print_version, _auto_detect functions."},
+    {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "90%", "priority": "done", "notes": "PR submitted 2026-03-18: test-assist/utils-console-coverage-23224050701. +33 tests, 58%->90%."},
     {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "PR #221 open. Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
     {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "49%", "priority": "medium", "notes": "Branch test-assist/core-operations-runtime-manager-coverage exists - may have open PR"},
     {"id": "registry-operations", "file": "src/apm_cli/registry/operations.py", "coverage": "6%", "priority": "low", "notes": "Branch test-assist/registry-operations-coverage exists - may have open PR. Heavy network dependency."},
-    {"id": "security-scanner-remaining", "file": "src/apm_cli/commands/audit.py", "coverage": "96%", "priority": "low", "notes": "Lines 205-220 (Rich fallback rendering) still uncovered. Requires mocking Rich imports - complexity not worth it."}
+    {"id": "security-scanner-remaining", "file": "src/apm_cli/commands/audit.py", "coverage": "96%", "priority": "low", "notes": "Lines 205-220 (Rich fallback rendering) still uncovered. Requires mocking Rich imports - complexity not worth it."},
+    {"id": "commands-helpers-io", "file": "src/apm_cli/commands/_helpers.py", "coverage": "80%", "priority": "done", "notes": "PR #333 created 2026-03-17."}
   ],
-  "backlog_cursor": "utils-console",
-  "open_test_assist_branches": [
-    "test-assist/security-scanner-coverage-73623316",
-    "test-assist/command-helpers-coverage-1773710009"
+  "backlog_cursor": "runtime-manager",
+  "open_test_assist_prs": [
+    {"number": 221, "title": "test: add unit tests for AgentsCompiler (65%->82%)", "branch": "test-assist/agents-compiler-coverage-1773105017-70450d4bafccea6d"},
+    {"number": 291, "title": "fix(tests): strip ANSI codes before plain-text assertions", "branch": "test-assist/fix-ansi-failures-2026-03-14-4cae0cad88219467"},
+    {"number": 317, "title": "tests: improve coverage for security scanner and audit command", "branch": "test-assist/security-scanner-coverage-73623316-856bf4f138e805c5"},
+    {"number": 333, "title": "Add unit tests for commands/_helpers.py", "branch": "test-assist/command-helpers-coverage-1773710009-d5146800ef1d3222"}
   ],
   "completed_work": [
+    {
+      "run": "2026-03-18T01:07:39Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/utils-console-coverage-23224050701",
+      "pr_status": "pr_created",
+      "coverage_before": {"console": "58%"},
+      "coverage_after": {"console": "90%"},
+      "description": "Added 33 tests for utils/console.py. Coverage: 58%->90% (+32pp). Full suite: 2047 passing (up from 2014). Created monthly activity issue for 2026-03."
+    },
     {
       "run": "2026-03-17T01:08:22Z",
       "tasks": ["task1", "task3", "task7"],
       "branch": "test-assist/command-helpers-coverage-1773710009",
       "pr_status": "pr_created",
+      "pr_number": 333,
       "coverage_before": {"helpers": "59%"},
       "coverage_after": {"helpers": "80%"},
       "description": "Added 30 tests for commands/_helpers.py. Coverage: 59%->80% (+21pp). Full suite: 1938 passing (up from 1908)."
@@ -47,6 +59,7 @@
       "tasks": ["task3", "task4", "task7"],
       "branch": "test-assist/security-scanner-coverage-73623316",
       "pr_status": "pr_created",
+      "pr_number": 317,
       "coverage_before": {"content_scanner": "91%", "audit": "92%", "combined": "92%"},
       "coverage_after": {"content_scanner": "100%", "audit": "96%", "combined": "97%"},
       "description": "Added 12 tests for security scanner and audit command. content_scanner.py: 91%->100%, audit.py: 92%->96%. ANSI failures confirmed resolved (0 failures, 1868 passing)."
@@ -61,6 +74,7 @@
       "tasks": ["task3", "task7"],
       "branch": "test-assist/fix-ansi-failures-2026-03-14-4cae0cad88219467",
       "pr_status": "pr_created_but_resolved_by_other_means",
+      "pr_number": 291,
       "description": "Fixed 7 failing tests by adding _strip_ansi() helper. ANSI issues ultimately resolved without this PR."
     },
     {
