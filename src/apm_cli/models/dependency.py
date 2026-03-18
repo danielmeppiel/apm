@@ -310,6 +310,22 @@ class DependencyReference:
             return result
 
         repo_parts = self.repo_url.split("/")
+
+        # Security: reject traversal in repo_url segments (catches lockfile injection)
+        if any(seg in ('.', '..') for seg in repo_parts):
+            raise PathTraversalError(
+                f"Invalid repo_url '{self.repo_url}': "
+                f"path segments must not be '.' or '..'"
+            )
+
+        # Security: reject traversal in virtual_path (catches lockfile injection)
+        if self.virtual_path and any(
+            seg in ('.', '..') for seg in self.virtual_path.replace('\\', '/').split('/')
+        ):
+            raise PathTraversalError(
+                f"Invalid virtual_path '{self.virtual_path}': "
+                f"path segments must not be '.' or '..'"
+            )
         result: Path | None = None
         
         if self.is_virtual:
