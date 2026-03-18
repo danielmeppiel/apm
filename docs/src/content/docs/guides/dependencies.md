@@ -360,7 +360,7 @@ For runtimes that don't support input prompts (**Copilot CLI**, **Codex CLI**), 
 [!]  Warning: ${input:api-token} in server 'internal-knowledge-base' will not be resolved — Copilot CLI does not support input variable prompts
 ```
 
-For those runtimes, use a plain environment variable reference instead (e.g. `"${API_TOKEN}"`) and set the value in your shell environment.
+For those runtimes, `${input:...}` and `${VAR}` placeholders in `env`/`headers` are not resolved and will be written literally. Omit secrets from your `apm.yml` and set any required API tokens as real environment variables in your shell or Copilot/Codex CLI configuration so the runtime process inherits them normally.
 
 ⚠️ **Transitive trust rule:** Self-defined servers from direct dependencies (depth=1 in the lockfile) are auto-trusted. Self-defined servers from transitive dependencies (depth > 1) are skipped with a warning by default. You can either re-declare them in your own `apm.yml`, or use `--trust-transitive-mcp` to trust all self-defined servers from upstream packages:
 
