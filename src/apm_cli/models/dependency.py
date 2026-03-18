@@ -300,7 +300,14 @@ class DependencyReference:
         """
         if self.is_local and self.local_path:
             pkg_dir_name = Path(self.local_path).name
-            return apm_modules_dir / "_local" / pkg_dir_name
+            if pkg_dir_name in ('', '.', '..'):
+                raise PathTraversalError(
+                    f"Invalid local package path '{self.local_path}': "
+                    f"basename must not be empty, '.', or '..'"
+                )
+            result = apm_modules_dir / "_local" / pkg_dir_name
+            ensure_path_within(result, apm_modules_dir)
+            return result
 
         repo_parts = self.repo_url.split("/")
         result: Path | None = None
@@ -438,7 +445,8 @@ class DependencyReference:
         if sub_path is not None:
             if not isinstance(sub_path, str) or not sub_path.strip():
                 raise ValueError("'path' field must be a non-empty string")
-            sub_path = sub_path.strip().strip('/')
+            # Normalize backslashes to forward slashes for cross-platform safety
+            sub_path = sub_path.replace('\\', '/').strip().strip('/')
             # Security: reject path traversal
             if any(seg in ('.', '..') for seg in sub_path.split('/')):
                 raise PathTraversalError(
@@ -650,7 +658,9 @@ class DependencyReference:
                 virtual_path = '/'.join(path_segments[min_base_segments:])
 
                 # Security: reject path traversal in virtual path
-                if any(seg in ('.', '..') for seg in virtual_path.split('/')):
+                # Normalize backslashes for cross-platform safety
+                vp_check = virtual_path.replace('\\', '/')
+                if any(seg in ('.', '..') for seg in vp_check.split('/')):
                     raise PathTraversalError(
                         f"Invalid virtual path '{virtual_path}': path segments must not be '.' or '..'"
                     )

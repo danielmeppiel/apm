@@ -156,6 +156,17 @@ class TestDependencyParseTraversalRejection:
         with pytest.raises((ValueError, PathTraversalError)):
             DependencyReference.parse_from_dict(entry)
 
+    def test_parse_from_dict_rejects_backslash_traversal(self):
+        """Windows-style backslash traversal must be caught."""
+        entry = {"git": "https://github.com/owner/repo", "path": "..\\..\\etc"}
+        with pytest.raises((ValueError, PathTraversalError)):
+            DependencyReference.parse_from_dict(entry)
+
+    def test_parse_from_dict_rejects_mixed_separator_traversal(self):
+        entry = {"git": "https://github.com/owner/repo", "path": "sub\\..\\..\\esc"}
+        with pytest.raises((ValueError, PathTraversalError)):
+            DependencyReference.parse_from_dict(entry)
+
     def test_parse_from_dict_accepts_valid_subpath(self):
         entry = {"git": "https://github.com/owner/repo", "path": "skills/my-skill"}
         dep = DependencyReference.parse_from_dict(entry)
@@ -211,3 +222,24 @@ class TestGetInstallPathContainment:
         path = dep.get_install_path(base)
         assert "myorg" in str(path)
         assert path.resolve().is_relative_to(base.resolve())
+
+    def test_local_path_dotdot_basename_raises(self, tmp_path):
+        """Crafted local_path with '..' basename must be caught."""
+        base = tmp_path / "apm_modules"
+        base.mkdir()
+        dep = DependencyReference(repo_url="unused")
+        dep.is_local = True
+        dep.local_path = "/some/path/.."
+        with pytest.raises(PathTraversalError):
+            dep.get_install_path(base)
+
+    def test_local_path_dot_basename_raises(self, tmp_path):
+        """Path('.').name returns '' on some platforms — guard handles it."""
+        base = tmp_path / "apm_modules"
+        base.mkdir()
+        dep = DependencyReference(repo_url="unused")
+        dep.is_local = True
+        dep.local_path = "."
+        # Path(".").name is "" which is in our reject set
+        with pytest.raises(PathTraversalError):
+            dep.get_install_path(base)
