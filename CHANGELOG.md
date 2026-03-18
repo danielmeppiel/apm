@@ -8,8 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-03-19
 
-## [0.8.2] - 2026-03-18
+### Security
+
+- Harden dependency path validation (#364)
+
+### Added
+
+- JFrog Artifactory VCS repository support (#354)
 
 ### Fixed
 
