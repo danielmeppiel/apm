@@ -455,6 +455,8 @@ APM configures MCP servers in the native config format for each supported client
 
 **Runtime targeting**: APM detects which runtimes are installed and configures MCP servers for all of them. Use `--runtime <name>` or `--exclude <name>` to control which clients receive configuration.
 
+> **VS Code detection**: APM considers VS Code available when either the `code` CLI command is on PATH **or** a `.vscode/` directory exists in the current working directory. This means VS Code MCP configuration works even on macOS when "Install 'code' command in PATH" has not been run from the VS Code command palette.
+
 ```bash
 # Install MCP dependencies for all detected runtimes
 apm install

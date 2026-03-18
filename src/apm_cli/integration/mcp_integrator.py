@@ -31,6 +31,18 @@ from apm_cli.utils.console import (
 logger = logging.getLogger(__name__)
 
 
+def _is_vscode_available() -> bool:
+    """Return True when VS Code can be targeted for MCP configuration.
+
+    VS Code is considered available when either:
+    - the ``code`` CLI command is on PATH (the standard case), or
+    - a ``.vscode/`` directory exists in the current working directory
+      (common on macOS where the user hasn't run "Install 'code' command
+      in PATH" from the VS Code command palette).
+    """
+    return shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir()
+
+
 class MCPIntegrator:
     """MCP lifecycle orchestrator  -- dependency resolution, installation, and cleanup.
 
@@ -833,7 +845,7 @@ class MCPIntegrator:
                 for runtime_name in ["copilot", "codex", "vscode", "cursor", "opencode"]:
                     try:
                         if runtime_name == "vscode":
-                            if shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir():
+                            if _is_vscode_available():
                                 ClientFactory.create_client(runtime_name)
                                 installed_runtimes.append(runtime_name)
                         elif runtime_name == "cursor":
@@ -859,7 +871,7 @@ class MCPIntegrator:
                     if shutil.which(rt) is not None
                 ]
                 # VS Code: check binary on PATH or .vscode/ directory presence
-                if shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir():
+                if _is_vscode_available():
                     installed_runtimes.append("vscode")
                 # Cursor is directory-presence based, not binary-based
                 if (Path.cwd() / ".cursor").is_dir():

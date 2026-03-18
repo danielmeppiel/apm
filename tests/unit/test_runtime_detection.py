@@ -198,36 +198,37 @@ class TestRuntimeDetectionIntegration(unittest.TestCase):
 
 
 class TestVSCodeRuntimeDetection(unittest.TestCase):
-    """Tests for VS Code runtime detection via binary and directory presence."""
+    """Tests for the _is_vscode_available() production helper."""
 
-    def _check_vscode(self, code_on_path: bool, vscode_dir_exists: bool) -> bool:
-        """Helper that mirrors the detection logic from mcp_integrator."""
+    MODULE = "apm_cli.integration.mcp_integrator"
+
+    def _run(self, code_on_path: bool, vscode_dir_exists: bool) -> bool:
+        from apm_cli.integration.mcp_integrator import _is_vscode_available
+
         which_result = "/usr/local/bin/code" if code_on_path else None
-        with patch("shutil.which", return_value=which_result):
-            with patch.object(Path, "is_dir", return_value=vscode_dir_exists):
-                return shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir()
+        with patch(f"{self.MODULE}.shutil.which", return_value=which_result):
+            with patch(f"{self.MODULE}.Path.cwd") as mock_cwd:
+                mock_vscode = MagicMock()
+                mock_vscode.__truediv__ = lambda self, other: mock_vscode
+                mock_vscode.is_dir.return_value = vscode_dir_exists
+                mock_cwd.return_value = mock_vscode
+                return _is_vscode_available()
 
     def test_vscode_detected_via_code_binary(self):
         """`code` binary on PATH is sufficient to detect VS Code."""
-        self.assertTrue(self._check_vscode(code_on_path=True, vscode_dir_exists=False))
+        self.assertTrue(self._run(code_on_path=True, vscode_dir_exists=False))
 
     def test_vscode_detected_via_vscode_directory(self):
         """.vscode/ directory presence detects VS Code even without `code` on PATH."""
-        self.assertTrue(self._check_vscode(code_on_path=False, vscode_dir_exists=True))
+        self.assertTrue(self._run(code_on_path=False, vscode_dir_exists=True))
 
     def test_vscode_not_detected_without_binary_or_dir(self):
         """VS Code is NOT detected when neither `code` is on PATH nor .vscode/ exists."""
-        self.assertFalse(self._check_vscode(code_on_path=False, vscode_dir_exists=False))
+        self.assertFalse(self._run(code_on_path=False, vscode_dir_exists=False))
 
     def test_vscode_detected_when_both_binary_and_dir_present(self):
-        """VS Code is detected (and only once) when both indicators are present."""
-        installed = []
-        with patch("shutil.which", return_value="/usr/local/bin/code"):
-            with patch.object(Path, "is_dir", return_value=True):
-                if shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir():
-                    installed.append("vscode")
-        self.assertIn("vscode", installed)
-        self.assertEqual(installed.count("vscode"), 1)
+        """_is_vscode_available() returns True (not duplicated) when both are present."""
+        self.assertTrue(self._run(code_on_path=True, vscode_dir_exists=True))
 
 
 if __name__ == "__main__":
