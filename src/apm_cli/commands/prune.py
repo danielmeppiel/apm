@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ..utils.path_security import PathTraversalError, safe_rmtree
 from ._helpers import _build_expected_install_paths, _scan_installed_packages
 
 # APM Dependencies
@@ -80,7 +81,7 @@ def prune(ctx, dry_run):
             path_parts = org_repo_name.split("/")
             pkg_path = apm_modules_dir.joinpath(*path_parts)
             try:
-                shutil.rmtree(pkg_path)
+                safe_rmtree(pkg_path, apm_modules_dir)
                 _rich_info(f"+ Removed {org_repo_name}")
                 removed_count += 1
                 pruned_keys.append(org_repo_name)
