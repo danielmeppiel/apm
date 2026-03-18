@@ -32,6 +32,7 @@ class GitHubTokenManager:
         'models': ['GITHUB_TOKEN', 'GITHUB_APM_PAT'],  # GitHub Models prefers user-scoped PAT, falls back to APM PAT
         'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN', 'GH_TOKEN'],  # APM module access (GitHub)
         'ado_modules': ['ADO_APM_PAT'],  # APM module access (Azure DevOps)
+        'artifactory_modules': ['ARTIFACTORY_APM_TOKEN'],  # APM module access (JFrog Artifactory)
     }
     
     # Runtime-specific environment variable mappings
@@ -50,6 +51,24 @@ class GitHubTokenManager:
         self.preserve_existing = preserve_existing
         self._credential_cache: Dict[str, Optional[str]] = {}
     
+    @staticmethod
+    def _is_valid_credential_token(token: str) -> bool:
+        """Validate that a credential-fill token looks like a real credential.
+        
+        Rejects garbage values that can appear when GIT_ASKPASS or credential
+        helpers return prompt text instead of actual tokens.
+        """
+        if not token:
+            return False
+        if len(token) > 1024:
+            return False
+        if any(c in token for c in (' ', '\t', '\n', '\r')):
+            return False
+        prompt_fragments = ('Password for', 'Username for', 'password for', 'username for')
+        if any(fragment in token for fragment in prompt_fragments):
+            return False
+        return True
+
     @staticmethod
     def resolve_credential_from_git(host: str) -> Optional[str]:
         """Resolve a credential from the git credential store.
@@ -71,7 +90,7 @@ class GitHubTokenManager:
                 capture_output=True,
                 text=True,
                 timeout=5,
-                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': 'echo'},
+                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': ''},
             )
             if result.returncode != 0:
                 return None
@@ -79,7 +98,9 @@ class GitHubTokenManager:
             for line in result.stdout.splitlines():
                 if line.startswith('password='):
                     token = line[len('password='):]
-                    return token if token else None
+                    if token and GitHubTokenManager._is_valid_credential_token(token):
+                        return token
+                    return None
             return None
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return None
