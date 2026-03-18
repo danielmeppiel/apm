@@ -343,6 +343,59 @@ test_basic_commands() {
     log_success "Basic commands work"
 }
 
+# GH-AW compatibility test - replicates the exact flow gh-aw uses:
+#   1. Install a public package in isolated mode (no token)
+#   2. Pack for Claude target with archive
+# This catches regressions like v0.8.1 where credential fill garbage
+# broke public repo cloning in tokenless environments.
+test_ghaw_compat() {
+    log_test "GH-AW Compatibility: tokenless isolated install + pack"
+    
+    local ghaw_dir="ghaw-compat-test"
+    mkdir -p "$ghaw_dir"
+    
+    # Run in a subshell with NO GitHub tokens — simulates gh-aw activation
+    # where apm-action does not pass GITHUB_TOKEN to the subprocess.
+    (
+        unset GITHUB_TOKEN GITHUB_APM_PAT GH_TOKEN 2>/dev/null || true
+        cd "$ghaw_dir"
+        
+        echo "Running: apm install microsoft/apm-sample-package --isolated (no token)"
+        "$BINARY_PATH" install microsoft/apm-sample-package --isolated
+        local install_exit=$?
+        if [[ $install_exit -ne 0 ]]; then
+            echo "apm install failed with exit code $install_exit"
+            exit 1
+        fi
+        
+        echo "Running: apm pack --target claude --archive"
+        "$BINARY_PATH" pack --target claude --archive
+        local pack_exit=$?
+        if [[ $pack_exit -ne 0 ]]; then
+            echo "apm pack failed with exit code $pack_exit"
+            exit 1
+        fi
+        
+        # Verify a bundle was produced
+        if ls *.tar.gz 1>/dev/null 2>&1 || ls *.zip 1>/dev/null 2>&1; then
+            echo "Bundle archive produced successfully"
+        else
+            echo "No bundle archive found"
+            exit 1
+        fi
+    )
+    local subshell_exit=$?
+    
+    rm -rf "$ghaw_dir" 2>/dev/null || true
+    
+    if [[ $subshell_exit -ne 0 ]]; then
+        log_error "GH-AW compatibility test failed — public repo install/pack broken without token"
+        return 1
+    fi
+    
+    log_success "GH-AW compatibility: tokenless install + pack works"
+}
+
 # Main test runner - follows exact README flow
 main() {
 echo "APM CLI Release Validation - Binary Isolation Testing"
@@ -370,7 +423,7 @@ echo ""
     echo "Binary found and executable: $BINARY_PATH"
     
     local tests_passed=0
-    local tests_total=5  # Prerequisites, basic commands, runtime setup, 2 hero scenarios
+    local tests_total=6  # Prerequisites, basic commands, gh-aw compat, runtime setup, 2 hero scenarios
     local dependency_tests_run=false
     
     # Add dependency tests to total if available and GITHUB token is present
@@ -399,6 +452,12 @@ echo ""
         ((tests_passed++))
     else
         log_error "Basic commands test failed"
+    fi
+    
+    if test_ghaw_compat; then
+        ((tests_passed++))
+    else
+        log_error "GH-AW compatibility test failed"
     fi
     
     if test_runtime_setup; then
@@ -448,6 +507,7 @@ echo ""
         echo "  1. Prerequisites (GITHUB_TOKEN) ✅"
         echo "  2. Binary accessibility ✅"
         echo "  3. Runtime setup (copilot) ✅"
+        echo "  4. GH-AW compatibility (tokenless install + pack) ✅"
         echo ""
         echo "  HERO SCENARIO 1: 30-Second Zero-Config ✨"
         echo "    - Run virtual package directly ✅"
