@@ -362,6 +362,7 @@ test_ghaw_compat() {
         
         # Create a minimal apm.yml like apm-action does in isolated mode
         cat > apm.yml <<'APMYML'
+name: ghaw-compat-test
 dependencies:
   - microsoft/apm-sample-package
 APMYML
