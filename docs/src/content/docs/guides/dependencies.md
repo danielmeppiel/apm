@@ -336,6 +336,32 @@ mcp:
 - `url` — required for `http`, `sse`, `streamable-http` transports
 - `command` — required for `stdio` transport
 
+#### `${input:...}` Variable Resolution
+
+You can use `${input:<id>}` placeholders in `env` and `headers` values for secrets that should be prompted at runtime rather than stored in files:
+
+```yaml
+mcp:
+  - name: internal-knowledge-base
+    registry: false
+    transport: http
+    url: "https://mcp.internal.example.com"
+    env:
+      API_TOKEN: "${input:api-token}"
+    headers:
+      Authorization: "Bearer ${input:api-token}"
+```
+
+When targeting **VS Code / Copilot extension** (`.vscode/mcp.json`), APM automatically generates matching `inputs` entries that prompt users for the value at runtime — no additional configuration needed.
+
+For runtimes that don't support input prompts (**Copilot CLI**, **Codex CLI**), APM emits a warning during `apm install` so you know the placeholder will remain unresolved:
+
+```
+[!]  Warning: ${input:api-token} in server 'internal-knowledge-base' will not be resolved — Copilot CLI does not support input variable prompts
+```
+
+For those runtimes, use a plain environment variable reference instead (e.g. `"${API_TOKEN}"`) and set the value in your shell environment.
+
 ⚠️ **Transitive trust rule:** Self-defined servers from direct dependencies (depth=1 in the lockfile) are auto-trusted. Self-defined servers from transitive dependencies (depth > 1) are skipped with a warning by default. You can either re-declare them in your own `apm.yml`, or use `--trust-transitive-mcp` to trust all self-defined servers from upstream packages:
 
 ```bash
