@@ -45,7 +45,7 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
 
         self.assertTrue(result.found)
         self.assertEqual(result.policy.name, "devexpgbb-test-policy")
-        self.assertIn("DevExpGBB/*", result.policy.dependencies.allow)
+        self.assertIn("DevExpGbb/*", result.policy.dependencies.allow)
         self.assertFalse(result.cached)
 
     def test_discover_minimal_policy(self):
@@ -164,7 +164,7 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
         self.assertIn(
             "contoso-governance/coding-standards", merged.dependencies.require
         )
-        self.assertIn("DevExpGBB/required-standards", merged.dependencies.require)
+        self.assertIn("DevExpGbb/required-standards", merged.dependencies.require)
         # Allow list is intersected: common entries between enterprise and org
         self.assertIn("microsoft/*", merged.dependencies.allow)
         self.assertIn("github/*", merged.dependencies.allow)
@@ -175,19 +175,113 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
     "Requires APM_POLICY_E2E_TESTS=1 and GITHUB_APM_PAT",
 )
 class TestPolicyDiscoveryLiveAPI(unittest.TestCase):
-    """Tests that hit real GitHub APIs. Only run in CI with proper tokens."""
+    """Tests that hit real GitHub APIs against DevExpGbb org.
+
+    Repos used:
+    - https://github.com/DevExpGbb/.github  (contains apm-policy.yml)
+    - https://github.com/DevExpGbb/apm-policy-test-fixture  (has repo override)
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_fetch_nonexistent_policy_returns_not_found(self):
         """Fetching from a repo without apm-policy.yml returns not-found."""
         from apm_cli.policy.discovery import _fetch_from_repo
 
-        temp_dir = tempfile.mkdtemp()
-        try:
-            # Most repos won't have apm-policy.yml
-            result = _fetch_from_repo("microsoft/apm", Path(temp_dir))
-            self.assertFalse(result.found)
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        # microsoft/apm won't have apm-policy.yml
+        result = _fetch_from_repo("microsoft/apm", self.project_root)
+        self.assertFalse(result.found)
+
+    def test_fetch_devexpgbb_org_policy(self):
+        """Fetch real apm-policy.yml from DevExpGbb/.github repo."""
+        from apm_cli.policy.discovery import _fetch_from_repo
+
+        result = _fetch_from_repo("DevExpGbb/.github", self.project_root, no_cache=True)
+        self.assertTrue(result.found, f"Expected policy from DevExpGbb/.github, got error: {result.error}")
+        self.assertEqual(result.policy.name, "devexpgbb-test-policy")
+        self.assertIn("DevExpGbb/*", result.policy.dependencies.allow)
+        self.assertEqual(result.policy.enforcement, "warn")
+
+    def test_fetch_devexpgbb_repo_override(self):
+        """Fetch repo-level policy from DevExpGbb/apm-policy-test-fixture."""
+        from apm_cli.policy.discovery import _fetch_github_contents
+
+        content, error = _fetch_github_contents(
+            "DevExpGbb/apm-policy-test-fixture",
+            ".github/apm-policy.yml",
+        )
+        self.assertIsNone(error, f"Unexpected error: {error}")
+        self.assertIsNotNone(content)
+        self.assertIn("extends: org", content)
+        self.assertIn("experimental/*", content)
+
+    def test_auto_discover_from_cloned_repo(self):
+        """Clone test fixture repo and auto-discover org policy."""
+        import subprocess
+
+        # Clone the fixture repo into temp dir
+        clone_dir = self.project_root / "fixture-clone"
+        result = subprocess.run(
+            ["git", "clone", "--depth=1",
+             "https://github.com/DevExpGbb/apm-policy-test-fixture.git",
+             str(clone_dir)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            self.skipTest(f"Clone failed: {result.stderr}")
+
+        from apm_cli.policy.discovery import discover_policy
+
+        fetch_result = discover_policy(clone_dir, no_cache=True)
+        self.assertTrue(
+            fetch_result.found,
+            f"Auto-discovery failed from cloned repo: {fetch_result.error}",
+        )
+        self.assertEqual(fetch_result.policy.name, "devexpgbb-test-policy")
+
+    def test_fetch_caches_then_serves_from_cache(self):
+        """First fetch hits API; second fetch serves from cache."""
+        from apm_cli.policy.discovery import _fetch_from_repo
+
+        # First fetch: hits API
+        result1 = _fetch_from_repo("DevExpGbb/.github", self.project_root, no_cache=True)
+        self.assertTrue(result1.found)
+        self.assertFalse(result1.cached)
+
+        # Second fetch: should come from cache
+        result2 = _fetch_from_repo("DevExpGbb/.github", self.project_root, no_cache=False)
+        self.assertTrue(result2.found)
+        self.assertTrue(result2.cached)
+        self.assertEqual(result2.policy.name, result1.policy.name)
+
+    def test_merge_org_with_repo_override_live(self):
+        """Fetch both org and repo policies from GitHub, merge them."""
+        from apm_cli.policy.discovery import _fetch_from_repo
+        from apm_cli.policy.inheritance import merge_policies
+        from apm_cli.policy.parser import load_policy
+
+        # Fetch org policy
+        org_result = _fetch_from_repo("DevExpGbb/.github", self.project_root, no_cache=True)
+        self.assertTrue(org_result.found, f"Org policy fetch failed: {org_result.error}")
+
+        # Fetch repo override content
+        from apm_cli.policy.discovery import _fetch_github_contents
+        content, error = _fetch_github_contents(
+            "DevExpGbb/apm-policy-test-fixture",
+            ".github/apm-policy.yml",
+        )
+        self.assertIsNone(error)
+        repo_policy = load_policy(content)
+
+        # Merge: repo overrides org (tighten-only)
+        merged = merge_policies(org_result.policy, repo_policy)
+        self.assertIn("experimental/*", merged.dependencies.deny)
+        self.assertIn("test-blocked/*", merged.dependencies.deny)
 
 
 if __name__ == "__main__":

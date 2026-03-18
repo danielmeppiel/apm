@@ -31,7 +31,7 @@ class TestPolicyFixtures(unittest.TestCase):
         policy = load_policy(FIXTURES_DIR / "org-policy.yml")
         self.assertEqual(policy.name, "devexpgbb-test-policy")
         self.assertEqual(policy.enforcement, "warn")
-        self.assertIn("DevExpGBB/*", policy.dependencies.allow)
+        self.assertIn("DevExpGbb/*", policy.dependencies.allow)
         self.assertIn("test-blocked/*", policy.dependencies.deny)
         self.assertEqual(policy.dependencies.require_resolution, "project-wins")
         self.assertEqual(policy.cache.ttl, 3600)

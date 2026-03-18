@@ -7,13 +7,13 @@ cache:
 
 dependencies:
   allow:
-    - "DevExpGBB/*"
+    - "DevExpGbb/*"
     - "microsoft/*"
     - "github/*"
   deny:
     - "test-blocked/*"
   require:
-    - "DevExpGBB/required-standards"
+    - "DevExpGbb/required-standards"
   require_resolution: project-wins
 
 mcp:
