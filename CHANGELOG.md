@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
-## [0.8.2] - 2026-03-18
+## [0.8.3] - 2026-03-18
 
 ### Fixed
 
 - Credential fill returning garbage token in tokenless CI environments — broke `apm install` for public repos in GitHub Actions (#356)
+- Release validation `test_ghaw_compat` using correct `apm install` syntax (#360)
 
 ### Added
 
