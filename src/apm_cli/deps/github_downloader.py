@@ -1566,6 +1566,9 @@ author: {dep_ref.repo_url.split('/')[0]}
 
             # Check if subdirectory exists
             source_subdir = temp_clone_path / subdir_path
+            # Security: ensure subdirectory resolves within the cloned repo
+            from ..utils.path_security import ensure_path_within
+            ensure_path_within(source_subdir, temp_clone_path)
             if not source_subdir.exists():
                 raise RuntimeError(f"Subdirectory '{subdir_path}' not found in repository")
 

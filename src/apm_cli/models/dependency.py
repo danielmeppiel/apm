@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..utils.path_security import PathTraversalError, ensure_path_within
 from ..utils.github_host import (
     default_host,
     is_artifactory_path,
@@ -293,12 +294,39 @@ class DependencyReference:
             
         Returns:
             Path: Absolute path to the package installation directory
+            
+        Raises:
+            PathTraversalError: If the computed path escapes apm_modules_dir
         """
         if self.is_local and self.local_path:
             pkg_dir_name = Path(self.local_path).name
-            return apm_modules_dir / "_local" / pkg_dir_name
+            if pkg_dir_name in ('', '.', '..'):
+                raise PathTraversalError(
+                    f"Invalid local package path '{self.local_path}': "
+                    f"basename must not be empty, '.', or '..'"
+                )
+            result = apm_modules_dir / "_local" / pkg_dir_name
+            ensure_path_within(result, apm_modules_dir)
+            return result
 
         repo_parts = self.repo_url.split("/")
+
+        # Security: reject traversal in repo_url segments (catches lockfile injection)
+        if any(seg in ('.', '..') for seg in repo_parts):
+            raise PathTraversalError(
+                f"Invalid repo_url '{self.repo_url}': "
+                f"path segments must not be '.' or '..'"
+            )
+
+        # Security: reject traversal in virtual_path (catches lockfile injection)
+        if self.virtual_path and any(
+            seg in ('.', '..') for seg in self.virtual_path.replace('\\', '/').split('/')
+        ):
+            raise PathTraversalError(
+                f"Invalid virtual_path '{self.virtual_path}': "
+                f"path segments must not be '.' or '..'"
+            )
+        result: Path | None = None
         
         if self.is_virtual:
             # Subdirectory packages (like Claude Skills) should use natural path structure
@@ -306,30 +334,35 @@ class DependencyReference:
                 # Use repo path + subdirectory path
                 if self.is_azure_devops() and len(repo_parts) >= 3:
                     # ADO: org/project/repo/subdir
-                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2] / self.virtual_path
+                    result = apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2] / self.virtual_path
                 elif len(repo_parts) >= 2:
                     # owner/repo/subdir or group/subgroup/repo/subdir
-                    return apm_modules_dir.joinpath(*repo_parts, self.virtual_path)
+                    result = apm_modules_dir.joinpath(*repo_parts, self.virtual_path)
             else:
                 # Virtual file/collection: use sanitized package name (flattened)
                 package_name = self.get_virtual_package_name()
                 if self.is_azure_devops() and len(repo_parts) >= 3:
                     # ADO: org/project/virtual-pkg-name
-                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
+                    result = apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
                 elif len(repo_parts) >= 2:
                     # owner/virtual-pkg-name (use first segment as namespace)
-                    return apm_modules_dir / repo_parts[0] / package_name
+                    result = apm_modules_dir / repo_parts[0] / package_name
         else:
             # Regular package: use full repo path
             if self.is_azure_devops() and len(repo_parts) >= 3:
                 # ADO: org/project/repo
-                return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
+                result = apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
             elif len(repo_parts) >= 2:
                 # owner/repo or group/subgroup/repo (generic hosts)
-                return apm_modules_dir.joinpath(*repo_parts)
+                result = apm_modules_dir.joinpath(*repo_parts)
         
-        # Fallback: join all parts
-        return apm_modules_dir.joinpath(*repo_parts)
+        if result is None:
+            # Fallback: join all parts
+            result = apm_modules_dir.joinpath(*repo_parts)
+
+        # Security: ensure the computed path stays within apm_modules/
+        ensure_path_within(result, apm_modules_dir)
+        return result
     
     @staticmethod
     def _normalize_ssh_protocol_url(url: str) -> str:
@@ -428,7 +461,13 @@ class DependencyReference:
         if sub_path is not None:
             if not isinstance(sub_path, str) or not sub_path.strip():
                 raise ValueError("'path' field must be a non-empty string")
-            sub_path = sub_path.strip().strip('/')
+            # Normalize backslashes to forward slashes for cross-platform safety
+            sub_path = sub_path.replace('\\', '/').strip().strip('/')
+            # Security: reject path traversal
+            if any(seg in ('.', '..') for seg in sub_path.split('/')):
+                raise PathTraversalError(
+                    f"Invalid path '{sub_path}': path segments must not be '.' or '..'"
+                )
         
         # Parse the git URL using the standard parser
         dep = cls.parse(git_url)
@@ -633,6 +672,14 @@ class DependencyReference:
                 
                 # Extract virtual path (base repo is derived later)
                 virtual_path = '/'.join(path_segments[min_base_segments:])
+
+                # Security: reject path traversal in virtual path
+                # Normalize backslashes for cross-platform safety
+                vp_check = virtual_path.replace('\\', '/')
+                if any(seg in ('.', '..') for seg in vp_check.split('/')):
+                    raise PathTraversalError(
+                        f"Invalid virtual path '{virtual_path}': path segments must not be '.' or '..'"
+                    )
                 
                 # Virtual package types (validated later during download):
                 # 1. Collections: /collections/ in path
@@ -807,6 +854,10 @@ class DependencyReference:
                 # ADO project names may contain spaces
                 allowed_pattern = r'^[a-zA-Z0-9._\- ]+$' if is_ado_host else r'^[a-zA-Z0-9._-]+$'
                 for part in uparts:
+                    if part in ('.', '..'):
+                        raise PathTraversalError(
+                            f"Invalid repository path component: '{part}' is a traversal sequence"
+                        )
                     if not re.match(allowed_pattern, part.rstrip('.git')):
                         raise ValueError(f"Invalid repository path component: {part}")
 

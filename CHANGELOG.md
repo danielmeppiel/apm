@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-03-19
+
+### Security
+
+- Harden dependency path validation (#364)
+
 ### Added
 
-- JFrog Artifactory VCS repository support — explicit FQDN, transparent proxy (`ARTIFACTORY_BASE_URL`), air-gapped mode (`ARTIFACTORY_ONLY=1`), multi-format archive URLs, zip path traversal protection (#354)
-
-## [0.8.2] - 2026-03-18
+- JFrog Artifactory VCS repository support (#354)
 
 ### Fixed
 

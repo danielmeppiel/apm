@@ -11,6 +11,7 @@ from ..drift import build_download_ref, detect_orphans, detect_ref_change
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
+from ..utils.path_security import safe_rmtree
 from ._helpers import (
     _create_minimal_apm_yml,
     _get_default_config,
@@ -802,7 +803,10 @@ def _copy_local_package(dep_ref, install_path, project_root):
     # Ensure parent exists and clean target (always re-copy for local deps)
     install_path.parent.mkdir(parents=True, exist_ok=True)
     if install_path.exists():
-        shutil.rmtree(install_path)
+        # install_path is already validated by get_install_path() (Layer 2),
+        # but use safe_rmtree for defense-in-depth.
+        apm_modules_dir = install_path.parent.parent  # _local/<name> → apm_modules
+        safe_rmtree(install_path, apm_modules_dir)
 
     shutil.copytree(local, install_path, dirs_exist_ok=False, symlinks=True)
     return install_path
