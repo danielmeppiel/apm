@@ -554,11 +554,38 @@ jobs:
             ./dist/apm-windows-x86_64.zip
             ./dist/apm-windows-x86_64.zip.sha256
 
+  # GH-AW Compatibility Gate — validates the released binary works in the
+  # exact flow GitHub Agentic Workflows uses (isolated install + pack, no token).
+  # Gates publish-pypi and update-homebrew so broken versions don't reach stable distribution.
+  gh-aw-compat:
+    name: GH-AW Compatibility
+    needs: [create-release]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install and pack with apm-action
+        uses: microsoft/apm-action@v1
+        id: pack
+        with:
+          dependencies: |
+            - microsoft/apm-sample-package
+          isolated: 'true'
+          pack: 'true'
+          archive: 'true'
+          target: claude
+          apm-version: ${{ github.ref_name }}
+          working-directory: /tmp/gh-aw-compat-test
+
+      - name: Verify bundle
+        run: |
+          test -f "${{ steps.pack.outputs.bundle-path }}"
+          echo "✅ GH-AW compatibility test passed"
+
   # Publish to PyPI (only stable releases from public repo)  
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [test, build, integration-tests, release-validation, create-release]
+    needs: [test, build, integration-tests, release-validation, create-release, gh-aw-compat]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     environment:
       name: pypi
@@ -596,7 +623,7 @@ jobs:
   update-homebrew:
     name: Update Homebrew Formula
     runs-on: ubuntu-latest
-    needs: [test, build, integration-tests, release-validation, create-release, publish-pypi]
+    needs: [test, build, integration-tests, release-validation, create-release, gh-aw-compat, publish-pypi]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     permissions:
       contents: read
@@ -661,7 +688,7 @@ jobs:
   update-scoop:
     name: Update Scoop Bucket
     runs-on: ubuntu-latest
-    needs: [test, build, integration-tests, release-validation, create-release, publish-pypi]
+    needs: [test, build, integration-tests, release-validation, create-release, gh-aw-compat, publish-pypi]
     # TODO: Enable once downstream repository and secrets are configured (see #88)
     if: false && github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     permissions:

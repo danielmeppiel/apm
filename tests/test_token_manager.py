@@ -131,6 +131,118 @@ class TestResolveCredentialFromGit:
             call_env = mock_run.call_args.kwargs['env']
             assert call_env['GIT_TERMINAL_PROMPT'] == '0'
 
+    def test_git_askpass_set_to_empty(self):
+        """GIT_ASKPASS is set to empty string (not 'echo') to prevent prompt echo."""
+        mock_result = MagicMock(returncode=0, stdout="password=tok\n")
+        with patch('subprocess.run', return_value=mock_result) as mock_run:
+            GitHubTokenManager.resolve_credential_from_git('github.com')
+            call_env = mock_run.call_args.kwargs['env']
+            assert call_env['GIT_ASKPASS'] == ''
+
+    def test_rejects_password_prompt_as_token(self):
+        """Rejects 'Password for ...' prompt text echoed back by GIT_ASKPASS."""
+        mock_result = MagicMock(
+            returncode=0,
+            stdout="password=Password for 'https://github.com': \n",
+        )
+        with patch('subprocess.run', return_value=mock_result):
+            assert GitHubTokenManager.resolve_credential_from_git('github.com') is None
+
+    def test_rejects_username_prompt_as_token(self):
+        """Rejects 'Username for ...' prompt text."""
+        mock_result = MagicMock(
+            returncode=0,
+            stdout="password=Username for 'https://github.com': \n",
+        )
+        with patch('subprocess.run', return_value=mock_result):
+            assert GitHubTokenManager.resolve_credential_from_git('github.com') is None
+
+    def test_rejects_token_with_spaces(self):
+        """Rejects tokens containing spaces (likely prompt garbage)."""
+        mock_result = MagicMock(
+            returncode=0,
+            stdout="password=some garbage token value\n",
+        )
+        with patch('subprocess.run', return_value=mock_result):
+            assert GitHubTokenManager.resolve_credential_from_git('github.com') is None
+
+    def test_rejects_token_with_tabs(self):
+        """Rejects tokens containing tab characters."""
+        mock_result = MagicMock(
+            returncode=0,
+            stdout="password=some\ttoken\n",
+        )
+        with patch('subprocess.run', return_value=mock_result):
+            assert GitHubTokenManager.resolve_credential_from_git('github.com') is None
+
+    def test_rejects_excessively_long_token(self):
+        """Rejects tokens longer than 1024 characters."""
+        mock_result = MagicMock(
+            returncode=0,
+            stdout=f"password={'x' * 1025}\n",
+        )
+        with patch('subprocess.run', return_value=mock_result):
+            assert GitHubTokenManager.resolve_credential_from_git('github.com') is None
+
+    def test_accepts_valid_ghp_token(self):
+        """Accepts a normal GitHub PAT (ghp_ prefix)."""
+        mock_result = MagicMock(
+            returncode=0,
+            stdout="password=ghp_abcdefghijk1234567890abcdefghijk1234\n",
+        )
+        with patch('subprocess.run', return_value=mock_result):
+            token = GitHubTokenManager.resolve_credential_from_git('github.com')
+            assert token == 'ghp_abcdefghijk1234567890abcdefghijk1234'
+
+    def test_accepts_valid_gho_token(self):
+        """Accepts a GitHub OAuth token (gho_ prefix)."""
+        mock_result = MagicMock(
+            returncode=0,
+            stdout="password=gho_abc123def456\n",
+        )
+        with patch('subprocess.run', return_value=mock_result):
+            token = GitHubTokenManager.resolve_credential_from_git('github.com')
+            assert token == 'gho_abc123def456'
+
+
+class TestIsValidCredentialToken:
+    """Test _is_valid_credential_token validation."""
+
+    def test_empty_string_invalid(self):
+        assert not GitHubTokenManager._is_valid_credential_token('')
+
+    def test_none_coerced_invalid(self):
+        """None would fail the truthiness check (caller already guards this)."""
+        assert not GitHubTokenManager._is_valid_credential_token('')
+
+    def test_whitespace_only_invalid(self):
+        assert not GitHubTokenManager._is_valid_credential_token('  ')
+
+    def test_normal_pat_valid(self):
+        assert GitHubTokenManager._is_valid_credential_token('ghp_abc123')
+
+    def test_over_1024_chars_invalid(self):
+        assert not GitHubTokenManager._is_valid_credential_token('a' * 1025)
+
+    def test_exactly_1024_chars_valid(self):
+        assert GitHubTokenManager._is_valid_credential_token('a' * 1024)
+
+    def test_password_for_prompt_invalid(self):
+        assert not GitHubTokenManager._is_valid_credential_token(
+            "Password for 'https://github.com': "
+        )
+
+    def test_username_for_prompt_invalid(self):
+        assert not GitHubTokenManager._is_valid_credential_token(
+            "Username for 'https://github.com': "
+        )
+
+    def test_newline_in_token_invalid(self):
+        assert not GitHubTokenManager._is_valid_credential_token('tok\nen')
+
+    def test_tab_in_token_invalid(self):
+        assert not GitHubTokenManager._is_valid_credential_token('tok\ten')
+
 
 class TestGetTokenWithCredentialFallback:
     """Test get_token_with_credential_fallback method."""
