@@ -833,7 +833,7 @@ class MCPIntegrator:
                 for runtime_name in ["copilot", "codex", "vscode", "cursor", "opencode"]:
                     try:
                         if runtime_name == "vscode":
-                            if shutil.which("code") is not None:
+                            if shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir():
                                 ClientFactory.create_client(runtime_name)
                                 installed_runtimes.append(runtime_name)
                         elif runtime_name == "cursor":
@@ -855,9 +855,12 @@ class MCPIntegrator:
             except ImportError:
                 installed_runtimes = [
                     rt
-                    for rt in ["copilot", "codex", "vscode"]
-                    if shutil.which(rt if rt != "vscode" else "code") is not None
+                    for rt in ["copilot", "codex"]
+                    if shutil.which(rt) is not None
                 ]
+                # VS Code: check binary on PATH or .vscode/ directory presence
+                if shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir():
+                    installed_runtimes.append("vscode")
                 # Cursor is directory-presence based, not binary-based
                 if (Path.cwd() / ".cursor").is_dir():
                     installed_runtimes.append("cursor")

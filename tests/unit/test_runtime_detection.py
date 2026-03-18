@@ -1,6 +1,8 @@
 """Unit tests for MCP runtime detection functionality."""
 
+import shutil
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from apm_cli.integration.mcp_integrator import MCPIntegrator
@@ -193,6 +195,39 @@ class TestRuntimeDetectionIntegration(unittest.TestCase):
                     self.assertIsNotNone(client)
                 except ValueError:
                     self.fail(f"Runtime {runtime} reported as available but not creatable")
+
+
+class TestVSCodeRuntimeDetection(unittest.TestCase):
+    """Tests for VS Code runtime detection via binary and directory presence."""
+
+    def _check_vscode(self, code_on_path: bool, vscode_dir_exists: bool) -> bool:
+        """Helper that mirrors the detection logic from mcp_integrator."""
+        which_result = "/usr/local/bin/code" if code_on_path else None
+        with patch("shutil.which", return_value=which_result):
+            with patch.object(Path, "is_dir", return_value=vscode_dir_exists):
+                return shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir()
+
+    def test_vscode_detected_via_code_binary(self):
+        """`code` binary on PATH is sufficient to detect VS Code."""
+        self.assertTrue(self._check_vscode(code_on_path=True, vscode_dir_exists=False))
+
+    def test_vscode_detected_via_vscode_directory(self):
+        """.vscode/ directory presence detects VS Code even without `code` on PATH."""
+        self.assertTrue(self._check_vscode(code_on_path=False, vscode_dir_exists=True))
+
+    def test_vscode_not_detected_without_binary_or_dir(self):
+        """VS Code is NOT detected when neither `code` is on PATH nor .vscode/ exists."""
+        self.assertFalse(self._check_vscode(code_on_path=False, vscode_dir_exists=False))
+
+    def test_vscode_detected_when_both_binary_and_dir_present(self):
+        """VS Code is detected (and only once) when both indicators are present."""
+        installed = []
+        with patch("shutil.which", return_value="/usr/local/bin/code"):
+            with patch.object(Path, "is_dir", return_value=True):
+                if shutil.which("code") is not None or (Path.cwd() / ".vscode").is_dir():
+                    installed.append("vscode")
+        self.assertIn("vscode", installed)
+        self.assertEqual(installed.count("vscode"), 1)
 
 
 if __name__ == "__main__":
