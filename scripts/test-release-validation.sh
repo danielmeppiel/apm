@@ -360,11 +360,13 @@ test_ghaw_compat() {
         unset GITHUB_TOKEN GITHUB_APM_PAT GH_TOKEN 2>/dev/null || true
         cd "$ghaw_dir"
         
-        # Create a minimal apm.yml like apm-action does in isolated mode
+        # Create a minimal apm.yml matching apm-action's generateManifest() format
         cat > apm.yml <<'APMYML'
 name: ghaw-compat-test
+version: 1.0.0
 dependencies:
-  - microsoft/apm-sample-package
+  apm:
+    - microsoft/apm-sample-package
 APMYML
         
         echo "Running: apm install (no token)"
