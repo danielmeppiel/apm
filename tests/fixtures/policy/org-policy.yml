@@ -1,0 +1,46 @@
+name: devexpgbb-test-policy
+version: "1.0.0"
+enforcement: warn
+
+cache:
+  ttl: 3600
+
+dependencies:
+  allow:
+    - "DevExpGBB/*"
+    - "microsoft/*"
+    - "github/*"
+  deny:
+    - "test-blocked/*"
+  require:
+    - "DevExpGBB/required-standards"
+  require_resolution: project-wins
+
+mcp:
+  allow:
+    - "io.github.github/*"
+    - "io.github.modelcontextprotocol/*"
+  deny: []
+  transport:
+    allow: [stdio, http]
+  self_defined: warn
+  trust_transitive: false
+
+compilation:
+  target:
+    allow: [vscode, claude, all]
+  strategy:
+    enforce: distributed
+  source_attribution: true
+
+manifest:
+  required_fields:
+    - version
+    - description
+  scripts: allow
+  content_types:
+    allow: [instructions, skill, hybrid, prompts]
+
+unmanaged_files:
+  action: warn
+  directories: []

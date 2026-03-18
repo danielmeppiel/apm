@@ -397,12 +397,18 @@ apm audit --ci --policy ./apm-policy.yml
 apm audit --ci --policy org --no-cache
 ```
 
-**Exit codes:**
+**Exit codes (content scanning mode):**
 | Code | Meaning |
 |------|---------|
 | 0 | Clean — no findings, info-only, or successful strip |
 | 1 | Critical findings — tag characters, bidi overrides, or variation selectors 17–256 |
 | 2 | Warnings only — zero-width characters, bidi marks, or other suspicious content |
+
+**Exit codes (`--ci` mode):**
+| Code | Meaning |
+|------|---------|
+| 0 | All checks passed |
+| 1 | One or more checks failed |
 
 **What it detects:**
 - **Critical**: Tag characters (U+E0001–E007F), bidi overrides (U+202A–E, U+2066–9), variation selectors 17–256 (U+E0100–E01EF, Glassworm attack vector)

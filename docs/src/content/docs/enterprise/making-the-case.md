@@ -35,7 +35,7 @@ An internal advocacy toolkit for APM. Each section is self-contained and designe
 ### For Platform Teams
 
 - **Standardize AI configuration across N repos.** Publish a shared APM package with your organization's coding standards, approved MCP servers, and prompt templates. Every repo that depends on it stays in sync.
-- **Enforce standards via CI gates.** `apm install` blocks packages with critical hidden-character findings — no configuration needed. `apm audit` adds SARIF/JSON reporting for Code Scanning integration. Lockfile consistency checking (`apm audit --ci`) is planned.
+- **Enforce standards via CI gates.** `apm install` blocks packages with critical hidden-character findings — no configuration needed. `apm audit --ci` verifies lockfile consistency. Add `--policy org` for [organizational policy enforcement](../governance/#organization-policy-governance).
 - **Version-controlled standards updates.** When standards change, update the shared package and bump the version. Teams adopt updates through normal dependency management, not ad-hoc communication.
 
 ### For Individual Developers
@@ -54,7 +54,7 @@ Plugins handle single-tool installation for a single AI platform. APM adds capab
 
 - **Cross-tool composition.** One manifest manages configuration for Copilot, Claude, Cursor, OpenCode, and any other agent runtime simultaneously.
 - **Consumer-side lock files.** Plugins install the latest version. APM pins exact versions so your team stays synchronized.
-- **CI enforcement.** Content scanning is built into `apm install` — no plugin equivalent exists. `apm audit` adds CI reporting (SARIF, JSON). Lockfile consistency checking via `--ci` is planned.
+- **CI enforcement.** Content scanning is built into `apm install` — no plugin equivalent exists. `apm audit --ci` adds lockfile consistency checks and `--policy org` enforces organizational rules.
 - **Multi-source dependency resolution.** APM resolves transitive dependencies across packages from multiple git hosts.
 - **Shared organizational packages.** Plugins are published by tool vendors. APM packages are published by your own teams, containing your own standards and configurations.
 
@@ -129,7 +129,7 @@ For stakeholders familiar with existing tools, this comparison clarifies where A
 | Version pinning | None | Vendor-controlled | Consumer-side lock file |
 | Cross-tool support | N separate processes | Single tool only | Unified manifest |
 | Dependency resolution | Manual | None | Automatic, transitive |
-| CI enforcement | Custom scripts | Not available | Built into `apm install`; `apm audit` for reporting. Lockfile checking via `--ci` (planned) |
+| CI enforcement | Custom scripts | Not available | Built into `apm install`; `apm audit --ci` for lockfile + policy checks |
 | Shared org standards | Wiki pages, copy-paste | Not available | Versioned packages |
 | Audit trail | Implicit via git | Varies by vendor | Explicit via `apm.lock.yaml` |
 | Lock-in | To manual process | To specific vendor | None (native output files) |

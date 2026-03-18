@@ -103,9 +103,17 @@ apm install
 
 `apm install` automatically scans all source files for hidden Unicode characters before deployment — critical findings block the package from being deployed. Run `apm audit` in CI to generate machine-readable reports (SARIF, JSON) for GitHub Code Scanning integration. Exit codes: **0** = clean, **1** = critical findings, **2** = warnings only.
 
-:::note[Planned]
-Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. The workflow below uses `apm audit` exit codes, which work today.
-:::
+### Lockfile consistency checking
+
+`apm audit --ci` verifies that the manifest, lock file, and deployed files are in sync — 6 baseline checks with no configuration. Add `--policy org` to enforce organizational rules (16 additional checks). See the [CI Policy Enforcement guide](../../guides/ci-policy-setup/) for setup.
+
+```bash
+# Baseline lockfile consistency
+apm audit --ci
+
+# Full policy enforcement
+apm audit --ci --policy org --no-cache -f sarif -o policy.sarif
+```
 
 ### Content scanning in CI
 
