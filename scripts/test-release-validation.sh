@@ -360,8 +360,14 @@ test_ghaw_compat() {
         unset GITHUB_TOKEN GITHUB_APM_PAT GH_TOKEN 2>/dev/null || true
         cd "$ghaw_dir"
         
-        echo "Running: apm install microsoft/apm-sample-package --isolated (no token)"
-        "$BINARY_PATH" install microsoft/apm-sample-package --isolated
+        # Create a minimal apm.yml like apm-action does in isolated mode
+        cat > apm.yml <<'APMYML'
+dependencies:
+  - microsoft/apm-sample-package
+APMYML
+        
+        echo "Running: apm install (no token)"
+        "$BINARY_PATH" install
         local install_exit=$?
         if [[ $install_exit -ne 0 ]]; then
             echo "apm install failed with exit code $install_exit"
@@ -377,10 +383,10 @@ test_ghaw_compat() {
         fi
         
         # Verify a bundle was produced
-        if ls *.tar.gz 1>/dev/null 2>&1 || ls *.zip 1>/dev/null 2>&1; then
+        if ls build/*.tar.gz 1>/dev/null 2>&1; then
             echo "Bundle archive produced successfully"
         else
-            echo "No bundle archive found"
+            echo "No bundle archive found in build/"
             exit 1
         fi
     )
