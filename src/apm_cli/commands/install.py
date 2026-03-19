@@ -301,7 +301,11 @@ def _validate_package_exists(package):
     "--dry-run", is_flag=True, help="Show what would be installed without installing"
 )
 @click.option("--force", is_flag=True, help="Overwrite locally-authored files on collision and deploy despite critical security findings")
-@click.option("--verbose", is_flag=True, help="Show detailed installation information")
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Show individual file paths and full error details in the diagnostic summary",
+)
 @click.option(
     "--trust-transitive-mcp",
     is_flag=True,

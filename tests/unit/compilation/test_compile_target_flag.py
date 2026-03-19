@@ -442,6 +442,17 @@ Use type hints in Python code.
         finally:
             os.chdir(original_dir)
 
+    def test_target_flag_accepts_opencode(self, runner, temp_project):
+        """Test that --target opencode is accepted."""
+        original_dir = os.getcwd()
+        try:
+            os.chdir(temp_project)
+            result = runner.invoke(cli, ["compile", "--target", "opencode", "--dry-run"])
+
+            assert "Invalid value for '--target'" not in result.output
+        finally:
+            os.chdir(original_dir)
+
     def test_target_flag_accepts_all(self, runner, temp_project):
         """Test that --target all is accepted."""
         original_dir = os.getcwd()
@@ -452,6 +463,16 @@ Use type hints in Python code.
             assert "Invalid value for '--target'" not in result.output
         finally:
             os.chdir(original_dir)
+
+    def test_target_flag_help_lists_opencode(self, runner):
+        """Test that compile --help documents the opencode target."""
+        result = runner.invoke(cli, ["compile", "--help"])
+
+        assert result.exit_code == 0
+        assert "[vscode|agents|claude|opencode|all]" in result.output
+        assert "Target platform: vscode/agents (AGENTS.md)," in result.output
+        assert "claude (CLAUDE.md), opencode (AGENTS.md), or" in result.output
+        assert "all. Auto-detects if not specified." in result.output
 
     def test_target_flag_rejects_invalid(self, runner, temp_project):
         """Test that invalid target value is rejected."""

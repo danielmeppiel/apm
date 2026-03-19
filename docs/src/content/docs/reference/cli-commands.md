@@ -854,7 +854,7 @@ apm compile [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output file path (for single-file mode)
-- `-t, --target [vscode|agents|claude|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
+- `-t, --target [vscode|agents|claude|opencode|all]` - Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), opencode (AGENTS.md), or all. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Preview compilation without writing files (shows placement decisions)
 - `--no-links` - Skip markdown link resolution
@@ -874,6 +874,7 @@ When `--target` is not specified, APM auto-detects based on existing project str
 |-----------|--------|--------|
 | `.github/` exists only | `vscode` | AGENTS.md + .github/ |
 | `.claude/` exists only | `claude` | CLAUDE.md + .claude/ |
+| `.opencode/` exists only | `opencode` | AGENTS.md + .opencode/ |
 | Both folders exist | `all` | All outputs |
 | Neither folder exists | `minimal` | AGENTS.md only |
 
@@ -889,8 +890,12 @@ target: vscode  # or claude, or all
 | Target | Output Files | Best For |
 |--------|--------------|----------|
 | `vscode` | AGENTS.md, .github/prompts/, .github/agents/, .github/skills/ | GitHub Copilot, Cursor, Codex, Gemini |
+| `agents` | Same as `vscode` (alias target) | Alternative alias for `vscode` |
 | `claude` | CLAUDE.md, .claude/commands/, SKILL.md | Claude Code, Claude Desktop |
+| `opencode` | AGENTS.md, `.opencode/agents/`, `.opencode/commands/` | OpenCode |
 | `all` | All of the above | Universal compatibility |
+
+Cursor rules are deployed by `apm install`, not `apm compile`.
 
 **Examples:**
 ```bash
@@ -1185,4 +1190,3 @@ apm runtime status
 - Runtime preference order (copilot → codex → llm)
 - Currently active runtime
 - Next steps if no runtime is available
-

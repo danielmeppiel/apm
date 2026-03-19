@@ -220,6 +220,15 @@ class TestInstallCommandAutoBootstrap:
             assert Path("apm.yml").exists()
             assert "Invalid package format" in result.output
 
+    def test_install_help_verbose_option_describes_diagnostics(self):
+        """Test that install --help explains the verbose diagnostic output."""
+        result = self.runner.invoke(cli, ["install", "--help"])
+
+        assert result.exit_code == 0
+        assert "--verbose" in result.output
+        assert "Show individual file paths and full error" in result.output
+        assert "details in the diagnostic summary" in result.output
+
     @patch("apm_cli.commands.install._validate_package_exists")
     @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
     @patch("apm_cli.commands.install.APMPackage")
