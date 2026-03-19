@@ -306,6 +306,31 @@ This:
 - Integrates skills into the runtime
 - Includes prompt primitives
 
+## Exporting APM packages as plugins
+
+APM packages can be exported as standalone plugin directories using [`apm pack --format plugin`](../../guides/pack-distribute/#plugin-format). This enables a dual-manifest workflow: author with `apm.yml` for dependency management, distribute as a `plugin.json` plugin for consumption without APM.
+
+### Plugin authoring setup
+
+Initialize a plugin project with both manifests:
+
+```bash
+apm init my-plugin --plugin
+```
+
+This creates `plugin.json` and `apm.yml` (with a `devDependencies` section). Plugin names must be kebab-case, max 64 characters.
+
+### Building the plugin
+
+```bash
+apm install            # resolve dependencies
+apm pack --format plugin   # export as plugin directory
+```
+
+The exporter remaps `.apm/` content into plugin-native paths (e.g., `.apm/prompts/*.prompt.md` → `commands/*.md`) and generates a `plugin.json` with updated component paths. Dependencies listed under [`devDependencies`](../../reference/manifest-schema/#5-devdependencies) are excluded from the output.
+
+See [Pack & Distribute — Plugin format](../../guides/pack-distribute/#plugin-format) for the full mapping table and output structure.
+
 ## Finding Plugins
 
 Plugins can be found through:

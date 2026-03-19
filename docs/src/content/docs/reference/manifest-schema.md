@@ -51,6 +51,9 @@ scripts:       <map<string, string>>
 dependencies:
   apm:         <list<ApmDependency>>
   mcp:         <list<McpDependency>>
+devDependencies:
+  apm:         <list<ApmDependency>>
+  mcp:         <list<McpDependency>>
 compilation:   <CompilationConfig>
 ```
 
@@ -319,7 +322,32 @@ dependencies:
 
 ---
 
-## 5. Compilation
+## 5. devDependencies
+
+| | |
+|---|---|
+| **Type** | `object` |
+| **Required** | OPTIONAL |
+| **Known keys** | `apm`, `mcp` |
+
+Development-only dependencies installed locally but excluded from plugin bundles (`apm pack --format plugin`). Uses the same structure as [`dependencies`](#4-dependencies).
+
+```yaml
+devDependencies:
+  apm:
+    - owner/test-helpers
+    - owner/lint-rules#v2.0.0
+```
+
+Created automatically by `apm init --plugin`.
+
+:::note[Planned]
+`apm install --dev <package>` will add packages directly to `devDependencies`. Until then, add entries manually to `apm.yml`.
+:::
+
+---
+
+## 6. Compilation
 
 The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fields have sensible defaults; omitting the entire section is valid.
 
@@ -333,9 +361,9 @@ The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fiel
 | `resolve_links` | `bool` | `true` | | Resolve relative Markdown links in primitives. |
 | `source_attribution` | `bool` | `true` | | Include source-file origin comments in compiled output. |
 | `exclude` | `list<string>` or `string` | `[]` | Glob patterns | Directories to skip during compilation (e.g. `apm_modules/**`). |
-| `placement` | `object` | — | | Placement tuning. See §5.1. |
+| `placement` | `object` | — | | Placement tuning. See §6.1. |
 
-### 5.1. `compilation.placement`
+### 6.1. `compilation.placement`
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -355,11 +383,11 @@ compilation:
 
 ---
 
-## 6. Lockfile (`apm.lock.yaml`)
+## 7. Lockfile (`apm.lock.yaml`)
 
 After successful dependency resolution, a conforming resolver MUST write a lockfile capturing the exact resolved state. The lockfile MUST be a YAML file named `apm.lock.yaml` at the project root. It SHOULD be committed to version control.
 
-### 6.1. Structure
+### 7.1. Structure
 
 ```yaml
 lockfile_version: "1"
@@ -380,7 +408,7 @@ dependencies:                              # YAML list (not a map)
 mcp_servers:       <list<string>>          # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
 ```
 
-### 6.2. Resolver Behaviour
+### 7.2. Resolver Behaviour
 
 1. **First install** — Resolve all dependencies, write `apm.lock.yaml`.
 2. **Subsequent installs** — Read `apm.lock.yaml`, use locked commit SHAs. A resolver SHOULD skip download if local checkout already matches.
@@ -388,7 +416,7 @@ mcp_servers:       <list<string>>          # MCP dependency references managed b
 
 ---
 
-## 7. Integrator Contract
+## 8. Integrator Contract
 
 Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDEs) MUST implement these steps:
 
@@ -396,7 +424,7 @@ Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDE
 2. **Resolve `dependencies.apm`** — For each entry, clone/fetch the git repo (respecting `ref`), locate the `.apm/` directory (or virtual path), and extract primitives.
 3. **Resolve `dependencies.mcp`** — For each entry, resolve from the MCP registry or validate self-defined transport config per §4.2.3.
 4. **Transitive resolution** — Resolved packages MAY contain their own `apm.yml` with further dependencies, forming a dependency tree. Resolvers MUST resolve transitively. Conflicts are merged at instruction level (by `applyTo` pattern), not file level.
-5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock.yaml` per §6.
+5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock.yaml` per §7.
 
 ---
 
@@ -430,6 +458,10 @@ dependencies:
       command: ./bin/my-server
       env:
         API_KEY: ${{ secrets.KEY }}
+
+devDependencies:
+  apm:
+    - owner/test-helpers
 
 compilation:
   target: all
