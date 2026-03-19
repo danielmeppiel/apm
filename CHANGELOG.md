@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Documented `${input:...}` variable support in `headers` and `env` MCP server fields, with runtime support matrix and examples (#343)
 
+## [0.8.2] - 2026-03-19
+
+### Added
+
+- JFrog Artifactory VCS repository support — explicit FQDN, transparent proxy via `ARTIFACTORY_BASE_URL`, and air-gapped `ARTIFACTORY_ONLY` mode (#354)
+- GH-AW compatibility gate in release pipeline — `gh-aw-compat` job tests tokenless install + pack before publishing (#356)
+- Release validation now includes `test_ghaw_compat` scenario (#356)
+
+### Fixed
+
+- Credential fill returning garbage token in tokenless CI environments — broke `apm install` for public repos in GitHub Actions (#356)
+
+### Security
+
+- Harden dependency path validation — reject invalid path segments at parse time, enforce install-path containment, safe deletion wrappers across `uninstall`, `prune`, and `install` (#364)
+
 ## [0.8.1] - 2026-03-17
 
 ### Added

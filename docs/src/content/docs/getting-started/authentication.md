@@ -14,6 +14,7 @@ APM resolves dependencies either via `git clone` (for full packages) or the GitH
 |------|---------------|---------------|
 | GitHub.com / GitHub Enterprise (`*.ghe.com`) | `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` | Injected into the HTTPS URL as `x-access-token` |
 | Azure DevOps | `ADO_APM_PAT` | Injected into the HTTPS URL as the password |
+| JFrog Artifactory | `ARTIFACTORY_APM_TOKEN` | Bearer token in HTTP `Authorization` header |
 | Any other git host (including GitHub Enterprise on custom domains) | — | Delegated to **git credential helpers** or SSH keys |
 
 When APM has a token for a recognized host (GitHub.com, GitHub Enterprise under `*.ghe.com`, or Azure DevOps), it injects it directly and disables interactive prompts. When no token is available, or the host is treated as generic (including GitHub Enterprise on custom domains), APM relaxes the git environment so your existing credential helpers — `gh auth`, macOS Keychain, Windows Credential Manager, `git-credential-store`, etc. — can provide credentials transparently.
@@ -178,3 +179,40 @@ apm install dev.azure.com/myorg/myproject/myrepo#main   # with ref
 apm install mycompany.visualstudio.com/org/project/repo # legacy URL
 apm install ado.internal/myorg/myproject/myrepo          # self-hosted
 ```
+
+## JFrog Artifactory Support
+
+APM supports [JFrog Artifactory VCS Remote Repositories](https://jfrog.com/help/r/jfrog-artifactory-documentation/vcs-repositories) as a package source. Artifactory downloads use zip archives instead of git clone.
+
+#### Mode 1: Explicit FQDN
+
+```bash
+apm install artifactory.example.com/artifactory/github/owner/repo
+apm install artifactory.example.com/artifactory/github/owner/repo#v1.0.0
+```
+
+#### Mode 2: Transparent Proxy
+
+Set `ARTIFACTORY_BASE_URL` to route all GitHub package downloads through Artifactory:
+
+```bash
+export ARTIFACTORY_BASE_URL=https://artifactory.example.com/artifactory/github
+apm install owner/repo  # fetched via Artifactory
+```
+
+#### Air-Gapped Mode
+
+Block all direct git operations and route everything through Artifactory:
+
+```bash
+export ARTIFACTORY_BASE_URL=https://artifactory.example.com/artifactory/github
+export ARTIFACTORY_ONLY=1
+```
+
+#### Authentication
+
+```bash
+export ARTIFACTORY_APM_TOKEN=your-api-key-or-token
+```
+
+> **Note:** Artifactory downloads use zip archives, so `apm.lock` will not contain commit SHAs for Artifactory-sourced packages.

@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ..utils.path_security import PathTraversalError, safe_rmtree
 
 # APM Dependencies
 try:
@@ -210,6 +211,9 @@ def uninstall(ctx, packages, dry_run):
                 try:
                     dep_ref = _parse_dependency_entry(package)
                     package_path = dep_ref.get_install_path(apm_modules_dir)
+                except (PathTraversalError,) as e:
+                    _rich_error(f"x Refusing to remove {package}: {e}")
+                    continue
                 except (ValueError, TypeError, AttributeError, KeyError):
                     # Fallback for invalid format: use raw path segments
                     package_str = package if isinstance(package, str) else str(package)
@@ -221,7 +225,7 @@ def uninstall(ctx, packages, dry_run):
 
                 if package_path.exists():
                     try:
-                        shutil.rmtree(package_path)
+                        safe_rmtree(package_path, apm_modules_dir)
                         _rich_info(f"+ Removed {package} from apm_modules/")
                         removed_from_modules += 1
                         deleted_pkg_paths.append(package_path)
@@ -306,7 +310,7 @@ def uninstall(ctx, packages, dry_run):
 
                     if orphan_path.exists():
                         try:
-                            shutil.rmtree(orphan_path)
+                            safe_rmtree(orphan_path, apm_modules_dir)
                             _rich_info(f"+ Removed transitive dependency {orphan_key} from apm_modules/")
                             removed_from_modules += 1
                             deleted_orphan_paths.append(orphan_path)

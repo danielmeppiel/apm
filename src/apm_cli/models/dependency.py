@@ -7,11 +7,14 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..utils.path_security import PathTraversalError, ensure_path_within
 from ..utils.github_host import (
     default_host,
+    is_artifactory_path,
     is_azure_devops_hostname,
     is_github_hostname,
     is_supported_git_host,
+    parse_artifactory_path,
     unsupported_host_error,
 )
 from .validation import InvalidVirtualPackageExtensionError
@@ -29,11 +32,13 @@ class ResolvedReference:
     """Represents a resolved Git reference."""
     original_ref: str
     ref_type: GitReferenceType
-    resolved_commit: str
-    ref_name: str  # The actual branch/tag/commit name
+    resolved_commit: Optional[str] = None
+    ref_name: str = ""  # The actual branch/tag/commit name
     
     def __str__(self) -> str:
         """String representation of resolved reference."""
+        if not self.resolved_commit:
+            return self.ref_name
         if self.ref_type == GitReferenceType.COMMIT:
             return f"{self.resolved_commit[:8]}"
         return f"{self.ref_name} ({self.resolved_commit[:8]})"
@@ -57,10 +62,16 @@ class DependencyReference:
     # Local path dependency fields
     is_local: bool = False  # True if this is a local filesystem dependency
     local_path: Optional[str] = None  # Original local path string (e.g., "./packages/my-pkg")
-    
+
+    artifactory_prefix: Optional[str] = None  # e.g., "artifactory/github" (repo key path)
+
     # Supported file extensions for virtual packages
     VIRTUAL_FILE_EXTENSIONS = ('.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md')
-    
+
+    def is_artifactory(self) -> bool:
+        """Check if this reference points to a JFrog Artifactory VCS repository."""
+        return self.artifactory_prefix is not None
+
     def is_azure_devops(self) -> bool:
         """Check if this reference points to Azure DevOps."""
         from ..utils.github_host import is_azure_devops_hostname
@@ -186,11 +197,13 @@ class DependencyReference:
         is_default = host.lower() == default_host().lower()
         
         # Start with optional host prefix
-        if is_default:
+        if is_default and not self.artifactory_prefix:
             result = self.repo_url
+        elif self.artifactory_prefix:
+            result = f"{host}/{self.artifactory_prefix}/{self.repo_url}"
         else:
             result = f"{host}/{self.repo_url}"
-        
+
         # Append virtual path for virtual packages
         if self.is_virtual and self.virtual_path:
             result = f"{result}/{self.virtual_path}"
@@ -216,11 +229,13 @@ class DependencyReference:
         host = self.host or default_host()
         is_default = host.lower() == default_host().lower()
         
-        if is_default:
+        if is_default and not self.artifactory_prefix:
             result = self.repo_url
+        elif self.artifactory_prefix:
+            result = f"{host}/{self.artifactory_prefix}/{self.repo_url}"
         else:
             result = f"{host}/{self.repo_url}"
-        
+
         if self.is_virtual and self.virtual_path:
             result = f"{result}/{self.virtual_path}"
         
@@ -279,12 +294,39 @@ class DependencyReference:
             
         Returns:
             Path: Absolute path to the package installation directory
+            
+        Raises:
+            PathTraversalError: If the computed path escapes apm_modules_dir
         """
         if self.is_local and self.local_path:
             pkg_dir_name = Path(self.local_path).name
-            return apm_modules_dir / "_local" / pkg_dir_name
+            if pkg_dir_name in ('', '.', '..'):
+                raise PathTraversalError(
+                    f"Invalid local package path '{self.local_path}': "
+                    f"basename must not be empty, '.', or '..'"
+                )
+            result = apm_modules_dir / "_local" / pkg_dir_name
+            ensure_path_within(result, apm_modules_dir)
+            return result
 
         repo_parts = self.repo_url.split("/")
+
+        # Security: reject traversal in repo_url segments (catches lockfile injection)
+        if any(seg in ('.', '..') for seg in repo_parts):
+            raise PathTraversalError(
+                f"Invalid repo_url '{self.repo_url}': "
+                f"path segments must not be '.' or '..'"
+            )
+
+        # Security: reject traversal in virtual_path (catches lockfile injection)
+        if self.virtual_path and any(
+            seg in ('.', '..') for seg in self.virtual_path.replace('\\', '/').split('/')
+        ):
+            raise PathTraversalError(
+                f"Invalid virtual_path '{self.virtual_path}': "
+                f"path segments must not be '.' or '..'"
+            )
+        result: Path | None = None
         
         if self.is_virtual:
             # Subdirectory packages (like Claude Skills) should use natural path structure
@@ -292,30 +334,35 @@ class DependencyReference:
                 # Use repo path + subdirectory path
                 if self.is_azure_devops() and len(repo_parts) >= 3:
                     # ADO: org/project/repo/subdir
-                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2] / self.virtual_path
+                    result = apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2] / self.virtual_path
                 elif len(repo_parts) >= 2:
                     # owner/repo/subdir or group/subgroup/repo/subdir
-                    return apm_modules_dir.joinpath(*repo_parts, self.virtual_path)
+                    result = apm_modules_dir.joinpath(*repo_parts, self.virtual_path)
             else:
                 # Virtual file/collection: use sanitized package name (flattened)
                 package_name = self.get_virtual_package_name()
                 if self.is_azure_devops() and len(repo_parts) >= 3:
                     # ADO: org/project/virtual-pkg-name
-                    return apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
+                    result = apm_modules_dir / repo_parts[0] / repo_parts[1] / package_name
                 elif len(repo_parts) >= 2:
                     # owner/virtual-pkg-name (use first segment as namespace)
-                    return apm_modules_dir / repo_parts[0] / package_name
+                    result = apm_modules_dir / repo_parts[0] / package_name
         else:
             # Regular package: use full repo path
             if self.is_azure_devops() and len(repo_parts) >= 3:
                 # ADO: org/project/repo
-                return apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
+                result = apm_modules_dir / repo_parts[0] / repo_parts[1] / repo_parts[2]
             elif len(repo_parts) >= 2:
                 # owner/repo or group/subgroup/repo (generic hosts)
-                return apm_modules_dir.joinpath(*repo_parts)
+                result = apm_modules_dir.joinpath(*repo_parts)
         
-        # Fallback: join all parts
-        return apm_modules_dir.joinpath(*repo_parts)
+        if result is None:
+            # Fallback: join all parts
+            result = apm_modules_dir.joinpath(*repo_parts)
+
+        # Security: ensure the computed path stays within apm_modules/
+        ensure_path_within(result, apm_modules_dir)
+        return result
     
     @staticmethod
     def _normalize_ssh_protocol_url(url: str) -> str:
@@ -414,7 +461,13 @@ class DependencyReference:
         if sub_path is not None:
             if not isinstance(sub_path, str) or not sub_path.strip():
                 raise ValueError("'path' field must be a non-empty string")
-            sub_path = sub_path.strip().strip('/')
+            # Normalize backslashes to forward slashes for cross-platform safety
+            sub_path = sub_path.replace('\\', '/').strip().strip('/')
+            # Security: reject path traversal
+            if any(seg in ('.', '..') for seg in sub_path.split('/')):
+                raise PathTraversalError(
+                    f"Invalid path '{sub_path}': path segments must not be '.' or '..'"
+                )
         
         # Parse the git URL using the standard parser
         dep = cls.parse(git_url)
@@ -579,7 +632,10 @@ class DependencyReference:
             is_generic_host = (validated_host is not None
                                and not is_github_hostname(validated_host)
                                and not is_azure_devops_hostname(validated_host))
-            
+
+            # Detect Artifactory VCS paths (artifactory/{repo-key}/{owner}/{repo})
+            is_artifactory = is_generic_host and is_artifactory_path(path_segments)
+
             # Handle _git in ADO URLs: org/project/_git/repo -> org/project/repo
             if is_ado and '_git' in path_segments:
                 git_idx = path_segments.index('_git')
@@ -588,6 +644,9 @@ class DependencyReference:
             
             if is_ado:
                 min_base_segments = 3
+            elif is_artifactory:
+                # Artifactory: artifactory/{repo-key}/{owner}/{repo}
+                min_base_segments = 4
             elif is_generic_host:
                 # For generic hosts (GitLab, Gitea), check for virtual indicators
                 # If present, use 2-segment base (simple owner/repo + virtual path)
@@ -613,6 +672,14 @@ class DependencyReference:
                 
                 # Extract virtual path (base repo is derived later)
                 virtual_path = '/'.join(path_segments[min_base_segments:])
+
+                # Security: reject path traversal in virtual path
+                # Normalize backslashes for cross-platform safety
+                vp_check = virtual_path.replace('\\', '/')
+                if any(seg in ('.', '..') for seg in vp_check.split('/')):
+                    raise PathTraversalError(
+                        f"Invalid virtual path '{virtual_path}': path segments must not be '.' or '..'"
+                    )
                 
                 # Virtual package types (validated later during download):
                 # 1. Collections: /collections/ in path
@@ -696,6 +763,10 @@ class DependencyReference:
                         if len(parts) < 5:  # host + org + project + repo + at least one path segment
                             raise ValueError("Invalid Azure DevOps virtual package format: must be dev.azure.com/org/project/repo/path")
                         repo_url = "/".join(parts[1:4])  # org/project/repo
+                    elif is_artifactory_path(parts[1:]):
+                        art_result = parse_artifactory_path(parts[1:])
+                        if art_result:
+                            repo_url = f"{art_result[1]}/{art_result[2]}"
                     else:
                         # For virtual packages with host prefix, base is always 2 segments
                         # (virtual indicators already detected in early detection)
@@ -709,6 +780,10 @@ class DependencyReference:
                         if len(parts) < 4:  # org + project + repo + at least one path segment
                             raise ValueError("Invalid Azure DevOps virtual package format: expected at least org/project/repo/path")
                         repo_url = "/".join(parts[:3])  # org/project/repo
+                    elif is_artifactory_path(parts[1:]):
+                        art_result = parse_artifactory_path(parts[1:])
+                        if art_result:
+                            repo_url = f"{art_result[1]}/{art_result[2]}"
                     else:
                         repo_url = "/".join(parts[:2])  # owner/repo
             
@@ -735,8 +810,14 @@ class DependencyReference:
                         # ADO format: dev.azure.com/org/project/repo
                         user_repo = "/".join(parts[1:4])
                     elif not is_github_hostname(host) and not is_azure_devops_hostname(host):
-                        # Generic host (GitLab, Gitea, etc.): all segments after host = repo path
-                        user_repo = "/".join(parts[1:])
+                        if is_artifactory_path(parts[1:]):
+                            art_result = parse_artifactory_path(parts[1:])
+                            if art_result:
+                                user_repo = f"{art_result[1]}/{art_result[2]}"
+                            else:
+                                user_repo = "/".join(parts[1:])
+                        else:
+                            user_repo = "/".join(parts[1:])
                     else:
                         # GitHub format: github.com/user/repo
                         user_repo = "/".join(parts[1:3])
@@ -773,6 +854,10 @@ class DependencyReference:
                 # ADO project names may contain spaces
                 allowed_pattern = r'^[a-zA-Z0-9._\- ]+$' if is_ado_host else r'^[a-zA-Z0-9._-]+$'
                 for part in uparts:
+                    if part in ('.', '..'):
+                        raise PathTraversalError(
+                            f"Invalid repository path component: '{part}' is a traversal sequence"
+                        )
                     if not re.match(allowed_pattern, part.rstrip('.git')):
                         raise ValueError(f"Invalid repository path component: {part}")
 
@@ -866,6 +951,19 @@ class DependencyReference:
             ado_project = None
             ado_repo = None
         
+        # Extract Artifactory prefix from the original path if applicable
+        artifactory_prefix = None
+        if host and not is_ado_final:
+            _art_str = original_str.split('#')[0].split('@')[0]
+            # Strip scheme if present (e.g., https://host/artifactory/...)
+            if '://' in _art_str:
+                _art_str = _art_str.split('://', 1)[1]
+            _art_segs = _art_str.replace(f"{host}/", "", 1).split("/")
+            if is_artifactory_path(_art_segs):
+                art_result = parse_artifactory_path(_art_segs)
+                if art_result:
+                    artifactory_prefix = art_result[0]
+
         return cls(
             repo_url=repo_url,
             host=host,
@@ -875,7 +973,8 @@ class DependencyReference:
             is_virtual=is_virtual_package,
             ado_organization=ado_organization,
             ado_project=ado_project,
-            ado_repo=ado_repo
+            ado_repo=ado_repo,
+            artifactory_prefix=artifactory_prefix
         )
 
     def to_github_url(self) -> str:
@@ -894,6 +993,8 @@ class DependencyReference:
             # ADO format: https://dev.azure.com/org/project/_git/repo
             project = urllib.parse.quote(self.ado_project, safe='')
             return f"https://{host}/{self.ado_organization}/{project}/_git/{self.ado_repo}"
+        elif self.is_artifactory():
+            return f"https://{host}/{self.artifactory_prefix}/{self.repo_url}"
         else:
             # GitHub format: https://github.com/owner/repo
             return f"https://{host}/{self.repo_url}"
@@ -917,7 +1018,10 @@ class DependencyReference:
         if self.is_local and self.local_path:
             return self.local_path
         if self.host:
-            result = f"{self.host}/{self.repo_url}"
+            if self.artifactory_prefix:
+                result = f"{self.host}/{self.artifactory_prefix}/{self.repo_url}"
+            else:
+                result = f"{self.host}/{self.repo_url}"
         else:
             result = self.repo_url
         if self.virtual_path:
