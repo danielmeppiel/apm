@@ -16,6 +16,7 @@ from .validation import (
     ValidationResult,
     validate_apm_package,
 )
+from .results import InstallResult, PrimitiveCounts
 
 __all__ = [
     # Core
@@ -35,4 +36,7 @@ __all__ = [
     "ValidationError",
     "ValidationResult",
     "validate_apm_package",
+    # Results
+    "InstallResult",
+    "PrimitiveCounts",
 ]
