@@ -18,8 +18,10 @@ Three workflows split by trigger and secret requirements:
    - Downloads Linux binary artifact from ci.yml, runs test scripts from default branch (main).
    - Reports results back to PR via commit status API.
 3. **`build-release.yml`** — `push` to main, tags, schedule, `workflow_dispatch`
-   - **Full 4-platform matrix** (linux x86_64/arm64, darwin x86_64/arm64). Secrets always available.
-   - macOS builds and cross-platform validation happen here, where queue time doesn't block PRs.
+   - **Linux + Windows** run separate `test → build → integration-tests → release-validation` jobs.
+   - **macOS Intel** uses `build-and-validate-macos-intel` (always runs — Intel runners are plentiful with <1 min queue). Builds the binary on every push for early regression feedback; integration + release-validation phases conditional on tag/schedule/dispatch.
+   - **macOS ARM** uses `build-and-validate-macos-arm` (tag/schedule/dispatch only — ARM runners are extremely scarce with 2-4h+ queue waits). Only requested when the binary is actually needed for a release.
+   - Secrets always available. Full 5-platform binary output (linux x86_64/arm64, darwin x86_64/arm64, windows x86_64).
 
 ## Platform Testing Strategy
 - **PR time**: Linux + Windows in parallel. Catches logic bugs, dependency issues, path separators, encoding, and Windows-specific problems before merge.
@@ -44,7 +46,9 @@ Three workflows split by trigger and secret requirements:
 
 ## Release Flow Dependencies
 - **PR workflow**: ci.yml (test → build, Linux-only) then ci-integration.yml via workflow_run (approve → smoke-test → integration-tests → release-validation → report-status, all Linux-only)
-- **Push/Release workflow**: test → build → integration-tests → release-validation → create-release → publish-pypi → update-homebrew (full 4-platform matrix)
+- **Push/Release workflow (Linux + Windows)**: test → build → integration-tests → release-validation → create-release → publish-pypi → update-homebrew
+- **Push/Release workflow (macOS Intel)**: test → build-and-validate-macos-intel (build always + conditional integration/release-validation) → create-release
+- **Push/Release workflow (macOS ARM)**: test → build-and-validate-macos-arm (tag/schedule/dispatch only; all phases run) → create-release
 - **Tag Triggers**: Only `v*.*.*` tags trigger full release pipeline
 - **Artifact Retention**: 30 days for debugging failed releases
 - **Cross-workflow artifacts**: ci-integration.yml downloads artifacts from ci.yml using `run-id` and `github-token`
@@ -61,7 +65,9 @@ Three workflows split by trigger and secret requirements:
 - `GITHUB_TOKEN` - Fallback token for compatibility (GitHub Actions built-in)
 
 ## Performance Considerations
-- **PR CI is Linux-only**: Eliminates macOS runner queue delays (20-40+ min). Full platform coverage runs post-merge.
+- **PR CI is Linux-only**: Eliminates macOS runner queue delays. Full platform coverage runs post-merge.
+- **macOS runner consolidation**: Each macOS arch has a single consolidated job (build + integration + release-validation). Intel (`build-and-validate-macos-intel`) runs on every push since Intel runners are plentiful. ARM (`build-and-validate-macos-arm`) is gated to tag/schedule/dispatch only since ARM runners are extremely scarce (2-4h+ queue waits). This avoids serial re-queuing of runners across multiple jobs.
+- **Unit tests skip macOS**: Python unit tests are platform-agnostic; Linux + Windows coverage is sufficient. macOS-specific validation (binary build, integration tests, release validation) still runs via the consolidated job.
 - UPX compression when available (reduces binary size ~50%)
 - Python optimization level 2 in PyInstaller
 - Aggressive module exclusions (tkinter, matplotlib, etc.)

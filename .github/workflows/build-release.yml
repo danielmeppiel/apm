@@ -27,7 +27,9 @@ permissions:
   contents: read
 
 jobs:
-  # Always run tests first with matrix strategy
+  # Unit tests on Linux + Windows only. macOS runners are scarce and Python unit
+  # tests are platform-agnostic — macOS-specific validation (build + integration +
+  # release-validation) is consolidated into a single job per arch below.
   test:
     runs-on: ${{ matrix.os }}
     permissions:
@@ -42,12 +44,6 @@ jobs:
           - os: ubuntu-24.04-arm
             arch: arm64
             platform: linux
-          - os: macos-15-intel
-            arch: x86_64  
-            platform: darwin
-          - os: macos-latest
-            arch: arm64
-            platform: darwin
           - os: windows-latest
             arch: x86_64
             platform: windows
@@ -64,14 +60,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Setup build environment (macOS-15 Intel)
-      if: matrix.os == 'macos-15-intel'
-      run: |
-        # Install Xcode Command Line Tools
-        sudo xcode-select --install 2>/dev/null || true
-        # Wait for installation to complete
-        until xcode-select -p >/dev/null 2>&1; do sleep 5; done
     
     - name: Install uv (Unix)
       if: matrix.platform != 'windows'
@@ -109,7 +97,7 @@ jobs:
         GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
       run: uv run pytest tests/integration/test_runtime_smoke.py -v
 
-  # Build binaries
+  # Build binaries (Linux + Windows). macOS builds are in build-and-validate-macos-intel / -arm.
   build:
     name: Build APM Binary
     needs: [test]
@@ -124,14 +112,6 @@ jobs:
             platform: linux
             arch: arm64
             binary_name: apm-linux-arm64
-          - os: macos-15-intel
-            platform: darwin
-            arch: x86_64
-            binary_name: apm-darwin-x86_64
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
-            binary_name: apm-darwin-arm64
           - os: windows-latest
             platform: windows
             arch: x86_64
@@ -155,15 +135,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y upx-ucl
-      
-      - name: Install UPX and XCode (macOS)
-        if: matrix.platform == 'darwin'
-        run: |
-          # Install Xcode Command Line Tools
-          sudo xcode-select --install 2>/dev/null || true
-          # Wait for installation to complete
-          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
-          brew install upx
       
       - name: Install uv (Unix)
         if: matrix.platform != 'windows'
@@ -211,7 +182,210 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # Integration tests with full source code access
+  # Consolidated macOS Intel build + validation.
+  # Intel runners are plentiful (<1 min queue) so this runs on every push for
+  # early macOS build-regression feedback. Integration and release-validation
+  # phases are conditional on tag/schedule/dispatch.
+  build-and-validate-macos-intel:
+    name: Build & Validate (macOS x86_64)
+    needs: [test]
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+      models: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup build environment
+        run: |
+          sudo xcode-select --install 2>/dev/null || true
+          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
+
+      - name: Install UPX
+        run: brew install upx
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra build
+
+      # ── PHASE 1: BUILD BINARY ──
+      - name: Build binary
+        run: |
+          chmod +x scripts/build-binary.sh
+          uv run ./scripts/build-binary.sh
+
+      - name: Upload binary as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apm-darwin-x86_64
+          path: |
+            ./dist/apm-darwin-x86_64
+            ./dist/apm-darwin-x86_64.sha256
+            ./scripts/test-release-validation.sh
+            ./scripts/test-dependency-integration.sh
+            ./scripts/github-token-helper.sh
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── PHASE 2: INTEGRATION TESTS (tag/schedule/dispatch only) ──
+      - name: Run integration tests
+        if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          chmod +x scripts/test-integration.sh
+          uv run ./scripts/test-integration.sh
+        timeout-minutes: 20
+
+      # ── PHASE 3: RELEASE VALIDATION (tag/schedule/dispatch only) ──
+      - name: Prepare isolated release-validation environment
+        if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir -p /tmp/apm-isolated-test/dist
+          cp -R ./dist/apm-darwin-x86_64 /tmp/apm-isolated-test/dist/
+          cp ./dist/apm-darwin-x86_64.sha256 /tmp/apm-isolated-test/dist/ 2>/dev/null || true
+          cp ./scripts/test-release-validation.sh /tmp/apm-isolated-test/
+          cp ./scripts/test-dependency-integration.sh /tmp/apm-isolated-test/ 2>/dev/null || true
+          cp ./scripts/github-token-helper.sh /tmp/apm-isolated-test/ 2>/dev/null || true
+
+          cd /tmp/apm-isolated-test
+          chmod +x ./dist/apm-darwin-x86_64/apm
+          ln -s "$(pwd)/dist/apm-darwin-x86_64/apm" "$(pwd)/apm"
+          echo "/tmp/apm-isolated-test" >> $GITHUB_PATH
+
+      - name: Run release validation tests
+        if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          cd /tmp/apm-isolated-test
+          chmod +x test-release-validation.sh
+          ./test-release-validation.sh
+        timeout-minutes: 20
+
+  # Consolidated macOS ARM build + validation.
+  # ARM runners (macos-latest) are extremely scarce — 2-4+ hour queue waits are
+  # common. This job is gated to tag/schedule/dispatch only so push-to-main never
+  # blocks on ARM availability. All phases run unconditionally since the job itself
+  # is already release-gated.
+  build-and-validate-macos-arm:
+    name: Build & Validate (macOS arm64)
+    needs: [test]
+    if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      models: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install UPX
+        run: brew install upx
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra build
+
+      # ── PHASE 1: BUILD BINARY ──
+      - name: Build binary
+        run: |
+          chmod +x scripts/build-binary.sh
+          uv run ./scripts/build-binary.sh
+
+      - name: Upload binary as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apm-darwin-arm64
+          path: |
+            ./dist/apm-darwin-arm64
+            ./dist/apm-darwin-arm64.sha256
+            ./scripts/test-release-validation.sh
+            ./scripts/test-dependency-integration.sh
+            ./scripts/github-token-helper.sh
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── PHASE 2: INTEGRATION TESTS ──
+      - name: Run integration tests
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          chmod +x scripts/test-integration.sh
+          uv run ./scripts/test-integration.sh
+        timeout-minutes: 20
+
+      # ── PHASE 3: RELEASE VALIDATION ──
+      - name: Prepare isolated release-validation environment
+        run: |
+          mkdir -p /tmp/apm-isolated-test/dist
+          cp -R ./dist/apm-darwin-arm64 /tmp/apm-isolated-test/dist/
+          cp ./dist/apm-darwin-arm64.sha256 /tmp/apm-isolated-test/dist/ 2>/dev/null || true
+          cp ./scripts/test-release-validation.sh /tmp/apm-isolated-test/
+          cp ./scripts/test-dependency-integration.sh /tmp/apm-isolated-test/ 2>/dev/null || true
+          cp ./scripts/github-token-helper.sh /tmp/apm-isolated-test/ 2>/dev/null || true
+
+          cd /tmp/apm-isolated-test
+          chmod +x ./dist/apm-darwin-arm64/apm
+          ln -s "$(pwd)/dist/apm-darwin-arm64/apm" "$(pwd)/apm"
+          echo "/tmp/apm-isolated-test" >> $GITHUB_PATH
+
+      - name: Run release validation tests
+        env:
+          APM_E2E_TESTS: "1"
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
+          GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
+          ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
+        run: |
+          cd /tmp/apm-isolated-test
+          chmod +x test-release-validation.sh
+          ./test-release-validation.sh
+        timeout-minutes: 20
+
+  # Integration tests with full source code access (Linux + Windows).
+  # macOS integration tests run inside the consolidated macOS jobs to avoid re-queuing scarce runners.
   # Skip on push-to-main: already validated by ci-integration.yml during the PR.
   # Run on tags (release gate), schedule (regression), and dispatch (manual).
   integration-tests:
@@ -229,14 +403,6 @@ jobs:
             arch: arm64
             platform: linux
             binary_name: apm-linux-arm64
-          - os: macos-15-intel
-            arch: x86_64
-            platform: darwin
-            binary_name: apm-darwin-x86_64
-          - os: macos-latest
-            arch: arm64
-            platform: darwin
-            binary_name: apm-darwin-arm64
           - os: windows-latest
             arch: x86_64
             platform: windows
@@ -266,14 +432,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Setup build environment (macOS-15-intel)
-        if: matrix.os == 'macos-15-intel'
-        run: |
-          # Install Xcode Command Line Tools
-          sudo xcode-select --install 2>/dev/null || true
-          # Wait for installation to complete
-          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
       
       - name: Install uv (Unix)
         if: matrix.platform != 'windows'
@@ -315,7 +473,8 @@ jobs:
           uv run pwsh scripts/windows/test-integration.ps1 -SkipBuild
         timeout-minutes: 20
 
-# Release validation tests - Final pre-release validation of shipped binary
+  # Release validation tests - Final pre-release validation of shipped binary (Linux + Windows).
+  # macOS release validation runs inside the consolidated macOS jobs.
   release-validation:
     name: Release Validation
     if: github.ref_type == 'tag' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -331,14 +490,6 @@ jobs:
             arch: arm64
             platform: linux
             binary_name: apm-linux-arm64
-          - os: macos-15-intel
-            arch: x86_64
-            platform: darwin
-            binary_name: apm-darwin-x86_64
-          - os: macos-latest
-            arch: arm64
-            platform: darwin
-            binary_name: apm-darwin-arm64
           - os: windows-latest
             arch: x86_64
             platform: windows
@@ -359,14 +510,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      
-      - name: Setup build environment (macOS-15-intel)
-        if: matrix.os == 'macos-15-intel'
-        run: |
-          # Install Xcode Command Line Tools
-          sudo xcode-select --install 2>/dev/null || true
-          # Wait for installation to complete
-          until xcode-select -p >/dev/null 2>&1; do sleep 5; done
           
       - name: Download APM binary from build artifacts
         uses: actions/download-artifact@v4
@@ -438,7 +581,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [test, build, integration-tests, release-validation]
+    needs: [test, build, build-and-validate-macos-intel, build-and-validate-macos-arm, integration-tests, release-validation]
     if: github.ref_type == 'tag'  # All tags create GitHub releases
     runs-on: ubuntu-latest
     permissions:
@@ -585,7 +728,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [test, build, integration-tests, release-validation, create-release, gh-aw-compat]
+    needs: [test, build, build-and-validate-macos-intel, build-and-validate-macos-arm, integration-tests, release-validation, create-release, gh-aw-compat]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     environment:
       name: pypi
@@ -623,7 +766,7 @@ jobs:
   update-homebrew:
     name: Update Homebrew Formula
     runs-on: ubuntu-latest
-    needs: [test, build, integration-tests, release-validation, create-release, gh-aw-compat, publish-pypi]
+    needs: [test, build, build-and-validate-macos-intel, build-and-validate-macos-arm, integration-tests, release-validation, create-release, gh-aw-compat, publish-pypi]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     permissions:
       contents: read
@@ -688,7 +831,7 @@ jobs:
   update-scoop:
     name: Update Scoop Bucket
     runs-on: ubuntu-latest
-    needs: [test, build, integration-tests, release-validation, create-release, gh-aw-compat, publish-pypi]
+    needs: [test, build, build-and-validate-macos-intel, build-and-validate-macos-arm, integration-tests, release-validation, create-release, gh-aw-compat, publish-pypi]
     # TODO: Enable once downstream repository and secrets are configured (see #88)
     if: false && github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     permissions:
