@@ -540,11 +540,11 @@ class TestStripDangerous:
         result = ContentScanner.strip_dangerous(content)
         assert tag not in result
 
-    def test_strips_leading_bom(self):
-        """Leading BOM (U+FEFF) is stripped — strip_dangerous removes all BOM."""
-        content = f"\uFEFF# Title"
+    def test_preserves_leading_bom(self):
+        """Leading BOM (U+FEFF) is info-level — preserved by strip_dangerous."""
+        content = "\uFEFF# Title"
         result = ContentScanner.strip_dangerous(content)
-        assert result == "# Title"
+        assert result == content
 
     def test_strips_mid_file_bom(self):
         content = f"line1\n\uFEFFline2"
