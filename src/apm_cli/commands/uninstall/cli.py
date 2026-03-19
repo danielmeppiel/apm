@@ -9,15 +9,9 @@ import click
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
 from ...utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 
-# APM Dependencies
-try:
-    from ...deps.lockfile import LockFile
-    from ...models.apm_package import APMPackage, DependencyReference
-    from ...integration.mcp_integrator import MCPIntegrator
-
-    APM_DEPS_AVAILABLE = True
-except ImportError:
-    APM_DEPS_AVAILABLE = False
+from ...deps.lockfile import LockFile
+from ...models.apm_package import APMPackage, DependencyReference
+from ...integration.mcp_integrator import MCPIntegrator
 
 from .engine import (
     _parse_dependency_entry,

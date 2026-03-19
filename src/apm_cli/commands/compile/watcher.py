@@ -4,7 +4,7 @@ import time
 
 import click
 
-from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME
+from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_YML_FILENAME
 from ...compilation import AgentsCompiler, CompilationConfig
 from ...utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 

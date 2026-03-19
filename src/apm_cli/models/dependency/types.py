@@ -9,7 +9,7 @@ from typing import Optional
 class GitReferenceType(Enum):
     """Types of Git references supported."""
     BRANCH = "branch"
-    TAG = "tag" 
+    TAG = "tag"
     COMMIT = "commit"
 
 

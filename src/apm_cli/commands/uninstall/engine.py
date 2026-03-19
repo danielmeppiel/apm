@@ -1,22 +1,15 @@
 """APM uninstall engine  -- validation, removal, and cleanup helpers."""
 
 import builtins
-import shutil
 from pathlib import Path
 
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
 from ...utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ...utils.path_security import PathTraversalError, safe_rmtree
 
-# APM Dependencies
-try:
-    from ...deps.lockfile import LockFile
-    from ...models.apm_package import APMPackage, DependencyReference
-    from ...integration.mcp_integrator import MCPIntegrator
-
-    APM_DEPS_AVAILABLE = True
-except ImportError:
-    APM_DEPS_AVAILABLE = False
+from ...deps.lockfile import LockFile
+from ...models.apm_package import APMPackage, DependencyReference
+from ...integration.mcp_integrator import MCPIntegrator
 
 
 def _parse_dependency_entry(dep_entry):

@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 import click
-import yaml
 
 from ..constants import APM_LOCK_FILENAME, APM_MODULES_DIR, APM_YML_FILENAME
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
