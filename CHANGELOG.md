@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- CLI docs now document the `apm compile --target opencode` option, align `apm audit --dry-run` wording with actual behavior, and mark planned `apm audit --drift` examples as not yet available (#366)
+
 ## [0.8.2] - 2026-03-19
 
 ### Added
