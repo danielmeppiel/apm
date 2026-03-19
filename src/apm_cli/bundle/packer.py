@@ -46,6 +46,7 @@ def pack_bundle(
     target: Optional[str] = None,
     archive: bool = False,
     dry_run: bool = False,
+    force: bool = False,
 ) -> PackResult:
     """Create a self-contained bundle from installed APM dependencies.
 
@@ -57,6 +58,7 @@ def pack_bundle(
             (auto-detect from apm.yml / project structure).
         archive: If *True*, produce a ``.tar.gz`` and remove the directory.
         dry_run: If *True*, resolve the file list but write nothing to disk.
+        force: On collision (plugin format), last writer wins.
 
     Returns:
         :class:`PackResult` describing what was (or would be) produced.
@@ -67,6 +69,20 @@ def pack_bundle(
     """
     # 1. Read lockfile (migrate legacy apm.lock → apm.lock.yaml if needed)
     migrate_lockfile_if_needed(project_root)
+
+    # Plugin format: delegate to dedicated exporter
+    if fmt == "plugin":
+        from .plugin_exporter import export_plugin_bundle
+
+        return export_plugin_bundle(
+            project_root=project_root,
+            output_dir=output_dir,
+            target=target,
+            archive=archive,
+            dry_run=dry_run,
+            force=force,
+        )
+
     lockfile_path = get_lockfile_path(project_root)
     lockfile = LockFile.read(lockfile_path)
     if lockfile is None:

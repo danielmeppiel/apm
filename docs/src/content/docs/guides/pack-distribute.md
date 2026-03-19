@@ -66,6 +66,7 @@ apm pack --dry-run
 | `--archive` | off | Produce `.tar.gz` instead of directory |
 | `-o, --output` | `./build` | Output directory |
 | `--dry-run` | off | List files without writing |
+| `--force` | off | On collision (plugin format), last writer wins |
 
 ### Target filtering
 
@@ -144,6 +145,59 @@ build/my-project-1.0.0/
 ```
 
 The bundle is self-describing: its `apm.lock.yaml` lists every file it contains and the dependency graph that produced them.
+
+## Plugin format
+
+`apm pack --format plugin` transforms your project into a standalone plugin directory consumable by Copilot CLI, Claude Code, or other plugin hosts. The output contains no APM-specific files — no `apm.yml`, `apm_modules/`, `.apm/`, or `apm.lock.yaml`.
+
+Use this when you want to distribute your APM package as a standalone plugin that works without APM.
+
+```bash
+apm pack --format plugin
+```
+
+### Output mapping
+
+The exporter remaps `.apm/` content into plugin-native paths:
+
+| APM source | Plugin output |
+|---|---|
+| `.apm/agents/*.agent.md` | `agents/*.agent.md` |
+| `.apm/skills/*/SKILL.md` | `skills/*/SKILL.md` |
+| `.apm/prompts/*.prompt.md` | `commands/*.md` |
+| `.apm/prompts/*.md` | `commands/*.md` |
+| `.apm/instructions/*.instructions.md` | `instructions/*.instructions.md` |
+| `.apm/context/*.context.md` | `contexts/*.context.md` |
+| `.apm/memory/*.memory.md` | `contexts/*.memory.md` |
+| `.apm/hooks/*.json` | `hooks.json` (merged) |
+| `.apm/commands/*.md` | `commands/*.md` |
+
+Prompt files are renamed: `review.prompt.md` becomes `review.md` in `commands/`.
+
+### plugin.json generation
+
+The bundle includes a `plugin.json`. If one already exists in the project (at the root, `.github/plugin/`, `.claude-plugin/`, or `.cursor-plugin/`), it is used and updated with component paths reflecting the output layout. Otherwise, APM synthesizes one from `apm.yml` metadata.
+
+### devDependencies exclusion
+
+Dependencies listed under [`devDependencies`](../../reference/manifest-schema/#5-devdependencies) in `apm.yml` are excluded from the plugin bundle. This keeps development-only packages out of distributed plugins.
+
+### Example output
+
+```
+build/my-plugin-1.0.0/
+  agents/
+    architect.agent.md
+  skills/
+    security-scan/
+      SKILL.md
+  commands/
+    review.md
+  instructions/
+    coding-standards.instructions.md
+  hooks.json
+  plugin.json
+```
 
 ## Lockfile enrichment
 

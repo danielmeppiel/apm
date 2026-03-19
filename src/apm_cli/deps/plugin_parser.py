@@ -500,6 +500,50 @@ def _generate_apm_yml(manifest: Dict[str, Any]) -> str:
     return yaml.dump(apm_package, default_flow_style=False, sort_keys=False)
 
 
+def synthesize_plugin_json_from_apm_yml(apm_yml_path: Path) -> dict:
+    """Create a minimal ``plugin.json`` dict from ``apm.yml`` identity fields.
+
+    Reads ``apm.yml`` and extracts ``name``, ``version``, ``description``,
+    ``author``, and ``license``.  The ``author`` string is mapped to the plugin
+    spec's ``{"name": author}`` object format.
+
+    Args:
+        apm_yml_path: Path to the ``apm.yml`` file.
+
+    Returns:
+        dict suitable for writing as ``plugin.json``.
+
+    Raises:
+        ValueError: If ``name`` is missing from ``apm.yml``.
+        FileNotFoundError: If the file does not exist.
+    """
+    if not apm_yml_path.exists():
+        raise FileNotFoundError(f"apm.yml not found: {apm_yml_path}")
+
+    try:
+        data = yaml.safe_load(apm_yml_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML in {apm_yml_path}: {exc}") from exc
+
+    if not isinstance(data, dict) or not data.get("name"):
+        raise ValueError(
+            "apm.yml must contain at least a 'name' field to synthesize plugin.json"
+        )
+
+    result: Dict[str, Any] = {"name": data["name"]}
+
+    if data.get("version"):
+        result["version"] = data["version"]
+    if data.get("description"):
+        result["description"] = data["description"]
+    if data.get("author"):
+        result["author"] = {"name": str(data["author"])}
+    if data.get("license"):
+        result["license"] = data["license"]
+
+    return result
+
+
 def validate_plugin_package(plugin_path: Path) -> bool:
     """Check whether a directory looks like a Claude plugin.
 
