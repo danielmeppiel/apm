@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from ..constants import APM_YML_FILENAME
 from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success
 from ..version import get_version
 from ._helpers import HIGHLIGHT, RESET, _get_console, _load_apm_config
@@ -36,7 +37,7 @@ def config(ctx):
             config_table.add_column("Value", style="cyan")
 
             # Show apm.yml if in project
-            if Path("apm.yml").exists():
+            if Path(APM_YML_FILENAME).exists():
                 apm_config = _load_apm_config()
                 config_table.add_row(
                     "Project", "Name", apm_config.get("name", "Unknown")
@@ -88,7 +89,7 @@ def config(ctx):
             # Fallback display
             _rich_info("Current APM Configuration:")
 
-            if Path("apm.yml").exists():
+            if Path(APM_YML_FILENAME).exists():
                 apm_config = _load_apm_config()
                 click.echo(f"\n{HIGHLIGHT}Project (apm.yml):{RESET}")
                 click.echo(f"  Name: {apm_config.get('name', 'Unknown')}")

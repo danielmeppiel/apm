@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from ..constants import APM_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
+
 if TYPE_CHECKING:
     from .apm_package import APMPackage
 
@@ -127,7 +129,7 @@ class ValidationResult:
 
 def _has_hook_json(package_path: Path) -> bool:
     """Check if the package has hook JSON files in hooks/ or .apm/hooks/."""
-    for hooks_dir in [package_path / "hooks", package_path / ".apm" / "hooks"]:
+    for hooks_dir in [package_path / "hooks", package_path / APM_DIR / "hooks"]:
         if hooks_dir.exists() and any(hooks_dir.glob("*.json")):
             return True
     return False
@@ -161,8 +163,8 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         return result
     
     # Detect package type
-    apm_yml_path = package_path / "apm.yml"
-    skill_md_path = package_path / "SKILL.md"
+    apm_yml_path = package_path / APM_YML_FILENAME
+    skill_md_path = package_path / SKILL_MD_FILENAME
 
     # Check for plugin.json  -- optional metadata, not a detection gate
     from ..utils.helpers import find_plugin_json
@@ -280,7 +282,7 @@ def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: Vali
         result.package = package
         
     except Exception as e:
-        result.add_error(f"Failed to process SKILL.md: {e}")
+        result.add_error(f"Failed to process {SKILL_MD_FILENAME}: {e}")
         return result
     
     return result
@@ -342,13 +344,13 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
         return result
     
     # Check for .apm directory
-    apm_dir = package_path / ".apm"
+    apm_dir = package_path / APM_DIR
     if not apm_dir.exists():
-        result.add_error("Missing required directory: .apm/")
+        result.add_error(f"Missing required directory: {APM_DIR}/")
         return result
     
     if not apm_dir.is_dir():
-        result.add_error(".apm must be a directory")
+        result.add_error(f"{APM_DIR} must be a directory")
         return result
     
     # Check if .apm directory has any content
@@ -376,7 +378,7 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
         has_primitives = _has_hook_json(package_path)
     
     if not has_primitives:
-        result.add_warning("No primitive files found in .apm/ directory")
+        result.add_warning(f"No primitive files found in {APM_DIR}/ directory")
     
     # Version format validation (basic semver check)
     if package and package.version is not None:

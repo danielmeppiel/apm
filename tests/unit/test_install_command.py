@@ -9,6 +9,8 @@ from pathlib import Path
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
 
+from apm_cli.models.results import InstallResult
+
 from apm_cli.cli import cli
 
 
@@ -78,11 +80,9 @@ class TestInstallCommandAutoBootstrap:
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
             # Mock the install function to avoid actual installation
-            mock_install_apm.return_value = (0, 0, 0, MagicMock(has_diagnostics=False, has_critical_security=False))
+            mock_install_apm.return_value = InstallResult(diagnostics=MagicMock(has_diagnostics=False, has_critical_security=False))
 
             result = self.runner.invoke(cli, ["install", "test/package"])
-
-            # Should succeed and create apm.yml
             assert result.exit_code == 0
             assert "Created apm.yml" in result.output
             assert Path("apm.yml").exists()
@@ -116,7 +116,7 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = (0, 0, 0, MagicMock(has_diagnostics=False, has_critical_security=False))
+            mock_install_apm.return_value = InstallResult(diagnostics=MagicMock(has_diagnostics=False, has_critical_security=False))
 
             result = self.runner.invoke(cli, ["install", "org1/pkg1", "org2/pkg2"])
 
@@ -156,7 +156,7 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = (0, 0, 0, MagicMock(has_diagnostics=False, has_critical_security=False))
+            mock_install_apm.return_value = InstallResult(diagnostics=MagicMock(has_diagnostics=False, has_critical_security=False))
 
             result = self.runner.invoke(cli, ["install"])
 
@@ -194,7 +194,7 @@ class TestInstallCommandAutoBootstrap:
             mock_pkg_instance.get_mcp_dependencies.return_value = []
             mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
 
-            mock_install_apm.return_value = (0, 0, 0, MagicMock(has_diagnostics=False, has_critical_security=False))
+            mock_install_apm.return_value = InstallResult(diagnostics=MagicMock(has_diagnostics=False, has_critical_security=False))
 
             result = self.runner.invoke(cli, ["install", "test/package"])
 

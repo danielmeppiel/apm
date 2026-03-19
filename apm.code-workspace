@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../oss-contributor"
+		}
+	],
+	"settings": {
+		"github.copilot.enable": {
+			"markdown": true
+		}
+	}
+}
