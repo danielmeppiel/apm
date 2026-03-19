@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Align `apm compile` and `apm install` CLI reference/help text with current target support and verbose diagnostics wording (#365)
+
 ## [0.8.2] - 2026-03-19
 
 ### Added
