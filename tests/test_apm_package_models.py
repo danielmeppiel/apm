@@ -1303,16 +1303,38 @@ class TestGenericHostSubdirectoryRoundTrip:
         ("https://gitlab.com/org/repo", "prompts/helper", "v1.0"),
         ("https://bitbucket.example.com/team/prompts", "agents/summarizer", "develop"),
     ])
-    def test_download_package_receives_structured_dep(self, git_url, path, ref):
-        """download_package should accept DependencyReference directly,
-        preserving virtual_path without a lossy parse round-trip."""
+    def test_download_package_skips_parse_with_structured_dep(self, git_url, path, ref):
+        """download_package must skip DependencyReference.parse() when given
+        a structured object, avoiding the lossy round-trip."""
         entry = {"git": git_url, "path": path, "ref": ref}
         dep = DependencyReference.parse_from_dict(entry)
 
-        # Passing the object directly must preserve all fields
-        assert dep.is_virtual is True
-        assert dep.virtual_path == path
-        assert dep.is_virtual_subdirectory() is True
+        from apm_cli.deps.github_downloader import GitHubPackageDownloader
+        downloader = GitHubPackageDownloader()
+
+        # Monkey-patch DependencyReference.parse to detect if it's called
+        original_parse = DependencyReference.parse
+        parse_called = False
+        @classmethod
+        def tracking_parse(cls, s):
+            nonlocal parse_called
+            parse_called = True
+            return original_parse(s)
+
+        DependencyReference.parse = tracking_parse
+        try:
+            # download_package will fail on the actual clone, but the important
+            # thing is that it does NOT call parse() when given an object
+            downloader.download_package(dep, Path("/tmp/apm-test-nonexistent"))
+        except Exception:
+            pass  # Expected: clone will fail, but parse should not be called
+        finally:
+            DependencyReference.parse = original_parse
+
+        assert not parse_called, (
+            "DependencyReference.parse() was called when passing a structured "
+            "DependencyReference — the lossy round-trip was NOT avoided"
+        )
 
     def test_github_round_trip_works(self):
         """GitHub round-trip works because min_base_segments=2 is hardcoded."""

@@ -88,7 +88,7 @@ class TestGitHubPackageDownloader:
             result = self.downloader.resolve_git_reference('user/repo#main')
             
             assert isinstance(result, ResolvedReference)
-            assert result.original_ref == 'user/repo#main'
+            assert result.original_ref == 'github.com/user/repo#main'
             assert result.ref_type == GitReferenceType.BRANCH
             assert result.resolved_commit == 'abc123def456'
             assert result.ref_name == 'main'

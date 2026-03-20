@@ -676,6 +676,9 @@ class GitHubPackageDownloader:
         # Default to main branch if no reference specified
         ref = dep_ref.reference or "main"
 
+        # Normalize to string for ResolvedReference.original_ref
+        original_ref_str = str(dep_ref)
+
         # Artifactory: no git repo to query, return ref-based resolution
         if dep_ref.is_artifactory() or (
             self._parse_artifactory_base_url()
@@ -683,7 +686,7 @@ class GitHubPackageDownloader:
         ):
             is_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
             return ResolvedReference(
-                original_ref=str(dep_ref),
+                original_ref=original_ref_str,
                 ref_type=GitReferenceType.COMMIT if is_commit else GitReferenceType.BRANCH,
                 resolved_commit=None,
                 ref_name=ref
@@ -771,7 +774,7 @@ class GitHubPackageDownloader:
                 shutil.rmtree(temp_dir, ignore_errors=True)
         
         return ResolvedReference(
-            original_ref=repo_ref,
+            original_ref=original_ref_str,
             ref_type=ref_type,
             resolved_commit=resolved_commit,
             ref_name=ref_name
