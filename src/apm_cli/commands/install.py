@@ -7,7 +7,17 @@ from typing import List
 
 import click
 
+from ..constants import (
+    APM_LOCK_FILENAME,
+    APM_MODULES_DIR,
+    APM_YML_FILENAME,
+    GITHUB_DIR,
+    CLAUDE_DIR,
+    SKILL_MD_FILENAME,
+    InstallMode,
+)
 from ..drift import build_download_ref, detect_orphans, detect_ref_change
+from ..models.results import InstallResult
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
@@ -59,14 +69,14 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
 
     import yaml
 
-    apm_yml_path = Path("apm.yml")
+    apm_yml_path = Path(APM_YML_FILENAME)
 
     # Read current apm.yml
     try:
         with open(apm_yml_path, "r") as f:
             data = yaml.safe_load(f) or {}
     except Exception as e:
-        _rich_error(f"Failed to read apm.yml: {e}")
+        _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
     # Ensure dependencies structure exists
@@ -152,9 +162,9 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
     try:
         with open(apm_yml_path, "w") as f:
             yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
-        _rich_success(f"Updated apm.yml with {len(validated_packages)} new package(s)")
+        _rich_success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
     except Exception as e:
-        _rich_error(f"Failed to write apm.yml: {e}")
+        _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
     return validated_packages
@@ -326,6 +336,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
     MCP servers for all detected and available runtimes. It also installs APM package
     dependencies from GitHub repositories.
 
+    The --only flag filters by dependency type (apm or mcp). Internally converted
+    to an InstallMode enum for type-safe dispatch.
+
     Examples:
         apm install                             # Install existing deps from apm.yml
         apm install org/pkg1                    # Add package to apm.yml and install
@@ -338,7 +351,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
     """
     try:
         # Check if apm.yml exists
-        apm_yml_exists = Path("apm.yml").exists()
+        apm_yml_exists = Path(APM_YML_FILENAME).exists()
 
         # Auto-bootstrap: create minimal apm.yml when packages specified but no apm.yml
         if not apm_yml_exists and packages:
@@ -346,11 +359,11 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             project_name = Path.cwd().name
             config = _get_default_config(project_name)
             _create_minimal_apm_yml(config)
-            _rich_success("Created apm.yml", symbol="sparkles")
+            _rich_success(f"Created {APM_YML_FILENAME}", symbol="sparkles")
 
         # Error when NO apm.yml AND NO packages
         if not apm_yml_exists and not packages:
-            _rich_error("No apm.yml found")
+            _rich_error(f"No {APM_YML_FILENAME} found")
             _rich_info("💡 Run 'apm init' to create one, or:")
             _rich_info("   apm install <org/repo> to auto-create + install")
             sys.exit(1)
@@ -367,18 +380,24 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Parse apm.yml to get both APM and MCP dependencies
         try:
-            apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
         except Exception as e:
-            _rich_error(f"Failed to parse apm.yml: {e}")
+            _rich_error(f"Failed to parse {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         # Get APM and MCP dependencies
         apm_deps = apm_package.get_apm_dependencies()
         mcp_deps = apm_package.get_mcp_dependencies()
 
-        # Determine what to install based on --only flag
-        should_install_apm = only != "mcp"
-        should_install_mcp = only != "apm"
+        # Convert --only string to InstallMode enum
+        if only is None:
+            install_mode = InstallMode.ALL
+        else:
+            install_mode = InstallMode(only)
+
+        # Determine what to install based on install mode
+        should_install_apm = install_mode != InstallMode.MCP
+        should_install_mcp = install_mode != InstallMode.APM
 
         # Show what will be installed if dry run
         if dry_run:
@@ -434,10 +453,14 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 # If specific packages were requested, only install those
                 # Otherwise install all from apm.yml
                 only_pkgs = builtins.list(packages) if packages else None
-                apm_count, prompt_count, agent_count, apm_diagnostics = _install_apm_dependencies(
+                install_result = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                 )
+                apm_count = install_result.installed_count
+                prompt_count = install_result.prompts_integrated
+                agent_count = install_result.agents_integrated
+                apm_diagnostics = install_result.diagnostics
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
@@ -451,7 +474,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             clear_apm_yml_cache()
 
         # Collect transitive MCP dependencies from resolved APM packages
-        apm_modules_path = Path.cwd() / "apm_modules"
+        apm_modules_path = Path.cwd() / APM_MODULES_DIR
         if should_install_mcp and apm_modules_path.exists():
             lock_path = get_lockfile_path(Path.cwd())
             transitive_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lock_path, trust_transitive_mcp)
@@ -493,15 +516,15 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             apm_diagnostics.render_summary()
         else:
             _rich_blank_line()
-        if not only:
+        if install_mode == InstallMode.ALL:
             # Load apm.yml config for summary
             apm_config = _load_apm_config()
             _show_install_summary(
                 apm_count, prompt_count, agent_count, mcp_count, apm_config
             )
-        elif only == "apm":
+        elif install_mode == InstallMode.APM:
             _rich_success(f"Installed {apm_count} APM dependencies")
-        elif only == "mcp":
+        elif install_mode == InstallMode.MCP:
             _rich_success(f"Configured {mcp_count} MCP servers")
 
         # Hard-fail when critical security findings blocked any package.
@@ -839,7 +862,7 @@ def _install_apm_dependencies(
 
     apm_deps = apm_package.get_apm_dependencies()
     if not apm_deps:
-        return 0, 0, 0
+        return InstallResult()
 
     _rich_info(f"Installing APM dependencies ({len(apm_deps)})...")
 
@@ -854,7 +877,7 @@ def _install_apm_dependencies(
         if existing_lockfile and existing_lockfile.dependencies:
             _rich_info(f"Using apm.lock.yaml ({len(existing_lockfile.dependencies)} locked dependencies)")
 
-    apm_modules_dir = project_root / "apm_modules"
+    apm_modules_dir = project_root / APM_MODULES_DIR
     apm_modules_dir.mkdir(exist_ok=True)
 
     # Create downloader early so it can be used for transitive dependency resolution
@@ -983,7 +1006,7 @@ def _install_apm_dependencies(
 
         if not deps_to_install:
             _rich_info("No APM dependencies to install", symbol="check")
-            return 0, 0, 0
+            return InstallResult()
 
         # ------------------------------------------------------------------
         # Orphan detection: packages in lockfile no longer in the manifest.
@@ -1015,8 +1038,8 @@ def _install_apm_dependencies(
         # creating .github/ here ensures a consistent skills root and also enables
         # VSCode/Copilot integration by default (quick path to value), even for
         # projects that don't yet use .claude/.
-        github_dir = project_root / ".github"
-        claude_dir = project_root / ".claude"
+        github_dir = project_root / GITHUB_DIR
+        claude_dir = project_root / CLAUDE_DIR
         if not github_dir.exists() and not claude_dir.exists():
             github_dir.mkdir(parents=True, exist_ok=True)
             _rich_info(
@@ -1380,355 +1403,127 @@ def _install_apm_dependencies(
                     if not dep_ref.reference:
                         unpinned_count += 1
 
-                    # Still need to integrate prompts for cached packages (zero-config behavior)
-                    if integrate_vscode or integrate_claude or integrate_opencode:
-                        try:
-                            # Create PackageInfo from cached package
-                            from apm_cli.models.apm_package import (
-                                APMPackage,
-                                PackageInfo,
-                                PackageType,
-                                ResolvedReference,
-                                GitReferenceType,
-                            )
-                            from datetime import datetime
+                    # Skip integration if not needed
+                    if not (integrate_vscode or integrate_claude or integrate_opencode):
+                        continue
 
-                            # Load package from apm.yml in install path
-                            apm_yml_path = install_path / "apm.yml"
-                            if apm_yml_path.exists():
-                                cached_package = APMPackage.from_apm_yml(apm_yml_path)
-                                # Ensure source is set to the repo URL for sync matching
-                                if not cached_package.source:
-                                    cached_package.source = dep_ref.repo_url
-                            else:
-                                # Virtual package or no apm.yml - create minimal package
-                                cached_package = APMPackage(
-                                    name=dep_ref.repo_url.split("/")[-1],
-                                    version="unknown",
-                                    package_path=install_path,
-                                    source=dep_ref.repo_url,
-                                )
+                    # Integrate prompts for cached packages (zero-config behavior)
+                    try:
+                        # Create PackageInfo from cached package
+                        from apm_cli.models.apm_package import (
+                            APMPackage,
+                            PackageInfo,
+                            PackageType,
+                            ResolvedReference,
+                            GitReferenceType,
+                        )
+                        from datetime import datetime
 
-                            # Create basic resolved reference for cached packages
-                            resolved_ref = ResolvedReference(
-                                original_ref=dep_ref.reference or "default",
-                                ref_type=GitReferenceType.BRANCH,
-                                resolved_commit="cached",  # Mark as cached since we don't know exact commit
-                                ref_name=dep_ref.reference or "default",
+                        # Load package from apm.yml in install path
+                        apm_yml_path = install_path / APM_YML_FILENAME
+                        if apm_yml_path.exists():
+                            cached_package = APMPackage.from_apm_yml(apm_yml_path)
+                            # Ensure source is set to the repo URL for sync matching
+                            if not cached_package.source:
+                                cached_package.source = dep_ref.repo_url
+                        else:
+                            # Virtual package or no apm.yml - create minimal package
+                            cached_package = APMPackage(
+                                name=dep_ref.repo_url.split("/")[-1],
+                                version="unknown",
+                                package_path=install_path,
+                                source=dep_ref.repo_url,
                             )
 
-                            cached_package_info = PackageInfo(
-                                package=cached_package,
-                                install_path=install_path,
-                                resolved_reference=resolved_ref,
-                                installed_at=datetime.now().isoformat(),
-                                dependency_ref=dep_ref,  # Store for canonical dependency string
-                            )
+                        # Create basic resolved reference for cached packages
+                        resolved_ref = ResolvedReference(
+                            original_ref=dep_ref.reference or "default",
+                            ref_type=GitReferenceType.BRANCH,
+                            resolved_commit="cached",  # Mark as cached since we don't know exact commit
+                            ref_name=dep_ref.reference or "default",
+                        )
 
-                            # Detect package_type from disk contents so
-                            # skill integration is not silently skipped
-                            skill_md_exists = (install_path / "SKILL.md").exists()
-                            apm_yml_exists = (install_path / "apm.yml").exists()
-                            from apm_cli.utils.helpers import find_plugin_json
-                            plugin_json_exists = find_plugin_json(install_path) is not None
-                            if plugin_json_exists and not apm_yml_exists:
-                                cached_package_info.package_type = PackageType.MARKETPLACE_PLUGIN
-                            elif skill_md_exists and apm_yml_exists:
-                                cached_package_info.package_type = PackageType.HYBRID
-                            elif skill_md_exists:
-                                cached_package_info.package_type = PackageType.CLAUDE_SKILL
-                            elif apm_yml_exists:
-                                cached_package_info.package_type = PackageType.APM_PACKAGE
+                        cached_package_info = PackageInfo(
+                            package=cached_package,
+                            install_path=install_path,
+                            resolved_reference=resolved_ref,
+                            installed_at=datetime.now().isoformat(),
+                            dependency_ref=dep_ref,  # Store for canonical dependency string
+                        )
 
-                            # Collect for lockfile (cached packages still need to be tracked)
-                            node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
-                            depth = node.depth if node else 1
-                            resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
-                            # Get commit SHA: callback capture > existing lockfile > explicit reference
-                            dep_key = dep_ref.get_unique_key()
-                            cached_commit = callback_downloaded.get(dep_key)
-                            if not cached_commit and existing_lockfile:
-                                locked_dep = existing_lockfile.get_dependency(dep_key)
-                                if locked_dep:
-                                    cached_commit = locked_dep.resolved_commit
-                            if not cached_commit:
-                                cached_commit = dep_ref.reference
-                            installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
-                            dep_deployed: builtins.list = []  # collect deployed paths for this package
+                        # Detect package_type from disk contents so
+                        # skill integration is not silently skipped
+                        skill_md_exists = (install_path / SKILL_MD_FILENAME).exists()
+                        apm_yml_exists = (install_path / APM_YML_FILENAME).exists()
+                        from apm_cli.utils.helpers import find_plugin_json
+                        plugin_json_exists = find_plugin_json(install_path) is not None
+                        if plugin_json_exists and not apm_yml_exists:
+                            cached_package_info.package_type = PackageType.MARKETPLACE_PLUGIN
+                        elif skill_md_exists and apm_yml_exists:
+                            cached_package_info.package_type = PackageType.HYBRID
+                        elif skill_md_exists:
+                            cached_package_info.package_type = PackageType.CLAUDE_SKILL
+                        elif apm_yml_exists:
+                            cached_package_info.package_type = PackageType.APM_PACKAGE
 
-                            # Track package type for lockfile
-                            if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
-                                package_types[dep_key] = cached_package_info.package_type.value
+                        # Collect for lockfile (cached packages still need to be tracked)
+                        node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
+                        depth = node.depth if node else 1
+                        resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+                        # Get commit SHA: callback capture > existing lockfile > explicit reference
+                        dep_key = dep_ref.get_unique_key()
+                        cached_commit = callback_downloaded.get(dep_key)
+                        if not cached_commit and existing_lockfile:
+                            locked_dep = existing_lockfile.get_dependency(dep_key)
+                            if locked_dep:
+                                cached_commit = locked_dep.resolved_commit
+                        if not cached_commit:
+                            cached_commit = dep_ref.reference
+                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
 
-                            # Pre-deploy security gate
-                            if not _pre_deploy_security_scan(
-                                install_path, diagnostics,
-                                package_name=dep_key, force=force,
-                            ):
-                                package_deployed_files[dep_key] = []
-                                continue
+                        # Track package type for lockfile
+                        if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
+                            package_types[dep_key] = cached_package_info.package_type.value
 
-                            # VSCode + Claude + OpenCode integration (prompts + agents)
-                            if integrate_vscode or integrate_claude or integrate_opencode:
-                                # Integrate prompts
-                                prompt_result = (
-                                    prompt_integrator.integrate_package_prompts(
-                                        cached_package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if prompt_result.files_integrated > 0:
-                                    total_prompts_integrated += (
-                                        prompt_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
-                                    )
-                                if prompt_result.files_updated > 0:
-                                    _rich_info(
-                                        f"  └─ {prompt_result.files_updated} prompts updated"
-                                    )
-                                # Track links resolved
-                                total_links_resolved += prompt_result.links_resolved
-                                for tp in prompt_result.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
+                        # Pre-deploy security gate
+                        if not _pre_deploy_security_scan(
+                            install_path, diagnostics,
+                            package_name=dep_key, force=force,
+                        ):
+                            package_deployed_files[dep_key] = []
+                            continue
 
-                                # Integrate agents
-                                agent_result = (
-                                    agent_integrator.integrate_package_agents(
-                                        cached_package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if agent_result.files_integrated > 0:
-                                    total_agents_integrated += (
-                                        agent_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
-                                    )
-                                if agent_result.files_updated > 0:
-                                    _rich_info(
-                                        f"  └─ {agent_result.files_updated} agents updated"
-                                    )
-                                # Track links resolved
-                                total_links_resolved += agent_result.links_resolved
-                                for tp in agent_result.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Skill integration (works for VSCode, Claude, and OpenCode)
-                            # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
-                            if integrate_vscode or integrate_claude or integrate_opencode:
-                                skill_result = skill_integrator.integrate_package_skill(
-                                    cached_package_info, project_root,
-                                    diagnostics=diagnostics, managed_files=managed_files, force=force,
-                                )
-                                if skill_result.skill_created:
-                                    total_skills_integrated += 1
-                                    _rich_info(
-                                        f"  └─ Skill integrated → .github/skills/"
-                                    )
-                                if skill_result.sub_skills_promoted > 0:
-                                    total_sub_skills_promoted += skill_result.sub_skills_promoted
-                                    _rich_info(
-                                        f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
-                                    )
-                                for tp in skill_result.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Integrate instructions → .github/instructions/
-                            if integrate_vscode:
-                                instruction_result = (
-                                    instruction_integrator.integrate_package_instructions(
-                                        cached_package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if instruction_result.files_integrated > 0:
-                                    total_instructions_integrated += (
-                                        instruction_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/"
-                                    )
-                                total_links_resolved += instruction_result.links_resolved
-                                for tp in instruction_result.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Integrate instructions → .cursor/rules/
-                            cursor_rules_result = (
-                                instruction_integrator.integrate_package_instructions_cursor(
-                                    cached_package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if cursor_rules_result.files_integrated > 0:
-                                total_instructions_integrated += (
-                                    cursor_rules_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated → .cursor/rules/"
-                                )
-                            total_links_resolved += cursor_rules_result.links_resolved
-                            for tp in cursor_rules_result.target_paths:
-                                dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Claude-specific integration (agents + commands)
-                            if integrate_claude:
-                                # Integrate agents to .claude/agents/
-                                claude_agent_result = (
-                                    agent_integrator.integrate_package_agents_claude(
-                                        cached_package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if claude_agent_result.files_integrated > 0:
-                                    total_agents_integrated += (
-                                        claude_agent_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {claude_agent_result.files_integrated} agents integrated → .claude/agents/"
-                                    )
-                                total_links_resolved += claude_agent_result.links_resolved
-                                for tp in claude_agent_result.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Cursor agents (.cursor/agents/) — opt-in
-                            cursor_agent_result = (
-                                agent_integrator.integrate_package_agents_cursor(
-                                    cached_package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if cursor_agent_result.files_integrated > 0:
-                                total_agents_integrated += (
-                                    cursor_agent_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {cursor_agent_result.files_integrated} agents integrated → .cursor/agents/"
-                                )
-                            total_links_resolved += cursor_agent_result.links_resolved
-                            for tp in cursor_agent_result.target_paths:
-                                dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # OpenCode agents (.opencode/agents/) — opt-in
-                            opencode_agent_result = (
-                                agent_integrator.integrate_package_agents_opencode(
-                                    cached_package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if opencode_agent_result.files_integrated > 0:
-                                total_agents_integrated += (
-                                    opencode_agent_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {opencode_agent_result.files_integrated} agents integrated → .opencode/agents/"
-                                )
-                            total_links_resolved += opencode_agent_result.links_resolved
-                            for tp in opencode_agent_result.target_paths:
-                                dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Claude-specific integration (commands)
-                            if integrate_claude:
-                                command_result = (
-                                    command_integrator.integrate_package_commands(
-                                        cached_package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if command_result.files_integrated > 0:
-                                    total_commands_integrated += (
-                                        command_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/"
-                                    )
-                                if command_result.files_updated > 0:
-                                    _rich_info(
-                                        f"  └─ {command_result.files_updated} commands updated"
-                                    )
-                                total_links_resolved += command_result.links_resolved
-                                for tp in command_result.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # OpenCode commands (.opencode/commands/) — opt-in
-                            opencode_command_result = (
-                                command_integrator.integrate_package_commands_opencode(
-                                    cached_package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if opencode_command_result.files_integrated > 0:
-                                total_commands_integrated += (
-                                    opencode_command_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {opencode_command_result.files_integrated} commands integrated → .opencode/commands/"
-                                )
-                            total_links_resolved += opencode_command_result.links_resolved
-                            for tp in opencode_command_result.target_paths:
-                                dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Hook integration (target-aware)
-                            if integrate_vscode:
-                                hook_result = hook_integrator.integrate_package_hooks(
-                                    cached_package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if hook_result.hooks_integrated > 0:
-                                    total_hooks_integrated += hook_result.hooks_integrated
-                                    _rich_info(
-                                        f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/"
-                                    )
-                                for tp in hook_result.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
-                            if integrate_claude:
-                                hook_result_claude = hook_integrator.integrate_package_hooks_claude(
-                                    cached_package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if hook_result_claude.hooks_integrated > 0:
-                                    total_hooks_integrated += hook_result_claude.hooks_integrated
-                                    _rich_info(
-                                        f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json"
-                                    )
-                                for tp in hook_result_claude.target_paths:
-                                    dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Cursor hooks (.cursor/hooks.json)
-                            hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
-                                cached_package_info, project_root,
-                                force=force, managed_files=managed_files,
-                                diagnostics=diagnostics,
-                            )
-                            if hook_result_cursor.hooks_integrated > 0:
-                                total_hooks_integrated += hook_result_cursor.hooks_integrated
-                                _rich_info(
-                                    f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated → .cursor/hooks.json"
-                                )
-                            for tp in hook_result_cursor.target_paths:
-                                dep_deployed.append(tp.relative_to(project_root).as_posix())
-
-                            # Record deployed files for this package
-                            package_deployed_files[dep_key] = dep_deployed
-                        except Exception as e:
-                            # Don't fail installation if integration fails
-                            diagnostics.error(
-                                f"Failed to integrate primitives from cached package: {e}",
-                                package=dep_key,
-                            )
+                        int_result = _integrate_package_primitives(
+                            cached_package_info, project_root,
+                            integrate_vscode=integrate_vscode,
+                            integrate_claude=integrate_claude,
+                            integrate_opencode=integrate_opencode,
+                            prompt_integrator=prompt_integrator,
+                            agent_integrator=agent_integrator,
+                            skill_integrator=skill_integrator,
+                            instruction_integrator=instruction_integrator,
+                            command_integrator=command_integrator,
+                            hook_integrator=hook_integrator,
+                            force=force,
+                            managed_files=managed_files,
+                            diagnostics=diagnostics,
+                            package_name=dep_key,
+                        )
+                        total_prompts_integrated += int_result["prompts"]
+                        total_agents_integrated += int_result["agents"]
+                        total_skills_integrated += int_result["skills"]
+                        total_sub_skills_promoted += int_result["sub_skills"]
+                        total_instructions_integrated += int_result["instructions"]
+                        total_commands_integrated += int_result["commands"]
+                        total_hooks_integrated += int_result["hooks"]
+                        total_links_resolved += int_result["links_resolved"]
+                        dep_deployed = int_result["deployed_files"]
+                        package_deployed_files[dep_key] = dep_deployed
+                    except Exception as e:
+                        diagnostics.error(
+                            f"Failed to integrate primitives from cached package: {e}",
+                            package=dep_key,
+                        )
 
                     continue
 
@@ -1792,7 +1587,6 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     installed_packages.append((dep_ref, resolved_commit, depth, resolved_by))
-                    dep_deployed_fresh: builtins.list = []  # collect deployed paths for this package
 
                     # Track package type for lockfile
                     if hasattr(package_info, 'package_type') and package_info.package_type:
@@ -1829,259 +1623,31 @@ def _install_apm_dependencies(
 
                     if integrate_vscode or integrate_claude or integrate_opencode:
                         try:
-                            # Integrate prompts + agents (dual-target: .github/ + .claude/)
-                            # Integrate prompts
-                            prompt_result = (
-                                prompt_integrator.integrate_package_prompts(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if prompt_result.files_integrated > 0:
-                                total_prompts_integrated += (
-                                    prompt_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/"
-                                )
-                            if prompt_result.files_updated > 0:
-                                _rich_info(
-                                    f"  └─ {prompt_result.files_updated} prompts updated"
-                                )
-                            # Track links resolved
-                            total_links_resolved += prompt_result.links_resolved
-                            for tp in prompt_result.target_paths:
-                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Integrate agents
-                            agent_result = (
-                                agent_integrator.integrate_package_agents(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if agent_result.files_integrated > 0:
-                                total_agents_integrated += (
-                                    agent_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/"
-                                )
-                            if agent_result.files_updated > 0:
-                                _rich_info(
-                                    f"  └─ {agent_result.files_updated} agents updated"
-                                )
-                            # Track links resolved
-                            total_links_resolved += agent_result.links_resolved
-                            for tp in agent_result.target_paths:
-                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Skill integration (works for VSCode, Claude, and OpenCode)
-                            # Skills go to .github/skills/ (primary) and .claude/skills/ (if .claude/ exists)
-                            if integrate_vscode or integrate_claude or integrate_opencode:
-                                skill_result = skill_integrator.integrate_package_skill(
-                                    package_info, project_root,
-                                    diagnostics=diagnostics, managed_files=managed_files, force=force,
-                                )
-                                if skill_result.skill_created:
-                                    total_skills_integrated += 1
-                                    _rich_info(
-                                        f"  └─ Skill integrated → .github/skills/"
-                                    )
-                                if skill_result.sub_skills_promoted > 0:
-                                    total_sub_skills_promoted += skill_result.sub_skills_promoted
-                                    _rich_info(
-                                        f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/"
-                                    )
-                                for tp in skill_result.target_paths:
-                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Integrate instructions → .github/instructions/
-                            if integrate_vscode:
-                                instruction_result = (
-                                    instruction_integrator.integrate_package_instructions(
-                                        package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if instruction_result.files_integrated > 0:
-                                    total_instructions_integrated += (
-                                        instruction_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/"
-                                    )
-                                total_links_resolved += instruction_result.links_resolved
-                                for tp in instruction_result.target_paths:
-                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Integrate instructions → .cursor/rules/
-                            cursor_rules_result = (
-                                instruction_integrator.integrate_package_instructions_cursor(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if cursor_rules_result.files_integrated > 0:
-                                total_instructions_integrated += (
-                                    cursor_rules_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated → .cursor/rules/"
-                                )
-                            total_links_resolved += cursor_rules_result.links_resolved
-                            for tp in cursor_rules_result.target_paths:
-                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Claude-specific integration (agents + commands)
-                            if integrate_claude:
-                                # Integrate agents to .claude/agents/
-                                claude_agent_result = (
-                                    agent_integrator.integrate_package_agents_claude(
-                                        package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if claude_agent_result.files_integrated > 0:
-                                    total_agents_integrated += (
-                                        claude_agent_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {claude_agent_result.files_integrated} agents integrated → .claude/agents/"
-                                    )
-                                total_links_resolved += claude_agent_result.links_resolved
-                                for tp in claude_agent_result.target_paths:
-                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Cursor agents (.cursor/agents/) — opt-in
-                            cursor_agent_result = (
-                                agent_integrator.integrate_package_agents_cursor(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if cursor_agent_result.files_integrated > 0:
-                                total_agents_integrated += (
-                                    cursor_agent_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {cursor_agent_result.files_integrated} agents integrated → .cursor/agents/"
-                                )
-                            total_links_resolved += cursor_agent_result.links_resolved
-                            for tp in cursor_agent_result.target_paths:
-                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # OpenCode agents (.opencode/agents/) — opt-in
-                            opencode_agent_result = (
-                                agent_integrator.integrate_package_agents_opencode(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if opencode_agent_result.files_integrated > 0:
-                                total_agents_integrated += (
-                                    opencode_agent_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {opencode_agent_result.files_integrated} agents integrated → .opencode/agents/"
-                                )
-                            total_links_resolved += opencode_agent_result.links_resolved
-                            for tp in opencode_agent_result.target_paths:
-                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Claude-specific integration (commands)
-                            if integrate_claude:
-                                command_result = (
-                                    command_integrator.integrate_package_commands(
-                                        package_info, project_root,
-                                        force=force, managed_files=managed_files,
-                                        diagnostics=diagnostics,
-                                    )
-                                )
-                                if command_result.files_integrated > 0:
-                                    total_commands_integrated += (
-                                        command_result.files_integrated
-                                    )
-                                    _rich_info(
-                                        f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/"
-                                    )
-                                if command_result.files_updated > 0:
-                                    _rich_info(
-                                        f"  └─ {command_result.files_updated} commands updated"
-                                    )
-                                total_links_resolved += command_result.links_resolved
-                                for tp in command_result.target_paths:
-                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # OpenCode commands (.opencode/commands/) — opt-in
-                            opencode_command_result = (
-                                command_integrator.integrate_package_commands_opencode(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                            )
-                            if opencode_command_result.files_integrated > 0:
-                                total_commands_integrated += (
-                                    opencode_command_result.files_integrated
-                                )
-                                _rich_info(
-                                    f"  └─ {opencode_command_result.files_integrated} commands integrated → .opencode/commands/"
-                                )
-                            total_links_resolved += opencode_command_result.links_resolved
-                            for tp in opencode_command_result.target_paths:
-                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Hook integration (target-aware)
-                            if integrate_vscode:
-                                hook_result = hook_integrator.integrate_package_hooks(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if hook_result.hooks_integrated > 0:
-                                    total_hooks_integrated += hook_result.hooks_integrated
-                                    _rich_info(
-                                        f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/"
-                                    )
-                                for tp in hook_result.target_paths:
-                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-                            if integrate_claude:
-                                hook_result_claude = hook_integrator.integrate_package_hooks_claude(
-                                    package_info, project_root,
-                                    force=force, managed_files=managed_files,
-                                    diagnostics=diagnostics,
-                                )
-                                if hook_result_claude.hooks_integrated > 0:
-                                    total_hooks_integrated += hook_result_claude.hooks_integrated
-                                    _rich_info(
-                                        f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json"
-                                    )
-                                for tp in hook_result_claude.target_paths:
-                                    dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Cursor hooks (.cursor/hooks.json)
-                            hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
+                            int_result = _integrate_package_primitives(
                                 package_info, project_root,
-                                force=force, managed_files=managed_files,
+                                integrate_vscode=integrate_vscode,
+                                integrate_claude=integrate_claude,
+                                integrate_opencode=integrate_opencode,
+                                prompt_integrator=prompt_integrator,
+                                agent_integrator=agent_integrator,
+                                skill_integrator=skill_integrator,
+                                instruction_integrator=instruction_integrator,
+                                command_integrator=command_integrator,
+                                hook_integrator=hook_integrator,
+                                force=force,
+                                managed_files=managed_files,
                                 diagnostics=diagnostics,
+                                package_name=dep_ref.get_unique_key(),
                             )
-                            if hook_result_cursor.hooks_integrated > 0:
-                                total_hooks_integrated += hook_result_cursor.hooks_integrated
-                                _rich_info(
-                                    f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated → .cursor/hooks.json"
-                                )
-                            for tp in hook_result_cursor.target_paths:
-                                dep_deployed_fresh.append(tp.relative_to(project_root).as_posix())
-
-                            # Record deployed files for this package
+                            total_prompts_integrated += int_result["prompts"]
+                            total_agents_integrated += int_result["agents"]
+                            total_skills_integrated += int_result["skills"]
+                            total_sub_skills_promoted += int_result["sub_skills"]
+                            total_instructions_integrated += int_result["instructions"]
+                            total_commands_integrated += int_result["commands"]
+                            total_hooks_integrated += int_result["hooks"]
+                            total_links_resolved += int_result["links_resolved"]
+                            dep_deployed_fresh = int_result["deployed_files"]
                             package_deployed_files[dep_ref.get_unique_key()] = dep_deployed_fresh
                         except Exception as e:
                             # Don't fail installation if integration fails
@@ -2218,7 +1784,7 @@ def _install_apm_dependencies(
                 f"-- pin with #tag or #sha to prevent drift"
             )
 
-        return installed_count, total_prompts_integrated, total_agents_integrated, diagnostics
+        return InstallResult(installed_count, total_prompts_integrated, total_agents_integrated, diagnostics)
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
