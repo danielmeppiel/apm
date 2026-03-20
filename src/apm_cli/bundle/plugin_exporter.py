@@ -14,6 +14,8 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import yaml
 
+import re
+
 from ..deps.lockfile import (
     LockFile,
     LockedDependency,
@@ -33,6 +35,21 @@ def _validate_output_rel(rel: str) -> bool:
     """Return True when *rel* is safe to write inside the output directory."""
     p = Path(rel)
     return not p.is_absolute() and ".." not in p.parts
+
+
+_SAFE_BUNDLE_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]")
+
+
+def _sanitize_bundle_name(name: str) -> str:
+    """Sanitize a package name/version for use as a directory component.
+
+    Replaces path separators and traversal characters with hyphens, then
+    validates the result is a single safe path component.
+    """
+    sanitized = _SAFE_BUNDLE_NAME_RE.sub("-", name).strip("-") or "unnamed"
+    if ".." in sanitized or "/" in sanitized or "\\" in sanitized:
+        sanitized = "unnamed"
+    return sanitized
 
 
 def _rename_prompt(name: str) -> str:
@@ -276,13 +293,17 @@ def _find_or_synthesize_plugin_json(
     if plugin_json_path is not None:
         try:
             return json.loads(plugin_json_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            _rich_warning(
+                f"Found plugin.json at {plugin_json_path} but could not parse it: {exc}. "
+                "Falling back to synthesis from apm.yml."
+            )
 
-    _rich_warning(
-        "No plugin.json found. Synthesizing from apm.yml. "
-        "Consider running 'apm init --plugin'."
-    )
+    else:
+        _rich_warning(
+            "No plugin.json found. Synthesizing from apm.yml. "
+            "Consider running 'apm init --plugin'."
+        )
     return synthesize_plugin_json_from_apm_yml(apm_yml_path)
 
 
@@ -459,7 +480,9 @@ def export_plugin_bundle(
     output_files.append("plugin.json")
 
     # 9. Dry run -- return file list without writing
-    bundle_dir = output_dir / f"{pkg_name}-{pkg_version}"
+    safe_name = _sanitize_bundle_name(pkg_name)
+    safe_version = _sanitize_bundle_name(pkg_version)
+    bundle_dir = output_dir / f"{safe_name}-{safe_version}"
     if dry_run:
         return PackResult(bundle_path=bundle_dir, files=output_files)
 
@@ -486,16 +509,22 @@ def export_plugin_bundle(
             f"source files — run 'apm audit' to inspect before publishing"
         )
 
-    # 11. Write files to output directory
+    # 11. Write files to output directory (clean slate to prevent symlink attacks)
+    if bundle_dir.exists():
+        shutil.rmtree(bundle_dir)
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
+    bundle_dir_resolved = bundle_dir.resolve()
     for output_rel, (source_abs, _owner) in file_map.items():
         if not _validate_output_rel(output_rel):
             continue
         dest = bundle_dir / output_rel
         if source_abs.is_symlink():
             continue
+        # Verify resolved destination stays within bundle directory
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if not dest.resolve().is_relative_to(bundle_dir_resolved):
+            continue
         shutil.copy2(source_abs, dest, follow_symlinks=False)
 
     # 12. Write merged hooks.json

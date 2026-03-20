@@ -137,7 +137,6 @@ def init(ctx, project_name, yes, plugin):
         if plugin:
             next_steps = [
                 "Add dev dependencies:    apm install --dev <owner>/<repo>",
-                "Compile agent context:   apm compile",
                 "Pack as plugin:          apm pack --format plugin",
             ]
         else:
