@@ -446,7 +446,7 @@ apm pack -o dist/
 - Scans files for hidden Unicode characters before bundling — warns if findings are detected (non-blocking; consumers are protected by `apm install`/`apm unpack` which block on critical)
 - Copies files preserving directory structure
 - Writes an enriched `apm.lock.yaml` inside the bundle with a `pack:` metadata section (the project's own `apm.lock.yaml` is never modified)
-- **Plugin format** (`--format plugin`): Remaps `.apm/` content into plugin-native paths (`agents/`, `skills/`, `commands/`, etc.), generates or updates `plugin.json`, merges hooks into a single `hooks.json`. `.apm/context/` and `.apm/memory/` directories are excluded (APM-internal only). `devDependencies` are also excluded from plugin bundles. See [Pack & Distribute](../../guides/pack-distribute/#plugin-format) for the full mapping table
+- **Plugin format** (`--format plugin`): Remaps `.apm/` content into plugin-native paths (`agents/`, `skills/`, `commands/`, etc.), generates or updates `plugin.json`, merges hooks into a single `hooks.json`. `devDependencies` are also excluded from plugin bundles. See [Pack & Distribute](../../guides/pack-distribute/#plugin-format) for the full mapping table
 
 **Target filtering:**
 
@@ -1009,7 +1009,6 @@ The structure is entirely dictated by the instruction context found in `.apm/` a
 **Primitive Discovery:**
 - **Chatmodes**: `.chatmode.md` files in `.apm/chatmodes/`, `.github/chatmodes/`
 - **Instructions**: `.instructions.md` files in `.apm/instructions/`, `.github/instructions/`
-- **Contexts**: `.context.md`, `.memory.md` files in `.apm/context/`, `.github/context/`
 - **Workflows**: `.prompt.md` files in project and `.github/prompts/`
 
 APM integrates seamlessly with [Spec-kit](https://github.com/github/spec-kit) for specification-driven development, automatically injecting Spec-kit `constitution` into the compiled context layer.

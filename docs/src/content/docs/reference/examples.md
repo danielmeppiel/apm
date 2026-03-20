@@ -291,7 +291,11 @@ apm run feature-review --param feature="user-dashboard"
 **Scenario**: Quickly get new developers productive with company standards
 
 ```yaml
-# .apm/context/company-standards.context.md
+# .apm/instructions/company-standards.instructions.md
+---
+description: Development standards for all AcmeCorp projects
+applyTo: "**/*"
+---
 
 # Development Standards at AcmeCorp
 

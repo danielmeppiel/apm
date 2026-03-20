@@ -172,7 +172,7 @@ The exporter remaps `.apm/` content into plugin-native paths:
 
 Prompt files are renamed: `review.prompt.md` becomes `review.md` in `commands/`.
 
-**Excluded from plugin output:** `.apm/context/` and `.apm/memory/` directories are APM-internal and are not exported to plugin bundles. `devDependencies` are also excluded — see [devDependencies](../../reference/manifest-schema/#5-devdependencies).
+**Excluded from plugin output:** `devDependencies` are excluded from plugin bundles — see [devDependencies](../../reference/manifest-schema/#5-devdependencies).
 
 ### plugin.json generation
 

@@ -1293,9 +1293,14 @@ def _install_apm_dependencies(
                     has_skill = (install_path / "SKILL.md").exists()
                     has_apm = (install_path / "apm.yml").exists()
                     from apm_cli.utils.helpers import find_plugin_json
-                    has_plugin = find_plugin_json(install_path) is not None
+                    plugin_json_path = find_plugin_json(install_path)
+                    has_plugin = plugin_json_path is not None
                     if has_plugin and not has_apm:
                         local_info.package_type = PackageType.MARKETPLACE_PLUGIN
+                        # Normalize: synthesize .apm/ from plugin.json so
+                        # integration can discover and deploy primitives
+                        from apm_cli.deps.plugin_parser import normalize_plugin_directory
+                        normalize_plugin_directory(install_path, plugin_json_path)
                     elif has_skill and has_apm:
                         local_info.package_type = PackageType.HYBRID
                     elif has_skill:

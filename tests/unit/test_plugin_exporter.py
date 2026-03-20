@@ -12,6 +12,7 @@ import yaml
 from apm_cli.bundle.plugin_exporter import (
     PackResult,
     _collect_apm_components,
+    _collect_bare_skill,
     _collect_hooks_from_apm,
     _collect_hooks_from_root,
     _collect_mcp,
@@ -268,6 +269,87 @@ class TestCollectRootPluginComponents:
     def test_ignores_nonexistent(self, tmp_path):
         comps = _collect_root_plugin_components(tmp_path)
         assert comps == []
+
+
+class TestCollectBareSkill:
+    """Tests for _collect_bare_skill — bare SKILL.md at dep root."""
+
+    def test_bare_skill_detected(self, tmp_path):
+        """A SKILL.md at root with no skills/ subdir is collected."""
+        from apm_cli.bundle.plugin_exporter import _collect_bare_skill
+
+        (tmp_path / "SKILL.md").write_text("# My Skill")
+        (tmp_path / "LICENSE.txt").write_text("MIT")
+        dep = LockedDependency(
+            repo_url="owner/my-skill",
+            resolved_commit="abc123",
+            depth=1,
+        )
+        out: list = []
+        _collect_bare_skill(tmp_path, dep, out)
+        rel_paths = [r for _, r in out]
+        assert "skills/my-skill/SKILL.md" in rel_paths
+        assert "skills/my-skill/LICENSE.txt" in rel_paths
+
+    def test_virtual_path_used_as_slug(self, tmp_path):
+        """virtual_path is preferred over repo_url for the skill slug."""
+        from apm_cli.bundle.plugin_exporter import _collect_bare_skill
+
+        (tmp_path / "SKILL.md").write_text("# Frontend")
+        dep = LockedDependency(
+            repo_url="github/awesome-copilot",
+            resolved_commit="abc123",
+            depth=1,
+            virtual_path="frontend-design",
+            is_virtual=True,
+        )
+        out: list = []
+        _collect_bare_skill(tmp_path, dep, out)
+        assert any(r.startswith("skills/frontend-design/") for _, r in out)
+
+    def test_skips_when_no_skill_md(self, tmp_path):
+        """No SKILL.md at root means nothing collected."""
+        from apm_cli.bundle.plugin_exporter import _collect_bare_skill
+
+        (tmp_path / "README.md").write_text("hello")
+        dep = LockedDependency(
+            repo_url="owner/pkg", resolved_commit="abc", depth=1,
+        )
+        out: list = []
+        _collect_bare_skill(tmp_path, dep, out)
+        assert out == []
+
+    def test_skips_when_skills_already_collected(self, tmp_path):
+        """If skills/ was already collected via normal paths, bare skill is skipped."""
+        from apm_cli.bundle.plugin_exporter import _collect_bare_skill
+
+        (tmp_path / "SKILL.md").write_text("# Root skill")
+        dep = LockedDependency(
+            repo_url="owner/pkg", resolved_commit="abc", depth=1,
+        )
+        out = [(tmp_path / "skills" / "sub" / "SKILL.md", "skills/sub/SKILL.md")]
+        _collect_bare_skill(tmp_path, dep, out)
+        # Should not add another entry
+        assert len(out) == 1
+
+    def test_excludes_apm_files(self, tmp_path):
+        """apm.yml, apm.lock.yaml, plugin.json are excluded from bare skill output."""
+        from apm_cli.bundle.plugin_exporter import _collect_bare_skill
+
+        (tmp_path / "SKILL.md").write_text("# Skill")
+        (tmp_path / "apm.yml").write_text("name: x")
+        (tmp_path / "plugin.json").write_text("{}")
+        (tmp_path / "apm.lock.yaml").write_text("deps: []")
+        dep = LockedDependency(
+            repo_url="owner/pkg", resolved_commit="abc", depth=1,
+        )
+        out: list = []
+        _collect_bare_skill(tmp_path, dep, out)
+        rel_paths = [r for _, r in out]
+        assert "skills/pkg/SKILL.md" in rel_paths
+        assert not any("apm.yml" in r for r in rel_paths)
+        assert not any("plugin.json" in r for r in rel_paths)
+        assert not any("apm.lock.yaml" in r for r in rel_paths)
 
 
 # ---------------------------------------------------------------------------

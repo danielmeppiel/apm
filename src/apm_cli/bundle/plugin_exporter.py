@@ -107,6 +107,36 @@ def _collect_root_plugin_components(project_root: Path) -> List[Tuple[Path, str]
     return components
 
 
+def _collect_bare_skill(
+    install_path: Path,
+    dep: "LockedDependency",
+    out: List[Tuple[Path, str]],
+) -> None:
+    """Detect a bare Claude skill (SKILL.md at dep root, no skills/ subdir).
+
+    Bare skills are packages consisting of just ``SKILL.md`` + supporting files
+    at the package root.  They have no ``.apm/`` directory or ``skills/``
+    subdirectory, so the normal collectors miss them.  Map the entire package
+    into ``skills/{name}/`` so the plugin host can discover it.
+    """
+    skill_md = install_path / "SKILL.md"
+    if not skill_md.is_file():
+        return
+    # Already collected via .apm/skills/ or root skills/ — skip
+    if any(rel.startswith("skills/") for _, rel in out):
+        return
+    # Derive a slug: prefer virtual_path (e.g. "frontend-design"), else last
+    # segment of repo_url (e.g. "my-skill" from "owner/my-skill")
+    slug = (getattr(dep, "virtual_path", "") or "").strip("/")
+    if not slug:
+        slug = dep.repo_url.rsplit("/", 1)[-1] if dep.repo_url else "skill"
+    for f in sorted(install_path.iterdir()):
+        if f.is_file() and not f.is_symlink() and f.name not in (
+            "apm.yml", "apm.lock.yaml", "plugin.json",
+        ):
+            out.append((f, f"skills/{slug}/{f.name}"))
+
+
 # -- low-level walkers -------------------------------------------------------
 
 
@@ -441,6 +471,9 @@ def export_plugin_bundle(
 
             # Also collect root-level plugin-native dirs from the dep
             dep_components.extend(_collect_root_plugin_components(install_path))
+
+            # Bare Claude skills: SKILL.md at dep root with no skills/ subdir
+            _collect_bare_skill(install_path, dep, dep_components)
 
             _merge_file_map(
                 file_map, dep_components, dep_name, force, collisions
