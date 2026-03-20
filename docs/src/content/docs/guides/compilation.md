@@ -20,34 +20,37 @@ When you run `apm compile` without specifying a target, APM automatically detect
 
 | Project Structure | Target | What Gets Generated |
 |-------------------|--------|---------------------|
-| `.github/` folder only | `copilot` | AGENTS.md (instructions only) |
-| `.claude/` folder only | `claude` | CLAUDE.md (instructions only) |
-| Both folders exist | `all` | Both AGENTS.md and CLAUDE.md |
-| Neither folder exists | `minimal` | AGENTS.md only (universal format) |
+| `.github/` folder only | `vscode` | AGENTS.md + .github/ |
+| `.claude/` folder only | `claude` | CLAUDE.md + .claude/ |
+| `.opencode/` folder only | `opencode` | AGENTS.md + .opencode/ |
+| Multiple target folders | `all` | All outputs |
+| No target folders | `minimal` | AGENTS.md only (universal format) |
 
 ```bash
 apm compile                    # Auto-detects target from project structure
-apm compile --target copilot   # Force GitHub Copilot, Cursor, Codex, Gemini
+apm compile --target vscode    # Force GitHub Copilot, Cursor, Codex, Gemini
 apm compile --target claude    # Force Claude Code, Claude Desktop
+apm compile --target opencode  # Force OpenCode
 ```
 
 You can set a persistent target in `apm.yml`:
 ```yaml
 name: my-project
 version: 1.0.0
-target: copilot  # or vscode, claude, or all
+target: vscode  # or claude, opencode, or all
 ```
 
 ### Output Files
 
 | Target | Files Generated | Consumers |
 |--------|-----------------|-----------|
-| `copilot` | `AGENTS.md` | GitHub Copilot, Cursor, OpenCode, Codex, Gemini |
-| `claude` | `CLAUDE.md` | Claude Code, Claude Desktop |
-| `all` | Both `AGENTS.md` and `CLAUDE.md` | Universal compatibility |
+| `vscode` | `AGENTS.md` + `.github/` | GitHub Copilot, Cursor, Codex, Gemini |
+| `claude` | `CLAUDE.md` + `.claude/` | Claude Code, Claude Desktop |
+| `opencode` | `AGENTS.md` + `.opencode/` | OpenCode |
+| `all` | `AGENTS.md` + `CLAUDE.md` + all folders | Universal compatibility |
 | `minimal` | `AGENTS.md` only | Works everywhere, no folder integration |
 
-> **Aliases**: `vscode` and `agents` are accepted as aliases for `copilot`.
+> **Aliases**: `agents` is accepted as an alias for `vscode`. `copilot` is also accepted in `apm.yml` but is not a valid `--target` flag value.
 
 > **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](../../integrations/ide-tool-integration/) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, `.claude/commands/`, `.cursor/rules/`, `.cursor/agents/`, `.opencode/agents/`, and `.opencode/commands/`.
 
