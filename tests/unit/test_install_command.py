@@ -489,3 +489,53 @@ class TestTransitiveDepParentChain:
         assert ">" in chain, (
             f"Expected '>' separator in chain, got: '{chain}'"
         )
+
+    @patch("apm_cli.commands.install._validate_package_exists")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
+    def test_install_preserves_unicode_author_on_rewrite(
+        self, mock_install_apm, mock_apm_package, mock_validate
+    ):
+        """Test that install round-trip preserves non-ASCII author as UTF-8."""
+        with self._chdir_tmp():
+            # Create apm.yml with non-ASCII author
+            initial_config = {
+                "name": "test-project",
+                "version": "0.1.0",
+                "author": "Alejandro López Sánchez",
+                "dependencies": {"apm": []},
+            }
+            with open("apm.yml", "w", encoding="utf-8") as f:
+                yaml.safe_dump(
+                    initial_config, f, default_flow_style=False,
+                    sort_keys=False, allow_unicode=True,
+                )
+
+            mock_validate.return_value = True
+
+            mock_pkg_instance = MagicMock()
+            mock_pkg_instance.get_apm_dependencies.return_value = [
+                MagicMock(repo_url="test/package", reference="main")
+            ]
+            mock_pkg_instance.get_mcp_dependencies.return_value = []
+            mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
+
+            mock_install_apm.return_value = InstallResult(
+                diagnostics=MagicMock(
+                    has_diagnostics=False, has_critical_security=False
+                )
+            )
+
+            result = self.runner.invoke(cli, ["install", "test/package"])
+            assert result.exit_code == 0
+
+            # Verify parsed value preserves Unicode
+            with open("apm.yml", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+                assert config["author"] == "Alejandro López Sánchez"
+
+            # Verify raw file contains actual UTF-8, not escaped sequences
+            raw = Path("apm.yml").read_text(encoding="utf-8")
+            assert "López" in raw
+            assert "\\x" not in raw

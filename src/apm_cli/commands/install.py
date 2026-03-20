@@ -200,8 +200,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
     # Write back to apm.yml
     try:
-        with open(apm_yml_path, "w") as f:
-            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+        with open(apm_yml_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         if logger:
             logger.success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
     except Exception as e:
@@ -2102,7 +2102,3 @@ def _install_apm_dependencies(
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
-
-
-
-

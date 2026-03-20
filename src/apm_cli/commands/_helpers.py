@@ -457,5 +457,5 @@ def _create_minimal_apm_yml(config, plugin=False):
     apm_yml_data["scripts"] = {}
 
     # Write apm.yml
-    with open(APM_YML_FILENAME, "w") as f:
-        yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)
+    with open(APM_YML_FILENAME, "w", encoding="utf-8") as f:
+        yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
