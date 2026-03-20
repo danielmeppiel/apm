@@ -14,6 +14,7 @@ from .validation import (
     PackageType,
     ValidationError,
     ValidationResult,
+    detect_package_type,
     validate_apm_package,
 )
 from .results import InstallResult, PrimitiveCounts
@@ -35,6 +36,7 @@ __all__ = [
     "PackageType",
     "ValidationError",
     "ValidationResult",
+    "detect_package_type",
     "validate_apm_package",
     # Results
     "InstallResult",

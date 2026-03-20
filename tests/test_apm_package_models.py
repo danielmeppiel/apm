@@ -651,7 +651,7 @@ class TestPackageValidation:
             result = validate_apm_package(Path(tmpdir))
             # Empty directories without plugin.json or component dirs are not valid
             assert not result.is_valid
-            assert result.package_type is None
+            assert result.package_type == PackageType.INVALID
     
     def test_validate_invalid_apm_yml(self):
         """Test validating directory with invalid apm.yml."""
@@ -926,7 +926,86 @@ class TestHookPackageValidation:
             result = validate_apm_package(Path(tmpdir))
             # Empty directories without plugin.json or component dirs are not valid
             assert not result.is_valid
-            assert result.package_type is None
+            assert result.package_type == PackageType.INVALID
+
+
+from src.apm_cli.models.validation import detect_package_type
+
+
+class TestDetectPackageType:
+    """Tests for the centralized detect_package_type() function."""
+
+    def test_hybrid_when_both_apm_yml_and_skill_md(self, tmp_path):
+        (tmp_path / "apm.yml").write_text("name: test")
+        (tmp_path / "SKILL.md").write_text("# Skill")
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.HYBRID
+        assert pj_path is None
+
+    def test_apm_package_when_only_apm_yml(self, tmp_path):
+        (tmp_path / "apm.yml").write_text("name: test")
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.APM_PACKAGE
+        assert pj_path is None
+
+    def test_claude_skill_when_only_skill_md(self, tmp_path):
+        (tmp_path / "SKILL.md").write_text("# Skill")
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.CLAUDE_SKILL
+        assert pj_path is None
+
+    def test_hook_package_when_hooks_json(self, tmp_path):
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        (hooks_dir / "pre-commit.json").write_text("{}")
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.HOOK_PACKAGE
+        assert pj_path is None
+
+    def test_marketplace_plugin_with_plugin_json(self, tmp_path):
+        (tmp_path / "plugin.json").write_text('{"name": "test"}')
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.MARKETPLACE_PLUGIN
+        assert pj_path is not None
+        assert pj_path.name == "plugin.json"
+
+    def test_marketplace_plugin_with_agents_dir(self, tmp_path):
+        (tmp_path / "agents").mkdir()
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.MARKETPLACE_PLUGIN
+        assert pj_path is None
+
+    def test_marketplace_plugin_with_skills_dir(self, tmp_path):
+        (tmp_path / "skills").mkdir()
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.MARKETPLACE_PLUGIN
+        assert pj_path is None
+
+    def test_marketplace_plugin_with_commands_dir(self, tmp_path):
+        (tmp_path / "commands").mkdir()
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.MARKETPLACE_PLUGIN
+        assert pj_path is None
+
+    def test_invalid_when_empty_dir(self, tmp_path):
+        pkg_type, pj_path = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.INVALID
+        assert pj_path is None
+
+    def test_apm_yml_takes_precedence_over_plugin_json(self, tmp_path):
+        (tmp_path / "apm.yml").write_text("name: test")
+        (tmp_path / "plugin.json").write_text('{"name": "test"}')
+        pkg_type, _ = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.APM_PACKAGE
+
+    def test_hook_package_apm_yml_precedence(self, tmp_path):
+        """apm.yml takes precedence even when hooks exist."""
+        (tmp_path / "apm.yml").write_text("name: test")
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        (hooks_dir / "pre-commit.json").write_text("{}")
+        pkg_type, _ = detect_package_type(tmp_path)
+        assert pkg_type == PackageType.APM_PACKAGE
 
 
 class TestGitReferenceUtils:

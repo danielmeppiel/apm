@@ -1290,23 +1290,14 @@ def _install_apm_dependencies(
                     )
 
                     # Detect package type
-                    has_skill = (install_path / "SKILL.md").exists()
-                    has_apm = (install_path / "apm.yml").exists()
-                    from apm_cli.utils.helpers import find_plugin_json
-                    plugin_json_path = find_plugin_json(install_path)
-                    has_plugin = plugin_json_path is not None
-                    if has_plugin and not has_apm:
-                        local_info.package_type = PackageType.MARKETPLACE_PLUGIN
+                    from apm_cli.models.validation import detect_package_type
+                    pkg_type, plugin_json_path = detect_package_type(install_path)
+                    local_info.package_type = pkg_type
+                    if pkg_type == PackageType.MARKETPLACE_PLUGIN:
                         # Normalize: synthesize .apm/ from plugin.json so
                         # integration can discover and deploy primitives
                         from apm_cli.deps.plugin_parser import normalize_plugin_directory
                         normalize_plugin_directory(install_path, plugin_json_path)
-                    elif has_skill and has_apm:
-                        local_info.package_type = PackageType.HYBRID
-                    elif has_skill:
-                        local_info.package_type = PackageType.CLAUDE_SKILL
-                    elif has_apm:
-                        local_info.package_type = PackageType.APM_PACKAGE
 
                     # Record for lockfile
                     node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
@@ -1496,18 +1487,9 @@ def _install_apm_dependencies(
 
                         # Detect package_type from disk contents so
                         # skill integration is not silently skipped
-                        skill_md_exists = (install_path / SKILL_MD_FILENAME).exists()
-                        apm_yml_exists = (install_path / APM_YML_FILENAME).exists()
-                        from apm_cli.utils.helpers import find_plugin_json
-                        plugin_json_exists = find_plugin_json(install_path) is not None
-                        if plugin_json_exists and not apm_yml_exists:
-                            cached_package_info.package_type = PackageType.MARKETPLACE_PLUGIN
-                        elif skill_md_exists and apm_yml_exists:
-                            cached_package_info.package_type = PackageType.HYBRID
-                        elif skill_md_exists:
-                            cached_package_info.package_type = PackageType.CLAUDE_SKILL
-                        elif apm_yml_exists:
-                            cached_package_info.package_type = PackageType.APM_PACKAGE
+                        from apm_cli.models.validation import detect_package_type
+                        pkg_type, _ = detect_package_type(install_path)
+                        cached_package_info.package_type = pkg_type
 
                         # Collect for lockfile (cached packages still need to be tracked)
                         node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
