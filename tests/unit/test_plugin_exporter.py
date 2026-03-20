@@ -326,8 +326,25 @@ class TestDevDependencyUrls:
             })
         )
         urls = _get_dev_dependency_urls(apm_yml)
-        assert "owner/dev-tool" in urls
-        assert "other/helper" in urls
+        assert ("owner/dev-tool", "") in urls
+        assert ("other/helper", "") in urls
+
+    def test_virtual_path_preserved(self, tmp_path):
+        """Deps from the same repo but different virtual paths are distinct."""
+        apm_yml = tmp_path / "apm.yml"
+        apm_yml.write_text(
+            yaml.dump({
+                "name": "test",
+                "version": "1.0.0",
+                "devDependencies": {
+                    "apm": ["owner/repo/sub/dev-tool"]
+                },
+            })
+        )
+        keys = _get_dev_dependency_urls(apm_yml)
+        assert ("owner/repo", "sub/dev-tool") in keys
+        # The bare repo should NOT match
+        assert ("owner/repo", "") not in keys
 
     def test_no_dev_deps(self, tmp_path):
         apm_yml = tmp_path / "apm.yml"

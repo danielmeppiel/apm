@@ -243,11 +243,13 @@ def _collect_mcp(package_root: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _get_dev_dependency_urls(apm_yml_path: Path) -> Set[str]:
-    """Read ``devDependencies.apm`` from raw YAML and return a repo_url set.
+def _get_dev_dependency_urls(apm_yml_path: Path) -> Set[Tuple[str, str]]:
+    """Read ``devDependencies.apm`` from raw YAML and return a set of
+    ``(repo_url, virtual_path)`` tuples for matching against lockfile entries.
 
-    This is a read-only check on the YAML file — the APMPackage model is not
-    modified.
+    Using the composite key avoids false positives when multiple virtual
+    packages share the same base repo (e.g. different sub-paths under
+    ``github/awesome-copilot``).
     """
     try:
         data = yaml.safe_load(apm_yml_path.read_text(encoding="utf-8"))
@@ -261,21 +263,21 @@ def _get_dev_dependency_urls(apm_yml_path: Path) -> Set[str]:
     apm_dev = dev_deps.get("apm", [])
     if not isinstance(apm_dev, list):
         return set()
-    urls: Set[str] = set()
+    keys: Set[Tuple[str, str]] = set()
     for dep in apm_dev:
         if isinstance(dep, str):
             try:
                 ref = DependencyReference.parse(dep)
-                urls.add(ref.repo_url)
+                keys.add((ref.repo_url, ref.virtual_path or ""))
             except ValueError:
-                urls.add(dep)
+                keys.add((dep, ""))
         elif isinstance(dep, dict):
             try:
                 ref = DependencyReference.parse_from_dict(dep)
-                urls.add(ref.repo_url)
+                keys.add((ref.repo_url, ref.virtual_path or ""))
             except ValueError:
                 pass
-    return urls
+    return keys
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +424,9 @@ def export_plugin_bundle(
         for dep in lockfile.get_all_dependencies():
             # Prefer lockfile is_dev flag (covers transitive deps);
             # fall back to apm.yml URL matching for older lockfiles
-            if getattr(dep, "is_dev", False) or dep.repo_url in dev_dep_urls:
+            if getattr(dep, "is_dev", False) or (
+                dep.repo_url, getattr(dep, "virtual_path", "") or ""
+            ) in dev_dep_urls:
                 continue
 
             install_path = _dep_install_path(dep, apm_modules_dir)

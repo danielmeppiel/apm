@@ -198,8 +198,11 @@ def _validate_package_exists(package):
             local = local.resolve()
             if not local.is_dir():
                 return False
-            # Must contain apm.yml or SKILL.md
-            return (local / "apm.yml").exists() or (local / "SKILL.md").exists()
+            # Must contain apm.yml, SKILL.md, or plugin.json
+            if (local / "apm.yml").exists() or (local / "SKILL.md").exists():
+                return True
+            from apm_cli.utils.helpers import find_plugin_json
+            return find_plugin_json(local) is not None
 
         # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
@@ -833,9 +836,14 @@ def _copy_local_package(dep_ref, install_path, project_root):
     if not local.is_dir():
         _rich_error(f"Local package path does not exist: {dep_ref.local_path}")
         return None
-    if not (local / "apm.yml").exists() and not (local / "SKILL.md").exists():
+    from apm_cli.utils.helpers import find_plugin_json
+    if (
+        not (local / "apm.yml").exists()
+        and not (local / "SKILL.md").exists()
+        and find_plugin_json(local) is None
+    ):
         _rich_error(
-            f"Local package is not a valid APM package (no apm.yml or SKILL.md): {dep_ref.local_path}"
+            f"Local package is not a valid APM package (no apm.yml, SKILL.md, or plugin.json): {dep_ref.local_path}"
         )
         return None
 
