@@ -25,6 +25,11 @@ from typing import Dict, Optional, Tuple
 
 class GitHubTokenManager:
     """Manages GitHub token environment setup for different AI runtimes."""
+
+    # `git credential fill` may invoke OS credential helpers (and account pickers
+    # on Windows). Give it enough time by default to avoid false negatives.
+    DEFAULT_GIT_CREDENTIAL_TIMEOUT_SECONDS = 60
+    MAX_GIT_CREDENTIAL_TIMEOUT_SECONDS = 180
     
     # Define token precedence for different use cases
     TOKEN_PRECEDENCE = {
@@ -69,6 +74,28 @@ class GitHubTokenManager:
             return False
         return True
 
+    @classmethod
+    def _get_git_credential_timeout_seconds(cls) -> int:
+        """Get timeout for `git credential fill` from env or default.
+
+        Environment override:
+        - APM_GIT_CREDENTIAL_TIMEOUT: integer seconds (1..120)
+        """
+        raw = os.environ.get("APM_GIT_CREDENTIAL_TIMEOUT", "").strip()
+        if not raw:
+            return cls.DEFAULT_GIT_CREDENTIAL_TIMEOUT_SECONDS
+
+        try:
+            parsed = int(raw)
+        except ValueError:
+            return cls.DEFAULT_GIT_CREDENTIAL_TIMEOUT_SECONDS
+
+        if parsed < 1:
+            return cls.DEFAULT_GIT_CREDENTIAL_TIMEOUT_SECONDS
+        if parsed > cls.MAX_GIT_CREDENTIAL_TIMEOUT_SECONDS:
+            return cls.MAX_GIT_CREDENTIAL_TIMEOUT_SECONDS
+        return parsed
+
     @staticmethod
     def resolve_credential_from_git(host: str) -> Optional[str]:
         """Resolve a credential from the git credential store.
@@ -83,13 +110,15 @@ class GitHubTokenManager:
         Returns:
             The password/token from the credential store, or None if unavailable
         """
+        timeout_seconds = GitHubTokenManager._get_git_credential_timeout_seconds()
+
         try:
             result = subprocess.run(
                 ['git', 'credential', 'fill'],
                 input=f"protocol=https\nhost={host}\n\n",
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=timeout_seconds,
                 env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': ''},
             )
             if result.returncode != 0:

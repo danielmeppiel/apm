@@ -21,6 +21,8 @@ When APM has a token for a recognized host (GitHub.com, GitHub Enterprise under 
 
 For single-file downloads from GitHub (which use the GitHub API rather than `git clone`), APM also queries `git credential fill` as a last-resort fallback when no token environment variable is set. This means credentials stored by `gh auth login` or your OS keychain work for both folder-level and file-level dependencies.
 
+`git credential fill` can trigger interactive account selection on some systems. APM waits up to 60 seconds by default for this step. If your credential helper is slower, set `APM_GIT_CREDENTIAL_TIMEOUT` (seconds, max 180).
+
 ### Object-style `git:` references
 
 The `git:` object form in `apm.yml` lets you reference any git URL explicitly — HTTPS, SSH, or any host:

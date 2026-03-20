@@ -204,6 +204,42 @@ class TestResolveCredentialFromGit:
             token = GitHubTokenManager.resolve_credential_from_git('github.com')
             assert token == 'gho_abc123def456'
 
+    def test_uses_default_credential_timeout(self):
+        """Uses default timeout when APM_GIT_CREDENTIAL_TIMEOUT is not set."""
+        mock_result = MagicMock(returncode=0, stdout="password=tok\n")
+        with patch.dict(os.environ, {}, clear=True), patch(
+            'subprocess.run', return_value=mock_result
+        ) as mock_run:
+            GitHubTokenManager.resolve_credential_from_git('github.com')
+            assert mock_run.call_args.kwargs['timeout'] == 60
+
+    def test_uses_custom_credential_timeout_from_env(self):
+        """Uses configured timeout from APM_GIT_CREDENTIAL_TIMEOUT."""
+        mock_result = MagicMock(returncode=0, stdout="password=tok\n")
+        with patch.dict(os.environ, {'APM_GIT_CREDENTIAL_TIMEOUT': '60'}, clear=True), patch(
+            'subprocess.run', return_value=mock_result
+        ) as mock_run:
+            GitHubTokenManager.resolve_credential_from_git('github.com')
+            assert mock_run.call_args.kwargs['timeout'] == 60
+
+    def test_invalid_timeout_env_falls_back_to_default(self):
+        """Invalid timeout env values should not break credential resolution."""
+        mock_result = MagicMock(returncode=0, stdout="password=tok\n")
+        with patch.dict(os.environ, {'APM_GIT_CREDENTIAL_TIMEOUT': 'not-a-number'}, clear=True), patch(
+            'subprocess.run', return_value=mock_result
+        ) as mock_run:
+            GitHubTokenManager.resolve_credential_from_git('github.com')
+            assert mock_run.call_args.kwargs['timeout'] == 60
+
+    def test_timeout_env_is_clamped_to_max(self):
+        """Very large timeout values are clamped for safety."""
+        mock_result = MagicMock(returncode=0, stdout="password=tok\n")
+        with patch.dict(os.environ, {'APM_GIT_CREDENTIAL_TIMEOUT': '999'}, clear=True), patch(
+            'subprocess.run', return_value=mock_result
+        ) as mock_run:
+            GitHubTokenManager.resolve_credential_from_git('github.com')
+            assert mock_run.call_args.kwargs['timeout'] == 180
+
 
 class TestIsValidCredentialToken:
     """Test _is_valid_credential_token validation."""
