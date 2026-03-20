@@ -417,7 +417,7 @@ class TestUnpackCmdLogging:
             os.chdir(original_dir)
 
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        assert "dry-run" in result.output
         assert "Would unpack 1 file(s)" in result.output
         assert ".github/agents/a.md" in result.output
 

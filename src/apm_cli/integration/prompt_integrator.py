@@ -68,7 +68,8 @@ class PromptIntegrator(BaseIntegrator):
     def integrate_package_prompts(self, package_info, project_root: Path,
                                     force: bool = False,
                                     managed_files: set = None,
-                                    diagnostics=None) -> IntegrationResult:
+                                    diagnostics=None,
+                                    logger=None) -> IntegrationResult:
         """Integrate all prompts from a package into .github/prompts/.
         
         Deploys with clean filenames. Skips files that exist locally and

@@ -7,7 +7,7 @@ from pathlib import Path
 import click
 
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
-from ...utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ...core.command_logger import CommandLogger
 
 from ...deps.lockfile import LockFile
 from ...models.apm_package import APMPackage, DependencyReference
@@ -41,17 +41,18 @@ def uninstall(ctx, packages, dry_run):
         apm uninstall org/pkg1 org/pkg2              # Remove multiple packages
         apm uninstall acme/my-package --dry-run      # Show what would be removed
     """
+    logger = CommandLogger("uninstall", dry_run=dry_run)
     try:
         # Check if apm.yml exists
         if not Path(APM_YML_FILENAME).exists():
-            _rich_error(f"No {APM_YML_FILENAME} found. Run 'apm init' first.")
+            logger.error(f"No {APM_YML_FILENAME} found. Run 'apm init' first.")
             sys.exit(1)
 
         if not packages:
-            _rich_error("No packages specified. Specify packages to uninstall.")
+            logger.error("No packages specified. Specify packages to uninstall.")
             sys.exit(1)
 
-        _rich_info(f"Uninstalling {len(packages)} package(s)...")
+        logger.start(f"Uninstalling {len(packages)} package(s)...")
 
         # Read current apm.yml
         import yaml
@@ -61,7 +62,7 @@ def uninstall(ctx, packages, dry_run):
             with open(apm_yml_path, "r") as f:
                 data = yaml.safe_load(f) or {}
         except Exception as e:
-            _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to read {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         if "dependencies" not in data:
@@ -74,7 +75,7 @@ def uninstall(ctx, packages, dry_run):
         # Step 1: Validate packages
         packages_to_remove, packages_not_found = _validate_uninstall_packages(packages, current_deps)
         if not packages_to_remove:
-            _rich_warning("No packages found in apm.yml to remove")
+            logger.warning("No packages found in apm.yml to remove")
             return
 
         # Step 2: Dry run
@@ -85,14 +86,14 @@ def uninstall(ctx, packages, dry_run):
         # Step 3: Remove from apm.yml
         for package in packages_to_remove:
             current_deps.remove(package)
-            _rich_info(f"Removed {package} from apm.yml")
+            logger.progress(f"Removed {package} from apm.yml")
         data["dependencies"]["apm"] = current_deps
         try:
             with open(apm_yml_path, "w") as f:
                 yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
-            _rich_success(f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))")
+            logger.success(f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))")
         except Exception as e:
-            _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to write {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         # Step 4: Load lockfile and capture pre-uninstall MCP state
@@ -151,7 +152,7 @@ def uninstall(ctx, packages, dry_run):
                     else:
                         lockfile_path.unlink(missing_ok=True)
                 except Exception:
-                    _rich_warning("Failed to update lockfile — it may be out of sync with uninstalled packages.")
+                    logger.warning("Failed to update lockfile -- it may be out of sync with uninstalled packages.")
 
         # Step 9: Sync integrations
         cleaned = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
@@ -164,24 +165,24 @@ def uninstall(ctx, packages, dry_run):
 
         for label, count in cleaned.items():
             if count > 0:
-                _rich_info(f"\u2713 Cleaned up {count} integrated {label}")
+                logger.progress(f"\u2713 Cleaned up {count} integrated {label}")
 
         # Step 10: MCP cleanup
         try:
             apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, _pre_uninstall_mcp_servers)
         except Exception:
-            _rich_warning("MCP cleanup during uninstall failed")
+            logger.warning("MCP cleanup during uninstall failed")
 
         # Final summary
         summary_lines = [f"Removed {len(packages_to_remove)} package(s) from apm.yml"]
         if removed_from_modules > 0:
             summary_lines.append(f"Removed {removed_from_modules} package(s) from apm_modules/")
-        _rich_success("Uninstall complete: " + ", ".join(summary_lines))
+        logger.success("Uninstall complete: " + ", ".join(summary_lines))
 
         if packages_not_found:
-            _rich_warning(f"Note: {len(packages_not_found)} package(s) were not found in apm.yml")
+            logger.warning(f"Note: {len(packages_not_found)} package(s) were not found in apm.yml")
 
     except Exception as e:
-        _rich_error(f"Error uninstalling packages: {e}")
+        logger.error(f"Error uninstalling packages: {e}")
         sys.exit(1)

@@ -7,7 +7,8 @@ import click
 
 from ..bundle.packer import pack_bundle
 from ..bundle.unpacker import unpack_bundle
-from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, _rich_warning
+from ..core.command_logger import CommandLogger
+from ..utils.console import _rich_echo
 
 
 @click.command(name="pack", help="Create a self-contained bundle from installed dependencies")
@@ -38,6 +39,7 @@ from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, 
 @click.pass_context
 def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
     """Create a self-contained APM bundle."""
+    logger = CommandLogger("pack", dry_run=dry_run)
     try:
         result = pack_bundle(
             project_root=Path("."),
@@ -50,28 +52,28 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
         )
 
         if dry_run:
-            _rich_info("Dry run  -- no files written")
+            logger.dry_run_notice("No files written")
             if result.files:
-                _rich_info(f"Would pack {len(result.files)} file(s):")
+                logger.progress(f"Would pack {len(result.files)} file(s):")
                 for f in result.files:
                     click.echo(f"  {f}")
             else:
-                _rich_warning("No files to pack")
+                logger.warning("No files to pack")
             return
 
         if not result.files:
-            _rich_warning("No deployed files found  -- empty bundle created")
+            logger.warning("No deployed files found -- empty bundle created")
         else:
-            _rich_success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
+            logger.success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
             if fmt == "plugin":
-                _rich_info(
-                    "Plugin bundle ready — contains plugin.json and "
-                    "plugin-native directories (agents/, skills/, commands/, …). "
+                logger.progress(
+                    "Plugin bundle ready -- contains plugin.json and "
+                    "plugin-native directories (agents/, skills/, commands/, ...). "
                     "No APM-specific files included."
                 )
 
     except (FileNotFoundError, ValueError) as exc:
-        _rich_error(str(exc))
+        logger.error(str(exc))
         sys.exit(1)
 
 
@@ -90,8 +92,9 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
 @click.pass_context
 def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
     """Extract an APM bundle into the project."""
+    logger = CommandLogger("unpack", dry_run=dry_run)
     try:
-        _rich_info(f"Unpacking {bundle_path} → {output}")
+        logger.start(f"Unpacking {bundle_path} -> {output}")
 
         result = unpack_bundle(
             bundle_path=Path(bundle_path),
@@ -102,37 +105,37 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
         )
 
         if dry_run:
-            _rich_info("Dry run  -- no files written")
+            logger.dry_run_notice("No files written")
             if result.files:
-                _rich_info(f"Would unpack {len(result.files)} file(s):")
+                logger.progress(f"Would unpack {len(result.files)} file(s):")
                 _log_unpack_file_list(result)
             else:
-                _rich_warning("No files in bundle")
+                logger.warning("No files in bundle")
             return
 
         if not result.files:
-            _rich_warning("No files were unpacked")
+            logger.warning("No files were unpacked")
         else:
             _log_unpack_file_list(result)
             if result.skipped_count > 0:
-                _rich_warning(
+                logger.warning(
                     f"  {result.skipped_count} file(s) skipped (missing from bundle)"
                 )
             if result.security_critical > 0:
-                _rich_warning(
+                logger.warning(
                     f"  Deployed with --force despite {result.security_critical} "
                     f"critical hidden-character finding(s)"
                 )
             elif result.security_warnings > 0:
-                _rich_warning(
+                logger.warning(
                     f"  {result.security_warnings} hidden-character warning(s) "
                     f"-- run 'apm audit' to inspect"
                 )
             verified_msg = " (verified)" if result.verified else ""
-            _rich_success(f"Unpacked {len(result.files)} file(s){verified_msg}")
+            logger.success(f"Unpacked {len(result.files)} file(s){verified_msg}")
 
     except (FileNotFoundError, ValueError) as exc:
-        _rich_error(str(exc))
+        logger.error(str(exc))
         sys.exit(1)
 
 

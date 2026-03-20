@@ -62,6 +62,7 @@ def detect_ref_change(
     locked_dep: "Optional[LockedDependency]",
     *,
     update_refs: bool = False,
+    logger=None,
 ) -> bool:
     """Return ``True`` when the manifest ref differs from the locked resolved_ref.
 
@@ -102,6 +103,7 @@ def detect_orphans(
     intended_dep_keys: builtins.set,
     *,
     only_packages: builtins.list,
+    logger=None,
 ) -> builtins.set:
     """Return the set of deployed file paths whose owning package left the manifest.
 
@@ -138,6 +140,7 @@ def detect_orphans(
 def detect_config_drift(
     current_configs: Dict[str, dict],
     stored_configs: Dict[str, dict],
+    logger=None,
 ) -> builtins.set:
     """Return names of entries whose current config differs from the stored baseline.
 
@@ -172,6 +175,7 @@ def build_download_ref(
     *,
     update_refs: bool,
     ref_changed: bool,
+    logger=None,
 ) -> "DependencyReference":
     """Build the dependency reference passed to the package downloader.
 

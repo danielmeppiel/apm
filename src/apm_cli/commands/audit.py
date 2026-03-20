@@ -20,13 +20,10 @@ import click
 from ..deps.lockfile import LockFile, get_lockfile_path
 from ..integration.base_integrator import BaseIntegrator
 from ..security.content_scanner import ContentScanner, ScanFinding
+from ..core.command_logger import CommandLogger
 from ..utils.console import (
     _get_console,
     _rich_echo,
-    _rich_error,
-    _rich_info,
-    _rich_success,
-    _rich_warning,
     STATUS_SYMBOLS,
 )
 
@@ -109,16 +106,16 @@ def _scan_lockfile_packages(
     return all_findings, files_scanned
 
 
-def _scan_single_file(file_path: Path) -> Tuple[Dict[str, List[ScanFinding]], int]:
+def _scan_single_file(file_path: Path, logger) -> Tuple[Dict[str, List[ScanFinding]], int]:
     """Scan a single arbitrary file.
 
     Returns (findings_by_file, files_scanned).
     """
     if not file_path.exists():
-        _rich_error(f"File not found: {file_path}")
+        logger.error(f"File not found: {file_path}")
         sys.exit(1)
     if file_path.is_dir():
-        _rich_error(f"Path is a directory, not a file: {file_path}")
+        logger.error(f"Path is a directory, not a file: {file_path}")
         sys.exit(1)
 
     findings = ContentScanner.scan_file(file_path)
@@ -219,6 +216,7 @@ def _render_findings_table(
 def _render_summary(
     findings_by_file: Dict[str, List[ScanFinding]],
     files_scanned: int,
+    logger,
 ) -> None:
     """Render a summary panel with counts."""
     all_findings: List[ScanFinding] = []
@@ -233,40 +231,38 @@ def _render_summary(
 
     _rich_echo("")
     if critical > 0:
-        _rich_echo(
-            f"{STATUS_SYMBOLS['error']} {critical} critical finding(s) in "
-            f"{affected} file(s) — hidden characters detected",
-            color="red",
-            bold=True,
-        )
-        _rich_info("  These characters may embed invisible instructions")
-        _rich_info("  Review file contents, then run 'apm audit --strip' to remove")
-    elif warning > 0:
-        _rich_warning(
-            f"{STATUS_SYMBOLS['warning']} {warning} warning(s) in "
+        logger.error(
+            f"{critical} critical finding(s) in "
             f"{affected} file(s) — hidden characters detected"
         )
-        _rich_info("  Run 'apm audit --strip' to remove hidden characters")
+        logger.progress("  These characters may embed invisible instructions")
+        logger.progress("  Review file contents, then run 'apm audit --strip' to remove")
+    elif warning > 0:
+        logger.warning(
+            f"{warning} warning(s) in "
+            f"{affected} file(s) — hidden characters detected"
+        )
+        logger.progress("  Run 'apm audit --strip' to remove hidden characters")
     elif info > 0:
-        _rich_info(
-            f"{STATUS_SYMBOLS['info']} {info} info-level finding(s) in "
+        logger.progress(
+            f"{info} info-level finding(s) in "
             f"{affected} file(s) — unusual characters (use --verbose to see)"
         )
     else:
-        _rich_success(
-            f"{STATUS_SYMBOLS['success']} {files_scanned} file(s) scanned — "
-            f"no issues found"
+        logger.success(
+            f"{files_scanned} file(s) scanned — no issues found"
         )
 
     if info > 0 and (critical > 0 or warning > 0):
-        _rich_info(f"  Plus {info} info-level finding(s) (use --verbose to see)")
+        logger.progress(f"  Plus {info} info-level finding(s) (use --verbose to see)")
 
-    _rich_echo(f"  {files_scanned} file(s) scanned", color="dim")
+    logger.verbose_detail(f"  {files_scanned} file(s) scanned")
 
 
 def _apply_strip(
     findings_by_file: Dict[str, List[ScanFinding]],
     project_root: Path,
+    logger,
 ) -> int:
     """Strip dangerous and suspicious characters from affected files.
 
@@ -284,7 +280,7 @@ def _apply_strip(
             try:
                 abs_path.resolve().relative_to(project_root.resolve())
             except ValueError:
-                _rich_warning(f"  Skipping {rel_path}: outside project root")
+                logger.warning(f"  Skipping {rel_path}: outside project root")
                 continue
 
         if not abs_path.exists():
@@ -296,15 +292,16 @@ def _apply_strip(
             if cleaned != original:
                 abs_path.write_text(cleaned, encoding="utf-8")
                 modified += 1
-                _rich_info(f"  {STATUS_SYMBOLS['check']} Cleaned: {rel_path}")
+                logger.progress(f"  Cleaned: {rel_path}", symbol="check")
         except (OSError, UnicodeDecodeError) as exc:
-            _rich_warning(f"  Could not clean {rel_path}: {exc}")
+            logger.warning(f"  Could not clean {rel_path}: {exc}")
 
     return modified
 
 
 def _preview_strip(
     findings_by_file: Dict[str, List[ScanFinding]],
+    logger,
 ) -> int:
     """Preview what --strip would remove without modifying files.
 
@@ -322,11 +319,11 @@ def _preview_strip(
         affected += 1
 
     if affected == 0:
-        _rich_info("Nothing to clean — no strippable characters found")
+        logger.progress("Nothing to clean — no strippable characters found")
         return 0
 
     _rich_echo("")
-    _rich_info(f"Dry run — the following would be removed by --strip:", symbol="search")
+    logger.progress("Dry run — the following would be removed by --strip:", symbol="search")
     _rich_echo("")
 
     if console:
@@ -371,8 +368,8 @@ def _preview_strip(
             _rich_echo(f"  {rel_path}: {len(strippable)} character(s)", color="white")
 
     _rich_echo("")
-    _rich_info(f"{affected} file(s) would be modified")
-    _rich_info("Run 'apm audit --strip' to apply")
+    logger.progress(f"{affected} file(s) would be modified")
+    logger.progress("Run 'apm audit --strip' to apply")
     return affected
 
 
@@ -445,6 +442,8 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         apm audit -f json -o out.json  # JSON report to file
     """
     # Resolve effective format (auto-detect from extension when needed)
+    logger = CommandLogger("audit", verbose=verbose)
+
     effective_format = output_format
     if output_path and effective_format == "text":
         from ..security.audit_report import detect_format_from_extension
@@ -453,7 +452,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
     # --format json/sarif/markdown is incompatible with --strip / --dry-run
     if effective_format != "text" and (strip or dry_run):
-        _rich_error(
+        logger.error(
             f"--format {effective_format} cannot be combined with --strip or --dry-run"
         )
         sys.exit(1)
@@ -462,21 +461,21 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
     if file_path:
         # -- File mode: scan a single arbitrary file --
-        findings_by_file, files_scanned = _scan_single_file(Path(file_path))
+        findings_by_file, files_scanned = _scan_single_file(Path(file_path), logger)
     else:
         # -- Package mode: scan from lockfile --
         lockfile_path = get_lockfile_path(project_root)
         if not lockfile_path.exists():
-            _rich_info(
+            logger.progress(
                 "No apm.lock.yaml found — nothing to scan. "
                 "Use --file to scan a specific file."
             )
             sys.exit(0)
 
         if package:
-            _rich_info(f"Scanning package: {package}")
+            logger.progress(f"Scanning package: {package}")
         else:
-            _rich_info("Scanning all installed packages...")
+            logger.start("Scanning all installed packages...")
 
         findings_by_file, files_scanned = _scan_lockfile_packages(
             project_root, package_filter=package,
@@ -484,33 +483,31 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
         if files_scanned == 0:
             if package:
-                _rich_warning(
+                logger.warning(
                     f"Package '{package}' not found in apm.lock.yaml "
                     f"or has no deployed files"
                 )
             else:
-                _rich_info("No deployed files found in apm.lock.yaml")
+                logger.progress("No deployed files found in apm.lock.yaml")
             sys.exit(0)
 
     # -- Warn if --dry-run used without --strip --
     if dry_run and not strip:
-        _rich_info("--dry-run only works with --strip (e.g. apm audit --strip --dry-run)")
+        logger.progress("--dry-run only works with --strip (e.g. apm audit --strip --dry-run)")
 
     # -- Strip mode --
     if strip:
         if not findings_by_file:
-            _rich_info("Nothing to clean — no hidden characters found")
+            logger.progress("Nothing to clean — no hidden characters found")
             sys.exit(0)
         if dry_run:
-            _preview_strip(findings_by_file)
+            _preview_strip(findings_by_file, logger)
             sys.exit(0)
-        modified = _apply_strip(findings_by_file, project_root)
+        modified = _apply_strip(findings_by_file, project_root, logger)
         if modified > 0:
-            _rich_success(
-                f"{STATUS_SYMBOLS['success']} Cleaned {modified} file(s)"
-            )
+            logger.success(f"Cleaned {modified} file(s)")
         else:
-            _rich_info("Nothing to clean — no strippable characters found")
+            logger.progress("Nothing to clean — no strippable characters found")
         sys.exit(0)
 
     # -- Display findings --
@@ -523,14 +520,14 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
     if effective_format == "text":
         if output_path:
-            _rich_error(
+            logger.error(
                 "Text format does not support --output. "
                 "Use --format json, sarif, or markdown to write to a file."
             )
             sys.exit(1)
         if findings_by_file:
             _render_findings_table(findings_by_file, verbose=verbose)
-        _render_summary(findings_by_file, files_scanned)
+        _render_summary(findings_by_file, files_scanned, logger)
     elif effective_format == "markdown":
         from ..security.audit_report import findings_to_markdown
 
@@ -538,7 +535,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         if output_path:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             Path(output_path).write_text(md_report, encoding="utf-8")
-            _rich_success(f"Audit report written to {output_path}")
+            logger.success(f"Audit report written to {output_path}")
         else:
             click.echo(md_report)
     else:
@@ -562,7 +559,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
         if output_path:
             write_report(report, Path(output_path))
-            _rich_success(f"Audit report written to {output_path}")
+            logger.success(f"Audit report written to {output_path}")
         else:
             click.echo(serialize_report(report))
 

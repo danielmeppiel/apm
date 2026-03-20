@@ -7,10 +7,13 @@ import pytest
 from click.testing import CliRunner
 
 from apm_cli.commands.audit import audit, _scan_single_file, _apply_strip, _preview_strip
+from apm_cli.core.command_logger import CommandLogger
 from apm_cli.security.content_scanner import ContentScanner
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
+
+_logger = CommandLogger("audit", verbose=False)
 
 
 @pytest.fixture
@@ -457,12 +460,12 @@ class TestScanSingleFile:
     """Direct tests for the _scan_single_file helper."""
 
     def test_returns_findings_and_count(self, clean_file):
-        findings, count = _scan_single_file(clean_file)
+        findings, count = _scan_single_file(clean_file, _logger)
         assert findings == {}
         assert count == 1
 
     def test_findings_keyed_by_path(self, warning_file):
-        findings, count = _scan_single_file(warning_file)
+        findings, count = _scan_single_file(warning_file, _logger)
         assert count == 1
         assert len(findings) == 1
         key = list(findings.keys())[0]
@@ -476,13 +479,13 @@ class TestApplyStrip:
     """Direct tests for the _apply_strip helper."""
 
     def test_returns_count_of_modified(self, warning_file):
-        findings, _ = _scan_single_file(warning_file)
-        modified = _apply_strip(findings, warning_file.parent)
+        findings, _ = _scan_single_file(warning_file, _logger)
+        modified = _apply_strip(findings, warning_file.parent, _logger)
         assert modified == 1
 
     def test_modifies_critical_only_files(self, critical_file):
-        findings, _ = _scan_single_file(critical_file)
-        modified = _apply_strip(findings, critical_file.parent)
+        findings, _ = _scan_single_file(critical_file, _logger)
+        modified = _apply_strip(findings, critical_file.parent, _logger)
         # File has only critical findings → should be modified (dangerous chars stripped)
         assert modified == 1
         content = critical_file.read_text(encoding="utf-8")
@@ -500,5 +503,5 @@ class TestApplyStrip:
 
         project = tmp_path / "project"
         project.mkdir()
-        modified = _apply_strip(findings_by_file, project)
+        modified = _apply_strip(findings_by_file, project, _logger)
         assert modified == 0
