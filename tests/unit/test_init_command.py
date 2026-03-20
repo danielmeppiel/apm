@@ -282,6 +282,38 @@ class TestInitCommand:
             finally:
                 os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
+
+    def test_init_unicode_author(self):
+        """Test that non-ASCII author names are written as UTF-8, not escaped."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+
+                import subprocess
+
+                subprocess.run(["git", "init"], capture_output=True, check=True)
+                subprocess.run(
+                    ["git", "config", "user.name", "Pepe Rodríguez"],
+                    capture_output=True,
+                    check=True,
+                )
+
+                result = self.runner.invoke(cli, ["init", "--yes"])
+
+                assert result.exit_code == 0
+
+                # Verify parsed value
+                with open("apm.yml", encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+                    assert config["author"] == "Pepe Rodríguez"
+
+                # Verify raw file contains actual UTF-8, not escaped sequences
+                raw = Path("apm.yml").read_text(encoding="utf-8")
+                assert "Rodríguez" in raw
+                assert "\\x" not in raw
+            finally:
+                os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
+
     def test_init_does_not_create_skill_md(self):
         """Test that init does not create SKILL.md (only apm.yml)."""
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -1204,7 +1204,7 @@ class GitHubPackageDownloader:
         
         # Create target directory structure
         target_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Determine the subdirectory based on file extension
         subdirs = {
             '.prompt.md': 'prompts',
@@ -1649,7 +1649,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                     _data = _yaml.safe_load(_f) or {}
                 _data["version"] = short_sha
                 with open(apm_yml_path, "w", encoding="utf-8") as _f:
-                    _yaml.dump(_data, _f, default_flow_style=False, sort_keys=False)
+                    _yaml.dump(_data, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         
         # Update progress - complete
         if progress_obj and progress_task_id is not None:
@@ -1950,7 +1950,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                     _data = _yaml.safe_load(_f) or {}
                 _data["version"] = short_sha
                 with open(apm_yml_path, "w", encoding="utf-8") as _f:
-                    _yaml.dump(_data, _f, default_flow_style=False, sort_keys=False)
+                    _yaml.dump(_data, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         
         # Create and return PackageInfo
         return PackageInfo(
