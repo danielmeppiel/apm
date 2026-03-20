@@ -127,8 +127,8 @@ class APMDependencyResolver:
         # Initialize the tree
         tree = DependencyTree(root_package=root_package)
         
-        # Queue for breadth-first traversal: (dependency_ref, depth, parent_node)
-        processing_queue: deque[Tuple[DependencyReference, int, Optional[DependencyNode]]] = deque()
+        # Queue for breadth-first traversal: (dependency_ref, depth, parent_node, is_dev)
+        processing_queue: deque[Tuple[DependencyReference, int, Optional[DependencyNode], bool]] = deque()
         
         # Set to track queued unique keys for O(1) lookup instead of O(n) list comprehension
         queued_keys: Set[str] = set()
@@ -136,12 +136,21 @@ class APMDependencyResolver:
         # Add root dependencies to queue
         root_deps = root_package.get_apm_dependencies()
         for dep_ref in root_deps:
-            processing_queue.append((dep_ref, 1, None))
+            processing_queue.append((dep_ref, 1, None, False))
             queued_keys.add(dep_ref.get_unique_key())
+
+        # Add root devDependencies to queue (marked is_dev=True)
+        root_dev_deps = root_package.get_dev_apm_dependencies()
+        for dep_ref in root_dev_deps:
+            key = dep_ref.get_unique_key()
+            if key not in queued_keys:
+                processing_queue.append((dep_ref, 1, None, True))
+                queued_keys.add(key)
+            # If already queued as prod, prod wins — skip
         
         # Process dependencies breadth-first
         while processing_queue:
-            dep_ref, depth, parent_node = processing_queue.popleft()
+            dep_ref, depth, parent_node, is_dev = processing_queue.popleft()
             
             # Remove from queued set since we're now processing this dependency
             queued_keys.discard(dep_ref.get_unique_key())
@@ -153,6 +162,9 @@ class APMDependencyResolver:
             # Check if we already processed this dependency at this level or higher
             existing_node = tree.get_node(dep_ref.get_unique_key())
             if existing_node and existing_node.depth <= depth:
+                # Prod wins over dev: if existing was dev and this is prod, promote it
+                if existing_node.is_dev and not is_dev:
+                    existing_node.is_dev = False
                 # We've already processed this dependency at a shallower or equal depth
                 # Create parent-child relationship if parent exists
                 if parent_node and existing_node not in parent_node.children:
@@ -172,7 +184,8 @@ class APMDependencyResolver:
                 package=placeholder_package,
                 dependency_ref=dep_ref,
                 depth=depth,
-                parent=parent_node
+                parent=parent_node,
+                is_dev=is_dev,
             )
             
             # Add to tree
@@ -194,12 +207,13 @@ class APMDependencyResolver:
                     node.package = loaded_package
                     
                     # Get sub-dependencies and add them to the processing queue
+                    # Transitive deps inherit is_dev from parent
                     sub_dependencies = loaded_package.get_apm_dependencies()
                     for sub_dep in sub_dependencies:
                         # Avoid infinite recursion by checking if we're already processing this dep
                         # Use O(1) set lookup instead of O(n) list comprehension
                         if sub_dep.get_unique_key() not in queued_keys:
-                            processing_queue.append((sub_dep, depth + 1, node))
+                            processing_queue.append((sub_dep, depth + 1, node, is_dev))
                             queued_keys.add(sub_dep.get_unique_key())
             except (ValueError, FileNotFoundError) as e:
                 # Could not load dependency package - this is expected for remote dependencies
