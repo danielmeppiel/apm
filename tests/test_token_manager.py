@@ -12,9 +12,11 @@ from src.apm_cli.core.token_manager import GitHubTokenManager
 @pytest.fixture(autouse=True)
 def clear_shared_credential_cache():
     """Ensure shared credential cache is isolated between tests."""
-    GitHubTokenManager._SHARED_CREDENTIAL_CACHE.clear()
+    with GitHubTokenManager._SHARED_CREDENTIAL_CACHE_LOCK:
+        GitHubTokenManager._SHARED_CREDENTIAL_CACHE.clear()
     yield
-    GitHubTokenManager._SHARED_CREDENTIAL_CACHE.clear()
+    with GitHubTokenManager._SHARED_CREDENTIAL_CACHE_LOCK:
+        GitHubTokenManager._SHARED_CREDENTIAL_CACHE.clear()
 
 
 class TestModulesTokenPrecedence:
