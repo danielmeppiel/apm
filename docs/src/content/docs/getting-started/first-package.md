@@ -117,4 +117,5 @@ This produces `AGENTS.md` (for Codex, Gemini) and `CLAUDE.md` for tools that nee
 
 - Add [skills](/apm/guides/skills/) to your package
 - Set up [dependencies](/apm/guides/dependencies/) on other packages
+- Distribute as a standalone plugin — see [Plugin authoring](../../guides/plugins/#plugin-authoring) and [Pack & Distribute](../../guides/pack-distribute/)
 - Explore the [CLI reference](/apm/reference/cli-commands/) for more commands

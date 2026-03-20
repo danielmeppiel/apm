@@ -15,6 +15,7 @@ class DependencyNode:
     depth: int = 0
     children: List['DependencyNode'] = field(default_factory=list)
     parent: Optional['DependencyNode'] = None
+    is_dev: bool = False  # True when reached exclusively through devDependencies
     
     def get_id(self) -> str:
         """Get unique identifier for this node."""

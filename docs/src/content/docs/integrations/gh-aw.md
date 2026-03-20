@@ -74,7 +74,7 @@ The APM compilation target is automatically inferred from the configured `engine
 
 ### apm-action Pre-Step
 
-For more control over the installation process, use [`microsoft/apm-action@v1`](https://github.com/microsoft/apm-action) as an explicit workflow step. This approach runs `apm install && apm compile` directly, giving you access to the full APM CLI.
+For more control over the installation process, use [`microsoft/apm-action@v1`](https://github.com/microsoft/apm-action) as an explicit workflow step. This approach runs `apm install` directly, giving you access to the full APM CLI. To also compile, add `compile: true` to the action configuration.
 
 ```yaml
 ---

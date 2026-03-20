@@ -394,8 +394,43 @@ def _get_default_config(project_name):
     }
 
 
-def _create_minimal_apm_yml(config):
-    """Create minimal apm.yml file with auto-detected metadata."""
+def _validate_plugin_name(name):
+    """Validate plugin name is kebab-case (lowercase, numbers, hyphens).
+
+    Returns True if valid, False otherwise.
+    """
+    import re
+
+    return bool(re.match(r"^[a-z][a-z0-9-]{0,63}$", name))
+
+
+def _create_plugin_json(config):
+    """Create plugin.json file with package metadata.
+
+    Args:
+        config: dict with name, version, description, author keys.
+    """
+    import json
+
+    plugin_data = {
+        "name": config["name"],
+        "version": config.get("version", "0.1.0"),
+        "description": config.get("description", ""),
+        "author": {"name": config.get("author", "")},
+        "license": "MIT",
+    }
+
+    with open("plugin.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(plugin_data, indent=2) + "\n")
+
+
+def _create_minimal_apm_yml(config, plugin=False):
+    """Create minimal apm.yml file with auto-detected metadata.
+
+    Args:
+        config: dict with name, version, description, author keys.
+        plugin: if True, include a devDependencies section.
+    """
     yaml = _lazy_yaml()
 
     # Create minimal apm.yml structure
@@ -405,8 +440,12 @@ def _create_minimal_apm_yml(config):
         "description": config["description"],
         "author": config["author"],
         "dependencies": {"apm": [], "mcp": []},
-        "scripts": {},
     }
+
+    if plugin:
+        apm_yml_data["devDependencies"] = {"apm": []}
+
+    apm_yml_data["scripts"] = {}
 
     # Write apm.yml
     with open(APM_YML_FILENAME, "w") as f:

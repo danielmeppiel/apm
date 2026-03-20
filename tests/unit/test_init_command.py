@@ -1,5 +1,6 @@
 """Tests for the apm init command."""
 
+import json
 import pytest
 import tempfile
 import os
@@ -294,3 +295,27 @@ class TestInitCommand:
                 assert not Path("SKILL.md").exists()
             finally:
                 os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
+
+
+
+class TestPluginNameValidation:
+    """Unit tests for _validate_plugin_name helper."""
+
+    def test_valid_names(self):
+        from apm_cli.commands._helpers import _validate_plugin_name
+
+        assert _validate_plugin_name("a") is True
+        assert _validate_plugin_name("my-plugin") is True
+        assert _validate_plugin_name("plugin2") is True
+        assert _validate_plugin_name("a" * 64) is True
+
+    def test_invalid_names(self):
+        from apm_cli.commands._helpers import _validate_plugin_name
+
+        assert _validate_plugin_name("") is False
+        assert _validate_plugin_name("A") is False
+        assert _validate_plugin_name("my_plugin") is False
+        assert _validate_plugin_name("1plugin") is False
+        assert _validate_plugin_name("-plugin") is False
+        assert _validate_plugin_name("a" * 65) is False
+        assert _validate_plugin_name("My-Plugin") is False

@@ -20,10 +20,12 @@ from ._helpers import (
     INFO,
     RESET,
     _create_minimal_apm_yml,
+    _create_plugin_json,
     _get_console,
     _get_default_config,
     _lazy_confirm,
     _rich_blank_line,
+    _validate_plugin_name,
 )
 
 
@@ -32,11 +34,15 @@ from ._helpers import (
 @click.option(
     "--yes", "-y", is_flag=True, help="Skip interactive prompts and use auto-detected defaults"
 )
+@click.option(
+    "--plugin", is_flag=True, help="Initialize as plugin author (creates plugin.json + apm.yml)"
+)
 @click.pass_context
-def init(ctx, project_name, yes):
+def init(ctx, project_name, yes, plugin):
     """Initialize a new APM project (like npm init).
 
     Creates a minimal apm.yml with auto-detected metadata.
+    With --plugin, also creates plugin.json for plugin authors.
     """
     try:
         # Handle explicit current directory
@@ -53,6 +59,15 @@ def init(ctx, project_name, yes):
         else:
             project_dir = Path.cwd()
             final_project_name = project_dir.name
+
+        # Validate plugin name early
+        if plugin and not _validate_plugin_name(final_project_name):
+            _rich_error(
+                f"Invalid plugin name '{final_project_name}'. "
+                "Must be kebab-case (lowercase letters, numbers, hyphens), "
+                "start with a letter, and be at most 64 characters."
+            )
+            sys.exit(1)
 
         # Check for existing apm.yml
         apm_yml_exists = Path(APM_YML_FILENAME).exists()
@@ -84,10 +99,18 @@ def init(ctx, project_name, yes):
             # Use auto-detected defaults
             config = _get_default_config(final_project_name)
 
+        # Plugin mode uses 0.1.0 as default version
+        if plugin and yes:
+            config["version"] = "0.1.0"
+
         _rich_success(f"Initializing APM project: {config['name']}", symbol="rocket")
 
-        # Create minimal apm.yml
-        _create_minimal_apm_yml(config)
+        # Create apm.yml (with devDependencies for plugin mode)
+        _create_minimal_apm_yml(config, plugin=plugin)
+
+        # Create plugin.json for plugin mode
+        if plugin:
+            _create_plugin_json(config)
 
         _rich_success("APM project initialized successfully!", symbol="sparkles")
 
@@ -98,21 +121,31 @@ def init(ctx, project_name, yes):
                 files_data = [
                     ("*", APM_YML_FILENAME, "Project configuration"),
                 ]
+                if plugin:
+                    files_data.append(("*", "plugin.json", "Plugin metadata"))
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
         except (ImportError, NameError):
             _rich_info("Created:")
             _rich_echo("  * apm.yml - Project configuration", style="muted")
+            if plugin:
+                _rich_echo("  * plugin.json - Plugin metadata", style="muted")
 
         _rich_blank_line()
 
         # Next steps - actionable commands matching README workflow
-        next_steps = [
-            "Install a runtime:       apm runtime setup copilot",
-            "Add APM dependencies:    apm install <owner>/<repo>",
-            "Compile agent context:   apm compile",
-            "Run your first workflow: apm run start",
-        ]
+        if plugin:
+            next_steps = [
+                "Add dev dependencies:    apm install --dev <owner>/<repo>",
+                "Pack as plugin:          apm pack --format plugin",
+            ]
+        else:
+            next_steps = [
+                "Install a runtime:       apm runtime setup copilot",
+                "Add APM dependencies:    apm install <owner>/<repo>",
+                "Compile agent context:   apm compile",
+                "Run your first workflow: apm run start",
+            ]
 
         try:
             _rich_panel(

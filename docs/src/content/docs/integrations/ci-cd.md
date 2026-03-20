@@ -151,6 +151,17 @@ Use `apm pack` in CI to build a distributable bundle once, then consume it in do
     path: build/*.tar.gz
 ```
 
+### Pack as standalone plugin
+
+```yaml
+# Export as standalone plugin
+- run: apm pack --format plugin
+- uses: actions/upload-artifact@v4
+  with:
+    name: plugin-bundle
+    path: build/*.tar.gz
+```
+
 ### Consume in another job (no APM needed)
 
 ```yaml
