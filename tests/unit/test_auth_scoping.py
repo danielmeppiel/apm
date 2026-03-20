@@ -135,7 +135,24 @@ class TestCloneWithFallbackEnv:
             else:
                 effects.append(GitCommandError("clone", "failed"))
 
-        with patch('apm_cli.deps.github_downloader.Repo') as MockRepo:
+        # Reconstruct the env matching construction so per-dep resolution
+        # via AuthResolver sees the same tokens the downloader was built with.
+        env_vars = {}
+        if dl.github_token:
+            env_vars["GITHUB_APM_PAT"] = dl.github_token
+        if dl.ado_token:
+            env_vars["ADO_APM_PAT"] = dl.ado_token
+
+        # Clear the resolver cache so resolve_for_dep re-resolves with the
+        # controlled env rather than returning stale entries.
+        dl.auth_resolver._cache.clear()
+
+        with patch.dict(os.environ, env_vars, clear=True), \
+             patch(
+                 "apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git",
+                 return_value=None,
+             ), \
+             patch('apm_cli.deps.github_downloader.Repo') as MockRepo:
             MockRepo.clone_from.side_effect = effects
             target = Path(tempfile.mkdtemp())
             try:
@@ -221,7 +238,13 @@ class TestCloneWithFallbackEnv:
         dl = _make_downloader(github_token="ghp_TESTTOKEN")
         dep = _dep("https://gitlab.com/acme/rules.git")
 
-        with patch('apm_cli.deps.github_downloader.Repo') as MockRepo:
+        dl.auth_resolver._cache.clear()
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "ghp_TESTTOKEN"}, clear=True), \
+             patch(
+                 "apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git",
+                 return_value=None,
+             ), \
+             patch('apm_cli.deps.github_downloader.Repo') as MockRepo:
             MockRepo.clone_from.side_effect = GitCommandError("clone", "failed")
             target = Path(tempfile.mkdtemp())
             try:

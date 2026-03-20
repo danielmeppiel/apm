@@ -5,9 +5,11 @@ description: >
   error messages, progress indicators, or diagnostic summaries in the APM
   codebase. Activate whenever code touches console helpers (_rich_success,
   _rich_warning, _rich_error, _rich_info, _rich_echo), DiagnosticCollector,
-  STATUS_SYMBOLS, or any user-facing terminal output — even if the user
-  doesn't mention "logging" or "UX" explicitly.
+  STATUS_SYMBOLS, CommandLogger, or any user-facing terminal output — even
+  if the user doesn't mention "logging" or "UX" explicitly.
 ---
+
+[CLI Logging UX expert persona](../../agents/cli-logging-expert.agent.md)
 
 # CLI Logging & Developer Experience
 
@@ -147,6 +149,19 @@ if SkillIntegrator._dirs_equal(source, target):
     continue  # Nothing changed, nothing to report
 ```
 
+## CommandLogger Architecture
+
+All CLI commands must use `CommandLogger` (or a subclass) for output:
+
+- **`CommandLogger`** (`src/apm_cli/core/command_logger.py`): Base for all commands. Provides `start()`, `progress()`, `success()`, `error()`, `warning()`, `verbose_detail()`, `dry_run_notice()`, `auth_step()`, `render_summary()`.
+- **`InstallLogger(CommandLogger)`**: Install-specific with `validation_start()`, `resolution_start()`, `nothing_to_install()`, `download_start()`, `install_summary()`.
+- **`DiagnosticCollector`**: Injected via `logger.diagnostics`. Collect-then-render pattern.
+
+### Rule: No direct _rich_* in commands
+Command functions must NOT call `_rich_info()`, `_rich_error()`, etc. directly. Use `logger.progress()`, `logger.error()`, etc. instead. The _rich_* helpers are internal to CommandLogger.
+
+Exception: Rich tables and panels for display (not lifecycle logging) may use `console.print()` directly.
+
 ## Anti-patterns
 
 1. **Warning for non-actionable state** — If the user can't do anything about it, use `_rich_info` or defer to `--verbose`, not `_rich_warning`.
@@ -160,3 +175,9 @@ if SkillIntegrator._dirs_equal(source, target):
 5. **Inconsistent symbols** — Always use `STATUS_SYMBOLS` dict with `symbol=` param, not inline characters.
 
 6. **Walls of text** — Use Rich tables for structured data, panels for grouped content. Break up long output with visual hierarchy (indentation, `└─` tree connectors).
+
+7. **Calling `_rich_info("Installing...")` directly in a command** — Use `logger.start("Installing...")` instead. The `_rich_*` helpers are internal to `CommandLogger`.
+
+8. **Checking `if verbose:` manually** — Use `logger.verbose_detail("...")` which handles the check internally.
+
+9. **Checking `if dry_run:` manually** — Use `logger.should_execute` or `logger.dry_run_notice("...")` instead.

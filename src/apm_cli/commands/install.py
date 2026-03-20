@@ -245,57 +245,72 @@ def _validate_package_exists(package):
             )
             return result.returncode == 0
 
-        # For GitHub.com, use standard approach (public repos don't need auth)
-        package_url = f"{dep_ref.to_github_url()}.git"
+        # For GitHub.com, use AuthResolver with unauth-first fallback
+        from apm_cli.core.auth import AuthResolver
 
-        # For regular packages, use git ls-remote
-        with tempfile.TemporaryDirectory() as temp_dir:
-            try:
+        auth_resolver = AuthResolver()
+        host = dep_ref.host or default_host()
+        org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
 
-                # Try cloning with minimal fetch
-                cmd = [
-                    "git",
-                    "ls-remote",
-                    "--heads",
-                    "--exit-code",
-                    package_url,
-                ]
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=30  # 30 second timeout
-                )
+        def _ls_remote(token, git_env):
+            """Try git ls-remote with optional auth."""
+            if token:
+                url = f"https://x-access-token:{token}@{host}/{dep_ref.repo_url}.git"
+            else:
+                url = f"{dep_ref.to_github_url()}.git"
+            result = subprocess.run(
+                ['git', 'ls-remote', '--heads', '--exit-code', url],
+                capture_output=True, text=True, timeout=30,
+                env=git_env,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"git ls-remote failed: {result.stderr}")
+            return True
 
-                return result.returncode == 0
-
-            except subprocess.TimeoutExpired:
-                return False
-            except Exception:
-                return False
+        try:
+            return auth_resolver.try_with_fallback(
+                host, _ls_remote,
+                org=org,
+                unauth_first=True,
+            )
+        except Exception:
+            return False
 
     except Exception:
         # If parsing fails, assume it's a regular GitHub package
-        package_url = (
-            f"https://{package}.git"
-            if is_valid_fqdn(package)
-            else f"https://{default_host()}/{package}.git"
-        )
-        with tempfile.TemporaryDirectory() as temp_dir:
-            try:
-                cmd = [
-                    "git",
-                    "ls-remote",
-                    "--heads",
-                    "--exit-code",
-                    package_url,
-                ]
+        from apm_cli.core.auth import AuthResolver
 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        auth_resolver = AuthResolver()
+        host = default_host()
+        org = package.split('/')[0] if '/' in package else None
 
-                return result.returncode == 0
+        if is_valid_fqdn(package):
+            base_url = f"https://{package}.git"
+        else:
+            base_url = f"https://{host}/{package}.git"
 
-            except subprocess.TimeoutExpired:
-                return False
-            except Exception:
-                return False
+        def _ls_remote_fallback(token, git_env):
+            if token and not is_valid_fqdn(package):
+                url = f"https://x-access-token:{token}@{host}/{package}.git"
+            else:
+                url = base_url
+            result = subprocess.run(
+                ['git', 'ls-remote', '--heads', '--exit-code', url],
+                capture_output=True, text=True, timeout=30,
+                env=git_env,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"git ls-remote failed: {result.stderr}")
+            return True
+
+        try:
+            return auth_resolver.try_with_fallback(
+                host, _ls_remote_fallback,
+                org=org,
+                unauth_first=True,
+            )
+        except Exception:
+            return False
 
 
 # ---------------------------------------------------------------------------
