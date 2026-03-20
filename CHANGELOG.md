@@ -8,26 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-03-20
+
 ### Added
 
-- `apm pack --format plugin` — export APM packages as standalone plugin directories consumable by Copilot CLI, Claude Code, and other plugin hosts. Transforms `.apm/` layout to plugin-native directories (agents, skills, commands, instructions, contexts) with hooks/MCP merging, collision handling, and security scanning (#378)
-- `apm init --plugin` — initialize a plugin authoring project with both `plugin.json` and `apm.yml` (includes `devDependencies` section). Validates kebab-case plugin names per plugin spec (#378)
-- `devDependencies` support in `apm.yml` and `APMPackage` model — same syntax as `dependencies`, parsed with `get_dev_apm_dependencies()`/`get_dev_mcp_dependencies()` accessors. Dev deps are excluded from plugin bundles (#378)
-- `apm install --dev` — install packages as development dependencies, writing to `devDependencies` instead of `dependencies` (#378)
-- `apm pack --force` flag — on collision, last writer wins instead of first (#378)
-- `synthesize_plugin_json_from_apm_yml()` — generates `plugin.json` from `apm.yml` identity fields when no plugin manifest exists (#378)
+- Plugin authoring — `apm pack --format plugin` exports APM packages as standalone plugin directories (`plugin.json`, agents, skills, commands) consumable by Copilot CLI, Claude Code, and Cursor without APM installed (#379)
+- `apm init --plugin` scaffolds a hybrid project with both `apm.yml` and `plugin.json`, including a `devDependencies` section (#379)
+- `devDependencies` in `apm.yml` — dev deps install normally but are excluded from `apm pack` output; `apm install --dev` writes to the dev section (#379)
+- VS Code runtime detection now falls back to `.vscode/` directory presence when the `code` binary is not on PATH — by @sergio-sisternes-epam (#359)
 
 ### Security
 
-- Content integrity hashing — SHA-256 checksums of package file trees are stored in `apm.lock.yaml` (`content_hash` field) and verified on subsequent installs. Detects tampering, MITM modifications, or force-pushed commits (#315, #378)
-- Lockfile `is_dev` tracking — dev dependencies are explicitly marked in the lockfile for auditability (#378)
+- Content integrity hashing — SHA-256 `content_hash` per dependency in `apm.lock.yaml`, verified on subsequent installs to detect tampering or force-pushed commits (#315, #379)
+- `apm audit` strips leading BOM while preserving it for display, preventing false negatives — by @dadavidtseng (#372)
+
 ### Changed
 
-- Install URLs now use short `aka.ms/apm-unix` and `aka.ms/apm-windows` redirects across README, docs, CLI output, and install script
+- Install URLs now use short `aka.ms/apm-unix` and `aka.ms/apm-windows` redirects across README, docs, and CLI output (#384)
+- README highlights link to relevant docs pages; plugin authoring featured as a key value proposition (#385)
 
 ### Fixed
 
-- CLI docs now document the `apm compile --target opencode` option, align `apm audit --dry-run` wording with actual behavior, and mark planned `apm audit --drift` examples as not yet available (#366)
+- `DependencyReference` preserved through the download pipeline so lockfile records the original ref, not an empty object — by @sergio-sisternes-epam (#383)
+- Refactor command and model modules for readability and maintainability — by @sergio-sisternes-epam (#232)
+- CLI docs align `compile --target opencode`, `audit --dry-run`, and planned `audit --drift` with current behavior (#373)
 
 ## [0.8.2] - 2026-03-19
 
