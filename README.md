@@ -45,12 +45,11 @@ apm install    # every agent is configured
 
 ## Highlights
 
-- **[Author plugins with a real supply chain](https://microsoft.github.io/apm/guides/plugins/)** — build Copilot, Claude, and Cursor plugins using transitive dependencies, lockfile pinning, `devDependencies`, and security scanning — then `apm pack --format plugin` to export a standard `plugin.json` that works without APM
 - **[One manifest for everything](https://microsoft.github.io/apm/reference/primitive-types/)** — instructions, skills, prompts, agents, hooks, plugins, MCP servers
 - **[Install from anywhere](https://microsoft.github.io/apm/guides/dependencies/)** — GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, any git host
 - **[Transitive dependencies](https://microsoft.github.io/apm/guides/dependencies/)** — packages can depend on packages; APM resolves the full tree
-- **[Compile to standards](https://microsoft.github.io/apm/guides/compilation/)** — `apm compile` produces `AGENTS.md` (GitHub Copilot, OpenCode), `CLAUDE.md` (Claude Code), and `.cursor/rules/` (Cursor)
-- **[Content security](https://microsoft.github.io/apm/enterprise/security/)** — `apm audit` scans for hidden Unicode characters; `apm install` blocks compromised packages before agents can read them
+- **[Content security](https://microsoft.github.io/apm/enterprise/security/)** — `apm audit` scans for hidden Unicode; `apm install` blocks compromised packages before agents read them
+- **[Author plugins](https://microsoft.github.io/apm/guides/plugins/)** — build Copilot, Claude, and Cursor plugins with dependency management and security scanning, then export standard `plugin.json`
 - **[Pack & distribute](https://microsoft.github.io/apm/guides/pack-distribute/)** — `apm pack` bundles your configuration as a zipped package or a standalone plugin
 - **[CI/CD ready](https://github.com/microsoft/apm-action)** — GitHub Action for automated workflows
 
