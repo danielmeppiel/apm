@@ -20,6 +20,7 @@ Runtime Requirements:
 
 import os
 import subprocess
+import threading
 from typing import Dict, Optional, Tuple
 
 
@@ -30,6 +31,11 @@ class GitHubTokenManager:
     # on Windows). Give it enough time by default to avoid false negatives.
     DEFAULT_GIT_CREDENTIAL_TIMEOUT_SECONDS = 60
     MAX_GIT_CREDENTIAL_TIMEOUT_SECONDS = 180
+
+    # Shared process-wide cache so multiple downloader/token-manager instances
+    # in a single command do not repeatedly invoke credential helpers.
+    _SHARED_CREDENTIAL_CACHE: Dict[str, Optional[str]] = {}
+    _SHARED_CREDENTIAL_CACHE_LOCK = threading.Lock()
     
     # Define token precedence for different use cases
     TOKEN_PRECEDENCE = {
@@ -54,7 +60,7 @@ class GitHubTokenManager:
             preserve_existing: If True, never overwrite existing environment variables
         """
         self.preserve_existing = preserve_existing
-        self._credential_cache: Dict[str, Optional[str]] = {}
+        self._credential_cache = self._SHARED_CREDENTIAL_CACHE
     
     @staticmethod
     def _is_valid_credential_token(token: str) -> bool:
@@ -196,13 +202,18 @@ class GitHubTokenManager:
         token = self.get_token_for_purpose(purpose, env)
         if token:
             return token
-        
-        if host in self._credential_cache:
-            return self._credential_cache[host]
-        
+
+        with self._SHARED_CREDENTIAL_CACHE_LOCK:
+            if host in self._credential_cache:
+                return self._credential_cache[host]
+
         credential = self.resolve_credential_from_git(host)
-        self._credential_cache[host] = credential
-        return credential
+
+        with self._SHARED_CREDENTIAL_CACHE_LOCK:
+            # Keep first computed value if another thread filled cache first.
+            if host not in self._credential_cache:
+                self._credential_cache[host] = credential
+            return self._credential_cache[host]
     
     def validate_tokens(self, env: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
         """Validate that required tokens are available.

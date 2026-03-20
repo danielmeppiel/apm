@@ -23,6 +23,8 @@ For single-file downloads from GitHub (which use the GitHub API rather than `git
 
 `git credential fill` can trigger interactive account selection on some systems. APM waits up to 60 seconds by default for this step. If your credential helper is slower, set `APM_GIT_CREDENTIAL_TIMEOUT` (seconds, max 180).
 
+Within a single APM command, credential-helper lookups are cached per host. This avoids repeated account-selection prompts when multiple install phases need authentication in the same run.
+
 ### Object-style `git:` references
 
 The `git:` object form in `apm.yml` lets you reference any git URL explicitly — HTTPS, SSH, or any host:

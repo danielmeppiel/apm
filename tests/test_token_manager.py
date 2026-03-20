@@ -9,6 +9,14 @@ import pytest
 from src.apm_cli.core.token_manager import GitHubTokenManager
 
 
+@pytest.fixture(autouse=True)
+def clear_shared_credential_cache():
+    """Ensure shared credential cache is isolated between tests."""
+    GitHubTokenManager._SHARED_CREDENTIAL_CACHE.clear()
+    yield
+    GitHubTokenManager._SHARED_CREDENTIAL_CACHE.clear()
+
+
 class TestModulesTokenPrecedence:
     """Test GH_TOKEN addition to the modules token precedence chain."""
 
@@ -342,3 +350,20 @@ class TestGetTokenWithCredentialFallback:
                 assert tok1 == 'tok-github.com'
                 assert tok2 == 'tok-gitlab.com'
                 assert mock_cred.call_count == 2
+
+    def test_cache_is_shared_across_instances(self):
+        """Credential helper should be queried once per host per process."""
+        with patch.dict(os.environ, {}, clear=True):
+            first = GitHubTokenManager()
+            second = GitHubTokenManager()
+
+            with patch.object(
+                GitHubTokenManager,
+                'resolve_credential_from_git',
+                return_value='shared-token',
+            ) as mock_cred:
+                tok1 = first.get_token_with_credential_fallback('modules', 'github.com')
+                tok2 = second.get_token_with_credential_fallback('modules', 'github.com')
+                assert tok1 == 'shared-token'
+                assert tok2 == 'shared-token'
+                mock_cred.assert_called_once()
