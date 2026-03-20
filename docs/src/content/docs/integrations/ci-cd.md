@@ -79,7 +79,7 @@ This catches cases where a developer updates `apm.yml` but forgets to re-run `ap
 ```yaml
 steps:
   - script: |
-      curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+      curl -sSL https://aka.ms/apm-unix | sh
       apm install
       # Optional: only if targeting Codex, Gemini, or similar tools
       # apm compile

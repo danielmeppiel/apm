@@ -16,11 +16,11 @@ class TestUpdateCommand(unittest.TestCase):
         self.runner = CliRunner()
 
     def test_manual_update_command_uses_windows_installer(self):
-        """Windows manual update instructions should point to install.ps1."""
+        """Windows manual update instructions should point to aka.ms/apm-windows."""
         with patch.object(update_module.sys, "platform", "win32"):
             command = update_module._get_manual_update_command()
 
-        self.assertIn("install.ps1", command)
+        self.assertIn("aka.ms/apm-windows", command)
         self.assertIn("powershell", command.lower())
 
     @patch("requests.get")
@@ -51,7 +51,7 @@ class TestUpdateCommand(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Successfully updated to version 0.7.0", result.output)
         mock_get.assert_called_once()
-        self.assertTrue(mock_get.call_args.args[0].endswith("install.ps1"))
+        self.assertTrue(mock_get.call_args.args[0].endswith("apm-windows"))
         mock_run.assert_called_once()
         run_command = mock_run.call_args.args[0]
         self.assertEqual(run_command[:3], ["powershell.exe", "-ExecutionPolicy", "Bypass"])
@@ -85,7 +85,7 @@ class TestUpdateCommand(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Successfully updated to version 0.7.0", result.output)
         mock_get.assert_called_once()
-        self.assertTrue(mock_get.call_args.args[0].endswith("install.sh"))
+        self.assertTrue(mock_get.call_args.args[0].endswith("apm-unix"))
         mock_run.assert_called_once()
         run_command = mock_run.call_args.args[0]
         self.assertEqual(run_command[0], "/bin/sh")

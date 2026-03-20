@@ -2,7 +2,7 @@
 set -e
 
 # APM CLI Installer Script
-# Usage: curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+# Usage: curl -sSL https://aka.ms/apm-unix | sh
 # For private repositories, use with authentication:
 #   curl -sSL -H "Authorization: token $GITHUB_APM_PAT" \
 #     https://raw.githubusercontent.com/microsoft/apm/main/install.sh | \

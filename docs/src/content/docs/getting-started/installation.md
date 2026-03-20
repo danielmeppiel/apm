@@ -16,13 +16,13 @@ sidebar:
 **macOS / Linux:**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+curl -sSL https://aka.ms/apm-unix | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex
+irm https://aka.ms/apm-windows | iex
 ```
 
 The installer automatically detects your platform (macOS/Linux/Windows, Intel/ARM), downloads the latest binary, and adds `apm` to your `PATH`.

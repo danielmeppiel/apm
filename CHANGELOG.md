@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Content integrity hashing — SHA-256 checksums of package file trees are stored in `apm.lock.yaml` (`content_hash` field) and verified on subsequent installs. Detects tampering, MITM modifications, or force-pushed commits (#315, #378)
 - Lockfile `is_dev` tracking — dev dependencies are explicitly marked in the lockfile for auditability (#378)
+### Changed
+
+- Install URLs now use short `aka.ms/apm-unix` and `aka.ms/apm-windows` redirects across README, docs, CLI output, and install script
 
 ### Fixed
 
