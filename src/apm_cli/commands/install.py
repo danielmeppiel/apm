@@ -1111,9 +1111,11 @@ def _install_apm_dependencies(
 
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+        from ..utils.content_hash import compute_package_hash as _compute_hash
         installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev)
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
+        _package_hashes: builtins.dict = {}  # dep_key → sha256 hash (captured at download/verify time)
 
         # Build managed_files from existing lockfile for collision detection
         managed_files = builtins.set()
@@ -1316,6 +1318,8 @@ def _install_apm_dependencies(
                     _is_dev = node.is_dev if node else False
                     installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev))
                     dep_key = dep_ref.get_unique_key()
+                    if install_path.is_dir():
+                        _package_hashes[dep_key] = _compute_hash(install_path)
                     dep_deployed_files: builtins.list = []
 
                     if hasattr(local_info, 'package_type') and local_info.package_type:
@@ -1524,7 +1528,8 @@ def _install_apm_dependencies(
                         if not cached_commit:
                             cached_commit = dep_ref.reference
                         installed_packages.append((dep_ref, cached_commit, depth, resolved_by, _is_dev))
-
+                        if install_path.is_dir():
+                            _package_hashes[dep_key] = _compute_hash(install_path)
                         # Track package type for lockfile
                         if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
                             package_types[dep_key] = cached_package_info.package_type.value
@@ -1632,6 +1637,8 @@ def _install_apm_dependencies(
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
                     installed_packages.append((dep_ref, resolved_commit, depth, resolved_by, _is_dev))
+                    if install_path.is_dir():
+                        _package_hashes[dep_ref.get_unique_key()] = _compute_hash(install_path)
 
                     # Track package type for lockfile
                     if hasattr(package_info, 'package_type') and package_info.package_type:
@@ -1768,12 +1775,10 @@ def _install_apm_dependencies(
                 for dep_key, pkg_type in package_types.items():
                     if dep_key in lockfile.dependencies:
                         lockfile.dependencies[dep_key].package_type = pkg_type
-                # Compute content hashes for integrity verification
-                from ..utils.content_hash import compute_package_hash as _compute_hash
+                # Attach content hashes captured at download/verify time
                 for dep_key, locked_dep in lockfile.dependencies.items():
-                    _hash_path = _dep_install_path(locked_dep, apm_modules_dir)
-                    if _hash_path and _hash_path.is_dir():
-                        locked_dep.content_hash = _compute_hash(_hash_path)
+                    if dep_key in _package_hashes:
+                        locked_dep.content_hash = _package_hashes[dep_key]
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).
