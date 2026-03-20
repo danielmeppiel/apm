@@ -85,7 +85,7 @@ class GitHubTokenManager:
         """Get timeout for `git credential fill` from env or default.
 
         Environment override:
-        - APM_GIT_CREDENTIAL_TIMEOUT: integer seconds (1..120)
+        - APM_GIT_CREDENTIAL_TIMEOUT: integer seconds (1..180)
         """
         raw = os.environ.get("APM_GIT_CREDENTIAL_TIMEOUT", "").strip()
         if not raw:
