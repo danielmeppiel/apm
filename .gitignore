@@ -37,6 +37,7 @@ ENV/
 
 # IDEs and editors
 .idea/
+*.code-workspace
 *.swp
 *.swo
 *~

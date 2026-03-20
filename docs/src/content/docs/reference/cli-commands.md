@@ -344,7 +344,7 @@ apm audit [PACKAGE] [OPTIONS]
 **Options:**
 - `--file PATH` - Scan an arbitrary file instead of installed packages
 - `--strip` - Remove dangerous characters (critical + warning severity) while preserving info-level content like emoji. ZWJ inside emoji sequences is preserved.
-- `--dry-run` - Preview what `--strip` would remove without modifying files (requires `--strip`)
+- `--dry-run` - Preview what `--strip` would remove without modifying files
 - `-v, --verbose` - Show info-level findings and file details
 - `-f, --format [text|json|sarif|markdown]` - Output format: `text` (default), `json` (machine-readable), `sarif` (GitHub Code Scanning), `markdown` (step summaries). Cannot be combined with `--strip` or `--dry-run`.
 - `-o, --output PATH` - Write report to file. Auto-detects format from extension (`.sarif`, `.sarif.json` → SARIF; `.json` → JSON; `.md` → Markdown) when `--format` is not specified.
@@ -854,7 +854,7 @@ apm compile [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output file path (for single-file mode)
-- `-t, --target [vscode|agents|claude|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
+- `-t, --target [vscode|agents|claude|opencode|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Preview compilation without writing files (shows placement decisions)
 - `--no-links` - Skip markdown link resolution
@@ -881,7 +881,7 @@ You can also set a persistent target in `apm.yml`:
 ```yaml
 name: my-project
 version: 1.0.0
-target: vscode  # or claude, or all
+target: vscode  # or claude, opencode, or all
 ```
 
 **Target Formats (explicit):**
@@ -890,6 +890,7 @@ target: vscode  # or claude, or all
 |--------|--------------|----------|
 | `vscode` | AGENTS.md, .github/prompts/, .github/agents/, .github/skills/ | GitHub Copilot, Cursor, Codex, Gemini |
 | `claude` | CLAUDE.md, .claude/commands/, SKILL.md | Claude Code, Claude Desktop |
+| `opencode` | AGENTS.md, .opencode/agents/, .opencode/commands/, .opencode/skills/ | OpenCode |
 | `all` | All of the above | Universal compatibility |
 
 **Examples:**
@@ -918,6 +919,7 @@ apm compile --watch --dry-run
 # Target specific agent formats
 apm compile --target vscode    # AGENTS.md + .github/ only
 apm compile --target claude    # CLAUDE.md + .claude/ only
+apm compile --target opencode  # AGENTS.md + .opencode/ only
 apm compile --target all       # All formats (default)
 
 # Compile injecting Spec Kit constitution (auto-detected)
@@ -1185,4 +1187,3 @@ apm runtime status
 - Runtime preference order (copilot → codex → llm)
 - Currently active runtime
 - Next steps if no runtime is available
-

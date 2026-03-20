@@ -1,14 +1,14 @@
-"""APM compile command."""
+"""APM compile command CLI."""
 
 import sys
 from pathlib import Path
 
 import click
 
-from ..compilation import AgentsCompiler, CompilationConfig
-from ..primitives.discovery import discover_primitives
-
-from ..utils.console import (
+from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME
+from ...compilation import AgentsCompiler, CompilationConfig
+from ...primitives.discovery import discover_primitives
+from ...utils.console import (
     STATUS_SYMBOLS,
     _rich_echo,
     _rich_error,
@@ -17,12 +17,97 @@ from ..utils.console import (
     _rich_success,
     _rich_warning,
 )
-from ._helpers import (
+from .._helpers import (
     _atomic_write,
     _check_orphaned_packages,
     _get_console,
     _rich_blank_line,
 )
+from .watcher import _watch_mode
+
+
+def _display_single_file_summary(stats, c_status, c_hash, output_path, dry_run):
+    """Display compilation summary table for single-file mode."""
+    try:
+        console = _get_console()
+        if not console:
+            _rich_info(f"Processed {stats.get('primitives_found', 0)} primitives:")
+            _rich_info(f"  * {stats.get('instructions', 0)} instructions")
+            _rich_info(f"  * {stats.get('contexts', 0)} contexts")
+            _rich_info(f"Constitution status: {c_status} hash={c_hash or '-'}")
+            return
+
+        import os
+        from rich.table import Table
+
+        table = Table(
+            title="Compilation Summary",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Component", style="bold white", min_width=15)
+        table.add_column("Count", style="cyan", min_width=8)
+        table.add_column("Details", style="white", min_width=20)
+
+        constitution_details = f"Hash: {c_hash or '-'}"
+        table.add_row("Spec-kit Constitution", c_status, constitution_details)
+
+        table.add_row(
+            "Instructions",
+            str(stats.get("instructions", 0)),
+            "[+] All validated",
+        )
+        table.add_row(
+            "Contexts",
+            str(stats.get("contexts", 0)),
+            "[+] All validated",
+        )
+        table.add_row(
+            "Chatmodes",
+            str(stats.get("chatmodes", 0)),
+            "[+] All validated",
+        )
+
+        try:
+            file_size = os.path.getsize(output_path) if not dry_run else 0
+            size_str = f"{file_size/1024:.1f}KB" if file_size > 0 else "Preview"
+            output_details = f"{output_path.name} ({size_str})"
+        except Exception:
+            output_details = f"{output_path.name}"
+
+        table.add_row("Output", "* SUCCESS", output_details)
+        console.print(table)
+    except Exception:
+        _rich_info(f"Processed {stats.get('primitives_found', 0)} primitives:")
+        _rich_info(f"  * {stats.get('instructions', 0)} instructions")
+        _rich_info(f"  * {stats.get('contexts', 0)} contexts")
+        _rich_info(f"Constitution status: {c_status} hash={c_hash or '-'}")
+
+
+def _display_next_steps(output):
+    """Display next steps panel after successful single-file compilation."""
+    next_steps = [
+        f"Review the generated {output} file",
+        "Install MCP dependencies: apm install",
+        "Execute agentic workflows: apm run <script> --param key=value",
+    ]
+    try:
+        console = _get_console()
+        if console:
+            from rich.panel import Panel
+
+            steps_content = "\n".join(f"* {step}" for step in next_steps)
+            console.print(
+                Panel(steps_content, title=" Next Steps", border_style="blue")
+            )
+        else:
+            _rich_info("Next steps:")
+            for step in next_steps:
+                click.echo(f"  * {step}")
+    except (ImportError, NameError):
+        _rich_info("Next steps:")
+        for step in next_steps:
+            click.echo(f"  * {step}")
 
 
 def _display_validation_errors(errors):
@@ -80,172 +165,11 @@ def _get_validation_suggestion(error_msg):
         return "Check primitive structure and frontmatter"
 
 
-def _watch_mode(output, chatmode, no_links, dry_run):
-    """Watch for changes in .apm/ directories and auto-recompile."""
-    try:
-        # Try to import watchdog for file system monitoring
-        import time
-
-        from watchdog.events import FileSystemEventHandler
-        from watchdog.observers import Observer
-
-        class APMFileHandler(FileSystemEventHandler):
-            def __init__(self, output, chatmode, no_links, dry_run):
-                self.output = output
-                self.chatmode = chatmode
-                self.no_links = no_links
-                self.dry_run = dry_run
-                self.last_compile = 0
-                self.debounce_delay = 1.0  # 1 second debounce
-
-            def on_modified(self, event):
-                if event.is_directory:
-                    return
-
-                # Check if it's a relevant file
-                if event.src_path.endswith(".md") or event.src_path.endswith("apm.yml"):
-
-                    # Debounce rapid changes
-                    current_time = time.time()
-                    if current_time - self.last_compile < self.debounce_delay:
-                        return
-
-                    self.last_compile = current_time
-                    self._recompile(event.src_path)
-
-            def _recompile(self, changed_file):
-                """Recompile after file change."""
-                try:
-                    _rich_info(f"File changed: {changed_file}", symbol="eyes")
-                    _rich_info("Recompiling...", symbol="gear")
-
-                    # Create configuration from apm.yml with overrides
-                    config = CompilationConfig.from_apm_yml(
-                        output_path=self.output if self.output != "AGENTS.md" else None,
-                        chatmode=self.chatmode,
-                        resolve_links=not self.no_links if self.no_links else None,
-                        dry_run=self.dry_run,
-                    )
-
-                    # Create compiler and compile
-                    compiler = AgentsCompiler(".")
-                    result = compiler.compile(config)
-
-                    if result.success:
-                        if self.dry_run:
-                            _rich_success(
-                                "Recompilation successful (dry run)", symbol="sparkles"
-                            )
-                        else:
-                            _rich_success(
-                                f"Recompiled to {result.output_path}", symbol="sparkles"
-                            )
-                    else:
-                        _rich_error("Recompilation failed")
-                        for error in result.errors:
-                            click.echo(f"  [x] {error}")
-
-                except Exception as e:
-                    _rich_error(f"Error during recompilation: {e}")
-
-        # Set up file watching
-        event_handler = APMFileHandler(output, chatmode, no_links, dry_run)
-        observer = Observer()
-
-        # Watch patterns for APM files
-        watch_paths = []
-
-        # Check for .apm directory
-        if Path(".apm").exists():
-            observer.schedule(event_handler, ".apm", recursive=True)
-            watch_paths.append(".apm/")
-
-        # Check for .github/instructions and agents/chatmodes
-        if Path(".github/instructions").exists():
-            observer.schedule(event_handler, ".github/instructions", recursive=True)
-            watch_paths.append(".github/instructions/")
-
-        # Watch .github/agents/ (new standard)
-        if Path(".github/agents").exists():
-            observer.schedule(event_handler, ".github/agents", recursive=True)
-            watch_paths.append(".github/agents/")
-
-        # Watch .github/chatmodes/ (legacy)
-        if Path(".github/chatmodes").exists():
-            observer.schedule(event_handler, ".github/chatmodes", recursive=True)
-            watch_paths.append(".github/chatmodes/")
-
-        # Watch apm.yml if it exists
-        if Path("apm.yml").exists():
-            observer.schedule(event_handler, ".", recursive=False)
-            watch_paths.append("apm.yml")
-
-        if not watch_paths:
-            _rich_warning("No APM directories found to watch")
-            _rich_info("Run 'apm init' to create an APM project")
-            return
-
-        # Start watching
-        observer.start()
-        _rich_info(
-            f" Watching for changes in: {', '.join(watch_paths)}", symbol="eyes"
-        )
-        _rich_info("Press Ctrl+C to stop watching...", symbol="info")
-
-        # Do initial compilation
-        _rich_info("Performing initial compilation...", symbol="gear")
-
-        config = CompilationConfig.from_apm_yml(
-            output_path=output if output != "AGENTS.md" else None,
-            chatmode=chatmode,
-            resolve_links=not no_links if no_links else None,
-            dry_run=dry_run,
-        )
-
-        compiler = AgentsCompiler(".")
-        result = compiler.compile(config)
-
-        if result.success:
-            if dry_run:
-                _rich_success(
-                    "Initial compilation successful (dry run)", symbol="sparkles"
-                )
-            else:
-                _rich_success(
-                    f"Initial compilation complete: {result.output_path}",
-                    symbol="sparkles",
-                )
-        else:
-            _rich_error("Initial compilation failed")
-            for error in result.errors:
-                click.echo(f"  [x] {error}")
-
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            observer.stop()
-            _rich_info("Stopped watching for changes", symbol="info")
-
-        observer.join()
-
-    except ImportError:
-        _rich_error("Watch mode requires the 'watchdog' library")
-        _rich_info("Install it with: uv pip install watchdog")
-        _rich_info(
-            "Or reinstall APM: uv pip install -e . (from the apm directory)"
-        )
-        sys.exit(1)
-    except Exception as e:
-        _rich_error(f"Error in watch mode: {e}")
-        sys.exit(1)
-
-
 @click.command(help="Compile APM context into distributed AGENTS.md files")
 @click.option(
     "--output",
     "-o",
-    default="AGENTS.md",
+    default=AGENTS_MD_FILENAME,
     help="Output file path (for single-file mode)",
 )
 @click.option(
@@ -330,20 +254,20 @@ def compile(
         # Check if this is an APM project first
         from pathlib import Path
 
-        if not Path("apm.yml").exists():
+        if not Path(APM_YML_FILENAME).exists():
             _rich_error("[x] Not an APM project - no apm.yml found")
             _rich_info(" To initialize an APM project, run:")
             _rich_info("   apm init")
             sys.exit(1)
 
         # Check if there are any instruction files to compile
-        from ..compilation.constitution import find_constitution
+        from ...compilation.constitution import find_constitution
 
-        apm_modules_exists = Path("apm_modules").exists()
+        apm_modules_exists = Path(APM_MODULES_DIR).exists()
         constitution_exists = find_constitution(Path(".")).exists()
 
         # Check if .apm directory has actual content
-        apm_dir = Path(".apm")
+        apm_dir = Path(APM_DIR)
         local_apm_has_content = apm_dir.exists() and (
             any(apm_dir.rglob("*.instructions.md"))
             or any(apm_dir.rglob("*.chatmode.md"))
@@ -401,8 +325,8 @@ def compile(
             _rich_info(f"  * {len(primitives.contexts)} contexts")
             # Show MCP dependency validation count
             try:
-                from ..models.apm_package import APMPackage
-                apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
+                from ...models.apm_package import APMPackage
+                apm_pkg = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
                 mcp_count = len(apm_pkg.get_mcp_dependencies())
                 if mcp_count > 0:
                     _rich_info(f"  * {mcp_count} MCP dependencies")
@@ -418,14 +342,14 @@ def compile(
         _rich_info("Starting context compilation...", symbol="cogs")
 
         # Auto-detect target if not explicitly provided
-        from ..core.target_detection import detect_target, get_target_description
+        from ...core.target_detection import detect_target, get_target_description
 
         # Get config target from apm.yml if available
         config_target = None
         try:
-            from ..models.apm_package import APMPackage
+            from ...models.apm_package import APMPackage
 
-            apm_pkg = APMPackage.from_apm_yml(Path("apm.yml"))
+            apm_pkg = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             config_target = apm_pkg.target
         except Exception:
             # No apm.yml or parsing error - proceed with auto-detection
@@ -442,7 +366,7 @@ def compile(
 
         # Build config with distributed compilation flags (Task 7)
         config = CompilationConfig.from_apm_yml(
-            output_path=output if output != "AGENTS.md" else None,
+            output_path=output if output != AGENTS_MD_FILENAME else None,
             chatmode=chatmode,
             resolve_links=not no_links if no_links else None,
             dry_run=dry_run,
@@ -520,7 +444,7 @@ def compile(
 
                 if intermediate_result.success:
                     # Perform constitution injection / preservation
-                    from ..compilation.injector import ConstitutionInjector
+                    from ...compilation.injector import ConstitutionInjector
 
                     injector = ConstitutionInjector(base_dir=".")
                     output_path = Path(config.output_path)
@@ -533,7 +457,7 @@ def compile(
                     # Compute deterministic Build ID (12-char SHA256) over content with placeholder removed
                     import hashlib
 
-                    from ..compilation.constants import BUILD_ID_PLACEHOLDER
+                    from ...compilation.constants import BUILD_ID_PLACEHOLDER
 
                     lines = final_content.splitlines()
                     # Identify placeholder line index
@@ -554,7 +478,7 @@ def compile(
                         # Only rewrite when content materially changes (creation, update, missing constitution case)
                         if c_status in ("CREATED", "UPDATED", "MISSING"):
                             # Defense-in-depth: scan compiled output before writing
-                            from ..security.gate import WARN_POLICY, SecurityGate
+                            from ...security.gate import WARN_POLICY, SecurityGate
 
                             verdict = SecurityGate.scan_text(
                                 final_content, str(output_path), policy=WARN_POLICY
@@ -597,87 +521,7 @@ def compile(
                     # Add spacing before summary table
                     _rich_blank_line()
 
-                    # Single comprehensive compilation summary table
-                    try:
-                        console = _get_console()
-                        if console:
-                            import os
-
-                            from rich.table import Table
-
-                            table = Table(
-                                title="Compilation Summary",
-                                show_header=True,
-                                header_style="bold cyan",
-                            )
-                            table.add_column(
-                                "Component", style="bold white", min_width=15
-                            )
-                            table.add_column("Count", style="cyan", min_width=8)
-                            table.add_column("Details", style="white", min_width=20)
-
-                            # Constitution row
-                            constitution_details = f"Hash: {c_hash or '-'}"
-                            table.add_row(
-                                "Spec-kit Constitution", c_status, constitution_details
-                            )
-
-                            # Primitives rows
-                            table.add_row(
-                                "Instructions",
-                                str(stats.get("instructions", 0)),
-                                "[+] All validated",
-                            )
-                            table.add_row(
-                                "Contexts",
-                                str(stats.get("contexts", 0)),
-                                "[+] All validated",
-                            )
-                            table.add_row(
-                                "Chatmodes",
-                                str(stats.get("chatmodes", 0)),
-                                "[+] All validated",
-                            )
-
-                            # Output row with file size
-                            try:
-                                file_size = (
-                                    os.path.getsize(output_path) if not dry_run else 0
-                                )
-                                size_str = (
-                                    f"{file_size/1024:.1f}KB"
-                                    if file_size > 0
-                                    else "Preview"
-                                )
-                                output_details = f"{output_path.name} ({size_str})"
-                            except:
-                                output_details = f"{output_path.name}"
-
-                            table.add_row("Output", "* SUCCESS", output_details)
-
-                            console.print(table)
-                        else:
-                            # Fallback for no Rich console
-                            _rich_info(
-                                f"Processed {stats.get('primitives_found', 0)} primitives:"
-                            )
-                            _rich_info(
-                                f"  * {stats.get('instructions', 0)} instructions"
-                            )
-                            _rich_info(f"  * {stats.get('contexts', 0)} contexts")
-                            _rich_info(
-                                f"Constitution status: {c_status} hash={c_hash or '-'}"
-                            )
-                    except Exception:
-                        # Fallback for any errors
-                        _rich_info(
-                            f"Processed {stats.get('primitives_found', 0)} primitives:"
-                        )
-                        _rich_info(f"  * {stats.get('instructions', 0)} instructions")
-                        _rich_info(f"  * {stats.get('contexts', 0)} contexts")
-                        _rich_info(
-                            f"Constitution status: {c_status} hash={c_hash or '-'}"
-                        )
+                    _display_single_file_summary(stats, c_status, c_hash, output_path, dry_run)
 
                     if dry_run:
                         preview = final_content[:500] + (
@@ -687,34 +531,7 @@ def compile(
                             preview, title=" Generated Content Preview", style="cyan"
                         )
                     else:
-                        next_steps = [
-                            f"Review the generated {output} file",
-                            "Install MCP dependencies: apm install",
-                            "Execute agentic workflows: apm run <script> --param key=value",
-                        ]
-                        try:
-                            console = _get_console()
-                            if console:
-                                from rich.panel import Panel
-
-                                steps_content = "\n".join(
-                                    f"* {step}" for step in next_steps
-                                )
-                                console.print(
-                                    Panel(
-                                        steps_content,
-                                        title=" Next Steps",
-                                        border_style="blue",
-                                    )
-                                )
-                            else:
-                                _rich_info("Next steps:")
-                                for step in next_steps:
-                                    click.echo(f"  * {step}")
-                        except (ImportError, NameError):
-                            _rich_info("Next steps:")
-                            for step in next_steps:
-                                click.echo(f"  * {step}")
+                        _display_next_steps(output)
 
         # Common error handling for both compilation modes
         # Note: Warnings are handled by professional formatters for distributed mode
