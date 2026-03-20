@@ -376,6 +376,91 @@ def _preview_strip(
     return affected
 
 
+def _render_ci_results(ci_result: "CIAuditResult") -> None:
+    """Render CI check results as a Rich table (text format)."""
+    from ..policy.ci_checks import CIAuditResult
+
+    console = _get_console()
+
+    if console:
+        try:
+            from rich.table import Table
+
+            table = Table(
+                title=f"{STATUS_SYMBOLS['search']} CI Lockfile Consistency Checks",
+                show_header=True,
+                header_style="bold cyan",
+            )
+            table.add_column("Status", style="bold", width=8)
+            table.add_column("Check", style="white")
+            table.add_column("Message", style="white")
+
+            for check in ci_result.checks:
+                status = (
+                    f"[green]{STATUS_SYMBOLS['check']}[/green]"
+                    if check.passed
+                    else f"[red]{STATUS_SYMBOLS['cross']}[/red]"
+                )
+                table.add_row(status, check.name, check.message)
+
+            console.print()
+            console.print(table)
+
+            # Show details for failed checks
+            for check in ci_result.failed_checks:
+                if check.details:
+                    console.print()
+                    _rich_echo(
+                        f"  {check.name} details:",
+                        color="red",
+                        bold=True,
+                    )
+                    for detail in check.details:
+                        _rich_echo(f"    - {detail}", color="dim")
+
+            console.print()
+            summary = ci_result.to_json()["summary"]
+            if ci_result.passed:
+                _rich_success(
+                    f"{STATUS_SYMBOLS['success']} All {summary['total']} check(s) passed"
+                )
+            else:
+                _rich_error(
+                    f"{STATUS_SYMBOLS['error']} {summary['failed']} of "
+                    f"{summary['total']} check(s) failed"
+                )
+            return
+        except (ImportError, Exception):
+            pass
+
+    # Fallback: plain text
+    _rich_echo("")
+    _rich_echo(
+        f"{STATUS_SYMBOLS['search']} CI Lockfile Consistency Checks",
+        color="cyan",
+        bold=True,
+    )
+    for check in ci_result.checks:
+        symbol = STATUS_SYMBOLS["check"] if check.passed else STATUS_SYMBOLS["cross"]
+        color = "green" if check.passed else "red"
+        _rich_echo(f"  {symbol} {check.name}: {check.message}", color=color)
+        if not check.passed and check.details:
+            for detail in check.details:
+                _rich_echo(f"      - {detail}", color="dim")
+
+    _rich_echo("")
+    summary = ci_result.to_json()["summary"]
+    if ci_result.passed:
+        _rich_success(
+            f"{STATUS_SYMBOLS['success']} All {summary['total']} check(s) passed"
+        )
+    else:
+        _rich_error(
+            f"{STATUS_SYMBOLS['error']} {summary['failed']} of "
+            f"{summary['total']} check(s) failed"
+        )
+
+
 # ── Command ────────────────────────────────────────────────────────
 
 
@@ -419,18 +504,39 @@ def _preview_strip(
     default=None,
     help="Write output to file (auto-detects format from extension: .sarif, .json, .md).",
 )
+@click.option(
+    "--ci",
+    is_flag=True,
+    help="Run lockfile consistency checks for CI/CD gates. Exit 0 if clean, 1 if violations found.",
+)
+@click.option(
+    "--policy",
+    "policy_source",
+    default=None,
+    help="Policy source: 'org' (auto-discover), file path, or URL. Used with --ci for policy checks.",
+)
+@click.option(
+    "--no-cache",
+    "no_cache",
+    is_flag=True,
+    help="Force fresh policy fetch (skip cache).",
+)
 @click.pass_context
-def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, output_path):
+def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, output_path, ci, policy_source, no_cache):
     """Scan deployed prompt files for hidden Unicode characters.
 
     Detects invisible characters that could embed hidden instructions in
     prompt, instruction, and rules files. Dangerous and suspicious
     characters can be removed with --strip.
 
+    With --ci, runs lockfile consistency checks instead of content scanning.
+    This validates that the on-disk state matches what the lockfile declares,
+    suitable for CI/CD pipeline gates.
+
     \b
     Exit codes:
         0  Clean, info-only findings, or successful strip
-        1  Critical findings detected (hidden instructions)
+        1  Critical findings detected (or --ci with violations)
         2  Warning-only findings (suspicious but not critical)
 
     \b
@@ -439,11 +545,76 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         apm audit my-package           # Scan a specific package
         apm audit --file .cursorrules  # Scan any file
         apm audit --strip              # Remove dangerous/suspicious chars
-        apm audit -f sarif             # SARIF output to stdout
-        apm audit -f markdown          # Markdown to stdout
+        apm audit --ci                 # Lockfile consistency gate
+        apm audit --ci --policy org    # CI gate with org policy checks
+        apm audit --ci -f json         # JSON CI report
+        apm audit --ci -f sarif        # SARIF for GitHub Code Scanning
         apm audit -o report.sarif      # Write SARIF to file
-        apm audit -f json -o out.json  # JSON report to file
     """
+    project_root = Path.cwd()
+
+    # ── CI mode: lockfile consistency gate ─────────────────────────
+    if ci:
+        if strip or dry_run or file_path or package:
+            _rich_error(
+                "--ci cannot be combined with --strip, --dry-run, --file, or PACKAGE"
+            )
+            sys.exit(1)
+
+        from ..policy.ci_checks import run_baseline_checks, run_policy_checks
+
+        # Always run baseline checks
+        ci_result = run_baseline_checks(project_root)
+
+        # Optionally run policy checks
+        if policy_source:
+            from ..policy.discovery import discover_policy
+
+            fetch_result = discover_policy(
+                project_root,
+                policy_override=policy_source,
+                no_cache=no_cache,
+            )
+
+            if fetch_result.error:
+                _rich_error(f"Policy fetch failed: {fetch_result.error}")
+                sys.exit(1)
+
+            if fetch_result.found:
+                policy_result = run_policy_checks(
+                    project_root, fetch_result.policy
+                )
+                ci_result.checks.extend(policy_result.checks)
+
+        # Resolve effective format
+        effective_format = output_format
+        if output_path and effective_format == "text":
+            from ..security.audit_report import detect_format_from_extension
+
+            effective_format = detect_format_from_extension(Path(output_path))
+
+        if effective_format in ("json", "sarif"):
+            import json as _json
+
+            payload = (
+                ci_result.to_sarif()
+                if effective_format == "sarif"
+                else ci_result.to_json()
+            )
+            output = _json.dumps(payload, indent=2)
+            if output_path:
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_text(output, encoding="utf-8")
+                _rich_success(f"CI audit report written to {output_path}")
+            else:
+                click.echo(output)
+        else:
+            _render_ci_results(ci_result)
+
+        sys.exit(0 if ci_result.passed else 1)
+
+    # ── Content scan mode ──────────────────────────────────────────
+
     # Resolve effective format (auto-detect from extension when needed)
     effective_format = output_format
     if output_path and effective_format == "text":
@@ -457,8 +628,6 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
             f"--format {effective_format} cannot be combined with --strip or --dry-run"
         )
         sys.exit(1)
-
-    project_root = Path.cwd()
 
     if file_path:
         # -- File mode: scan a single arbitrary file --

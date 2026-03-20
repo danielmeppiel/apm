@@ -358,6 +358,9 @@ apm audit [PACKAGE] [OPTIONS]
 - `-v, --verbose` - Show info-level findings and file details
 - `-f, --format [text|json|sarif|markdown]` - Output format: `text` (default), `json` (machine-readable), `sarif` (GitHub Code Scanning), `markdown` (step summaries). Cannot be combined with `--strip` or `--dry-run`.
 - `-o, --output PATH` - Write report to file. Auto-detects format from extension (`.sarif`, `.sarif.json` → SARIF; `.json` → JSON; `.md` → Markdown) when `--format` is not specified.
+- `--ci` - Run lockfile consistency checks for CI/CD gates. Exit 0 if clean, 1 if violations found.
+- `--policy SOURCE` - Policy source: `org` (auto-discover from org), file path, or URL. Used with `--ci` to run policy checks on top of baseline.
+- `--no-cache` - Force fresh policy fetch (skip cache). Only relevant with `--policy`.
 
 **Examples:**
 ```bash
@@ -390,14 +393,32 @@ apm audit -o report.sarif
 
 # JSON report to file
 apm audit -f json -o results.json
+
+# CI lockfile consistency gate
+apm audit --ci
+
+# CI gate with org policy checks
+apm audit --ci --policy org
+
+# CI gate with local policy file
+apm audit --ci --policy ./apm-policy.yml
+
+# Force fresh policy fetch
+apm audit --ci --policy org --no-cache
 ```
 
-**Exit codes:**
+**Exit codes (content scanning mode):**
 | Code | Meaning |
 |------|---------|
 | 0 | Clean — no findings, info-only, or successful strip |
 | 1 | Critical findings — tag characters, bidi overrides, or variation selectors 17–256 |
 | 2 | Warnings only — zero-width characters, bidi marks, or other suspicious content |
+
+**Exit codes (`--ci` mode):**
+| Code | Meaning |
+|------|---------|
+| 0 | All checks passed |
+| 1 | One or more checks failed |
 
 **What it detects:**
 - **Critical**: Tag characters (U+E0001–E007F), bidi overrides (U+202A–E, U+2066–9), variation selectors 17–256 (U+E0100–E01EF, Glassworm attack vector)
