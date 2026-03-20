@@ -88,8 +88,8 @@ def uninstall(ctx, packages, dry_run):
             _rich_info(f"Removed {package} from apm.yml")
         data["dependencies"]["apm"] = current_deps
         try:
-            with open(apm_yml_path, "w") as f:
-                yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+            with open(apm_yml_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
             _rich_success(f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))")
         except Exception as e:
             _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")

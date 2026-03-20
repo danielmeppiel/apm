@@ -822,8 +822,8 @@ class ScriptRunner:
             config["dependencies"]["apm"].append(package_ref)
 
             # Write back to file
-            with open(config_path, "w") as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
             print(f"  [i]  Added {package_ref} to apm.yml dependencies")
 
@@ -838,8 +838,8 @@ class ScriptRunner:
             "description": "Auto-generated for zero-config virtual package execution",
         }
 
-        with open("apm.yml", "w") as f:
-            yaml.dump(minimal_config, f, default_flow_style=False, sort_keys=False)
+        with open("apm.yml", "w", encoding="utf-8") as f:
+            yaml.dump(minimal_config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
         print(f"  [i]  Created minimal apm.yml for zero-config execution")
 
