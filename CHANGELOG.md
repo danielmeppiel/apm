@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Install URLs now use short `aka.ms/apm-unix` and `aka.ms/apm-windows` redirects across README, docs, CLI output, and install script
+
 ### Fixed
 
 - CLI docs now document the `apm compile --target opencode` option, align `apm audit --dry-run` wording with actual behavior, and mark planned `apm audit --drift` examples as not yet available (#366)

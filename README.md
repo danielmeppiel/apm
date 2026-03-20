@@ -50,13 +50,13 @@ apm install    # every agent is configured
 #### Linux / macOS
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+curl -sSL https://aka.ms/apm-unix | sh
 ```
 
 #### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex
+irm https://aka.ms/apm-windows | iex
 ```
 
 Native release binaries are published for macOS, Linux, and Windows x86_64. `apm update` reuses the matching platform installer.
