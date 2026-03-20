@@ -56,12 +56,17 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
     is canonicalized before storage. Default host (github.com) is stripped;
     non-default hosts are preserved. Duplicates are detected by identity.
+
+    Args:
+        packages: Package specifiers to validate and add.
+        dry_run: If True, only show what would be added.
+        dev: If True, write to devDependencies instead of dependencies.
     """
     import subprocess
     import tempfile
@@ -80,12 +85,13 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
         sys.exit(1)
 
     # Ensure dependencies structure exists
-    if "dependencies" not in data:
-        data["dependencies"] = {}
-    if "apm" not in data["dependencies"]:
-        data["dependencies"]["apm"] = []
+    dep_section = "devDependencies" if dev else "dependencies"
+    if dep_section not in data:
+        data[dep_section] = {}
+    if "apm" not in data[dep_section]:
+        data[dep_section]["apm"] = []
 
-    current_deps = data["dependencies"]["apm"] or []
+    current_deps = data[dep_section]["apm"] or []
     validated_packages = []
 
     # Build identity set from existing deps for duplicate detection
@@ -151,12 +157,13 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False):
         return validated_packages
 
     # Add validated packages to dependencies (already canonical)
+    dep_label = "devDependencies" if dev else "apm.yml"
     for package in validated_packages:
         current_deps.append(package)
-        _rich_info(f"Added {package} to apm.yml")
+        _rich_info(f"Added {package} to {dep_label}")
 
     # Update dependencies
-    data["dependencies"]["apm"] = current_deps
+    data[dep_section]["apm"] = current_deps
 
     # Write back to apm.yml
     try:
@@ -324,8 +331,14 @@ def _validate_package_exists(package):
     show_default=True,
     help="Max concurrent package downloads (0 to disable parallelism)",
 )
+@click.option(
+    "--dev",
+    is_flag=True,
+    default=False,
+    help="Install as development dependency (devDependencies)",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -367,7 +380,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # If packages are specified, validate and add them to apm.yml first
         if packages:
             validated_packages = _validate_and_add_packages_to_apm_yml(
-                packages, dry_run
+                packages, dry_run, dev=dev
             )
             # Note: Empty validated_packages is OK if packages are already in apm.yml
             # We'll proceed with installation from apm.yml to ensure everything is synced
@@ -383,6 +396,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Get APM and MCP dependencies
         apm_deps = apm_package.get_apm_dependencies()
+        dev_apm_deps = apm_package.get_dev_apm_dependencies()
+        has_any_apm_deps = bool(apm_deps) or bool(dev_apm_deps)
         mcp_deps = apm_package.get_mcp_dependencies()
 
         # Convert --only string to InstallMode enum
@@ -412,7 +427,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 for dep in mcp_deps:
                     _rich_info(f"  - {dep}")
 
-            if not apm_deps and not mcp_deps:
+            if not apm_deps and not dev_apm_deps and not mcp_deps:
                 _rich_warning("No dependencies found in apm.yml")
 
             _rich_success("Dry run complete - no changes made")
@@ -439,7 +454,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             old_mcp_configs = builtins.dict(_existing_lock.mcp_configs)
 
         apm_diagnostics = None
-        if should_install_apm and apm_deps:
+        if should_install_apm and has_any_apm_deps:
             if not APM_DEPS_AVAILABLE:
                 _rich_error("APM dependency system not available")
                 _rich_info(f"Import error: {_APM_IMPORT_ERROR}")
@@ -460,7 +475,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             except Exception as e:
                 _rich_error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
-        elif should_install_apm and not apm_deps:
+        elif should_install_apm and not has_any_apm_deps:
             _rich_info("No APM dependencies found in apm.yml")
 
         # When --update is used, package files on disk may have changed.
@@ -795,6 +810,23 @@ def _integrate_package_primitives(
     return result
 
 
+def _dep_install_path(locked_dep, apm_modules_dir):
+    """Derive the install path for a LockedDependency under apm_modules/."""
+    try:
+        from ..models.apm_package import DependencyReference
+        dep_ref = DependencyReference(
+            repo_url=locked_dep.repo_url,
+            host=locked_dep.host,
+            virtual_path=locked_dep.virtual_path,
+            is_virtual=locked_dep.is_virtual,
+            is_local=(locked_dep.source == "local"),
+            local_path=locked_dep.local_path,
+        )
+        return dep_ref.get_install_path(apm_modules_dir)
+    except Exception:
+        return None
+
+
 def _copy_local_package(dep_ref, install_path, project_root):
     """Copy a local package to apm_modules/.
 
@@ -857,10 +889,12 @@ def _install_apm_dependencies(
         raise RuntimeError("APM dependency system not available")
 
     apm_deps = apm_package.get_apm_dependencies()
-    if not apm_deps:
+    dev_apm_deps = apm_package.get_dev_apm_dependencies()
+    all_apm_deps = apm_deps + dev_apm_deps
+    if not all_apm_deps:
         return InstallResult()
 
-    _rich_info(f"Installing APM dependencies ({len(apm_deps)})...")
+    _rich_info(f"Installing APM dependencies ({len(all_apm_deps)})...")
 
     project_root = Path.cwd()
 
@@ -1077,7 +1111,7 @@ def _install_apm_dependencies(
 
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
-        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by)
+        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev)
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
 
@@ -1279,7 +1313,8 @@ def _install_apm_dependencies(
                     node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
-                    installed_packages.append((dep_ref, None, depth, resolved_by))
+                    _is_dev = node.is_dev if node else False
+                    installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev))
                     dep_key = dep_ref.get_unique_key()
                     dep_deployed_files: builtins.list = []
 
@@ -1380,6 +1415,18 @@ def _install_apm_dependencies(
                     (is_cacheable and not update_refs) or already_resolved or lockfile_match
                 )
 
+                # Verify content integrity when lockfile has a hash
+                if skip_download and _dep_locked_chk and _dep_locked_chk.content_hash:
+                    from ..utils.content_hash import verify_package_hash
+                    if not verify_package_hash(install_path, _dep_locked_chk.content_hash):
+                        import shutil as _shutil_hash
+                        _rich_warning(
+                            f"Content hash mismatch for "
+                            f"{dep_ref.get_unique_key()} — re-downloading"
+                        )
+                        safe_rmtree(install_path, apm_modules_dir)
+                        skip_download = False
+
                 if skip_download:
                     display_name = (
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
@@ -1466,6 +1513,7 @@ def _install_apm_dependencies(
                         node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
                         depth = node.depth if node else 1
                         resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+                        _is_dev = node.is_dev if node else False
                         # Get commit SHA: callback capture > existing lockfile > explicit reference
                         dep_key = dep_ref.get_unique_key()
                         cached_commit = callback_downloaded.get(dep_key)
@@ -1475,7 +1523,7 @@ def _install_apm_dependencies(
                                 cached_commit = locked_dep.resolved_commit
                         if not cached_commit:
                             cached_commit = dep_ref.reference
-                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by))
+                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by, _is_dev))
 
                         # Track package type for lockfile
                         if hasattr(cached_package_info, 'package_type') and cached_package_info.package_type:
@@ -1582,7 +1630,8 @@ def _install_apm_dependencies(
                     node = dependency_graph.dependency_tree.get_node(dep_ref.get_unique_key())
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
-                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by))
+                    _is_dev = node.is_dev if node else False
+                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by, _is_dev))
 
                     # Track package type for lockfile
                     if hasattr(package_info, 'package_type') and package_info.package_type:
@@ -1719,6 +1768,12 @@ def _install_apm_dependencies(
                 for dep_key, pkg_type in package_types.items():
                     if dep_key in lockfile.dependencies:
                         lockfile.dependencies[dep_key].package_type = pkg_type
+                # Compute content hashes for integrity verification
+                from ..utils.content_hash import compute_package_hash as _compute_hash
+                for dep_key, locked_dep in lockfile.dependencies.items():
+                    _hash_path = _dep_install_path(locked_dep, apm_modules_dir)
+                    if _hash_path and _hash_path.is_dir():
+                        locked_dep.content_hash = _compute_hash(_hash_path)
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).
