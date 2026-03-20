@@ -142,8 +142,11 @@ class TestValidateOutputRel:
         assert _validate_output_rel("../escape.md") is False
         assert _validate_output_rel("agents/../../etc/passwd") is False
 
-    def test_rejects_absolute(self):
+    def test_rejects_absolute_unix(self):
         assert _validate_output_rel("/etc/passwd") is False
+
+    def test_rejects_absolute_windows(self):
+        assert _validate_output_rel("C:\\Windows\\System32") is False
 
 
 class TestRenamePrompt:

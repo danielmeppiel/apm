@@ -34,8 +34,11 @@ from .packer import PackResult
 
 def _validate_output_rel(rel: str) -> bool:
     """Return True when *rel* is safe to write inside the output directory."""
-    p = Path(rel)
-    return not p.is_absolute() and ".." not in p.parts
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    if PurePosixPath(rel).is_absolute() or PureWindowsPath(rel).is_absolute():
+        return False
+    return ".." not in Path(rel).parts
 
 
 _SAFE_BUNDLE_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]")
