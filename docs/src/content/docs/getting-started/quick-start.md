@@ -12,13 +12,13 @@ Three commands. Three minutes. Your AI agent learns your project's standards aut
 **macOS / Linux:**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+curl -sSL https://aka.ms/apm-unix | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex
+irm https://aka.ms/apm-windows | iex
 ```
 
 Verify it worked:
