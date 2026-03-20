@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Callable
 import random
 import re
+from typing import Union
 import requests
 
 import git
@@ -648,11 +649,13 @@ class GitHubPackageDownloader:
         
         raise RuntimeError(error_msg)
     
-    def resolve_git_reference(self, repo_ref: str) -> ResolvedReference:
+    def resolve_git_reference(self, repo_ref: Union[str, "DependencyReference"]) -> ResolvedReference:
         """Resolve a Git reference (branch/tag/commit) to a specific commit SHA.
         
         Args:
-            repo_ref: Repository reference string (e.g., "user/repo#branch")
+            repo_ref: Repository reference — either a DependencyReference object
+                or a string (e.g., "user/repo#branch"). Passing the object
+                directly avoids a lossy parse round-trip for generic git hosts.
             
         Returns:
             ResolvedReference: Resolved reference with commit SHA
@@ -661,11 +664,14 @@ class GitHubPackageDownloader:
             ValueError: If the reference format is invalid
             RuntimeError: If Git operations fail
         """
-        # Parse the repository reference
-        try:
-            dep_ref = DependencyReference.parse(repo_ref)
-        except ValueError as e:
-            raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
+        # Accept both string and DependencyReference to avoid lossy round-trips
+        if isinstance(repo_ref, DependencyReference):
+            dep_ref = repo_ref
+        else:
+            try:
+                dep_ref = DependencyReference.parse(repo_ref)
+            except ValueError as e:
+                raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
         # Default to main branch if no reference specified
         ref = dep_ref.reference or "main"
@@ -677,7 +683,7 @@ class GitHubPackageDownloader:
         ):
             is_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
             return ResolvedReference(
-                original_ref=repo_ref,
+                original_ref=str(dep_ref),
                 ref_type=GitReferenceType.COMMIT if is_commit else GitReferenceType.BRANCH,
                 resolved_commit=None,
                 ref_name=ref
@@ -1767,7 +1773,7 @@ author: {dep_ref.repo_url.split('/')[0]}
 
     def download_package(
         self, 
-        repo_ref: str, 
+        repo_ref: Union[str, "DependencyReference"], 
         target_path: Path,
         progress_task_id=None,
         progress_obj=None
@@ -1778,7 +1784,9 @@ author: {dep_ref.repo_url.split('/')[0]}
         package structure instead of cloning the full repository.
         
         Args:
-            repo_ref: Repository reference string (e.g., "user/repo#branch" or "user/repo/path/file.prompt.md")
+            repo_ref: Repository reference — either a DependencyReference object
+                or a string (e.g., "user/repo#branch"). Passing the object
+                directly avoids a lossy parse round-trip for generic git hosts.
             target_path: Local path where package should be downloaded
             progress_task_id: Rich Progress task ID for progress updates
             progress_obj: Rich Progress object for progress updates
@@ -1790,11 +1798,14 @@ author: {dep_ref.repo_url.split('/')[0]}
             ValueError: If the repository reference is invalid
             RuntimeError: If download or validation fails
         """
-        # Parse the repository reference
-        try:
-            dep_ref = DependencyReference.parse(repo_ref)
-        except ValueError as e:
-            raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
+        # Accept both string and DependencyReference to avoid lossy round-trips
+        if isinstance(repo_ref, DependencyReference):
+            dep_ref = repo_ref
+        else:
+            try:
+                dep_ref = DependencyReference.parse(repo_ref)
+            except ValueError as e:
+                raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
         # Handle virtual packages differently
         if dep_ref.is_virtual:
@@ -1829,12 +1840,12 @@ author: {dep_ref.repo_url.split('/')[0]}
         # When ARTIFACTORY_ONLY is set but no Artifactory proxy matched, block direct git
         if self._is_artifactory_only():
             raise RuntimeError(
-                f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{dep_ref}'. "
                 "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
             )
 
         # Regular package download (existing logic)
-        resolved_ref = self.resolve_git_reference(repo_ref)
+        resolved_ref = self.resolve_git_reference(dep_ref)
         
         # Create target directory if it doesn't exist
         target_path.mkdir(parents=True, exist_ok=True)
