@@ -13,8 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm pack --format plugin` — export APM packages as standalone plugin directories consumable by Copilot CLI, Claude Code, and other plugin hosts. Transforms `.apm/` layout to plugin-native directories (agents, skills, commands, instructions, contexts) with hooks/MCP merging, collision handling, and security scanning (#378)
 - `apm init --plugin` — initialize a plugin authoring project with both `plugin.json` and `apm.yml` (includes `devDependencies` section). Validates kebab-case plugin names per plugin spec (#378)
 - `devDependencies` support in `apm.yml` and `APMPackage` model — same syntax as `dependencies`, parsed with `get_dev_apm_dependencies()`/`get_dev_mcp_dependencies()` accessors. Dev deps are excluded from plugin bundles (#378)
+- `apm install --dev` — install packages as development dependencies, writing to `devDependencies` instead of `dependencies` (#378)
 - `apm pack --force` flag — on collision, last writer wins instead of first (#378)
 - `synthesize_plugin_json_from_apm_yml()` — generates `plugin.json` from `apm.yml` identity fields when no plugin manifest exists (#378)
+
+### Security
+
+- Content integrity hashing — SHA-256 checksums of package file trees are stored in `apm.lock.yaml` (`content_hash` field) and verified on subsequent installs. Detects tampering, MITM modifications, or force-pushed commits (#315, #378)
+- Lockfile `is_dev` tracking — dev dependencies are explicitly marked in the lockfile for auditability (#378)
 
 ### Fixed
 
