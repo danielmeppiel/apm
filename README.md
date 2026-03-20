@@ -8,14 +8,6 @@ GitHub Copilot · Claude Code · Cursor · OpenCode
 
 **[Documentation](https://microsoft.github.io/apm/)** · **[Quick Start](https://microsoft.github.io/apm/getting-started/quick-start/)** · **[CLI Reference](https://microsoft.github.io/apm/reference/cli-commands/)**
 
-<div align="center">
-  <a href="https://github.com/microsoft/apm/releases/download/v0.8.2/apm-showcase.mp4">
-    <img src="docs/assets/apm-showcase-thumbnail.png" alt="Watch the 1-minute APM overview" width="640">
-  </a>
-  <br>
-  <sub>▶ Watch the 1-minute overview</sub>
-</div>
-
 ## Why APM
 
 AI coding agents need context to be useful — standards, prompts, skills, plugins — but today every developer sets this up manually. Nothing is portable nor reproducible. There's no manifest for it.
