@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- CLI consistency: added `-v` short alias to `apm install --verbose`, `-y` to `apm runtime remove --yes`, `show_default` to `apm mcp list --limit` and `apm pack --format`, and clarified help text for `apm audit`, `apm config get`, and `apm compile -o`
+- CLI consistency: added `-v` short alias to `apm install --verbose` and `-y` to `apm runtime remove --yes`
+- CLI consistency: added default value display to `apm mcp list --limit` and `apm pack --format`
+- CLI consistency: clarified help text for `apm audit`, `apm config get`, and `apm compile -o`
 
 ## [0.8.3] - 2026-03-20
 
