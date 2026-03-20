@@ -34,8 +34,9 @@ from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, 
     help="Output directory (default: ./build).",
 )
 @click.option("--dry-run", is_flag=True, default=False, help="Show what would be packed without writing.")
+@click.option("--force", is_flag=True, default=False, help="On collision, last writer wins.")
 @click.pass_context
-def pack_cmd(ctx, fmt, target, archive, output, dry_run):
+def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
     """Create a self-contained APM bundle."""
     try:
         result = pack_bundle(
@@ -45,6 +46,7 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
             target=target,
             archive=archive,
             dry_run=dry_run,
+            force=force,
         )
 
         if dry_run:
@@ -61,6 +63,12 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
             _rich_warning("No deployed files found  -- empty bundle created")
         else:
             _rich_success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
+            if fmt == "plugin":
+                _rich_info(
+                    "Plugin bundle ready — contains plugin.json and "
+                    "plugin-native directories (agents/, skills/, commands/, …). "
+                    "No APM-specific files included."
+                )
 
     except (FileNotFoundError, ValueError) as exc:
         _rich_error(str(exc))

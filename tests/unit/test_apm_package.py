@@ -1,0 +1,233 @@
+"""Unit tests for APMPackage devDependencies support."""
+
+from pathlib import Path
+
+import pytest
+import yaml
+
+from apm_cli.models.apm_package import (
+    APMPackage,
+    DependencyReference,
+    MCPDependency,
+    clear_apm_yml_cache,
+)
+
+
+def _write_apm_yml(tmp_path: Path, data: dict) -> Path:
+    """Write an apm.yml file and return its path."""
+    clear_apm_yml_cache()
+    path = tmp_path / "apm.yml"
+    path.write_text(yaml.dump(data), encoding="utf-8")
+    return path
+
+
+class TestDevDependencies:
+    """Tests for devDependencies support in APMPackage."""
+
+    def test_parse_dev_dependencies(self, tmp_path):
+        """devDependencies section is parsed from apm.yml."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {
+                "apm": ["owner/dev-tool"],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        assert pkg.dev_dependencies is not None
+        assert "apm" in pkg.dev_dependencies
+
+    def test_get_dev_apm_dependencies(self, tmp_path):
+        """get_dev_apm_dependencies returns DependencyReference objects."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {
+                "apm": ["owner/dev-tool", "org/test-helper"],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+        dev_deps = pkg.get_dev_apm_dependencies()
+
+        assert len(dev_deps) == 2
+        assert all(isinstance(d, DependencyReference) for d in dev_deps)
+        urls = {d.repo_url for d in dev_deps}
+        assert "owner/dev-tool" in urls
+        assert "org/test-helper" in urls
+
+    def test_get_dev_mcp_dependencies(self, tmp_path):
+        """get_dev_mcp_dependencies returns MCPDependency objects."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {
+                "mcp": [
+                    {"name": "io.github.test/mcp-server", "transport": "stdio"},
+                ],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+        dev_mcp = pkg.get_dev_mcp_dependencies()
+
+        assert len(dev_mcp) == 1
+        assert isinstance(dev_mcp[0], MCPDependency)
+        assert dev_mcp[0].name == "io.github.test/mcp-server"
+        assert dev_mcp[0].transport == "stdio"
+
+    def test_get_dev_mcp_from_string(self, tmp_path):
+        """MCP dev dependencies can be specified as plain strings."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {
+                "mcp": ["io.github.test/mcp-server"],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+        dev_mcp = pkg.get_dev_mcp_dependencies()
+
+        assert len(dev_mcp) == 1
+        assert dev_mcp[0].name == "io.github.test/mcp-server"
+
+    def test_missing_dev_dependencies_returns_empty(self, tmp_path):
+        """No devDependencies section returns empty lists."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        assert pkg.dev_dependencies is None
+        assert pkg.get_dev_apm_dependencies() == []
+        assert pkg.get_dev_mcp_dependencies() == []
+
+    def test_empty_dev_dependencies_returns_empty(self, tmp_path):
+        """Empty devDependencies.apm list returns empty."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {"apm": []},
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        assert pkg.dev_dependencies is not None
+        assert pkg.get_dev_apm_dependencies() == []
+
+    def test_dev_and_prod_dependencies_independent(self, tmp_path):
+        """devDeps and deps are independent — changing one doesn't affect other."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "dependencies": {
+                "apm": ["owner/prod-dep"],
+            },
+            "devDependencies": {
+                "apm": ["owner/dev-dep"],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        prod_deps = pkg.get_apm_dependencies()
+        dev_deps = pkg.get_dev_apm_dependencies()
+
+        assert len(prod_deps) == 1
+        assert len(dev_deps) == 1
+        assert prod_deps[0].repo_url == "owner/prod-dep"
+        assert dev_deps[0].repo_url == "owner/dev-dep"
+
+    def test_dev_dependencies_do_not_pollute_prod(self, tmp_path):
+        """Dev dependencies don't appear in get_apm_dependencies()."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "dependencies": {"apm": []},
+            "devDependencies": {
+                "apm": ["owner/dev-only"],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        prod_urls = {d.repo_url for d in pkg.get_apm_dependencies()}
+        assert "owner/dev-only" not in prod_urls
+
+    def test_dev_dependencies_dict_format(self, tmp_path):
+        """devDependencies support dict-format entries (Cargo-style git objects)."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {
+                "apm": [
+                    {"git": "https://github.com/owner/complex-dep.git", "ref": "main"},
+                ],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+        dev_deps = pkg.get_dev_apm_dependencies()
+
+        assert len(dev_deps) == 1
+        assert isinstance(dev_deps[0], DependencyReference)
+
+    def test_mixed_dev_dependency_types(self, tmp_path):
+        """devDependencies can have both apm and mcp types."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {
+                "apm": ["owner/dev-apm"],
+                "mcp": ["io.github.test/mcp-debug"],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        assert len(pkg.get_dev_apm_dependencies()) == 1
+        assert len(pkg.get_dev_mcp_dependencies()) == 1
+
+    def test_dev_apm_no_mcp_key(self, tmp_path):
+        """get_dev_mcp_dependencies returns empty when only apm devDeps exist."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "devDependencies": {
+                "apm": ["owner/dev-tool"],
+            },
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        assert pkg.get_dev_mcp_dependencies() == []
+
+
+class TestClearCache:
+    """Tests for clear_apm_yml_cache."""
+
+    def test_clear_forces_reparse(self, tmp_path):
+        """After clear, the same file is re-parsed (not cached)."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+        })
+
+        pkg1 = APMPackage.from_apm_yml(yml)
+
+        # Overwrite with different data
+        clear_apm_yml_cache()
+        yml.write_text(yaml.dump({
+            "name": "changed-pkg",
+            "version": "2.0.0",
+        }), encoding="utf-8")
+
+        pkg2 = APMPackage.from_apm_yml(yml)
+
+        assert pkg1.name == "test-pkg"
+        assert pkg2.name == "changed-pkg"

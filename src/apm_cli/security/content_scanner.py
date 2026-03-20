@@ -298,6 +298,8 @@ class ContentScanner:
                 if sev in ("critical", "warning"):
                     continue  # strip it
             elif cp == 0xFEFF:
-                continue  # mid-file BOM is warning-level
+                if i != 0:
+                    continue  # mid-file BOM is warning-level — strip
+                # leading BOM is info-level — fall through to append
             result.append(ch)
         return "".join(result)

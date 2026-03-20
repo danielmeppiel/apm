@@ -79,7 +79,7 @@ This catches cases where a developer updates `apm.yml` but forgets to re-run `ap
 ```yaml
 steps:
   - script: |
-      curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+      curl -sSL https://aka.ms/apm-unix | sh
       apm install
       # Optional: only if targeting Codex, Gemini, or similar tools
       # apm compile
@@ -148,6 +148,17 @@ Use `apm pack` in CI to build a distributable bundle once, then consume it in do
 - uses: actions/upload-artifact@v4
   with:
     name: agent-config
+    path: build/*.tar.gz
+```
+
+### Pack as standalone plugin
+
+```yaml
+# Export as standalone plugin
+- run: apm pack --format plugin
+- uses: actions/upload-artifact@v4
+  with:
+    name: plugin-bundle
     path: build/*.tar.gz
 ```
 

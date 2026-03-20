@@ -12,9 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Documented `${input:...}` variable support in `headers` and `env` MCP server fields, with runtime support matrix and examples (#343)
 
+## [0.8.3] - 2026-03-20
+
+### Added
+
+- Plugin authoring — `apm pack --format plugin` exports APM packages as standalone plugin directories (`plugin.json`, agents, skills, commands) consumable by Copilot CLI, Claude Code, and Cursor without APM installed (#379)
+- `apm init --plugin` scaffolds a hybrid project with both `apm.yml` and `plugin.json`, including a `devDependencies` section (#379)
+- `devDependencies` in `apm.yml` — dev deps install normally but are excluded from `apm pack` output; `apm install --dev` writes to the dev section (#379)
+- VS Code runtime detection now falls back to `.vscode/` directory presence when the `code` binary is not on PATH — by @sergio-sisternes-epam (#359)
+
+### Security
+
+- Content integrity hashing — SHA-256 `content_hash` per dependency in `apm.lock.yaml`, verified on subsequent installs to detect tampering or force-pushed commits (#315, #379)
+- `apm audit --strip` now preserves a leading BOM while stripping suspicious mid-file BOMs, preventing false negatives — by @dadavidtseng (#372)
+
+### Changed
+
+- Install URLs now use short `aka.ms/apm-unix` and `aka.ms/apm-windows` redirects across README, docs, and CLI output (#384)
+- README highlights link to relevant docs pages; plugin authoring featured as a key value proposition (#385)
+
 ### Fixed
 
-- CLI docs now document the `apm compile --target opencode` option, align `apm audit --dry-run` wording with actual behavior, and mark planned `apm audit --drift` examples as not yet available (#366)
+- `DependencyReference` preserved through the download pipeline so lockfile records the original ref, not an empty object — by @sergio-sisternes-epam (#383)
+- Refactor command and model modules for readability and maintainability — by @sergio-sisternes-epam (#232)
+- CLI docs align `compile --target opencode`, `audit --dry-run`, and planned `audit --drift` with current behavior (#373)
 
 ## [0.8.2] - 2026-03-19
 
@@ -249,7 +270,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SKILL.md Parsing**: Parse SKILL.md directly without requiring apm.yml generation
 - **Git Host Errors**: Actionable error messages for unsupported Git hosts
 
-## [0.7.0] - 2025-12-19
+## [0.7.0] - 2024-12-19
 
 ### Changed
 

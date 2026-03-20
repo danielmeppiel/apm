@@ -17,8 +17,7 @@ def _is_windows_platform() -> bool:
 
 def _get_update_installer_url() -> str:
     """Return the official installer URL for the current platform."""
-    installer_name = "install.ps1" if _is_windows_platform() else "install.sh"
-    return f"https://raw.githubusercontent.com/microsoft/apm/main/{installer_name}"
+    return "https://aka.ms/apm-windows" if _is_windows_platform() else "https://aka.ms/apm-unix"
 
 
 def _get_update_installer_suffix() -> str:
@@ -31,9 +30,9 @@ def _get_manual_update_command() -> str:
     if _is_windows_platform():
         return (
             'powershell -ExecutionPolicy Bypass -c '
-            '"irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"'
+            '"irm https://aka.ms/apm-windows | iex"'
         )
-    return "curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
+    return "curl -sSL https://aka.ms/apm-unix | sh"
 
 
 def _get_installer_run_command(script_path: str) -> list[str]:

@@ -68,6 +68,7 @@ class APMPackage:
     source: Optional[str] = None  # Source location (for dependencies)
     resolved_commit: Optional[str] = None  # Resolved commit SHA (for dependencies)
     dependencies: Optional[Dict[str, List[Union[DependencyReference, str, dict]]]] = None  # Mixed types for APM/MCP/inline
+    dev_dependencies: Optional[Dict[str, List[Union[DependencyReference, str, dict]]]] = None
     scripts: Optional[Dict[str, str]] = None
     package_path: Optional[Path] = None  # Local path to package
     target: Optional[str] = None  # Target agent: vscode, claude, or all (applies to compile and install)
@@ -148,6 +149,40 @@ class APMPackage:
                         # Other dependency types: keep as-is
                         dependencies[dep_type] = [dep for dep in dep_list if isinstance(dep, (str, dict))]
         
+        # Parse devDependencies (same structure as dependencies)
+        dev_dependencies = None
+        if 'devDependencies' in data and isinstance(data['devDependencies'], dict):
+            dev_dependencies = {}
+            for dep_type, dep_list in data['devDependencies'].items():
+                if isinstance(dep_list, list):
+                    if dep_type == 'apm':
+                        parsed_deps = []
+                        for dep_entry in dep_list:
+                            if isinstance(dep_entry, str):
+                                try:
+                                    parsed_deps.append(DependencyReference.parse(dep_entry))
+                                except ValueError as e:
+                                    raise ValueError(f"Invalid dev APM dependency '{dep_entry}': {e}")
+                            elif isinstance(dep_entry, dict):
+                                try:
+                                    parsed_deps.append(DependencyReference.parse_from_dict(dep_entry))
+                                except ValueError as e:
+                                    raise ValueError(f"Invalid dev APM dependency {dep_entry}: {e}")
+                        dev_dependencies[dep_type] = parsed_deps
+                    elif dep_type == 'mcp':
+                        parsed_mcp = []
+                        for dep in dep_list:
+                            if isinstance(dep, str):
+                                parsed_mcp.append(MCPDependency.from_string(dep))
+                            elif isinstance(dep, dict):
+                                try:
+                                    parsed_mcp.append(MCPDependency.from_dict(dep))
+                                except ValueError as e:
+                                    raise ValueError(f"Invalid dev MCP dependency: {e}")
+                        dev_dependencies[dep_type] = parsed_mcp
+                    else:
+                        dev_dependencies[dep_type] = [dep for dep in dep_list if isinstance(dep, (str, dict))]
+
         # Parse package content type
         pkg_type = None
         if 'type' in data and data['type'] is not None:
@@ -166,6 +201,7 @@ class APMPackage:
             author=data.get('author'),
             license=data.get('license'),
             dependencies=dependencies,
+            dev_dependencies=dev_dependencies,
             scripts=data.get('scripts'),
             package_path=apm_yml_path.parent,
             target=data.get('target'),
@@ -191,6 +227,19 @@ class APMPackage:
     def has_apm_dependencies(self) -> bool:
         """Check if this package has APM dependencies."""
         return bool(self.get_apm_dependencies())
+
+    def get_dev_apm_dependencies(self) -> List[DependencyReference]:
+        """Get list of dev APM dependencies."""
+        if not self.dev_dependencies or 'apm' not in self.dev_dependencies:
+            return []
+        return [dep for dep in self.dev_dependencies['apm'] if isinstance(dep, DependencyReference)]
+
+    def get_dev_mcp_dependencies(self) -> List["MCPDependency"]:
+        """Get list of dev MCP dependencies."""
+        if not self.dev_dependencies or 'mcp' not in self.dev_dependencies:
+            return []
+        return [dep for dep in (self.dev_dependencies.get('mcp') or [])
+                if isinstance(dep, MCPDependency)]
 
 
 @dataclass

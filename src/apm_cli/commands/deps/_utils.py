@@ -242,7 +242,7 @@ def _update_single_package(package_name: str, project_deps: List, apm_modules_pa
         _rich_info(f"Updating {target_dep.repo_url}...")
         
         # Download latest version
-        package_info = downloader.download_package(str(target_dep), package_dir)
+        package_info = downloader.download_package(target_dep, package_dir)
         
         _rich_success(f"[+] Updated {target_dep.repo_url}")
         
@@ -285,7 +285,7 @@ def _update_all_packages(project_deps: List, apm_modules_path: Path):
             
         try:
             _rich_info(f"  Updating {dep.repo_url}...")
-            package_info = downloader.download_package(str(dep), package_dir)
+            package_info = downloader.download_package(dep, package_dir)
             updated_count += 1
             _rich_success(f"  [+] {dep.repo_url}")
             

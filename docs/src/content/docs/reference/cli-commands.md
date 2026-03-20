@@ -35,6 +35,7 @@ apm init [PROJECT_NAME] [OPTIONS]
 
 **Options:**
 - `-y, --yes` - Skip interactive prompts and use auto-detected defaults
+- `--plugin` - Initialize as a plugin authoring project (creates `plugin.json` + `apm.yml` with `devDependencies`)
 
 **Examples:**
 ```bash
@@ -49,6 +50,9 @@ apm init my-hello-world
 
 # Create project with auto-detected defaults
 apm init my-project --yes
+
+# Initialize a plugin authoring project
+apm init my-plugin --plugin
 ```
 
 **Behavior:**
@@ -56,9 +60,11 @@ apm init my-project --yes
 - **Interactive mode**: Prompts for project details unless `--yes` specified
 - **Auto-detection**: Automatically detects author from `git config user.name` and description from project context
 - **Brownfield friendly**: Works cleanly in existing projects without file pollution
+- **Plugin mode** (`--plugin`): Creates both `plugin.json` and `apm.yml` with an empty `devDependencies` section. Plugin names must be kebab-case (`^[a-z][a-z0-9-]{0,63}$`), max 64 characters
 
 **Creates:**
 - `apm.yml` - Minimal project configuration with empty dependencies and scripts sections
+- `plugin.json` - Plugin manifest (only with `--plugin`)
 
 **Auto-detected fields:**
 - `name` - From project directory name
@@ -87,6 +93,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--parallel-downloads INTEGER` - Max concurrent package downloads (default: 4, 0 to disable)
 - `--verbose` - Show individual file paths and full error details in the diagnostic summary
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
+- `--dev` - Add packages to [`devDependencies`](../manifest-schema/#5-devdependencies) instead of `dependencies`. Dev deps are installed locally but excluded from `apm pack --format plugin` bundles
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
@@ -136,6 +143,9 @@ apm install --exclude codex
 
 # Trust self-defined MCP servers from transitive packages
 apm install --trust-transitive-mcp
+
+# Install as a dev dependency (excluded from plugin bundles)
+apm install --dev owner/test-helpers
 
 # Install from a local path (copies to apm_modules/_local/)
 apm install ./packages/my-shared-skills
@@ -407,7 +417,8 @@ apm pack [OPTIONS]
 - `-t, --target [copilot|vscode|claude|cursor|opencode|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
-- `--format [apm|plugin]` - Bundle format (default: `apm`)
+- `--format [apm|plugin]` - Bundle format (default: `apm`). `plugin` produces a standalone plugin directory with `plugin.json`
+- `--force` - On collision (plugin format), last writer wins instead of first
 
 **Examples:**
 ```bash
@@ -419,6 +430,9 @@ apm pack --archive
 
 # Pack only VS Code / Copilot files
 apm pack --target vscode
+
+# Export as a standalone plugin directory
+apm pack --format plugin
 
 # Preview what would be packed
 apm pack --dry-run
@@ -432,6 +446,7 @@ apm pack -o dist/
 - Scans files for hidden Unicode characters before bundling — warns if findings are detected (non-blocking; consumers are protected by `apm install`/`apm unpack` which block on critical)
 - Copies files preserving directory structure
 - Writes an enriched `apm.lock.yaml` inside the bundle with a `pack:` metadata section (the project's own `apm.lock.yaml` is never modified)
+- **Plugin format** (`--format plugin`): Remaps `.apm/` content into plugin-native paths (`agents/`, `skills/`, `commands/`, etc.), generates or updates `plugin.json`, merges hooks into a single `hooks.json`. `devDependencies` are also excluded from plugin bundles. See [Pack & Distribute](../../guides/pack-distribute/#plugin-format) for the full mapping table
 
 **Target filtering:**
 
@@ -540,12 +555,12 @@ If the automatic update fails, you can always update manually:
 
 #### Linux / macOS
 ```bash
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+curl -sSL https://aka.ms/apm-unix | sh
 ```
 
 #### Windows
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://aka.ms/apm-windows | iex"
 ```
 
 ### `apm deps` - Manage APM package dependencies
@@ -994,7 +1009,6 @@ The structure is entirely dictated by the instruction context found in `.apm/` a
 **Primitive Discovery:**
 - **Chatmodes**: `.chatmode.md` files in `.apm/chatmodes/`, `.github/chatmodes/`
 - **Instructions**: `.instructions.md` files in `.apm/instructions/`, `.github/instructions/`
-- **Contexts**: `.context.md`, `.memory.md` files in `.apm/context/`, `.github/context/`
 - **Workflows**: `.prompt.md` files in project and `.github/prompts/`
 
 APM integrates seamlessly with [Spec-kit](https://github.com/github/spec-kit) for specification-driven development, automatically injecting Spec-kit `constitution` into the compiled context layer.
