@@ -288,7 +288,7 @@ def show(ctx, server_name):
 
 
 @mcp.command(help="List all available MCP servers")
-@click.option("--limit", default=20, help="Number of results to show")
+@click.option("--limit", default=20, show_default=True, help="Number of results to show")
 @click.pass_context
 def list(ctx, limit):
     """List all available MCP servers in the registry."""

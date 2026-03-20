@@ -170,7 +170,7 @@ def _get_validation_suggestion(error_msg):
     "--output",
     "-o",
     default=AGENTS_MD_FILENAME,
-    help="Output file path (for single-file mode)",
+    help="Output file path (use with --single-agents legacy mode)",
 )
 @click.option(
     "--target",
