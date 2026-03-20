@@ -93,10 +93,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--parallel-downloads INTEGER` - Max concurrent package downloads (default: 4, 0 to disable)
 - `--verbose` - Show individual file paths and full error details in the diagnostic summary
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
-
-:::note[Planned]
-`--dev` — Add packages to `devDependencies` instead of `dependencies`. Development dependencies are installed locally but excluded from `apm pack --format plugin` bundles.
-:::
+- `--dev` - Add packages to [`devDependencies`](../manifest-schema/#5-devdependencies) instead of `dependencies`. Dev deps are installed locally but excluded from `apm pack --format plugin` bundles
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
@@ -146,6 +143,9 @@ apm install --exclude codex
 
 # Trust self-defined MCP servers from transitive packages
 apm install --trust-transitive-mcp
+
+# Install as a dev dependency (excluded from plugin bundles)
+apm install --dev owner/test-helpers
 
 # Install from a local path (copies to apm_modules/_local/)
 apm install ./packages/my-shared-skills

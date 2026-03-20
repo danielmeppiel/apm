@@ -339,11 +339,11 @@ devDependencies:
     - owner/lint-rules#v2.0.0
 ```
 
-Created automatically by `apm init --plugin`.
+Created automatically by `apm init --plugin`. Use [`apm install --dev`](../cli-commands/#apm-install---install-apm-and-mcp-dependencies) to add packages:
 
-:::note[Planned]
-`apm install --dev <package>` will add packages directly to `devDependencies`. Until then, add entries manually to `apm.yml`.
-:::
+```bash
+apm install --dev owner/test-helpers
+```
 
 ---
 
@@ -404,6 +404,8 @@ dependencies:                              # YAML list (not a map)
     depth:           <int>                 # 1 = direct, 2+ = transitive
     resolved_by:     <string>              # Parent dependency (transitive only)
     package_type:    <string>              # Package type (e.g. "apm_package", "marketplace_plugin")
+    content_hash:    <string>              # SHA-256 of package file tree (e.g. "sha256:a1b2c3...")
+    is_dev:          <bool>                # True for devDependencies
     deployed_files:  <list<string>>        # Workspace-relative paths of installed files
 mcp_servers:       <list<string>>          # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
 ```

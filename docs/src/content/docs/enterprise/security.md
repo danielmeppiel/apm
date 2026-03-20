@@ -139,8 +139,25 @@ Content scanning detects hidden Unicode characters. It does not detect:
 
 ### Planned hardening
 
-- **Content integrity hashing** — SHA-256 checksums stored in `apm.lock.yaml` to verify downloaded content hasn't been tampered with.
 - **Hook transparency** — display hook script contents during install so developers can review what will execute.
+
+## Content integrity hashing
+
+APM computes a SHA-256 hash of each downloaded package's file tree and stores it in `apm.lock.yaml` as `content_hash`. On subsequent installs, cached packages are verified against the lockfile hash. A mismatch triggers a warning and re-download.
+
+```yaml
+# apm.lock.yaml
+dependencies:
+  - repo_url: https://github.com/acme-corp/security-baseline
+    resolved_commit: a1b2c3d4e5f6...
+    content_hash: "sha256:9f86d081884c7d659a2feaa0c55ad015..."
+```
+
+The hash is deterministic — computed over sorted file paths and contents, independent of filesystem metadata (timestamps, permissions). `.git/` and `__pycache__/` directories are excluded.
+
+Lock files generated before this feature omit `content_hash`. APM handles this gracefully — verification is skipped and the hash is populated on the next install.
+
+See the [Lock File Specification](../../reference/lockfile-spec/#44-content-integrity) for field details.
 
 ## Path security
 
@@ -211,7 +228,7 @@ For GitHub, a fine-grained PAT with read-only `Contents` permission on the repos
 | Vector | Traditional package manager | APM |
 |---|---|---|
 | Registry compromise | Attacker poisons central registry | No registry exists |
-| Version substitution | Malicious version replaces legitimate one | Lock file pins exact commit SHA |
+| Version substitution | Malicious version replaces legitimate one | Lock file pins exact commit SHA; content hash detects post-download tampering |
 | Post-install scripts | Arbitrary code runs after install | No code execution |
 | Typosquatting | Similar package names on registry | Dependencies are full git URLs |
 | Build-time injection | Malicious build steps execute | No build step — files are copied |

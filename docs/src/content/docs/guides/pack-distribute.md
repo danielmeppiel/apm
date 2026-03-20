@@ -180,7 +180,13 @@ The bundle includes a `plugin.json`. If one already exists in the project (at th
 
 ### devDependencies exclusion
 
-Dependencies listed under [`devDependencies`](../../reference/manifest-schema/#5-devdependencies) in `apm.yml` are excluded from the plugin bundle. This keeps development-only packages out of distributed plugins.
+Dependencies listed under [`devDependencies`](../../reference/manifest-schema/#5-devdependencies) in `apm.yml` are excluded from the plugin bundle. Use [`apm install --dev`](../../reference/cli-commands/#apm-install---install-apm-and-mcp-dependencies) to add dev deps:
+
+```bash
+apm install --dev owner/test-helpers
+```
+
+This keeps development-only packages (test helpers, lint rules) out of distributed plugins.
 
 ### Example output
 
