@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Content integrity hashing — SHA-256 `content_hash` per dependency in `apm.lock.yaml`, verified on subsequent installs to detect tampering or force-pushed commits (#315, #379)
-- `apm audit` strips leading BOM while preserving it for display, preventing false negatives — by @dadavidtseng (#372)
+- `apm audit --strip` now preserves a leading BOM while stripping suspicious mid-file BOMs, preventing false negatives — by @dadavidtseng (#372)
 
 ### Changed
 
