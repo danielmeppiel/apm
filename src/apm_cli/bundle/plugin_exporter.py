@@ -71,12 +71,6 @@ def _collect_apm_components(apm_dir: Path) -> List[Tuple[Path, str]]:
     # instructions/ -> instructions/
     _collect_recursive(apm_dir / "instructions", "instructions", components)
 
-    # context/ -> contexts/ (pluralised)
-    _collect_recursive(apm_dir / "context", "contexts", components)
-
-    # memory/ -> contexts/ (merged into contexts)
-    _collect_recursive(apm_dir / "memory", "contexts", components)
-
     # commands/ -> commands/
     _collect_recursive(apm_dir / "commands", "commands", components)
 
@@ -90,7 +84,7 @@ def _collect_root_plugin_components(project_root: Path) -> List[Tuple[Path, str]
     ``skills/``, etc. at the repo root) have their files picked up here.
     """
     components: List[Tuple[Path, str]] = []
-    for dir_name in ("agents", "skills", "commands", "instructions", "contexts"):
+    for dir_name in ("agents", "skills", "commands", "instructions"):
         _collect_recursive(project_root / dir_name, dir_name, components)
     return components
 
@@ -309,7 +303,6 @@ def _update_plugin_json_paths(plugin_json: dict, output_files: List[str]) -> dic
         "skills": "skills",
         "commands": "commands",
         "instructions": "instructions",
-        "contexts": "contexts",
     }
     for key, dirname in component_dirs.items():
         if dirname in top_dirs:

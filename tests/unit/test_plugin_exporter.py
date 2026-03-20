@@ -67,8 +67,6 @@ def _make_apm_dir(
     skills: dict[str, list[str]] | None = None,
     prompts: list[str] | None = None,
     instructions: list[str] | None = None,
-    contexts: list[str] | None = None,
-    memory: list[str] | None = None,
     commands: list[str] | None = None,
 ) -> Path:
     """Create a .apm/ directory tree under *base* with given component files."""
@@ -93,10 +91,6 @@ def _make_apm_dir(
         _write_files("prompts", prompts)
     if instructions:
         _write_files("instructions", instructions)
-    if contexts:
-        _write_files("context", contexts)
-    if memory:
-        _write_files("memory", memory)
     if commands:
         _write_files("commands", commands)
     return apm
@@ -110,8 +104,6 @@ def _setup_plugin_project(
     skills: dict[str, list[str]] | None = None,
     prompts: list[str] | None = None,
     instructions: list[str] | None = None,
-    contexts: list[str] | None = None,
-    memory: list[str] | None = None,
     commands: list[str] | None = None,
     apm_yml_extra: dict | None = None,
     plugin_json: dict | None = None,
@@ -126,8 +118,6 @@ def _setup_plugin_project(
         skills=skills,
         prompts=prompts,
         instructions=instructions,
-        contexts=contexts,
-        memory=memory,
         commands=commands,
     )
     if plugin_json is not None:
@@ -234,16 +224,6 @@ class TestCollectApmComponents:
         rels = {r for _, r in comps}
         assert "commands/task.md" in rels
         assert "commands/plain.md" in rels
-
-    def test_context_pluralised(self, tmp_path):
-        _make_apm_dir(tmp_path, contexts=["repo.context.md"])
-        comps = _collect_apm_components(tmp_path / ".apm")
-        assert any(r == "contexts/repo.context.md" for _, r in comps)
-
-    def test_memory_merged_into_contexts(self, tmp_path):
-        _make_apm_dir(tmp_path, memory=["notes.memory.md"])
-        comps = _collect_apm_components(tmp_path / ".apm")
-        assert any(r == "contexts/notes.memory.md" for _, r in comps)
 
     def test_instructions(self, tmp_path):
         _make_apm_dir(tmp_path, instructions=["rules.instructions.md"])
@@ -504,18 +484,6 @@ class TestExportPluginBundle:
         assert (result.bundle_path / "commands" / "plain.md").exists()
         # The .prompt.md variant should NOT exist
         assert not (result.bundle_path / "commands" / "do-thing.prompt.md").exists()
-
-    def test_context_pluralised(self, tmp_path):
-        project = _setup_plugin_project(tmp_path, contexts=["repo.context.md"])
-        out = tmp_path / "build"
-        result = export_plugin_bundle(project, out)
-        assert (result.bundle_path / "contexts" / "repo.context.md").exists()
-
-    def test_memory_merged_into_contexts(self, tmp_path):
-        project = _setup_plugin_project(tmp_path, memory=["notes.memory.md"])
-        out = tmp_path / "build"
-        result = export_plugin_bundle(project, out)
-        assert (result.bundle_path / "contexts" / "notes.memory.md").exists()
 
     def test_skills_structure_preserved(self, tmp_path):
         project = _setup_plugin_project(

@@ -167,8 +167,6 @@ The exporter remaps `.apm/` content into plugin-native paths:
 | `.apm/prompts/*.prompt.md` | `commands/*.md` |
 | `.apm/prompts/*.md` | `commands/*.md` |
 | `.apm/instructions/*.instructions.md` | `instructions/*.instructions.md` |
-| `.apm/context/*.context.md` | `contexts/*.context.md` |
-| `.apm/memory/*.memory.md` | `contexts/*.memory.md` |
 | `.apm/hooks/*.json` | `hooks.json` (merged) |
 | `.apm/commands/*.md` | `commands/*.md` |
 
