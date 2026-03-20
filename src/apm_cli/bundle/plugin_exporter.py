@@ -420,7 +420,9 @@ def export_plugin_bundle(
 
     if lockfile:
         for dep in lockfile.get_all_dependencies():
-            if dep.repo_url in dev_dep_urls:
+            # Prefer lockfile is_dev flag (covers transitive deps);
+            # fall back to apm.yml URL matching for older lockfiles
+            if getattr(dep, "is_dev", False) or dep.repo_url in dev_dep_urls:
                 continue
 
             install_path = _dep_install_path(dep, apm_modules_dir)
@@ -552,7 +554,8 @@ def export_plugin_bundle(
 
     # 15. Archive if requested
     if archive:
-        archive_path = output_dir / f"{pkg_name}-{pkg_version}.tar.gz"
+        archive_path = output_dir / f"{bundle_dir.name}.tar.gz"
+        ensure_path_within(archive_path, output_dir)
         with tarfile.open(archive_path, "w:gz") as tar:
 
             def _tar_filter(info: tarfile.TarInfo) -> Optional[tarfile.TarInfo]:

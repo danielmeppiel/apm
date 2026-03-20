@@ -810,22 +810,6 @@ def _integrate_package_primitives(
     return result
 
 
-def _dep_install_path(locked_dep, apm_modules_dir):
-    """Derive the install path for a LockedDependency under apm_modules/."""
-    try:
-        from ..models.apm_package import DependencyReference
-        dep_ref = DependencyReference(
-            repo_url=locked_dep.repo_url,
-            host=locked_dep.host,
-            virtual_path=locked_dep.virtual_path,
-            is_virtual=locked_dep.is_virtual,
-            is_local=(locked_dep.source == "local"),
-            local_path=locked_dep.local_path,
-        )
-        return dep_ref.get_install_path(apm_modules_dir)
-    except Exception:
-        return None
-
 
 def _copy_local_package(dep_ref, install_path, project_root):
     """Copy a local package to apm_modules/.
@@ -1318,7 +1302,7 @@ def _install_apm_dependencies(
                     _is_dev = node.is_dev if node else False
                     installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev))
                     dep_key = dep_ref.get_unique_key()
-                    if install_path.is_dir():
+                    if install_path.is_dir() and not dep_ref.is_local:
                         _package_hashes[dep_key] = _compute_hash(install_path)
                     dep_deployed_files: builtins.list = []
 
@@ -1423,7 +1407,6 @@ def _install_apm_dependencies(
                 if skip_download and _dep_locked_chk and _dep_locked_chk.content_hash:
                     from ..utils.content_hash import verify_package_hash
                     if not verify_package_hash(install_path, _dep_locked_chk.content_hash):
-                        import shutil as _shutil_hash
                         _rich_warning(
                             f"Content hash mismatch for "
                             f"{dep_ref.get_unique_key()} — re-downloading"
