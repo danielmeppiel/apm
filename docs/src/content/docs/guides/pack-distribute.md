@@ -172,6 +172,8 @@ The exporter remaps `.apm/` content into plugin-native paths:
 
 Prompt files are renamed: `review.prompt.md` becomes `review.md` in `commands/`.
 
+**Excluded from plugin output:** `.apm/context/` and `.apm/memory/` directories are APM-internal and are not exported to plugin bundles. `devDependencies` are also excluded — see [devDependencies](../../reference/manifest-schema/#5-devdependencies).
+
 ### plugin.json generation
 
 The bundle includes a `plugin.json`. If one already exists in the project (at the root, `.github/plugin/`, `.claude-plugin/`, or `.cursor-plugin/`), it is used and updated with component paths reflecting the output layout. Otherwise, APM synthesizes one from `apm.yml` metadata.

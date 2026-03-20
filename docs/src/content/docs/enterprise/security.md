@@ -59,7 +59,7 @@ The `resolved_commit` field is a full 40-character SHA, not a branch name or tag
 
 ### No registry
 
-APM does not use a package registry. Dependencies are specified as git repository URLs in `apm.yaml`. This eliminates the registry compromise vector entirely — there is no centralized service that can be poisoned to redirect installs.
+APM does not use a package registry. Dependencies are specified as git repository URLs in `apm.yml`. This eliminates the registry compromise vector entirely — there is no centralized service that can be poisoned to redirect installs.
 
 ## Content scanning
 
@@ -180,6 +180,7 @@ Symlinks are never followed during artifact operations:
 - **Tree copy operations** skip symlinks entirely — they are excluded from the copy via an ignore filter.
 - **MCP configuration files** that are symlinks are rejected with a warning and not parsed.
 - **Manifest parsing** requires files to pass both `.is_file()` and `not .is_symlink()` checks.
+- **Archive creation** — `apm pack` excludes symlinks from bundled archives. Packaged artifacts contain no symbolic links, preventing symlink-based escape attacks in distributed bundles.
 
 This prevents symlink-based attacks that could escape allowed directories or cause APM to read or write outside the project root.
 
@@ -191,13 +192,22 @@ When APM deploys a file, it checks whether a file already exists at the target p
 - If the file is **not tracked** (user-authored or created by another tool), APM skips it and prints a warning.
 - The `--force` flag overrides collision detection, allowing APM to overwrite untracked files.
 
+### Development dependency isolation
+
+APM separates production and development dependencies:
+
+- **Production dependencies** (`dependencies.apm`) are included in plugin bundles and shared packages.
+- **Development dependencies** (`devDependencies.apm`, installed via `apm install --dev`) are resolved and cached locally but **excluded** from `apm pack --format plugin` output.
+
+This prevents transitive inclusion of development-only packages (test fixtures, linting rules, internal helpers) in distributed artifacts. The lockfile marks dev dependencies with `is_dev: true` for explicit tracking. See the [Lock File Specification](../../reference/lockfile-spec/#42-dependency-entries) for field details.
+
 ## MCP server trust model
 
 APM integrates MCP (Model Context Protocol) server configurations from packages. Trust is explicit and scoped by dependency depth.
 
 ### Direct dependencies
 
-MCP servers declared by your direct dependencies (packages listed in your `apm.yaml`) are auto-trusted. You explicitly chose to depend on these packages, so their MCP server declarations are accepted.
+MCP servers declared by your direct dependencies (packages listed in your `apm.yml`) are auto-trusted. You explicitly chose to depend on these packages, so their MCP server declarations are accepted.
 
 ### Transitive dependencies
 
@@ -205,7 +215,7 @@ MCP servers declared by transitive dependencies (dependencies of your dependenci
 
 To allow transitive MCP servers, you must either:
 
-- **Re-declare the dependency** in your own `apm.yaml`, promoting it to a direct dependency.
+- **Re-declare the dependency** in your own `apm.yml`, promoting it to a direct dependency.
 - **Pass `--trust-transitive-mcp`** to explicitly opt in to transitive MCP servers for that install.
 
 ## Token handling
@@ -217,7 +227,7 @@ APM authenticates to git hosts using personal access tokens (PATs) read from env
 | GitHub packages | `GITHUB_APM_PAT`, `GITHUB_TOKEN`, `GH_TOKEN` |
 | Azure DevOps packages | `ADO_APM_PAT` |
 
-- **Never stored in files.** Tokens are read from the environment at runtime. They are never written to `apm.yaml`, `apm.lock.yaml`, or any generated file.
+- **Never stored in files.** Tokens are read from the environment at runtime. They are never written to `apm.yml`, `apm.lock.yaml`, or any generated file.
 - **Never logged.** Token values are not included in console output, error messages, or debug logs.
 - **Scoped to their git host.** A GitHub token is only sent to GitHub. An Azure DevOps token is only sent to Azure DevOps. Tokens are never transmitted to any other endpoint.
 

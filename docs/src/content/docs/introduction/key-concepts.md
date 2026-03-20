@@ -79,7 +79,7 @@ The APM CLI supports the following types of primitives:
 - **Skills** (`SKILL.md`) - Package meta-guides that help AI agents understand what a package does
 - **Context** (`.context.md`, `.memory.md`) - Supply background information and project context
 - **Hooks** (`.json` in `.apm/hooks/` or `hooks/`) - Define lifecycle event handlers with script references
-- **Plugins** (`plugin.json`) - Pre-packaged agent bundles auto-normalized into APM packages
+- **Plugins** (`plugin.json`) - Pre-packaged agent bundles auto-normalized into APM packages. Projects may use `apm.yml` only, `plugin.json` only, or both. See [Plugin authoring](../../guides/plugins/#plugin-authoring)
 
 > **Note**: Both `.agent.md` (new format) and `.chatmode.md` (legacy format) are fully supported. VSCode provides Quick Fix actions to help migrate from `.chatmode.md` to `.agent.md`.
 

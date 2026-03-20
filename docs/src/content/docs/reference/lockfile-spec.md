@@ -130,6 +130,8 @@ fields:
 Fields with empty or default values (empty strings, `false` booleans, empty
 lists) SHOULD be omitted from the serialized output to keep the file concise.
 
+**Dev dependency tracking:** Packages installed via `apm install --dev` are marked with `is_dev: true`. When building plugin bundles (`apm pack --format plugin`), dev dependencies are excluded from the output. Resolvers and CI tools should respect this flag when producing distributable artifacts.
+
 ### 4.3 Unique Key
 
 Each dependency is uniquely identified by its `repo_url`, or by the
@@ -296,6 +298,16 @@ dependencies:
     package_type: virtual
     deployed_files:
       - .github/instructions/linter.instructions.md
+
+  - repo_url: https://github.com/acme-corp/test-helpers
+    resolved_commit: abcdef1234567890abcdef1234567890abcdef12
+    resolved_ref: main
+    depth: 1
+    package_type: apm_package
+    is_dev: true
+    content_hash: "sha256:4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5"
+    deployed_files:
+      - .github/instructions/test-helpers.instructions.md
 
 mcp_servers:
   - security-scanner

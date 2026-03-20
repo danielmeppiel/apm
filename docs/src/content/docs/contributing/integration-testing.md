@@ -48,10 +48,8 @@ pytest tests/integration/test_runtime_smoke.py::TestRuntimeSmoke::test_codex_run
 
 #### Option 1: Complete CI Process Simulation (Recommended)
 ```bash
-```bash
 export GITHUB_TOKEN=your_token_here
 ./scripts/test-integration.sh
-```
 ```
 
 This script (`scripts/test-integration.sh`) is a unified script that automatically adapts to your environment:

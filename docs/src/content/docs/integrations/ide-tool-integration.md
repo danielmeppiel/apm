@@ -420,7 +420,7 @@ APM provides first-class support for MCP servers, including registry-based serve
 APM auto-discovers MCP server declarations from packages during `apm install`:
 
 - **apm.yml dependencies**: MCP servers listed under `dependencies.mcp` in a package's `apm.yml` are collected automatically.
-- **plugin.json**: Packages with a `plugin.json` (at the root, `.github/plugin/`, or `.claude-plugin/`) are recognized as marketplace plugins. APM synthesizes an `apm.yml` from `plugin.json` metadata when no `apm.yml` exists.
+- **plugin.json**: Packages with a `plugin.json` (at the root, `.github/plugin/`, or `.claude-plugin/`) are recognized as marketplace plugins. APM synthesizes an `apm.yml` from `plugin.json` metadata when no `apm.yml` exists. When both files are present (hybrid mode), APM uses `apm.yml` for dependency management while preserving `plugin.json` for plugin ecosystem compatibility. See [Plugin authoring](../../guides/plugins/#plugin-authoring).
 - **Transitive collection**: APM walks the dependency tree and collects MCP servers from all transitive packages.
 
 ### Trust Model
