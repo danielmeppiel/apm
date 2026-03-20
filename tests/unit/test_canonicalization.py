@@ -271,11 +271,11 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://github.com/microsoft/apm-sample-package.git"]
         )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
         data = yaml.safe_load(apm_yml.read_text())
         assert "microsoft/apm-sample-package" in data["dependencies"]["apm"]
 
@@ -290,11 +290,11 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["git@github.com:microsoft/apm-sample-package.git"]
         )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
     @patch("apm_cli.commands.install._rich_info")
@@ -307,11 +307,11 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["github.com/microsoft/apm-sample-package"]
         )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
     @patch("apm_cli.commands.install._rich_info")
@@ -324,11 +324,11 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://gitlab.com/acme/standards.git"]
         )
 
-        assert result == ["gitlab.com/acme/standards"]
+        assert validated == ["gitlab.com/acme/standards"]
         data = yaml.safe_load(apm_yml.read_text())
         assert "gitlab.com/acme/standards" in data["dependencies"]["apm"]
 
@@ -346,12 +346,12 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://github.com/microsoft/apm-sample-package.git"]
         )
 
         # Should return empty — package already exists
-        assert result == []
+        assert validated == []
         data = yaml.safe_load(apm_yml.read_text())
         # No duplicate added
         assert data["dependencies"]["apm"].count("microsoft/apm-sample-package") == 1
@@ -367,13 +367,13 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml([
+        validated, _outcome = _validate_and_add_packages_to_apm_yml([
             "microsoft/apm-sample-package",
             "https://github.com/microsoft/apm-sample-package.git",
         ])
 
-        assert len(result) == 1
-        assert result[0] == "microsoft/apm-sample-package"
+        assert len(validated) == 1
+        assert validated[0] == "microsoft/apm-sample-package"
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
     @patch("apm_cli.commands.install._rich_info")
@@ -386,11 +386,11 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://github.com/microsoft/apm-sample-package.git#v1.0.0"]
         )
 
-        assert result == ["microsoft/apm-sample-package#v1.0.0"]
+        assert validated == ["microsoft/apm-sample-package#v1.0.0"]
 
 
 # ── Uninstall identity matching ─────────────────────────────────────────────

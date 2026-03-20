@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AuthResolver` — centralized per-(host, org) token resolution with host classification (github.com, `*.ghe.com`, GHES, ADO), per-org env vars (`GITHUB_APM_PAT_{ORG}`), EMU token detection, and try-with-fallback strategy (#393)
+- `CommandLogger` base class with semantic lifecycle methods (start/progress/success/error), verbose/dry-run support, and lazy `DiagnosticCollector`; `InstallLogger` subclass for validation/resolution/download phases (#393)
+- `CATEGORY_AUTH` in `DiagnosticCollector` for auth diagnostic grouping (#393)
+
+### Changed
+
+- `_validate_package_exists()` tries unauthenticated first, falls back to `AuthResolver` — fixes EMU org installs (#393)
+- `github_downloader.py` uses per-dependency token resolution via `AuthResolver` in clone and download paths (#393)
+- `copilot.py` and `operations.py` use `AuthResolver` instead of direct `os.getenv` bypasses (#393)
+- 7 hardcoded auth error messages replaced with actionable, context-aware messages (#393)
+
+### Security
+
+- Global env vars (`GITHUB_APM_PAT`) no longer leak to non-default hosts; enterprise hosts resolve via per-org env vars or git credentials only (#393)
+
 ## [0.8.3] - 2026-03-20
 
 ### Added

@@ -218,7 +218,7 @@ class TestInstallCommandAutoBootstrap:
 
             # Should create apm.yml but fail to add invalid package
             assert Path("apm.yml").exists()
-            assert "Invalid package format" in result.output
+            assert "invalid format" in result.output
 
     @patch("apm_cli.commands.install._validate_package_exists")
     @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)

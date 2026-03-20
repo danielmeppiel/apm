@@ -4,215 +4,146 @@ sidebar:
   order: 4
 ---
 
-APM works without any tokens for public packages. Authentication is only needed for private repositories and enterprise hosts.
+APM works without tokens for public packages on github.com. Authentication is needed for private repositories, enterprise hosts (`*.ghe.com`, GHES), and Azure DevOps.
 
-## How APM Authenticates
+## How APM resolves authentication
 
-APM resolves dependencies either via `git clone` (for full packages) or the GitHub API (for individual files). Authentication depends on the host:
+APM resolves tokens per `(host, org)` pair. For each dependency, it walks a resolution chain until it finds a token:
 
-| Host | Token variable | How it's used |
-|------|---------------|---------------|
-| GitHub.com / GitHub Enterprise (`*.ghe.com`) | `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` | Injected into the HTTPS URL as `x-access-token` |
-| Azure DevOps | `ADO_APM_PAT` | Injected into the HTTPS URL as the password |
-| JFrog Artifactory | `ARTIFACTORY_APM_TOKEN` | Bearer token in HTTP `Authorization` header |
-| Any other git host (including GitHub Enterprise on custom domains) | — | Delegated to **git credential helpers** or SSH keys |
+1. **Per-org env var** — `GITHUB_APM_PAT_{ORG}` (checked for any host)
+2. **Global env vars** — `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` (default host only)
+3. **Git credential helper** — `git credential fill` (any host except ADO)
 
-When APM has a token for a recognized host (GitHub.com, GitHub Enterprise under `*.ghe.com`, or Azure DevOps), it injects it directly and disables interactive prompts. When no token is available, or the host is treated as generic (including GitHub Enterprise on custom domains), APM relaxes the git environment so your existing credential helpers — `gh auth`, macOS Keychain, Windows Credential Manager, `git-credential-store`, etc. — can provide credentials transparently.
+If nothing matches, APM attempts unauthenticated access (works for public repos on github.com).
 
-For single-file downloads from GitHub (which use the GitHub API rather than `git clone`), APM also queries `git credential fill` as a last-resort fallback when no token environment variable is set. This means credentials stored by `gh auth login` or your OS keychain work for both folder-level and file-level dependencies.
+Results are cached per-process — the same `(host, org)` pair is resolved once.
 
-### Object-style `git:` references
+### Security constraint
 
-The `git:` object form in `apm.yml` lets you reference any git URL explicitly — HTTPS, SSH, or any host:
+Global env vars (`GITHUB_APM_PAT`, `GITHUB_TOKEN`, `GH_TOKEN`) only apply to the default host (github.com unless `GITHUB_HOST` is set). Non-default hosts resolve via per-org env vars or git credentials. APM never sends a github.com token to an enterprise host.
+
+## Token lookup
+
+| Priority | Variable | Scope | Notes |
+|----------|----------|-------|-------|
+| 1 | `GITHUB_APM_PAT_{ORG}` | Per-org, any host | Org name uppercased, hyphens → underscores |
+| 2 | `GITHUB_APM_PAT` | Default host only | github.com unless `GITHUB_HOST` overrides |
+| 3 | `GITHUB_TOKEN` | Default host only | Shared with GitHub Actions |
+| 4 | `GH_TOKEN` | Default host only | Set by `gh auth login` |
+| 5 | `git credential fill` | Per-host | System credential manager, `gh auth`, OS keychain |
+
+For Azure DevOps, the only token source is `ADO_APM_PAT`.
+
+For JFrog Artifactory, use `ARTIFACTORY_APM_TOKEN`.
+
+For runtime features (`GITHUB_COPILOT_PAT`), see [Agent Workflows](../../guides/agent-workflows/).
+
+## Multi-org setup
+
+When your manifest pulls from multiple GitHub organizations, use per-org env vars:
+
+```bash
+export GITHUB_APM_PAT_CONTOSO=ghp_token_for_contoso
+export GITHUB_APM_PAT_FABRIKAM=ghp_token_for_fabrikam
+```
+
+The org name comes from the dependency reference — `contoso/my-package` checks `GITHUB_APM_PAT_CONTOSO`. Naming rules:
+
+- Uppercase the org name
+- Replace hyphens with underscores
+- `contoso-microsoft` → `GITHUB_APM_PAT_CONTOSO_MICROSOFT`
+
+Per-org tokens take priority over global tokens. Use this when different orgs require different PATs (e.g., separate SSO authorizations).
+
+## Enterprise (EMU / GHE Cloud)
+
+GHE Cloud hosts (`*.ghe.com`) are always auth-required — APM never attempts unauthenticated access. Set a per-org token:
+
+```bash
+export GITHUB_APM_PAT_MYENTERPRISE=ghp_enterprise_token
+apm install myenterprise.ghe.com/platform/standards
+```
+
+### EMU tokens
+
+Enterprise Managed User tokens (`ghu_` prefix) are scoped to the enterprise. They cannot access public repos on github.com. If your manifest mixes enterprise and public packages, use separate tokens:
+
+```bash
+export GITHUB_APM_PAT_MYENTERPRISE=ghu_emu_token  # *.ghe.com only
+export GITHUB_APM_PAT=ghp_public_token             # github.com
+```
+
+## GitHub Enterprise Server (GHES)
+
+Set `GITHUB_HOST` to your GHES instance. Bare package names resolve against this host:
+
+```bash
+export GITHUB_HOST=github.company.com
+export GITHUB_APM_PAT_MYORG=ghp_ghes_token
+apm install myorg/internal-package  # → github.company.com/myorg/internal-package
+```
+
+Use full hostnames for packages on other hosts:
 
 ```yaml
 dependencies:
   apm:
-    - git: https://gitlab.com/acme/coding-standards.git
-      path: instructions/security
-      ref: v2.0
-    - git: git@bitbucket.org:team/rules.git
-      path: prompts/review.prompt.md
+    - team/internal-package                   # → GITHUB_HOST
+    - github.com/public/open-source-package   # → github.com
 ```
 
-Authentication for these URLs follows the same rules: APM uses `GITHUB_APM_PAT` / `ADO_APM_PAT` for recognized hosts (GitHub.com and GitHub Enterprise under `*.ghe.com`, Azure DevOps), and falls back to your git credential helpers or SSH keys for everything else (including GitHub Enterprise on custom domains). If your GitLab, Bitbucket, GitHub Enterprise, or self-hosted git server is already configured in `~/.gitconfig` or your SSH agent, APM will work without any additional setup.
+Global env vars apply to whichever host `GITHUB_HOST` points to. Alternatively, skip env vars and configure `git credential fill` for your GHES host.
 
-## Token Reference
-
-### GITHUB_APM_PAT
-
-```bash
-export GITHUB_APM_PAT=github_pat_finegrained_token_here
-```
-
-- **Scope**: Private repositories on GitHub.com and GitHub Enterprise instances under `*.ghe.com`
-- **Type**: [Fine-grained PAT](https://github.com/settings/personal-access-tokens/new) (org or user-scoped)
-- **Permissions**: Repository read access
-- **Fallback**: `GITHUB_TOKEN` (e.g., in GitHub Actions), then `GH_TOKEN` (used by the GitHub CLI)
-
-### ADO_APM_PAT
+## Azure DevOps
 
 ```bash
 export ADO_APM_PAT=your_ado_pat
-```
-
-- **Scope**: Private repositories on Azure DevOps
-- **Type**: PAT created at `https://dev.azure.com/{org}/_usersSettings/tokens`
-- **Permissions**: Code (Read)
-
-### GITHUB_COPILOT_PAT
-
-```bash
-export GITHUB_COPILOT_PAT=ghp_copilot_token
-```
-
-- **Scope**: Runtime features (see [Agent Workflows](../../guides/agent-workflows/))
-- **Fallback**: `GITHUB_APM_PAT`, then `GITHUB_TOKEN` (e.g., in GitHub Actions)
-
-### GITHUB_HOST
-
-```bash
-export GITHUB_HOST=github.company.com
-```
-
-- **Purpose**: Set default host for bare package names (e.g., `owner/repo`)
-- **Default**: `github.com`
-- **Note**: Azure DevOps has no equivalent — always use FQDN syntax
-
-## Common Setup Scenarios
-
-#### Public Packages (No Setup)
-
-```bash
-apm install microsoft/apm-sample-package
-```
-
-#### Private GitHub Packages
-
-```bash
-export GITHUB_APM_PAT=ghp_org_token
-apm install your-org/private-package
-```
-
-#### Private Azure DevOps Packages
-
-```bash
-export ADO_APM_PAT=your_ado_pat
-apm install dev.azure.com/org/project/repo
-```
-
-#### GitHub Enterprise
-
-```bash
-export GITHUB_HOST=github.company.com
-export GITHUB_APM_PAT=ghp_enterprise_token
-apm install team/package  # → github.company.com/team/package
-```
-
-> When `GITHUB_HOST` is set, **all** bare package names resolve against that host. Use full hostnames for packages on other servers:
-> ```yaml
-> dependencies:
->   apm:
->     - team/internal-package                   # → GITHUB_HOST
->     - github.com/public/open-source-package   # → github.com
-> ```
-
-#### GitLab, Bitbucket, or Self-Hosted Git
-
-No APM-specific token is needed. Configure access using your standard git setup:
-
-```yaml
-# SSH — if your key is in the SSH agent, it just works
-- git: git@gitlab.com:acme/standards.git
-
-# HTTPS — relies on git credential helpers
-- git: https://gitlab.com/acme/standards.git
-```
-
-To configure HTTPS credentials for a generic host, use any standard git credential helper:
-
-```bash
-# gh CLI (GitHub-compatible forges)
-gh auth login
-
-# Git credential store (any host)
-git credential approve <<EOF
-protocol=https
-host=gitlab.com
-username=your-username
-password=glpat-your-token
-EOF
-```
-
-#### Runtime Features
-
-See the [Agent Workflows guide](../../guides/agent-workflows/) for `GITHUB_COPILOT_PAT` setup.
-
-## GitHub Enterprise Support
-
-APM supports all GitHub Enterprise deployment models via `GITHUB_HOST`.
-
-```bash
-# GitHub Enterprise Server
-export GITHUB_HOST=github.company.com
-apm install team/package  # → github.company.com/team/package
-
-# GitHub Enterprise Cloud with Data Residency
-export GITHUB_HOST=myorg.ghe.com
-apm install platform/standards  # → myorg.ghe.com/platform/standards
-
-# Multiple instances: Use FQDN for explicit hosts
-apm install partner.ghe.com/external/integration
-apm install github.com/public/open-source-package
-```
-
-## Azure DevOps Support
-
-APM supports Azure DevOps Services (cloud) and Azure DevOps Server (self-hosted). There is no `ADO_HOST` equivalent — always use FQDN syntax.
-
-Azure DevOps uses 3 path segments vs GitHub's 2:
-
-```bash
 apm install dev.azure.com/myorg/myproject/myrepo
-apm install dev.azure.com/myorg/myproject/_git/myrepo   # _git is optional
-apm install dev.azure.com/myorg/myproject/myrepo#main   # with ref
-apm install mycompany.visualstudio.com/org/project/repo # legacy URL
-apm install ado.internal/myorg/myproject/myrepo          # self-hosted
 ```
 
-## JFrog Artifactory Support
-
-APM supports [JFrog Artifactory VCS Remote Repositories](https://jfrog.com/help/r/jfrog-artifactory-documentation/vcs-repositories) as a package source. Artifactory downloads use zip archives instead of git clone.
-
-#### Mode 1: Explicit FQDN
+ADO is always auth-required. Uses 3-segment paths (`org/project/repo`). No `ADO_HOST` equivalent — always use FQDN syntax:
 
 ```bash
-apm install artifactory.example.com/artifactory/github/owner/repo
-apm install artifactory.example.com/artifactory/github/owner/repo#v1.0.0
+apm install dev.azure.com/myorg/myproject/myrepo#main
+apm install mycompany.visualstudio.com/org/project/repo  # legacy URL
 ```
 
-#### Mode 2: Transparent Proxy
+Create the PAT at `https://dev.azure.com/{org}/_usersSettings/tokens` with **Code (Read)** permission.
 
-Set `ARTIFACTORY_BASE_URL` to route all GitHub package downloads through Artifactory:
+## Troubleshooting
+
+### Rate limits on github.com
+
+APM tries unauthenticated access first for public repos to conserve rate limits. If you hit limits, set any token:
 
 ```bash
-export ARTIFACTORY_BASE_URL=https://artifactory.example.com/artifactory/github
-apm install owner/repo  # fetched via Artifactory
+export GITHUB_TOKEN=ghp_any_valid_token
 ```
 
-#### Air-Gapped Mode
+### SSO-protected organizations
 
-Block all direct git operations and route everything through Artifactory:
+Authorize your PAT for SSO at [github.com/settings/tokens](https://github.com/settings/tokens) — click **Configure SSO** next to the token.
+
+### EMU token can't access public repos
+
+EMU tokens (`ghu_` prefix) are enterprise-scoped. Use a standard PAT for public github.com repos alongside the EMU token for `*.ghe.com` — see [Enterprise (EMU / GHE Cloud)](#enterprise-emu--ghe-cloud) above.
+
+### Diagnosing auth failures
+
+Run with `--verbose` to see the full resolution chain:
 
 ```bash
-export ARTIFACTORY_BASE_URL=https://artifactory.example.com/artifactory/github
-export ARTIFACTORY_ONLY=1
+apm install --verbose your-org/package
 ```
 
-#### Authentication
+The output shows which env var matched (or `none`), the detected token type (`fine-grained`, `classic`, `emu`), and the host classification (`github`, `ghe_cloud`, `ghes`, `ado`, `generic`).
+
+### Git credential helper not found
+
+APM calls `git credential fill` as a fallback. Ensure a credential helper is configured:
 
 ```bash
-export ARTIFACTORY_APM_TOKEN=your-api-key-or-token
+git config credential.helper              # check current helper
+git config --global credential.helper osxkeychain  # macOS
+gh auth login                              # GitHub CLI
 ```
-
-> **Note:** Artifactory downloads use zip archives, so `apm.lock` will not contain commit SHAs for Artifactory-sourced packages.

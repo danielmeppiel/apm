@@ -18,6 +18,7 @@ from ..constants import (
 )
 from ..drift import build_download_ref, detect_orphans, detect_ref_change
 from ..models.results import InstallResult
+from ..core.command_logger import InstallLogger, _ValidationOutcome
 from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
@@ -25,7 +26,6 @@ from ..utils.path_security import safe_rmtree
 from ._helpers import (
     _create_minimal_apm_yml,
     _get_default_config,
-    _load_apm_config,
     _rich_blank_line,
     _update_gitignore_for_apm_modules,
 )
@@ -56,7 +56,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -67,6 +67,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
         packages: Package specifiers to validate and add.
         dry_run: If True, only show what would be added.
         dev: If True, write to devDependencies instead of dependencies.
+        logger: InstallLogger for structured output.
+
+    Returns:
+        Tuple of (validated_packages list, _ValidationOutcome).
     """
     import subprocess
     import tempfile
@@ -81,7 +85,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
         with open(apm_yml_path, "r") as f:
             data = yaml.safe_load(f) or {}
     except Exception as e:
-        _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
+        if logger:
+            logger.error(f"Failed to read {APM_YML_FILENAME}: {e}")
+        else:
+            _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
     # Ensure dependencies structure exists
@@ -109,12 +116,23 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
             continue
 
     # First, validate all packages
-    _rich_info(f"Validating {len(packages)} package(s)...")
+    valid_outcomes = []  # (canonical, already_present) tuples
+    invalid_outcomes = []  # (package, reason) tuples
+
+    if logger:
+        logger.validation_start(len(packages))
+    else:
+        _rich_info(f"Validating {len(packages)} package(s)...")
 
     for package in packages:
         # Validate package format (should be owner/repo, a git URL, or a local path)
         if "/" not in package and not DependencyReference.is_local_path(package):
-            _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
+            reason = "invalid format — use 'owner/repo'"
+            invalid_outcomes.append((package, reason))
+            if logger:
+                logger.validation_fail(package, reason)
+            else:
+                _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
             continue
 
         # Canonicalize input
@@ -123,7 +141,12 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
             canonical = dep_ref.to_canonical()
             identity = dep_ref.get_identity()
         except ValueError as e:
-            _rich_error(f"Invalid package: {package} — {e}")
+            reason = str(e)
+            invalid_outcomes.append((package, reason))
+            if logger:
+                logger.validation_fail(package, reason)
+            else:
+                _rich_error(f"Invalid package: {package} — {e}")
             continue
 
         # Check if package is already in dependencies (by identity)
@@ -131,36 +154,64 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
 
         # Validate package exists and is accessible
         if _validate_package_exists(package):
-            if already_in_deps:
+            valid_outcomes.append((canonical, already_in_deps))
+            if logger:
+                logger.validation_pass(canonical, already_present=already_in_deps)
+            elif already_in_deps:
                 _rich_info(
                     f"✓ {canonical} - already in apm.yml, ensuring installation..."
                 )
             else:
+                _rich_info(f"✓ {canonical} - accessible")
+
+            if not already_in_deps:
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
-                _rich_info(f"✓ {canonical} - accessible")
         else:
-            _rich_error(f"✗ {package} - not accessible or doesn't exist")
+            reason = "not accessible or doesn't exist (check auth or repo name)"
+            invalid_outcomes.append((package, reason))
+            if logger:
+                logger.validation_fail(package, reason)
+            else:
+                _rich_error(f"✗ {package} - not accessible or doesn't exist")
+
+    outcome = _ValidationOutcome(valid=valid_outcomes, invalid=invalid_outcomes)
+
+    # Let the logger emit a summary and decide whether to continue
+    if logger:
+        should_continue = logger.validation_summary(outcome)
+        if not should_continue:
+            return [], outcome
 
     if not validated_packages:
         if dry_run:
-            _rich_warning("No new packages to add")
+            _rich_warning("No new packages to add") if not logger else None
         # If all packages already exist in apm.yml, that's OK - we'll reinstall them
-        return []
+        return [], outcome
 
     if dry_run:
-        _rich_info(
-            f"Dry run: Would add {len(validated_packages)} package(s) to apm.yml:"
-        )
-        for pkg in validated_packages:
-            _rich_info(f"  + {pkg}")
-        return validated_packages
+        if logger:
+            logger.progress(
+                f"Dry run: Would add {len(validated_packages)} package(s) to apm.yml"
+            )
+            for pkg in validated_packages:
+                logger.verbose_detail(f"  + {pkg}")
+        else:
+            _rich_info(
+                f"Dry run: Would add {len(validated_packages)} package(s) to apm.yml:"
+            )
+            for pkg in validated_packages:
+                _rich_info(f"  + {pkg}")
+        return validated_packages, outcome
 
     # Add validated packages to dependencies (already canonical)
     dep_label = "devDependencies" if dev else "apm.yml"
     for package in validated_packages:
         current_deps.append(package)
-        _rich_info(f"Added {package} to {dep_label}")
+        if logger:
+            logger.verbose_detail(f"Added {package} to {dep_label}")
+        else:
+            _rich_info(f"Added {package} to {dep_label}")
 
     # Update dependencies
     data[dep_section]["apm"] = current_deps
@@ -169,12 +220,18 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
     try:
         with open(apm_yml_path, "w") as f:
             yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
-        _rich_success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
+        if logger:
+            logger.success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
+        else:
+            _rich_success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
     except Exception as e:
-        _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
+        if logger:
+            logger.error(f"Failed to write {APM_YML_FILENAME}: {e}")
+        else:
+            _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
-    return validated_packages
+    return validated_packages, outcome
 
 
 def _validate_package_exists(package):
@@ -377,6 +434,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm install --dry-run                   # Show what would be installed
     """
     try:
+        # Create structured logger for install output
+        is_partial = bool(packages)
+        logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
+
         # Check if apm.yml exists
         apm_yml_exists = Path(APM_YML_FILENAME).exists()
 
@@ -386,30 +447,36 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             project_name = Path.cwd().name
             config = _get_default_config(project_name)
             _create_minimal_apm_yml(config)
-            _rich_success(f"Created {APM_YML_FILENAME}", symbol="sparkles")
+            logger.success(f"Created {APM_YML_FILENAME}")
 
         # Error when NO apm.yml AND NO packages
         if not apm_yml_exists and not packages:
-            _rich_error(f"No {APM_YML_FILENAME} found")
-            _rich_info("💡 Run 'apm init' to create one, or:")
-            _rich_info("   apm install <org/repo> to auto-create + install")
+            logger.error(f"No {APM_YML_FILENAME} found")
+            logger.progress("Run 'apm init' to create one, or:")
+            logger.progress("  apm install <org/repo> to auto-create + install")
             sys.exit(1)
 
         # If packages are specified, validate and add them to apm.yml first
         if packages:
-            validated_packages = _validate_and_add_packages_to_apm_yml(
-                packages, dry_run, dev=dev
+            validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
+                packages, dry_run, dev=dev, logger=logger,
             )
+            # Short-circuit: all packages failed validation — nothing to install
+            if outcome.all_failed:
+                return
             # Note: Empty validated_packages is OK if packages are already in apm.yml
             # We'll proceed with installation from apm.yml to ensure everything is synced
 
-        _rich_info("Installing dependencies from apm.yml...")
+        logger.resolution_start(
+            to_install_count=len(packages) if packages else 0,
+            lockfile_count=0,  # Refined later inside _install_apm_dependencies
+        )
 
         # Parse apm.yml to get both APM and MCP dependencies
         try:
             apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
         except Exception as e:
-            _rich_error(f"Failed to parse {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         # Get APM and MCP dependencies
@@ -430,25 +497,25 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Show what will be installed if dry run
         if dry_run:
-            _rich_info("Dry run mode - showing what would be installed:")
+            logger.progress("Dry run mode - showing what would be installed:")
 
             if should_install_apm and apm_deps:
-                _rich_info(f"APM dependencies ({len(apm_deps)}):")
+                logger.progress(f"APM dependencies ({len(apm_deps)}):")
                 for dep in apm_deps:
                     action = "update" if update else "install"
-                    _rich_info(
-                        f"  - {dep.repo_url}#{dep.reference or 'main'} → {action}"
+                    logger.progress(
+                        f"  - {dep.repo_url}#{dep.reference or 'main'} -> {action}"
                     )
 
             if should_install_mcp and mcp_deps:
-                _rich_info(f"MCP dependencies ({len(mcp_deps)}):")
+                logger.progress(f"MCP dependencies ({len(mcp_deps)}):")
                 for dep in mcp_deps:
-                    _rich_info(f"  - {dep}")
+                    logger.progress(f"  - {dep}")
 
             if not apm_deps and not dev_apm_deps and not mcp_deps:
-                _rich_warning("No dependencies found in apm.yml")
+                logger.warning("No dependencies found in apm.yml")
 
-            _rich_success("Dry run complete - no changes made")
+            logger.success("Dry run complete - no changes made")
             return
 
         # Install APM dependencies first (if requested)
@@ -474,8 +541,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm_diagnostics = None
         if should_install_apm and has_any_apm_deps:
             if not APM_DEPS_AVAILABLE:
-                _rich_error("APM dependency system not available")
-                _rich_info(f"Import error: {_APM_IMPORT_ERROR}")
+                logger.error("APM dependency system not available")
+                logger.progress(f"Import error: {_APM_IMPORT_ERROR}")
                 sys.exit(1)
 
             try:
@@ -485,16 +552,17 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 install_result = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
+                    logger=logger,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
                 agent_count = install_result.agents_integrated
                 apm_diagnostics = install_result.diagnostics
             except Exception as e:
-                _rich_error(f"Failed to install APM dependencies: {e}")
+                logger.error(f"Failed to install APM dependencies: {e}")
                 sys.exit(1)
         elif should_install_apm and not has_any_apm_deps:
-            _rich_info("No APM dependencies found in apm.yml")
+            logger.verbose_detail("No APM dependencies found in apm.yml")
 
         # When --update is used, package files on disk may have changed.
         # Clear the parse cache so transitive MCP collection reads fresh data.
@@ -508,7 +576,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             lock_path = get_lockfile_path(Path.cwd())
             transitive_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lock_path, trust_transitive_mcp)
             if transitive_mcp:
-                _rich_info(f"Collected {len(transitive_mcp)} transitive MCP dependency(ies)")
+                logger.verbose_detail(f"Collected {len(transitive_mcp)} transitive MCP dependency(ies)")
                 mcp_deps = MCPIntegrator.deduplicate(mcp_deps + transitive_mcp)
 
         # Continue with MCP installation (existing logic)
@@ -534,27 +602,25 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             if old_mcp_servers:
                 MCPIntegrator.remove_stale(old_mcp_servers, runtime, exclude)
                 MCPIntegrator.update_lockfile(builtins.set(), mcp_configs={})
-            _rich_warning("No MCP dependencies found in apm.yml")
+            logger.verbose_detail("No MCP dependencies found in apm.yml")
         elif not should_install_mcp and old_mcp_servers:
             # --only=apm: APM install regenerated the lockfile and dropped
             # mcp_servers.  Restore the previous set so it is not lost.
             MCPIntegrator.update_lockfile(old_mcp_servers, mcp_configs=old_mcp_configs)
 
-        # Show beautiful post-install summary
+        # Show diagnostics and final install summary
         if apm_diagnostics and apm_diagnostics.has_diagnostics:
             apm_diagnostics.render_summary()
         else:
             _rich_blank_line()
-        if install_mode == InstallMode.ALL:
-            # Load apm.yml config for summary
-            apm_config = _load_apm_config()
-            _show_install_summary(
-                apm_count, prompt_count, agent_count, mcp_count, apm_config
-            )
-        elif install_mode == InstallMode.APM:
-            _rich_success(f"Installed {apm_count} APM dependencies")
-        elif install_mode == InstallMode.MCP:
-            _rich_success(f"Configured {mcp_count} MCP servers")
+
+        error_count = 0
+        if apm_diagnostics:
+            try:
+                error_count = int(apm_diagnostics.error_count)
+            except (TypeError, ValueError):
+                error_count = 0
+        logger.install_summary(apm_count=apm_count, mcp_count=mcp_count, errors=error_count)
 
         # Hard-fail when critical security findings blocked any package.
         # Consistent with apm unpack which also hard-fails on critical.
@@ -881,6 +947,7 @@ def _install_apm_dependencies(
     only_packages: "builtins.list" = None,
     force: bool = False,
     parallel_downloads: int = 4,
+    logger: "InstallLogger" = None,
 ):
     """Install APM package dependencies.
 
@@ -891,6 +958,7 @@ def _install_apm_dependencies(
         only_packages: If provided, only install these specific packages (not all from apm.yml)
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
+        logger: InstallLogger for structured output
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -901,18 +969,21 @@ def _install_apm_dependencies(
     if not all_apm_deps:
         return InstallResult()
 
-    _rich_info(f"Installing APM dependencies ({len(all_apm_deps)})...")
-
     project_root = Path.cwd()
 
     # T5: Check for existing lockfile - use locked versions for reproducible installs
     from apm_cli.deps.lockfile import LockFile, get_lockfile_path
     lockfile_path = get_lockfile_path(project_root)
     existing_lockfile = None
+    lockfile_count = 0
     if lockfile_path.exists() and not update_refs:
         existing_lockfile = LockFile.read(lockfile_path)
         if existing_lockfile and existing_lockfile.dependencies:
-            _rich_info(f"Using apm.lock.yaml ({len(existing_lockfile.dependencies)} locked dependencies)")
+            lockfile_count = len(existing_lockfile.dependencies)
+            if logger:
+                logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
+            else:
+                _rich_info(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
 
     apm_modules_dir = project_root / APM_MODULES_DIR
     apm_modules_dir.mkdir(exist_ok=True)
@@ -968,7 +1039,9 @@ def _install_apm_dependencies(
             return install_path
         except Exception as e:
             # Log but don't fail - allow resolution to continue
-            if verbose:
+            if logger:
+                logger.verbose_detail(f"  Failed to resolve transitive dep {dep_ref.repo_url}: {e}")
+            elif verbose:
                 _rich_error(f"  └─ Failed to resolve transitive dep {dep_ref.repo_url}: {e}")
             return None
 
@@ -983,10 +1056,16 @@ def _install_apm_dependencies(
 
         # Check for circular dependencies
         if dependency_graph.circular_dependencies:
-            _rich_error("Circular dependencies detected:")
+            if logger:
+                logger.error("Circular dependencies detected:")
+            else:
+                _rich_error("Circular dependencies detected:")
             for circular in dependency_graph.circular_dependencies:
-                cycle_path = " → ".join(circular.cycle_path)
-                _rich_error(f"  {cycle_path}")
+                cycle_path = " -> ".join(circular.cycle_path)
+                if logger:
+                    logger.error(f"  {cycle_path}")
+                else:
+                    _rich_error(f"  {cycle_path}")
             raise RuntimeError("Cannot install packages with circular dependencies")
 
         # Get flattened dependencies for installation
@@ -1034,7 +1113,10 @@ def _install_apm_dependencies(
             ]
 
         if not deps_to_install:
-            _rich_info("No APM dependencies to install", symbol="check")
+            if logger:
+                logger.nothing_to_install()
+            else:
+                _rich_info("No APM dependencies to install", symbol="check")
             return InstallResult()
 
         # ------------------------------------------------------------------
@@ -1071,9 +1153,14 @@ def _install_apm_dependencies(
         claude_dir = project_root / CLAUDE_DIR
         if not github_dir.exists() and not claude_dir.exists():
             github_dir.mkdir(parents=True, exist_ok=True)
-            _rich_info(
-                "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
-            )
+            if logger:
+                logger.verbose_detail(
+                    "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
+                )
+            else:
+                _rich_info(
+                    "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
+                )
 
         detected_target, detection_reason = detect_target(
             project_root=project_root,
@@ -1257,7 +1344,10 @@ def _install_apm_dependencies(
                         continue
 
                     installed_count += 1
-                    _rich_success(f"✓ {dep_ref.local_path} (local)")
+                    if logger:
+                        logger.download_complete(dep_ref.local_path, ref_suffix="local")
+                    else:
+                        _rich_success(f"✓ {dep_ref.local_path} (local)")
 
                     # Build minimal PackageInfo for integration
                     from apm_cli.models.apm_package import (
@@ -1416,10 +1506,16 @@ def _install_apm_dependencies(
                 if skip_download and _dep_locked_chk and _dep_locked_chk.content_hash:
                     from ..utils.content_hash import verify_package_hash
                     if not verify_package_hash(install_path, _dep_locked_chk.content_hash):
-                        _rich_warning(
-                            f"Content hash mismatch for "
-                            f"{dep_ref.get_unique_key()} — re-downloading"
-                        )
+                        if logger:
+                            logger.warning(
+                                f"Content hash mismatch for "
+                                f"{dep_ref.get_unique_key()} -- re-downloading"
+                            )
+                        else:
+                            _rich_warning(
+                                f"Content hash mismatch for "
+                                f"{dep_ref.get_unique_key()} — re-downloading"
+                            )
                         safe_rmtree(install_path, apm_modules_dir)
                         skip_download = False
 
@@ -1437,7 +1533,10 @@ def _install_apm_dependencies(
                             ref_str = f"#{short_sha}"
                     elif dep_ref.reference:
                         ref_str = f"#{dep_ref.reference}"
-                    _rich_info(f"✓ {display_name}{ref_str} (cached)")
+                    if logger:
+                        logger.download_complete(display_name, ref_suffix=f"{ref_str} (cached)" if ref_str else "cached")
+                    else:
+                        _rich_info(f"✓ {display_name}{ref_str} (cached)")
                     installed_count += 1
                     if not dep_ref.reference:
                         unpinned_count += 1
@@ -1604,7 +1703,10 @@ def _install_apm_dependencies(
                     # Show resolved ref alongside package name for visibility
                     resolved = getattr(package_info, 'resolved_reference', None)
                     ref_suffix = f"#{resolved}" if resolved else ""
-                    _rich_success(f"✓ {display_name}{ref_suffix}")
+                    if logger:
+                        logger.download_complete(display_name, ref_suffix=ref_suffix)
+                    else:
+                        _rich_success(f"✓ {display_name}{ref_suffix}")
 
                     # Track unpinned deps for aggregated diagnostic
                     if not dep_ref.reference:
@@ -1632,20 +1734,17 @@ def _install_apm_dependencies(
                         from apm_cli.models.apm_package import PackageType
 
                         package_type = package_info.package_type
-                        if package_type == PackageType.CLAUDE_SKILL:
-                            _rich_info(
-                                f"  └─ Package type: Skill (SKILL.md detected)"
-                            )
-                        elif package_type == PackageType.MARKETPLACE_PLUGIN:
-                            _rich_info(
-                                f"  └─ Package type: Marketplace Plugin (plugin.json detected)"
-                            )
-                        elif package_type == PackageType.HYBRID:
-                            _rich_info(
-                                f"  └─ Package type: Hybrid (apm.yml + SKILL.md)"
-                            )
-                        elif package_type == PackageType.APM_PACKAGE:
-                            _rich_info(f"  └─ Package type: APM Package (apm.yml)")
+                        _type_label = {
+                            PackageType.CLAUDE_SKILL: "Skill (SKILL.md detected)",
+                            PackageType.MARKETPLACE_PLUGIN: "Marketplace Plugin (plugin.json detected)",
+                            PackageType.HYBRID: "Hybrid (apm.yml + SKILL.md)",
+                            PackageType.APM_PACKAGE: "APM Package (apm.yml)",
+                        }.get(package_type)
+                        if _type_label:
+                            if logger:
+                                logger.verbose_detail(f"  Package type: {_type_label}")
+                            else:
+                                _rich_info(f"  └─ Package type: {_type_label}")
 
                     # Auto-integrate prompts and agents if enabled
                     # Pre-deploy security gate
@@ -1734,18 +1833,29 @@ def _install_apm_dependencies(
                             _deleted_orphan_paths.append(_target)
                             _removed_orphan_count += 1
                         except Exception as _orphan_err:
-                            _rich_warning(
-                                f"  └─ Could not remove orphaned path {_orphan_path}: {_orphan_err}"
-                            )
+                            if logger:
+                                logger.verbose_detail(
+                                    f"  Could not remove orphaned path {_orphan_path}: {_orphan_err}"
+                                )
+                            else:
+                                _rich_warning(
+                                    f"  └─ Could not remove orphaned path {_orphan_path}: {_orphan_err}"
+                                )
                             _failed_orphan_count += 1
             # Clean up empty parent directories left after file removal
             if _deleted_orphan_paths:
                 BaseIntegrator.cleanup_empty_parents(_deleted_orphan_paths, project_root)
             if _removed_orphan_count > 0:
-                _rich_info(
-                    f"Removed {_removed_orphan_count} file(s) from packages "
-                    "no longer in apm.yml"
-                )
+                if logger:
+                    logger.verbose_detail(
+                        f"Removed {_removed_orphan_count} file(s) from packages "
+                        "no longer in apm.yml"
+                    )
+                else:
+                    _rich_info(
+                        f"Removed {_removed_orphan_count} file(s) from packages "
+                        "no longer in apm.yml"
+                    )
 
         # Generate apm.lock for reproducible installs (T4: lockfile generation)
         if installed_packages:
@@ -1794,27 +1904,44 @@ def _install_apm_dependencies(
                         lockfile = existing
 
                 lockfile.save(lockfile_path)
-                _rich_info(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
+                if logger:
+                    logger.verbose_detail(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
+                else:
+                    _rich_info(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
-                _rich_warning(f"Could not generate apm.lock.yaml: {e}")
+                if logger:
+                    logger.warning(f"Could not generate apm.lock.yaml: {e}")
+                else:
+                    _rich_warning(f"Could not generate apm.lock.yaml: {e}")
 
-        # Show link resolution stats if any were resolved
+        # Show integration stats (verbose-only when logger is available)
         if total_links_resolved > 0:
-            _rich_info(f"✓ Resolved {total_links_resolved} context file links")
+            if logger:
+                logger.verbose_detail(f"Resolved {total_links_resolved} context file links")
+            else:
+                _rich_info(f"✓ Resolved {total_links_resolved} context file links")
 
-        # Show Claude commands stats if any were integrated
         if total_commands_integrated > 0:
-            _rich_info(f"✓ Integrated {total_commands_integrated} command(s)")
+            if logger:
+                logger.verbose_detail(f"Integrated {total_commands_integrated} command(s)")
+            else:
+                _rich_info(f"✓ Integrated {total_commands_integrated} command(s)")
 
-        # Show hooks stats if any were integrated
         if total_hooks_integrated > 0:
-            _rich_info(f"✓ Integrated {total_hooks_integrated} hook(s)")
+            if logger:
+                logger.verbose_detail(f"Integrated {total_hooks_integrated} hook(s)")
+            else:
+                _rich_info(f"✓ Integrated {total_hooks_integrated} hook(s)")
 
-        # Show instructions stats if any were integrated
         if total_instructions_integrated > 0:
-            _rich_info(f"✓ Integrated {total_instructions_integrated} instruction(s)")
+            if logger:
+                logger.verbose_detail(f"Integrated {total_instructions_integrated} instruction(s)")
+            else:
+                _rich_info(f"✓ Integrated {total_instructions_integrated} instruction(s)")
 
-        _rich_success(f"Installed {installed_count} APM dependencies")
+        # Summary is now emitted by the caller via logger.install_summary()
+        if not logger:
+            _rich_success(f"Installed {installed_count} APM dependencies")
 
         if unpinned_count:
             noun = "dependency has" if unpinned_count == 1 else "dependencies have"
@@ -1829,29 +1956,5 @@ def _install_apm_dependencies(
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
 
 
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
 
 
-def _show_install_summary(
-    apm_count: int, prompt_count: int, agent_count: int, mcp_count: int, apm_config
-):
-    """Show post-install summary.
-
-    Args:
-        apm_count: Number of APM packages installed
-        prompt_count: Number of prompts integrated
-        agent_count: Number of agents integrated
-        mcp_count: Number of MCP servers configured
-        apm_config: The apm.yml configuration dict
-    """
-    parts = []
-    if apm_count > 0:
-        parts.append(f"{apm_count} APM package(s)")
-    if mcp_count > 0:
-        parts.append(f"{mcp_count} MCP server(s)")
-    if parts:
-        _rich_success(f"Installation complete: {', '.join(parts)}")
-    else:
-        _rich_success("Installation complete")
