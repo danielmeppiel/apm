@@ -135,8 +135,10 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
-        assert "#abc123def456" in ref
-        assert ref == "github.com/owner/monorepo/packages/my-skill#abc123def456"
+        assert ref.reference == "abc123def456"
+        assert ref.repo_url == "owner/monorepo"
+        assert ref.virtual_path == "packages/my-skill"
+        assert ref.host == "github.com"
 
     def test_subdirectory_no_lockfile_override_with_update(self):
         """With --update, subdirectory download ref must NOT use locked SHA."""
@@ -144,8 +146,8 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=True, ref_changed=False)
-        assert "#abc123def456" not in ref
-        assert ref == str(dep)
+        assert ref.reference != "abc123def456"
+        assert ref is dep
 
     def test_regular_lockfile_override_without_update(self):
         """Without --update, regular package download ref uses locked SHA."""
@@ -153,7 +155,7 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
-        assert "#abc123def456" in ref
+        assert ref.reference == "abc123def456"
 
     def test_regular_no_lockfile_override_with_update(self):
         """With --update, regular package download ref must NOT use locked SHA."""
@@ -161,13 +163,13 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=True, ref_changed=False)
-        assert "#abc123def456" not in ref
+        assert ref.reference != "abc123def456"
 
     def test_no_lockfile_returns_original_ref(self):
-        """Without a lockfile, download ref is the original dependency string."""
+        """Without a lockfile, download ref is the original dependency."""
         dep = self._make_subdirectory_dep()
         ref = build_download_ref(dep, existing_lockfile=None, update_refs=False, ref_changed=False)
-        assert ref == str(dep)
+        assert ref is dep
 
     def test_cached_lockfile_entry_not_overridden(self):
         """Lockfile entries with resolved_commit='cached' should not override."""
@@ -175,10 +177,10 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep, resolved_commit="cached")
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
-        assert ref == str(dep)
+        assert ref is dep
 
     def test_ghe_custom_domain_host_preserved_in_locked_ref(self):
-        """GHE custom domain host must appear in the locked download ref.
+        """GHE custom domain host must be preserved in the locked download ref.
 
         Regression test: without the host, DependencyReference.parse()
         defaults to github.com and the clone fails for enterprise hosts.
@@ -191,10 +193,12 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
-        assert ref == "github.example.com/org/repo#abc123def456"
+        assert ref.host == "github.example.com"
+        assert ref.repo_url == "org/repo"
+        assert ref.reference == "abc123def456"
 
     def test_ghe_custom_domain_subdirectory_host_preserved(self):
-        """GHE custom domain host must appear for virtual/subdirectory deps too."""
+        """GHE custom domain host must be preserved for virtual/subdirectory deps too."""
         dep = DependencyReference(
             repo_url="org/monorepo",
             host="git.corp.internal",
@@ -205,10 +209,13 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
-        assert ref == "git.corp.internal/org/monorepo/packages/my-skill#abc123def456"
+        assert ref.host == "git.corp.internal"
+        assert ref.repo_url == "org/monorepo"
+        assert ref.virtual_path == "packages/my-skill"
+        assert ref.reference == "abc123def456"
 
     def test_no_host_produces_plain_repo_url(self):
-        """When host is None, download ref uses plain repo_url (no prefix)."""
+        """When host is None, download ref preserves plain repo_url."""
         dep = DependencyReference(
             repo_url="owner/repo",
             host=None,
@@ -217,7 +224,9 @@ class TestDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
-        assert ref == "owner/repo#abc123def456"
+        assert ref.host is None
+        assert ref.repo_url == "owner/repo"
+        assert ref.reference == "abc123def456"
 
 
 class TestPreDownloadRefLockfileOverride:
@@ -248,7 +257,7 @@ class TestPreDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=True, ref_changed=False)
-        assert "#abc123def456" not in ref
+        assert ref.reference != "abc123def456"
 
     def test_pre_download_lockfile_override_without_update(self):
         """Without --update, pre-download ref uses locked SHA."""
@@ -256,7 +265,7 @@ class TestPreDownloadRefLockfileOverride:
         lockfile = self._mock_lockfile(dep)
 
         ref = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
-        assert "#abc123def456" in ref
+        assert ref.reference == "abc123def456"
 
 
 class TestRefChangedDetection:
@@ -337,7 +346,7 @@ class TestRefChangedDetection:
         download_ref = build_download_ref(
             dep, lockfile, update_refs=False, ref_changed=ref_changed
         )
-        assert "#abc123" not in download_ref
+        assert download_ref.reference != "abc123"
 
     def test_build_download_ref_uses_locked_sha_when_no_change(self):
         """When ref unchanged, build_download_ref uses the locked commit SHA."""
@@ -350,7 +359,7 @@ class TestRefChangedDetection:
         download_ref = build_download_ref(
             dep, lockfile, update_refs=False, ref_changed=ref_changed
         )
-        assert "#abc123" in download_ref
+        assert download_ref.reference == "abc123"
 
 
 class TestOrphanDeployedFilesDetection:

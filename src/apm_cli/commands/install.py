@@ -928,16 +928,6 @@ def _install_apm_dependencies(
                     return result_path
                 return None
 
-            # Build repo_ref string - include host for GHE/ADO/Artifactory, plus reference if specified
-            repo_ref = dep_ref.repo_url
-            if dep_ref.host and dep_ref.host not in ("github.com", None):
-                if dep_ref.artifactory_prefix:
-                    repo_ref = f"{dep_ref.host}/{dep_ref.artifactory_prefix}/{dep_ref.repo_url}"
-                else:
-                    repo_ref = f"{dep_ref.host}/{dep_ref.repo_url}"
-            if dep_ref.virtual_path:
-                repo_ref = f"{repo_ref}/{dep_ref.virtual_path}"
-
             # T5: Use locked commit if available (reproducible installs)
             locked_ref = None
             if existing_lockfile:
@@ -945,14 +935,16 @@ def _install_apm_dependencies(
                 if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
                     locked_ref = locked_dep.resolved_commit
 
-            # Priority: locked commit > explicit reference > default branch
+            # Build a DependencyReference with the right ref to avoid lossy
+            # str() → parse() round-trips (#382).
+            from dataclasses import replace as _dc_replace
             if locked_ref:
-                repo_ref = f"{repo_ref}#{locked_ref}"
-            elif dep_ref.reference:
-                repo_ref = f"{repo_ref}#{dep_ref.reference}"
+                download_dep = _dc_replace(dep_ref, reference=locked_ref)
+            else:
+                download_dep = dep_ref
 
             # Silent download - no progress display for transitive deps
-            result = downloader.download_package(repo_ref, install_path)
+            result = downloader.download_package(download_dep, install_path)
             # Capture resolved commit SHA for lockfile
             resolved_sha = None
             if result and hasattr(result, 'resolved_reference') and result.resolved_reference:
@@ -1367,9 +1359,7 @@ def _install_apm_dependencies(
                 resolved_ref = None
                 if dep_ref.reference and dep_ref.get_unique_key() not in _pre_downloaded_keys:
                     try:
-                        resolved_ref = downloader.resolve_git_reference(
-                            f"{dep_ref.repo_url}@{dep_ref.reference}"
-                        )
+                        resolved_ref = downloader.resolve_git_reference(dep_ref)
                     except Exception:
                         pass  # If resolution fails, skip cache (fetch latest)
 

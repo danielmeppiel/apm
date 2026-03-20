@@ -1355,3 +1355,95 @@ type: null
         """Test that APMPackage type defaults to None when not provided."""
         package = APMPackage(name="test", version="1.0.0")
         assert package.type is None
+
+
+class TestGenericHostSubdirectoryRoundTrip:
+    """Regression tests for issue #382: subdirectory packages on generic git hosts.
+
+    The str() → parse() round-trip must preserve virtual_path for all hosts,
+    not just GitHub and ADO.
+    """
+
+    @pytest.mark.parametrize("git_url,path,ref,desc", [
+        ("https://git.example.com/ai/grandpa-s-skills", "dist/brain-council", "master", "reporter case"),
+        ("https://gitlab.com/my-org/my-group/my-skills", "dist/skill-a", "main", "GitLab nested groups"),
+        ("https://gitea.example.com/org/repo", "prompts/helper", "v1.0", "Gitea simple"),
+        ("https://bitbucket.example.com/team/prompts", "agents/summarizer", "develop", "Bitbucket self-hosted"),
+    ])
+    def test_parse_from_dict_preserves_virtual_path(self, git_url, path, ref, desc):
+        """parse_from_dict correctly separates repo URL from subdirectory path."""
+        entry = {"git": git_url, "path": path, "ref": ref}
+        dep = DependencyReference.parse_from_dict(entry)
+        assert dep.virtual_path == path, f"Failed for {desc}"
+        assert dep.is_virtual is True, f"Failed for {desc}"
+
+    @pytest.mark.parametrize("git_url,path,ref", [
+        ("https://git.example.com/ai/grandpa-s-skills", "dist/brain-council", "master"),
+        ("https://gitlab.com/org/repo", "prompts/helper", "v1.0"),
+        ("https://bitbucket.example.com/team/prompts", "agents/summarizer", "develop"),
+    ])
+    def test_download_package_skips_parse_with_structured_dep(self, git_url, path, ref):
+        """download_package must skip DependencyReference.parse() when given
+        a structured object, avoiding the lossy round-trip."""
+        entry = {"git": git_url, "path": path, "ref": ref}
+        dep = DependencyReference.parse_from_dict(entry)
+
+        from apm_cli.deps.github_downloader import GitHubPackageDownloader
+        downloader = GitHubPackageDownloader()
+
+        # Monkey-patch DependencyReference.parse to detect if it's called
+        original_parse = DependencyReference.parse
+        parse_called = False
+        @classmethod
+        def tracking_parse(cls, s):
+            nonlocal parse_called
+            parse_called = True
+            return original_parse(s)
+
+        DependencyReference.parse = tracking_parse
+        try:
+            # download_package will fail on the actual clone, but the important
+            # thing is that it does NOT call parse() when given an object
+            downloader.download_package(dep, Path("/tmp/apm-test-nonexistent"))
+        except Exception:
+            pass  # Expected: clone will fail, but parse should not be called
+        finally:
+            DependencyReference.parse = original_parse
+
+        assert not parse_called, (
+            "DependencyReference.parse() was called when passing a structured "
+            "DependencyReference — the lossy round-trip was NOT avoided"
+        )
+
+    def test_github_round_trip_works(self):
+        """GitHub round-trip works because min_base_segments=2 is hardcoded."""
+        entry = {"git": "https://github.com/anthropics/skills", "path": "skills/skill-creator", "ref": "main"}
+        dep = DependencyReference.parse_from_dict(entry)
+        dep2 = DependencyReference.parse(str(dep))
+        assert dep2.virtual_path == dep.virtual_path
+        assert dep2.is_virtual == dep.is_virtual
+
+    def test_build_download_ref_preserves_virtual_path(self):
+        """build_download_ref returns a DependencyReference that preserves
+        virtual_path for generic hosts (not a lossy flat string)."""
+        from apm_cli.drift import build_download_ref
+        from unittest.mock import Mock
+
+        dep = DependencyReference(
+            repo_url="org/my-skills",
+            host="git.example.com",
+            reference="main",
+            virtual_path="dist/brain-council",
+            is_virtual=True,
+        )
+        lockfile = Mock()
+        locked_dep = Mock()
+        locked_dep.resolved_commit = "abc123"
+        lockfile.get_dependency = Mock(return_value=locked_dep)
+
+        result = build_download_ref(dep, lockfile, update_refs=False, ref_changed=False)
+        assert result.virtual_path == "dist/brain-council"
+        assert result.repo_url == "org/my-skills"
+        assert result.host == "git.example.com"
+        assert result.reference == "abc123"
+        assert result.is_virtual is True
