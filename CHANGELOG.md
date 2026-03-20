@@ -8,11 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- CLI consistency: added `-v` short alias to `apm install --verbose` and `-y` to `apm runtime remove --yes`
-- CLI consistency: added default value display to `apm mcp list --limit` and `apm pack --format`
-- CLI consistency: clarified help text for `apm audit`, `apm config get`, and `apm compile -o`
+- Documented `${input:...}` variable support in `headers` and `env` MCP server fields, with runtime support matrix and examples (#343)
 
 ## [0.8.3] - 2026-03-20
 
@@ -54,7 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Harden dependency path validation — reject invalid path segments at parse time, enforce install-path containment, safe deletion wrappers across `uninstall`, `prune`, and `install` (#364)
-
 
 ## [0.8.1] - 2026-03-17
 
