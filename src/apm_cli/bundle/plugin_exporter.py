@@ -24,6 +24,7 @@ from ..deps.lockfile import (
 )
 from ..models.apm_package import APMPackage, DependencyReference
 from ..utils.console import _rich_info, _rich_warning
+from ..utils.path_security import PathTraversalError, ensure_path_within, safe_rmtree
 from .packer import PackResult
 
 # ---------------------------------------------------------------------------
@@ -483,6 +484,7 @@ def export_plugin_bundle(
     safe_name = _sanitize_bundle_name(pkg_name)
     safe_version = _sanitize_bundle_name(pkg_version)
     bundle_dir = output_dir / f"{safe_name}-{safe_version}"
+    ensure_path_within(bundle_dir, output_dir)
     if dry_run:
         return PackResult(bundle_path=bundle_dir, files=output_files)
 
@@ -511,19 +513,19 @@ def export_plugin_bundle(
 
     # 11. Write files to output directory (clean slate to prevent symlink attacks)
     if bundle_dir.exists():
-        shutil.rmtree(bundle_dir)
+        safe_rmtree(bundle_dir, output_dir)
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    bundle_dir_resolved = bundle_dir.resolve()
     for output_rel, (source_abs, _owner) in file_map.items():
         if not _validate_output_rel(output_rel):
             continue
         dest = bundle_dir / output_rel
         if source_abs.is_symlink():
             continue
-        # Verify resolved destination stays within bundle directory
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if not dest.resolve().is_relative_to(bundle_dir_resolved):
+        try:
+            ensure_path_within(dest, bundle_dir)
+        except PathTraversalError:
             continue
         shutil.copy2(source_abs, dest, follow_symlinks=False)
 
