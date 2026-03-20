@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-19T01:09:15Z",
-  "last_run_tasks": ["task2", "task3", "task4", "task7"],
+  "last_updated": "2026-03-20T01:07:42Z",
+  "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -9,12 +9,12 @@
     "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'"
   },
   "coverage_baseline": {
-    "total": "59%",
-    "run_date": "2026-03-19",
-    "test_count": 2123,
-    "passing": 2123,
+    "total": "60%",
+    "run_date": "2026-03-20",
+    "test_count": 2157,
+    "passing": 2157,
     "pre_existing_failures": 0,
-    "notes": "All 2123 tests pass as of 2026-03-19. PRs #221, #291, #317, #333, #351 not yet merged so their coverage gains not in baseline."
+    "notes": "All 2157 tests pass as of 2026-03-20. PRs #221, #291, #317, #333, #351 not yet merged. New PR for runtime-manager created 2026-03-20."
   },
   "monthly_activity_issue": "open-2026-03",
   "monthly_activity_issue_number": 352,
@@ -25,20 +25,30 @@
     {"id": "config-command", "file": "src/apm_cli/commands/config.py", "coverage": "100%", "priority": "done", "notes": "PR submitted 2026-03-19. 23 tests, 22%->100%. Also fixed missing set_auto_integrate/get_auto_integrate functions."},
     {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "90%", "priority": "done", "notes": "PR #351 submitted 2026-03-18: +33 tests, 58%->90%."},
     {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "PR #221 open. Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
-    {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "49%", "priority": "medium", "notes": "No test file exists for RuntimeManager directly. Involves subprocess and temp files."},
+    {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "90%", "priority": "done", "notes": "PR submitted 2026-03-20. 53 tests, 49%->90% for manager.py, 20%->92% for commands/runtime.py"},
     {"id": "registry-operations", "file": "src/apm_cli/registry/operations.py", "coverage": "14%", "priority": "low", "notes": "Heavy network dependency."},
     {"id": "commands-helpers-io", "file": "src/apm_cli/commands/_helpers.py", "coverage": "59%", "priority": "done", "notes": "PR #333 created 2026-03-17."}
   ],
-  "backlog_cursor": "runtime-manager",
+  "backlog_cursor": "registry-operations",
   "open_test_assist_prs": [
     {"number": 221, "title": "test: add unit tests for AgentsCompiler (65%->82%)", "branch": "test-assist/agents-compiler-coverage-1773105017-70450d4bafccea6d", "ci": "passing"},
     {"number": 291, "title": "fix(tests): strip ANSI codes before plain-text assertions", "branch": "test-assist/fix-ansi-failures-2026-03-14-4cae0cad88219467", "ci": "passing", "note": "may be superseded"},
     {"number": 317, "title": "tests: improve coverage for security scanner and audit command", "branch": "test-assist/security-scanner-coverage-73623316-856bf4f138e805c5", "ci": "passing"},
     {"number": 333, "title": "Add unit tests for commands/_helpers.py", "branch": "test-assist/command-helpers-coverage-1773710009-d5146800ef1d3222", "ci": "passing"},
     {"number": 351, "title": "[Test Improver] test: add unit tests for utils/console.py (58% → 90%)", "branch": "test-assist/utils-console-coverage-23224050701-6dd7d51eeb83513c", "ci": "passing"},
-    {"number": null, "title": "test: add unit tests for config command (22%->100%) + fix missing functions", "branch": "test-assist/config-command-coverage-23274791617", "ci": "pending", "note": "created 2026-03-19"}
+    {"number": null, "title": "test: add unit tests for config command (22%->100%) + fix missing functions", "branch": "test-assist/config-command-coverage-23274791617", "ci": "pending", "note": "created 2026-03-19"},
+    {"number": null, "title": "[Test Improver] test: add unit tests for RuntimeManager and runtime CLI (20%->92%, 49%->90%)", "branch": "test-assist/runtime-manager-coverage-23324556076", "ci": "pending", "note": "created 2026-03-20"}
   ],
   "completed_work": [
+    {
+      "run": "2026-03-20T01:07:42Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/runtime-manager-coverage-23324556076",
+      "pr_status": "pr_created",
+      "coverage_before": {"runtime_manager": "49%", "commands_runtime": "20%"},
+      "coverage_after": {"runtime_manager": "90%", "commands_runtime": "92%"},
+      "description": "Task3: added 53 tests for runtime/manager.py (49%->90%) and commands/runtime.py (20%->92%). Total: 2157 passing (was 2104)."
+    },
     {
       "run": "2026-03-19T01:09:15Z",
       "tasks": ["task2", "task3", "task4", "task7"],
