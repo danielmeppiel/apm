@@ -191,6 +191,24 @@ class TestDeepMerge:
         )
         assert base == {"hooks": {"preCommit": "new", "postCommit": "added"}}
 
+    def test_depth_limit_raises(self):
+        """Deeply nested dicts beyond _MAX_MERGE_DEPTH raise ValueError."""
+        from apm_cli.bundle.plugin_exporter import _MAX_MERGE_DEPTH
+
+        # Build two dicts nested deeper than the limit with overlapping keys
+        # so _deep_merge actually recurses on every level
+        def _nested(depth: int) -> dict:
+            d = {"leaf": True}
+            for _ in range(depth):
+                d = {"k": d}
+            return d
+
+        base = _nested(_MAX_MERGE_DEPTH + 5)
+        overlay = _nested(_MAX_MERGE_DEPTH + 5)
+
+        with pytest.raises(ValueError, match="maximum nesting depth"):
+            _deep_merge(base, overlay)
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: component collectors

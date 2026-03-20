@@ -138,23 +138,34 @@ def _collect_recursive(
 # ---------------------------------------------------------------------------
 
 
-def _deep_merge(base: dict, overlay: dict, *, overwrite: bool = False) -> None:
+_MAX_MERGE_DEPTH = 20
+
+
+def _deep_merge(
+    base: dict, overlay: dict, *, overwrite: bool = False, _depth: int = 0
+) -> None:
     """Recursively merge *overlay* into *base*.
 
     When *overwrite* is False (default), existing base keys win.
     When *overwrite* is True, overlay keys overwrite base keys.
+
+    Raises ``ValueError`` if nesting exceeds ``_MAX_MERGE_DEPTH``.
     """
+    if _depth > _MAX_MERGE_DEPTH:
+        raise ValueError(
+            f"Hooks/MCP config exceeds maximum nesting depth ({_MAX_MERGE_DEPTH})"
+        )
     for key, value in overlay.items():
         if key not in base:
             base[key] = value
         elif overwrite:
             if isinstance(base[key], dict) and isinstance(value, dict):
-                _deep_merge(base[key], value, overwrite=True)
+                _deep_merge(base[key], value, overwrite=True, _depth=_depth + 1)
             else:
                 base[key] = value
         else:
             if isinstance(base[key], dict) and isinstance(value, dict):
-                _deep_merge(base[key], value, overwrite=False)
+                _deep_merge(base[key], value, overwrite=False, _depth=_depth + 1)
 
 
 def _collect_hooks_from_apm(apm_dir: Path) -> dict:
@@ -519,7 +530,13 @@ def export_plugin_bundle(
     if archive:
         archive_path = output_dir / f"{pkg_name}-{pkg_version}.tar.gz"
         with tarfile.open(archive_path, "w:gz") as tar:
-            tar.add(bundle_dir, arcname=bundle_dir.name)
+
+            def _tar_filter(info: tarfile.TarInfo) -> Optional[tarfile.TarInfo]:
+                if info.issym() or info.islnk():
+                    return None  # reject symlinks injected after write
+                return info
+
+            tar.add(bundle_dir, arcname=bundle_dir.name, filter=_tar_filter)
         shutil.rmtree(bundle_dir)
         result.bundle_path = archive_path
 

@@ -63,6 +63,12 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
             _rich_warning("No deployed files found  -- empty bundle created")
         else:
             _rich_success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
+            if fmt == "plugin":
+                _rich_info(
+                    "Plugin bundle ready — contains plugin.json and "
+                    "plugin-native directories (agents/, skills/, commands/, …). "
+                    "No APM-specific files included."
+                )
 
     except (FileNotFoundError, ValueError) as exc:
         _rich_error(str(exc))
