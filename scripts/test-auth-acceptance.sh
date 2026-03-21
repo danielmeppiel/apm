@@ -224,14 +224,25 @@ setup_test_dir() {
 #   or:  run_install_manifest <dir> [extra_args...]  (for pre-built dirs)
 run_install() {
     local package="$1"; shift
-    local dir
+    local dir tmpout
     dir="$(setup_test_dir "$package")"
-    APM_OUTPUT="$(cd "$dir" && "$APM_BINARY" install "$@" 2>&1)" && APM_EXIT=0 || APM_EXIT=$?
+    tmpout="$(mktemp "$WORK_DIR/output-XXXXXX")"
+    set +e
+    (cd "$dir" && "$APM_BINARY" install "$@") 2>&1 | tee "$tmpout"
+    APM_EXIT="${PIPESTATUS[0]}"
+    set -e
+    APM_OUTPUT="$(cat "$tmpout")"
 }
 
 run_install_manifest() {
     local dir="$1"; shift
-    APM_OUTPUT="$(cd "$dir" && "$APM_BINARY" install "$@" 2>&1)" && APM_EXIT=0 || APM_EXIT=$?
+    local tmpout
+    tmpout="$(mktemp "$WORK_DIR/output-XXXXXX")"
+    set +e
+    (cd "$dir" && "$APM_BINARY" install "$@") 2>&1 | tee "$tmpout"
+    APM_EXIT="${PIPESTATUS[0]}"
+    set -e
+    APM_OUTPUT="$(cat "$tmpout")"
 }
 
 # Assertions — set $SCENARIO_OK=false on failure
