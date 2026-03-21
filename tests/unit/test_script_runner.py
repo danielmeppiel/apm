@@ -114,7 +114,15 @@ class TestScriptRunner:
             original, "hello-world.prompt.md", self.compiled_content, self.compiled_path
         )
         assert result == "copilot --log-level all"
-    
+
+    def test_transform_runtime_command_copilot_with_codex_in_model_name(self):
+        """Test copilot command with --model flag containing 'codex' substring is not misidentified."""
+        original = "copilot --allow-all-tools --model gpt-5.3-codex -p hello-world.prompt.md"
+        result = self.script_runner._transform_runtime_command(
+            original, "hello-world.prompt.md", self.compiled_content, self.compiled_path
+        )
+        assert result == "copilot --allow-all-tools --model gpt-5.3-codex"
+
     def test_detect_runtime_copilot(self):
         """Test runtime detection for copilot commands."""
         assert self.script_runner._detect_runtime("copilot --log-level all") == "copilot"
