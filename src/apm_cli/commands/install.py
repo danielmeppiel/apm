@@ -542,6 +542,13 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
+        logger.verbose_detail(
+            f"Parsed {APM_YML_FILENAME}: {len(apm_package.get_apm_dependencies())} APM deps, "
+            f"{len(apm_package.get_mcp_dependencies())} MCP deps"
+            + (f", {len(apm_package.get_dev_apm_dependencies())} dev deps"
+               if apm_package.get_dev_apm_dependencies() else "")
+        )
+
         # Get APM and MCP dependencies
         apm_deps = apm_package.get_apm_dependencies()
         dev_apm_deps = apm_package.get_dev_apm_dependencies()
@@ -1049,6 +1056,10 @@ def _install_apm_dependencies(
             lockfile_count = len(existing_lockfile.dependencies)
             if logger:
                 logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
+                if logger.verbose:
+                    for locked_dep in existing_lockfile.dependencies:
+                        sha_short = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else "no-sha"
+                        logger.verbose_detail(f"    {locked_dep.get_unique_key()}: locked at {sha_short}")
             else:
                 _rich_info(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
 
@@ -1140,6 +1151,24 @@ def _install_apm_dependencies(
 
     try:
         dependency_graph = resolver.resolve_dependencies(project_root)
+
+        # Verbose: show resolved tree summary
+        if logger:
+            tree = dependency_graph.dependency_tree
+            direct_count = len(tree.get_nodes_at_depth(1))
+            transitive_count = len(tree.nodes) - direct_count
+            if transitive_count > 0:
+                logger.verbose_detail(
+                    f"Resolved dependency tree: {direct_count} direct + "
+                    f"{transitive_count} transitive deps (max depth {tree.max_depth})"
+                )
+                for node in tree.nodes.values():
+                    if node.depth > 1:
+                        logger.verbose_detail(
+                            f"    {node.get_ancestor_chain()}"
+                        )
+            else:
+                logger.verbose_detail(f"Resolved {direct_count} direct dependencies (no transitive)")
 
         # Check for circular dependencies
         if dependency_graph.circular_dependencies:
@@ -1796,6 +1825,17 @@ def _install_apm_dependencies(
                     ref_suffix = f"#{resolved}" if resolved else ""
                     if logger:
                         logger.download_complete(display_name, ref_suffix=ref_suffix)
+                        # Log auth source for this download (verbose only)
+                        if verbose:
+                            try:
+                                from apm_cli.core.auth import AuthResolver
+                                _auth = AuthResolver()
+                                _host = dep_ref.host or "github.com"
+                                _org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
+                                _ctx = _auth.resolve(_host, org=_org)
+                                logger.verbose_detail(f"    Auth: {_ctx.source} ({_ctx.token_type or 'none'})")
+                            except Exception:
+                                pass
                     else:
                         _rich_success(f"✓ {display_name}{ref_suffix}")
 
@@ -1896,7 +1936,7 @@ def _install_apm_dependencies(
                     continue
 
         # Update .gitignore
-        _update_gitignore_for_apm_modules()
+        _update_gitignore_for_apm_modules(logger=logger)
 
         # ------------------------------------------------------------------
         # Orphan cleanup: remove deployed files for packages that were

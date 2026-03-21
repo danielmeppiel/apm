@@ -283,7 +283,7 @@ def _atomic_write(path: Path, data: str) -> None:
         raise
 
 
-def _update_gitignore_for_apm_modules():
+def _update_gitignore_for_apm_modules(logger=None):
     """Add apm_modules/ to .gitignore if not already present."""
     gitignore_path = Path(GITIGNORE_FILENAME)
     apm_modules_pattern = APM_MODULES_GITIGNORE_PATTERN
@@ -295,7 +295,10 @@ def _update_gitignore_for_apm_modules():
             with open(gitignore_path, "r", encoding="utf-8") as f:
                 current_content = [line.rstrip("\n\r") for line in f.readlines()]
         except Exception as e:
-            _rich_warning(f"Could not read .gitignore: {e}")
+            if logger:
+                logger.warning(f"Could not read .gitignore: {e}")
+            else:
+                _rich_warning(f"Could not read .gitignore: {e}")
             return
 
     # Check if apm_modules/ is already in .gitignore
@@ -310,9 +313,15 @@ def _update_gitignore_for_apm_modules():
                 f.write("\n")
             f.write(f"\n# APM dependencies\n{apm_modules_pattern}\n")
 
-        _rich_info(f"Added {apm_modules_pattern} to .gitignore")
+        if logger:
+            logger.progress(f"Added {apm_modules_pattern} to .gitignore")
+        else:
+            _rich_info(f"Added {apm_modules_pattern} to .gitignore")
     except Exception as e:
-        _rich_warning(f"Could not update .gitignore: {e}")
+        if logger:
+            logger.warning(f"Could not update .gitignore: {e}")
+        else:
+            _rich_warning(f"Could not update .gitignore: {e}")
 
 
 # ------------------------------------------------------------------

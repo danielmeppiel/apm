@@ -49,6 +49,7 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
             archive=archive,
             dry_run=dry_run,
             force=force,
+            logger=logger,
         )
 
         if dry_run:

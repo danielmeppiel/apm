@@ -2,15 +2,15 @@
 
 import time
 
-import click
-
 from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_YML_FILENAME
 from ...compilation import AgentsCompiler, CompilationConfig
-from ...utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ...core.command_logger import CommandLogger
 
 
-def _watch_mode(output, chatmode, no_links, dry_run):
+def _watch_mode(output, chatmode, no_links, dry_run, verbose=False):
     """Watch for changes in .apm/ directories and auto-recompile."""
+    logger = CommandLogger("compile-watch", verbose=verbose, dry_run=dry_run)
+
     try:
         # Try to import watchdog for file system monitoring
         from pathlib import Path
@@ -19,11 +19,12 @@ def _watch_mode(output, chatmode, no_links, dry_run):
         from watchdog.observers import Observer
 
         class APMFileHandler(FileSystemEventHandler):
-            def __init__(self, output, chatmode, no_links, dry_run):
+            def __init__(self, output, chatmode, no_links, dry_run, logger):
                 self.output = output
                 self.chatmode = chatmode
                 self.no_links = no_links
                 self.dry_run = dry_run
+                self.logger = logger
                 self.last_compile = 0
                 self.debounce_delay = 1.0  # 1 second debounce
 
@@ -44,8 +45,8 @@ def _watch_mode(output, chatmode, no_links, dry_run):
             def _recompile(self, changed_file):
                 """Recompile after file change."""
                 try:
-                    _rich_info(f"File changed: {changed_file}", symbol="eyes")
-                    _rich_info("Recompiling...", symbol="gear")
+                    self.logger.progress(f"File changed: {changed_file}", symbol="eyes")
+                    self.logger.progress("Recompiling...", symbol="gear")
 
                     # Create configuration from apm.yml with overrides
                     config = CompilationConfig.from_apm_yml(
@@ -61,23 +62,23 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 
                     if result.success:
                         if self.dry_run:
-                            _rich_success(
+                            self.logger.success(
                                 "Recompilation successful (dry run)", symbol="sparkles"
                             )
                         else:
-                            _rich_success(
+                            self.logger.success(
                                 f"Recompiled to {result.output_path}", symbol="sparkles"
                             )
                     else:
-                        _rich_error("Recompilation failed")
+                        self.logger.error("Recompilation failed")
                         for error in result.errors:
-                            click.echo(f"  [x] {error}")
+                            self.logger.error(f"  [x] {error}")
 
                 except Exception as e:
-                    _rich_error(f"Error during recompilation: {e}")
+                    self.logger.error(f"Error during recompilation: {e}")
 
         # Set up file watching
-        event_handler = APMFileHandler(output, chatmode, no_links, dry_run)
+        event_handler = APMFileHandler(output, chatmode, no_links, dry_run, logger)
         observer = Observer()
 
         # Watch patterns for APM files
@@ -109,19 +110,19 @@ def _watch_mode(output, chatmode, no_links, dry_run):
             watch_paths.append(APM_YML_FILENAME)
 
         if not watch_paths:
-            _rich_warning("No APM directories found to watch")
-            _rich_info("Run 'apm init' to create an APM project")
+            logger.warning("No APM directories found to watch")
+            logger.progress("Run 'apm init' to create an APM project")
             return
 
         # Start watching
         observer.start()
-        _rich_info(
+        logger.progress(
             f" Watching for changes in: {', '.join(watch_paths)}", symbol="eyes"
         )
-        _rich_info("Press Ctrl+C to stop watching...", symbol="info")
+        logger.progress("Press Ctrl+C to stop watching...", symbol="info")
 
         # Do initial compilation
-        _rich_info("Performing initial compilation...", symbol="gear")
+        logger.progress("Performing initial compilation...", symbol="gear")
 
         config = CompilationConfig.from_apm_yml(
             output_path=output if output != AGENTS_MD_FILENAME else None,
@@ -135,37 +136,37 @@ def _watch_mode(output, chatmode, no_links, dry_run):
 
         if result.success:
             if dry_run:
-                _rich_success(
+                logger.success(
                     "Initial compilation successful (dry run)", symbol="sparkles"
                 )
             else:
-                _rich_success(
+                logger.success(
                     f"Initial compilation complete: {result.output_path}",
                     symbol="sparkles",
                 )
         else:
-            _rich_error("Initial compilation failed")
+            logger.error("Initial compilation failed")
             for error in result.errors:
-                click.echo(f"  [x] {error}")
+                logger.error(f"  [x] {error}")
 
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             observer.stop()
-            _rich_info("Stopped watching for changes", symbol="info")
+            logger.progress("Stopped watching for changes", symbol="info")
 
         observer.join()
 
     except ImportError:
-        _rich_error("Watch mode requires the 'watchdog' library")
-        _rich_info("Install it with: uv pip install watchdog")
-        _rich_info(
+        logger.error("Watch mode requires the 'watchdog' library")
+        logger.progress("Install it with: uv pip install watchdog")
+        logger.progress(
             "Or reinstall APM: uv pip install -e . (from the apm directory)"
         )
         import sys
         sys.exit(1)
     except Exception as e:
-        _rich_error(f"Error in watch mode: {e}")
+        logger.error(f"Error in watch mode: {e}")
         import sys
         sys.exit(1)

@@ -10,13 +10,9 @@ from ...compilation import AgentsCompiler, CompilationConfig
 from ...core.command_logger import CommandLogger
 from ...primitives.discovery import discover_primitives
 from ...utils.console import (
-    STATUS_SYMBOLS,
-    _rich_echo,
     _rich_error,
     _rich_info,
     _rich_panel,
-    _rich_success,
-    _rich_warning,
 )
 from .._helpers import (
     _atomic_write,
@@ -339,7 +335,7 @@ def compile(
 
         # Watch mode
         if watch:
-            _watch_mode(output, chatmode, no_links, dry_run)
+            _watch_mode(output, chatmode, no_links, dry_run, verbose=verbose)
             return
 
         logger.start("Starting context compilation...", symbol="cogs")

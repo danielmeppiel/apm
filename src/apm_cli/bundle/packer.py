@@ -47,6 +47,7 @@ def pack_bundle(
     archive: bool = False,
     dry_run: bool = False,
     force: bool = False,
+    logger=None,
 ) -> PackResult:
     """Create a self-contained bundle from installed APM dependencies.
 
@@ -81,6 +82,7 @@ def pack_bundle(
             archive=archive,
             dry_run=dry_run,
             force=force,
+            logger=logger,
         )
 
     lockfile_path = get_lockfile_path(project_root)
@@ -196,10 +198,14 @@ def pack_bundle(
             )
             _scan_findings_total += len(verdict.all_findings)
     if _scan_findings_total:
-        _rich_warning(
+        _warn_msg = (
             f"Bundle contains {_scan_findings_total} hidden character(s) across source files "
             f"— run 'apm audit' to inspect before publishing"
         )
+        if logger:
+            logger.warning(_warn_msg)
+        else:
+            _rich_warning(_warn_msg)
 
     # 6. Build output directory
     bundle_dir = output_dir / f"{pkg_name}-{pkg_version}"

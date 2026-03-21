@@ -9,9 +9,7 @@ import click
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
 from ...core.command_logger import CommandLogger
 
-from ...deps.lockfile import LockFile
-from ...models.apm_package import APMPackage, DependencyReference
-from ...integration.mcp_integrator import MCPIntegrator
+from ...models.apm_package import APMPackage
 
 from .engine import (
     _parse_dependency_entry,
@@ -73,14 +71,14 @@ def uninstall(ctx, packages, dry_run):
         current_deps = data["dependencies"]["apm"] or []
 
         # Step 1: Validate packages
-        packages_to_remove, packages_not_found = _validate_uninstall_packages(packages, current_deps)
+        packages_to_remove, packages_not_found = _validate_uninstall_packages(packages, current_deps, logger)
         if not packages_to_remove:
             logger.warning("No packages found in apm.yml to remove")
             return
 
         # Step 2: Dry run
         if dry_run:
-            _dry_run_uninstall(packages_to_remove, Path(APM_MODULES_DIR))
+            _dry_run_uninstall(packages_to_remove, Path(APM_MODULES_DIR), logger)
             return
 
         # Step 3: Remove from apm.yml
@@ -104,11 +102,11 @@ def uninstall(ctx, packages, dry_run):
         _pre_uninstall_mcp_servers = builtins.set(lockfile.mcp_servers) if lockfile else builtins.set()
 
         # Step 5: Remove packages from disk
-        removed_from_modules = _remove_packages_from_disk(packages_to_remove, apm_modules_dir)
+        removed_from_modules = _remove_packages_from_disk(packages_to_remove, apm_modules_dir, logger)
 
         # Step 6: Cleanup transitive orphans
         orphan_removed, actual_orphans = _cleanup_transitive_orphans(
-            lockfile, packages_to_remove, apm_modules_dir, apm_yml_path
+            lockfile, packages_to_remove, apm_modules_dir, apm_yml_path, logger
         )
         removed_from_modules += orphan_removed
 
@@ -159,13 +157,13 @@ def uninstall(ctx, packages, dry_run):
         try:
             apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             project_root = Path(".")
-            cleaned = _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files)
+            cleaned = _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger)
         except Exception:
             pass  # Best effort cleanup
 
         for label, count in cleaned.items():
             if count > 0:
-                logger.progress(f"\u2713 Cleaned up {count} integrated {label}")
+                logger.progress(f"Cleaned up {count} integrated {label}", symbol="check")
 
         # Step 10: MCP cleanup
         try:

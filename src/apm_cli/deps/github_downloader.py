@@ -550,7 +550,7 @@ class GitHubPackageDownloader:
                 # Generic hosts: plain HTTPS, let git credential helpers handle auth
                 return build_https_clone_url(host, repo_ref, token=None)
     
-    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, **clone_kwargs) -> Repo:
+    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, verbose_callback=None, **clone_kwargs) -> Repo:
         """Attempt to clone a repository with fallback authentication methods.
         
         Uses authentication patterns appropriate for the platform:
@@ -562,6 +562,7 @@ class GitHubPackageDownloader:
             target_path: Target path for cloning
             progress_reporter: GitProgressReporter instance for progress updates
             dep_ref: Optional DependencyReference for platform-specific URL building
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             **clone_kwargs: Additional arguments for Repo.clone_from
             
         Returns:
@@ -611,7 +612,11 @@ class GitHubPackageDownloader:
             try:
                 auth_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref, token=dep_token)
                 _debug(f"Attempting clone with authenticated HTTPS (URL sanitized)")
-                return Repo.clone_from(auth_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+                repo = Repo.clone_from(auth_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+                if verbose_callback:
+                    masked = self._sanitize_git_error(auth_url)
+                    verbose_callback(f"Cloned from: {masked}")
+                return repo
             except GitCommandError as e:
                 last_error = e
                 # Continue to next method
@@ -619,7 +624,10 @@ class GitHubPackageDownloader:
         # Method 2: Try SSH (works with SSH keys for any host)
         try:
             ssh_url = self._build_repo_url(repo_url_base, use_ssh=True, dep_ref=dep_ref)
-            return Repo.clone_from(ssh_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            repo = Repo.clone_from(ssh_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            if verbose_callback:
+                verbose_callback(f"Cloned from: {ssh_url}")
+            return repo
         except GitCommandError as e:
             last_error = e
             # Continue to next method
@@ -627,7 +635,10 @@ class GitHubPackageDownloader:
         # Method 3: Try standard HTTPS (public repos, or git credential helper for generic hosts)
         try:
             https_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
-            return Repo.clone_from(https_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            repo = Repo.clone_from(https_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            if verbose_callback:
+                verbose_callback(f"Cloned from: {https_url}")
+            return repo
         except GitCommandError as e:
             last_error = e
         
@@ -795,13 +806,14 @@ class GitHubPackageDownloader:
             ref_name=ref_name
         )
     
-    def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+    def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main", verbose_callback=None) -> bytes:
         """Download a single file from repository (GitHub or Azure DevOps).
         
         Args:
             dep_ref: Parsed dependency reference
             file_path: Path to file within the repository (e.g., "prompts/code-review.prompt.md")
             ref: Git reference (branch, tag, or commit SHA). Defaults to "main"
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             
         Returns:
             bytes: File content
@@ -835,7 +847,7 @@ class GitHubPackageDownloader:
             return self._download_ado_file(dep_ref, file_path, ref)
 
         # GitHub API
-        return self._download_github_file(dep_ref, file_path, ref)
+        return self._download_github_file(dep_ref, file_path, ref, verbose_callback=verbose_callback)
     
     def _download_ado_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
         """Download a file from Azure DevOps repository.
@@ -932,7 +944,7 @@ class GitHubPackageDownloader:
             pass
         return None
 
-    def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+    def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main", verbose_callback=None) -> bytes:
         """Download a file from GitHub repository.
         
         For github.com without a token, tries raw.githubusercontent.com first
@@ -943,6 +955,7 @@ class GitHubPackageDownloader:
             dep_ref: Parsed dependency reference
             file_path: Path to file within the repository
             ref: Git reference (branch, tag, or commit SHA)
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             
         Returns:
             bytes: File content
@@ -968,6 +981,8 @@ class GitHubPackageDownloader:
         if host.lower() == "github.com" and not token:
             content = self._try_raw_download(owner, repo, ref, file_path)
             if content is not None:
+                if verbose_callback:
+                    verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                 return content
             # raw download returned 404 — could be wrong default branch.
             # Try the other default branch before falling through to the API.
@@ -975,6 +990,8 @@ class GitHubPackageDownloader:
                 fallback_ref = "master" if ref == "main" else "main"
                 content = self._try_raw_download(owner, repo, fallback_ref, file_path)
                 if content is not None:
+                    if verbose_callback:
+                        verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                     return content
             # All raw attempts failed — fall through to API path which
             # handles private repos, rate-limit messaging, and SAML errors.
@@ -999,6 +1016,8 @@ class GitHubPackageDownloader:
         try:
             response = self._resilient_get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
+            if verbose_callback:
+                verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
             return response.content
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
@@ -1021,6 +1040,8 @@ class GitHubPackageDownloader:
                 try:
                     response = self._resilient_get(fallback_url, headers=headers, timeout=30)
                     response.raise_for_status()
+                    if verbose_callback:
+                        verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                     return response.content
                 except requests.exceptions.HTTPError:
                     raise RuntimeError(
@@ -1064,6 +1085,8 @@ class GitHubPackageDownloader:
                         unauth_headers = {'Accept': 'application/vnd.github.v3.raw'}
                         response = self._resilient_get(api_url, headers=unauth_headers, timeout=30)
                         response.raise_for_status()
+                        if verbose_callback:
+                            verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                         return response.content
                     except requests.exceptions.HTTPError:
                         pass  # Fall through to the original error
@@ -1790,7 +1813,8 @@ author: {dep_ref.repo_url.split('/')[0]}
         repo_ref: Union[str, "DependencyReference"], 
         target_path: Path,
         progress_task_id=None,
-        progress_obj=None
+        progress_obj=None,
+        verbose_callback=None
     ) -> PackageInfo:
         """Download a GitHub repository and validate it as an APM package.
         
@@ -1804,6 +1828,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             target_path: Local path where package should be downloaded
             progress_task_id: Rich Progress task ID for progress updates
             progress_obj: Rich Progress object for progress updates
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             
         Returns:
             PackageInfo: Information about the downloaded package
@@ -1883,7 +1908,8 @@ author: {dep_ref.repo_url.split('/')[0]}
                     dep_ref.repo_url, 
                     target_path, 
                     progress_reporter=progress_reporter,
-                    dep_ref=dep_ref
+                    dep_ref=dep_ref,
+                    verbose_callback=verbose_callback
                 )
                 repo.git.checkout(resolved_ref.resolved_commit)
             else:
@@ -1894,6 +1920,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                     target_path,
                     progress_reporter=progress_reporter,
                     dep_ref=dep_ref,
+                    verbose_callback=verbose_callback,
                     depth=1,
                     branch=resolved_ref.ref_name
                 )

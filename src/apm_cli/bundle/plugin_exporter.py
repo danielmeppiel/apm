@@ -319,7 +319,7 @@ def _get_dev_dependency_urls(apm_yml_path: Path) -> Set[Tuple[str, str]]:
 
 
 def _find_or_synthesize_plugin_json(
-    project_root: Path, apm_yml_path: Path
+    project_root: Path, apm_yml_path: Path, logger=None,
 ) -> dict:
     """Locate an existing ``plugin.json`` or synthesise one from ``apm.yml``."""
     from ..deps.plugin_parser import synthesize_plugin_json_from_apm_yml
@@ -330,16 +330,24 @@ def _find_or_synthesize_plugin_json(
         try:
             return json.loads(plugin_json_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            _rich_warning(
+            _warn_msg = (
                 f"Found plugin.json at {plugin_json_path} but could not parse it: {exc}. "
                 "Falling back to synthesis from apm.yml."
             )
+            if logger:
+                logger.warning(_warn_msg)
+            else:
+                _rich_warning(_warn_msg)
 
     else:
-        _rich_warning(
+        _warn_msg = (
             "No plugin.json found. Synthesizing from apm.yml. "
             "Consider running 'apm init --plugin'."
         )
+        if logger:
+            logger.warning(_warn_msg)
+        else:
+            _rich_warning(_warn_msg)
     return synthesize_plugin_json_from_apm_yml(apm_yml_path)
 
 
@@ -400,6 +408,7 @@ def export_plugin_bundle(
     archive: bool = False,
     dry_run: bool = False,
     force: bool = False,
+    logger=None,
 ) -> PackResult:
     """Export the project as a plugin-native directory.
 
@@ -439,7 +448,7 @@ def export_plugin_bundle(
             )
 
     # 3. Find or synthesize plugin.json
-    plugin_json = _find_or_synthesize_plugin_json(project_root, apm_yml_path)
+    plugin_json = _find_or_synthesize_plugin_json(project_root, apm_yml_path, logger=logger)
 
     # 4. devDependencies filtering
     dev_dep_urls = _get_dev_dependency_urls(apm_yml_path)
@@ -510,7 +519,10 @@ def export_plugin_bundle(
 
     # 7. Emit collision warnings
     for msg in collisions:
-        _rich_warning(msg)
+        if logger:
+            logger.warning(msg)
+        else:
+            _rich_warning(msg)
 
     # 8. Build output file list (sorted for determinism)
     output_files = sorted(file_map.keys())
@@ -548,10 +560,14 @@ def export_plugin_bundle(
             verdict = SecurityGate.scan_text(text, str(src), policy=WARN_POLICY)
             scan_findings_total += len(verdict.all_findings)
     if scan_findings_total:
-        _rich_warning(
+        _warn_msg = (
             f"Bundle contains {scan_findings_total} hidden character(s) across "
             f"source files — run 'apm audit' to inspect before publishing"
         )
+        if logger:
+            logger.warning(_warn_msg)
+        else:
+            _rich_warning(_warn_msg)
 
     # 11. Write files to output directory (clean slate to prevent symlink attacks)
     if bundle_dir.exists():
