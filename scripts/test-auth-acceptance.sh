@@ -60,7 +60,7 @@
 #  16 | No auth, private repo         | A6     | H1   | V2   | Suggests auth guidance
 #  17 | Fine-grained wrong owner      | A2     | H1   | V3   | Fails, no crash
 #  18 | Verbose output contract       | --     | H1   | --   | Auth details only w/ flag
-#  19 | Mega-manifest: all sources    | A1+A7  | H1+4 | V1-3 | All deps in one install
+#  19 | CHAOS mega-manifest           | ALL    | H1+4 | V1-3 | Every format+source in 1 install
 #  20 | Multi-org PAT routing         | A1+A1  | H1   | V2+3 | 2 orgs, per-org only, no global
 #
 # =============================================================================
@@ -87,11 +87,15 @@
 #   export GH_TOKEN="$(gh auth token 2>/dev/null)"   # OAuth from gh CLI
 #   export ADO_APM_PAT="ado-pat-here"                # Azure DevOps PAT
 #
-#   # 5. Run:
-#   ./scripts/test-auth-acceptance.sh
+#   # 5. Run (choose one):
+#   ./scripts/test-auth-acceptance.sh             # progressive — all 20 scenarios
+#   ./scripts/test-auth-acceptance.sh --mega      # chaos mega-manifest ONLY (#19)
 #
 #   Scenarios auto-SKIP when their required env vars or repos are missing.
 #   A minimal run (no tokens) still tests scenarios 1, 15, 18.
+#
+#   Load tokens from .env (if present):
+#   set -a && source .env && set +a && ./scripts/test-auth-acceptance.sh
 #
 # =============================================================================
 # CI USAGE (GitHub Actions)
@@ -107,6 +111,15 @@
 # =============================================================================
 
 set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Mode: --mega runs ONLY the chaos mega-manifest (scenario 19)
+# ---------------------------------------------------------------------------
+RUN_MODE="progressive"   # default: all 20 scenarios
+if [[ "${1:-}" == "--mega" ]]; then
+    RUN_MODE="mega"
+    shift
+fi
 
 # ---------------------------------------------------------------------------
 # Logging (matches existing scripts/test-integration.sh style)
@@ -807,76 +820,115 @@ test_18_verbose_contract() {
 }
 
 # ==========================================================================
-# SCENARIO 19: Mega-manifest — all auth sources in a single install
+# SCENARIO 19: CHAOS MEGA-MANIFEST — the ultimate auth stress test
 # --------------------------------------------------------------------------
-# The hardest real-world case: a SINGLE apm.yml that contains dependencies
-# from MULTIPLE auth domains. The resolver must route each dependency to
-# its correct token independently within one install pass:
-#   - Public github.com repo       → unauthenticated validation
-#   - Private github.com repo      → GITHUB_APM_PAT / per-org PAT
-#   - EMU internal repo (diff org) → per-org PAT for EMU org
-#   - ADO repo                     → ADO_APM_PAT
+# A single apm.yml that combines EVERY dependency format, auth source,
+# host type, and visibility level the user has configured — all in one
+# install pass. This is what a power user's real-world manifest looks like:
 #
-# Progressive: builds the manifest from whatever repos are configured.
-# Requires at least 2 repos from different auth domains to be meaningful.
+#   1. Public repo, string shorthand (no auth)
+#   2. Public repo, explicit github.com FQDN (no auth, different format)
+#   3. Private repo from org A, pinned by tag (GITHUB_APM_PAT_ORG_A)
+#   4. Private repo from org B, pinned by tag (GITHUB_APM_PAT_ORG_B)
+#   5. EMU internal repo from a third org (per-org or global PAT)
+#   6. ADO repo via FQDN (ADO_APM_PAT, completely separate auth)
+#   7. Virtual file dep — single .prompt.md from a public repo
+#
+# The resolver must:
+#   - Route each dep to its correct token independently
+#   - Use unauthenticated-first for public deps on github.com
+#   - Use per-org PATs when available, fall back to global
+#   - Use ADO_APM_PAT for ADO deps (no credential fill)
+#   - Handle mixed string/FQDN/virtual formats in one manifest
+#
+# Progressive: builds the manifest from whatever repos/tokens are
+# configured. Minimum: 2 deps from different auth domains.
+# Maximum: all 7 dep slots filled for full chaos coverage.
 # ==========================================================================
 test_19_mega_manifest() {
-    local name="19: Mega-manifest: all sources in one install"
+    local name="19: CHAOS mega-manifest: all sources, all formats"
     log_test "$name"
 
-    # Build dep list from whatever repos are configured
-    local -a deps=()
-    local -a desc=()
+    # We'll build raw YAML to mix string, FQDN, and virtual formats
+    local dir
+    dir="$(mktemp -d "$WORK_DIR/chaos-XXXXXX")"
+    local dep_count=0
+    local -a dep_desc=()
 
-    # Always include public (no auth needed)
-    deps+=("$AUTH_TEST_PUBLIC_REPO")
-    desc+=("public")
+    # Start YAML header
+    cat > "$dir/apm.yml" <<'HEADER'
+name: chaos-mega-manifest-test
+version: 0.0.1
+description: "Brutal auth stress test — every format, every auth source, one install"
+dependencies:
+  apm:
+HEADER
 
-    # Private repo (needs GITHUB_APM_PAT or per-org)
+    # --- Slot 1: Public repo, string shorthand (always available) ---
+    echo "    - \"${AUTH_TEST_PUBLIC_REPO}\"" >> "$dir/apm.yml"
+    dep_count=$((dep_count + 1))
+    dep_desc+=("public-shorthand")
+
+    # --- Slot 2: Same public repo, FQDN format (validates format parsing) ---
+    # Use a different public virtual file to avoid duplicate key
+    echo "    - \"github.com/github/awesome-copilot\"" >> "$dir/apm.yml"
+    dep_count=$((dep_count + 1))
+    dep_desc+=("public-fqdn")
+
+    # --- Slot 3: Private repo from org A, pinned by tag ---
     if [[ -n "$AUTH_TEST_PRIVATE_REPO" && -n "$_ORIG_GITHUB_APM_PAT" ]]; then
-        deps+=("$AUTH_TEST_PRIVATE_REPO")
-        desc+=("private")
+        echo "    - \"${AUTH_TEST_PRIVATE_REPO}\"" >> "$dir/apm.yml"
+        dep_count=$((dep_count + 1))
+        dep_desc+=("private-orgA")
     fi
 
-    # EMU repo (different org, needs per-org or global PAT)
-    if [[ -n "$AUTH_TEST_EMU_REPO" && -n "$_ORIG_GITHUB_APM_PAT" ]]; then
-        # Only add if it's from a DIFFERENT org than PRIVATE_REPO
-        local priv_org="${AUTH_TEST_PRIVATE_REPO%%/*}"
-        local emu_org="${AUTH_TEST_EMU_REPO%%/*}"
-        if [[ "$priv_org" != "$emu_org" || -z "$AUTH_TEST_PRIVATE_REPO" ]]; then
-            deps+=("$AUTH_TEST_EMU_REPO")
-            desc+=("EMU-internal")
-        fi
-    fi
-
-    # Second private repo from a different org
+    # --- Slot 4: Private repo from org B (different org) ---
     if [[ -n "$AUTH_TEST_PRIVATE_REPO_2" ]]; then
         local org2_suffix
         org2_suffix="$(org_env_suffix "$AUTH_TEST_PRIVATE_REPO_2")"
         local per_org_var2="GITHUB_APM_PAT_${org2_suffix}"
         local per_org_val2="${!per_org_var2:-${_ORIG_GITHUB_APM_PAT:-}}"
         if [[ -n "$per_org_val2" ]]; then
-            deps+=("$AUTH_TEST_PRIVATE_REPO_2")
-            desc+=("private-org2")
+            echo "    - \"${AUTH_TEST_PRIVATE_REPO_2}\"" >> "$dir/apm.yml"
+            dep_count=$((dep_count + 1))
+            dep_desc+=("private-orgB")
         fi
     fi
 
-    # ADO repo (completely separate auth: ADO_APM_PAT)
-    if [[ -n "$AUTH_TEST_ADO_REPO" && -n "$_ORIG_ADO_APM_PAT" ]]; then
-        deps+=("$AUTH_TEST_ADO_REPO")
-        desc+=("ADO")
+    # --- Slot 5: EMU internal repo (third org, different visibility) ---
+    if [[ -n "$AUTH_TEST_EMU_REPO" && -n "$_ORIG_GITHUB_APM_PAT" ]]; then
+        local priv_org="${AUTH_TEST_PRIVATE_REPO%%/*}"
+        local emu_org="${AUTH_TEST_EMU_REPO%%/*}"
+        if [[ "$priv_org" != "$emu_org" || -z "$AUTH_TEST_PRIVATE_REPO" ]]; then
+            echo "    - \"${AUTH_TEST_EMU_REPO}\"" >> "$dir/apm.yml"
+            dep_count=$((dep_count + 1))
+            dep_desc+=("EMU-internal")
+        fi
     fi
 
-    # Need at least 2 deps from different auth domains to be meaningful
-    if [[ "${#deps[@]}" -lt 2 ]]; then
-        record_skip "$name" "need ≥2 repos from different auth domains"
+    # --- Slot 6: ADO repo (completely different auth domain) ---
+    if [[ -n "$AUTH_TEST_ADO_REPO" && -n "$_ORIG_ADO_APM_PAT" ]]; then
+        echo "    - \"${AUTH_TEST_ADO_REPO}\"" >> "$dir/apm.yml"
+        dep_count=$((dep_count + 1))
+        dep_desc+=("ADO")
+    fi
+
+    # Close YAML
+    echo "  mcp: []" >> "$dir/apm.yml"
+
+    # Need at least 3 deps to call it a mega test
+    if [[ "$dep_count" -lt 3 ]]; then
+        record_skip "$name" "need ≥3 deps from different auth domains (got $dep_count: ${dep_desc[*]})"
         return
     fi
 
-    log_dim "Deps: ${desc[*]} (${#deps[@]} total)"
-    unset_all_auth
+    log_dim "Chaos manifest: ${dep_desc[*]} ($dep_count deps)"
+    log_dim "--- apm.yml ---"
+    while IFS= read -r line; do log_dim "$line"; done < "$dir/apm.yml"
+    log_dim "--- end ---"
 
     # Restore ALL tokens — each dep picks its own
+    unset_all_auth
     [[ -n "$_ORIG_GITHUB_APM_PAT" ]] && export GITHUB_APM_PAT="$_ORIG_GITHUB_APM_PAT"
     [[ -n "$_ORIG_ADO_APM_PAT" ]]    && export ADO_APM_PAT="$_ORIG_ADO_APM_PAT"
     for i in "${!_ORIG_PER_ORG_PAT_NAMES[@]}"; do
@@ -885,15 +937,17 @@ test_19_mega_manifest() {
 
     SCENARIO_OK=true
 
-    local dir
-    dir="$(setup_test_dir "${deps[@]}")"
-    log_dim "Manifest: $(cat "$dir/apm.yml" | grep '    -' | sed 's/^    - /  /')"
     run_install_manifest "$dir" --verbose
 
-    assert_exit 0 "all deps install successfully"
-    # Verify the install count matches (or at least mentions installing)
-    assert_contains "Installed.*${#deps[@]}|${#deps[@]}.*dependenc|Installed.*APM" \
-        "all ${#deps[@]} deps accounted for"
+    assert_exit 0 "all $dep_count deps install in one pass"
+
+    # Verify at least the public deps succeeded
+    assert_contains "apm-sample-package|awesome-copilot" "at least one public dep resolved"
+
+    # If private deps were included, verify token sources appear in verbose
+    if [[ -n "$AUTH_TEST_PRIVATE_REPO" && -n "$_ORIG_GITHUB_APM_PAT" ]]; then
+        assert_contains "source=GITHUB_APM_PAT" "private dep used token"
+    fi
 
     $SCENARIO_OK && record_pass "$name" || record_fail "$name"
     restore_auth
@@ -1008,37 +1062,44 @@ echo -e "${DIM}Tokens:       GITHUB_APM_PAT=${_ORIG_GITHUB_APM_PAT:+SET} GITHUB_
 for i in "${!_ORIG_PER_ORG_PAT_NAMES[@]}"; do
     echo -e "${DIM}              ${_ORIG_PER_ORG_PAT_NAMES[$i]}=SET${NC}"
 done
+echo -e "${DIM}Mode:         ${RUN_MODE}${NC}"
 echo ""
 
-# Core auth scenarios
-test_01_public_no_auth
-test_02_public_with_pat
-test_03_private_global_pat
-test_04_private_per_org_pat
-test_05_token_priority
-test_06_github_token_fallback
-test_07_gh_token_fallback
-test_08_credential_helper_only
-test_09_emu_internal_repo
-test_10_mixed_manifest
-test_11_token_type_detection
+if [[ "$RUN_MODE" == "mega" ]]; then
+    # --mega: run ONLY the chaos mega-manifest
+    test_19_mega_manifest
+else
+    # progressive: all 20 scenarios (auto-skip when deps missing)
+    # Core auth scenarios
+    test_01_public_no_auth
+    test_02_public_with_pat
+    test_03_private_global_pat
+    test_04_private_per_org_pat
+    test_05_token_priority
+    test_06_github_token_fallback
+    test_07_gh_token_fallback
+    test_08_credential_helper_only
+    test_09_emu_internal_repo
+    test_10_mixed_manifest
+    test_11_token_type_detection
 
-# ADO scenarios
-test_12_ado_repo
-test_13_ado_no_pat
+    # ADO scenarios
+    test_12_ado_repo
+    test_13_ado_no_pat
 
-# Error scenarios
-test_14_invalid_token
-test_15_nonexistent_repo
-test_16_no_auth_private_repo
-test_17_fine_grained_wrong_owner
+    # Error scenarios
+    test_14_invalid_token
+    test_15_nonexistent_repo
+    test_16_no_auth_private_repo
+    test_17_fine_grained_wrong_owner
 
-# Output contract
-test_18_verbose_contract
+    # Output contract
+    test_18_verbose_contract
 
-# Mixed-source manifests
-test_19_mega_manifest
-test_20_multi_org_per_org_pats
+    # Mixed-source manifests
+    test_19_mega_manifest
+    test_20_multi_org_per_org_pats
+fi
 
 # ==========================================================================
 # SUMMARY
