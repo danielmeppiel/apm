@@ -1045,7 +1045,7 @@ def _install_apm_dependencies(
             if logger:
                 logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
                 if logger.verbose:
-                    for locked_dep in existing_lockfile.dependencies:
+                    for locked_dep in existing_lockfile.get_all_dependencies():
                         sha_short = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else "no-sha"
                         logger.verbose_detail(f"    {locked_dep.get_unique_key()}: locked at {sha_short}")
 
