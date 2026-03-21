@@ -53,9 +53,31 @@ The org name comes from the dependency reference — `contoso/my-package` checks
 
 Per-org tokens take priority over global tokens. Use this when different orgs require different PATs (e.g., separate SSO authorizations).
 
+## Fine-grained PAT setup
+
+Fine-grained PATs (`github_pat_`) are scoped to a **single resource owner** — either a user account or an organization. A user-scoped fine-grained PAT **cannot** access repos owned by an organization, even if you are a member of that org.
+
+To access org packages, create the PAT with the **org** as the resource owner at [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new).
+
+Required permissions:
+
+| Permission | Level | Purpose |
+|------------|-------|---------|
+| **Metadata** | Read | Validation and discovery |
+| **Contents** | Read | Downloading package files |
+
+Set **Repository access** to "All repositories" or select the specific repos your manifest references.
+
+**Alternatives that skip scoping entirely:**
+
+- `gh auth login` — produces an OAuth token that inherits your full org membership. Easiest zero-config path.
+- Classic PATs (`ghp_`) — inherit the user's membership across all orgs. GitHub is deprecating these in favor of fine-grained PATs.
+
 ## Enterprise Managed Users (EMU)
 
 EMU orgs can live on **github.com** (e.g., `contoso-microsoft`) or on **GHE Cloud Data Residency** (`*.ghe.com`). EMU tokens are standard PATs (`ghp_` classic or `github_pat_` fine-grained) — there is no special prefix. They are scoped to the enterprise and cannot access public repos on github.com.
+
+Fine-grained PATs for EMU orgs **must** use the EMU org as the resource owner — a user-scoped fine-grained PAT will not work. See [Fine-grained PAT setup](#fine-grained-pat-setup).
 
 If your manifest mixes enterprise and public packages, use separate tokens:
 
@@ -128,6 +150,10 @@ Authorize your PAT for SSO at [github.com/settings/tokens](https://github.com/se
 ### EMU token can't access public repos
 
 EMU PATs use standard prefixes (`ghp_`, `github_pat_`) — there is no EMU-specific prefix. They are enterprise-scoped and cannot access public github.com repos. Use a standard PAT for public repos alongside your EMU PAT — see [Enterprise Managed Users (EMU)](#enterprise-managed-users-emu) above.
+
+### Fine-grained PAT can't access org repos
+
+Fine-grained PATs are scoped to one resource owner. If you created the PAT under your **user account**, it cannot access repos owned by an organization — even if you are an org member. Recreate the PAT with the **org** as the resource owner. Classic PATs (`ghp_`) and `gh auth login` OAuth tokens do not have this limitation. See [Fine-grained PAT setup](#fine-grained-pat-setup).
 
 ### Diagnosing auth failures
 
