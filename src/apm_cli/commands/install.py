@@ -310,34 +310,47 @@ def _validate_package_exists(package, verbose=False):
         auth_resolver = AuthResolver()
         host = dep_ref.host or default_host()
         org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
+        host_info = auth_resolver.classify_host(host)
 
         if verbose_log:
             ctx = auth_resolver.resolve(host, org=org)
             verbose_log(f"Auth resolved: host={host}, org={org}, source={ctx.source}, type={ctx.token_type}")
 
-        def _ls_remote(token, git_env):
-            """Try git ls-remote with optional auth."""
-            url = f"https://{host}/{dep_ref.repo_url}.git"
-            cmd = ['git']
+        def _check_repo(token, git_env):
+            """Check repo accessibility via GitHub API (or git ls-remote for non-GitHub)."""
+            import urllib.request
+            import urllib.error
+
+            api_base = host_info.api_base
+            api_url = f"{api_base}/repos/{dep_ref.repo_url}"
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "apm-cli",
+            }
             if token:
-                cmd += ['-c', f'http.extraHeader=Authorization: Bearer {token}']
-            cmd += ['ls-remote', '--heads', '--exit-code', url]
-            result = subprocess.run(
-                cmd,
-                capture_output=True, text=True, timeout=30,
-                env=git_env,
-            )
-            if result.returncode != 0:
-                # Log sanitized error (never log token-bearing URLs)
-                stderr_clean = result.stderr.strip().split('\n')[-1] if result.stderr else "unknown error"
+                headers["Authorization"] = f"Bearer {token}"
+
+            req = urllib.request.Request(api_url, headers=headers)
+            try:
+                resp = urllib.request.urlopen(req, timeout=15)
                 if verbose_log:
-                    verbose_log(f"git ls-remote rc={result.returncode}: {stderr_clean}")
-                raise RuntimeError(f"git ls-remote failed: {result.stderr}")
-            return True
+                    verbose_log(f"API {api_url} → {resp.status}")
+                return True
+            except urllib.error.HTTPError as e:
+                if verbose_log:
+                    verbose_log(f"API {api_url} → {e.code} {e.reason}")
+                if e.code == 404 and token:
+                    # 404 with token could mean no access — raise to trigger fallback
+                    raise RuntimeError(f"API returned {e.code}")
+                raise RuntimeError(f"API returned {e.code}: {e.reason}")
+            except Exception as e:
+                if verbose_log:
+                    verbose_log(f"API request failed: {e}")
+                raise
 
         try:
             return auth_resolver.try_with_fallback(
-                host, _ls_remote,
+                host, _check_repo,
                 org=org,
                 unauth_first=True,
                 verbose_callback=verbose_log,
@@ -352,33 +365,37 @@ def _validate_package_exists(package, verbose=False):
         auth_resolver = AuthResolver()
         host = default_host()
         org = package.split('/')[0] if '/' in package else None
+        repo_path = package  # owner/repo format
 
-        if is_valid_fqdn(package):
-            base_url = f"https://{package}.git"
-        else:
-            base_url = f"https://{host}/{package}.git"
+        def _check_repo_fallback(token, git_env):
+            import urllib.request
+            import urllib.error
 
-        def _ls_remote_fallback(token, git_env):
-            url = base_url
-            cmd = ['git']
+            host_info = auth_resolver.classify_host(host)
+            api_url = f"{host_info.api_base}/repos/{repo_path}"
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "apm-cli",
+            }
             if token:
-                cmd += ['-c', f'http.extraHeader=Authorization: Bearer {token}']
-            cmd += ['ls-remote', '--heads', '--exit-code', url]
-            result = subprocess.run(
-                cmd,
-                capture_output=True, text=True, timeout=30,
-                env=git_env,
-            )
-            if result.returncode != 0:
-                stderr_clean = result.stderr.strip().split('\n')[-1] if result.stderr else "unknown error"
+                headers["Authorization"] = f"Bearer {token}"
+
+            req = urllib.request.Request(api_url, headers=headers)
+            try:
+                resp = urllib.request.urlopen(req, timeout=15)
+                return True
+            except urllib.error.HTTPError as e:
                 if verbose_log:
-                    verbose_log(f"git ls-remote rc={result.returncode}: {stderr_clean}")
-                raise RuntimeError(f"git ls-remote failed: {result.stderr}")
-            return True
+                    verbose_log(f"API fallback → {e.code} {e.reason}")
+                raise RuntimeError(f"API returned {e.code}")
+            except Exception as e:
+                if verbose_log:
+                    verbose_log(f"API fallback failed: {e}")
+                raise
 
         try:
             return auth_resolver.try_with_fallback(
-                host, _ls_remote_fallback,
+                host, _check_repo_fallback,
                 org=org,
                 unauth_first=True,
                 verbose_callback=verbose_log,
