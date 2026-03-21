@@ -24,10 +24,12 @@ CATEGORY_OVERWRITE = "overwrite"
 CATEGORY_WARNING = "warning"
 CATEGORY_ERROR = "error"
 CATEGORY_SECURITY = "security"
+CATEGORY_AUTH = "auth"
 CATEGORY_INFO = "info"
 
 _CATEGORY_ORDER = [
     CATEGORY_SECURITY,
+    CATEGORY_AUTH,
     CATEGORY_COLLISION,
     CATEGORY_OVERWRITE,
     CATEGORY_WARNING,
@@ -142,6 +144,18 @@ class DiagnosticCollector:
                 )
             )
 
+    def auth(self, message: str, package: str = "", detail: str = "") -> None:
+        """Record an authentication diagnostic (credential resolution, fallback, EMU detection)."""
+        with self._lock:
+            self._diagnostics.append(
+                Diagnostic(
+                    message=message,
+                    category=CATEGORY_AUTH,
+                    package=package,
+                    detail=detail,
+                )
+            )
+
     # ------------------------------------------------------------------
     # Query helpers
     # ------------------------------------------------------------------
@@ -159,6 +173,11 @@ class DiagnosticCollector:
     def security_count(self) -> int:
         """Return number of security findings."""
         return sum(1 for d in self._diagnostics if d.category == CATEGORY_SECURITY)
+
+    @property
+    def auth_count(self) -> int:
+        """Return number of auth diagnostics."""
+        return sum(1 for d in self._diagnostics if d.category == CATEGORY_AUTH)
 
     @property
     def has_critical_security(self) -> bool:
@@ -210,6 +229,8 @@ class DiagnosticCollector:
 
             if cat == CATEGORY_SECURITY:
                 self._render_security_group(items)
+            elif cat == CATEGORY_AUTH:
+                self._render_auth_group(items)
             elif cat == CATEGORY_COLLISION:
                 self._render_collision_group(items)
             elif cat == CATEGORY_OVERWRITE:
@@ -271,11 +292,24 @@ class DiagnosticCollector:
                 f"  [i] {len(info)} file(s) contain unusual characters"
             )
 
+    def _render_auth_group(self, items: List[Diagnostic]) -> None:
+        """Render auth diagnostics group."""
+        count = len(items)
+        noun = "issue" if count == 1 else "issues"
+        _rich_warning(f"  [!] {count} authentication {noun}")
+        for d in items:
+            pkg_prefix = f"[{d.package}] " if d.package else ""
+            _rich_echo(f"    └─ {pkg_prefix}{d.message}", color="yellow")
+            if d.detail and self.verbose:
+                _rich_echo(f"         {d.detail}", color="dim")
+        if not self.verbose:
+            _rich_info("    Run with --verbose for auth resolution details")
+
     def _render_collision_group(self, items: List[Diagnostic]) -> None:
         count = len(items)
         noun = "file" if count == 1 else "files"
         _rich_warning(
-            f"  ⚠ {count} {noun} skipped — local files exist, not managed by APM"
+            f"  [!] {count} {noun} skipped -- local files exist, not managed by APM"
         )
         _rich_info("    Use 'apm install --force' to overwrite")
         if not self.verbose:
@@ -293,7 +327,7 @@ class DiagnosticCollector:
         count = len(items)
         noun = "skill" if count == 1 else "skills"
         _rich_warning(
-            f"  ⚠ {count} {noun} replaced by a different package (last installed wins)"
+            f"  [!] {count} {noun} replaced by a different package (last installed wins)"
         )
         if not self.verbose:
             _rich_info("    Run with --verbose to see details")
@@ -310,16 +344,16 @@ class DiagnosticCollector:
     def _render_warning_group(self, items: List[Diagnostic]) -> None:
         for d in items:
             pkg_prefix = f"[{d.package}] " if d.package else ""
-            _rich_warning(f"  ⚠ {pkg_prefix}{d.message}")
+            _rich_warning(f"  [!] {pkg_prefix}{d.message}")
             if d.detail and self.verbose:
                 _rich_echo(f"    └─ {d.detail}", color="dim")
 
     def _render_error_group(self, items: List[Diagnostic]) -> None:
         count = len(items)
         noun = "package" if count == 1 else "packages"
-        _rich_echo(f"  ✗ {count} {noun} failed:", color="red")
+        _rich_echo(f"  [x] {count} {noun} failed:", color="red")
         for d in items:
-            pkg_prefix = f"{d.package} — " if d.package else ""
+            pkg_prefix = f"{d.package} -- " if d.package else ""
             _rich_echo(f"    └─ {pkg_prefix}{d.message}", color="red")
             if d.detail and self.verbose:
                 _rich_echo(f"         {d.detail}", color="dim")

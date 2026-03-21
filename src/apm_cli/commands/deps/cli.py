@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any
 # Import existing APM components
 from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
 from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package
-from ...utils.console import _rich_success, _rich_error, _rich_info, _rich_warning
+from ...core.command_logger import CommandLogger
 
 # Import APM dependency system components (with fallback)
 from ...deps.github_downloader import GitHubPackageDownloader
@@ -37,6 +37,8 @@ def deps():
 @deps.command(name="list", help="List installed APM dependencies")
 def list_packages():
     """Show all installed APM dependencies with context files and agent workflows."""
+    logger = CommandLogger("deps-list")
+
     try:
         # Import Rich components with fallback
         from rich.table import Table
@@ -55,12 +57,8 @@ def list_packages():
         
         # Check if apm_modules exists
         if not apm_modules_path.exists():
-            if has_rich:
-                console.print(" No APM dependencies installed yet", style="cyan")
-                console.print("Run 'apm install' to install dependencies from apm.yml", style="dim")
-            else:
-                click.echo(" No APM dependencies installed yet")
-                click.echo("Run 'apm install' to install dependencies from apm.yml")
+            logger.progress("No APM dependencies installed yet")
+            logger.verbose_detail("Run 'apm install' to install dependencies from apm.yml")
             return
         
         # Load project dependencies to check for orphaned packages
@@ -167,13 +165,10 @@ def list_packages():
                     'is_orphaned': is_orphaned
                 })
             except Exception as e:
-                click.echo(f"[!] Warning: Failed to read package {org_repo_name}: {e}")
+                logger.warning(f"Failed to read package {org_repo_name}: {e}")
         
         if not installed_packages:
-            if has_rich:
-                console.print(" apm_modules/ directory exists but contains no valid packages", style="cyan")
-            else:
-                click.echo(" apm_modules/ directory exists but contains no valid packages")
+            logger.progress("apm_modules/ directory exists but contains no valid packages")
             return
         
         # Display packages in table format
@@ -235,13 +230,15 @@ def list_packages():
                 click.echo("\n Run 'apm prune' to remove orphaned packages")
 
     except Exception as e:
-        _rich_error(f"Error listing dependencies: {e}")
+        logger.error(f"Error listing dependencies: {e}")
         sys.exit(1)
 
 
 @deps.command(help="Show dependency tree structure")  
 def tree():
     """Display dependencies in hierarchical tree format using lockfile."""
+    logger = CommandLogger("deps-tree")
+
     try:
         # Import Rich components with fallback
         from rich.tree import Tree
@@ -395,24 +392,26 @@ def tree():
                     click.echo("+-- No dependencies installed")
 
     except Exception as e:
-        _rich_error(f"Error showing dependency tree: {e}")
+        logger.error(f"Error showing dependency tree: {e}")
         sys.exit(1)
 
 
 @deps.command(help="Remove all APM dependencies")
 def clean():
     """Remove entire apm_modules/ directory."""
+    logger = CommandLogger("deps-clean")
+
     project_root = Path(".")
     apm_modules_path = project_root / APM_MODULES_DIR
     
     if not apm_modules_path.exists():
-        _rich_info("No apm_modules/ directory found - already clean")
+        logger.progress("No apm_modules/ directory found - already clean")
         return
     
     # Show what will be removed
     package_count = len([d for d in apm_modules_path.iterdir() if d.is_dir()])
     
-    _rich_warning(f"This will remove the entire apm_modules/ directory ({package_count} packages)")
+    logger.warning(f"This will remove the entire apm_modules/ directory ({package_count} packages)")
     
     # Confirmation prompt
     try:
@@ -422,14 +421,14 @@ def clean():
         confirm = click.confirm("Continue?")
     
     if not confirm:
-        _rich_info("Operation cancelled")
+        logger.progress("Operation cancelled")
         return
     
     try:
         shutil.rmtree(apm_modules_path)
-        _rich_success("Successfully removed apm_modules/ directory")
+        logger.success("Successfully removed apm_modules/ directory")
     except Exception as e:
-        _rich_error(f"Error removing apm_modules/: {e}")
+        logger.error(f"Error removing apm_modules/: {e}")
         sys.exit(1)
 
 
@@ -437,50 +436,53 @@ def clean():
 @click.argument('package', required=False)
 def update(package: Optional[str]):
     """Update specific package or all if no package specified."""
-    
+    logger = CommandLogger("deps-update")
+
     project_root = Path(".")
     apm_modules_path = project_root / APM_MODULES_DIR
     
     if not apm_modules_path.exists():
-        _rich_info("No apm_modules/ directory found - no packages to update")
+        logger.progress("No apm_modules/ directory found - no packages to update")
         return
     
     # Get project dependencies to validate updates
     try:
         apm_yml_path = project_root / APM_YML_FILENAME
         if not apm_yml_path.exists():
-            _rich_error(f"No {APM_YML_FILENAME} found in current directory")
+            logger.error(f"No {APM_YML_FILENAME} found in current directory")
             return
             
         project_package = APMPackage.from_apm_yml(apm_yml_path)
         project_deps = project_package.get_apm_dependencies()
         
         if not project_deps:
-            _rich_info("No APM dependencies defined in apm.yml")
+            logger.progress("No APM dependencies defined in apm.yml")
             return
             
     except Exception as e:
-        _rich_error(f"Error reading {APM_YML_FILENAME}: {e}")
+        logger.error(f"Error reading {APM_YML_FILENAME}: {e}")
         return
     
     if package:
         # Update specific package
-        _update_single_package(package, project_deps, apm_modules_path)
+        _update_single_package(package, project_deps, apm_modules_path, logger=logger)
     else:
         # Update all packages
-        _update_all_packages(project_deps, apm_modules_path)
+        _update_all_packages(project_deps, apm_modules_path, logger=logger)
 
 
 @deps.command(help="Show detailed package information")
 @click.argument('package', required=True)
 def info(package: str):
     """Show detailed information about a specific package including context files and workflows."""
+    logger = CommandLogger("deps-info")
+
     project_root = Path(".")
     apm_modules_path = project_root / APM_MODULES_DIR
     
     if not apm_modules_path.exists():
-        _rich_error("No apm_modules/ directory found")
-        _rich_info("Run 'apm install' to install dependencies first")
+        logger.error("No apm_modules/ directory found")
+        logger.progress("Run 'apm install' to install dependencies first")
         sys.exit(1)
     
     # Find the package directory - handle org/repo and deep sub-path structures
@@ -504,8 +506,8 @@ def info(package: str):
                     break
     
     if not package_path:
-        _rich_error(f"Package '{package}' not found in apm_modules/")
-        _rich_info("Available packages:")
+        logger.error(f"Package '{package}' not found in apm_modules/")
+        logger.progress("Available packages:")
         
         for org_dir in apm_modules_path.iterdir():
             if org_dir.is_dir() and not org_dir.name.startswith('.'):
@@ -591,5 +593,5 @@ def info(package: str):
                 click.echo(f"  * {package_info['hooks']} hook file(s)")
     
     except Exception as e:
-        _rich_error(f"Error reading package information: {e}")
+        logger.error(f"Error reading package information: {e}")
         sys.exit(1)

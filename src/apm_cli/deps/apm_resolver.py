@@ -1,7 +1,7 @@
 """APM dependency resolution engine with recursive resolution and conflict detection."""
 
 from pathlib import Path
-from typing import List, Set, Optional, Tuple, Callable
+from typing import List, Set, Optional, Protocol, Tuple, runtime_checkable
 from collections import deque
 
 from ..models.apm_package import APMPackage, DependencyReference
@@ -10,9 +10,19 @@ from .dependency_graph import (
     CircularRef, ConflictInfo
 )
 
-# Type alias for the download callback
-# Takes a DependencyReference and apm_modules_dir, returns the install path if successful
-DownloadCallback = Callable[[DependencyReference, Path], Optional[Path]]
+# Type alias for the download callback.
+# Takes (dep_ref, apm_modules_dir, parent_chain) and returns the install path
+# if successful.  ``parent_chain`` is a human-readable breadcrumb string like
+# "root-pkg > mid-pkg" showing which dependency path led here, or "" for
+# direct (depth-1) dependencies.
+@runtime_checkable
+class DownloadCallback(Protocol):
+    def __call__(
+        self,
+        dep_ref: 'DependencyReference',
+        apm_modules_dir: Path,
+        parent_chain: str = "",
+    ) -> Optional[Path]: ...
 
 
 class APMDependencyResolver:
@@ -34,7 +44,6 @@ class APMDependencyResolver:
                                the resolver will attempt to fetch uninstalled transitive deps.
         """
         self.max_depth = max_depth
-        self._resolution_path = []  # For test compatibility
         self._apm_modules_dir: Optional[Path] = apm_modules_dir
         self._project_root: Optional[Path] = None
         self._download_callback = download_callback
@@ -199,9 +208,13 @@ class APMDependencyResolver:
             # For Task 3, this focuses on the resolution algorithm structure
             # Package loading integration will be completed in Tasks 2 & 4
             try:
-                # Attempt to load package - currently returns None (placeholder implementation)
-                # This will integrate with Task 2 (GitHub downloader) and Task 4 (apm_modules scanning)
-                loaded_package = self._try_load_dependency_package(dep_ref)
+                # Compute breadcrumb chain from this node's ancestry so download
+                # errors can report "root > mid > failing-dep" context.
+                parent_chain = node.get_ancestor_chain()
+
+                loaded_package = self._try_load_dependency_package(
+                    dep_ref, parent_chain=parent_chain
+                )
                 if loaded_package:
                     # Update the node with the actual loaded package
                     node.package = loaded_package
@@ -344,7 +357,9 @@ class APMDependencyResolver:
         
         return True
     
-    def _try_load_dependency_package(self, dep_ref: DependencyReference) -> Optional[APMPackage]:
+    def _try_load_dependency_package(
+        self, dep_ref: DependencyReference, parent_chain: str = ""
+    ) -> Optional[APMPackage]:
         """
         Try to load a dependency package from apm_modules/.
         
@@ -355,6 +370,9 @@ class APMDependencyResolver:
         
         Args:
             dep_ref: Reference to the dependency to load
+            parent_chain: Human-readable breadcrumb of the dependency path
+                that led here (e.g. "root-pkg > mid-pkg").  Forwarded to the
+                download callback for contextual error messages.
             
         Returns:
             APMPackage: Loaded package if found, None otherwise
@@ -376,7 +394,9 @@ class APMDependencyResolver:
                 # Avoid re-downloading the same package in a single resolution
                 if unique_key not in self._downloaded_packages:
                     try:
-                        downloaded_path = self._download_callback(dep_ref, self._apm_modules_dir)
+                        downloaded_path = self._download_callback(
+                            dep_ref, self._apm_modules_dir, parent_chain
+                        )
                         if downloaded_path and downloaded_path.exists():
                             self._downloaded_packages.add(unique_key)
                             install_path = downloaded_path

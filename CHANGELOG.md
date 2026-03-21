@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Documented `${input:...}` variable support in `headers` and `env` MCP server fields, with runtime support matrix and examples (#343)
+- Parent chain breadcrumb in transitive dependency error messages — failures now show "root-pkg > mid-pkg > failing-dep" (#393)
+- Verbose output coverage: dependency tree resolution summary, auth source/type per download, manifest parsing details, per-dep lockfile SHA, download URL (#393)
+- `DownloadCallback` Protocol type for type-safe resolver callbacks (#393)
+- `DependencyNode.get_ancestor_chain()` method for human-readable dependency ancestry (#393)
+- `diagnostics` parameter threaded through `MCPIntegrator.install()` for deferred warning summaries (#393)
+- Chaos mega-manifest auth acceptance test (`--mega` flag) covering 8 auth scenarios in a single install (#393)
+
+### Changed
+
+- All CLI output now uses ASCII symbols (`[+]`, `[x]`, `[!]`) instead of Unicode characters (`✓`, `✗`, `⚠`) (#393)
+- Migrated `_rich_*` calls to `CommandLogger` across install, compile, uninstall, audit, pack, and bundle modules (#393)
+- "No dependencies found" downgraded from warning to info (non-actionable state) (#393)
+- Lockfile generation failure upgraded from warning to error (actual failure) (#393)
+- Deduplicated `AuthResolver` instantiation in package validation (#393)
 
 ## [0.8.3] - 2026-03-20
 

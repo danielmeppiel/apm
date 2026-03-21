@@ -1,10 +1,10 @@
 """Safe MCP server installation with conflict detection."""
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from ..factory import ClientFactory
 from .conflict_detector import MCPConflictDetector
-from ..utils.console import _rich_warning, _rich_success, _rich_error, _rich_info
+from ..utils.console import _rich_warning, _rich_success, _rich_error
 
 
 @dataclass
@@ -32,32 +32,43 @@ class InstallationSummary:
         """Check if any installations or failures occurred."""
         return len(self.installed) > 0 or len(self.failed) > 0
     
-    def log_summary(self):
+    def log_summary(self, logger=None):
         """Log a summary of installation results."""
         if self.installed:
-            _rich_success(f"[+] Installed: {', '.join(self.installed)}")
+            if logger:
+                logger.success(f"[+] Installed: {', '.join(self.installed)}")
+            else:
+                _rich_success(f"[+] Installed: {', '.join(self.installed)}")
         
         if self.skipped:
             for item in self.skipped:
-                _rich_warning(f"[!]  Skipped {item['server']}: {item['reason']}")
+                if logger:
+                    logger.warning(f"[!]  Skipped {item['server']}: {item['reason']}")
+                else:
+                    _rich_warning(f"[!]  Skipped {item['server']}: {item['reason']}")
         
         if self.failed:
             for item in self.failed:
-                _rich_error(f"[x] Failed {item['server']}: {item['reason']}")
+                if logger:
+                    logger.error(f"[x] Failed {item['server']}: {item['reason']}")
+                else:
+                    _rich_error(f"[x] Failed {item['server']}: {item['reason']}")
 
 
 class SafeMCPInstaller:
     """Safe MCP server installation with conflict detection."""
     
-    def __init__(self, runtime: str):
+    def __init__(self, runtime: str, logger=None):
         """Initialize the safe installer.
         
         Args:
             runtime: Target runtime (copilot, codex, vscode).
+            logger: Optional CommandLogger for structured output.
         """
         self.runtime = runtime
         self.adapter = ClientFactory.create_client(runtime)
         self.conflict_detector = MCPConflictDetector(self.adapter)
+        self.logger = logger
     
     def install_servers(self, server_references: List[str], env_overrides: Dict[str, str] = None, server_info_cache: Dict[str, Any] = None, runtime_vars: Dict[str, str] = None) -> InstallationSummary:
         """Install MCP servers with conflict detection.
@@ -105,19 +116,31 @@ class SafeMCPInstaller:
     
     def _log_skip(self, server_ref: str):
         """Log when a server is skipped due to existing configuration."""
-        _rich_warning(f"  {server_ref} already configured, skipping")
+        if self.logger:
+            self.logger.warning(f"  {server_ref} already configured, skipping")
+        else:
+            _rich_warning(f"  {server_ref} already configured, skipping")
     
     def _log_success(self, server_ref: str):
         """Log successful server installation."""
-        _rich_success(f"  + {server_ref}")
+        if self.logger:
+            self.logger.success(f"  + {server_ref}")
+        else:
+            _rich_success(f"  + {server_ref}")
     
     def _log_failure(self, server_ref: str):
         """Log failed server installation."""
-        _rich_warning(f"  x {server_ref} installation failed")
+        if self.logger:
+            self.logger.warning(f"  x {server_ref} installation failed")
+        else:
+            _rich_warning(f"  x {server_ref} installation failed")
     
     def _log_error(self, server_ref: str, error: Exception):
         """Log error during server installation."""
-        _rich_error(f"  x {server_ref}: {error}")
+        if self.logger:
+            self.logger.error(f"  x {server_ref}: {error}")
+        else:
+            _rich_error(f"  x {server_ref}: {error}")
     
     def check_conflicts_only(self, server_references: List[str]) -> Dict[str, Any]:
         """Check for conflicts without installing.

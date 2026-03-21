@@ -5,13 +5,11 @@ import sys
 
 import click
 
+from ..core.command_logger import CommandLogger
 from ..utils.console import (
     STATUS_SYMBOLS,
     _rich_echo,
-    _rich_error,
-    _rich_info,
     _rich_panel,
-    _rich_warning,
 )
 from ._helpers import HIGHLIGHT, RESET, _get_console, _list_available_scripts
 
@@ -23,11 +21,12 @@ list = builtins.list
 @click.pass_context
 def list(ctx):
     """List all available scripts from apm.yml."""
+    logger = CommandLogger("list")
     try:
         scripts = _list_available_scripts()
 
         if not scripts:
-            _rich_warning("No scripts found.")
+            logger.warning("No scripts found.")
 
             # Show helpful example in a panel
             example_content = """scripts:
@@ -41,7 +40,7 @@ def list(ctx):
                     style="blue",
                 )
             except (ImportError, NameError):
-                _rich_info(" Add scripts to your apm.yml file:")
+                logger.progress("Add scripts to your apm.yml file:")
                 click.echo("scripts:")
                 click.echo('  start: "codex run main.prompt.md"')
                 click.echo('  fast: "llm prompt main.prompt.md -m github/gpt-4o-mini"')
@@ -78,7 +77,7 @@ def list(ctx):
 
             except Exception:
                 # Fallback to simple output
-                _rich_info("Available scripts:")
+                logger.progress("Available scripts:")
                 for name, command in scripts.items():
                     icon = STATUS_SYMBOLS["default"] if name == default_script else "  "
                     click.echo(f"  {icon} {HIGHLIGHT}{name}{RESET}: {command}")
@@ -88,7 +87,7 @@ def list(ctx):
                     )
         else:
             # Fallback to simple output
-            _rich_info("Available scripts:")
+            logger.progress("Available scripts:")
             for name, command in scripts.items():
                 icon = STATUS_SYMBOLS["default"] if name == default_script else "  "
                 click.echo(f"  {icon} {HIGHLIGHT}{name}{RESET}: {command}")
@@ -98,5 +97,5 @@ def list(ctx):
                 )
 
     except Exception as e:
-        _rich_error(f"Error listing scripts: {e}")
+        logger.error(f"Error listing scripts: {e}")
         sys.exit(1)

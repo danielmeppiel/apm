@@ -36,7 +36,7 @@ dependencies:
     - your-org/my-private-package#v1.0.0
 ```
 
-For GitLab, Bitbucket, or self-hosted git servers, use the `git:` object form and rely on your [existing git credentials](../../getting-started/authentication/#object-style-git-references):
+For GitLab, Bitbucket, or self-hosted git servers, use the [`git:` object form](../dependencies/) and rely on your [existing git credentials](../../getting-started/authentication/):
 
 ```yaml
 dependencies:

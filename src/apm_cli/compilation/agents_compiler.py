@@ -156,8 +156,14 @@ class AgentsCompiler:
         self.base_dir = Path(base_dir)
         self.warnings: List[str] = []
         self.errors: List[str] = []
+        self._logger = None
+
+    def _log(self, method: str, message: str, **kwargs):
+        """Delegate to logger if available, else no-op."""
+        if self._logger:
+            getattr(self._logger, method)(message, **kwargs)
     
-    def compile(self, config: CompilationConfig, primitives: Optional[PrimitiveCollection] = None) -> CompilationResult:
+    def compile(self, config: CompilationConfig, primitives: Optional[PrimitiveCollection] = None, logger=None) -> CompilationResult:
         """Compile AGENTS.md and/or CLAUDE.md based on target configuration.
         
         Routes compilation to appropriate targets based on config.target:
@@ -174,6 +180,7 @@ class AgentsCompiler:
         """
         self.warnings.clear()
         self.errors.clear()
+        self._logger = logger
         
         try:
             # Use provided primitives or discover them (with dependency support)
@@ -273,7 +280,7 @@ class AgentsCompiler:
                 output = distributed_compiler.output_formatter.format_default(compilation_results)
             
             # Display the professional output
-            print(output)
+            self._log("progress", output)
         
         if not distributed_result.success:
             self.warnings.extend(distributed_result.warnings)
@@ -519,7 +526,7 @@ class AgentsCompiler:
                 output = formatter.format_dry_run(formatter_results)
             else:
                 output = formatter.format_default(formatter_results)
-            print(output)
+            self._log("progress", output)
         
         # Generate summary content for result object
         summary_lines = [
@@ -774,8 +781,8 @@ class AgentsCompiler:
         Args:
             distributed_result: Result from distributed compilation.
         """
-        print("Distributed AGENTS.md Placement Preview:")
-        print()
+        self._log("progress", "Distributed AGENTS.md Placement Preview:")
+        self._log("progress", "")
         
         for placement in distributed_result.placements:
             try:
@@ -783,13 +790,13 @@ class AgentsCompiler:
             except ValueError:
                 # Fallback for path resolution issues
                 rel_path = placement.agents_path
-            print(f"{rel_path}")
-            print(f"   Instructions: {len(placement.instructions)}")
-            print(f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
+            self._log("verbose_detail", f"{rel_path}")
+            self._log("verbose_detail", f"   Instructions: {len(placement.instructions)}")
+            self._log("verbose_detail", f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
             if placement.source_attribution:
                 sources = set(placement.source_attribution.values())
-                print(f"   Sources: {', '.join(sorted(sources))}")
-            print()
+                self._log("verbose_detail", f"   Sources: {', '.join(sorted(sources))}")
+            self._log("verbose_detail", "")
     
     def _display_trace_info(self, distributed_result, primitives: PrimitiveCollection) -> None:
         """Display detailed trace information for --trace mode.
@@ -798,15 +805,15 @@ class AgentsCompiler:
             distributed_result: Result from distributed compilation.
             primitives (PrimitiveCollection): Full primitive collection.
         """
-        print("Distributed Compilation Trace:")
-        print()
+        self._log("progress", "Distributed Compilation Trace:")
+        self._log("progress", "")
         
         for placement in distributed_result.placements:
             try:
                 rel_path = placement.agents_path.relative_to(self.base_dir.resolve())
             except ValueError:
                 rel_path = placement.agents_path
-            print(f"{rel_path}")
+            self._log("verbose_detail", f"{rel_path}")
             
             for instruction in placement.instructions:
                 source = getattr(instruction, 'source', 'local')
@@ -815,8 +822,8 @@ class AgentsCompiler:
                 except ValueError:
                     inst_path = instruction.file_path
                 
-                print(f"   * {instruction.apply_to or 'no pattern'} <- {source} {inst_path}")
-            print()
+                self._log("verbose_detail", f"   * {instruction.apply_to or 'no pattern'} <- {source} {inst_path}")
+            self._log("verbose_detail", "")
     
     def _generate_placement_summary(self, distributed_result) -> str:
         """Generate a text summary of placement results.
