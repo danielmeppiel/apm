@@ -254,6 +254,8 @@ class AuthResolver:
             """Retry with git-credential-fill when an env-var token fails."""
             if auth_ctx.source in ("git-credential-fill", "none"):
                 raise exc
+            if host_info.kind == "ado":
+                raise exc
             _log(f"Token from {auth_ctx.source} failed, trying git credential fill for {host}")
             cred = self._token_manager.resolve_credential_from_git(host)
             if cred:

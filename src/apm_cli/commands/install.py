@@ -153,7 +153,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         already_in_deps = identity in existing_identities
 
         # Validate package exists and is accessible
-        if _validate_package_exists(package, verbose=bool(logger and logger.verbose)):
+        verbose = bool(logger and logger.verbose)
+        if _validate_package_exists(package, verbose=verbose):
             valid_outcomes.append((canonical, already_in_deps))
             if logger:
                 logger.validation_pass(canonical, already_present=already_in_deps)
@@ -168,12 +169,14 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
         else:
-            reason = "not accessible or doesn't exist (check auth or repo name)"
+            reason = "not accessible or doesn't exist"
+            if not verbose:
+                reason += " — run with --verbose for auth details"
             invalid_outcomes.append((package, reason))
             if logger:
                 logger.validation_fail(package, reason)
             else:
-                _rich_error(f"✗ {package} - not accessible or doesn't exist")
+                _rich_error(f"✗ {package} — {reason}")
 
     outcome = _ValidationOutcome(valid=valid_outcomes, invalid=invalid_outcomes)
 
@@ -185,7 +188,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
     if not validated_packages:
         if dry_run:
-            _rich_warning("No new packages to add") if not logger else None
+            _rich_info("No new packages to add") if not logger else None
         # If all packages already exist in apm.yml, that's OK - we'll reinstall them
         return [], outcome
 
@@ -294,6 +297,9 @@ def _validate_package_exists(package, verbose=False):
             else:
                 validate_env = {**os.environ, **downloader.git_env}
 
+            if verbose_log:
+                verbose_log(f"Trying git ls-remote for {dep_ref.host}")
+
             cmd = ["git", "ls-remote", "--heads", "--exit-code", package_url]
             result = subprocess.run(
                 cmd,
@@ -302,6 +308,19 @@ def _validate_package_exists(package, verbose=False):
                 timeout=30,
                 env=validate_env,
             )
+
+            if verbose_log:
+                if result.returncode == 0:
+                    verbose_log(f"git ls-remote rc=0 for {package}")
+                else:
+                    # Sanitize stderr to avoid leaking tokens
+                    stderr_snippet = (result.stderr or "").strip()[:200]
+                    for env_var in ("GIT_ASKPASS", "GIT_CONFIG_GLOBAL"):
+                        stderr_snippet = stderr_snippet.replace(
+                            validate_env.get(env_var, ""), "***"
+                        )
+                    verbose_log(f"git ls-remote rc={result.returncode}: {stderr_snippet}")
+
             return result.returncode == 0
 
         # For GitHub.com, use AuthResolver with unauth-first fallback
@@ -356,6 +375,13 @@ def _validate_package_exists(package, verbose=False):
                 verbose_callback=verbose_log,
             )
         except Exception:
+            if verbose_log:
+                try:
+                    ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
+                    for line in ctx.splitlines():
+                        verbose_log(line)
+                except Exception:
+                    pass
             return False
 
     except Exception:
@@ -401,6 +427,13 @@ def _validate_package_exists(package, verbose=False):
                 verbose_callback=verbose_log,
             )
         except Exception:
+            if verbose_log:
+                try:
+                    ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
+                    for line in ctx.splitlines():
+                        verbose_log(line)
+                except Exception:
+                    pass
             return False
 
 
@@ -594,6 +627,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 apm_diagnostics = install_result.diagnostics
             except Exception as e:
                 logger.error(f"Failed to install APM dependencies: {e}")
+                if not verbose:
+                    logger.progress("Run with --verbose for detailed diagnostics")
                 sys.exit(1)
         elif should_install_apm and not has_any_apm_deps:
             logger.verbose_detail("No APM dependencies found in apm.yml")
@@ -664,6 +699,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
     except Exception as e:
         _rich_error(f"Error installing dependencies: {e}")
+        if not verbose:
+            _rich_info("Run with --verbose for detailed diagnostics")
         sys.exit(1)
 
 
@@ -1541,12 +1578,12 @@ def _install_apm_dependencies(
                     from ..utils.content_hash import verify_package_hash
                     if not verify_package_hash(install_path, _dep_locked_chk.content_hash):
                         if logger:
-                            logger.warning(
+                            logger.progress(
                                 f"Content hash mismatch for "
                                 f"{dep_ref.get_unique_key()} -- re-downloading"
                             )
                         else:
-                            _rich_warning(
+                            _rich_info(
                                 f"Content hash mismatch for "
                                 f"{dep_ref.get_unique_key()} — re-downloading"
                             )
@@ -1872,7 +1909,7 @@ def _install_apm_dependencies(
                                     f"  Could not remove orphaned path {_orphan_path}: {_orphan_err}"
                                 )
                             else:
-                                _rich_warning(
+                                _rich_error(
                                     f"  └─ Could not remove orphaned path {_orphan_path}: {_orphan_err}"
                                 )
                             _failed_orphan_count += 1

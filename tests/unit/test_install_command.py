@@ -243,3 +243,73 @@ class TestInstallCommandAutoBootstrap:
             assert "Would add" in result.output or "Dry run" in result.output
             # apm.yml should still be created (for dry-run to work)
             assert Path("apm.yml").exists()
+
+
+class TestValidationFailureReasonMessages:
+    """Test that validation failure reasons include actionable auth guidance."""
+
+    def setup_method(self):
+        self.runner = CliRunner()
+        try:
+            self.original_dir = os.getcwd()
+        except FileNotFoundError:
+            self.original_dir = str(Path(__file__).parent.parent.parent)
+            os.chdir(self.original_dir)
+
+    def teardown_method(self):
+        try:
+            os.chdir(self.original_dir)
+        except (FileNotFoundError, OSError):
+            os.chdir(str(Path(__file__).parent.parent.parent))
+
+    @contextlib.contextmanager
+    def _chdir_tmp(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                yield Path(tmp_dir)
+            finally:
+                os.chdir(self.original_dir)
+
+    @patch("apm_cli.commands.install._validate_package_exists", return_value=False)
+    def test_validation_failure_without_verbose_includes_verbose_hint(self, mock_validate):
+        """When validation fails without --verbose, reason should suggest --verbose."""
+        with self._chdir_tmp():
+            # Create apm.yml so we exercise the validation path
+            Path("apm.yml").write_text("name: test\ndependencies:\n  apm: []\n  mcp: []\n")
+            result = self.runner.invoke(cli, ["install", "owner/repo"])
+            # Normalize terminal line-wrapping before checking
+            output = " ".join(result.output.split())
+            assert "run with --verbose for auth details" in output
+
+    @patch("apm_cli.commands.install._validate_package_exists", return_value=False)
+    def test_validation_failure_with_verbose_omits_verbose_hint(self, mock_validate):
+        """When validation fails with --verbose, reason should NOT suggest --verbose."""
+        with self._chdir_tmp():
+            Path("apm.yml").write_text("name: test\ndependencies:\n  apm: []\n  mcp: []\n")
+            result = self.runner.invoke(cli, ["install", "owner/repo", "--verbose"])
+            assert "not accessible or doesn't exist" in result.output
+            assert "run with --verbose for auth details" not in result.output
+
+    @patch("apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git", return_value=None)
+    @patch("urllib.request.urlopen")
+    def test_verbose_validation_failure_calls_build_error_context(self, mock_urlopen, _mock_cred):
+        """When GitHub validation fails in verbose mode, build_error_context should be invoked."""
+        import urllib.error
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="https://api.github.com/repos/owner/repo", code=404,
+            msg="Not Found", hdrs={}, fp=None,
+        )
+
+        with patch.object(
+            __import__("apm_cli.core.auth", fromlist=["AuthResolver"]).AuthResolver,
+            "build_error_context",
+            return_value="Authentication failed for accessing owner/repo on github.com.\nNo token available.",
+        ) as mock_build_ctx:
+            from apm_cli.commands.install import _validate_package_exists
+            result = _validate_package_exists("owner/repo", verbose=True)
+            assert result is False
+            mock_build_ctx.assert_called_once()
+            call_args = mock_build_ctx.call_args
+            assert "github.com" in call_args[0][0]  # host
+            assert "owner/repo" in call_args[0][1]  # operation
