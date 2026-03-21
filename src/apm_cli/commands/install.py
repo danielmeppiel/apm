@@ -19,7 +19,7 @@ from ..constants import (
 from ..drift import build_download_ref, detect_orphans, detect_ref_change
 from ..models.results import InstallResult
 from ..core.command_logger import InstallLogger, _ValidationOutcome
-from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success, _rich_warning
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
 from ..utils.path_security import safe_rmtree
@@ -153,7 +153,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         already_in_deps = identity in existing_identities
 
         # Validate package exists and is accessible
-        if _validate_package_exists(package):
+        if _validate_package_exists(package, verbose=bool(logger and logger.verbose)):
             valid_outcomes.append((canonical, already_in_deps))
             if logger:
                 logger.validation_pass(canonical, already_present=already_in_deps)
@@ -234,11 +234,13 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     return validated_packages, outcome
 
 
-def _validate_package_exists(package):
+def _validate_package_exists(package, verbose=False):
     """Validate that a package exists and is accessible on GitHub, Azure DevOps, or locally."""
     import os
     import subprocess
     import tempfile
+
+    verbose_log = (lambda msg: _rich_echo(f"  {msg}", color="dim")) if verbose else None
 
     try:
         # Parse the package to check if it's a virtual package or ADO
@@ -329,6 +331,7 @@ def _validate_package_exists(package):
                 host, _ls_remote,
                 org=org,
                 unauth_first=True,
+                verbose_callback=verbose_log,
             )
         except Exception:
             return False
@@ -365,6 +368,7 @@ def _validate_package_exists(package):
                 host, _ls_remote_fallback,
                 org=org,
                 unauth_first=True,
+                verbose_callback=verbose_log,
             )
         except Exception:
             return False
