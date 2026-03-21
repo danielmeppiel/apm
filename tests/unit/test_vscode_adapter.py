@@ -1,41 +1,46 @@
 """Unit tests for the VSCode client adapter."""
 
-import os
 import json
+import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from apm_cli.adapters.client.vscode import VSCodeClientAdapter
+
 from apm_cli.adapters.client.base import MCPClientAdapter
+from apm_cli.adapters.client.vscode import VSCodeClientAdapter
 
 
 class TestVSCodeClientAdapter(unittest.TestCase):
     """Test cases for the VSCode client adapter."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.vscode_dir = os.path.join(self.temp_dir.name, ".vscode")
+        self.temp_dir = tempfile.mkdtemp()
+        self.vscode_dir = os.path.join(self.temp_dir, ".vscode")
         os.makedirs(self.vscode_dir, exist_ok=True)
         self.temp_path = os.path.join(self.vscode_dir, "mcp.json")
-        
-        # Create a temporary MCP configuration file
         with open(self.temp_path, "w") as f:
             json.dump({"servers": {}}, f)
-            
+
         # Create mock clients
-        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher = patch(
+            "apm_cli.adapters.client.vscode.SimpleRegistryClient"
+        )
         self.mock_registry_class = self.mock_registry_patcher.start()
         self.mock_registry = MagicMock()
         self.mock_registry_class.return_value = self.mock_registry
-        
-        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+
+        self.mock_integration_patcher = patch(
+            "apm_cli.adapters.client.vscode.RegistryIntegration"
+        )
         self.mock_integration_class = self.mock_integration_patcher.start()
         self.mock_integration = MagicMock()
         self.mock_integration_class.return_value = self.mock_integration
-        
+
         # Mock server details
         self.server_info = {
             "id": "12345",
@@ -46,113 +51,105 @@ class TestVSCodeClientAdapter(unittest.TestCase):
                     "name": "@mcp/fetch",
                     "version": "1.0.0",
                     "registry_name": "npm",
-                    "runtime_hint": "npx"
+                    "runtime_hint": "npx",
                 }
-            ]
+            ],
         }
-        
+
         # Configure the mocks
         self.mock_registry.get_server_info.return_value = self.server_info
         self.mock_registry.get_server_by_name.return_value = self.server_info
         self.mock_registry.find_server_by_reference.return_value = self.server_info
-    
+
     def tearDown(self):
         """Tear down test fixtures."""
-        # Force garbage collection to release file handles
-        import gc
-        gc.collect()
-        # Small delay to allow Windows to release locks
-        import time
-        time.sleep(0.1)
-        
         self.mock_registry_patcher.stop()
         self.mock_integration_patcher.stop()
-        self.temp_dir.cleanup()
-    
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_get_current_config(self, mock_get_path):
         """Test getting the current configuration."""
         mock_get_path.return_value = self.temp_path
         adapter = VSCodeClientAdapter()
-        
+
         config = adapter.get_current_config()
         self.assertEqual(config, {"servers": {}})
-    
+
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_update_config(self, mock_get_path):
         """Test updating the configuration."""
         mock_get_path.return_value = self.temp_path
         adapter = VSCodeClientAdapter()
-        
+
         new_config = {
             "servers": {
                 "test-server": {
                     "type": "stdio",
                     "command": "uvx",
-                    "args": ["mcp-server-test"]
+                    "args": ["mcp-server-test"],
                 }
             }
         }
-        
+
         result = adapter.update_config(new_config)
-        
+
         with open(self.temp_path, "r") as f:
             updated_config = json.load(f)
-        
+
         self.assertEqual(updated_config, new_config)
         self.assertTrue(result)
-        
+
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_update_config_nonexistent_file(self, mock_get_path):
         """Test updating configuration when file doesn't exist."""
         nonexistent_path = os.path.join(self.vscode_dir, "nonexistent.json")
         mock_get_path.return_value = nonexistent_path
         adapter = VSCodeClientAdapter()
-        
+
         new_config = {
             "servers": {
                 "test-server": {
                     "type": "stdio",
                     "command": "uvx",
-                    "args": ["mcp-server-test"]
+                    "args": ["mcp-server-test"],
                 }
             }
         }
-        
+
         result = adapter.update_config(new_config)
-        
+
         with open(nonexistent_path, "r") as f:
             updated_config = json.load(f)
-        
+
         self.assertEqual(updated_config, new_config)
         self.assertTrue(result)
-    
+
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_configure_mcp_server(self, mock_get_path):
         """Test configuring an MCP server."""
         mock_get_path.return_value = self.temp_path
         adapter = VSCodeClientAdapter()
-        
-        result = adapter.configure_mcp_server(
-            server_url="fetch", 
-            server_name="fetch"
-        )
-        
+
+        result = adapter.configure_mcp_server(server_url="fetch", server_name="fetch")
+
         with open(self.temp_path, "r") as f:
             updated_config = json.load(f)
-        
+
         self.assertTrue(result)
         self.assertIn("servers", updated_config)
         self.assertIn("fetch", updated_config["servers"])
-        
+
         # Verify the registry client was called
         self.mock_registry.find_server_by_reference.assert_called_once_with("fetch")
-        
+
         # Verify the server configuration
         self.assertEqual(updated_config["servers"]["fetch"]["type"], "stdio")
         self.assertEqual(updated_config["servers"]["fetch"]["command"], "npx")
-        self.assertEqual(updated_config["servers"]["fetch"]["args"], ["-y", "@mcp/fetch"])
-    
+        self.assertEqual(
+            updated_config["servers"]["fetch"]["args"], ["-y", "@mcp/fetch"]
+        )
+
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_configure_mcp_server_update_existing(self, mock_get_path):
         """Test updating an existing MCP server."""
@@ -162,79 +159,79 @@ class TestVSCodeClientAdapter(unittest.TestCase):
                 "fetch": {
                     "type": "stdio",
                     "command": "docker",
-                    "args": ["run", "-i", "--rm", "mcp/fetch"]
+                    "args": ["run", "-i", "--rm", "mcp/fetch"],
                 }
             }
         }
-        
+
         with open(self.temp_path, "w") as f:
             json.dump(existing_config, f)
-            
+
         mock_get_path.return_value = self.temp_path
         adapter = VSCodeClientAdapter()
-        
-        result = adapter.configure_mcp_server(
-            server_url="fetch", 
-            server_name="fetch"
-        )
-        
+
+        result = adapter.configure_mcp_server(server_url="fetch", server_name="fetch")
+
         with open(self.temp_path, "r") as f:
             updated_config = json.load(f)
-        
+
         self.assertTrue(result)
         self.assertIn("fetch", updated_config["servers"])
-        
+
         # Verify the registry client was called
         self.mock_registry.find_server_by_reference.assert_called_once_with("fetch")
-        
+
         # Verify the server configuration
         self.assertEqual(updated_config["servers"]["fetch"]["type"], "stdio")
         self.assertEqual(updated_config["servers"]["fetch"]["command"], "npx")
-        self.assertEqual(updated_config["servers"]["fetch"]["args"], ["-y", "@mcp/fetch"])
-    
+        self.assertEqual(
+            updated_config["servers"]["fetch"]["args"], ["-y", "@mcp/fetch"]
+        )
+
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_configure_mcp_server_empty_url(self, mock_get_path):
         """Test configuring an MCP server with empty URL."""
         mock_get_path.return_value = self.temp_path
         adapter = VSCodeClientAdapter()
-        
+
         result = adapter.configure_mcp_server(
-            server_url="", 
-            server_name="Example Server"
+            server_url="", server_name="Example Server"
         )
-        
+
         self.assertFalse(result)
-    
+
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_configure_mcp_server_registry_error(self, mock_get_path):
         """Test error behavior when registry doesn't have server details."""
         # Configure the mock to return None when server is not found
         self.mock_registry.find_server_by_reference.return_value = None
-        
+
         mock_get_path.return_value = self.temp_path
         adapter = VSCodeClientAdapter()
-        
+
         # Test that ValueError is raised when server details can't be retrieved
         with self.assertRaises(ValueError) as context:
             adapter.configure_mcp_server(
-                server_url="unknown-server", 
-                server_name="unknown-server"
+                server_url="unknown-server", server_name="unknown-server"
             )
-        
-        self.assertIn("Failed to retrieve server details for 'unknown-server'. Server not found in registry.", str(context.exception))
-    
+
+        self.assertIn(
+            "Failed to retrieve server details for 'unknown-server'. Server not found in registry.",
+            str(context.exception),
+        )
+
     @patch("os.getcwd")
     def test_get_config_path_repository(self, mock_getcwd):
         """Test getting the config path in the repository."""
-        mock_getcwd.return_value = self.temp_dir.name
-        
+        mock_getcwd.return_value = self.temp_dir
+
         adapter = VSCodeClientAdapter()
         path = adapter.get_config_path()
-        
+
         # Create Path objects for comparison to handle platform differences
         actual_path = Path(path)
-        expected_path = Path(self.temp_dir.name) / ".vscode" / "mcp.json"
-        
+        expected_path = Path(self.temp_dir) / ".vscode" / "mcp.json"
+
         # Compare parts of the path to avoid string formatting issues
         self.assertEqual(actual_path.parent, expected_path.parent)
         self.assertEqual(actual_path.name, expected_path.name)
@@ -264,7 +261,12 @@ class TestVSCodeClientAdapter(unittest.TestCase):
 
         server_info = {
             "name": "streamable-server",
-            "remotes": [{"transport_type": "streamable-http", "url": "https://stream.example.com"}],
+            "remotes": [
+                {
+                    "transport_type": "streamable-http",
+                    "url": "https://stream.example.com",
+                }
+            ],
         }
         config, inputs = adapter._format_server_config(server_info)
 
@@ -279,22 +281,27 @@ class TestVSCodeClientAdapter(unittest.TestCase):
 
         server_info = {
             "name": "header-server",
-            "remotes": [{
-                "transport_type": "http",
-                "url": "https://example.com",
-                "headers": [
-                    {"name": "Authorization", "value": "Bearer token123"},
-                    {"name": "X-Custom", "value": "val"},
-                ],
-            }],
+            "remotes": [
+                {
+                    "transport_type": "http",
+                    "url": "https://example.com",
+                    "headers": [
+                        {"name": "Authorization", "value": "Bearer token123"},
+                        {"name": "X-Custom", "value": "val"},
+                    ],
+                }
+            ],
         }
         config, inputs = adapter._format_server_config(server_info)
 
         self.assertEqual(config["type"], "http")
-        self.assertEqual(config["headers"], {
-            "Authorization": "Bearer token123",
-            "X-Custom": "val",
-        })
+        self.assertEqual(
+            config["headers"],
+            {
+                "Authorization": "Bearer token123",
+                "X-Custom": "val",
+            },
+        )
 
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_configure_self_defined_http_via_cache(self, mock_get_path):
@@ -306,7 +313,9 @@ class TestVSCodeClientAdapter(unittest.TestCase):
         cache = {
             "my-private-srv": {
                 "name": "my-private-srv",
-                "remotes": [{"transport_type": "http", "url": "http://localhost:8787/"}],
+                "remotes": [
+                    {"transport_type": "http", "url": "http://localhost:8787/"}
+                ],
             }
         }
 
@@ -322,7 +331,9 @@ class TestVSCodeClientAdapter(unittest.TestCase):
 
         self.assertIn("my-private-srv", config["servers"])
         self.assertEqual(config["servers"]["my-private-srv"]["type"], "http")
-        self.assertEqual(config["servers"]["my-private-srv"]["url"], "http://localhost:8787/")
+        self.assertEqual(
+            config["servers"]["my-private-srv"]["url"], "http://localhost:8787/"
+        )
 
 
 class TestVSCodeSelectBestPackage(unittest.TestCase):
@@ -330,9 +341,13 @@ class TestVSCodeSelectBestPackage(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher = patch(
+            "apm_cli.adapters.client.vscode.SimpleRegistryClient"
+        )
         self.mock_registry_patcher.start()
-        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher = patch(
+            "apm_cli.adapters.client.vscode.RegistryIntegration"
+        )
         self.mock_integration_patcher.start()
         self.adapter = VSCodeClientAdapter()
 
@@ -363,7 +378,11 @@ class TestVSCodeSelectBestPackage(unittest.TestCase):
         """Falls back to any package with runtime_hint when no priority match."""
         packages = [
             {"name": "Azure.Mcp", "registry_name": "nuget", "runtime_hint": "dotnet"},
-            {"name": "azure-mcp-linux-x64", "registry_name": "mcpb", "runtime_hint": ""},
+            {
+                "name": "azure-mcp-linux-x64",
+                "registry_name": "mcpb",
+                "runtime_hint": "",
+            },
         ]
         result = self.adapter._select_best_package(packages)
         self.assertEqual(result["name"], "Azure.Mcp")
@@ -384,27 +403,29 @@ class TestVSCodeStdioRegistryPackages(unittest.TestCase):
     """Test that VS Code adapter correctly handles stdio-only registry servers."""
 
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.vscode_dir = os.path.join(self.temp_dir.name, ".vscode")
+        self.temp_dir = tempfile.mkdtemp()
+        self.vscode_dir = os.path.join(self.temp_dir, ".vscode")
         os.makedirs(self.vscode_dir, exist_ok=True)
         self.temp_path = os.path.join(self.vscode_dir, "mcp.json")
         with open(self.temp_path, "w") as f:
             json.dump({"servers": {}}, f)
 
-        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher = patch(
+            "apm_cli.adapters.client.vscode.SimpleRegistryClient"
+        )
         self.mock_registry_class = self.mock_registry_patcher.start()
         self.mock_registry = MagicMock()
         self.mock_registry_class.return_value = self.mock_registry
 
-        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher = patch(
+            "apm_cli.adapters.client.vscode.RegistryIntegration"
+        )
         self.mock_integration_patcher.start()
 
     def tearDown(self):
-        import gc; gc.collect()
-        import time; time.sleep(0.1)
         self.mock_registry_patcher.stop()
         self.mock_integration_patcher.stop()
-        self.temp_dir.cleanup()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_stdio_npm_selected_over_nuget(self, mock_get_path):
@@ -417,21 +438,44 @@ class TestVSCodeStdioRegistryPackages(unittest.TestCase):
             "name": "azure",
             "description": "Azure MCP server",
             "packages": [
-                {"name": "Azure.Mcp", "version": "2.0.0-beta.24", "registry_name": "nuget",
-                 "runtime_hint": "dotnet", "runtime_arguments": [
-                     {"is_required": True, "value_hint": "server"},
-                     {"is_required": True, "value_hint": "start"}]},
-                {"name": "@azure/mcp", "version": "2.0.0-beta.24", "registry_name": "npm",
-                 "runtime_hint": "npx", "runtime_arguments": [
-                     {"is_required": True, "value_hint": "server"},
-                     {"is_required": True, "value_hint": "start"}]},
-                {"name": "msmcp-azure", "version": "2.0.0-beta.24", "registry_name": "pypi",
-                 "runtime_hint": "uvx", "runtime_arguments": [
-                     {"is_required": True, "value_hint": "server"},
-                     {"is_required": True, "value_hint": "start"}]},
-                {"name": "azure-mcp-linux-x64", "version": "2.0.0-beta.24", "registry_name": "mcpb",
-                 "runtime_hint": "", "runtime_arguments": []},
-            ]
+                {
+                    "name": "Azure.Mcp",
+                    "version": "2.0.0-beta.24",
+                    "registry_name": "nuget",
+                    "runtime_hint": "dotnet",
+                    "runtime_arguments": [
+                        {"is_required": True, "value_hint": "server"},
+                        {"is_required": True, "value_hint": "start"},
+                    ],
+                },
+                {
+                    "name": "@azure/mcp",
+                    "version": "2.0.0-beta.24",
+                    "registry_name": "npm",
+                    "runtime_hint": "npx",
+                    "runtime_arguments": [
+                        {"is_required": True, "value_hint": "server"},
+                        {"is_required": True, "value_hint": "start"},
+                    ],
+                },
+                {
+                    "name": "msmcp-azure",
+                    "version": "2.0.0-beta.24",
+                    "registry_name": "pypi",
+                    "runtime_hint": "uvx",
+                    "runtime_arguments": [
+                        {"is_required": True, "value_hint": "server"},
+                        {"is_required": True, "value_hint": "start"},
+                    ],
+                },
+                {
+                    "name": "azure-mcp-linux-x64",
+                    "version": "2.0.0-beta.24",
+                    "registry_name": "mcpb",
+                    "runtime_hint": "",
+                    "runtime_arguments": [],
+                },
+            ],
             # No remotes key — server only provides stdio packages
         }
 
@@ -461,12 +505,17 @@ class TestVSCodeStdioRegistryPackages(unittest.TestCase):
             "id": "nuget-only-id",
             "name": "nuget-server",
             "packages": [
-                {"name": "MyServer.Mcp", "registry_name": "nuget",
-                 "runtime_hint": "dotnet", "runtime_arguments": [
-                     {"is_required": True, "value_hint": "run"},
-                     {"is_required": True, "value_hint": "--project"},
-                     {"is_required": True, "value_hint": "MyServer.Mcp"}]}
-            ]
+                {
+                    "name": "MyServer.Mcp",
+                    "registry_name": "nuget",
+                    "runtime_hint": "dotnet",
+                    "runtime_arguments": [
+                        {"is_required": True, "value_hint": "run"},
+                        {"is_required": True, "value_hint": "--project"},
+                        {"is_required": True, "value_hint": "MyServer.Mcp"},
+                    ],
+                }
+            ],
         }
         self.mock_registry.find_server_by_reference.return_value = server_info
         adapter = VSCodeClientAdapter()
@@ -497,7 +546,7 @@ class TestVSCodeStdioRegistryPackages(unittest.TestCase):
             "packages": [
                 {"name": "binary-linux-x64", "registry_name": "mcpb"},
                 {"name": "binary-linux-arm64", "registry_name": "mcpb"},
-            ]
+            ],
         }
 
         with self.assertRaises(ValueError) as ctx:
@@ -523,9 +572,13 @@ class TestVSCodeInferRegistryName(unittest.TestCase):
     """Test _infer_registry_name with various package metadata patterns."""
 
     def setUp(self):
-        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher = patch(
+            "apm_cli.adapters.client.vscode.SimpleRegistryClient"
+        )
         self.mock_registry_patcher.start()
-        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher = patch(
+            "apm_cli.adapters.client.vscode.RegistryIntegration"
+        )
         self.mock_integration_patcher.start()
 
     def tearDown(self):
@@ -533,28 +586,68 @@ class TestVSCodeInferRegistryName(unittest.TestCase):
         self.mock_integration_patcher.stop()
 
     def test_explicit_registry_name(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "pkg", "registry_name": "npm"}), "npm")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "pkg", "registry_name": "npm"}
+            ),
+            "npm",
+        )
 
     def test_empty_registry_name_scoped_npm(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "@azure/mcp", "registry_name": ""}), "npm")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "@azure/mcp", "registry_name": ""}
+            ),
+            "npm",
+        )
 
     def test_empty_registry_name_runtime_hint_npx(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "some-pkg", "registry_name": "", "runtime_hint": "npx"}), "npm")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "some-pkg", "registry_name": "", "runtime_hint": "npx"}
+            ),
+            "npm",
+        )
 
     def test_empty_registry_name_runtime_hint_uvx(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "some-pkg", "registry_name": "", "runtime_hint": "uvx"}), "pypi")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "some-pkg", "registry_name": "", "runtime_hint": "uvx"}
+            ),
+            "pypi",
+        )
 
     def test_empty_registry_name_docker_image(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "ghcr.io/org/img", "registry_name": ""}), "docker")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "ghcr.io/org/img", "registry_name": ""}
+            ),
+            "docker",
+        )
 
     def test_empty_registry_name_nuget_pascal_case(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "Azure.Mcp", "registry_name": ""}), "nuget")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "Azure.Mcp", "registry_name": ""}
+            ),
+            "nuget",
+        )
 
     def test_empty_registry_name_mcpb_url(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "https://example.com/bin.mcpb", "registry_name": ""}), "mcpb")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "https://example.com/bin.mcpb", "registry_name": ""}
+            ),
+            "mcpb",
+        )
 
     def test_unknown_returns_empty(self):
-        self.assertEqual(VSCodeClientAdapter._infer_registry_name({"name": "unknown-pkg", "registry_name": ""}), "")
+        self.assertEqual(
+            VSCodeClientAdapter._infer_registry_name(
+                {"name": "unknown-pkg", "registry_name": ""}
+            ),
+            "",
+        )
 
     def test_none_package(self):
         self.assertEqual(VSCodeClientAdapter._infer_registry_name(None), "")
@@ -564,9 +657,13 @@ class TestVSCodeExtractPackageArgs(unittest.TestCase):
     """Test _extract_package_args with both API formats."""
 
     def setUp(self):
-        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher = patch(
+            "apm_cli.adapters.client.vscode.SimpleRegistryClient"
+        )
         self.mock_registry_patcher.start()
-        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher = patch(
+            "apm_cli.adapters.client.vscode.RegistryIntegration"
+        )
         self.mock_integration_patcher.start()
 
     def tearDown(self):
@@ -581,7 +678,9 @@ class TestVSCodeExtractPackageArgs(unittest.TestCase):
                 {"type": "positional", "value": "start"},
             ],
         }
-        self.assertEqual(VSCodeClientAdapter._extract_package_args(pkg), ["server", "start"])
+        self.assertEqual(
+            VSCodeClientAdapter._extract_package_args(pkg), ["server", "start"]
+        )
 
     def test_runtime_arguments_legacy_format(self):
         pkg = {
@@ -591,7 +690,9 @@ class TestVSCodeExtractPackageArgs(unittest.TestCase):
                 {"is_required": True, "value_hint": "start"},
             ],
         }
-        self.assertEqual(VSCodeClientAdapter._extract_package_args(pkg), ["server", "start"])
+        self.assertEqual(
+            VSCodeClientAdapter._extract_package_args(pkg), ["server", "start"]
+        )
 
     def test_prefers_package_arguments_over_runtime(self):
         pkg = {
@@ -610,27 +711,29 @@ class TestVSCodeRealApiFormat(unittest.TestCase):
     """Test with the actual MCP registry API response format (empty registry_name, package_arguments)."""
 
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.vscode_dir = os.path.join(self.temp_dir.name, ".vscode")
+        self.temp_dir = tempfile.mkdtemp()
+        self.vscode_dir = os.path.join(self.temp_dir, ".vscode")
         os.makedirs(self.vscode_dir, exist_ok=True)
         self.temp_path = os.path.join(self.vscode_dir, "mcp.json")
         with open(self.temp_path, "w") as f:
             json.dump({"servers": {}}, f)
 
-        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher = patch(
+            "apm_cli.adapters.client.vscode.SimpleRegistryClient"
+        )
         self.mock_registry_class = self.mock_registry_patcher.start()
         self.mock_registry = MagicMock()
         self.mock_registry_class.return_value = self.mock_registry
 
-        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher = patch(
+            "apm_cli.adapters.client.vscode.RegistryIntegration"
+        )
         self.mock_integration_patcher.start()
 
     def tearDown(self):
-        import gc; gc.collect()
-        import time; time.sleep(0.1)
         self.mock_registry_patcher.stop()
         self.mock_integration_patcher.stop()
-        self.temp_dir.cleanup()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @patch("apm_cli.adapters.client.vscode.VSCodeClientAdapter.get_config_path")
     def test_azure_mcp_real_api_format(self, mock_get_path):
@@ -729,19 +832,23 @@ class TestExtractInputVariables(unittest.TestCase):
     """Tests for ${input:...} variable extraction in self-defined MCP servers."""
 
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.vscode_dir = os.path.join(self.temp_dir.name, ".vscode")
+        self.temp_dir = tempfile.mkdtemp()
+        self.vscode_dir = os.path.join(self.temp_dir, ".vscode")
         os.makedirs(self.vscode_dir, exist_ok=True)
         self.temp_path = os.path.join(self.vscode_dir, "mcp.json")
         with open(self.temp_path, "w") as f:
             json.dump({"servers": {}, "inputs": []}, f)
 
-        self.mock_registry_patcher = patch('apm_cli.adapters.client.vscode.SimpleRegistryClient')
+        self.mock_registry_patcher = patch(
+            "apm_cli.adapters.client.vscode.SimpleRegistryClient"
+        )
         self.mock_registry_class = self.mock_registry_patcher.start()
         self.mock_registry = MagicMock()
         self.mock_registry_class.return_value = self.mock_registry
 
-        self.mock_integration_patcher = patch('apm_cli.adapters.client.vscode.RegistryIntegration')
+        self.mock_integration_patcher = patch(
+            "apm_cli.adapters.client.vscode.RegistryIntegration"
+        )
         self.mock_integration_class = self.mock_integration_patcher.start()
         self.mock_integration = MagicMock()
         self.mock_integration_class.return_value = self.mock_integration
@@ -749,7 +856,7 @@ class TestExtractInputVariables(unittest.TestCase):
     def tearDown(self):
         self.mock_registry_patcher.stop()
         self.mock_integration_patcher.stop()
-        self.temp_dir.cleanup()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_extract_single_input_variable(self):
         adapter = VSCodeClientAdapter()
@@ -810,7 +917,10 @@ class TestExtractInputVariables(unittest.TestCase):
                     "transport_type": "http",
                     "url": "https://my-server.example.com/mcp/",
                     "headers": [
-                        {"name": "Authorization", "value": "Bearer ${input:my-server-token}"},
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer ${input:my-server-token}",
+                        },
                         {"name": "X-Project", "value": "${input:my-server-project}"},
                     ],
                 }
@@ -851,9 +961,7 @@ class TestExtractInputVariables(unittest.TestCase):
         self.mock_registry.find_server_by_reference.return_value = server_info
 
         adapter = VSCodeClientAdapter()
-        result = adapter.configure_mcp_server(
-            server_url="my-cli", server_name="my-cli"
-        )
+        result = adapter.configure_mcp_server(server_url="my-cli", server_name="my-cli")
 
         assert result is True
         with open(self.temp_path, "r") as f:
@@ -874,7 +982,12 @@ class TestExtractInputVariables(unittest.TestCase):
                 {
                     "servers": {},
                     "inputs": [
-                        {"type": "promptString", "id": "my-server-token", "description": "existing", "password": True}
+                        {
+                            "type": "promptString",
+                            "id": "my-server-token",
+                            "description": "existing",
+                            "password": True,
+                        }
                     ],
                 },
                 f,
@@ -887,7 +1000,10 @@ class TestExtractInputVariables(unittest.TestCase):
                     "transport_type": "http",
                     "url": "https://example.com/mcp/",
                     "headers": [
-                        {"name": "Authorization", "value": "Bearer ${input:my-server-token}"},
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer ${input:my-server-token}",
+                        },
                     ],
                 }
             ],
@@ -907,7 +1023,9 @@ class TestExtractInputVariables(unittest.TestCase):
 class TestWarnInputVariables(unittest.TestCase):
     """Tests for _warn_input_variables on adapters that don't support input prompts."""
 
-    def test_warning_emitted_for_input_reference(self, ):
+    def test_warning_emitted_for_input_reference(
+        self,
+    ):
         mapping = {"Authorization": "Bearer ${input:my-token}"}
         with patch("builtins.print") as mock_print:
             MCPClientAdapter._warn_input_variables(mapping, "my-server", "Copilot CLI")
