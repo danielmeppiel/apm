@@ -311,6 +311,10 @@ def _validate_package_exists(package, verbose=False):
         host = dep_ref.host or default_host()
         org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
 
+        if verbose_log:
+            ctx = auth_resolver.resolve(host, org=org)
+            verbose_log(f"Auth resolved: host={host}, org={org}, source={ctx.source}, type={ctx.token_type}")
+
         def _ls_remote(token, git_env):
             """Try git ls-remote with optional auth."""
             if token:
@@ -323,6 +327,10 @@ def _validate_package_exists(package, verbose=False):
                 env=git_env,
             )
             if result.returncode != 0:
+                # Log sanitized error (never log token-bearing URLs)
+                stderr_clean = result.stderr.strip().split('\n')[-1] if result.stderr else "unknown error"
+                if verbose_log:
+                    verbose_log(f"git ls-remote rc={result.returncode}: {stderr_clean}")
                 raise RuntimeError(f"git ls-remote failed: {result.stderr}")
             return True
 
@@ -360,6 +368,9 @@ def _validate_package_exists(package, verbose=False):
                 env=git_env,
             )
             if result.returncode != 0:
+                stderr_clean = result.stderr.strip().split('\n')[-1] if result.stderr else "unknown error"
+                if verbose_log:
+                    verbose_log(f"git ls-remote rc={result.returncode}: {stderr_clean}")
                 raise RuntimeError(f"git ls-remote failed: {result.stderr}")
             return True
 
