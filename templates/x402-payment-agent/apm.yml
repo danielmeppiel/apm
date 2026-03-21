@@ -1,0 +1,8 @@
+name: x402-payment-agent
+version: 1.0.0
+description: Agent package for handling HTTP 402 (Payment Required) responses using the x402 protocol — autonomous API payment negotiation with spending policies.
+author: AI Agent Economy
+
+dependencies:
+  mcp:
+    - up2itnow0822/agentpay-mcp
