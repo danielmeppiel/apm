@@ -197,6 +197,17 @@ def build_download_ref(
     """
     if existing_lockfile and not update_refs and not ref_changed:
         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
-        if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-            return _dataclass_replace(dep_ref, reference=locked_dep.resolved_commit)
+        if locked_dep:
+            # Prefer the lockfile host over the manifest host so that
+            # re-installs fetch from the exact same source (e.g. an
+            # Artifactory proxy or GHE custom domain).  Without this,
+            # the downloader would fall back to github.com.
+            locked_host = getattr(locked_dep, "host", None)
+            overrides = {}
+            if isinstance(locked_host, str) and locked_host != dep_ref.host:
+                overrides["host"] = locked_host
+            if locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                overrides["reference"] = locked_dep.resolved_commit
+            if overrides:
+                return _dataclass_replace(dep_ref, **overrides)
     return dep_ref

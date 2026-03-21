@@ -120,11 +120,12 @@ class LockedDependency:
         depth: int,
         resolved_by: Optional[str],
         is_dev: bool = False,
+        host_override: Optional[str] = None,
     ) -> "LockedDependency":
         """Create from a DependencyReference with resolution info."""
         return cls(
             repo_url=dep_ref.repo_url,
-            host=dep_ref.host,
+            host=host_override or dep_ref.host,
             resolved_commit=resolved_commit,
             resolved_ref=dep_ref.reference,
             virtual_path=dep_ref.virtual_path,
@@ -230,11 +231,10 @@ class LockFile:
         dependency_graph,
     ) -> "LockFile":
         """Create a lock file from installed packages.
-        
+
         Args:
-            installed_packages: List of (dep_ref, resolved_commit, depth, resolved_by)
-                or (dep_ref, resolved_commit, depth, resolved_by, is_dev) tuples.
-                The 5th element is optional for backward compatibility.
+            installed_packages: List of (dep_ref, resolved_commit, depth, resolved_by
+                [, is_dev [, host_override]]) tuples. The 5th/6th elements are optional.
             dependency_graph: The resolved DependencyGraph for additional metadata
         """
         # Get APM version
@@ -243,24 +243,23 @@ class LockFile:
             apm_version = version("apm-cli")
         except Exception:
             apm_version = "unknown"
-        
+
         lock = cls(apm_version=apm_version)
-        
+
         for entry in installed_packages:
-            if len(entry) >= 5:
-                dep_ref, resolved_commit, depth, resolved_by, is_dev = entry[:5]
-            else:
-                dep_ref, resolved_commit, depth, resolved_by = entry[:4]
-                is_dev = False
+            dep_ref, resolved_commit, depth, resolved_by = entry[:4]
+            is_dev = entry[4] if len(entry) > 4 else False
+            host_override = entry[5] if len(entry) > 5 else None
             locked_dep = LockedDependency.from_dependency_ref(
                 dep_ref=dep_ref,
                 resolved_commit=resolved_commit,
                 depth=depth,
                 resolved_by=resolved_by,
                 is_dev=is_dev,
+                host_override=host_override,
             )
             lock.add_dependency(locked_dep)
-        
+
         return lock
 
     def get_installed_paths(self, apm_modules_dir: Path) -> List[str]:

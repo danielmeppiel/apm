@@ -928,20 +928,22 @@ def _install_apm_dependencies(
                     return result_path
                 return None
 
-            # T5: Use locked commit if available (reproducible installs)
-            locked_ref = None
-            if existing_lockfile:
-                locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
-                if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                    locked_ref = locked_dep.resolved_commit
-
-            # Build a DependencyReference with the right ref to avoid lossy
+            # T5: Use locked commit and host if available (reproducible installs).
+            # Prefer the lockfile host so re-installs fetch from the same source
+            # (e.g. Artifactory proxy).  Uses _dc_replace to avoid lossy
             # str() → parse() round-trips (#382).
             from dataclasses import replace as _dc_replace
-            if locked_ref:
-                download_dep = _dc_replace(dep_ref, reference=locked_ref)
-            else:
-                download_dep = dep_ref
+            locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key()) if existing_lockfile else None
+            overrides = {}
+            if locked_dep:
+                locked_host = getattr(locked_dep, "host", None)
+                if isinstance(locked_host, str) and locked_host != dep_ref.host:
+                    overrides["host"] = locked_host
+                if locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                    overrides["reference"] = locked_dep.resolved_commit
+            elif dep_ref.reference:
+                pass  # use dep_ref as-is
+            download_dep = _dc_replace(dep_ref, **overrides) if overrides else dep_ref
 
             # Silent download - no progress display for transitive deps
             result = downloader.download_package(download_dep, install_path)
@@ -1096,7 +1098,7 @@ def _install_apm_dependencies(
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
         from ..utils.content_hash import compute_package_hash as _compute_hash
-        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev)
+        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev, host_override)
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
         _package_hashes: builtins.dict = {}  # dep_key → sha256 hash (captured at download/verify time)
@@ -1107,6 +1109,31 @@ def _install_apm_dependencies(
         if existing_lockfile:
             for dep in existing_lockfile.dependencies.values():
                 managed_files.update(dep.deployed_files)
+
+            # Conflict: ARTIFACTORY_ONLY requires all deps locked to a proxy host.
+            import os
+            if os.environ.get('ARTIFACTORY_ONLY', '').strip().lower() in ('1', 'true', 'yes'):
+                direct_locked = [
+                    dep for dep in existing_lockfile.dependencies.values()
+                    if dep.source != "local" and dep.host in (None, "github.com")
+                ]
+                if direct_locked:
+                    _rich_error(
+                        "ARTIFACTORY_ONLY is set but lockfile contains "
+                        "dependencies locked to direct sources:"
+                    )
+                    for dep in direct_locked[:10]:
+                        host = dep.host or "github.com"
+                        name = dep.repo_url
+                        if dep.virtual_path:
+                            name = f"{name}/{dep.virtual_path}"
+                        _rich_error(f"  - {name} (host: {host})")
+                    _rich_error(
+                        "Re-run with 'apm install --update' to re-resolve "
+                        "through Artifactory, or unset ARTIFACTORY_ONLY."
+                    )
+                    sys.exit(1)
+
         # Normalize path separators once for O(1) lookups in check_collision
         from apm_cli.integration.base_integrator import BaseIntegrator
         managed_files = BaseIntegrator.normalize_managed_files(managed_files)
@@ -1296,7 +1323,7 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev))
+                    installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev, None))
                     dep_key = dep_ref.get_unique_key()
                     if install_path.is_dir() and not dep_ref.is_local:
                         _package_hashes[dep_key] = _compute_hash(install_path)
@@ -1408,6 +1435,14 @@ def _install_apm_dependencies(
                         safe_rmtree(install_path, apm_modules_dir)
                         skip_download = False
 
+                # When ARTIFACTORY_ONLY is set, don't use cached files
+                # unless the lockfile confirms they came from Artifactory.
+                if skip_download and not dep_ref.is_local:
+                    import os
+                    if os.environ.get('ARTIFACTORY_ONLY', '').strip().lower() in ('1', 'true', 'yes'):
+                        if not _dep_locked_chk or _dep_locked_chk.host in (None, "github.com"):
+                            skip_download = False
+
                 if skip_download:
                     display_name = (
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
@@ -1422,7 +1457,14 @@ def _install_apm_dependencies(
                             ref_str = f"#{short_sha}"
                     elif dep_ref.reference:
                         ref_str = f"#{dep_ref.reference}"
-                    _rich_info(f"✓ {display_name}{ref_str} (cached)")
+                    cached_art_suffix = ""
+                    if _dep_locked_chk and _dep_locked_chk.host and _dep_locked_chk.host != "github.com":
+                        cached_art_suffix = f" via {_dep_locked_chk.host}"
+                    else:
+                        resolved_host = downloader.get_resolved_host(dep_ref)
+                        if resolved_host:
+                            cached_art_suffix = f" via {resolved_host}"
+                    _rich_info(f"✓ {display_name}{ref_str} (cached{cached_art_suffix})")
                     installed_count += 1
                     if not dep_ref.reference:
                         unpinned_count += 1
@@ -1495,7 +1537,13 @@ def _install_apm_dependencies(
                                 cached_commit = locked_dep.resolved_commit
                         if not cached_commit:
                             cached_commit = dep_ref.reference
-                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by, _is_dev))
+                        # Determine actual download host for lockfile.
+                        cached_host_override = None
+                        if _dep_locked_chk and _dep_locked_chk.host:
+                            cached_host_override = _dep_locked_chk.host
+                        if not cached_host_override:
+                            cached_host_override = downloader.get_resolved_host(dep_ref)
+                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by, _is_dev, cached_host_override))
                         if install_path.is_dir():
                             _package_hashes[dep_key] = _compute_hash(install_path)
                         # Track package type for lockfile
@@ -1604,7 +1652,8 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by, _is_dev))
+                    host_override = downloader.get_resolved_host(dep_ref)
+                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by, _is_dev, host_override))
                     if install_path.is_dir():
                         _package_hashes[dep_ref.get_unique_key()] = _compute_hash(install_path)
 
@@ -1631,6 +1680,9 @@ def _install_apm_dependencies(
                             )
                         elif package_type == PackageType.APM_PACKAGE:
                             _rich_info(f"  └─ Package type: APM Package (apm.yml)")
+
+                    if verbose and host_override:
+                        _rich_info(f"  └─ Source: {host_override}")
 
                     # Auto-integrate prompts and agents if enabled
                     # Pre-deploy security gate

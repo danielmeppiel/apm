@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Documented `${input:...}` variable support in `headers` and `env` MCP server fields, with runtime support matrix and examples (#343)
+- Lockfile records actual download host for Artifactory-proxied packages, enabling reproducible installs from lockfile alone without `ARTIFACTORY_BASE_URL`
+- `build_download_ref` prefers lockfile host over manifest host for reproducible re-installs from non-default sources
+- `ARTIFACTORY_ONLY` conflict detection — hard error when lockfile contains `github.com` dependencies but `ARTIFACTORY_ONLY=1` is set
+- `ARTIFACTORY_ONLY` enforcement for virtual packages (files, collections, subdirectories) — blocks direct git access consistently
+
+### Fixed
+
+- Virtual subdirectory packages bypassed `ARTIFACTORY_ONLY` enforcement and fell through to direct git clone
 
 ## [0.8.3] - 2026-03-20
 
