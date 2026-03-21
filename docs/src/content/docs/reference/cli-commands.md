@@ -91,7 +91,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--force` - Overwrite locally-authored files on collision; bypass security scan blocks
 - `--dry-run` - Show what would be installed without installing
 - `--parallel-downloads INTEGER` - Max concurrent package downloads (default: 4, 0 to disable)
-- `--verbose` - Show individual file paths and full error details in the diagnostic summary
+- `-v, --verbose` - Show individual file paths and full error details in the diagnostic summary
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 - `--dev` - Add packages to [`devDependencies`](../manifest-schema/#5-devdependencies) instead of `dependencies`. Dev deps are installed locally but excluded from `apm pack --format plugin` bundles
 
@@ -342,7 +342,7 @@ apm prune --dry-run
 
 ### `apm audit` - Scan for hidden Unicode characters
 
-Scan installed packages or arbitrary files for hidden Unicode characters that could embed invisible instructions in prompt files.
+Scan installed packages or any file for hidden Unicode characters that could embed invisible instructions in prompt files.
 
 ```bash
 apm audit [PACKAGE] [OPTIONS]
@@ -716,7 +716,7 @@ apm mcp list [OPTIONS]
 ```
 
 **Options:**
-- `--limit INTEGER` - Number of results to show
+- `--limit INTEGER` - Number of results to show (default: 20)
 
 **Examples:**
 ```bash
@@ -724,7 +724,7 @@ apm mcp list [OPTIONS]
 apm mcp list
 
 # Limit results
-apm mcp list --limit 20
+apm mcp list --limit 50
 ```
 
 #### `apm mcp search` - Search MCP servers
@@ -868,7 +868,7 @@ apm compile [OPTIONS]
 ```
 
 **Options:**
-- `-o, --output TEXT` - Output file path (for single-file mode)
+- `-o, --output TEXT` - Output file path (use with `--single-agents` legacy mode)
 - `-t, --target [vscode|agents|claude|opencode|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Preview compilation without writing files (shows placement decisions)
@@ -1044,7 +1044,7 @@ apm config
 apm config
 ```
 
-#### `apm config get` - Get a configuration value
+#### `apm config get` - Get one or all configuration values
 
 Get a specific configuration value or display all configuration values.
 
@@ -1187,7 +1187,7 @@ apm runtime remove [OPTIONS] {copilot|codex|llm}
 - `{copilot|codex|llm}` - Runtime to remove
 
 **Options:**
-- `--yes` - Confirm the action without prompting
+- `-y, --yes` - Confirm the action without prompting
 
 #### `apm runtime status` - Show runtime status
 

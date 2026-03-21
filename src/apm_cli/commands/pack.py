@@ -16,6 +16,7 @@ from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, 
     "fmt",
     type=click.Choice(["apm", "plugin"]),
     default="apm",
+    show_default=True,
     help="Bundle format.",
 )
 @click.option(

@@ -379,7 +379,7 @@ def _preview_strip(
 # ── Command ────────────────────────────────────────────────────────
 
 
-@click.command(help="Scan installed packages for hidden Unicode characters")
+@click.command(help="Scan installed packages (or any file) for hidden Unicode characters")
 @click.argument("package", required=False)
 @click.option(
     "--file",

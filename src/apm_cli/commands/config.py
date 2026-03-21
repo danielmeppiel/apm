@@ -136,7 +136,7 @@ def set(key, value):
         sys.exit(1)
 
 
-@config.command(help="Get a configuration value")
+@config.command(help="Get one or all configuration values")
 @click.argument("key", required=False)
 def get(key):
     """Get a configuration value or show all configuration.
