@@ -1577,16 +1577,15 @@ def _install_apm_dependencies(
                 if skip_download and _dep_locked_chk and _dep_locked_chk.content_hash:
                     from ..utils.content_hash import verify_package_hash
                     if not verify_package_hash(install_path, _dep_locked_chk.content_hash):
+                        _hash_msg = (
+                            f"Content hash mismatch for "
+                            f"{dep_ref.get_unique_key()} -- re-downloading"
+                        )
+                        diagnostics.warn(_hash_msg, package=dep_ref.get_unique_key())
                         if logger:
-                            logger.progress(
-                                f"Content hash mismatch for "
-                                f"{dep_ref.get_unique_key()} -- re-downloading"
-                            )
+                            logger.progress(_hash_msg)
                         else:
-                            _rich_info(
-                                f"Content hash mismatch for "
-                                f"{dep_ref.get_unique_key()} — re-downloading"
-                            )
+                            _rich_info(_hash_msg)
                         safe_rmtree(install_path, apm_modules_dir)
                         skip_download = False
 
@@ -1904,14 +1903,12 @@ def _install_apm_dependencies(
                             _deleted_orphan_paths.append(_target)
                             _removed_orphan_count += 1
                         except Exception as _orphan_err:
+                            _orphan_msg = f"Could not remove orphaned path {_orphan_path}: {_orphan_err}"
+                            diagnostics.error(_orphan_msg)
                             if logger:
-                                logger.verbose_detail(
-                                    f"  Could not remove orphaned path {_orphan_path}: {_orphan_err}"
-                                )
+                                logger.verbose_detail(f"  {_orphan_msg}")
                             else:
-                                _rich_error(
-                                    f"  └─ Could not remove orphaned path {_orphan_path}: {_orphan_err}"
-                                )
+                                _rich_error(f"  └─ {_orphan_msg}")
                             _failed_orphan_count += 1
             # Clean up empty parent directories left after file removal
             if _deleted_orphan_paths:
@@ -1980,10 +1977,12 @@ def _install_apm_dependencies(
                 else:
                     _rich_info(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
+                _lock_msg = f"Could not generate apm.lock.yaml: {e}"
+                diagnostics.error(_lock_msg)
                 if logger:
-                    logger.warning(f"Could not generate apm.lock.yaml: {e}")
+                    logger.warning(_lock_msg)
                 else:
-                    _rich_warning(f"Could not generate apm.lock.yaml: {e}")
+                    _rich_warning(_lock_msg)
 
         # Show integration stats (verbose-only when logger is available)
         if total_links_resolved > 0:

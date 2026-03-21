@@ -542,12 +542,12 @@ def compile(
                     f"Compilation completed with {len(result.warnings)} warnings:"
                 )
                 for warning in result.warnings:
-                    _rich_echo(f"  [!]  {warning}", color="yellow")
+                    logger.warning(f"  {warning}")
 
         if result.errors:
             logger.error(f"Compilation failed with {len(result.errors)} errors:")
             for error in result.errors:
-                _rich_echo(f"  [x] {error}", color="red")
+                logger.error(f"  {error}")
             sys.exit(1)
 
         # Check for orphaned packages after successful compilation

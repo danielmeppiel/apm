@@ -1,0 +1,54 @@
+name: Auth Acceptance Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_repo:
+        description: 'Public test repo (owner/repo)'
+        default: 'microsoft/apm-sample-package'
+      private_repo:
+        description: 'Private test repo (owner/repo, optional)'
+        required: false
+      emu_repo:
+        description: 'EMU internal test repo (owner/repo, optional)'
+        required: false
+
+env:
+  PYTHON_VERSION: '3.12'
+
+permissions:
+  contents: read
+
+jobs:
+  auth-tests:
+    runs-on: ubuntu-latest
+    environment: auth-acceptance  # configure PAT secrets in this environment
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install APM in dev mode
+        run: uv run pip install -e .
+
+      - name: Run auth acceptance tests
+        env:
+          APM_BINARY: .venv/bin/apm
+          AUTH_TEST_PUBLIC_REPO: ${{ inputs.public_repo }}
+          AUTH_TEST_PRIVATE_REPO: ${{ inputs.private_repo }}
+          AUTH_TEST_EMU_REPO: ${{ inputs.emu_repo }}
+          GITHUB_APM_PAT: ${{ secrets.AUTH_TEST_GITHUB_APM_PAT }}
+          GITHUB_TOKEN: ${{ secrets.AUTH_TEST_GITHUB_TOKEN }}
+        run: ./scripts/test-auth-acceptance.sh
