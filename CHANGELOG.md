@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Global env vars (`GITHUB_APM_PAT`) no longer leak to non-default hosts; enterprise hosts resolve via per-org env vars or git credentials only (#393)
 
+### Fixed
+
+- `git credential fill` timeout increased from 5s to 60s (configurable via `APM_GIT_CREDENTIAL_TIMEOUT`, max 180s) — fixes silent auth failures on Windows when credential helper shows interactive dialogs (#393)
+
 ## [0.8.3] - 2026-03-20
 
 ### Added

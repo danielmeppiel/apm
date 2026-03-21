@@ -55,22 +55,24 @@ The org name comes from the dependency reference — `contoso/my-package` checks
 
 Per-org tokens take priority over global tokens. Use this when different orgs require different PATs (e.g., separate SSO authorizations).
 
-## Enterprise (EMU / GHE Cloud)
+## Enterprise Managed Users (EMU)
 
-GHE Cloud hosts (`*.ghe.com`) are always auth-required — APM never attempts unauthenticated access. Set a per-org token:
+EMU orgs can live on **github.com** (e.g., `contoso-microsoft`) or on **GHE Cloud Data Residency** (`*.ghe.com`). EMU tokens (`ghu_` prefix) are enterprise-scoped and cannot access public repos on github.com.
+
+If your manifest mixes enterprise and public packages, use separate tokens:
+
+```bash
+export GITHUB_APM_PAT_CONTOSO_MICROSOFT=ghu_emu_token  # EMU org (any host)
+export GITHUB_APM_PAT=ghp_public_token                  # public github.com repos
+```
+
+### GHE Cloud Data Residency (`*.ghe.com`)
+
+`*.ghe.com` hosts are always auth-required — there are no public repos. APM skips the unauthenticated attempt entirely for these hosts:
 
 ```bash
 export GITHUB_APM_PAT_MYENTERPRISE=ghp_enterprise_token
 apm install myenterprise.ghe.com/platform/standards
-```
-
-### EMU tokens
-
-Enterprise Managed User tokens (`ghu_` prefix) are scoped to the enterprise. They cannot access public repos on github.com. If your manifest mixes enterprise and public packages, use separate tokens:
-
-```bash
-export GITHUB_APM_PAT_MYENTERPRISE=ghu_emu_token  # *.ghe.com only
-export GITHUB_APM_PAT=ghp_public_token             # github.com
 ```
 
 ## GitHub Enterprise Server (GHES)
@@ -126,7 +128,7 @@ Authorize your PAT for SSO at [github.com/settings/tokens](https://github.com/se
 
 ### EMU token can't access public repos
 
-EMU tokens (`ghu_` prefix) are enterprise-scoped. Use a standard PAT for public github.com repos alongside the EMU token for `*.ghe.com` — see [Enterprise (EMU / GHE Cloud)](#enterprise-emu--ghe-cloud) above.
+EMU tokens (`ghu_` prefix) are enterprise-scoped and cannot access public github.com repos. Use a standard PAT for public repos alongside your EMU token — see [Enterprise Managed Users (EMU)](#enterprise-managed-users-emu) above.
 
 ### Diagnosing auth failures
 
@@ -140,7 +142,13 @@ The output shows which env var matched (or `none`), the detected token type (`fi
 
 ### Git credential helper not found
 
-APM calls `git credential fill` as a fallback. Ensure a credential helper is configured:
+APM calls `git credential fill` as a fallback (60s timeout). If your credential helper needs more time (e.g., Windows account picker), set `APM_GIT_CREDENTIAL_TIMEOUT` (seconds, max 180):
+
+```bash
+export APM_GIT_CREDENTIAL_TIMEOUT=120
+```
+
+Ensure a credential helper is configured:
 
 ```bash
 git config credential.helper              # check current helper
