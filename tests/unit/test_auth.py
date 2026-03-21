@@ -170,6 +170,26 @@ class TestResolve:
                 assert ctx.token == "cred-token"
                 assert ctx.source == "git-credential-fill"
 
+    def test_global_var_resolves_for_non_default_host(self):
+        """GITHUB_APM_PAT resolves for *.ghe.com (any host, not just default)."""
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "global-token"}, clear=True):
+            resolver = AuthResolver()
+            ctx = resolver.resolve("contoso.ghe.com")
+            assert ctx.token == "global-token"
+            assert ctx.source == "GITHUB_APM_PAT"
+
+    def test_global_var_resolves_for_ghes_host(self):
+        """GITHUB_APM_PAT resolves for a GHES host set via GITHUB_HOST."""
+        with patch.dict(os.environ, {
+            "GITHUB_HOST": "github.mycompany.com",
+            "GITHUB_APM_PAT": "global-token",
+        }, clear=True):
+            resolver = AuthResolver()
+            ctx = resolver.resolve("github.mycompany.com")
+            assert ctx.token == "global-token"
+            assert ctx.source == "GITHUB_APM_PAT"
+            assert ctx.host_info.kind == "ghes"
+
     def test_git_env_has_lockdown(self):
         """Resolved context has git security env vars."""
         with patch.dict(os.environ, {"GITHUB_APM_PAT": "token"}, clear=True):
@@ -223,24 +243,21 @@ class TestTryWithFallback:
                 assert calls == [None, "token"]
 
     def test_ghe_cloud_auth_only(self):
-        """*.ghe.com: auth-only, no unauth fallback.  Uses git credential (not global env)."""
-        with patch.dict(os.environ, {}, clear=True):
-            with patch.object(
-                GitHubTokenManager, "resolve_credential_from_git", return_value="ghe-cred"
-            ):
-                resolver = AuthResolver()
-                calls = []
+        """*.ghe.com: auth-only, no unauth fallback.  Uses global env var."""
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "global-token"}, clear=True):
+            resolver = AuthResolver()
+            calls = []
 
-                def op(token, env):
-                    calls.append(token)
-                    return "success"
+            def op(token, env):
+                calls.append(token)
+                return "success"
 
-                result = resolver.try_with_fallback(
-                    "contoso.ghe.com", op, unauth_first=True
-                )
-                assert result == "success"
-                # GHE Cloud has no public repos → unauth skipped, auth called once
-                assert calls == ["ghe-cred"]
+            result = resolver.try_with_fallback(
+                "contoso.ghe.com", op, unauth_first=True
+            )
+            assert result == "success"
+            # GHE Cloud has no public repos → unauth skipped, auth called once
+            assert calls == ["global-token"]
 
     def test_auth_first_succeeds(self):
         """Auth-first (default): auth works, unauth not tried."""
@@ -294,6 +311,59 @@ class TestTryWithFallback:
                 result = resolver.try_with_fallback("github.com", op)
                 assert result == "success"
                 assert calls == [None]
+
+    def test_credential_fallback_when_env_token_fails(self):
+        """Env token fails on auth-only host → retries with git credential fill."""
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "wrong-token"}, clear=True):
+            with patch.object(
+                GitHubTokenManager, "resolve_credential_from_git", return_value="correct-cred"
+            ):
+                resolver = AuthResolver()
+                calls = []
+
+                def op(token, env):
+                    calls.append(token)
+                    if token == "wrong-token":
+                        raise RuntimeError("Bad credentials")
+                    return "success"
+
+                result = resolver.try_with_fallback("contoso.ghe.com", op)
+                assert result == "success"
+                assert calls == ["wrong-token", "correct-cred"]
+
+    def test_no_credential_fallback_when_source_is_credential(self):
+        """When token already came from git-credential-fill, no retry on failure."""
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(
+                GitHubTokenManager, "resolve_credential_from_git", return_value="cred-token"
+            ):
+                resolver = AuthResolver()
+
+                def op(token, env):
+                    raise RuntimeError("Bad credentials")
+
+                with pytest.raises(RuntimeError, match="Bad credentials"):
+                    resolver.try_with_fallback("contoso.ghe.com", op)
+
+    def test_credential_fallback_on_auth_first_path(self):
+        """Auth-first on public host: auth fails, unauth fails → credential fill kicks in."""
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "wrong-token"}, clear=True):
+            with patch.object(
+                GitHubTokenManager, "resolve_credential_from_git", return_value="correct-cred"
+            ):
+                resolver = AuthResolver()
+                calls = []
+
+                def op(token, env):
+                    calls.append(token)
+                    if token in ("wrong-token", None):
+                        raise RuntimeError("Failed")
+                    return "success"
+
+                result = resolver.try_with_fallback("github.com", op)
+                assert result == "success"
+                # auth-first → unauth fallback → credential fill
+                assert calls == ["wrong-token", None, "correct-cred"]
 
     def test_verbose_callback(self):
         """verbose_callback is called at each step."""

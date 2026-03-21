@@ -11,25 +11,23 @@ APM works without tokens for public packages on github.com. Authentication is ne
 APM resolves tokens per `(host, org)` pair. For each dependency, it walks a resolution chain until it finds a token:
 
 1. **Per-org env var** — `GITHUB_APM_PAT_{ORG}` (checked for any host)
-2. **Global env vars** — `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` (default host only)
+2. **Global env vars** — `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` (any host)
 3. **Git credential helper** — `git credential fill` (any host except ADO)
 
-If nothing matches, APM attempts unauthenticated access (works for public repos on github.com).
+If the global token doesn't work for the target host, APM automatically retries with git credential helpers. If nothing matches, APM attempts unauthenticated access (works for public repos on github.com).
 
 Results are cached per-process — the same `(host, org)` pair is resolved once.
 
-### Security constraint
-
-Global env vars (`GITHUB_APM_PAT`, `GITHUB_TOKEN`, `GH_TOKEN`) only apply to the default host (github.com unless `GITHUB_HOST` is set). Non-default hosts resolve via per-org env vars or git credentials. APM never sends a github.com token to an enterprise host.
+All token-bearing requests use HTTPS. Tokens are never sent over unencrypted connections.
 
 ## Token lookup
 
 | Priority | Variable | Scope | Notes |
 |----------|----------|-------|-------|
 | 1 | `GITHUB_APM_PAT_{ORG}` | Per-org, any host | Org name uppercased, hyphens → underscores |
-| 2 | `GITHUB_APM_PAT` | Default host only | github.com unless `GITHUB_HOST` overrides |
-| 3 | `GITHUB_TOKEN` | Default host only | Shared with GitHub Actions |
-| 4 | `GH_TOKEN` | Default host only | Set by `gh auth login` |
+| 2 | `GITHUB_APM_PAT` | Any host | Falls back to git credential helpers if rejected |
+| 3 | `GITHUB_TOKEN` | Any host | Shared with GitHub Actions |
+| 4 | `GH_TOKEN` | Any host | Set by `gh auth login` |
 | 5 | `git credential fill` | Per-host | System credential manager, `gh auth`, OS keychain |
 
 For Azure DevOps, the only token source is `ADO_APM_PAT`.
@@ -62,9 +60,10 @@ EMU orgs can live on **github.com** (e.g., `contoso-microsoft`) or on **GHE Clou
 If your manifest mixes enterprise and public packages, use separate tokens:
 
 ```bash
-export GITHUB_APM_PAT_CONTOSO_MICROSOFT=github_pat_enterprise_token  # EMU org (any host)
-export GITHUB_APM_PAT=ghp_public_token                               # public github.com repos
+export GITHUB_APM_PAT_CONTOSO_MICROSOFT=github_pat_enterprise_token  # EMU org
 ```
+
+Public repos on github.com work without authentication. Set `GITHUB_APM_PAT` only if you need to access private repos or avoid rate limits.
 
 ### GHE Cloud Data Residency (`*.ghe.com`)
 
@@ -94,7 +93,7 @@ dependencies:
     - github.com/public/open-source-package   # → github.com
 ```
 
-Global env vars apply to whichever host `GITHUB_HOST` points to. Alternatively, skip env vars and configure `git credential fill` for your GHES host.
+Setting `GITHUB_HOST` makes bare package names (without explicit host) resolve against your GHES instance. Alternatively, skip env vars and configure `git credential fill` for your GHES host.
 
 ## Azure DevOps
 

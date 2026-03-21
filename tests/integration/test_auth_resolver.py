@@ -98,21 +98,21 @@ class TestPerOrgOverride:
 
 
 # ---------------------------------------------------------------------------
-# 4. GHE Cloud skips global env vars
+# 4. GHE Cloud uses global env vars
 # ---------------------------------------------------------------------------
 
-class TestGheCloudSkipsGlobal:
-    def test_auth_resolver_ghe_cloud_skips_global(self):
-        """*.ghe.com hosts must NOT pick up GITHUB_APM_PAT (security boundary)."""
+class TestGheCloudGlobalVars:
+    def test_auth_resolver_ghe_cloud_uses_global(self):
+        """*.ghe.com hosts pick up GITHUB_APM_PAT (global vars apply to all hosts)."""
         env = {"GITHUB_APM_PAT": "ghp_should_not_leak"}
         with patch.dict(os.environ, env, clear=True), _NO_GIT_CRED:
             resolver = AuthResolver()
             ctx = resolver.resolve("contoso.ghe.com")
 
-            assert ctx.token is None, (
-                "Global GITHUB_APM_PAT must not leak to GHE Cloud hosts"
+            assert ctx.token == "ghp_should_not_leak", (
+                "Global GITHUB_APM_PAT should be returned for GHE Cloud hosts"
             )
-            assert ctx.source == "none"
+            assert ctx.source == "GITHUB_APM_PAT"
             assert ctx.host_info.kind == "ghe_cloud"
             assert ctx.host_info.has_public_repos is False
 
@@ -128,6 +128,34 @@ class TestGheCloudSkipsGlobal:
 
             assert ctx.token == "ghp_enterprise"
             assert ctx.source == "GITHUB_APM_PAT_ENTERPRISE_TEAM"
+
+    def test_ghe_cloud_global_var_with_credential_fallback_in_try_with_fallback(self):
+        """When a global env-var token fails on GHE Cloud, try_with_fallback
+        retries via git credential fill before giving up."""
+        env = {"GITHUB_APM_PAT": "wrong-global-token"}
+        with patch.dict(os.environ, env, clear=True), \
+             patch.object(
+                 GitHubTokenManager,
+                 "resolve_credential_from_git",
+                 return_value="correct-ghe-cred",
+             ):
+            resolver = AuthResolver()
+            calls: list = []
+
+            def op(token, git_env):
+                calls.append(token)
+                if token == "wrong-global-token":
+                    raise RuntimeError("auth failed")
+                return "ok"
+
+            result = resolver.try_with_fallback(
+                "contoso.ghe.com", op, org="contoso"
+            )
+
+            assert result == "ok"
+            assert calls == ["wrong-global-token", "correct-ghe-cred"], (
+                "Should try global token first, then fall back to git credential fill"
+            )
 
 
 # ---------------------------------------------------------------------------

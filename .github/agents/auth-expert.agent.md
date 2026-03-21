@@ -32,7 +32,7 @@ When reviewing or writing auth code:
 
 1. **Every remote operation** must go through AuthResolver — no direct `os.getenv()` for tokens
 2. **Per-dep resolution**: Use `resolve_for_dep(dep_ref)`, never `self.github_token` instance vars
-3. **Host awareness**: *.ghe.com = auth-only, github.com = fallback chain, ADO = auth-only
+3. **Host awareness**: Global env vars are checked for all hosts (no host-gating). `try_with_fallback()` retries with `git credential fill` if the token is rejected. HTTPS is the transport security boundary. *.ghe.com and ADO always require auth (no unauthenticated fallback).
 4. **Error messages**: Always use `build_error_context()` — never hardcode env var names
 5. **Thread safety**: AuthContext is resolved before `executor.submit()`, passed per-worker
 

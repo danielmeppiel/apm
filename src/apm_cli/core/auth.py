@@ -3,6 +3,11 @@
 Every APM operation that touches a remote host MUST use AuthResolver.
 Resolution is per-(host, org) pair, thread-safe, and cached per-process.
 
+All token-bearing requests use HTTPS — that is the transport security
+boundary.  Global env vars are tried for every host; if the token is
+wrong for the target host, ``try_with_fallback`` retries with git
+credential helpers automatically.
+
 Usage::
 
     resolver = AuthResolver()
@@ -232,6 +237,10 @@ class AuthResolver:
             If *True*, try unauthenticated first (saves rate limits, EMU-safe).
         verbose_callback:
             Called with a human-readable step description at each attempt.
+
+        When the resolved token comes from a global env var and fails
+        (e.g. a github.com PAT tried on ``*.ghe.com``), the method
+        retries with ``git credential fill`` before giving up.
         """
         auth_ctx = self.resolve(host, org)
         host_info = auth_ctx.host_info
@@ -241,10 +250,23 @@ class AuthResolver:
             if verbose_callback:
                 verbose_callback(msg)
 
-        # Hosts that never have public repos → auth-only, no fallback
+        def _try_credential_fallback(exc: Exception) -> T:
+            """Retry with git-credential-fill when an env-var token fails."""
+            if auth_ctx.source in ("git-credential-fill", "none"):
+                raise exc
+            _log(f"Token from {auth_ctx.source} failed, trying git credential fill for {host}")
+            cred = self._token_manager.resolve_credential_from_git(host)
+            if cred:
+                return operation(cred, self._build_git_env(cred))
+            raise exc
+
+        # Hosts that never have public repos → auth-only
         if host_info.kind in ("ghe_cloud", "ado"):
             _log(f"Auth-only attempt for {host_info.kind} host {host}")
-            return operation(auth_ctx.token, git_env)
+            try:
+                return operation(auth_ctx.token, git_env)
+            except Exception as exc:
+                return _try_credential_fallback(exc)
 
         if unauth_first:
             # Validation path: save rate limits, EMU-safe
@@ -254,7 +276,10 @@ class AuthResolver:
             except Exception:
                 if auth_ctx.token:
                     _log(f"Unauthenticated failed, retrying with token (source: {auth_ctx.source})")
-                    return operation(auth_ctx.token, git_env)
+                    try:
+                        return operation(auth_ctx.token, git_env)
+                    except Exception as exc:
+                        return _try_credential_fallback(exc)
                 raise
         else:
             # Download path: auth-first for higher rate limits
@@ -262,11 +287,14 @@ class AuthResolver:
                 try:
                     _log(f"Trying authenticated access to {host} (source: {auth_ctx.source})")
                     return operation(auth_ctx.token, git_env)
-                except Exception:
+                except Exception as exc:
                     if host_info.has_public_repos:
                         _log("Authenticated failed, retrying without token")
-                        return operation(None, git_env)
-                    raise
+                        try:
+                            return operation(None, git_env)
+                        except Exception:
+                            return _try_credential_fallback(exc)
+                    return _try_credential_fallback(exc)
             else:
                 _log(f"No token available, trying unauthenticated access to {host}")
                 return operation(None, git_env)
@@ -322,11 +350,16 @@ class AuthResolver:
     ) -> tuple[Optional[str], str]:
         """Walk the token resolution chain.  Returns (token, source).
 
-        Global env vars (``GITHUB_APM_PAT``, ``GITHUB_TOKEN``, ``GH_TOKEN``)
-        are only checked for the default host and ADO.  Non-default hosts
-        (GHES, GHE Cloud, generic) resolve via per-org env vars or git
-        credential helpers — leaking a github.com PAT to an enterprise
-        server would be a security risk and would fail auth anyway.
+        Resolution order:
+        1. Per-org env var ``GITHUB_APM_PAT_{ORG}`` (any host)
+        2. Global env vars ``GITHUB_APM_PAT`` → ``GITHUB_TOKEN`` → ``GH_TOKEN``
+           (any host — if the token is wrong for the target host,
+           ``try_with_fallback`` retries with git credentials)
+        3. Git credential helper (any host except ADO)
+
+        All token-bearing requests use HTTPS, which is the transport
+        security boundary.  Host-gating global env vars is unnecessary
+        and creates DX friction for multi-host setups.
         """
         # 1. Per-org env var (any host)
         if org:
@@ -335,14 +368,12 @@ class AuthResolver:
             if token:
                 return token, env_name
 
-        # 2. Global env var chain — only for default host or ADO
-        _is_default = host_info.host.lower() == default_host().lower()
+        # 2. Global env var chain (any host)
         purpose = self._purpose_for_host(host_info)
-        if _is_default or host_info.kind == "ado":
-            token = self._token_manager.get_token_for_purpose(purpose)
-            if token:
-                source = self._identify_env_source(purpose)
-                return token, source
+        token = self._token_manager.get_token_for_purpose(purpose)
+        if token:
+            source = self._identify_env_source(purpose)
+            return token, source
 
         # 3. Git credential helper (not for ADO — uses its own PAT)
         if host_info.kind not in ("ado",):
