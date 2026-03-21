@@ -321,11 +321,10 @@ class TestValidationFailureReasonMessages:
 
 
 class TestTransitiveDepParentChain:
-    """Tests for the parent chain breadcrumb in transitive dep errors."""
+    """Tests for DependencyNode.get_ancestor_chain() breadcrumb."""
 
-    def test_build_parent_chain_returns_breadcrumb(self):
-        """_build_parent_chain walks up parent links and returns 'a > b > c'."""
-        from apm_cli.deps.apm_resolver import APMDependencyResolver
+    def test_get_ancestor_chain_returns_breadcrumb(self):
+        """get_ancestor_chain walks up parent links and returns 'a > b > c'."""
         from apm_cli.deps.dependency_graph import DependencyNode
         from apm_cli.models.apm_package import APMPackage, DependencyReference
 
@@ -351,12 +350,11 @@ class TestTransitiveDepParentChain:
             parent=mid_node,
         )
 
-        chain = APMDependencyResolver._build_parent_chain(leaf_node)
+        chain = leaf_node.get_ancestor_chain()
         assert chain == "acme/root-pkg > acme/mid-pkg > other-org/leaf-pkg"
 
-    def test_build_parent_chain_single_node(self):
+    def test_get_ancestor_chain_single_node(self):
         """Direct dep (no parent) returns just its own name."""
-        from apm_cli.deps.apm_resolver import APMDependencyResolver
         from apm_cli.deps.dependency_graph import DependencyNode
         from apm_cli.models.apm_package import APMPackage, DependencyReference
 
@@ -366,13 +364,21 @@ class TestTransitiveDepParentChain:
             dependency_ref=ref,
             depth=1,
         )
-        chain = APMDependencyResolver._build_parent_chain(node)
+        chain = node.get_ancestor_chain()
         assert chain == "acme/direct-pkg"
 
-    def test_build_parent_chain_none_returns_empty(self):
-        """None node returns empty string."""
-        from apm_cli.deps.apm_resolver import APMDependencyResolver
-        assert APMDependencyResolver._build_parent_chain(None) == ""
+    def test_get_ancestor_chain_root_node(self):
+        """Root node (no parent) returns just the node's display name."""
+        from apm_cli.deps.dependency_graph import DependencyNode
+        from apm_cli.models.apm_package import APMPackage, DependencyReference
+
+        ref = DependencyReference.parse("acme/root-pkg")
+        node = DependencyNode(
+            package=APMPackage(name="root-pkg", version="1.0", source="acme/root-pkg"),
+            dependency_ref=ref,
+            depth=0,
+        )
+        assert node.get_ancestor_chain() == "acme/root-pkg"
 
     def test_download_callback_includes_chain_in_error(self, tmp_path):
         """When a transitive dep download fails, the error message includes

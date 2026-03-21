@@ -242,8 +242,10 @@ def _validate_package_exists(package, verbose=False):
     import os
     import subprocess
     import tempfile
+    from apm_cli.core.auth import AuthResolver
 
     verbose_log = (lambda msg: _rich_echo(f"  {msg}", color="dim")) if verbose else None
+    auth_resolver = AuthResolver()
 
     try:
         # Parse the package to check if it's a virtual package or ADO
@@ -324,9 +326,6 @@ def _validate_package_exists(package, verbose=False):
             return result.returncode == 0
 
         # For GitHub.com, use AuthResolver with unauth-first fallback
-        from apm_cli.core.auth import AuthResolver
-
-        auth_resolver = AuthResolver()
         host = dep_ref.host or default_host()
         org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
         host_info = auth_resolver.classify_host(host)
@@ -386,9 +385,6 @@ def _validate_package_exists(package, verbose=False):
 
     except Exception:
         # If parsing fails, assume it's a regular GitHub package
-        from apm_cli.core.auth import AuthResolver
-
-        auth_resolver = AuthResolver()
         host = default_host()
         org = package.split('/')[0] if '/' in package else None
         repo_path = package  # owner/repo format
@@ -580,7 +576,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     logger.progress(f"  - {dep}")
 
             if not apm_deps and not dev_apm_deps and not mcp_deps:
-                logger.warning("No dependencies found in apm.yml")
+                logger.progress("No dependencies found in apm.yml")
 
             logger.success("Dry run complete - no changes made")
             return
@@ -2005,9 +2001,9 @@ def _install_apm_dependencies(
                 _lock_msg = f"Could not generate apm.lock.yaml: {e}"
                 diagnostics.error(_lock_msg)
                 if logger:
-                    logger.warning(_lock_msg)
+                    logger.error(_lock_msg)
                 else:
-                    _rich_warning(_lock_msg)
+                    _rich_error(_lock_msg)
 
         # Show integration stats (verbose-only when logger is available)
         if total_links_resolved > 0:

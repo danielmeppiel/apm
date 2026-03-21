@@ -1,7 +1,7 @@
 """APM dependency resolution engine with recursive resolution and conflict detection."""
 
 from pathlib import Path
-from typing import List, Set, Optional, Tuple, Callable
+from typing import List, Set, Optional, Protocol, Tuple, runtime_checkable
 from collections import deque
 
 from ..models.apm_package import APMPackage, DependencyReference
@@ -15,7 +15,14 @@ from .dependency_graph import (
 # if successful.  ``parent_chain`` is a human-readable breadcrumb string like
 # "root-pkg > mid-pkg" showing which dependency path led here, or "" for
 # direct (depth-1) dependencies.
-DownloadCallback = Callable[..., Optional[Path]]
+@runtime_checkable
+class DownloadCallback(Protocol):
+    def __call__(
+        self,
+        dep_ref: 'DependencyReference',
+        apm_modules_dir: Path,
+        parent_chain: str = "",
+    ) -> Optional[Path]: ...
 
 
 class APMDependencyResolver:
@@ -37,28 +44,11 @@ class APMDependencyResolver:
                                the resolver will attempt to fetch uninstalled transitive deps.
         """
         self.max_depth = max_depth
-        self._resolution_path = []  # For test compatibility
         self._apm_modules_dir: Optional[Path] = apm_modules_dir
         self._project_root: Optional[Path] = None
         self._download_callback = download_callback
         self._downloaded_packages: Set[str] = set()  # Track what we downloaded during this resolution
     
-    @staticmethod
-    def _build_parent_chain(node: Optional[DependencyNode]) -> str:
-        """Build a human-readable breadcrumb from a node's ancestry.
-
-        Walks up ``parent`` links to produce e.g. ``"root-pkg > mid-pkg"``
-        so error messages can show which dependency path led to a transitive
-        download failure.  Returns ``""`` for root-level (direct) deps.
-        """
-        parts: list[str] = []
-        current = node
-        while current is not None:
-            parts.append(current.get_display_name())
-            current = current.parent
-        parts.reverse()
-        return " > ".join(parts)
-
     def resolve_dependencies(self, project_root: Path) -> DependencyGraph:
         """
         Resolve all APM dependencies recursively.
@@ -220,7 +210,7 @@ class APMDependencyResolver:
             try:
                 # Compute breadcrumb chain from this node's ancestry so download
                 # errors can report "root > mid > failing-dep" context.
-                parent_chain = self._build_parent_chain(node)
+                parent_chain = node.get_ancestor_chain()
 
                 loaded_package = self._try_load_dependency_package(
                     dep_ref, parent_chain=parent_chain
