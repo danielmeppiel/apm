@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-03-20T01:07:42Z",
-  "last_run_tasks": ["task3", "task7"],
+  "last_updated": "2026-03-21T01:06:28Z",
+  "last_run_tasks": ["task3", "task4", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
@@ -10,24 +10,24 @@
   },
   "coverage_baseline": {
     "total": "60%",
-    "run_date": "2026-03-20",
-    "test_count": 2157,
-    "passing": 2157,
+    "run_date": "2026-03-21",
+    "test_count": 2261,
+    "passing": 2261,
     "pre_existing_failures": 0,
-    "notes": "All 2157 tests pass as of 2026-03-20. PRs #221, #291, #317, #333, #351 not yet merged. New PR for runtime-manager created 2026-03-20."
+    "notes": "All 2261 tests pass as of 2026-03-21. Several PRs merged since last run. New PR for teardown fix created 2026-03-21."
   },
   "monthly_activity_issue": "open-2026-03",
   "monthly_activity_issue_number": 352,
   "yaml_pollution_note": "Running tests with --cov causes PyYAML global state corruption from some earlier test. Affects parse_skill_file and parse_primitive_file calls when run in full suite with coverage. Not a new issue. Tests pass without --cov.",
-  "ansi_strip_note": "7 ANSI failures fully resolved as of 2026-03-16 (likely fixed in or around PR #313). No longer a concern.",
+  "ansi_strip_note": "7 ANSI failures fully resolved as of 2026-03-16. No longer a concern.",
   "config_bug_note": "set_auto_integrate/get_auto_integrate were missing from apm_cli/config.py - fixed in PR 2026-03-19. apm config set/get auto-integrate would throw ImportError at runtime without this fix.",
   "testing_backlog": [
-    {"id": "config-command", "file": "src/apm_cli/commands/config.py", "coverage": "100%", "priority": "done", "notes": "PR submitted 2026-03-19. 23 tests, 22%->100%. Also fixed missing set_auto_integrate/get_auto_integrate functions."},
-    {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "90%", "priority": "done", "notes": "PR #351 submitted 2026-03-18: +33 tests, 58%->90%."},
-    {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "PR #221 open. Remaining uncovered: display/formatting paths (264-333, 436-518, 759-801) - require distributed compiler stack"},
-    {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "90%", "priority": "done", "notes": "PR submitted 2026-03-20. 53 tests, 49%->90% for manager.py, 20%->92% for commands/runtime.py"},
-    {"id": "registry-operations", "file": "src/apm_cli/registry/operations.py", "coverage": "14%", "priority": "low", "notes": "Heavy network dependency."},
-    {"id": "commands-helpers-io", "file": "src/apm_cli/commands/_helpers.py", "coverage": "59%", "priority": "done", "notes": "PR #333 created 2026-03-17."}
+    {"id": "config-command", "file": "src/apm_cli/commands/config.py", "coverage": "100%", "priority": "done", "notes": "PR #366 merged. 23 tests."},
+    {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "90%", "priority": "done", "notes": "PR #351 open."},
+    {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "PR #221 open. Remaining: display/formatting paths requiring distributed compiler stack"},
+    {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "90%", "priority": "done", "notes": "PR #380 open. 53 tests."},
+    {"id": "teardown-cleanup", "file": "tests/unit/test_deps.py, test_env_variables.py, test_vscode_adapter.py, test_helpers.py, workflow/test_workflow.py", "priority": "done", "notes": "PR created 2026-03-21, closes #185. Replaced gc.collect+sleep with shutil.rmtree(ignore_errors=True)."},
+    {"id": "registry-operations", "file": "src/apm_cli/registry/operations.py", "coverage": "14%", "priority": "low", "notes": "Heavy network dependency."}
   ],
   "backlog_cursor": "registry-operations",
   "open_test_assist_prs": [
@@ -35,11 +35,20 @@
     {"number": 291, "title": "fix(tests): strip ANSI codes before plain-text assertions", "branch": "test-assist/fix-ansi-failures-2026-03-14-4cae0cad88219467", "ci": "passing", "note": "may be superseded"},
     {"number": 317, "title": "tests: improve coverage for security scanner and audit command", "branch": "test-assist/security-scanner-coverage-73623316-856bf4f138e805c5", "ci": "passing"},
     {"number": 333, "title": "Add unit tests for commands/_helpers.py", "branch": "test-assist/command-helpers-coverage-1773710009-d5146800ef1d3222", "ci": "passing"},
-    {"number": 351, "title": "[Test Improver] test: add unit tests for utils/console.py (58% → 90%)", "branch": "test-assist/utils-console-coverage-23224050701-6dd7d51eeb83513c", "ci": "passing"},
-    {"number": null, "title": "test: add unit tests for config command (22%->100%) + fix missing functions", "branch": "test-assist/config-command-coverage-23274791617", "ci": "pending", "note": "created 2026-03-19"},
-    {"number": null, "title": "[Test Improver] test: add unit tests for RuntimeManager and runtime CLI (20%->92%, 49%->90%)", "branch": "test-assist/runtime-manager-coverage-23324556076", "ci": "pending", "note": "created 2026-03-20"}
+    {"number": 351, "title": "[Test Improver] test: add unit tests for utils/console.py (58% -> 90%)", "branch": "test-assist/utils-console-coverage-23224050701-6dd7d51eeb83513c", "ci": "passing"},
+    {"number": 366, "title": "[Test Improver] test: add unit tests for config command (22% -> 100%) + fix missing functions", "branch": "test-assist/config-command-coverage-23274791617-f5fc9b556fa309ac", "ci": "passing"},
+    {"number": 380, "title": "[Test Improver] test: add unit tests for RuntimeManager and runtime CLI", "branch": "test-assist/runtime-manager-coverage-23324556076-2111a21d57ba6a0f", "ci": "passing"},
+    {"number": null, "title": "[Test Improver] test: replace gc.collect+sleep teardown with shutil.rmtree(ignore_errors=True)", "branch": "test-assist/fix-teardown-gc-sleep-23368659522", "ci": "pending", "note": "created 2026-03-21, closes #185"}
   ],
   "completed_work": [
+    {
+      "run": "2026-03-21T01:06:28Z",
+      "tasks": ["task3", "task4", "task7"],
+      "branch": "test-assist/fix-teardown-gc-sleep-23368659522",
+      "pr_status": "pr_created",
+      "description": "Task4: all 7 open TI PRs have passing CI. Task3: fixed gc.collect+sleep teardown pattern in 5 test files (closes #185). 2261 tests passing.",
+      "issue_closed": "#185"
+    },
     {
       "run": "2026-03-20T01:07:42Z",
       "tasks": ["task3", "task7"],
@@ -47,33 +56,7 @@
       "pr_status": "pr_created",
       "coverage_before": {"runtime_manager": "49%", "commands_runtime": "20%"},
       "coverage_after": {"runtime_manager": "90%", "commands_runtime": "92%"},
-      "description": "Task3: added 53 tests for runtime/manager.py (49%->90%) and commands/runtime.py (20%->92%). Total: 2157 passing (was 2104)."
-    },
-    {
-      "run": "2026-03-19T01:09:15Z",
-      "tasks": ["task2", "task3", "task4", "task7"],
-      "branch": "test-assist/config-command-coverage-23274791617",
-      "pr_status": "pr_created",
-      "coverage_before": {"config_cmd": "22%"},
-      "coverage_after": {"config_cmd": "100%"},
-      "description": "Task4: verified all 5 open TI PRs have passing CI. Task2: identified config.py bug (missing set/get_auto_integrate). Task3: added 23 tests for commands/config.py (22%->100%), fixed ImportError bug. Total: 2123 passing."
-    },
-    {
-      "run": "2026-03-18T01:07:39Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/utils-console-coverage-23224050701",
-      "pr_status": "pr_created",
-      "pr_number": 351,
-      "coverage_before": {"console": "58%"},
-      "coverage_after": {"console": "90%"},
-      "description": "Added 33 tests for utils/console.py. Coverage: 58%->90% (+32pp). Full suite: 2047 passing."
-    },
-    {
-      "run": "2026-03-17T01:08:22Z",
-      "tasks": ["task1", "task3", "task7"],
-      "pr_number": 333,
-      "coverage_before": {"helpers": "59%"},
-      "coverage_after": {"helpers": "80%"}
+      "description": "Added 53 tests for runtime/manager.py (49%->90%) and commands/runtime.py (20%->92%). 2157 passing."
     }
   ]
 }
