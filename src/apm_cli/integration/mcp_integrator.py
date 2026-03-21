@@ -61,6 +61,7 @@ class MCPIntegrator:
         lock_path: Optional[Path] = None,
         trust_private: bool = False,
         logger=None,
+        diagnostics=None,
     ) -> list:
         """Collect MCP dependencies from resolved APM packages listed in apm.lock.
 
@@ -136,18 +137,17 @@ class MCPIntegrator:
                                         f"from transitive package '{pkg.name}' (--trust-transitive-mcp)"
                                     )
                             else:
-                                if logger:
-                                    logger.warning(
-                                        f"Transitive package '{pkg.name}' declares self-defined "
-                                        f"MCP server '{dep.name}' (registry: false). "
-                                        f"Re-declare it in your apm.yml or use --trust-transitive-mcp."
-                                    )
+                                _trust_msg = (
+                                    f"Transitive package '{pkg.name}' declares self-defined "
+                                    f"MCP server '{dep.name}' (registry: false). "
+                                    f"Re-declare it in your apm.yml or use --trust-transitive-mcp."
+                                )
+                                if diagnostics:
+                                    diagnostics.warn(_trust_msg)
+                                elif logger:
+                                    logger.warning(_trust_msg)
                                 else:
-                                    _rich_warning(
-                                        f"Transitive package '{pkg.name}' declares self-defined "
-                                        f"MCP server '{dep.name}' (registry: false). "
-                                        f"Re-declare it in your apm.yml or use --trust-transitive-mcp."
-                                    )
+                                    _rich_warning(_trust_msg)
                                 continue
                         collected.append(dep)
             except Exception:
@@ -803,6 +803,7 @@ class MCPIntegrator:
         apm_config: dict = None,
         stored_mcp_configs: dict = None,
         logger=None,
+        diagnostics=None,
     ) -> int:
         """Install MCP dependencies.
 
