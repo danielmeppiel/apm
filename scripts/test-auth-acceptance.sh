@@ -60,6 +60,8 @@
 #  16 | No auth, private repo         | A6     | H1   | V2   | Suggests auth guidance
 #  17 | Fine-grained wrong owner      | A2     | H1   | V3   | Fails, no crash
 #  18 | Verbose output contract       | --     | H1   | --   | Auth details only w/ flag
+#  19 | Mega-manifest: all sources    | A1+A7  | H1+4 | V1-3 | All deps in one install
+#  20 | Multi-org PAT routing         | A1+A1  | H1   | V2+3 | 2 orgs, per-org only, no global
 #
 # =============================================================================
 # LOCAL USAGE
@@ -74,6 +76,7 @@
 #   # 3. Set test repos (only PUBLIC_REPO has a default):
 #   export AUTH_TEST_PUBLIC_REPO="microsoft/apm-sample-package"     # default
 #   export AUTH_TEST_PRIVATE_REPO="your-org/your-private-repo"      # optional
+#   export AUTH_TEST_PRIVATE_REPO_2="other-org/other-private-repo"  # optional (2nd org)
 #   export AUTH_TEST_EMU_REPO="emu-org/internal-repo"               # optional
 #   export AUTH_TEST_ADO_REPO="org/project/_git/repo"               # optional
 #
@@ -136,6 +139,7 @@ RESULTS=()
 APM_BINARY="${APM_BINARY:-apm}"
 AUTH_TEST_PUBLIC_REPO="${AUTH_TEST_PUBLIC_REPO:-microsoft/apm-sample-package}"
 AUTH_TEST_PRIVATE_REPO="${AUTH_TEST_PRIVATE_REPO:-}"
+AUTH_TEST_PRIVATE_REPO_2="${AUTH_TEST_PRIVATE_REPO_2:-}"
 AUTH_TEST_EMU_REPO="${AUTH_TEST_EMU_REPO:-}"
 AUTH_TEST_ADO_REPO="${AUTH_TEST_ADO_REPO:-}"
 
@@ -148,10 +152,12 @@ _ORIG_GH_TOKEN="${GH_TOKEN:-}"
 _ORIG_ADO_APM_PAT="${ADO_APM_PAT:-}"
 
 # Detect any per-org PATs already set (GITHUB_APM_PAT_*)
-declare -A _ORIG_PER_ORG_PATS
+_ORIG_PER_ORG_PAT_NAMES=()
+_ORIG_PER_ORG_PAT_VALUES=()
 while IFS='=' read -r name val; do
     if [[ "$name" == GITHUB_APM_PAT_* && "$name" != "GITHUB_APM_PAT" ]]; then
-        _ORIG_PER_ORG_PATS["$name"]="$val"
+        _ORIG_PER_ORG_PAT_NAMES+=("$name")
+        _ORIG_PER_ORG_PAT_VALUES+=("$val")
     fi
 done < <(env)
 
@@ -190,8 +196,8 @@ restore_auth() {
     [[ -n "$_ORIG_GITHUB_TOKEN" ]]    && export GITHUB_TOKEN="$_ORIG_GITHUB_TOKEN"
     [[ -n "$_ORIG_GH_TOKEN" ]]        && export GH_TOKEN="$_ORIG_GH_TOKEN"
     [[ -n "$_ORIG_ADO_APM_PAT" ]]     && export ADO_APM_PAT="$_ORIG_ADO_APM_PAT"
-    for name in "${!_ORIG_PER_ORG_PATS[@]}"; do
-        export "$name=${_ORIG_PER_ORG_PATS[$name]}"
+    for i in "${!_ORIG_PER_ORG_PAT_NAMES[@]}"; do
+        export "${_ORIG_PER_ORG_PAT_NAMES[$i]}=${_ORIG_PER_ORG_PAT_VALUES[$i]}"
     done
 }
 
@@ -230,7 +236,7 @@ run_install() {
     set +e
     (cd "$dir" && "$APM_BINARY" install "$@") 2>&1 | tee "$tmpout"
     APM_EXIT="${PIPESTATUS[0]}"
-    set -e
+    set +e  # keep errexit off (script uses -u, not -e)
     APM_OUTPUT="$(cat "$tmpout")"
 }
 
@@ -241,7 +247,7 @@ run_install_manifest() {
     set +e
     (cd "$dir" && "$APM_BINARY" install "$@") 2>&1 | tee "$tmpout"
     APM_EXIT="${PIPESTATUS[0]}"
-    set -e
+    set +e  # keep errexit off (script uses -u, not -e)
     APM_OUTPUT="$(cat "$tmpout")"
 }
 
@@ -801,7 +807,189 @@ test_18_verbose_contract() {
 }
 
 # ==========================================================================
-# RUN ALL SCENARIOS
+# SCENARIO 19: Mega-manifest — all auth sources in a single install
+# --------------------------------------------------------------------------
+# The hardest real-world case: a SINGLE apm.yml that contains dependencies
+# from MULTIPLE auth domains. The resolver must route each dependency to
+# its correct token independently within one install pass:
+#   - Public github.com repo       → unauthenticated validation
+#   - Private github.com repo      → GITHUB_APM_PAT / per-org PAT
+#   - EMU internal repo (diff org) → per-org PAT for EMU org
+#   - ADO repo                     → ADO_APM_PAT
+#
+# Progressive: builds the manifest from whatever repos are configured.
+# Requires at least 2 repos from different auth domains to be meaningful.
+# ==========================================================================
+test_19_mega_manifest() {
+    local name="19: Mega-manifest: all sources in one install"
+    log_test "$name"
+
+    # Build dep list from whatever repos are configured
+    local -a deps=()
+    local -a desc=()
+
+    # Always include public (no auth needed)
+    deps+=("$AUTH_TEST_PUBLIC_REPO")
+    desc+=("public")
+
+    # Private repo (needs GITHUB_APM_PAT or per-org)
+    if [[ -n "$AUTH_TEST_PRIVATE_REPO" && -n "$_ORIG_GITHUB_APM_PAT" ]]; then
+        deps+=("$AUTH_TEST_PRIVATE_REPO")
+        desc+=("private")
+    fi
+
+    # EMU repo (different org, needs per-org or global PAT)
+    if [[ -n "$AUTH_TEST_EMU_REPO" && -n "$_ORIG_GITHUB_APM_PAT" ]]; then
+        # Only add if it's from a DIFFERENT org than PRIVATE_REPO
+        local priv_org="${AUTH_TEST_PRIVATE_REPO%%/*}"
+        local emu_org="${AUTH_TEST_EMU_REPO%%/*}"
+        if [[ "$priv_org" != "$emu_org" || -z "$AUTH_TEST_PRIVATE_REPO" ]]; then
+            deps+=("$AUTH_TEST_EMU_REPO")
+            desc+=("EMU-internal")
+        fi
+    fi
+
+    # Second private repo from a different org
+    if [[ -n "$AUTH_TEST_PRIVATE_REPO_2" ]]; then
+        local org2_suffix
+        org2_suffix="$(org_env_suffix "$AUTH_TEST_PRIVATE_REPO_2")"
+        local per_org_var2="GITHUB_APM_PAT_${org2_suffix}"
+        local per_org_val2="${!per_org_var2:-${_ORIG_GITHUB_APM_PAT:-}}"
+        if [[ -n "$per_org_val2" ]]; then
+            deps+=("$AUTH_TEST_PRIVATE_REPO_2")
+            desc+=("private-org2")
+        fi
+    fi
+
+    # ADO repo (completely separate auth: ADO_APM_PAT)
+    if [[ -n "$AUTH_TEST_ADO_REPO" && -n "$_ORIG_ADO_APM_PAT" ]]; then
+        deps+=("$AUTH_TEST_ADO_REPO")
+        desc+=("ADO")
+    fi
+
+    # Need at least 2 deps from different auth domains to be meaningful
+    if [[ "${#deps[@]}" -lt 2 ]]; then
+        record_skip "$name" "need ≥2 repos from different auth domains"
+        return
+    fi
+
+    log_dim "Deps: ${desc[*]} (${#deps[@]} total)"
+    unset_all_auth
+
+    # Restore ALL tokens — each dep picks its own
+    [[ -n "$_ORIG_GITHUB_APM_PAT" ]] && export GITHUB_APM_PAT="$_ORIG_GITHUB_APM_PAT"
+    [[ -n "$_ORIG_ADO_APM_PAT" ]]    && export ADO_APM_PAT="$_ORIG_ADO_APM_PAT"
+    for i in "${!_ORIG_PER_ORG_PAT_NAMES[@]}"; do
+        export "${_ORIG_PER_ORG_PAT_NAMES[$i]}=${_ORIG_PER_ORG_PAT_VALUES[$i]}"
+    done
+
+    SCENARIO_OK=true
+
+    local dir
+    dir="$(setup_test_dir "${deps[@]}")"
+    log_dim "Manifest: $(cat "$dir/apm.yml" | grep '    -' | sed 's/^    - /  /')"
+    run_install_manifest "$dir" --verbose
+
+    assert_exit 0 "all deps install successfully"
+    # Verify the install count matches (or at least mentions installing)
+    assert_contains "Installed.*${#deps[@]}|${#deps[@]}.*dependenc|Installed.*APM" \
+        "all ${#deps[@]} deps accounted for"
+
+    $SCENARIO_OK && record_pass "$name" || record_fail "$name"
+    restore_auth
+}
+
+# ==========================================================================
+# SCENARIO 20: Multi-org per-org PAT routing — no global PAT
+# --------------------------------------------------------------------------
+# Two private repos from DIFFERENT orgs, with ONLY per-org PATs set.
+# No GITHUB_APM_PAT, no GITHUB_TOKEN, no GH_TOKEN. The resolver must
+# route each dep to its own GITHUB_APM_PAT_{ORG} independently.
+#
+# This is the critical test for per-dependency token isolation: if the
+# resolver incorrectly uses a single token for all deps, one of them
+# will fail with 404.
+#
+# Requires: AUTH_TEST_PRIVATE_REPO + (AUTH_TEST_PRIVATE_REPO_2 or
+# AUTH_TEST_EMU_REPO from a different org) + per-org PATs for both.
+# ==========================================================================
+test_20_multi_org_per_org_pats() {
+    local name="20: Multi-org per-org PAT routing [A1+A1,H1,V2+V3]"
+    log_test "$name"
+
+    # Find two repos from different orgs
+    local repo_a="" repo_b="" org_a="" org_b=""
+
+    if [[ -n "$AUTH_TEST_PRIVATE_REPO" ]]; then
+        repo_a="$AUTH_TEST_PRIVATE_REPO"
+        org_a="${repo_a%%/*}"
+    fi
+
+    # Prefer PRIVATE_REPO_2 for the second org, fall back to EMU_REPO
+    if [[ -n "$AUTH_TEST_PRIVATE_REPO_2" ]]; then
+        local candidate_org="${AUTH_TEST_PRIVATE_REPO_2%%/*}"
+        if [[ "$candidate_org" != "$org_a" ]]; then
+            repo_b="$AUTH_TEST_PRIVATE_REPO_2"
+            org_b="$candidate_org"
+        fi
+    fi
+    if [[ -z "$repo_b" && -n "$AUTH_TEST_EMU_REPO" ]]; then
+        local candidate_org="${AUTH_TEST_EMU_REPO%%/*}"
+        if [[ "$candidate_org" != "$org_a" ]]; then
+            repo_b="$AUTH_TEST_EMU_REPO"
+            org_b="$candidate_org"
+        fi
+    fi
+
+    if [[ -z "$repo_a" || -z "$repo_b" ]]; then
+        record_skip "$name" "need 2 repos from different orgs"
+        return
+    fi
+
+    # Derive per-org env var names
+    local suffix_a suffix_b
+    suffix_a="$(org_env_suffix "$repo_a")"
+    suffix_b="$(org_env_suffix "$repo_b")"
+    local var_a="GITHUB_APM_PAT_${suffix_a}"
+    local var_b="GITHUB_APM_PAT_${suffix_b}"
+
+    # Get token values: use existing per-org PAT or fall back to global
+    local token_a="" token_b=""
+    for i in "${!_ORIG_PER_ORG_PAT_NAMES[@]}"; do
+        [[ "${_ORIG_PER_ORG_PAT_NAMES[$i]}" == "$var_a" ]] && token_a="${_ORIG_PER_ORG_PAT_VALUES[$i]}"
+        [[ "${_ORIG_PER_ORG_PAT_NAMES[$i]}" == "$var_b" ]] && token_b="${_ORIG_PER_ORG_PAT_VALUES[$i]}"
+    done
+    [[ -z "$token_a" ]] && token_a="${_ORIG_GITHUB_APM_PAT:-}"
+    [[ -z "$token_b" ]] && token_b="${_ORIG_GITHUB_APM_PAT:-}"
+
+    if [[ -z "$token_a" || -z "$token_b" ]]; then
+        record_skip "$name" "need tokens for both $var_a and $var_b"
+        return
+    fi
+
+    log_dim "Org A: $org_a ($var_a) → $repo_a"
+    log_dim "Org B: $org_b ($var_b) → $repo_b"
+
+    unset_all_auth
+    # Set ONLY per-org PATs — no global, no GITHUB_TOKEN, no GH_TOKEN
+    export "$var_a=$token_a"
+    export "$var_b=$token_b"
+    SCENARIO_OK=true
+
+    local dir
+    dir="$(setup_test_dir "$repo_a" "$repo_b")"
+    run_install_manifest "$dir" --verbose
+
+    assert_exit 0 "both deps install with per-org PATs only"
+    # Verify BOTH per-org sources appear in verbose output
+    assert_contains "source=${var_a}" "org A resolved via $var_a"
+    assert_contains "source=${var_b}" "org B resolved via $var_b"
+
+    $SCENARIO_OK && record_pass "$name" || record_fail "$name"
+    restore_auth
+}
+
+# ==========================================================================
 # ==========================================================================
 
 echo ""
@@ -812,12 +1000,13 @@ echo ""
 echo -e "${DIM}Binary:       ${APM_BINARY}${NC}"
 echo -e "${DIM}Public repo:  ${AUTH_TEST_PUBLIC_REPO}${NC}"
 echo -e "${DIM}Private repo: ${AUTH_TEST_PRIVATE_REPO:-<not set -- scenarios 3-10,14,16 skip>}${NC}"
+echo -e "${DIM}Private #2:   ${AUTH_TEST_PRIVATE_REPO_2:-<not set -- scenario 20 uses EMU repo if available>}${NC}"
 echo -e "${DIM}EMU repo:     ${AUTH_TEST_EMU_REPO:-<not set -- scenarios 9,17 skip>}${NC}"
 echo -e "${DIM}ADO repo:     ${AUTH_TEST_ADO_REPO:-<not set -- scenarios 12,13 skip>}${NC}"
 echo -e "${DIM}Tokens:       GITHUB_APM_PAT=${_ORIG_GITHUB_APM_PAT:+SET} GITHUB_TOKEN=${_ORIG_GITHUB_TOKEN:+SET} GH_TOKEN=${_ORIG_GH_TOKEN:+SET} ADO_APM_PAT=${_ORIG_ADO_APM_PAT:+SET}${NC}"
 # Show per-org PATs
-for name in "${!_ORIG_PER_ORG_PATS[@]}"; do
-    echo -e "${DIM}              ${name}=SET${NC}"
+for i in "${!_ORIG_PER_ORG_PAT_NAMES[@]}"; do
+    echo -e "${DIM}              ${_ORIG_PER_ORG_PAT_NAMES[$i]}=SET${NC}"
 done
 echo ""
 
@@ -846,6 +1035,10 @@ test_17_fine_grained_wrong_owner
 
 # Output contract
 test_18_verbose_contract
+
+# Mixed-source manifests
+test_19_mega_manifest
+test_20_multi_org_per_org_pats
 
 # ==========================================================================
 # SUMMARY
