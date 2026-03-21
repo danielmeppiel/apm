@@ -468,7 +468,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             # We'll proceed with installation from apm.yml to ensure everything is synced
 
         logger.resolution_start(
-            to_install_count=len(packages) if packages else 0,
+            to_install_count=len(validated_packages) if packages else 0,
             lockfile_count=0,  # Refined later inside _install_apm_dependencies
         )
 
