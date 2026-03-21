@@ -789,3 +789,233 @@ class TestArtifactoryOnlyMode:
             dl = GitHubPackageDownloader()
             with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
                 dl.download_package("microsoft/some-package", Path("/tmp/test-pkg"))
+
+
+# ── Lockfile: Artifactory host storage and reproducibility ──
+
+
+class TestArtifactoryLockfile:
+    """Test that lockfile correctly stores Artifactory host for reproducible installs."""
+
+    def test_host_override_in_locked_dependency(self):
+        """from_dependency_ref with host_override stores the override, not dep_ref.host."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        dep = DependencyReference.parse("anthropics/skills/skills/skill-creator")
+        locked = LockedDependency.from_dependency_ref(
+            dep_ref=dep,
+            resolved_commit=None,
+            depth=1,
+            resolved_by=None,
+            host_override="artifactory-remote.example.com/artifactory/github",
+        )
+        assert locked.host == "artifactory-remote.example.com/artifactory/github"
+        assert locked.repo_url == "anthropics/skills"
+
+    def test_host_override_none_falls_back_to_dep_ref(self):
+        """Without host_override, dep_ref.host is used."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        dep = DependencyReference.parse("anthropics/skills")
+        locked = LockedDependency.from_dependency_ref(
+            dep_ref=dep,
+            resolved_commit="abc123",
+            depth=1,
+            resolved_by=None,
+        )
+        assert locked.host == "github.com"
+
+    def test_from_installed_packages_with_host_override(self):
+        """from_installed_packages passes 6th tuple element as host_override."""
+        from apm_cli.deps.lockfile import LockFile
+
+        dep = DependencyReference.parse("owner/repo")
+        packages = [
+            (dep, "abc123def", 1, None, False, "art.example.com/artifactory/github"),
+        ]
+        lock = LockFile.from_installed_packages(packages, dependency_graph=None)
+        locked = lock.get_dependency("owner/repo")
+        assert locked.host == "art.example.com/artifactory/github"
+
+    def test_from_installed_packages_backward_compat_4_tuple(self):
+        """4-element tuples (no host override) still work."""
+        from apm_cli.deps.lockfile import LockFile
+
+        dep = DependencyReference.parse("owner/repo")
+        packages = [
+            (dep, "abc123def", 1, None),
+        ]
+        lock = LockFile.from_installed_packages(packages, dependency_graph=None)
+        locked = lock.get_dependency("owner/repo")
+        assert locked.host == "github.com"
+
+    def test_lockfile_round_trip_with_artifactory_host(self):
+        """Artifactory host survives write → read round trip."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+
+        dep = LockedDependency(
+            repo_url="anthropics/skills",
+            host="artifactory-remote.example.com/artifactory/github",
+            virtual_path="skills/skill-creator",
+            is_virtual=True,
+        )
+        lock = LockFile()
+        lock.add_dependency(dep)
+        yaml_str = lock.to_yaml()
+        lock2 = LockFile.from_yaml(yaml_str)
+        dep2 = lock2.get_dependency("anthropics/skills/skills/skill-creator")
+        assert dep2.host == "artifactory-remote.example.com/artifactory/github"
+
+
+# ── drift.py: build_download_ref prefers lockfile host ──
+
+
+class TestBuildDownloadRefLockfileHost:
+    """Test that build_download_ref uses lockfile host over manifest host."""
+
+    def test_uses_lockfile_host_over_dep_ref_host(self):
+        """Lockfile host takes precedence for reproducible installs."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("anthropics/skills/skills/skill-creator")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="anthropics/skills",
+            host="art.example.com/artifactory/github",
+            resolved_commit="abc123def456",
+            virtual_path="skills/skill-creator",
+            is_virtual=True,
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.host == "art.example.com/artifactory/github"
+        assert ref.reference == "abc123def456"
+
+    def test_falls_back_to_dep_ref_host_without_lockfile(self):
+        """Without a lockfile, uses dep_ref as-is."""
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("gitlab.example.com/owner/repo#v1.0")
+        ref = build_download_ref(dep, None, update_refs=False, ref_changed=False)
+        assert ref is dep  # same object — no lockfile, no changes
+
+    def test_update_refs_ignores_lockfile_host(self):
+        """--update mode uses manifest ref, not lockfile."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("anthropics/skills")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="anthropics/skills",
+            host="art.example.com/artifactory/github",
+            resolved_commit="abc123",
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=True, ref_changed=False)
+        assert ref is dep  # --update returns original dep_ref unchanged
+
+    def test_preserves_locked_ref_when_no_commit(self):
+        """Artifactory deps have no resolved_commit but may have a pinned ref."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("anthropics/skills/skills/skill-creator")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="anthropics/skills",
+            host="art.example.com/artifactory/apm",
+            resolved_commit=None,
+            resolved_ref="v1.2.0",
+            virtual_path="skills/skill-creator",
+            is_virtual=True,
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.host == "art.example.com/artifactory/apm"
+        assert ref.reference == "v1.2.0"
+
+    def test_artifactory_host_preserved_without_commit_or_ref(self):
+        """Host override applies even when no commit and no ref are locked."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("owner/repo")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com/artifactory/apm",
+            resolved_commit=None,
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.host == "art.example.com/artifactory/apm"
+
+
+# ── ARTIFACTORY_ONLY conflict detection ──
+
+
+class TestArtifactoryOnlyConflictDetection:
+    """Test that ARTIFACTORY_ONLY + github.com lockfile is detected as a conflict."""
+
+    def test_conflict_detected_for_github_locked_deps(self):
+        """Lockfile with github.com host + ARTIFACTORY_ONLY should be flagged."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+
+        lock = LockFile()
+        lock.add_dependency(LockedDependency(
+            repo_url="anthropics/skills",
+            host="github.com",
+            resolved_commit="abc123",
+            virtual_path="skills/skill-creator",
+            is_virtual=True,
+        ))
+
+        # Simulate the conflict check logic from install.py
+        github_locked = [
+            dep for dep in lock.dependencies.values()
+            if dep.source != "local" and dep.host in (None, "github.com")
+        ]
+        assert len(github_locked) == 1
+        assert github_locked[0].repo_url == "anthropics/skills"
+
+    def test_no_conflict_for_artifactory_locked_deps(self):
+        """Lockfile with Artifactory host should not be flagged."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+
+        lock = LockFile()
+        lock.add_dependency(LockedDependency(
+            repo_url="anthropics/skills",
+            host="art.example.com/artifactory/github",
+            virtual_path="skills/skill-creator",
+            is_virtual=True,
+        ))
+
+        github_locked = [
+            dep for dep in lock.dependencies.values()
+            if dep.source != "local" and dep.host in (None, "github.com")
+        ]
+        assert len(github_locked) == 0
+
+    def test_no_conflict_for_local_deps(self):
+        """Local dependencies should never be flagged as conflicting."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+
+        lock = LockFile()
+        lock.add_dependency(LockedDependency(
+            repo_url="my-local-pkg",
+            host=None,
+            source="local",
+            local_path="./packages/my-local-pkg",
+        ))
+
+        github_locked = [
+            dep for dep in lock.dependencies.values()
+            if dep.source != "local" and dep.host in (None, "github.com")
+        ]
+        assert len(github_locked) == 0

@@ -375,6 +375,21 @@ class GitHubPackageDownloader:
             return None
         return (host, path, parsed.scheme)
 
+    def get_resolved_host(self, dep_ref: 'DependencyReference') -> Optional[str]:
+        """Return the actual download host for a dependency.
+
+        For dependencies routed through a proxy (e.g. Artifactory), returns
+        the proxy ``host/path`` so callers can record the real source.
+        Returns ``None`` when the default host (from *dep_ref*) applies.
+        """
+        if dep_ref.is_local:
+            return None
+        proxy = self._parse_artifactory_base_url()
+        if proxy and self._should_use_artifactory_proxy(dep_ref):
+            host, prefix, _scheme = proxy
+            return f"{host}/{prefix}"
+        return None
+
     def _resilient_get(self, url: str, headers: Dict[str, str], timeout: int = 30, max_retries: int = 3) -> requests.Response:
         """HTTP GET with retry on 429/503 and rate-limit header awareness (#171).
         
@@ -1813,8 +1828,22 @@ author: {dep_ref.repo_url.split('/')[0]}
         # Handle virtual packages differently
         if dep_ref.is_virtual:
             if dep_ref.is_virtual_file():
+                if self._is_artifactory_only() and not dep_ref.is_artifactory():
+                    art_proxy = self._parse_artifactory_base_url()
+                    if not art_proxy:
+                        raise RuntimeError(
+                            f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                            "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                        )
                 return self.download_virtual_file_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_collection():
+                if self._is_artifactory_only() and not dep_ref.is_artifactory():
+                    art_proxy = self._parse_artifactory_base_url()
+                    if not art_proxy:
+                        raise RuntimeError(
+                            f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                            "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                        )
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_subdirectory():
                 # When ARTIFACTORY_ONLY is set, download full archive and extract subdir
@@ -1822,6 +1851,11 @@ author: {dep_ref.repo_url.split('/')[0]}
                 if self._is_artifactory_only() and art_proxy:
                     return self._download_subdirectory_from_artifactory(
                         dep_ref, target_path, art_proxy, progress_task_id, progress_obj
+                    )
+                if self._is_artifactory_only():
+                    raise RuntimeError(
+                        f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                        "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
                     )
                 return self.download_subdirectory_package(dep_ref, target_path, progress_task_id, progress_obj)
             else:
