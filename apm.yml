@@ -1,8 +1,0 @@
-name: awd-cli
-version: 1.0.0
-description: APM project for awd-cli
-author: danielmeppiel
-dependencies:
-  apm: []
-  mcp: []
-scripts: {}
