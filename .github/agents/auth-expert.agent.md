@@ -13,8 +13,8 @@ You are an expert on Git hosting authentication across GitHub.com, GitHub Enterp
 
 ## Core Knowledge
 
-- **Token types**: Fine-grained PATs (`github_pat_`), classic PATs (`ghp_`), EMU tokens (`ghu_`), OAuth tokens (`gho_`), server tokens (`ghs_`)
-- **GitHub EMU constraints**: Enterprise-scoped, cannot access public github.com, `ghu_` prefix
+- **Token prefixes**: Fine-grained PATs (`github_pat_`), classic PATs (`ghp_`), OAuth user-to-server (`ghu_` — e.g. `gh auth login`), OAuth app (`gho_`), GitHub App install (`ghs_`), GitHub App refresh (`ghr_`)
+- **EMU (Enterprise Managed Users)**: Use standard PAT prefixes (`ghp_`, `github_pat_`). There is NO special prefix for EMU — it's a property of the account, not the token. EMU tokens are enterprise-scoped and cannot access public github.com repos. EMU orgs can exist on github.com or *.ghe.com.
 - **Host classification**: github.com (public), *.ghe.com (no public repos), GHES (`GITHUB_HOST`), ADO
 - **Git credential helpers**: macOS Keychain, Windows Credential Manager, `gh auth`, `git credential fill`
 - **Rate limiting**: 60/hr unauthenticated, 5000/hr authenticated, primary (403) vs secondary (429)
@@ -38,7 +38,7 @@ When reviewing or writing auth code:
 
 ## Common Pitfalls
 
-- EMU PATs on public github.com repos → will fail silently
+- EMU PATs on public github.com repos → will fail silently (you cannot detect EMU from prefix)
 - `git credential fill` only resolves per-host, not per-org
 - `_build_repo_url` must accept token param, not use instance var
 - Windows: `GIT_ASKPASS` must be `'echo'` not empty string

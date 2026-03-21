@@ -57,13 +57,13 @@ Per-org tokens take priority over global tokens. Use this when different orgs re
 
 ## Enterprise Managed Users (EMU)
 
-EMU orgs can live on **github.com** (e.g., `contoso-microsoft`) or on **GHE Cloud Data Residency** (`*.ghe.com`). EMU tokens (`ghu_` prefix) are enterprise-scoped and cannot access public repos on github.com.
+EMU orgs can live on **github.com** (e.g., `contoso-microsoft`) or on **GHE Cloud Data Residency** (`*.ghe.com`). EMU tokens are standard PATs (`ghp_` classic or `github_pat_` fine-grained) — there is no special prefix. They are scoped to the enterprise and cannot access public repos on github.com.
 
 If your manifest mixes enterprise and public packages, use separate tokens:
 
 ```bash
-export GITHUB_APM_PAT_CONTOSO_MICROSOFT=ghu_emu_token  # EMU org (any host)
-export GITHUB_APM_PAT=ghp_public_token                  # public github.com repos
+export GITHUB_APM_PAT_CONTOSO_MICROSOFT=github_pat_enterprise_token  # EMU org (any host)
+export GITHUB_APM_PAT=ghp_public_token                               # public github.com repos
 ```
 
 ### GHE Cloud Data Residency (`*.ghe.com`)
@@ -128,7 +128,7 @@ Authorize your PAT for SSO at [github.com/settings/tokens](https://github.com/se
 
 ### EMU token can't access public repos
 
-EMU tokens (`ghu_` prefix) are enterprise-scoped and cannot access public github.com repos. Use a standard PAT for public repos alongside your EMU token — see [Enterprise Managed Users (EMU)](#enterprise-managed-users-emu) above.
+EMU PATs use standard prefixes (`ghp_`, `github_pat_`) — there is no EMU-specific prefix. They are enterprise-scoped and cannot access public github.com repos. Use a standard PAT for public repos alongside your EMU PAT — see [Enterprise Managed Users (EMU)](#enterprise-managed-users-emu) above.
 
 ### Diagnosing auth failures
 
@@ -138,7 +138,7 @@ Run with `--verbose` to see the full resolution chain:
 apm install --verbose your-org/package
 ```
 
-The output shows which env var matched (or `none`), the detected token type (`fine-grained`, `classic`, `emu`), and the host classification (`github`, `ghe_cloud`, `ghes`, `ado`, `generic`).
+The output shows which env var matched (or `none`), the detected token type (`fine-grained`, `classic`, `oauth`, `github-app`), and the host classification (`github`, `ghe_cloud`, `ghes`, `ado`, `generic`).
 
 ### Git credential helper not found
 

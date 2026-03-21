@@ -67,7 +67,7 @@ class AuthContext:
 
     token: Optional[str]
     source: str  # e.g. "GITHUB_APM_PAT_ORGNAME", "GITHUB_TOKEN", "none"
-    token_type: str  # "fine-grained", "classic", "emu", "ado", "artifactory", "unknown"
+    token_type: str  # "fine-grained", "classic", "oauth", "github-app", "unknown"
     host_info: HostInfo
     git_env: dict = field(compare=False, repr=False)
 
@@ -142,15 +142,33 @@ class AuthResolver:
 
     @staticmethod
     def detect_token_type(token: str) -> str:
-        """Classify a token string by its prefix."""
+        """Classify a token string by its prefix.
+
+        Note: EMU (Enterprise Managed Users) tokens use standard PAT
+        prefixes (``ghp_`` or ``github_pat_``).  There is no prefix that
+        identifies a token as EMU-scoped — that's a property of the
+        account, not the token format.
+
+        Prefix reference (docs.github.com):
+        - ``github_pat_`` → fine-grained PAT
+        - ``ghp_``        → classic PAT
+        - ``ghu_``        → OAuth user-to-server (e.g. ``gh auth login``)
+        - ``gho_``        → OAuth app token
+        - ``ghs_``        → GitHub App installation (server-to-server)
+        - ``ghr_``        → GitHub App refresh token
+        """
         if token.startswith("github_pat_"):
             return "fine-grained"
         if token.startswith("ghp_"):
             return "classic"
         if token.startswith("ghu_"):
-            return "emu"
-        if token.startswith(("gho_", "ghs_", "ghr_")):
-            return "classic"
+            return "oauth"
+        if token.startswith("gho_"):
+            return "oauth"
+        if token.startswith("ghs_"):
+            return "github-app"
+        if token.startswith("ghr_"):
+            return "github-app"
         return "unknown"
 
     # -- core resolution ----------------------------------------------------
@@ -264,15 +282,24 @@ class AuthResolver:
 
         if auth_ctx.token:
             lines.append(f"Token was provided (source: {auth_ctx.source}, type: {auth_ctx.token_type}).")
-            if auth_ctx.token_type == "emu":
+            host_info = self.classify_host(host)
+            if host_info.kind == "ghe_cloud":
                 lines.append(
-                    "EMU tokens are scoped to your enterprise and cannot "
-                    "access public github.com repos."
+                    "GHE Cloud Data Residency hosts (*.ghe.com) require "
+                    "enterprise-scoped tokens. Ensure your PAT is authorized "
+                    "for this enterprise."
                 )
-            lines.append(
-                "If your organization uses SAML SSO, you may need to "
-                "authorize your token at https://github.com/settings/tokens"
-            )
+            elif host.lower() == "github.com":
+                lines.append(
+                    "If your organization uses SAML SSO or is an EMU org, "
+                    "ensure your PAT is authorized at "
+                    "https://github.com/settings/tokens"
+                )
+            else:
+                lines.append(
+                    "If your organization uses SAML SSO, you may need to "
+                    "authorize your token at https://github.com/settings/tokens"
+                )
         else:
             lines.append("No token available.")
             lines.append(

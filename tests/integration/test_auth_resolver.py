@@ -286,13 +286,13 @@ class TestBuildErrorContextIntegration:
             assert "GITHUB_APM_PAT" in msg
             assert "--verbose" in msg
 
-    def test_emu_token_warns(self):
-        with patch.dict(os.environ, {"GITHUB_APM_PAT": "ghu_emu_abc"}, clear=True), _NO_GIT_CRED:
+    def test_github_com_error_mentions_emu_sso(self):
+        """github.com errors should mention EMU/SSO as possible causes."""
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "ghp_some_token"}, clear=True), _NO_GIT_CRED:
             resolver = AuthResolver()
             msg = resolver.build_error_context("github.com", "clone")
 
-            assert "EMU" in msg
-            assert "enterprise" in msg.lower()
+            assert "EMU" in msg or "SAML" in msg
 
     def test_org_hint_included(self):
         with patch.dict(os.environ, {"GITHUB_APM_PAT": "ghp_tok"}, clear=True), _NO_GIT_CRED:

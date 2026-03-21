@@ -60,17 +60,17 @@ class TestDetectTokenType:
     def test_classic(self):
         assert AuthResolver.detect_token_type("ghp_abc123") == "classic"
 
-    def test_emu(self):
-        assert AuthResolver.detect_token_type("ghu_abc123") == "emu"
+    def test_oauth_user(self):
+        assert AuthResolver.detect_token_type("ghu_abc123") == "oauth"
 
-    def test_oauth(self):
-        assert AuthResolver.detect_token_type("gho_abc123") == "classic"
+    def test_oauth_app(self):
+        assert AuthResolver.detect_token_type("gho_abc123") == "oauth"
 
-    def test_server_to_server(self):
-        assert AuthResolver.detect_token_type("ghs_abc123") == "classic"
+    def test_github_app_install(self):
+        assert AuthResolver.detect_token_type("ghs_abc123") == "github-app"
 
-    def test_refresh(self):
-        assert AuthResolver.detect_token_type("ghr_abc123") == "classic"
+    def test_github_app_refresh(self):
+        assert AuthResolver.detect_token_type("ghr_abc123") == "github-app"
 
     def test_unknown(self):
         assert AuthResolver.detect_token_type("some-random-token") == "unknown"
@@ -328,14 +328,27 @@ class TestBuildErrorContext:
                 assert "GITHUB_APM_PAT" in msg
                 assert "--verbose" in msg
 
-    def test_emu_detection(self):
-        with patch.dict(os.environ, {"GITHUB_APM_PAT": "ghu_emu_token"}, clear=True):
+    def test_ghe_cloud_error_context(self):
+        """*.ghe.com errors mention enterprise-scoped tokens."""
+        with patch.dict(os.environ, {"GITHUB_APM_PAT_CONTOSO": "token"}, clear=True):
+            with patch.object(
+                GitHubTokenManager, "resolve_credential_from_git", return_value=None
+            ):
+                resolver = AuthResolver()
+                msg = resolver.build_error_context(
+                    "contoso.ghe.com", "clone", org="contoso"
+                )
+                assert "enterprise" in msg.lower()
+
+    def test_github_com_error_mentions_emu(self):
+        """github.com errors mention EMU/SSO possibility."""
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "ghp_token"}, clear=True):
             with patch.object(
                 GitHubTokenManager, "resolve_credential_from_git", return_value=None
             ):
                 resolver = AuthResolver()
                 msg = resolver.build_error_context("github.com", "clone")
-                assert "EMU" in msg
+                assert "EMU" in msg or "SAML" in msg
 
     def test_multi_org_hint(self):
         with patch.dict(os.environ, {"GITHUB_APM_PAT": "token"}, clear=True):
