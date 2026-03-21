@@ -317,12 +317,13 @@ def _validate_package_exists(package, verbose=False):
 
         def _ls_remote(token, git_env):
             """Try git ls-remote with optional auth."""
+            url = f"https://{host}/{dep_ref.repo_url}.git"
+            cmd = ['git']
             if token:
-                url = f"https://x-access-token:{token}@{host}/{dep_ref.repo_url}.git"
-            else:
-                url = f"{dep_ref.to_github_url()}.git"
+                cmd += ['-c', f'http.extraHeader=Authorization: Bearer {token}']
+            cmd += ['ls-remote', '--heads', '--exit-code', url]
             result = subprocess.run(
-                ['git', 'ls-remote', '--heads', '--exit-code', url],
+                cmd,
                 capture_output=True, text=True, timeout=30,
                 env=git_env,
             )
@@ -358,12 +359,13 @@ def _validate_package_exists(package, verbose=False):
             base_url = f"https://{host}/{package}.git"
 
         def _ls_remote_fallback(token, git_env):
-            if token and not is_valid_fqdn(package):
-                url = f"https://x-access-token:{token}@{host}/{package}.git"
-            else:
-                url = base_url
+            url = base_url
+            cmd = ['git']
+            if token:
+                cmd += ['-c', f'http.extraHeader=Authorization: Bearer {token}']
+            cmd += ['ls-remote', '--heads', '--exit-code', url]
             result = subprocess.run(
-                ['git', 'ls-remote', '--heads', '--exit-code', url],
+                cmd,
                 capture_output=True, text=True, timeout=30,
                 env=git_env,
             )
