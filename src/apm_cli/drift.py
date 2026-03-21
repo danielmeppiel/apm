@@ -208,6 +208,14 @@ def build_download_ref(
                 overrides["host"] = locked_host
             if locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
                 overrides["reference"] = locked_dep.resolved_commit
+            elif not overrides.get("reference"):
+                # When no commit SHA is available (e.g., Artifactory downloads),
+                # preserve a pinned ref from the lockfile or manifest instead of
+                # dropping the #ref portion and floating to the default branch.
+                locked_ref = getattr(locked_dep, "resolved_ref", None)
+                ref = locked_ref if isinstance(locked_ref, str) else dep_ref.reference
+                if ref and ref != dep_ref.reference:
+                    overrides["reference"] = ref
             if overrides:
                 return _dataclass_replace(dep_ref, **overrides)
     return dep_ref

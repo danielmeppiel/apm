@@ -918,6 +918,44 @@ class TestBuildDownloadRefLockfileHost:
         ref = build_download_ref(dep, lock, update_refs=True, ref_changed=False)
         assert ref is dep  # --update returns original dep_ref unchanged
 
+    def test_preserves_locked_ref_when_no_commit(self):
+        """Artifactory deps have no resolved_commit but may have a pinned ref."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("anthropics/skills/skills/skill-creator")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="anthropics/skills",
+            host="art.example.com/artifactory/apm",
+            resolved_commit=None,
+            resolved_ref="v1.2.0",
+            virtual_path="skills/skill-creator",
+            is_virtual=True,
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.host == "art.example.com/artifactory/apm"
+        assert ref.reference == "v1.2.0"
+
+    def test_artifactory_host_preserved_without_commit_or_ref(self):
+        """Host override applies even when no commit and no ref are locked."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("owner/repo")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com/artifactory/apm",
+            resolved_commit=None,
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.host == "art.example.com/artifactory/apm"
+
 
 # ── ARTIFACTORY_ONLY conflict detection ──
 

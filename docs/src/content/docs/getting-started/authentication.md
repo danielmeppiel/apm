@@ -215,4 +215,18 @@ export ARTIFACTORY_ONLY=1
 export ARTIFACTORY_APM_TOKEN=your-api-key-or-token
 ```
 
-> **Note:** Artifactory downloads use zip archives, so `apm.lock` will not contain commit SHAs for Artifactory-sourced packages.
+> **Note:** Artifactory downloads use zip archives, so `apm.lock.yaml` will not contain commit SHAs for Artifactory-sourced packages.
+
+#### Lockfile and Reproducibility
+
+When packages are installed through Artifactory, the lockfile records the actual Artifactory host — not the original `github.com`. This means subsequent `apm install` runs fetch from Artifactory automatically, even without `ARTIFACTORY_BASE_URL` set:
+
+```bash
+# First install (sets up lockfile):
+ARTIFACTORY_BASE_URL=https://art.example.com/artifactory/apm apm install owner/repo
+
+# Subsequent installs use the lockfile — no env var needed:
+apm install  # → fetches from art.example.com/artifactory/apm
+```
+
+If `ARTIFACTORY_ONLY=1` is set but the lockfile contains dependencies locked to `github.com` (from a previous non-Artifactory install), APM will exit with an error and suggest `apm install --update` to re-resolve through Artifactory.
