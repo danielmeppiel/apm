@@ -343,7 +343,7 @@ class ScriptRunner:
         # Handle individual runtime patterns without environment variables
 
         # Handle "codex [args] file.prompt.md [more_args]" -> "codex exec [args] [more_args]"
-        if re.search(r"codex\s+.*" + re.escape(prompt_file), command):
+        if re.search(r"(^|\s)codex\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"codex\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
