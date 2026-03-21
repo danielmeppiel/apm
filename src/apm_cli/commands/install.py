@@ -1069,10 +1069,21 @@ def _install_apm_dependencies(
     # Maps dep_key -> resolved_commit (SHA or None) so the cached path can use it
     callback_downloaded = {}
 
+    # Collect transitive dep failures during resolution — they'll be routed to
+    # diagnostics after the DiagnosticCollector is created (later in the flow).
+    transitive_failures: list[tuple[str, str]] = []  # (dep_display, message)
+
     # Create a download callback for transitive dependency resolution
     # This allows the resolver to fetch packages on-demand during tree building
-    def download_callback(dep_ref, modules_dir):
-        """Download a package during dependency resolution."""
+    def download_callback(dep_ref, modules_dir, parent_chain=""):
+        """Download a package during dependency resolution.
+
+        Args:
+            dep_ref: The dependency to download.
+            modules_dir: Target apm_modules directory.
+            parent_chain: Human-readable breadcrumb (e.g. "root > mid")
+                showing which dependency path led to this transitive dep.
+        """
         install_path = dep_ref.get_install_path(modules_dir)
         if install_path.exists():
             return install_path
@@ -1109,11 +1120,20 @@ def _install_apm_dependencies(
             callback_downloaded[dep_ref.get_unique_key()] = resolved_sha
             return install_path
         except Exception as e:
-            # Log but don't fail - allow resolution to continue
+            # Build contextual message including the dependency chain breadcrumb
+            chain_hint = f" (via {parent_chain})" if parent_chain else ""
+            dep_display = dep_ref.get_display_name()
+            fail_msg = (
+                f"Failed to resolve transitive dep "
+                f"{dep_ref.repo_url}{chain_hint}: {e}"
+            )
+            # Verbose: inline detail
             if logger:
-                logger.verbose_detail(f"  Failed to resolve transitive dep {dep_ref.repo_url}: {e}")
+                logger.verbose_detail(f"  {fail_msg}")
             elif verbose:
-                _rich_error(f"  └─ Failed to resolve transitive dep {dep_ref.repo_url}: {e}")
+                _rich_error(f"  └─ {fail_msg}")
+            # Collect for deferred diagnostics summary (always, even non-verbose)
+            transitive_failures.append((dep_display, fail_msg))
             return None
 
     # Resolve dependencies with transitive download support
@@ -1257,6 +1277,11 @@ def _install_apm_dependencies(
         hook_integrator = HookIntegrator()
         instruction_integrator = InstructionIntegrator()
         diagnostics = DiagnosticCollector(verbose=verbose)
+
+        # Drain transitive failures collected during resolution into diagnostics
+        for dep_display, fail_msg in transitive_failures:
+            diagnostics.error(fail_msg, package=dep_display)
+
         total_prompts_integrated = 0
         total_agents_integrated = 0
         total_skills_integrated = 0

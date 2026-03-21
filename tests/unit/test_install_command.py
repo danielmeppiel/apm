@@ -313,3 +313,132 @@ class TestValidationFailureReasonMessages:
             call_args = mock_build_ctx.call_args
             assert "github.com" in call_args[0][0]  # host
             assert "owner/repo" in call_args[0][1]  # operation
+
+
+# ---------------------------------------------------------------------------
+# Transitive dep parent chain breadcrumb
+# ---------------------------------------------------------------------------
+
+
+class TestTransitiveDepParentChain:
+    """Tests for the parent chain breadcrumb in transitive dep errors."""
+
+    def test_build_parent_chain_returns_breadcrumb(self):
+        """_build_parent_chain walks up parent links and returns 'a > b > c'."""
+        from apm_cli.deps.apm_resolver import APMDependencyResolver
+        from apm_cli.deps.dependency_graph import DependencyNode
+        from apm_cli.models.apm_package import APMPackage, DependencyReference
+
+        root_ref = DependencyReference.parse("acme/root-pkg")
+        mid_ref = DependencyReference.parse("acme/mid-pkg")
+        leaf_ref = DependencyReference.parse("other-org/leaf-pkg")
+
+        root_node = DependencyNode(
+            package=APMPackage(name="root-pkg", version="1.0", source="acme/root-pkg"),
+            dependency_ref=root_ref,
+            depth=1,
+        )
+        mid_node = DependencyNode(
+            package=APMPackage(name="mid-pkg", version="1.0", source="acme/mid-pkg"),
+            dependency_ref=mid_ref,
+            depth=2,
+            parent=root_node,
+        )
+        leaf_node = DependencyNode(
+            package=APMPackage(name="leaf-pkg", version="1.0", source="other-org/leaf-pkg"),
+            dependency_ref=leaf_ref,
+            depth=3,
+            parent=mid_node,
+        )
+
+        chain = APMDependencyResolver._build_parent_chain(leaf_node)
+        assert chain == "acme/root-pkg > acme/mid-pkg > other-org/leaf-pkg"
+
+    def test_build_parent_chain_single_node(self):
+        """Direct dep (no parent) returns just its own name."""
+        from apm_cli.deps.apm_resolver import APMDependencyResolver
+        from apm_cli.deps.dependency_graph import DependencyNode
+        from apm_cli.models.apm_package import APMPackage, DependencyReference
+
+        ref = DependencyReference.parse("acme/direct-pkg")
+        node = DependencyNode(
+            package=APMPackage(name="direct-pkg", version="1.0", source="acme/direct-pkg"),
+            dependency_ref=ref,
+            depth=1,
+        )
+        chain = APMDependencyResolver._build_parent_chain(node)
+        assert chain == "acme/direct-pkg"
+
+    def test_build_parent_chain_none_returns_empty(self):
+        """None node returns empty string."""
+        from apm_cli.deps.apm_resolver import APMDependencyResolver
+        assert APMDependencyResolver._build_parent_chain(None) == ""
+
+    def test_download_callback_includes_chain_in_error(self, tmp_path):
+        """When a transitive dep download fails, the error message includes
+        the parent chain breadcrumb for debugging.
+
+        Tests the resolver + callback interaction directly: we create a
+        resolver with a callback that fails on the leaf dep, and verify
+        the parent_chain arg is passed through correctly.
+        """
+        from apm_cli.deps.apm_resolver import APMDependencyResolver
+        from apm_cli.models.apm_package import APMPackage, DependencyReference
+
+        # Set up apm_modules with root-pkg that declares leaf-pkg as dep
+        modules_dir = tmp_path / "apm_modules"
+        root_dir = modules_dir / "acme" / "root-pkg"
+        root_dir.mkdir(parents=True)
+        (root_dir / "apm.yml").write_text(yaml.safe_dump({
+            "name": "root-pkg",
+            "version": "1.0.0",
+            "dependencies": {"apm": ["other-org/leaf-pkg"], "mcp": []},
+        }))
+
+        # Write root apm.yml that depends on root-pkg
+        (tmp_path / "apm.yml").write_text(yaml.safe_dump({
+            "name": "test-project",
+            "version": "0.0.1",
+            "dependencies": {"apm": ["acme/root-pkg"], "mcp": []},
+        }))
+
+        # Track what the callback receives
+        callback_calls = []
+
+        def tracking_callback(dep_ref, mods_dir, parent_chain=""):
+            callback_calls.append({
+                "dep": dep_ref.get_display_name(),
+                "parent_chain": parent_chain,
+            })
+            if "leaf-pkg" in dep_ref.get_display_name():
+                # Simulate what the real callback does: catch internal error,
+                # return None (non-blocking). The resolver treats None as
+                # "download failed, skip transitive deps".
+                return None
+            # Root-pkg is already on disk, return its path
+            return dep_ref.get_install_path(mods_dir)
+
+        resolver = APMDependencyResolver(
+            apm_modules_dir=modules_dir,
+            download_callback=tracking_callback,
+        )
+
+        os.chdir(tmp_path)
+        resolver.resolve_dependencies(tmp_path)
+
+        # The callback should have been called for leaf-pkg
+        leaf_calls = [c for c in callback_calls if "leaf-pkg" in c["dep"]]
+        assert len(leaf_calls) == 1, (
+            f"Expected 1 call for leaf-pkg, got {len(leaf_calls)}. "
+            f"All calls: {callback_calls}"
+        )
+
+        # The parent chain should contain root-pkg
+        chain = leaf_calls[0]["parent_chain"]
+        assert "root-pkg" in chain, (
+            f"Expected 'root-pkg' in parent chain, got: '{chain}'"
+        )
+        # Chain should show the full path: root > leaf
+        assert ">" in chain, (
+            f"Expected '>' separator in chain, got: '{chain}'"
+        )
