@@ -180,7 +180,7 @@ class AuthResolver:
 
     def resolve(self, host: str, org: Optional[str] = None) -> AuthContext:
         """Resolve auth for *(host, org)*.  Cached & thread-safe."""
-        key = (host, org)
+        key = (host.lower() if host else host, org.lower() if org else org)
         with self._lock:
             if key in self._cache:
                 return self._cache[key]
@@ -363,8 +363,8 @@ class AuthResolver:
         security boundary.  Host-gating global env vars is unnecessary
         and creates DX friction for multi-host setups.
         """
-        # 1. Per-org env var (any host)
-        if org:
+        # 1. Per-org env var (GitHub-like hosts only — ADO uses ADO_APM_PAT)
+        if org and host_info.kind not in ("ado",):
             env_name = f"GITHUB_APM_PAT_{_org_to_env_suffix(org)}"
             token = os.environ.get(env_name)
             if token:

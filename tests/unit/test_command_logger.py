@@ -104,9 +104,9 @@ class TestCommandLogger:
         logger = CommandLogger("test", verbose=True)
         logger.auth_step("Trying GITHUB_APM_PAT", success=True, detail="found")
         mock_echo.assert_called_once()
-        call_args = mock_echo.call_args[0][0]
-        assert "[+]" in call_args
-        assert "GITHUB_APM_PAT" in call_args
+        call_args = mock_echo.call_args
+        assert "GITHUB_APM_PAT" in call_args[0][0]
+        assert call_args[1].get("symbol") == "check"
 
     @patch("apm_cli.core.command_logger._rich_echo")
     def test_auth_step_not_verbose(self, mock_echo):
@@ -166,7 +166,7 @@ class TestCommandLogger:
         logger = CommandLogger("test", verbose=True)
         logger.auth_step("Trying gh CLI", success=False)
         mock_echo.assert_called_once()
-        assert "[x]" in mock_echo.call_args[0][0]
+        assert mock_echo.call_args[1].get("symbol") == "error"
 
 
 class TestInstallLogger:

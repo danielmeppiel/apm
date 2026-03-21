@@ -37,7 +37,7 @@ class DependencyNode:
         Returns just the node's display name for root-level (depth-0/1) deps.
         """
         parts: list[str] = []
-        current: 'DependencyNode' | None = self
+        current: Optional['DependencyNode'] = self
         while current is not None:
             parts.append(current.get_display_name())
             current = current.parent

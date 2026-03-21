@@ -13,8 +13,8 @@ from .dependency_graph import (
 # Type alias for the download callback.
 # Takes (dep_ref, apm_modules_dir, parent_chain) and returns the install path
 # if successful.  ``parent_chain`` is a human-readable breadcrumb string like
-# "root-pkg > mid-pkg" showing which dependency path led here, or "" for
-# direct (depth-1) dependencies.
+# "root-pkg > mid-pkg > this-pkg" showing the full dependency path including
+# the current node, or just the node's display name for direct (depth-1) deps.
 @runtime_checkable
 class DownloadCallback(Protocol):
     def __call__(

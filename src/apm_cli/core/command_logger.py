@@ -110,11 +110,10 @@ class CommandLogger:
     def auth_step(self, step: str, success: bool, detail: str = ""):
         """Log an auth resolution step (verbose only)."""
         if self.verbose:
-            status = "[+]" if success else "[x]"
-            msg = f"  auth: {status} {step}"
+            msg = f"  auth: {step}"
             if detail:
                 msg += f" ({detail})"
-            _rich_echo(msg, color="dim")
+            _rich_echo(msg, color="dim", symbol="check" if success else "error")
 
     def auth_resolved(self, ctx):
         """Log the resolved auth context (verbose only).
@@ -164,13 +163,13 @@ class InstallLogger(CommandLogger):
     def validation_pass(self, canonical: str, already_present: bool):
         """Log a package that passed validation."""
         if already_present:
-            _rich_echo(f"  [+] {canonical} (already in apm.yml)", color="dim")
+            _rich_echo(f"{canonical} (already in apm.yml)", color="dim", symbol="check")
         else:
-            _rich_success(f"  [+] {canonical}")
+            _rich_success(canonical, symbol="check")
 
     def validation_fail(self, package: str, reason: str):
         """Log a package that failed validation."""
-        _rich_error(f"  [x] {package} -- {reason}")
+        _rich_error(f"{package} -- {reason}", symbol="error")
 
     def validation_summary(self, outcome: _ValidationOutcome):
         """Log validation summary and decide whether to continue.

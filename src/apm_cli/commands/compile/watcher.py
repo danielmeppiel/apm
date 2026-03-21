@@ -58,7 +58,7 @@ def _watch_mode(output, chatmode, no_links, dry_run, verbose=False):
 
                     # Create compiler and compile
                     compiler = AgentsCompiler(".")
-                    result = compiler.compile(config)
+                    result = compiler.compile(config, logger=self.logger)
 
                     if result.success:
                         if self.dry_run:
@@ -72,7 +72,7 @@ def _watch_mode(output, chatmode, no_links, dry_run, verbose=False):
                     else:
                         self.logger.error("Recompilation failed")
                         for error in result.errors:
-                            self.logger.error(f"  [x] {error}")
+                            self.logger.error(f"  {error}")
 
                 except Exception as e:
                     self.logger.error(f"Error during recompilation: {e}")

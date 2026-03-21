@@ -330,10 +330,14 @@ class MCPServerOperations:
                     if var_name == 'GITHUB_DYNAMIC_TOOLSETS':
                         env_vars[var_name] = '1'  # Enable dynamic toolsets for GitHub MCP server
                     elif 'token' in var_name.lower() or 'key' in var_name.lower():
-                        # Use centralized token manager for consistent precedence
-                        # (GITHUB_APM_PAT → GITHUB_TOKEN → GH_TOKEN)
+                        # Map known token vars to appropriate purposes
                         _tm = GitHubTokenManager()
-                        env_vars[var_name] = _tm.get_token_for_purpose('modules') or ''
+                        if 'ado' in var_name.lower():
+                            env_vars[var_name] = _tm.get_token_for_purpose('ado_modules') or ''
+                        elif 'copilot' in var_name.lower():
+                            env_vars[var_name] = _tm.get_token_for_purpose('copilot') or ''
+                        else:
+                            env_vars[var_name] = _tm.get_token_for_purpose('modules') or ''
                     else:
                         # For other variables, use empty string or reasonable default
                         env_vars[var_name] = ''

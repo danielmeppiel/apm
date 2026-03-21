@@ -43,14 +43,14 @@ class InstallationSummary:
         if self.skipped:
             for item in self.skipped:
                 if logger:
-                    logger.warning(f"[!]  Skipped {item['server']}: {item['reason']}")
+                    logger.warning(f"Skipped {item['server']}: {item['reason']}")
                 else:
                     _rich_warning(f"[!]  Skipped {item['server']}: {item['reason']}")
         
         if self.failed:
             for item in self.failed:
                 if logger:
-                    logger.error(f"[x] Failed {item['server']}: {item['reason']}")
+                    logger.error(f"Failed {item['server']}: {item['reason']}")
                 else:
                     _rich_error(f"[x] Failed {item['server']}: {item['reason']}")
 

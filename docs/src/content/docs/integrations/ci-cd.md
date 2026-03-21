@@ -33,8 +33,7 @@ jobs:
 
 ### Private Dependencies
 
-For private repositories, set `GITHUB_APM_PAT` via the workflow `env:` block.
-GitHub Actions forbids secrets named with a `GITHUB_` prefix, so use any name you like for the secret:
+For private repositories, pass a token via the workflow `env:` block. See the [Authentication guide](../../getting-started/authentication/) for all supported tokens and priority rules.
 
 ```yaml
       - name: Install APM packages
@@ -42,19 +41,6 @@ GitHub Actions forbids secrets named with a `GITHUB_` prefix, so use any name yo
         env:
           GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
 ```
-
-For multi-org setups, add per-org tokens (`GITHUB_APM_PAT_{ORG}` — org name uppercased, hyphens replaced with underscores):
-
-```yaml
-      - name: Install APM packages
-        uses: microsoft/apm-action@v1
-        env:
-          GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
-          GITHUB_APM_PAT_CONTOSO: ${{ secrets.APM_PAT_CONTOSO }}
-          ADO_APM_PAT: ${{ secrets.ADO_PAT }}
-```
-
-See the [Authentication guide](../../getting-started/authentication/) for the full token priority chain.
 
 ### Verify Compiled Output (Optional)
 

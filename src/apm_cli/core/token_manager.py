@@ -20,6 +20,7 @@ Runtime Requirements:
 
 import os
 import subprocess
+import sys
 from typing import Dict, Optional, Tuple
 
 
@@ -111,7 +112,8 @@ class GitHubTokenManager:
                 capture_output=True,
                 text=True,
                 timeout=GitHubTokenManager._get_credential_timeout(),
-                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': ''},
+                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0',
+                     'GIT_ASKPASS': '' if sys.platform != 'win32' else 'echo'},
             )
             if result.returncode != 0:
                 return None
