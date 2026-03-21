@@ -77,6 +77,7 @@
 #   export AUTH_TEST_PUBLIC_REPO="microsoft/apm-sample-package"     # default
 #   export AUTH_TEST_PRIVATE_REPO="your-org/your-private-repo"      # optional
 #   export AUTH_TEST_PRIVATE_REPO_2="other-org/other-private-repo"  # optional (2nd org)
+#   export AUTH_TEST_GIT_URL_REPO="org/repo-for-git-url-test"      # optional (git: object)
 #   export AUTH_TEST_EMU_REPO="emu-org/internal-repo"               # optional
 #   export AUTH_TEST_ADO_REPO="org/project/_git/repo"               # optional
 #
@@ -153,6 +154,8 @@ APM_BINARY="${APM_BINARY:-apm}"
 AUTH_TEST_PUBLIC_REPO="${AUTH_TEST_PUBLIC_REPO:-microsoft/apm-sample-package}"
 AUTH_TEST_PRIVATE_REPO="${AUTH_TEST_PRIVATE_REPO:-}"
 AUTH_TEST_PRIVATE_REPO_2="${AUTH_TEST_PRIVATE_REPO_2:-}"
+AUTH_TEST_GIT_URL_REPO="${AUTH_TEST_GIT_URL_REPO:-}"
+AUTH_TEST_GIT_URL_PUBLIC_REPO="${AUTH_TEST_GIT_URL_PUBLIC_REPO:-}"
 AUTH_TEST_EMU_REPO="${AUTH_TEST_EMU_REPO:-}"
 AUTH_TEST_ADO_REPO="${AUTH_TEST_ADO_REPO:-}"
 
@@ -832,14 +835,16 @@ test_18_verbose_contract() {
 #   4. Private repo from org B, pinned by tag (GITHUB_APM_PAT_ORG_B)
 #   5. EMU internal repo from a third org (per-org or global PAT)
 #   6. ADO repo via FQDN (ADO_APM_PAT, completely separate auth)
-#   7. Virtual file dep — single .prompt.md from a public repo
+#   7. Private repo via git: URL object (YAML dict format, credential helper)
+#   8. Public repo via git: URL object (YAML dict, unauthenticated clone)
 #
 # The resolver must:
 #   - Route each dep to its correct token independently
 #   - Use unauthenticated-first for public deps on github.com
 #   - Use per-org PATs when available, fall back to global
 #   - Use ADO_APM_PAT for ADO deps (no credential fill)
-#   - Handle mixed string/FQDN/virtual formats in one manifest
+#   - Handle mixed string/FQDN/git-object formats in one manifest
+#   - Parse both string entries AND dict entries in the same YAML list
 #
 # Progressive: builds the manifest from whatever repos/tokens are
 # configured. Minimum: 2 deps from different auth domains.
@@ -911,6 +916,35 @@ HEADER
         echo "    - \"${AUTH_TEST_ADO_REPO}\"" >> "$dir/apm.yml"
         dep_count=$((dep_count + 1))
         dep_desc+=("ADO")
+    fi
+
+    # --- Slot 7: Private repo via git: URL object (dict format) ---
+    # Uses the YAML object syntax { git: https://..., ref: ... } which goes
+    # through parse_from_dict() — a completely different parser path than
+    # string shorthand. Auth resolves from the URL's host+org.
+    # Uses AUTH_TEST_GIT_URL_REPO to avoid dedup with slot 3 (same repo_url
+    # would be deduplicated by the resolver). Falls back to PRIVATE_REPO_2.
+    local git_url_repo="${AUTH_TEST_GIT_URL_REPO:-${AUTH_TEST_PRIVATE_REPO_2:-}}"
+    if [[ -n "$git_url_repo" && -n "$_ORIG_GITHUB_APM_PAT" ]]; then
+        local git_owner="${git_url_repo%%/*}"
+        local git_repo="${git_url_repo#*/}"
+        git_repo="${git_repo%%#*}"
+        cat >> "$dir/apm.yml" <<EOF
+    - git: "https://github.com/${git_owner}/${git_repo}.git"
+EOF
+        dep_count=$((dep_count + 1))
+        dep_desc+=("private-git-url-object")
+    fi
+
+    # --- Slot 8: Public repo via git: URL object (dict format, no auth) ---
+    # Validates that the YAML dict format works for public repos.
+    # Uses AUTH_TEST_GIT_URL_PUBLIC_REPO to avoid dedup with slot 1.
+    if [[ -n "${AUTH_TEST_GIT_URL_PUBLIC_REPO:-}" ]]; then
+        cat >> "$dir/apm.yml" <<EOF
+    - git: "https://github.com/${AUTH_TEST_GIT_URL_PUBLIC_REPO}.git"
+EOF
+        dep_count=$((dep_count + 1))
+        dep_desc+=("public-git-url-object")
     fi
 
     # Close YAML
@@ -1055,6 +1089,7 @@ echo -e "${DIM}Binary:       ${APM_BINARY}${NC}"
 echo -e "${DIM}Public repo:  ${AUTH_TEST_PUBLIC_REPO}${NC}"
 echo -e "${DIM}Private repo: ${AUTH_TEST_PRIVATE_REPO:-<not set -- scenarios 3-10,14,16 skip>}${NC}"
 echo -e "${DIM}Private #2:   ${AUTH_TEST_PRIVATE_REPO_2:-<not set -- scenario 20 uses EMU repo if available>}${NC}"
+echo -e "${DIM}Git URL repo: ${AUTH_TEST_GIT_URL_REPO:-<not set -- mega slot 7 uses PRIVATE_REPO_2 if available>}${NC}"
 echo -e "${DIM}EMU repo:     ${AUTH_TEST_EMU_REPO:-<not set -- scenarios 9,17 skip>}${NC}"
 echo -e "${DIM}ADO repo:     ${AUTH_TEST_ADO_REPO:-<not set -- scenarios 12,13 skip>}${NC}"
 echo -e "${DIM}Tokens:       GITHUB_APM_PAT=${_ORIG_GITHUB_APM_PAT:+SET} GITHUB_TOKEN=${_ORIG_GITHUB_TOKEN:+SET} GH_TOKEN=${_ORIG_GH_TOKEN:+SET} ADO_APM_PAT=${_ORIG_ADO_APM_PAT:+SET}${NC}"
