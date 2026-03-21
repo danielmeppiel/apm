@@ -10,18 +10,7 @@ from typing import List, Optional
 from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from ..models.apm_package import APMPackage
 from ..core.target_detection import detect_target
-from .lockfile_enrichment import enrich_lockfile_for_pack
-
-
-# Target prefix mapping ("copilot" and "vscode" both map to .github/)
-_TARGET_PREFIXES = {
-    "copilot": [".github/"],
-    "vscode": [".github/"],
-    "claude": [".claude/"],
-    "cursor": [".cursor/"],
-    "opencode": [".opencode/"],
-    "all": [".github/", ".claude/", ".cursor/", ".opencode/"],
-}
+from .lockfile_enrichment import enrich_lockfile_for_pack, _TARGET_PREFIXES, _filter_files_by_target
 
 
 @dataclass
@@ -31,12 +20,6 @@ class PackResult:
     bundle_path: Path
     files: List[str] = field(default_factory=list)
     lockfile_enriched: bool = False
-
-
-def _filter_files_by_target(deployed_files: List[str], target: str) -> List[str]:
-    """Filter deployed file paths by target prefix."""
-    prefixes = _TARGET_PREFIXES.get(target, _TARGET_PREFIXES["all"])
-    return [f for f in deployed_files if any(f.startswith(p) for p in prefixes)]
 
 
 def pack_bundle(
