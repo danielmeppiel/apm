@@ -311,8 +311,8 @@ class TestValidationFailureReasonMessages:
             assert result is False
             mock_build_ctx.assert_called_once()
             call_args = mock_build_ctx.call_args
-            assert "github.com" in call_args[0][0]  # host
-            assert "owner/repo" in call_args[0][1]  # operation
+            assert call_args[0][0] == "github.com"  # host
+            assert call_args[0][1].endswith("owner/repo")  # operation
 
 
 # ---------------------------------------------------------------------------
