@@ -110,7 +110,7 @@ class CommandLogger:
     def auth_step(self, step: str, success: bool, detail: str = ""):
         """Log an auth resolution step (verbose only)."""
         if self.verbose:
-            status = "✓" if success else "✗"
+            status = "[+]" if success else "[x]"
             msg = f"  auth: {status} {step}"
             if detail:
                 msg += f" ({detail})"
@@ -164,13 +164,13 @@ class InstallLogger(CommandLogger):
     def validation_pass(self, canonical: str, already_present: bool):
         """Log a package that passed validation."""
         if already_present:
-            _rich_echo(f"  ✓ {canonical} (already in apm.yml)", color="dim")
+            _rich_echo(f"  [+] {canonical} (already in apm.yml)", color="dim")
         else:
-            _rich_success(f"  ✓ {canonical}")
+            _rich_success(f"  [+] {canonical}")
 
     def validation_fail(self, package: str, reason: str):
         """Log a package that failed validation."""
-        _rich_error(f"  ✗ {package} — {reason}")
+        _rich_error(f"  [x] {package} -- {reason}")
 
     def validation_summary(self, outcome: _ValidationOutcome):
         """Log validation summary and decide whether to continue.
@@ -229,14 +229,14 @@ class InstallLogger(CommandLogger):
 
     def download_complete(self, dep_name: str, ref_suffix: str = ""):
         """Log completion of a package download."""
-        msg = f"  ✓ {dep_name}"
+        msg = f"  [+] {dep_name}"
         if ref_suffix:
             msg += f" ({ref_suffix})"
         _rich_echo(msg, color="green")
 
     def download_failed(self, dep_name: str, error: str):
         """Log a download failure."""
-        _rich_error(f"  ✗ {dep_name} — {error}")
+        _rich_error(f"  [x] {dep_name} -- {error}")
 
     # --- Install summary ---
 

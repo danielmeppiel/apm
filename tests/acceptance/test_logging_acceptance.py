@@ -140,7 +140,7 @@ class TestI1SinglePublicPackageHappyPath(_InstallAcceptanceBase):
 
         # Validation phase
         assert "Validating 1 package" in out
-        assert "✓ owner/repo" in out
+        assert "[+] owner/repo" in out
 
         # Installation phase
         assert "Installing" in out
@@ -167,7 +167,7 @@ class TestI4PackageFailsValidation(_InstallAcceptanceBase):
 
         out = result.output
         assert "not accessible or doesn't exist" in out
-        assert "✗" in out
+        assert "[x]" in out
 
     @patch(_InstallAcceptanceBase._VALIDATE)
     def test_verbose_hint_when_not_verbose(self, mock_validate):
@@ -193,7 +193,7 @@ class TestI4PackageFailsValidation(_InstallAcceptanceBase):
 
         # The validation failure reason should NOT contain the verbose hint
         # when already in verbose mode.
-        lines_with_cross = [l for l in result.output.splitlines() if "✗" in l]
+        lines_with_cross = [l for l in result.output.splitlines() if "[x]" in l]
         for line in lines_with_cross:
             assert "run with --verbose" not in line.lower(), (
                 f"Redundant --verbose hint found in verbose mode: {line}"
@@ -305,8 +305,8 @@ class TestI6MixedValidInvalid(_InstallAcceptanceBase):
         assert result.exit_code == 0, f"Exit {result.exit_code}: {out}"
 
         # Check mark for good package, cross for bad
-        assert "✓" in out, "Expected ✓ for valid package"
-        assert "✗" in out, "Expected ✗ for invalid package"
+        assert "[+]" in out, "Expected [+] for valid package"
+        assert "[x]" in out, "Expected [x] for invalid package"
 
         # Continues to install the valid one
         assert "1" in out and "failed validation" in out

@@ -105,7 +105,7 @@ class TestCommandLogger:
         logger.auth_step("Trying GITHUB_APM_PAT", success=True, detail="found")
         mock_echo.assert_called_once()
         call_args = mock_echo.call_args[0][0]
-        assert "✓" in call_args
+        assert "[+]" in call_args
         assert "GITHUB_APM_PAT" in call_args
 
     @patch("apm_cli.core.command_logger._rich_echo")
@@ -166,7 +166,7 @@ class TestCommandLogger:
         logger = CommandLogger("test", verbose=True)
         logger.auth_step("Trying gh CLI", success=False)
         mock_echo.assert_called_once()
-        assert "✗" in mock_echo.call_args[0][0]
+        assert "[x]" in mock_echo.call_args[0][0]
 
 
 class TestInstallLogger:

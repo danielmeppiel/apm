@@ -125,7 +125,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     for package in packages:
         # Validate package format (should be owner/repo, a git URL, or a local path)
         if "/" not in package and not DependencyReference.is_local_path(package):
-            reason = "invalid format — use 'owner/repo'"
+            reason = "invalid format -- use 'owner/repo'"
             invalid_outcomes.append((package, reason))
             if logger:
                 logger.validation_fail(package, reason)
@@ -329,11 +329,11 @@ def _validate_package_exists(package, verbose=False):
             try:
                 resp = urllib.request.urlopen(req, timeout=15)
                 if verbose_log:
-                    verbose_log(f"API {api_url} → {resp.status}")
+                    verbose_log(f"API {api_url} -> {resp.status}")
                 return True
             except urllib.error.HTTPError as e:
                 if verbose_log:
-                    verbose_log(f"API {api_url} → {e.code} {e.reason}")
+                    verbose_log(f"API {api_url} -> {e.code} {e.reason}")
                 if e.code == 404 and token:
                     # 404 with token could mean no access — raise to trigger fallback
                     raise RuntimeError(f"API returned {e.code}")
@@ -385,7 +385,7 @@ def _validate_package_exists(package, verbose=False):
                 return True
             except urllib.error.HTTPError as e:
                 if verbose_log:
-                    verbose_log(f"API fallback → {e.code} {e.reason}")
+                    verbose_log(f"API fallback -> {e.code} {e.reason}")
                 raise RuntimeError(f"API returned {e.code}")
             except Exception as e:
                 if verbose_log:
@@ -1811,7 +1811,7 @@ def _install_apm_dependencies(
                             except Exception:
                                 pass
                     else:
-                        _rich_success(f"✓ {display_name}{ref_suffix}")
+                        _rich_success(f"[+] {display_name}{ref_suffix}")
 
                     # Track unpinned deps for aggregated diagnostic
                     if not dep_ref.reference:

@@ -309,7 +309,7 @@ class DiagnosticCollector:
         count = len(items)
         noun = "file" if count == 1 else "files"
         _rich_warning(
-            f"  ⚠ {count} {noun} skipped — local files exist, not managed by APM"
+            f"  [!] {count} {noun} skipped -- local files exist, not managed by APM"
         )
         _rich_info("    Use 'apm install --force' to overwrite")
         if not self.verbose:
@@ -327,7 +327,7 @@ class DiagnosticCollector:
         count = len(items)
         noun = "skill" if count == 1 else "skills"
         _rich_warning(
-            f"  ⚠ {count} {noun} replaced by a different package (last installed wins)"
+            f"  [!] {count} {noun} replaced by a different package (last installed wins)"
         )
         if not self.verbose:
             _rich_info("    Run with --verbose to see details")
@@ -344,16 +344,16 @@ class DiagnosticCollector:
     def _render_warning_group(self, items: List[Diagnostic]) -> None:
         for d in items:
             pkg_prefix = f"[{d.package}] " if d.package else ""
-            _rich_warning(f"  ⚠ {pkg_prefix}{d.message}")
+            _rich_warning(f"  [!] {pkg_prefix}{d.message}")
             if d.detail and self.verbose:
                 _rich_echo(f"    └─ {d.detail}", color="dim")
 
     def _render_error_group(self, items: List[Diagnostic]) -> None:
         count = len(items)
         noun = "package" if count == 1 else "packages"
-        _rich_echo(f"  ✗ {count} {noun} failed:", color="red")
+        _rich_echo(f"  [x] {count} {noun} failed:", color="red")
         for d in items:
-            pkg_prefix = f"{d.package} — " if d.package else ""
+            pkg_prefix = f"{d.package} -- " if d.package else ""
             _rich_echo(f"    └─ {pkg_prefix}{d.message}", color="red")
             if d.detail and self.verbose:
                 _rich_echo(f"         {d.detail}", color="dim")
