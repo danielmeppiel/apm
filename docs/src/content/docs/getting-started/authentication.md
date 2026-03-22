@@ -20,29 +20,6 @@ Results are cached per-process — the same `(host, org)` pair is resolved once.
 
 All token-bearing requests use HTTPS. Tokens are never sent over unencrypted connections.
 
-```mermaid
-flowchart TD
-    A[Dependency Reference] --> B{Per-org env var?}
-    B -->|GITHUB_APM_PAT_ORG| C[Use per-org token]
-    B -->|Not set| D{Global env var?}
-    D -->|GITHUB_APM_PAT / GITHUB_TOKEN / GH_TOKEN| E[Use global token]
-    D -->|Not set| F{Git credential fill?}
-    F -->|Found| G[Use credential]
-    F -->|Not found| H[No token]
-
-    E --> I{try_with_fallback}
-    C --> I
-    G --> I
-    H --> I
-
-    I -->|Token works| J[Success]
-    I -->|Token fails| K{Credential-fill fallback}
-    K -->|Found credential| J
-    K -->|No credential| L{Host has public repos?}
-    L -->|Yes| M[Try unauthenticated]
-    L -->|No| N[Auth error with actionable message]
-```
-
 ## Token lookup
 
 | Priority | Variable | Scope | Notes |
@@ -204,6 +181,31 @@ apm install --verbose your-org/package
 ```
 
 The output shows which env var matched (or `none`), the detected token type (`fine-grained`, `classic`, `oauth`, `github-app`), and the host classification (`github`, `ghe_cloud`, `ghes`, `ado`, `generic`).
+
+The full resolution and fallback flow:
+
+```mermaid
+flowchart TD
+    A[Dependency Reference] --> B{Per-org env var?}
+    B -->|GITHUB_APM_PAT_ORG| C[Use per-org token]
+    B -->|Not set| D{Global env var?}
+    D -->|GITHUB_APM_PAT / GITHUB_TOKEN / GH_TOKEN| E[Use global token]
+    D -->|Not set| F{Git credential fill?}
+    F -->|Found| G[Use credential]
+    F -->|Not found| H[No token]
+
+    E --> I{try_with_fallback}
+    C --> I
+    G --> I
+    H --> I
+
+    I -->|Token works| J[Success]
+    I -->|Token fails| K{Credential-fill fallback}
+    K -->|Found credential| J
+    K -->|No credential| L{Host has public repos?}
+    L -->|Yes| M[Try unauthenticated]
+    L -->|No| N[Auth error with actionable message]
+```
 
 ### Git credential helper not found
 
