@@ -56,9 +56,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: apm-linux-x86_64
+        # Scripts are included to preserve the artifact root at ./ (not ./dist/).
+        # Without a sibling directory, upload-artifact strips the dist/ prefix,
+        # breaking download paths in ci-integration.yml which expects dist/$BINARY_NAME/apm.
         path: |
           ./dist/apm-linux-x86_64
           ./dist/apm-linux-x86_64.sha256
+          ./scripts/test-release-validation.sh
+          ./scripts/github-token-helper.sh
         include-hidden-files: true
         retention-days: 30
         if-no-files-found: error
