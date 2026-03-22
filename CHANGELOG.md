@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Docker container image published to GitHub Container Registry (`ghcr.io/microsoft/apm`) on tag releases (#326)
+- `ci-runtime.yml` workflow for nightly + manual runtime inference tests, decoupled from release pipeline (#371)
+- `APM_RUN_INFERENCE_TESTS` env var to gate live inference (`apm run`) in test scripts (#371)
+- PR traceability `::notice` annotation in `ci-integration.yml` smoke-test job (#371)
+
+### Changed
+
+- Merged `test` + `build` into single `build-and-test` job across `ci.yml` and `build-release.yml` — eliminates ~1.5m runner re-provisioning per platform (#371)
+- macOS consolidated jobs are now root nodes (no `needs: [test]`) — run own unit tests for full independence (#371)
+- Removed `setup-node@v4` from unit test and build jobs that don't need Node.js (#371)
+- Enabled native `setup-uv` caching (`enable-cache: true`), removed manual `actions/cache@v3` blocks (#371)
+- Decoupled live inference tests (`apm run`) from release pipeline — reduces 14.9% false-negative rate and `GH_MODELS_PAT` secret exposure (#371)
+- `ci-integration.yml` report-status now detects CI circular dependency (upstream failure) and reports `pending` instead of blocking (#371)
+
 ## [0.8.4] - 2026-03-22
 
 ### Added

@@ -50,6 +50,17 @@ pip install apm-cli
 
 Requires Python 3.10+.
 
+## Docker
+
+Run APM in a container to avoid Python versioning issues:
+
+```bash
+docker pull ghcr.io/microsoft/apm:latest
+docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/microsoft/apm install
+```
+
+Container images are published to [GitHub Container Registry](https://github.com/microsoft/apm/pkgs/container/apm) on every release.
+
 ## Manual binary install
 
 Download the archive for your platform from [GitHub Releases](https://github.com/microsoft/apm/releases/latest) and install manually:
