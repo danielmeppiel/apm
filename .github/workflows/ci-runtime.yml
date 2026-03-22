@@ -5,7 +5,7 @@ env:
 
 on:
   schedule:
-    # Daily at 05:00 UTC (runs after build-release.yml at 04:00)
+    # Daily at 05:00 UTC — standalone schedule, no dependency on build-release.yml
     - cron: '0 5 * * *'
   workflow_dispatch:
   push:

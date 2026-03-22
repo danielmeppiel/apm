@@ -226,15 +226,18 @@ jobs:
             const integResult = '${{ needs.integration-tests.result }}';
             const relvalResult = '${{ needs.release-validation.result }}';
 
-            // O7: Detect circular dependency — ci.yml failed so all downstream jobs were skipped.
-            // Don't block the CI-fixing PR; report pending instead of failure.
+            // O7: Detect CI circular dependency — when ci.yml fails, all approval
+            // jobs are skipped (their `if: conclusion == 'success'` fails), which
+            // cascades to skip smoke-test → integration-tests → release-validation.
+            // Without this check, we'd report 'failure' and block the CI-fixing PR.
             const allSkipped = smokeResult === 'skipped' && integResult === 'skipped' && relvalResult === 'skipped';
-            const ciFailedUpstream = ciConclusion !== 'success';
 
             let state, description;
-            if (allSkipped && ciFailedUpstream) {
+            if (allSkipped && ciConclusion !== 'success') {
+              // Upstream CI failed — all jobs were skipped via approval guards, not due to test failures
               state = 'pending';
-              description = 'CI workflow failed — integration tests skipped (not blocking)';
+              description = `CI workflow ${ciConclusion} — integration tests skipped (not blocking)`;
+              core.notice(`CI workflow concluded with '${ciConclusion}' — integration tests were skipped. This is expected when ci.yml itself has an error.`);
             } else {
               const success = relvalResult === 'success'
                 && integResult === 'success'

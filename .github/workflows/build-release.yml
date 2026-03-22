@@ -673,6 +673,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            # Only tag stable releases as 'latest' (is_prerelease is 'true' or 'false' string)
             type=raw,value=latest,enable=${{ needs.create-release.outputs.is_prerelease != 'true' }}
 
       - name: Build and push

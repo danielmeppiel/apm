@@ -449,9 +449,9 @@ echo ""
     local dependency_tests_run=false
     local inference_tests_run=false
     
-    # Add inference tests to total if enabled
+    # Hero scenario 1 (zero-config) is entirely inference-based — only counted when enabled
     if [[ "${APM_RUN_INFERENCE_TESTS:-}" == "1" ]]; then
-        tests_total=$((tests_total + 1))  # zero-config hero scenario
+        tests_total=$((tests_total + 1))
         inference_tests_run=true
         log_info "Inference tests enabled (APM_RUN_INFERENCE_TESTS=1)"
     else

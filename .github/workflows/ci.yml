@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   # Linux-only for PR feedback. Full platform matrix (incl. macOS + Windows) runs post-merge in build-release.yml.
-  # Combines unit tests + binary build into a single job to eliminate runner re-provisioning overhead (~1.5m).
+  # Combines unit tests + binary build into a single job to eliminate runner re-provisioning overhead.
   build-and-test:
     name: Build & Test (Linux)
     runs-on: ubuntu-24.04

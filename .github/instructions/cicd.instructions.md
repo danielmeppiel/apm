@@ -30,9 +30,9 @@ Four workflows split by trigger and secret requirements:
    - Failures do not block releases — annotated as warnings.
 
 ## Platform Testing Strategy
-- **PR time**: Linux-only combined build-and-test. Catches logic bugs and dependency issues before merge.
+- **PR time**: Linux-only combined build-and-test in `ci.yml`. Catches logic bugs and dependency issues before merge. Windows + macOS are tested post-merge (platform-specific issues are rare and the full matrix runs on every push to main).
 - **Post-merge**: Full 5-platform matrix (linux x86_64/arm64, darwin x86_64/arm64, windows x86_64) catches remaining platform-specific issues on main.
-- **Rationale**: Linux PR coverage catches the majority of issues. macOS-specific issues are rare and caught post-merge.
+- **Rationale**: ci.yml has always been Linux-only — Windows and macOS are covered by `build-release.yml` on every push to main. This keeps PR feedback fast while still catching platform issues before release.
 
 ## PyInstaller Binary Packaging
 - **CRITICAL**: Uses `--onedir` mode (NOT `--onefile`) for faster CLI startup performance
