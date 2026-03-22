@@ -69,14 +69,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev --extra build
 
-      - name: Test with pytest
-        run: uv run pytest tests/unit tests/test_console.py
-
-      - name: Run smoke tests
+      - name: Run tests
         env:
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
           GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
-        run: uv run pytest tests/integration/test_runtime_smoke.py -v
+        run: uv run pytest tests/unit tests/test_console.py tests/integration/test_runtime_smoke.py -n auto --dist worksteal
 
       - name: Install UPX (Linux)
         if: matrix.platform == 'linux'
@@ -156,7 +153,7 @@ jobs:
         run: uv sync --extra dev --extra build
 
       - name: Run unit tests
-        run: uv run pytest tests/unit tests/test_console.py
+        run: uv run pytest tests/unit tests/test_console.py -n auto --dist worksteal
 
       # ── PHASE 1: BUILD BINARY ──
       - name: Build binary
@@ -258,7 +255,7 @@ jobs:
         run: uv sync --extra dev --extra build
 
       - name: Run unit tests
-        run: uv run pytest tests/unit tests/test_console.py
+        run: uv run pytest tests/unit tests/test_console.py -n auto --dist worksteal
 
       # ── PHASE 1: BUILD BINARY ──
       - name: Build binary
