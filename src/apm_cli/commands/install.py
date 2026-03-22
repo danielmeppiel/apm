@@ -775,7 +775,7 @@ def _integrate_package_primitives(
 
     def _log_integration(msg):
         if logger:
-            logger.progress(msg)
+            logger.tree_item(msg)
 
     # --- prompts ---
     prompt_result = prompt_integrator.integrate_package_prompts(
@@ -1046,8 +1046,9 @@ def _install_apm_dependencies(
                 logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
                 if logger.verbose:
                     for locked_dep in existing_lockfile.get_all_dependencies():
-                        sha_short = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else "no-sha"
-                        logger.verbose_detail(f"    {locked_dep.get_unique_key()}: locked at {sha_short}")
+                        _sha = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else ""
+                        _ref = locked_dep.resolved_ref if hasattr(locked_dep, 'resolved_ref') and locked_dep.resolved_ref else ""
+                        logger.lockfile_entry(locked_dep.get_unique_key(), ref=_ref, sha=_sha)
 
     apm_modules_dir = project_root / APM_MODULES_DIR
     apm_modules_dir.mkdir(exist_ok=True)
@@ -1410,6 +1411,14 @@ def _install_apm_dependencies(
         _pre_downloaded_keys = builtins.set(_pre_download_results.keys())
 
         # Create progress display for sequential integration
+        _auth_resolver = None
+        if verbose:
+            try:
+                from apm_cli.core.auth import AuthResolver
+                _auth_resolver = AuthResolver()
+            except Exception:
+                pass
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[cyan]{task.description}[/cyan]"),
@@ -1552,6 +1561,17 @@ def _install_apm_dependencies(
                         )
 
                     package_deployed_files[dep_key] = dep_deployed_files
+
+                    # In verbose mode, show inline skip/error count for this package
+                    if logger and logger.verbose:
+                        _skip_count = diagnostics.count_for_package(dep_key, "collision")
+                        _err_count = diagnostics.count_for_package(dep_key, "error")
+                        if _skip_count > 0:
+                            noun = "file" if _skip_count == 1 else "files"
+                            logger.package_inline_warning(f"    [!] {_skip_count} {noun} skipped (local files exist)")
+                        if _err_count > 0:
+                            noun = "error" if _err_count == 1 else "errors"
+                            logger.package_inline_warning(f"    [!] {_err_count} integration {noun}")
                     continue
 
                 # npm-like behavior: Branches always fetch latest, only tags/commits use cache
@@ -1618,17 +1638,12 @@ def _install_apm_dependencies(
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
                     )
                     # Show resolved ref from lockfile for consistency with fresh installs
-                    ref_str = ""
+                    _ref = dep_ref.reference or ""
+                    _sha = ""
                     if _dep_locked_chk and _dep_locked_chk.resolved_commit and _dep_locked_chk.resolved_commit != "cached":
-                        short_sha = _dep_locked_chk.resolved_commit[:8]
-                        if dep_ref.reference:
-                            ref_str = f"#{dep_ref.reference} ({short_sha})"
-                        else:
-                            ref_str = f"#{short_sha}"
-                    elif dep_ref.reference:
-                        ref_str = f"#{dep_ref.reference}"
+                        _sha = _dep_locked_chk.resolved_commit[:8]
                     if logger:
-                        logger.download_complete(display_name, ref_suffix=f"{ref_str} (cached)" if ref_str else "cached")
+                        logger.download_complete(display_name, ref=_ref, sha=_sha, cached=True)
                     installed_count += 1
                     if not dep_ref.reference:
                         unpinned_count += 1
@@ -1750,6 +1765,17 @@ def _install_apm_dependencies(
                             package=dep_key,
                         )
 
+                    # In verbose mode, show inline skip/error count for this package
+                    if logger and logger.verbose:
+                        _skip_count = diagnostics.count_for_package(dep_key, "collision")
+                        _err_count = diagnostics.count_for_package(dep_key, "error")
+                        if _skip_count > 0:
+                            noun = "file" if _skip_count == 1 else "files"
+                            logger.package_inline_warning(f"    [!] {_skip_count} {noun} skipped (local files exist)")
+                        if _err_count > 0:
+                            noun = "error" if _err_count == 1 else "errors"
+                            logger.package_inline_warning(f"    [!] {_err_count} integration {noun}")
+
                     continue
 
                 # Download the package with progress feedback
@@ -1796,22 +1822,34 @@ def _install_apm_dependencies(
 
                     # Show resolved ref alongside package name for visibility
                     resolved = getattr(package_info, 'resolved_reference', None)
-                    ref_suffix = f"#{resolved}" if resolved else ""
                     if logger:
-                        logger.download_complete(display_name, ref_suffix=ref_suffix)
+                        _ref = ""
+                        _sha = ""
+                        if resolved:
+                            _ref = resolved.ref_name if resolved.ref_name else ""
+                            _sha = resolved.resolved_commit[:8] if resolved.resolved_commit else ""
+                        logger.download_complete(display_name, ref=_ref, sha=_sha)
                         # Log auth source for this download (verbose only)
-                        if verbose:
+                        if _auth_resolver:
                             try:
-                                from apm_cli.core.auth import AuthResolver
-                                _auth = AuthResolver()
                                 _host = dep_ref.host or "github.com"
                                 _org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
-                                _ctx = _auth.resolve(_host, org=_org)
-                                logger.verbose_detail(f"    Auth: {_ctx.source} ({_ctx.token_type or 'none'})")
+                                _ctx = _auth_resolver.resolve(_host, org=_org)
+                                logger.package_auth(_ctx.source, _ctx.token_type or "none")
                             except Exception:
                                 pass
                     else:
-                        _rich_success(f"[+] {display_name}{ref_suffix}")
+                        _ref_suffix = ""
+                        if resolved:
+                            _r = resolved.ref_name if resolved.ref_name else ""
+                            _s = resolved.resolved_commit[:8] if resolved.resolved_commit else ""
+                            if _r and _s:
+                                _ref_suffix = f" #{_r} @{_s}"
+                            elif _r:
+                                _ref_suffix = f" #{_r}"
+                            elif _s:
+                                _ref_suffix = f" @{_s}"
+                        _rich_success(f"[+] {display_name}{_ref_suffix}")
 
                     # Track unpinned deps for aggregated diagnostic
                     if not dep_ref.reference:
@@ -1835,7 +1873,7 @@ def _install_apm_dependencies(
                         package_types[dep_ref.get_unique_key()] = package_info.package_type.value
 
                     # Show package type in verbose mode
-                    if verbose and hasattr(package_info, "package_type"):
+                    if hasattr(package_info, "package_type"):
                         from apm_cli.models.apm_package import PackageType
 
                         package_type = package_info.package_type
@@ -1845,9 +1883,8 @@ def _install_apm_dependencies(
                             PackageType.HYBRID: "Hybrid (apm.yml + SKILL.md)",
                             PackageType.APM_PACKAGE: "APM Package (apm.yml)",
                         }.get(package_type)
-                        if _type_label:
-                            if logger:
-                                logger.verbose_detail(f"  Package type: {_type_label}")
+                        if _type_label and logger:
+                            logger.package_type_info(_type_label)
 
                     # Auto-integrate prompts and agents if enabled
                     # Pre-deploy security gate
@@ -1894,6 +1931,18 @@ def _install_apm_dependencies(
                                 f"Failed to integrate primitives: {e}",
                                 package=dep_ref.get_unique_key(),
                             )
+
+                        # In verbose mode, show inline skip/error count for this package
+                        if logger and logger.verbose:
+                            pkg_key = dep_ref.get_unique_key()
+                            _skip_count = diagnostics.count_for_package(pkg_key, "collision")
+                            _err_count = diagnostics.count_for_package(pkg_key, "error")
+                            if _skip_count > 0:
+                                noun = "file" if _skip_count == 1 else "files"
+                                logger.package_inline_warning(f"    [!] {_skip_count} {noun} skipped (local files exist)")
+                            if _err_count > 0:
+                                noun = "error" if _err_count == 1 else "errors"
+                                logger.package_inline_warning(f"    [!] {_err_count} integration {noun}")
 
                 except Exception as e:
                     display_name = (

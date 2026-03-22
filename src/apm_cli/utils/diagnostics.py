@@ -194,6 +194,15 @@ class DiagnosticCollector:
             groups.setdefault(d.category, []).append(d)
         return groups
 
+    def count_for_package(self, package: str, category: str = "") -> int:
+        """Count diagnostics for a specific package, optionally filtered by category."""
+        with self._lock:
+            return sum(
+                1
+                for d in self._diagnostics
+                if d.package == package and (not category or d.category == category)
+            )
+
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------

@@ -94,6 +94,23 @@ class CommandLogger:
         if self.verbose:
             _rich_echo(message, color="dim")
 
+    def tree_item(self, message: str):
+        """Log a tree sub-item (└─ line) under a package block.
+
+        Renders green text with no symbol prefix — these are visual
+        continuation lines, not standalone status messages.
+        """
+        _rich_echo(message, color="green")
+
+    def package_inline_warning(self, message: str):
+        """Log an inline warning under a package block (verbose only).
+
+        Use for per-package diagnostic hints shown inline during install,
+        supplementing the deferred DiagnosticCollector summary.
+        """
+        if self.verbose:
+            _rich_echo(message, color="yellow")
+
     # --- Dry-run awareness ---
 
     def dry_run_notice(self, what_would_happen: str):
@@ -226,16 +243,66 @@ class InstallLogger(CommandLogger):
         elif self.verbose:
             _rich_info(f"  Downloading: {dep_name}", symbol="download")
 
-    def download_complete(self, dep_name: str, ref_suffix: str = ""):
-        """Log completion of a package download."""
+    def download_complete(
+        self, dep_name: str, ref: str = "", sha: str = "", cached: bool = False,
+        # Legacy compat: if callers pass ref_suffix= we handle it
+        ref_suffix: str = "",
+    ):
+        """Log completion of a package download.
+
+        Args:
+            dep_name: Package display name (repo_url or virtual path).
+            ref: Git reference (tag name, branch) if any.
+            sha: Short commit SHA (8 chars) if any.
+            cached: Whether this was a cache hit.
+            ref_suffix: DEPRECATED — legacy callers still pass this.
+        """
         msg = f"  [+] {dep_name}"
         if ref_suffix:
+            # Legacy path — pass-through until all callers are migrated
             msg += f" ({ref_suffix})"
+        else:
+            if ref and sha:
+                msg += f" #{ref} @{sha}"
+            elif ref:
+                msg += f" #{ref}"
+            elif sha:
+                msg += f" @{sha}"
+            if cached:
+                msg += " (cached)"
         _rich_echo(msg, color="green")
 
     def download_failed(self, dep_name: str, error: str):
         """Log a download failure."""
         _rich_error(f"  [x] {dep_name} -- {error}")
+
+    # --- Verbose sub-item methods (install-specific) ---
+
+    def lockfile_entry(self, key: str, ref: str = "", sha: str = ""):
+        """Log a lockfile entry in verbose mode.
+
+        Omits the line entirely for unpinned deps (no ref, no sha).
+        """
+        if not self.verbose:
+            return
+        if sha:
+            _rich_echo(f"    {key}: locked at {sha}", color="dim")
+        elif ref:
+            _rich_echo(f"    {key}: pinned to {ref}", color="dim")
+        # Unpinned → omit entirely (nothing useful to show)
+
+    def package_auth(self, source: str, token_type: str = ""):
+        """Log auth source for a package (verbose only). 4-space indent."""
+        if not self.verbose:
+            return
+        type_str = f" ({token_type})" if token_type else ""
+        _rich_echo(f"    Auth: {source}{type_str}", color="dim")
+
+    def package_type_info(self, type_label: str):
+        """Log detected package type (verbose only). 4-space indent."""
+        if not self.verbose:
+            return
+        _rich_echo(f"    Package type: {type_label}", color="dim")
 
     # --- Install summary ---
 

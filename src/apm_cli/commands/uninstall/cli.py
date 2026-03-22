@@ -27,8 +27,9 @@ from .engine import (
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be removed without removing"
 )
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed removal information")
 @click.pass_context
-def uninstall(ctx, packages, dry_run):
+def uninstall(ctx, packages, dry_run, verbose):
     """Remove APM packages from apm.yml and apm_modules (like npm uninstall).
 
     This command removes packages from both the apm.yml dependencies list
@@ -39,7 +40,7 @@ def uninstall(ctx, packages, dry_run):
         apm uninstall org/pkg1 org/pkg2              # Remove multiple packages
         apm uninstall acme/my-package --dry-run      # Show what would be removed
     """
-    logger = CommandLogger("uninstall", dry_run=dry_run)
+    logger = CommandLogger("uninstall", verbose=verbose, dry_run=dry_run)
     try:
         # Check if apm.yml exists
         if not Path(APM_YML_FILENAME).exists():
@@ -164,6 +165,7 @@ def uninstall(ctx, packages, dry_run):
         for label, count in cleaned.items():
             if count > 0:
                 logger.progress(f"Cleaned up {count} integrated {label}", symbol="check")
+                logger.verbose_detail(f"    Removed {count} deployed {label} file(s)")
 
         # Step 10: MCP cleanup
         try:

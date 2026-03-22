@@ -256,8 +256,6 @@ def _render_summary(
     if info > 0 and (critical > 0 or warning > 0):
         logger.progress(f"  Plus {info} info-level finding(s) (use --verbose to see)")
 
-    logger.verbose_detail(f"  {files_scanned} file(s) scanned")
-
 
 def _apply_strip(
     findings_by_file: Dict[str, List[ScanFinding]],

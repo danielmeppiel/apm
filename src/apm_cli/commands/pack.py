@@ -8,7 +8,6 @@ import click
 from ..bundle.packer import pack_bundle
 from ..bundle.unpacker import unpack_bundle
 from ..core.command_logger import CommandLogger
-from ..utils.console import _rich_echo
 
 
 @click.command(name="pack", help="Create a self-contained bundle from installed dependencies")
@@ -36,10 +35,11 @@ from ..utils.console import _rich_echo
 )
 @click.option("--dry-run", is_flag=True, default=False, help="Show what would be packed without writing.")
 @click.option("--force", is_flag=True, default=False, help="On collision, last writer wins.")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed packing information")
 @click.pass_context
-def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
+def pack_cmd(ctx, fmt, target, archive, output, dry_run, force, verbose):
     """Create a self-contained APM bundle."""
-    logger = CommandLogger("pack", dry_run=dry_run)
+    logger = CommandLogger("pack", verbose=verbose, dry_run=dry_run)
     try:
         result = pack_bundle(
             project_root=Path("."),
@@ -57,7 +57,7 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
             if result.files:
                 logger.progress(f"Would pack {len(result.files)} file(s):")
                 for f in result.files:
-                    click.echo(f"  {f}")
+                    logger.tree_item(f"  └─ {f}")
             else:
                 logger.warning("No files to pack")
             return
@@ -66,6 +66,8 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
             logger.warning("No deployed files found -- empty bundle created")
         else:
             logger.success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
+            for f in result.files:
+                logger.verbose_detail(f"    └─ {f}")
             if fmt == "plugin":
                 logger.progress(
                     "Plugin bundle ready -- contains plugin.json and "
@@ -90,10 +92,11 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force):
 @click.option("--skip-verify", is_flag=True, default=False, help="Skip bundle completeness check.")
 @click.option("--dry-run", is_flag=True, default=False, help="Show what would be unpacked without writing.")
 @click.option("--force", is_flag=True, default=False, help="Deploy despite critical hidden-character findings.")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed unpacking information")
 @click.pass_context
-def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
+def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force, verbose):
     """Extract an APM bundle into the project."""
-    logger = CommandLogger("unpack", dry_run=dry_run)
+    logger = CommandLogger("unpack", verbose=verbose, dry_run=dry_run)
     try:
         logger.start(f"Unpacking {bundle_path} -> {output}")
 
@@ -109,7 +112,7 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
             logger.dry_run_notice("No files written")
             if result.files:
                 logger.progress(f"Would unpack {len(result.files)} file(s):")
-                _log_unpack_file_list(result)
+                _log_unpack_file_list(result, logger)
             else:
                 logger.warning("No files in bundle")
             return
@@ -117,7 +120,7 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
         if not result.files:
             logger.warning("No files were unpacked")
         else:
-            _log_unpack_file_list(result)
+            _log_unpack_file_list(result, logger)
             if result.skipped_count > 0:
                 logger.warning(
                     f"  {result.skipped_count} file(s) skipped (missing from bundle)"
@@ -140,14 +143,13 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
         sys.exit(1)
 
 
-def _log_unpack_file_list(result):
+def _log_unpack_file_list(result, logger):
     """Log unpacked files grouped by dependency, using tree-style output."""
     if result.dependency_files:
         for dep_name, dep_files in result.dependency_files.items():
-            _rich_echo(f"  {dep_name}", color="cyan")
+            logger.progress(f"  {dep_name}")
             for f in dep_files:
-                _rich_echo(f"    └─ {f}", color="white")
+                logger.tree_item(f"    └─ {f}")
     else:
-        # Fallback: flat file list (no dependency info)
         for f in result.files:
-            _rich_echo(f"  └─ {f}", color="white")
+            logger.tree_item(f"  └─ {f}")
