@@ -125,85 +125,59 @@ class TestConfigSet:
 
     def test_set_auto_integrate_true(self):
         """Enable auto-integration."""
-        with (
-            patch("apm_cli.config.set_auto_integrate") as mock_set,
-            patch("apm_cli.commands.config._rich_success"),
-        ):
+        with patch("apm_cli.config.set_auto_integrate") as mock_set:
             result = self.runner.invoke(config, ["set", "auto-integrate", "true"])
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
     def test_set_auto_integrate_yes(self):
         """Enable auto-integration with 'yes' alias."""
-        with (
-            patch("apm_cli.config.set_auto_integrate") as mock_set,
-            patch("apm_cli.commands.config._rich_success"),
-        ):
+        with patch("apm_cli.config.set_auto_integrate") as mock_set:
             result = self.runner.invoke(config, ["set", "auto-integrate", "yes"])
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
     def test_set_auto_integrate_one(self):
         """Enable auto-integration with '1' alias."""
-        with (
-            patch("apm_cli.config.set_auto_integrate") as mock_set,
-            patch("apm_cli.commands.config._rich_success"),
-        ):
+        with patch("apm_cli.config.set_auto_integrate") as mock_set:
             result = self.runner.invoke(config, ["set", "auto-integrate", "1"])
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
     def test_set_auto_integrate_false(self):
         """Disable auto-integration."""
-        with (
-            patch("apm_cli.config.set_auto_integrate") as mock_set,
-            patch("apm_cli.commands.config._rich_success"),
-        ):
+        with patch("apm_cli.config.set_auto_integrate") as mock_set:
             result = self.runner.invoke(config, ["set", "auto-integrate", "false"])
         assert result.exit_code == 0
         mock_set.assert_called_once_with(False)
 
     def test_set_auto_integrate_no(self):
         """Disable auto-integration with 'no' alias."""
-        with (
-            patch("apm_cli.config.set_auto_integrate") as mock_set,
-            patch("apm_cli.commands.config._rich_success"),
-        ):
+        with patch("apm_cli.config.set_auto_integrate") as mock_set:
             result = self.runner.invoke(config, ["set", "auto-integrate", "no"])
         assert result.exit_code == 0
         mock_set.assert_called_once_with(False)
 
     def test_set_auto_integrate_zero(self):
         """Disable auto-integration with '0' alias."""
-        with (
-            patch("apm_cli.config.set_auto_integrate") as mock_set,
-            patch("apm_cli.commands.config._rich_success"),
-        ):
+        with patch("apm_cli.config.set_auto_integrate") as mock_set:
             result = self.runner.invoke(config, ["set", "auto-integrate", "0"])
         assert result.exit_code == 0
         mock_set.assert_called_once_with(False)
 
     def test_set_auto_integrate_invalid_value(self):
         """Reject an invalid value for auto-integrate."""
-        with patch("apm_cli.commands.config._rich_error"):
-            result = self.runner.invoke(config, ["set", "auto-integrate", "maybe"])
+        result = self.runner.invoke(config, ["set", "auto-integrate", "maybe"])
         assert result.exit_code == 1
 
     def test_set_unknown_key(self):
         """Reject an unknown configuration key."""
-        with (
-            patch("apm_cli.commands.config._rich_error"),
-            patch("apm_cli.commands.config._rich_info"),
-        ):
-            result = self.runner.invoke(config, ["set", "nonexistent", "value"])
+        result = self.runner.invoke(config, ["set", "nonexistent", "value"])
         assert result.exit_code == 1
 
     def test_set_auto_integrate_case_insensitive(self):
         """Value comparison is case-insensitive."""
-        with (
-            patch("apm_cli.config.set_auto_integrate") as mock_set,
-            patch("apm_cli.commands.config._rich_success"),
-        ):
+        with patch("apm_cli.config.set_auto_integrate") as mock_set:
             result = self.runner.invoke(config, ["set", "auto-integrate", "TRUE"])
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
@@ -231,20 +205,13 @@ class TestConfigGet:
 
     def test_get_unknown_key(self):
         """Reject an unknown key."""
-        with (
-            patch("apm_cli.commands.config._rich_error"),
-            patch("apm_cli.commands.config._rich_info"),
-        ):
-            result = self.runner.invoke(config, ["get", "nonexistent"])
+        result = self.runner.invoke(config, ["get", "nonexistent"])
         assert result.exit_code == 1
 
     def test_get_all_config(self):
         """Show all config when no key is provided."""
         fake_config = {"auto_integrate": True, "default_client": "vscode"}
-        with (
-            patch("apm_cli.config.get_config", return_value=fake_config),
-            patch("apm_cli.commands.config._rich_info"),
-        ):
+        with patch("apm_cli.config.get_config", return_value=fake_config):
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
         assert "auto-integrate: True" in result.output
@@ -252,10 +219,7 @@ class TestConfigGet:
     def test_get_all_config_unknown_key_passthrough(self):
         """Unknown config keys are shown as-is."""
         fake_config = {"some_other_key": "value"}
-        with (
-            patch("apm_cli.config.get_config", return_value=fake_config),
-            patch("apm_cli.commands.config._rich_info"),
-        ):
+        with patch("apm_cli.config.get_config", return_value=fake_config):
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
         assert "some_other_key: value" in result.output
