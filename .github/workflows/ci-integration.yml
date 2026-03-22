@@ -58,10 +58,15 @@ jobs:
     # Checkout default branch (main) — never PR code
     - uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
+    # O8: PR traceability — annotate with originating PR URL
+    - name: Annotate originating PR
+      run: |
+        PR_NUMBER=$(echo '${{ toJSON(github.event.workflow_run.pull_requests) }}' | jq -r '.[0].number // empty')
+        if [ -n "$PR_NUMBER" ]; then
+          echo "::notice::🔗 Originating PR: https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
+        else
+          echo "::notice::Triggered by push to ${{ github.event.workflow_run.head_branch }}"
+        fi
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -70,16 +75,8 @@ jobs:
 
     - name: Install uv
       uses: astral-sh/setup-uv@v6
-
-    - name: Cache uv environments
-      uses: actions/cache@v3
       with:
-        path: |
-          ~/.cache/uv
-          ~/.local/share/uv
-        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-uv-
+        enable-cache: true
 
     - name: Install dependencies
       run: uv sync --extra dev
@@ -126,6 +123,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
 
       - name: Install test dependencies
         run: uv sync --extra dev
@@ -133,7 +132,6 @@ jobs:
       - name: Run integration tests
         env:
           APM_E2E_TESTS: "1"
-          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
           GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
           ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
         run: |
@@ -203,7 +201,6 @@ jobs:
       - name: Run release validation tests
         env:
           APM_E2E_TESTS: "1"
-          GITHUB_TOKEN: ${{ secrets.GH_MODELS_PAT }}
           GITHUB_APM_PAT: ${{ secrets.GH_CLI_PAT }}
           ADO_APM_PAT: ${{ secrets.ADO_APM_PAT }}
         run: |
@@ -224,16 +221,35 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const success = '${{ needs.release-validation.result }}' === 'success'
-              && '${{ needs.integration-tests.result }}' === 'success'
-              && '${{ needs.smoke-test.result }}' === 'success';
+            const ciConclusion = '${{ github.event.workflow_run.conclusion }}';
+            const smokeResult = '${{ needs.smoke-test.result }}';
+            const integResult = '${{ needs.integration-tests.result }}';
+            const relvalResult = '${{ needs.release-validation.result }}';
+
+            // O7: Detect circular dependency — ci.yml failed so all downstream jobs were skipped.
+            // Don't block the CI-fixing PR; report pending instead of failure.
+            const allSkipped = smokeResult === 'skipped' && integResult === 'skipped' && relvalResult === 'skipped';
+            const ciFailedUpstream = ciConclusion !== 'success';
+
+            let state, description;
+            if (allSkipped && ciFailedUpstream) {
+              state = 'pending';
+              description = 'CI workflow failed — integration tests skipped (not blocking)';
+            } else {
+              const success = relvalResult === 'success'
+                && integResult === 'success'
+                && smokeResult === 'success';
+              state = success ? 'success' : 'failure';
+              description = success ? 'All integration tests passed' : 'Integration tests failed';
+            }
+
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.payload.workflow_run.head_sha,
-              state: success ? 'success' : 'failure',
+              state,
               target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               context: 'Integration Tests (PR)',
-              description: success ? 'All integration tests passed' : 'Integration tests failed'
+              description
             });
 
