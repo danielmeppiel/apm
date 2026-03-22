@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decoupled live inference tests (`apm run`) from release pipeline — reduces 14.9% false-negative rate and `GH_MODELS_PAT` secret exposure (#371)
 - `ci-integration.yml` report-status now detects CI circular dependency (upstream failure) and reports `pending` instead of blocking (#371)
 - `gh-aw-compat` is now informational (`continue-on-error: true`) — non-deterministic external dependencies should not block releases (#371)
+- Copilot encoding instructions: `encoding.instructions.md` (`applyTo: "**"`) bans non-ASCII characters in source and CLI output; updated `copilot-instructions.md` and `cli.instructions.md` to use ASCII bracket notation (`[+]`/`[!]`/`[x]`/`[i]`/`[*]`/`[>]`) instead of emoji STATUS_SYMBOLS (#282)
 
 ## [0.8.4] - 2026-03-22
 
