@@ -1,0 +1,38 @@
+# Version control
+.git
+.gitattributes
+.gitignore
+
+# CI/CD and GitHub Actions
+.github
+
+# Documentation
+docs
+
+# Build artifacts
+dist
+build/build
+build/apm
+
+# Python artifacts
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+.venv
+venv
+
+# Test artifacts
+.coverage
+.pytest_cache
+.mypy_cache
+htmlcov
+
+# Development files
+*.log
+.env
+.env.local
+.DS_Store
+
+# Temporary files
+tmp

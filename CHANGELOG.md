@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Container image published to `ghcr.io/microsoft/apm` via new `publish-container.yml` workflow — run APM without a local Python install (#ISSUE)
+
 ## [0.8.4] - 2026-03-22
 
 ### Added

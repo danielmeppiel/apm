@@ -42,6 +42,31 @@ scoop bucket add apm https://github.com/microsoft/scoop-apm
 scoop install apm
 ```
 
+## Docker
+
+Run APM without installing Python locally — the container image is published to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/microsoft/apm:latest
+docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/microsoft/apm:latest --version
+```
+
+Mount your project directory as a volume so APM can read and write your workspace files:
+
+```bash
+docker run --rm \
+  -v "$(pwd):/workspace" \
+  -w /workspace \
+  -e GITHUB_TOKEN="$GITHUB_TOKEN" \
+  ghcr.io/microsoft/apm:latest install
+```
+
+Pinning to a specific release:
+
+```bash
+docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/microsoft/apm:0.8.4 install
+```
+
 ## pip install
 
 ```bash
