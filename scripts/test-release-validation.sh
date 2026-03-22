@@ -459,7 +459,7 @@ echo ""
     fi
     
     # Add dependency tests to total if available and GITHUB token is present
-    if [[ "$DEPENDENCY_TESTS_AVAILABLE" == "true" ]] && [[ -n "${GITHUB_CLI_PAT:-}" || -n "${GITHUB_TOKEN:-}" ]]; then
+    if [[ "$DEPENDENCY_TESTS_AVAILABLE" == "true" ]] && [[ -n "${GITHUB_APM_PAT:-}" || -n "${GITHUB_TOKEN:-}" ]]; then
         tests_total=$((tests_total + 1))
         dependency_tests_run=true
         log_info "Dependency integration tests will be included"
@@ -537,10 +537,9 @@ echo ""
         echo ""
         echo "🚀 Binary is ready for production release"
         echo "📦 End-user experience validated successfully" 
-        echo "🎯 Both README hero scenarios work perfectly"
         echo ""
         echo "Validated user journeys:"
-        echo "  1. Prerequisites (GITHUB_TOKEN) ✅"
+        echo "  1. Prerequisites (GITHUB_APM_PAT) ✅"
         echo "  2. Binary accessibility ✅"
         echo "  3. Runtime setup (copilot) ✅"
         echo "  4. GH-AW compatibility (tokenless install + pack) ✅"

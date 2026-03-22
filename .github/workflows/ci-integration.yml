@@ -96,7 +96,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      models: read
 
     steps:
       # Checkout default branch (main) for test scripts — never PR code
@@ -148,7 +147,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      models: read
 
     steps:
       # Checkout default branch for test scripts — never PR code

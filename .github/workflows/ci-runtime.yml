@@ -14,6 +14,7 @@ on:
       - 'src/apm_cli/commands/run.py'
       - 'src/apm_cli/runtime/**'
       - 'scripts/runtime/**'
+      - 'scripts/test-release-validation.sh'
       - 'tests/integration/test_runtime_smoke.py'
 
 permissions:

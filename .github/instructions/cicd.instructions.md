@@ -80,7 +80,7 @@ Four workflows split by trigger and secret requirements:
 - **Combined build-and-test**: Eliminates ~1.5m runner re-provisioning overhead by running unit tests and binary build in the same job.
 - **macOS as root nodes**: macOS consolidated jobs run their own unit tests and start immediately — no dependency on Linux/Windows test completion.
 - **Native uv caching**: `setup-uv` action with `enable-cache: true` replaces manual `actions/cache@v3` blocks.
-- **No setup-node in test/build**: Node.js is only needed in integration-tests and release-validation (for `apm runtime setup copilot` → npm install).
+- **Targeted setup-node usage**: Node.js is only installed in `ci-runtime.yml`, macOS consolidated jobs, and integration-tests/release-validation phases (for `apm runtime setup copilot` → npm install).
 - **macOS runner consolidation**: Each macOS arch has a single consolidated job (build + integration + release-validation). Intel (`build-and-validate-macos-intel`) runs on every push since Intel runners are plentiful. ARM (`build-and-validate-macos-arm`) is gated to tag/schedule/dispatch only since ARM runners are extremely scarce (2-4h+ queue waits). This avoids serial re-queuing of runners across multiple jobs.
 - **Unit tests skip macOS**: Python unit tests are platform-agnostic; Linux + Windows coverage is sufficient. macOS-specific validation (binary build, integration tests, release validation) still runs via the consolidated job.
 - UPX compression when available (reduces binary size ~50%)

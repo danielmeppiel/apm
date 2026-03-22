@@ -59,8 +59,6 @@ jobs:
         path: |
           ./dist/apm-linux-x86_64
           ./dist/apm-linux-x86_64.sha256
-          ./scripts/test-release-validation.sh
-          ./scripts/github-token-helper.sh
         include-hidden-files: true
         retention-days: 30
         if-no-files-found: error

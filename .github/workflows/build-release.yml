@@ -120,7 +120,6 @@ jobs:
     runs-on: macos-15-intel
     permissions:
       contents: read
-      models: read
 
     steps:
       - name: Checkout code
@@ -227,7 +226,6 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: read
-      models: read
 
     steps:
       - name: Checkout code
@@ -341,7 +339,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
-      models: read  # Required for GitHub Models API access
 
     steps:
       - name: Checkout code
@@ -418,7 +415,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
-      models: read  # Required for GitHub Models API access
 
     steps:
       - name: Set up Node.js
