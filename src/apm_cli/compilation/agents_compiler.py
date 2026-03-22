@@ -838,7 +838,7 @@ class AgentsCompiler:
         
         for placement in distributed_result.placements:
             try:
-                rel_path = placement.agents_path.relative_to(self.base_dir.resolve()).as_posix()
+                rel_path = placement.agents_path.resolve().relative_to(self.base_dir.resolve()).as_posix()
             except ValueError:
                 rel_path = str(placement.agents_path)
             lines.append(f"{rel_path}")
@@ -868,7 +868,7 @@ class AgentsCompiler:
         
         for placement in distributed_result.placements:
             try:
-                rel_path = placement.agents_path.relative_to(self.base_dir.resolve()).as_posix()
+                rel_path = placement.agents_path.resolve().relative_to(self.base_dir.resolve()).as_posix()
             except ValueError:
                 rel_path = str(placement.agents_path)
             lines.append(f"- {rel_path} ({len(placement.instructions)} instructions)")
