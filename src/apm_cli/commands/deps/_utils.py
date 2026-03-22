@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional
 from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
 from ...models.apm_package import APMPackage
 from ...deps.github_downloader import GitHubPackageDownloader
-from ...utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
 
 
 def _is_nested_under_package(candidate: Path, apm_modules_path: Path) -> bool:
@@ -201,8 +200,12 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
         }
 
 
-def _update_single_package(package_name: str, project_deps: List, apm_modules_path: Path):
+def _update_single_package(package_name: str, project_deps: List, apm_modules_path: Path, logger=None):
     """Update a specific package."""
+    if logger is None:
+        from ...core.command_logger import CommandLogger
+        logger = CommandLogger("deps-update")
+
     # Find the dependency reference for this package
     target_dep = None
     for dep in project_deps:
@@ -211,7 +214,7 @@ def _update_single_package(package_name: str, project_deps: List, apm_modules_pa
             break
     
     if not target_dep:
-        _rich_error(f"Package '{package_name}' not found in apm.yml dependencies")
+        logger.error(f"Package '{package_name}' not found in apm.yml dependencies")
         return
     
     # Find the installed package directory using namespaced structure
@@ -233,30 +236,34 @@ def _update_single_package(package_name: str, project_deps: List, apm_modules_pa
             package_dir = apm_modules_path / package_name
         
     if not package_dir.exists():
-        _rich_error(f"Package '{package_name}' not installed in apm_modules/")
-        _rich_info(f"Run 'apm install' to install it first")
+        logger.error(f"Package '{package_name}' not installed in apm_modules/")
+        logger.progress(f"Run 'apm install' to install it first")
         return
     
     try:
         downloader = GitHubPackageDownloader()
-        _rich_info(f"Updating {target_dep.repo_url}...")
+        logger.progress(f"Updating {target_dep.repo_url}...")
         
         # Download latest version
         package_info = downloader.download_package(target_dep, package_dir)
         
-        _rich_success(f"[+] Updated {target_dep.repo_url}")
+        logger.success(f"Updated {target_dep.repo_url}")
         
     except Exception as e:
-        _rich_error(f"Failed to update {package_name}: {e}")
+        logger.error(f"Failed to update {package_name}: {e}")
 
 
-def _update_all_packages(project_deps: List, apm_modules_path: Path):
+def _update_all_packages(project_deps: List, apm_modules_path: Path, logger=None):
     """Update all packages."""
+    if logger is None:
+        from ...core.command_logger import CommandLogger
+        logger = CommandLogger("deps-update")
+
     if not project_deps:
-        _rich_info("No APM dependencies to update")
+        logger.progress("No APM dependencies to update")
         return
         
-    _rich_info(f"Updating {len(project_deps)} APM dependencies...")
+    logger.start(f"Updating {len(project_deps)} APM dependencies...")
     
     downloader = GitHubPackageDownloader()
     updated_count = 0
@@ -280,17 +287,17 @@ def _update_all_packages(project_deps: List, apm_modules_path: Path):
                 package_dir = apm_modules_path / dep.repo_url
             
         if not package_dir.exists():
-            _rich_warning(f"[!] {dep.repo_url} not installed - skipping")
+            logger.warning(f"{dep.repo_url} not installed - skipping")
             continue
             
         try:
-            _rich_info(f"  Updating {dep.repo_url}...")
+            logger.verbose_detail(f"  Updating {dep.repo_url}...")
             package_info = downloader.download_package(dep, package_dir)
             updated_count += 1
-            _rich_success(f"  [+] {dep.repo_url}")
+            logger.success(f"  {dep.repo_url}")
             
         except Exception as e:
-            _rich_error(f"  [x] Failed to update {dep.repo_url}: {e}")
+            logger.error(f"  Failed to update {dep.repo_url}: {e}")
             continue
     
-    _rich_success(f"Updated {updated_count} of {len(project_deps)} packages")
+    logger.success(f"Updated {updated_count} of {len(project_deps)} packages")

@@ -261,9 +261,8 @@ class TestNormalizeOnWrite:
     """Test that _validate_and_add_packages_to_apm_yml canonicalizes inputs."""
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
-    @patch("apm_cli.commands.install._rich_info")
     @patch("apm_cli.commands.install._rich_success")
-    def test_https_url_stored_as_shorthand(self, mock_success, mock_info, mock_validate, tmp_path, monkeypatch):
+    def test_https_url_stored_as_shorthand(self, mock_success, mock_validate, tmp_path, monkeypatch):
         """HTTPS GitHub URL is stored as owner/repo in apm.yml."""
         import yaml
         apm_yml = tmp_path / "apm.yml"
@@ -271,18 +270,17 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://github.com/microsoft/apm-sample-package.git"]
         )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
         data = yaml.safe_load(apm_yml.read_text())
         assert "microsoft/apm-sample-package" in data["dependencies"]["apm"]
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
-    @patch("apm_cli.commands.install._rich_info")
     @patch("apm_cli.commands.install._rich_success")
-    def test_ssh_url_stored_as_shorthand(self, mock_success, mock_info, mock_validate, tmp_path, monkeypatch):
+    def test_ssh_url_stored_as_shorthand(self, mock_success, mock_validate, tmp_path, monkeypatch):
         """SSH GitHub URL is stored as owner/repo in apm.yml."""
         import yaml
         apm_yml = tmp_path / "apm.yml"
@@ -290,16 +288,15 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["git@github.com:microsoft/apm-sample-package.git"]
         )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
-    @patch("apm_cli.commands.install._rich_info")
     @patch("apm_cli.commands.install._rich_success")
-    def test_fqdn_github_stored_as_shorthand(self, mock_success, mock_info, mock_validate, tmp_path, monkeypatch):
+    def test_fqdn_github_stored_as_shorthand(self, mock_success, mock_validate, tmp_path, monkeypatch):
         """FQDN github.com/owner/repo is stored as owner/repo."""
         import yaml
         apm_yml = tmp_path / "apm.yml"
@@ -307,16 +304,15 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["github.com/microsoft/apm-sample-package"]
         )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
-    @patch("apm_cli.commands.install._rich_info")
     @patch("apm_cli.commands.install._rich_success")
-    def test_gitlab_url_preserves_host(self, mock_success, mock_info, mock_validate, tmp_path, monkeypatch):
+    def test_gitlab_url_preserves_host(self, mock_success, mock_validate, tmp_path, monkeypatch):
         """GitLab URL preserves the host in canonical form."""
         import yaml
         apm_yml = tmp_path / "apm.yml"
@@ -324,18 +320,16 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://gitlab.com/acme/standards.git"]
         )
 
-        assert result == ["gitlab.com/acme/standards"]
+        assert validated == ["gitlab.com/acme/standards"]
         data = yaml.safe_load(apm_yml.read_text())
         assert "gitlab.com/acme/standards" in data["dependencies"]["apm"]
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
-    @patch("apm_cli.commands.install._rich_info")
-    @patch("apm_cli.commands.install._rich_warning")
-    def test_duplicate_detection_different_forms(self, mock_warn, mock_info, mock_validate, tmp_path, monkeypatch):
+    def test_duplicate_detection_different_forms(self, mock_validate, tmp_path, monkeypatch):
         """Installing the same package in different forms doesn't create duplicates."""
         import yaml
         apm_yml = tmp_path / "apm.yml"
@@ -346,20 +340,19 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://github.com/microsoft/apm-sample-package.git"]
         )
 
         # Should return empty — package already exists
-        assert result == []
+        assert validated == []
         data = yaml.safe_load(apm_yml.read_text())
         # No duplicate added
         assert data["dependencies"]["apm"].count("microsoft/apm-sample-package") == 1
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
-    @patch("apm_cli.commands.install._rich_info")
     @patch("apm_cli.commands.install._rich_success")
-    def test_batch_dedup(self, mock_success, mock_info, mock_validate, tmp_path, monkeypatch):
+    def test_batch_dedup(self, mock_success, mock_validate, tmp_path, monkeypatch):
         """Installing the same package twice in one batch only adds once."""
         import yaml
         apm_yml = tmp_path / "apm.yml"
@@ -367,18 +360,17 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml([
+        validated, _outcome = _validate_and_add_packages_to_apm_yml([
             "microsoft/apm-sample-package",
             "https://github.com/microsoft/apm-sample-package.git",
         ])
 
-        assert len(result) == 1
-        assert result[0] == "microsoft/apm-sample-package"
+        assert len(validated) == 1
+        assert validated[0] == "microsoft/apm-sample-package"
 
     @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
-    @patch("apm_cli.commands.install._rich_info")
     @patch("apm_cli.commands.install._rich_success")
-    def test_ref_preserved_in_canonical(self, mock_success, mock_info, mock_validate, tmp_path, monkeypatch):
+    def test_ref_preserved_in_canonical(self, mock_success, mock_validate, tmp_path, monkeypatch):
         """Reference is preserved in the canonical form."""
         import yaml
         apm_yml = tmp_path / "apm.yml"
@@ -386,11 +378,11 @@ class TestNormalizeOnWrite:
         monkeypatch.chdir(tmp_path)
 
         from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-        result = _validate_and_add_packages_to_apm_yml(
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(
             ["https://github.com/microsoft/apm-sample-package.git#v1.0.0"]
         )
 
-        assert result == ["microsoft/apm-sample-package#v1.0.0"]
+        assert validated == ["microsoft/apm-sample-package#v1.0.0"]
 
 
 # ── Uninstall identity matching ─────────────────────────────────────────────

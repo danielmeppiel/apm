@@ -29,6 +29,21 @@ class DependencyNode:
         """Get display name for this dependency."""
         return self.dependency_ref.get_display_name()
 
+    def get_ancestor_chain(self) -> str:
+        """Build a human-readable breadcrumb from this node's ancestry.
+
+        Walks up ``parent`` links to produce e.g. ``"root-pkg > mid-pkg > this-pkg"``
+        so error messages can show which dependency path led here.
+        Returns just the node's display name for root-level (depth-0/1) deps.
+        """
+        parts: list[str] = []
+        current: Optional['DependencyNode'] = self
+        while current is not None:
+            parts.append(current.get_display_name())
+            current = current.parent
+        parts.reverse()
+        return " > ".join(parts)
+
 
 @dataclass
 class CircularRef:

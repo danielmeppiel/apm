@@ -54,3 +54,48 @@ class TestLockfileEnrichment:
         enrich_lockfile_for_pack(lf, fmt="apm", target="all")
 
         assert lf.to_yaml() == original_yaml
+
+    def test_filters_deployed_files_by_target(self):
+        """Pack with --target vscode should exclude .claude/ files from lockfile."""
+        lf = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            version="1.0.0",
+            deployed_files=[
+                ".github/agents/a.md",
+                ".github/skills/s1",
+                ".claude/commands/c.md",
+                ".claude/skills/review",
+            ],
+        )
+        lf.add_dependency(dep)
+
+        result = enrich_lockfile_for_pack(lf, fmt="apm", target="vscode")
+        parsed = yaml.safe_load(result)
+
+        deployed = parsed["dependencies"][0]["deployed_files"]
+        assert ".github/agents/a.md" in deployed
+        assert ".github/skills/s1" in deployed
+        assert ".claude/commands/c.md" not in deployed
+        assert ".claude/skills/review" not in deployed
+
+    def test_filters_deployed_files_target_all_keeps_everything(self):
+        """Pack with --target all should keep all deployed files."""
+        lf = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            version="1.0.0",
+            deployed_files=[
+                ".github/agents/a.md",
+                ".claude/commands/c.md",
+            ],
+        )
+        lf.add_dependency(dep)
+
+        result = enrich_lockfile_for_pack(lf, fmt="apm", target="all")
+        parsed = yaml.safe_load(result)
+
+        deployed = parsed["dependencies"][0]["deployed_files"]
+        assert len(deployed) == 2

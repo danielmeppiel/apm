@@ -12,6 +12,7 @@ from .base import MCPClientAdapter
 from ...registry.client import SimpleRegistryClient
 from ...registry.integration import RegistryIntegration
 from ...core.docker_args import DockerArgsProcessor
+from ...core.token_manager import GitHubTokenManager
 from ...utils.github_host import is_github_hostname
 
 
@@ -199,8 +200,10 @@ class CopilotClientAdapter(MCPClientAdapter):
             is_github_server = self._is_github_server(server_name, remote.get("url", ""))
             
             if is_github_server:
-                # Check for GitHub Personal Access Token
-                github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
+                # Use centralized token manager (copilot chain: GITHUB_COPILOT_PAT → GITHUB_TOKEN → GITHUB_APM_PAT),
+                # falling back to GITHUB_PERSONAL_ACCESS_TOKEN for Copilot CLI compat.
+                _tm = GitHubTokenManager()
+                github_token = _tm.get_token_for_purpose('copilot') or os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
                 if github_token:
                     config["headers"] = {
                         "Authorization": f"Bearer {github_token}"

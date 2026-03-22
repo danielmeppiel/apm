@@ -4,8 +4,8 @@ import os
 from unittest.mock import patch
 import pytest
 
-from src.apm_cli.deps.github_downloader import GitHubPackageDownloader
-from src.apm_cli.core.token_manager import GitHubTokenManager
+from apm_cli.deps.github_downloader import GitHubPackageDownloader
+from apm_cli.core.token_manager import GitHubTokenManager
 from apm_cli.utils import github_host
 
 

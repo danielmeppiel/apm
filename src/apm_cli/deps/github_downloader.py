@@ -18,7 +18,7 @@ import git
 from git import Repo, RemoteProgress
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
-from ..core.token_manager import GitHubTokenManager
+from ..core.auth import AuthResolver
 from ..models.apm_package import (
     DependencyReference, 
     PackageInfo, 
@@ -173,9 +173,11 @@ class GitProgressReporter(RemoteProgress):
 class GitHubPackageDownloader:
     """Downloads and validates APM packages from GitHub repositories."""
     
-    def __init__(self):
+    def __init__(self, auth_resolver=None):
         """Initialize the GitHub package downloader."""
-        self.token_manager = GitHubTokenManager()
+        from apm_cli.core.auth import AuthResolver
+        self.auth_resolver = auth_resolver or AuthResolver()
+        self.token_manager = self.auth_resolver._token_manager  # Backward compat
         self.git_env = self._setup_git_environment()
     
     def _setup_git_environment(self) -> Dict[str, Any]:
@@ -184,31 +186,8 @@ class GitHubPackageDownloader:
         Returns:
             Dict containing environment variables for Git operations
         """
-        # Use centralized token management
         env = self.token_manager.setup_environment()
-        
-        # Get tokens for modules (APM package access)
-        # GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN -> git credential helpers
-        self.github_token = self.token_manager.get_token_with_credential_fallback(
-            'modules', default_host(), env
-        )
-        self.has_github_token = self.github_token is not None
-        self._github_token_from_credential_fill = (
-            self.has_github_token
-            and self.token_manager.get_token_for_purpose('modules', env) is None
-        )
-        
-        # Azure DevOps: ADO_APM_PAT
-        self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
-        self.has_ado_token = self.ado_token is not None
 
-        # JFrog Artifactory: ARTIFACTORY_APM_TOKEN
-        self.artifactory_token = self.token_manager.get_token_for_purpose('artifactory_modules', env)
-        self.has_artifactory_token = self.artifactory_token is not None
-
-        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}, has_artifactory_token={self.has_artifactory_token}"
-               f"{', source=credential_helper' if self._github_token_from_credential_fill else ''}")
-        
         # Configure Git security settings
         env['GIT_TERMINAL_PROMPT'] = '0'
         env['GIT_ASKPASS'] = 'echo'  # Prevent interactive credential prompts
@@ -222,6 +201,28 @@ class GitHubPackageDownloader:
             env['GIT_CONFIG_GLOBAL'] = empty_cfg
         else:
             env['GIT_CONFIG_GLOBAL'] = '/dev/null'
+
+        # Resolve default host tokens via AuthResolver (backward compat properties)
+        default_ctx = self.auth_resolver.resolve(default_host())
+        self._default_github_ctx = default_ctx
+        self.github_token = default_ctx.token
+        self.has_github_token = default_ctx.token is not None
+        self._github_token_from_credential_fill = (
+            self.has_github_token
+            and self.token_manager.get_token_for_purpose('modules', env) is None
+        )
+
+        # Azure DevOps
+        ado_ctx = self.auth_resolver.resolve("dev.azure.com")
+        self.ado_token = ado_ctx.token
+        self.has_ado_token = ado_ctx.token is not None
+
+        # JFrog Artifactory (not host-based, uses dedicated env var)
+        self.artifactory_token = self.token_manager.get_token_for_purpose('artifactory_modules', env)
+        self.has_artifactory_token = self.artifactory_token is not None
+
+        _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}, has_artifactory_token={self.has_artifactory_token}"
+               f"{', source=credential_helper' if self._github_token_from_credential_fill else ''}")
         
         return env
 
@@ -486,7 +487,7 @@ class GitHubPackageDownloader:
         
         return sanitized
 
-    def _build_repo_url(self, repo_ref: str, use_ssh: bool = False, dep_ref: DependencyReference = None) -> str:
+    def _build_repo_url(self, repo_ref: str, use_ssh: bool = False, dep_ref: DependencyReference = None, token: Optional[str] = None) -> str:
         """Build the appropriate repository URL for cloning.
         
         Supports both GitHub and Azure DevOps URL formats:
@@ -497,6 +498,7 @@ class GitHubPackageDownloader:
             repo_ref: Repository reference in format "owner/repo" or "org/project/repo" for ADO
             use_ssh: Whether to use SSH URL for git operations
             dep_ref: Optional DependencyReference for ADO-specific URL building
+            token: Optional per-dependency token override
             
         Returns:
             str: Repository URL suitable for git clone operations
@@ -510,6 +512,10 @@ class GitHubPackageDownloader:
         # Check if this is Azure DevOps (either via dep_ref or host detection)
         is_ado = (dep_ref and dep_ref.is_azure_devops()) or is_azure_devops_hostname(host)
         
+        # Use provided token or fall back to instance default
+        github_token = token if token is not None else self.github_token
+        ado_token = token if (token is not None and is_ado) else self.ado_token
+        
         _debug(f"_build_repo_url: host={host}, is_ado={is_ado}, dep_ref={'present' if dep_ref else 'None'}, "
                f"ado_org={dep_ref.ado_organization if dep_ref else None}")
         
@@ -517,12 +523,12 @@ class GitHubPackageDownloader:
             # Use Azure DevOps URL builders with ADO-specific token
             if use_ssh:
                 return build_ado_ssh_url(dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo)
-            elif self.ado_token:
+            elif ado_token:
                 return build_ado_https_clone_url(
                     dep_ref.ado_organization, 
                     dep_ref.ado_project, 
                     dep_ref.ado_repo, 
-                    token=self.ado_token,
+                    token=ado_token,
                     host=host
                 )
             else:
@@ -537,14 +543,14 @@ class GitHubPackageDownloader:
             is_github = is_github_hostname(host)
             if use_ssh:
                 return build_ssh_url(host, repo_ref)
-            elif is_github and self.github_token:
+            elif is_github and github_token:
                 # Only send GitHub tokens to GitHub hosts
-                return build_https_clone_url(host, repo_ref, token=self.github_token)
+                return build_https_clone_url(host, repo_ref, token=github_token)
             else:
                 # Generic hosts: plain HTTPS, let git credential helpers handle auth
                 return build_https_clone_url(host, repo_ref, token=None)
     
-    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, **clone_kwargs) -> Repo:
+    def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, verbose_callback=None, **clone_kwargs) -> Repo:
         """Attempt to clone a repository with fallback authentication methods.
         
         Uses authentication patterns appropriate for the platform:
@@ -556,6 +562,7 @@ class GitHubPackageDownloader:
             target_path: Target path for cloning
             progress_reporter: GitProgressReporter instance for progress updates
             dep_ref: Optional DependencyReference for platform-specific URL building
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             **clone_kwargs: Additional arguments for Repo.clone_from
             
         Returns:
@@ -576,8 +583,17 @@ class GitHubPackageDownloader:
             is_github = True
         is_generic = not is_ado and not is_github
         
-        # Tokens are only valid for their matching host type
-        has_token = self.ado_token if is_ado else (self.github_token if is_github else None)
+        # Resolve per-dependency token via AuthResolver.
+        # Only use resolved token for GitHub/ADO hosts — generic hosts (GitLab,
+        # Bitbucket, etc.) delegate auth to git credential helpers.
+        if dep_ref and not is_generic:
+            dep_ctx = self.auth_resolver.resolve_for_dep(dep_ref)
+            dep_token = dep_ctx.token
+        elif is_generic:
+            dep_token = None
+        else:
+            dep_token = self.github_token  # fallback
+        has_token = dep_token
         
         _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, is_generic={is_generic}, has_token={has_token is not None}")
         
@@ -594,9 +610,13 @@ class GitHubPackageDownloader:
         # Method 1: Try authenticated HTTPS if token is available (GitHub/ADO only)
         if has_token:
             try:
-                auth_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
+                auth_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref, token=dep_token)
                 _debug(f"Attempting clone with authenticated HTTPS (URL sanitized)")
-                return Repo.clone_from(auth_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+                repo = Repo.clone_from(auth_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+                if verbose_callback:
+                    masked = self._sanitize_git_error(auth_url)
+                    verbose_callback(f"Cloned from: {masked}")
+                return repo
             except GitCommandError as e:
                 last_error = e
                 # Continue to next method
@@ -604,7 +624,10 @@ class GitHubPackageDownloader:
         # Method 2: Try SSH (works with SSH keys for any host)
         try:
             ssh_url = self._build_repo_url(repo_url_base, use_ssh=True, dep_ref=dep_ref)
-            return Repo.clone_from(ssh_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            repo = Repo.clone_from(ssh_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            if verbose_callback:
+                verbose_callback(f"Cloned from: {ssh_url}")
+            return repo
         except GitCommandError as e:
             last_error = e
             # Continue to next method
@@ -612,7 +635,10 @@ class GitHubPackageDownloader:
         # Method 3: Try standard HTTPS (public repos, or git credential helper for generic hosts)
         try:
             https_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
-            return Repo.clone_from(https_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            repo = Repo.clone_from(https_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
+            if verbose_callback:
+                verbose_callback(f"Cloned from: {https_url}")
+            return repo
         except GitCommandError as e:
             last_error = e
         
@@ -620,7 +646,8 @@ class GitHubPackageDownloader:
         error_msg = f"Failed to clone repository {repo_url_base} using all available methods. "
         configured_host = os.environ.get("GITHUB_HOST", "")
         if is_ado and not self.has_ado_token:
-            error_msg += "For private Azure DevOps repositories, set ADO_APM_PAT environment variable."
+            host = dep_host or "dev.azure.com"
+            error_msg += self.auth_resolver.build_error_context(host, "clone", org=dep_ref.ado_organization if dep_ref else None)
         elif is_generic:
             host_name = dep_host or "the target host"
             error_msg += (
@@ -638,8 +665,9 @@ class GitHubPackageDownloader:
                 f"use the full hostname in apm.yml: {suggested}"
             )
         elif not self.has_github_token:
-            error_msg += "For private repositories, set GITHUB_APM_PAT or GITHUB_TOKEN environment variable, " \
-                        "or ensure SSH keys are configured."
+            host = dep_host or default_host()
+            org = dep_ref.repo_url.split('/')[0] if dep_ref and dep_ref.repo_url else None
+            error_msg += self.auth_resolver.build_error_context(host, "clone", org=org)
         else:
             error_msg += "Please check repository access permissions and authentication setup."
         
@@ -759,11 +787,9 @@ class GitHubPackageDownloader:
                         # Check if this might be a private repository access issue
                         if "Authentication failed" in str(e) or "remote: Repository not found" in str(e):
                             error_msg = f"Failed to clone repository {dep_ref.repo_url}. "
-                            if not self.has_github_token:
-                                error_msg += "This might be a private repository that requires authentication. " \
-                                           "Please set GITHUB_APM_PAT or GITHUB_TOKEN environment variable."
-                            else:
-                                error_msg += "Authentication failed. Please check your GitHub token permissions."
+                            host = dep_ref.host or default_host()
+                            org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url else None
+                            error_msg += self.auth_resolver.build_error_context(host, "resolve reference", org=org)
                             raise RuntimeError(error_msg)
                         else:
                             sanitized_error = self._sanitize_git_error(str(e))
@@ -780,13 +806,14 @@ class GitHubPackageDownloader:
             ref_name=ref_name
         )
     
-    def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+    def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main", verbose_callback=None) -> bytes:
         """Download a single file from repository (GitHub or Azure DevOps).
         
         Args:
             dep_ref: Parsed dependency reference
             file_path: Path to file within the repository (e.g., "prompts/code-review.prompt.md")
             ref: Git reference (branch, tag, or commit SHA). Defaults to "main"
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             
         Returns:
             bytes: File content
@@ -820,7 +847,7 @@ class GitHubPackageDownloader:
             return self._download_ado_file(dep_ref, file_path, ref)
 
         # GitHub API
-        return self._download_github_file(dep_ref, file_path, ref)
+        return self._download_github_file(dep_ref, file_path, ref, verbose_callback=verbose_callback)
     
     def _download_ado_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
         """Download a file from Azure DevOps repository.
@@ -891,7 +918,7 @@ class GitHubPackageDownloader:
             elif e.response.status_code == 401 or e.response.status_code == 403:
                 error_msg = f"Authentication failed for Azure DevOps {dep_ref.repo_url}. "
                 if not self.ado_token:
-                    error_msg += "Please set ADO_APM_PAT with an Azure DevOps PAT with Code (Read) scope."
+                    error_msg += self.auth_resolver.build_error_context(host, "download", org=dep_ref.ado_organization if dep_ref else None)
                 else:
                     error_msg += "Please check your Azure DevOps PAT permissions."
                 raise RuntimeError(error_msg)
@@ -917,7 +944,7 @@ class GitHubPackageDownloader:
             pass
         return None
 
-    def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
+    def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main", verbose_callback=None) -> bytes:
         """Download a file from GitHub repository.
         
         For github.com without a token, tries raw.githubusercontent.com first
@@ -928,6 +955,7 @@ class GitHubPackageDownloader:
             dep_ref: Parsed dependency reference
             file_path: Path to file within the repository
             ref: Git reference (branch, tag, or commit SHA)
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             
         Returns:
             bytes: File content
@@ -937,13 +965,24 @@ class GitHubPackageDownloader:
         # Parse owner/repo from repo_url
         owner, repo = dep_ref.repo_url.split('/', 1)
         
+        # Resolve token via AuthResolver for CDN fast-path decision
+        org = None
+        if dep_ref and dep_ref.repo_url:
+            parts = dep_ref.repo_url.split('/')
+            if parts:
+                org = parts[0]
+        file_ctx = self.auth_resolver.resolve(host, org)
+        token = file_ctx.token
+
         # --- CDN fast-path for github.com without a token ---
         # raw.githubusercontent.com is served from GitHub's CDN and is not
         # subject to the REST API rate limit (60 req/h unauthenticated).
         # Only available for github.com — GHES/GHE-DR have no equivalent.
-        if host.lower() == "github.com" and not self.github_token:
+        if host.lower() == "github.com" and not token:
             content = self._try_raw_download(owner, repo, ref, file_path)
             if content is not None:
+                if verbose_callback:
+                    verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                 return content
             # raw download returned 404 — could be wrong default branch.
             # Try the other default branch before falling through to the API.
@@ -951,6 +990,8 @@ class GitHubPackageDownloader:
                 fallback_ref = "master" if ref == "main" else "main"
                 content = self._try_raw_download(owner, repo, fallback_ref, file_path)
                 if content is not None:
+                    if verbose_callback:
+                        verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                     return content
             # All raw attempts failed — fall through to API path which
             # handles private repos, rate-limit messaging, and SAML errors.
@@ -964,15 +1005,6 @@ class GitHubPackageDownloader:
         else:
             api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         
-        # Resolve the best available token for this host.
-        # self.github_token is pre-resolved for the default host during __init__;
-        # for non-default hosts, query credential fill for that specific host
-        # (env vars like GITHUB_APM_PAT are intended for the default host).
-        if host.lower() == default_host().lower():
-            token = self.github_token
-        else:
-            token = self.token_manager.resolve_credential_from_git(host)
-        
         # Set up authentication headers
         headers = {
             'Accept': 'application/vnd.github.v3.raw'  # Returns raw content directly
@@ -984,6 +1016,8 @@ class GitHubPackageDownloader:
         try:
             response = self._resilient_get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
+            if verbose_callback:
+                verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
             return response.content
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
@@ -1006,6 +1040,8 @@ class GitHubPackageDownloader:
                 try:
                     response = self._resilient_get(fallback_url, headers=headers, timeout=30)
                     response.raise_for_status()
+                    if verbose_callback:
+                        verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                     return response.content
                 except requests.exceptions.HTTPError:
                     raise RuntimeError(
@@ -1031,7 +1067,7 @@ class GitHubPackageDownloader:
                     if not token:
                         error_msg += (
                             "Unauthenticated requests are limited to 60/hour (shared per IP). "
-                            "Set GITHUB_APM_PAT, GITHUB_TOKEN, or GH_TOKEN to increase the limit to 5,000/hour."
+                            + self.auth_resolver.build_error_context(host, "API request (rate limited)", org=owner)
                         )
                     else:
                         error_msg += (
@@ -1049,16 +1085,14 @@ class GitHubPackageDownloader:
                         unauth_headers = {'Accept': 'application/vnd.github.v3.raw'}
                         response = self._resilient_get(api_url, headers=unauth_headers, timeout=30)
                         response.raise_for_status()
+                        if verbose_callback:
+                            verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
                         return response.content
                     except requests.exceptions.HTTPError:
                         pass  # Fall through to the original error
                 error_msg = f"Authentication failed for {dep_ref.repo_url} (file: {file_path}, ref: {ref}). "
                 if not token:
-                    error_msg += (
-                        "This might be a private repository. "
-                        "Set GITHUB_APM_PAT, GITHUB_TOKEN, or GH_TOKEN, or run 'gh auth login' "
-                        "so APM can discover your credentials automatically."
-                    )
+                    error_msg += self.auth_resolver.build_error_context(host, "download", org=owner)
                 elif token and not host.lower().endswith(".ghe.com"):
                     error_msg += (
                         "Both authenticated and unauthenticated access were attempted. "
@@ -1779,7 +1813,8 @@ author: {dep_ref.repo_url.split('/')[0]}
         repo_ref: Union[str, "DependencyReference"], 
         target_path: Path,
         progress_task_id=None,
-        progress_obj=None
+        progress_obj=None,
+        verbose_callback=None
     ) -> PackageInfo:
         """Download a GitHub repository and validate it as an APM package.
         
@@ -1793,6 +1828,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             target_path: Local path where package should be downloaded
             progress_task_id: Rich Progress task ID for progress updates
             progress_obj: Rich Progress object for progress updates
+            verbose_callback: Optional callable for verbose logging (receives str messages)
             
         Returns:
             PackageInfo: Information about the downloaded package
@@ -1872,7 +1908,8 @@ author: {dep_ref.repo_url.split('/')[0]}
                     dep_ref.repo_url, 
                     target_path, 
                     progress_reporter=progress_reporter,
-                    dep_ref=dep_ref
+                    dep_ref=dep_ref,
+                    verbose_callback=verbose_callback
                 )
                 repo.git.checkout(resolved_ref.resolved_commit)
             else:
@@ -1883,6 +1920,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                     target_path,
                     progress_reporter=progress_reporter,
                     dep_ref=dep_ref,
+                    verbose_callback=verbose_callback,
                     depth=1,
                     branch=resolved_ref.ref_name
                 )
@@ -1900,11 +1938,9 @@ author: {dep_ref.repo_url.split('/')[0]}
             # Check if this might be a private repository access issue
             if "Authentication failed" in str(e) or "remote: Repository not found" in str(e):
                 error_msg = f"Failed to clone repository {dep_ref.repo_url}. "
-                if not self.has_github_token:
-                    error_msg += "This might be a private repository that requires authentication. " \
-                               "Please set GITHUB_APM_PAT or GITHUB_TOKEN environment variable."
-                else:
-                    error_msg += "Authentication failed. Please check your GitHub token permissions."
+                host = dep_ref.host or default_host()
+                org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url else None
+                error_msg += self.auth_resolver.build_error_context(host, "clone", org=org)
                 raise RuntimeError(error_msg)
             else:
                 sanitized_error = self._sanitize_git_error(str(e))

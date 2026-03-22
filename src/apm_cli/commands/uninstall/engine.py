@@ -4,7 +4,7 @@ import builtins
 from pathlib import Path
 
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
-from ...utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ...core.command_logger import CommandLogger
 from ...utils.path_security import PathTraversalError, safe_rmtree
 
 from ...deps.lockfile import LockFile
@@ -23,14 +23,14 @@ def _parse_dependency_entry(dep_entry):
     raise ValueError(f"Unsupported dependency entry type: {type(dep_entry).__name__}")
 
 
-def _validate_uninstall_packages(packages, current_deps):
+def _validate_uninstall_packages(packages, current_deps, logger):
     """Validate which packages can be removed and return matched/unmatched lists."""
     packages_to_remove = []
     packages_not_found = []
 
     for package in packages:
         if "/" not in package:
-            _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
+            logger.error(f"Invalid package format: {package}. Use 'owner/repo' format.")
             continue
 
         matched_dep = None
@@ -54,19 +54,19 @@ def _validate_uninstall_packages(packages, current_deps):
 
         if matched_dep is not None:
             packages_to_remove.append(matched_dep)
-            _rich_info(f"\u2713 {package} - found in apm.yml")
+            logger.progress(f"{package} - found in apm.yml", symbol="check")
         else:
             packages_not_found.append(package)
-            _rich_warning(f"\u2717 {package} - not found in apm.yml")
+            logger.warning(f"{package} - not found in apm.yml")
 
     return packages_to_remove, packages_not_found
 
 
-def _dry_run_uninstall(packages_to_remove, apm_modules_dir):
+def _dry_run_uninstall(packages_to_remove, apm_modules_dir, logger):
     """Show what would be removed without making changes."""
-    _rich_info(f"Dry run: Would remove {len(packages_to_remove)} package(s):")
+    logger.progress(f"Dry run: Would remove {len(packages_to_remove)} package(s):")
     for pkg in packages_to_remove:
-        _rich_info(f"  - {pkg} from apm.yml")
+        logger.progress(f"  - {pkg} from apm.yml")
         try:
             dep_ref = _parse_dependency_entry(pkg)
             package_path = dep_ref.get_install_path(apm_modules_dir)
@@ -74,7 +74,7 @@ def _dry_run_uninstall(packages_to_remove, apm_modules_dir):
             pkg_str = pkg if isinstance(pkg, str) else str(pkg)
             package_path = apm_modules_dir / pkg_str.split("/")[-1]
         if apm_modules_dir.exists() and package_path.exists():
-            _rich_info(f"  - {pkg} from apm_modules/")
+            logger.progress(f"  - {pkg} from apm_modules/")
 
     from ...deps.lockfile import LockFile, get_lockfile_path
     lockfile_path = get_lockfile_path(Path("."))
@@ -99,14 +99,14 @@ def _dry_run_uninstall(packages_to_remove, apm_modules_dir):
                     potential_orphans.add(key)
                     queue.append(dep.repo_url)
         if potential_orphans:
-            _rich_info(f"  Transitive dependencies that would be removed:")
+            logger.progress(f"  Transitive dependencies that would be removed:")
             for orphan_key in sorted(potential_orphans):
-                _rich_info(f"    - {orphan_key}")
+                logger.progress(f"    - {orphan_key}")
 
-    _rich_success("Dry run complete - no changes made")
+    logger.success("Dry run complete - no changes made")
 
 
-def _remove_packages_from_disk(packages_to_remove, apm_modules_dir):
+def _remove_packages_from_disk(packages_to_remove, apm_modules_dir, logger):
     """Remove direct packages from apm_modules/ and return removal count."""
     removed = 0
     if not apm_modules_dir.exists():
@@ -118,7 +118,7 @@ def _remove_packages_from_disk(packages_to_remove, apm_modules_dir):
             dep_ref = _parse_dependency_entry(package)
             package_path = dep_ref.get_install_path(apm_modules_dir)
         except (PathTraversalError,) as e:
-            _rich_error(f"x Refusing to remove {package}: {e}")
+            logger.error(f"Refusing to remove {package}: {e}")
             continue
         except (ValueError, TypeError, AttributeError, KeyError):
             package_str = package if isinstance(package, str) else str(package)
@@ -131,20 +131,21 @@ def _remove_packages_from_disk(packages_to_remove, apm_modules_dir):
         if package_path.exists():
             try:
                 safe_rmtree(package_path, apm_modules_dir)
-                _rich_info(f"+ Removed {package} from apm_modules/")
+                logger.progress(f"Removed {package} from apm_modules/")
+                logger.verbose_detail(f"    Path: {package_path.relative_to(apm_modules_dir)}")
                 removed += 1
                 deleted_pkg_paths.append(package_path)
             except Exception as e:
-                _rich_error(f"x Failed to remove {package} from apm_modules/: {e}")
+                logger.error(f"Failed to remove {package} from apm_modules/: {e}")
         else:
-            _rich_warning(f"Package {package} not found in apm_modules/")
+            logger.warning(f"Package {package} not found in apm_modules/")
 
     from ...integration.base_integrator import BaseIntegrator as _BI2
     _BI2.cleanup_empty_parents(deleted_pkg_paths, stop_at=apm_modules_dir)
     return removed
 
 
-def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, apm_yml_path):
+def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, apm_yml_path, logger):
     """Remove orphaned transitive deps and return (removed_count, actual_orphan_keys)."""
     import yaml
 
@@ -211,18 +212,19 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
         if orphan_path.exists():
             try:
                 safe_rmtree(orphan_path, apm_modules_dir)
-                _rich_info(f"+ Removed transitive dependency {orphan_key} from apm_modules/")
+                logger.progress(f"Removed transitive dependency {orphan_key} from apm_modules/")
+                logger.verbose_detail(f"    Path: {orphan_path.relative_to(apm_modules_dir)}")
                 removed += 1
                 deleted_orphan_paths.append(orphan_path)
             except Exception as e:
-                _rich_error(f"x Failed to remove transitive dep {orphan_key}: {e}")
+                logger.error(f"Failed to remove transitive dep {orphan_key}: {e}")
 
     from ...integration.base_integrator import BaseIntegrator as _BI
     _BI.cleanup_empty_parents(deleted_orphan_paths, stop_at=apm_modules_dir)
     return removed, actual_orphans
 
 
-def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files):
+def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger):
     """Remove deployed files and re-integrate from remaining packages."""
     from ...integration.base_integrator import BaseIntegrator
     from ...models.apm_package import PackageInfo, validate_apm_package
@@ -360,7 +362,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
             instruction_integrator_reint.integrate_package_instructions_cursor(pkg_info, project_root)
         except Exception:
             pkg_id = dep_ref.get_identity() if hasattr(dep_ref, "get_identity") else str(dep_ref)
-            _rich_warning(f"Best-effort re-integration skipped for {pkg_id}")
+            logger.warning(f"Best-effort re-integration skipped for {pkg_id}")
 
     return counts
 

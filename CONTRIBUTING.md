@@ -35,7 +35,7 @@ Enhancement suggestions are welcome! Please:
 1. Fork the repository.
 2. Create a new branch for your feature/fix: `git checkout -b feature/your-feature-name` or `git checkout -b fix/issue-description`.
 3. Make your changes.
-4. Run tests: `uv run pytest`
+4. Run tests: `uv run pytest tests/unit tests/test_console.py -x`
 5. Ensure your code follows our coding style (we use Black and isort).
 6. Commit your changes with a descriptive message.
 7. Push to your fork.
@@ -74,11 +74,23 @@ uv sync --extra dev
 
 ## Testing
 
-We use pytest for testing. After completing the setup above, run the test suite with:
+We use pytest for testing with `pytest-xdist` for parallel execution. After completing the setup above:
 
 ```bash
-uv run pytest -q
+# Run the unit test suite (recommended — matches CI, fast)
+uv run pytest tests/unit tests/test_console.py -x
+
+# Run a specific test file (fastest, use during development)
+uv run pytest tests/unit/path/to/relevant_test.py -x
+
+# Run the full test suite (includes integration & acceptance tests)
+uv run pytest
+
+# Run with verbose output
+uv run pytest tests/unit -x -v
 ```
+
+Tests run in parallel automatically (`-n auto` is configured in `pyproject.toml`). To force serial execution, add `-n0`.
 
 If you don't have `uv` available, you can use a standard Python venv and pip:
 
@@ -91,8 +103,8 @@ source .venv/bin/activate
 pip install -U pip
 pip install -e .[dev]
 
-# run tests
-pytest -q
+# run unit tests
+pytest tests/unit tests/test_console.py -x
 ```
 
 ## Coding Style

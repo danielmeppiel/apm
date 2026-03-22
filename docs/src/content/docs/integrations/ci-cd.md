@@ -33,7 +33,7 @@ jobs:
 
 ### Private Dependencies
 
-For private repositories, pass a GitHub token:
+For private repositories, pass a token via the workflow `env:` block. See the [Authentication guide](../../getting-started/authentication/) for all supported tokens and priority rules.
 
 ```yaml
       - name: Install APM packages

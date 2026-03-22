@@ -18,14 +18,14 @@ from ..constants import (
 )
 from ..drift import build_download_ref, detect_orphans, detect_ref_change
 from ..models.results import InstallResult
-from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ..core.command_logger import InstallLogger, _ValidationOutcome
+from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
 from ..utils.path_security import safe_rmtree
 from ._helpers import (
     _create_minimal_apm_yml,
     _get_default_config,
-    _load_apm_config,
     _rich_blank_line,
     _update_gitignore_for_apm_modules,
 )
@@ -56,7 +56,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -67,6 +67,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
         packages: Package specifiers to validate and add.
         dry_run: If True, only show what would be added.
         dev: If True, write to devDependencies instead of dependencies.
+        logger: InstallLogger for structured output.
+
+    Returns:
+        Tuple of (validated_packages list, _ValidationOutcome).
     """
     import subprocess
     import tempfile
@@ -81,7 +85,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
         with open(apm_yml_path, "r") as f:
             data = yaml.safe_load(f) or {}
     except Exception as e:
-        _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
+        if logger:
+            logger.error(f"Failed to read {APM_YML_FILENAME}: {e}")
+        else:
+            _rich_error(f"Failed to read {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
     # Ensure dependencies structure exists
@@ -109,12 +116,19 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
             continue
 
     # First, validate all packages
-    _rich_info(f"Validating {len(packages)} package(s)...")
+    valid_outcomes = []  # (canonical, already_present) tuples
+    invalid_outcomes = []  # (package, reason) tuples
+
+    if logger:
+        logger.validation_start(len(packages))
 
     for package in packages:
         # Validate package format (should be owner/repo, a git URL, or a local path)
         if "/" not in package and not DependencyReference.is_local_path(package):
-            _rich_error(f"Invalid package format: {package}. Use 'owner/repo' format.")
+            reason = "invalid format -- use 'owner/repo'"
+            invalid_outcomes.append((package, reason))
+            if logger:
+                logger.validation_fail(package, reason)
             continue
 
         # Canonicalize input
@@ -123,44 +137,63 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
             canonical = dep_ref.to_canonical()
             identity = dep_ref.get_identity()
         except ValueError as e:
-            _rich_error(f"Invalid package: {package} — {e}")
+            reason = str(e)
+            invalid_outcomes.append((package, reason))
+            if logger:
+                logger.validation_fail(package, reason)
             continue
 
         # Check if package is already in dependencies (by identity)
         already_in_deps = identity in existing_identities
 
         # Validate package exists and is accessible
-        if _validate_package_exists(package):
-            if already_in_deps:
-                _rich_info(
-                    f"✓ {canonical} - already in apm.yml, ensuring installation..."
-                )
-            else:
+        verbose = bool(logger and logger.verbose)
+        if _validate_package_exists(package, verbose=verbose):
+            valid_outcomes.append((canonical, already_in_deps))
+            if logger:
+                logger.validation_pass(canonical, already_present=already_in_deps)
+
+            if not already_in_deps:
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
-                _rich_info(f"✓ {canonical} - accessible")
         else:
-            _rich_error(f"✗ {package} - not accessible or doesn't exist")
+            reason = "not accessible or doesn't exist"
+            if not verbose:
+                reason += " -- run with --verbose for auth details"
+            invalid_outcomes.append((package, reason))
+            if logger:
+                logger.validation_fail(package, reason)
+
+    outcome = _ValidationOutcome(valid=valid_outcomes, invalid=invalid_outcomes)
+
+    # Let the logger emit a summary and decide whether to continue
+    if logger:
+        should_continue = logger.validation_summary(outcome)
+        if not should_continue:
+            return [], outcome
 
     if not validated_packages:
         if dry_run:
-            _rich_warning("No new packages to add")
+            if logger:
+                logger.progress("No new packages to add")
         # If all packages already exist in apm.yml, that's OK - we'll reinstall them
-        return []
+        return [], outcome
 
     if dry_run:
-        _rich_info(
-            f"Dry run: Would add {len(validated_packages)} package(s) to apm.yml:"
-        )
-        for pkg in validated_packages:
-            _rich_info(f"  + {pkg}")
-        return validated_packages
+        if logger:
+            logger.progress(
+                f"Dry run: Would add {len(validated_packages)} package(s) to apm.yml"
+            )
+            for pkg in validated_packages:
+                logger.verbose_detail(f"  + {pkg}")
+        return validated_packages, outcome
 
     # Add validated packages to dependencies (already canonical)
     dep_label = "devDependencies" if dev else "apm.yml"
     for package in validated_packages:
         current_deps.append(package)
-        _rich_info(f"Added {package} to {dep_label}")
+        if logger:
+            logger.verbose_detail(f"Added {package} to {dep_label}")
 
     # Update dependencies
     data[dep_section]["apm"] = current_deps
@@ -169,19 +202,27 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False):
     try:
         with open(apm_yml_path, "w") as f:
             yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
-        _rich_success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
+        if logger:
+            logger.success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
     except Exception as e:
-        _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
+        if logger:
+            logger.error(f"Failed to write {APM_YML_FILENAME}: {e}")
+        else:
+            _rich_error(f"Failed to write {APM_YML_FILENAME}: {e}")
         sys.exit(1)
 
-    return validated_packages
+    return validated_packages, outcome
 
 
-def _validate_package_exists(package):
+def _validate_package_exists(package, verbose=False):
     """Validate that a package exists and is accessible on GitHub, Azure DevOps, or locally."""
     import os
     import subprocess
     import tempfile
+    from apm_cli.core.auth import AuthResolver
+
+    verbose_log = (lambda msg: _rich_echo(f"  {msg}", color="dim")) if verbose else None
+    auth_resolver = AuthResolver()
 
     try:
         # Parse the package to check if it's a virtual package or ADO
@@ -235,6 +276,9 @@ def _validate_package_exists(package):
             else:
                 validate_env = {**os.environ, **downloader.git_env}
 
+            if verbose_log:
+                verbose_log(f"Trying git ls-remote for {dep_ref.host}")
+
             cmd = ["git", "ls-remote", "--heads", "--exit-code", package_url]
             result = subprocess.run(
                 cmd,
@@ -243,59 +287,127 @@ def _validate_package_exists(package):
                 timeout=30,
                 env=validate_env,
             )
+
+            if verbose_log:
+                if result.returncode == 0:
+                    verbose_log(f"git ls-remote rc=0 for {package}")
+                else:
+                    # Sanitize stderr to avoid leaking tokens
+                    stderr_snippet = (result.stderr or "").strip()[:200]
+                    for env_var in ("GIT_ASKPASS", "GIT_CONFIG_GLOBAL"):
+                        stderr_snippet = stderr_snippet.replace(
+                            validate_env.get(env_var, ""), "***"
+                        )
+                    verbose_log(f"git ls-remote rc={result.returncode}: {stderr_snippet}")
+
             return result.returncode == 0
 
-        # For GitHub.com, use standard approach (public repos don't need auth)
-        package_url = f"{dep_ref.to_github_url()}.git"
+        # For GitHub.com, use AuthResolver with unauth-first fallback
+        host = dep_ref.host or default_host()
+        org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
+        host_info = auth_resolver.classify_host(host)
 
-        # For regular packages, use git ls-remote
-        with tempfile.TemporaryDirectory() as temp_dir:
+        if verbose_log:
+            ctx = auth_resolver.resolve(host, org=org)
+            verbose_log(f"Auth resolved: host={host}, org={org}, source={ctx.source}, type={ctx.token_type}")
+
+        def _check_repo(token, git_env):
+            """Check repo accessibility via GitHub API (or git ls-remote for non-GitHub)."""
+            import urllib.request
+            import urllib.error
+
+            api_base = host_info.api_base
+            api_url = f"{api_base}/repos/{dep_ref.repo_url}"
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "apm-cli",
+            }
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+
+            req = urllib.request.Request(api_url, headers=headers)
             try:
+                resp = urllib.request.urlopen(req, timeout=15)
+                if verbose_log:
+                    verbose_log(f"API {api_url} -> {resp.status}")
+                return True
+            except urllib.error.HTTPError as e:
+                if verbose_log:
+                    verbose_log(f"API {api_url} -> {e.code} {e.reason}")
+                if e.code == 404 and token:
+                    # 404 with token could mean no access — raise to trigger fallback
+                    raise RuntimeError(f"API returned {e.code}")
+                raise RuntimeError(f"API returned {e.code}: {e.reason}")
+            except Exception as e:
+                if verbose_log:
+                    verbose_log(f"API request failed: {e}")
+                raise
 
-                # Try cloning with minimal fetch
-                cmd = [
-                    "git",
-                    "ls-remote",
-                    "--heads",
-                    "--exit-code",
-                    package_url,
-                ]
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=30  # 30 second timeout
-                )
-
-                return result.returncode == 0
-
-            except subprocess.TimeoutExpired:
-                return False
-            except Exception:
-                return False
+        try:
+            return auth_resolver.try_with_fallback(
+                host, _check_repo,
+                org=org,
+                unauth_first=True,
+                verbose_callback=verbose_log,
+            )
+        except Exception:
+            if verbose_log:
+                try:
+                    ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
+                    for line in ctx.splitlines():
+                        verbose_log(line)
+                except Exception:
+                    pass
+            return False
 
     except Exception:
         # If parsing fails, assume it's a regular GitHub package
-        package_url = (
-            f"https://{package}.git"
-            if is_valid_fqdn(package)
-            else f"https://{default_host()}/{package}.git"
-        )
-        with tempfile.TemporaryDirectory() as temp_dir:
+        host = default_host()
+        org = package.split('/')[0] if '/' in package else None
+        repo_path = package  # owner/repo format
+
+        def _check_repo_fallback(token, git_env):
+            import urllib.request
+            import urllib.error
+
+            host_info = auth_resolver.classify_host(host)
+            api_url = f"{host_info.api_base}/repos/{repo_path}"
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "apm-cli",
+            }
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+
+            req = urllib.request.Request(api_url, headers=headers)
             try:
-                cmd = [
-                    "git",
-                    "ls-remote",
-                    "--heads",
-                    "--exit-code",
-                    package_url,
-                ]
+                resp = urllib.request.urlopen(req, timeout=15)
+                return True
+            except urllib.error.HTTPError as e:
+                if verbose_log:
+                    verbose_log(f"API fallback -> {e.code} {e.reason}")
+                raise RuntimeError(f"API returned {e.code}")
+            except Exception as e:
+                if verbose_log:
+                    verbose_log(f"API fallback failed: {e}")
+                raise
 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-                return result.returncode == 0
-
-            except subprocess.TimeoutExpired:
-                return False
-            except Exception:
-                return False
+        try:
+            return auth_resolver.try_with_fallback(
+                host, _check_repo_fallback,
+                org=org,
+                unauth_first=True,
+                verbose_callback=verbose_log,
+            )
+        except Exception:
+            if verbose_log:
+                try:
+                    ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
+                    for line in ctx.splitlines():
+                        verbose_log(line)
+                except Exception:
+                    pass
+            return False
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +474,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm install --dry-run                   # Show what would be installed
     """
     try:
+        # Create structured logger for install output
+        is_partial = bool(packages)
+        logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
+
         # Check if apm.yml exists
         apm_yml_exists = Path(APM_YML_FILENAME).exists()
 
@@ -371,31 +487,44 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             project_name = Path.cwd().name
             config = _get_default_config(project_name)
             _create_minimal_apm_yml(config)
-            _rich_success(f"Created {APM_YML_FILENAME}", symbol="sparkles")
+            logger.success(f"Created {APM_YML_FILENAME}")
 
         # Error when NO apm.yml AND NO packages
         if not apm_yml_exists and not packages:
-            _rich_error(f"No {APM_YML_FILENAME} found")
-            _rich_info("💡 Run 'apm init' to create one, or:")
-            _rich_info("   apm install <org/repo> to auto-create + install")
+            logger.error(f"No {APM_YML_FILENAME} found")
+            logger.progress("Run 'apm init' to create one, or:")
+            logger.progress("  apm install <org/repo> to auto-create + install")
             sys.exit(1)
 
         # If packages are specified, validate and add them to apm.yml first
         if packages:
-            validated_packages = _validate_and_add_packages_to_apm_yml(
-                packages, dry_run, dev=dev
+            validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
+                packages, dry_run, dev=dev, logger=logger,
             )
+            # Short-circuit: all packages failed validation — nothing to install
+            if outcome.all_failed:
+                return
             # Note: Empty validated_packages is OK if packages are already in apm.yml
             # We'll proceed with installation from apm.yml to ensure everything is synced
 
-        _rich_info("Installing dependencies from apm.yml...")
+        logger.resolution_start(
+            to_install_count=len(validated_packages) if packages else 0,
+            lockfile_count=0,  # Refined later inside _install_apm_dependencies
+        )
 
         # Parse apm.yml to get both APM and MCP dependencies
         try:
             apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
         except Exception as e:
-            _rich_error(f"Failed to parse {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
             sys.exit(1)
+
+        logger.verbose_detail(
+            f"Parsed {APM_YML_FILENAME}: {len(apm_package.get_apm_dependencies())} APM deps, "
+            f"{len(apm_package.get_mcp_dependencies())} MCP deps"
+            + (f", {len(apm_package.get_dev_apm_dependencies())} dev deps"
+               if apm_package.get_dev_apm_dependencies() else "")
+        )
 
         # Get APM and MCP dependencies
         apm_deps = apm_package.get_apm_dependencies()
@@ -415,25 +544,25 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Show what will be installed if dry run
         if dry_run:
-            _rich_info("Dry run mode - showing what would be installed:")
+            logger.progress("Dry run mode - showing what would be installed:")
 
             if should_install_apm and apm_deps:
-                _rich_info(f"APM dependencies ({len(apm_deps)}):")
+                logger.progress(f"APM dependencies ({len(apm_deps)}):")
                 for dep in apm_deps:
                     action = "update" if update else "install"
-                    _rich_info(
-                        f"  - {dep.repo_url}#{dep.reference or 'main'} → {action}"
+                    logger.progress(
+                        f"  - {dep.repo_url}#{dep.reference or 'main'} -> {action}"
                     )
 
             if should_install_mcp and mcp_deps:
-                _rich_info(f"MCP dependencies ({len(mcp_deps)}):")
+                logger.progress(f"MCP dependencies ({len(mcp_deps)}):")
                 for dep in mcp_deps:
-                    _rich_info(f"  - {dep}")
+                    logger.progress(f"  - {dep}")
 
             if not apm_deps and not dev_apm_deps and not mcp_deps:
-                _rich_warning("No dependencies found in apm.yml")
+                logger.progress("No dependencies found in apm.yml")
 
-            _rich_success("Dry run complete - no changes made")
+            logger.success("Dry run complete - no changes made")
             return
 
         # Install APM dependencies first (if requested)
@@ -459,8 +588,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm_diagnostics = None
         if should_install_apm and has_any_apm_deps:
             if not APM_DEPS_AVAILABLE:
-                _rich_error("APM dependency system not available")
-                _rich_info(f"Import error: {_APM_IMPORT_ERROR}")
+                logger.error("APM dependency system not available")
+                logger.progress(f"Import error: {_APM_IMPORT_ERROR}")
                 sys.exit(1)
 
             try:
@@ -470,16 +599,19 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                 install_result = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
+                    logger=logger,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
                 agent_count = install_result.agents_integrated
                 apm_diagnostics = install_result.diagnostics
             except Exception as e:
-                _rich_error(f"Failed to install APM dependencies: {e}")
+                logger.error(f"Failed to install APM dependencies: {e}")
+                if not verbose:
+                    logger.progress("Run with --verbose for detailed diagnostics")
                 sys.exit(1)
         elif should_install_apm and not has_any_apm_deps:
-            _rich_info("No APM dependencies found in apm.yml")
+            logger.verbose_detail("No APM dependencies found in apm.yml")
 
         # When --update is used, package files on disk may have changed.
         # Clear the parse cache so transitive MCP collection reads fresh data.
@@ -491,9 +623,12 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm_modules_path = Path.cwd() / APM_MODULES_DIR
         if should_install_mcp and apm_modules_path.exists():
             lock_path = get_lockfile_path(Path.cwd())
-            transitive_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lock_path, trust_transitive_mcp)
+            transitive_mcp = MCPIntegrator.collect_transitive(
+                apm_modules_path, lock_path, trust_transitive_mcp,
+                diagnostics=apm_diagnostics,
+            )
             if transitive_mcp:
-                _rich_info(f"Collected {len(transitive_mcp)} transitive MCP dependency(ies)")
+                logger.verbose_detail(f"Collected {len(transitive_mcp)} transitive MCP dependency(ies)")
                 mcp_deps = MCPIntegrator.deduplicate(mcp_deps + transitive_mcp)
 
         # Continue with MCP installation (existing logic)
@@ -503,6 +638,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             mcp_count = MCPIntegrator.install(
                 mcp_deps, runtime, exclude, verbose,
                 stored_mcp_configs=old_mcp_configs,
+                diagnostics=apm_diagnostics,
             )
             new_mcp_servers = MCPIntegrator.get_server_names(mcp_deps)
             new_mcp_configs = MCPIntegrator.get_server_configs(mcp_deps)
@@ -519,27 +655,25 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             if old_mcp_servers:
                 MCPIntegrator.remove_stale(old_mcp_servers, runtime, exclude)
                 MCPIntegrator.update_lockfile(builtins.set(), mcp_configs={})
-            _rich_warning("No MCP dependencies found in apm.yml")
+            logger.verbose_detail("No MCP dependencies found in apm.yml")
         elif not should_install_mcp and old_mcp_servers:
             # --only=apm: APM install regenerated the lockfile and dropped
             # mcp_servers.  Restore the previous set so it is not lost.
             MCPIntegrator.update_lockfile(old_mcp_servers, mcp_configs=old_mcp_configs)
 
-        # Show beautiful post-install summary
+        # Show diagnostics and final install summary
         if apm_diagnostics and apm_diagnostics.has_diagnostics:
             apm_diagnostics.render_summary()
         else:
             _rich_blank_line()
-        if install_mode == InstallMode.ALL:
-            # Load apm.yml config for summary
-            apm_config = _load_apm_config()
-            _show_install_summary(
-                apm_count, prompt_count, agent_count, mcp_count, apm_config
-            )
-        elif install_mode == InstallMode.APM:
-            _rich_success(f"Installed {apm_count} APM dependencies")
-        elif install_mode == InstallMode.MCP:
-            _rich_success(f"Configured {mcp_count} MCP servers")
+
+        error_count = 0
+        if apm_diagnostics:
+            try:
+                error_count = int(apm_diagnostics.error_count)
+            except (TypeError, ValueError):
+                error_count = 0
+        logger.install_summary(apm_count=apm_count, mcp_count=mcp_count, errors=error_count)
 
         # Hard-fail when critical security findings blocked any package.
         # Consistent with apm unpack which also hard-fails on critical.
@@ -548,7 +682,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             sys.exit(1)
 
     except Exception as e:
-        _rich_error(f"Error installing dependencies: {e}")
+        logger.error(f"Error installing dependencies: {e}")
+        if not verbose:
+            logger.progress("Run with --verbose for detailed diagnostics")
         sys.exit(1)
 
 
@@ -562,10 +698,11 @@ def _pre_deploy_security_scan(
     diagnostics: DiagnosticCollector,
     package_name: str = "",
     force: bool = False,
+    logger=None,
 ) -> bool:
     """Scan package source files for hidden characters BEFORE deployment.
 
-    Delegates to :class:`SecurityGate` for the scan→classify→decide pipeline.
+    Delegates to :class:`SecurityGate` for the scan->classify->decide pipeline.
     Inline CLI feedback (error/info lines) is kept here because it is
     install-specific formatting.
 
@@ -584,12 +721,13 @@ def _pre_deploy_security_scan(
     SecurityGate.report(verdict, diagnostics, package=package_name, force=force)
 
     if verdict.should_block:
-        _rich_error(
-            f"  Blocked: {package_name or 'package'} contains "
-            f"critical hidden character(s)"
-        )
-        _rich_info(f"  └─ Inspect source: {install_path}")
-        _rich_info("  └─ Use --force to deploy anyway")
+        if logger:
+            logger.error(
+                f"  Blocked: {package_name or 'package'} contains "
+                f"critical hidden character(s)"
+            )
+            logger.progress(f"  └─ Inspect source: {install_path}")
+            logger.progress("  └─ Use --force to deploy anyway")
         return False
 
     return True
@@ -612,6 +750,7 @@ def _integrate_package_primitives(
     managed_files,
     diagnostics,
     package_name="",
+    logger=None,
 ):
     """Run the full integration pipeline for a single package.
 
@@ -634,6 +773,10 @@ def _integrate_package_primitives(
     if not (integrate_vscode or integrate_claude or integrate_opencode):
         return result
 
+    def _log_integration(msg):
+        if logger:
+            logger.tree_item(msg)
+
     # --- prompts ---
     prompt_result = prompt_integrator.integrate_package_prompts(
         package_info, project_root,
@@ -642,9 +785,9 @@ def _integrate_package_primitives(
     )
     if prompt_result.files_integrated > 0:
         result["prompts"] += prompt_result.files_integrated
-        _rich_info(f"  └─ {prompt_result.files_integrated} prompts integrated → .github/prompts/")
+        _log_integration(f"  └─ {prompt_result.files_integrated} prompts integrated -> .github/prompts/")
     if prompt_result.files_updated > 0:
-        _rich_info(f"  └─ {prompt_result.files_updated} prompts updated")
+        _log_integration(f"  └─ {prompt_result.files_updated} prompts updated")
     result["links_resolved"] += prompt_result.links_resolved
     for tp in prompt_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
@@ -657,9 +800,9 @@ def _integrate_package_primitives(
     )
     if agent_result.files_integrated > 0:
         result["agents"] += agent_result.files_integrated
-        _rich_info(f"  └─ {agent_result.files_integrated} agents integrated → .github/agents/")
+        _log_integration(f"  └─ {agent_result.files_integrated} agents integrated -> .github/agents/")
     if agent_result.files_updated > 0:
-        _rich_info(f"  └─ {agent_result.files_updated} agents updated")
+        _log_integration(f"  └─ {agent_result.files_updated} agents updated")
     result["links_resolved"] += agent_result.links_resolved
     for tp in agent_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
@@ -672,10 +815,10 @@ def _integrate_package_primitives(
         )
         if skill_result.skill_created:
             result["skills"] += 1
-            _rich_info(f"  └─ Skill integrated → .github/skills/")
+            _log_integration(f"  └─ Skill integrated -> .github/skills/")
         if skill_result.sub_skills_promoted > 0:
             result["sub_skills"] += skill_result.sub_skills_promoted
-            _rich_info(f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated → .github/skills/")
+            _log_integration(f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated -> .github/skills/")
         for tp in skill_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
 
@@ -688,7 +831,7 @@ def _integrate_package_primitives(
         )
         if instruction_result.files_integrated > 0:
             result["instructions"] += instruction_result.files_integrated
-            _rich_info(f"  └─ {instruction_result.files_integrated} instruction(s) integrated → .github/instructions/")
+            _log_integration(f"  └─ {instruction_result.files_integrated} instruction(s) integrated -> .github/instructions/")
         result["links_resolved"] += instruction_result.links_resolved
         for tp in instruction_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
@@ -701,7 +844,7 @@ def _integrate_package_primitives(
     )
     if cursor_rules_result.files_integrated > 0:
         result["instructions"] += cursor_rules_result.files_integrated
-        _rich_info(f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated → .cursor/rules/")
+        _log_integration(f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated -> .cursor/rules/")
     result["links_resolved"] += cursor_rules_result.links_resolved
     for tp in cursor_rules_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
@@ -715,7 +858,7 @@ def _integrate_package_primitives(
         )
         if claude_agent_result.files_integrated > 0:
             result["agents"] += claude_agent_result.files_integrated
-            _rich_info(f"  └─ {claude_agent_result.files_integrated} agents integrated → .claude/agents/")
+            _log_integration(f"  └─ {claude_agent_result.files_integrated} agents integrated -> .claude/agents/")
         result["links_resolved"] += claude_agent_result.links_resolved
         for tp in claude_agent_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
@@ -728,7 +871,7 @@ def _integrate_package_primitives(
     )
     if cursor_agent_result.files_integrated > 0:
         result["agents"] += cursor_agent_result.files_integrated
-        _rich_info(f"  └─ {cursor_agent_result.files_integrated} agents integrated → .cursor/agents/")
+        _log_integration(f"  └─ {cursor_agent_result.files_integrated} agents integrated -> .cursor/agents/")
     result["links_resolved"] += cursor_agent_result.links_resolved
     for tp in cursor_agent_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
@@ -741,7 +884,7 @@ def _integrate_package_primitives(
     )
     if opencode_agent_result.files_integrated > 0:
         result["agents"] += opencode_agent_result.files_integrated
-        _rich_info(f"  └─ {opencode_agent_result.files_integrated} agents integrated → .opencode/agents/")
+        _log_integration(f"  └─ {opencode_agent_result.files_integrated} agents integrated -> .opencode/agents/")
     result["links_resolved"] += opencode_agent_result.links_resolved
     for tp in opencode_agent_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
@@ -754,9 +897,9 @@ def _integrate_package_primitives(
     )
     if command_result.files_integrated > 0:
         result["commands"] += command_result.files_integrated
-        _rich_info(f"  └─ {command_result.files_integrated} commands integrated → .claude/commands/")
+        _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
     if command_result.files_updated > 0:
-        _rich_info(f"  └─ {command_result.files_updated} commands updated")
+        _log_integration(f"  └─ {command_result.files_updated} commands updated")
     result["links_resolved"] += command_result.links_resolved
     for tp in command_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
@@ -769,7 +912,7 @@ def _integrate_package_primitives(
     )
     if opencode_command_result.files_integrated > 0:
         result["commands"] += opencode_command_result.files_integrated
-        _rich_info(f"  └─ {opencode_command_result.files_integrated} commands integrated → .opencode/commands/")
+        _log_integration(f"  └─ {opencode_command_result.files_integrated} commands integrated -> .opencode/commands/")
     result["links_resolved"] += opencode_command_result.links_resolved
     for tp in opencode_command_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
@@ -783,7 +926,7 @@ def _integrate_package_primitives(
         )
         if hook_result.hooks_integrated > 0:
             result["hooks"] += hook_result.hooks_integrated
-            _rich_info(f"  └─ {hook_result.hooks_integrated} hook(s) integrated → .github/hooks/")
+            _log_integration(f"  └─ {hook_result.hooks_integrated} hook(s) integrated -> .github/hooks/")
         for tp in hook_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
     if integrate_claude:
@@ -794,7 +937,7 @@ def _integrate_package_primitives(
         )
         if hook_result_claude.hooks_integrated > 0:
             result["hooks"] += hook_result_claude.hooks_integrated
-            _rich_info(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated → .claude/settings.json")
+            _log_integration(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated -> .claude/settings.json")
         for tp in hook_result_claude.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
 
@@ -806,7 +949,7 @@ def _integrate_package_primitives(
     )
     if hook_result_cursor.hooks_integrated > 0:
         result["hooks"] += hook_result_cursor.hooks_integrated
-        _rich_info(f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated → .cursor/hooks.json")
+        _log_integration(f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated -> .cursor/hooks.json")
     for tp in hook_result_cursor.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
 
@@ -866,6 +1009,7 @@ def _install_apm_dependencies(
     only_packages: "builtins.list" = None,
     force: bool = False,
     parallel_downloads: int = 4,
+    logger: "InstallLogger" = None,
 ):
     """Install APM package dependencies.
 
@@ -876,6 +1020,7 @@ def _install_apm_dependencies(
         only_packages: If provided, only install these specific packages (not all from apm.yml)
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
+        logger: InstallLogger for structured output
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -886,18 +1031,24 @@ def _install_apm_dependencies(
     if not all_apm_deps:
         return InstallResult()
 
-    _rich_info(f"Installing APM dependencies ({len(all_apm_deps)})...")
-
     project_root = Path.cwd()
 
     # T5: Check for existing lockfile - use locked versions for reproducible installs
     from apm_cli.deps.lockfile import LockFile, get_lockfile_path
     lockfile_path = get_lockfile_path(project_root)
     existing_lockfile = None
+    lockfile_count = 0
     if lockfile_path.exists() and not update_refs:
         existing_lockfile = LockFile.read(lockfile_path)
         if existing_lockfile and existing_lockfile.dependencies:
-            _rich_info(f"Using apm.lock.yaml ({len(existing_lockfile.dependencies)} locked dependencies)")
+            lockfile_count = len(existing_lockfile.dependencies)
+            if logger:
+                logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
+                if logger.verbose:
+                    for locked_dep in existing_lockfile.get_all_dependencies():
+                        _sha = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else ""
+                        _ref = locked_dep.resolved_ref if hasattr(locked_dep, 'resolved_ref') and locked_dep.resolved_ref else ""
+                        logger.lockfile_entry(locked_dep.get_unique_key(), ref=_ref, sha=_sha)
 
     apm_modules_dir = project_root / APM_MODULES_DIR
     apm_modules_dir.mkdir(exist_ok=True)
@@ -912,10 +1063,21 @@ def _install_apm_dependencies(
     # Maps dep_key -> resolved_commit (SHA or None) so the cached path can use it
     callback_downloaded = {}
 
+    # Collect transitive dep failures during resolution — they'll be routed to
+    # diagnostics after the DiagnosticCollector is created (later in the flow).
+    transitive_failures: list[tuple[str, str]] = []  # (dep_display, message)
+
     # Create a download callback for transitive dependency resolution
     # This allows the resolver to fetch packages on-demand during tree building
-    def download_callback(dep_ref, modules_dir):
-        """Download a package during dependency resolution."""
+    def download_callback(dep_ref, modules_dir, parent_chain=""):
+        """Download a package during dependency resolution.
+
+        Args:
+            dep_ref: The dependency to download.
+            modules_dir: Target apm_modules directory.
+            parent_chain: Human-readable breadcrumb (e.g. "root > mid")
+                showing which dependency path led to this transitive dep.
+        """
         install_path = dep_ref.get_install_path(modules_dir)
         if install_path.exists():
             return install_path
@@ -952,9 +1114,20 @@ def _install_apm_dependencies(
             callback_downloaded[dep_ref.get_unique_key()] = resolved_sha
             return install_path
         except Exception as e:
-            # Log but don't fail - allow resolution to continue
-            if verbose:
-                _rich_error(f"  └─ Failed to resolve transitive dep {dep_ref.repo_url}: {e}")
+            # Build contextual message including the dependency chain breadcrumb
+            chain_hint = f" (via {parent_chain})" if parent_chain else ""
+            dep_display = dep_ref.get_display_name()
+            fail_msg = (
+                f"Failed to resolve transitive dep "
+                f"{dep_ref.repo_url}{chain_hint}: {e}"
+            )
+            # Verbose: inline detail
+            if logger:
+                logger.verbose_detail(f"  {fail_msg}")
+            elif verbose:
+                _rich_error(f"  └─ {fail_msg}")
+            # Collect for deferred diagnostics summary (always, even non-verbose)
+            transitive_failures.append((dep_display, fail_msg))
             return None
 
     # Resolve dependencies with transitive download support
@@ -966,12 +1139,32 @@ def _install_apm_dependencies(
     try:
         dependency_graph = resolver.resolve_dependencies(project_root)
 
+        # Verbose: show resolved tree summary
+        if logger:
+            tree = dependency_graph.dependency_tree
+            direct_count = len(tree.get_nodes_at_depth(1))
+            transitive_count = len(tree.nodes) - direct_count
+            if transitive_count > 0:
+                logger.verbose_detail(
+                    f"Resolved dependency tree: {direct_count} direct + "
+                    f"{transitive_count} transitive deps (max depth {tree.max_depth})"
+                )
+                for node in tree.nodes.values():
+                    if node.depth > 1:
+                        logger.verbose_detail(
+                            f"    {node.get_ancestor_chain()}"
+                        )
+            else:
+                logger.verbose_detail(f"Resolved {direct_count} direct dependencies (no transitive)")
+
         # Check for circular dependencies
         if dependency_graph.circular_dependencies:
-            _rich_error("Circular dependencies detected:")
+            if logger:
+                logger.error("Circular dependencies detected:")
             for circular in dependency_graph.circular_dependencies:
-                cycle_path = " → ".join(circular.cycle_path)
-                _rich_error(f"  {cycle_path}")
+                cycle_path = " -> ".join(circular.cycle_path)
+                if logger:
+                    logger.error(f"  {cycle_path}")
             raise RuntimeError("Cannot install packages with circular dependencies")
 
         # Get flattened dependencies for installation
@@ -1019,7 +1212,8 @@ def _install_apm_dependencies(
             ]
 
         if not deps_to_install:
-            _rich_info("No APM dependencies to install", symbol="check")
+            if logger:
+                logger.nothing_to_install()
             return InstallResult()
 
         # ------------------------------------------------------------------
@@ -1056,9 +1250,10 @@ def _install_apm_dependencies(
         claude_dir = project_root / CLAUDE_DIR
         if not github_dir.exists() and not claude_dir.exists():
             github_dir.mkdir(parents=True, exist_ok=True)
-            _rich_info(
-                "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
-            )
+            if logger:
+                logger.verbose_detail(
+                    "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
+                )
 
         detected_target, detection_reason = detect_target(
             project_root=project_root,
@@ -1084,6 +1279,11 @@ def _install_apm_dependencies(
         hook_integrator = HookIntegrator()
         instruction_integrator = InstructionIntegrator()
         diagnostics = DiagnosticCollector(verbose=verbose)
+
+        # Drain transitive failures collected during resolution into diagnostics
+        for dep_display, fail_msg in transitive_failures:
+            diagnostics.error(fail_msg, package=dep_display)
+
         total_prompts_integrated = 0
         total_agents_integrated = 0
         total_skills_integrated = 0
@@ -1211,6 +1411,14 @@ def _install_apm_dependencies(
         _pre_downloaded_keys = builtins.set(_pre_download_results.keys())
 
         # Create progress display for sequential integration
+        _auth_resolver = None
+        if verbose:
+            try:
+                from apm_cli.core.auth import AuthResolver
+                _auth_resolver = AuthResolver()
+            except Exception:
+                pass
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[cyan]{task.description}[/cyan]"),
@@ -1242,7 +1450,8 @@ def _install_apm_dependencies(
                         continue
 
                     installed_count += 1
-                    _rich_success(f"✓ {dep_ref.local_path} (local)")
+                    if logger:
+                        logger.download_complete(dep_ref.local_path, ref_suffix="local")
 
                     # Build minimal PackageInfo for integration
                     from apm_cli.models.apm_package import (
@@ -1314,6 +1523,7 @@ def _install_apm_dependencies(
                         if not _pre_deploy_security_scan(
                             install_path, diagnostics,
                             package_name=dep_key, force=force,
+                            logger=logger,
                         ):
                             package_deployed_files[dep_key] = []
                             continue
@@ -1333,6 +1543,7 @@ def _install_apm_dependencies(
                             managed_files=managed_files,
                             diagnostics=diagnostics,
                             package_name=dep_key,
+                            logger=logger,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1350,6 +1561,17 @@ def _install_apm_dependencies(
                         )
 
                     package_deployed_files[dep_key] = dep_deployed_files
+
+                    # In verbose mode, show inline skip/error count for this package
+                    if logger and logger.verbose:
+                        _skip_count = diagnostics.count_for_package(dep_key, "collision")
+                        _err_count = diagnostics.count_for_package(dep_key, "error")
+                        if _skip_count > 0:
+                            noun = "file" if _skip_count == 1 else "files"
+                            logger.package_inline_warning(f"    [!] {_skip_count} {noun} skipped (local files exist)")
+                        if _err_count > 0:
+                            noun = "error" if _err_count == 1 else "errors"
+                            logger.package_inline_warning(f"    [!] {_err_count} integration {noun}")
                     continue
 
                 # npm-like behavior: Branches always fetch latest, only tags/commits use cache
@@ -1401,10 +1623,13 @@ def _install_apm_dependencies(
                 if skip_download and _dep_locked_chk and _dep_locked_chk.content_hash:
                     from ..utils.content_hash import verify_package_hash
                     if not verify_package_hash(install_path, _dep_locked_chk.content_hash):
-                        _rich_warning(
+                        _hash_msg = (
                             f"Content hash mismatch for "
-                            f"{dep_ref.get_unique_key()} — re-downloading"
+                            f"{dep_ref.get_unique_key()} -- re-downloading"
                         )
+                        diagnostics.warn(_hash_msg, package=dep_ref.get_unique_key())
+                        if logger:
+                            logger.progress(_hash_msg)
                         safe_rmtree(install_path, apm_modules_dir)
                         skip_download = False
 
@@ -1413,16 +1638,12 @@ def _install_apm_dependencies(
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
                     )
                     # Show resolved ref from lockfile for consistency with fresh installs
-                    ref_str = ""
+                    _ref = dep_ref.reference or ""
+                    _sha = ""
                     if _dep_locked_chk and _dep_locked_chk.resolved_commit and _dep_locked_chk.resolved_commit != "cached":
-                        short_sha = _dep_locked_chk.resolved_commit[:8]
-                        if dep_ref.reference:
-                            ref_str = f"#{dep_ref.reference} ({short_sha})"
-                        else:
-                            ref_str = f"#{short_sha}"
-                    elif dep_ref.reference:
-                        ref_str = f"#{dep_ref.reference}"
-                    _rich_info(f"✓ {display_name}{ref_str} (cached)")
+                        _sha = _dep_locked_chk.resolved_commit[:8]
+                    if logger:
+                        logger.download_complete(display_name, ref=_ref, sha=_sha, cached=True)
                     installed_count += 1
                     if not dep_ref.reference:
                         unpinned_count += 1
@@ -1506,6 +1727,7 @@ def _install_apm_dependencies(
                         if not _pre_deploy_security_scan(
                             install_path, diagnostics,
                             package_name=dep_key, force=force,
+                            logger=logger,
                         ):
                             package_deployed_files[dep_key] = []
                             continue
@@ -1525,6 +1747,7 @@ def _install_apm_dependencies(
                             managed_files=managed_files,
                             diagnostics=diagnostics,
                             package_name=dep_key,
+                            logger=logger,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1541,6 +1764,17 @@ def _install_apm_dependencies(
                             f"Failed to integrate primitives from cached package: {e}",
                             package=dep_key,
                         )
+
+                    # In verbose mode, show inline skip/error count for this package
+                    if logger and logger.verbose:
+                        _skip_count = diagnostics.count_for_package(dep_key, "collision")
+                        _err_count = diagnostics.count_for_package(dep_key, "error")
+                        if _skip_count > 0:
+                            noun = "file" if _skip_count == 1 else "files"
+                            logger.package_inline_warning(f"    [!] {_skip_count} {noun} skipped (local files exist)")
+                        if _err_count > 0:
+                            noun = "error" if _err_count == 1 else "errors"
+                            logger.package_inline_warning(f"    [!] {_err_count} integration {noun}")
 
                     continue
 
@@ -1588,8 +1822,34 @@ def _install_apm_dependencies(
 
                     # Show resolved ref alongside package name for visibility
                     resolved = getattr(package_info, 'resolved_reference', None)
-                    ref_suffix = f"#{resolved}" if resolved else ""
-                    _rich_success(f"✓ {display_name}{ref_suffix}")
+                    if logger:
+                        _ref = ""
+                        _sha = ""
+                        if resolved:
+                            _ref = resolved.ref_name if resolved.ref_name else ""
+                            _sha = resolved.resolved_commit[:8] if resolved.resolved_commit else ""
+                        logger.download_complete(display_name, ref=_ref, sha=_sha)
+                        # Log auth source for this download (verbose only)
+                        if _auth_resolver:
+                            try:
+                                _host = dep_ref.host or "github.com"
+                                _org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
+                                _ctx = _auth_resolver.resolve(_host, org=_org)
+                                logger.package_auth(_ctx.source, _ctx.token_type or "none")
+                            except Exception:
+                                pass
+                    else:
+                        _ref_suffix = ""
+                        if resolved:
+                            _r = resolved.ref_name if resolved.ref_name else ""
+                            _s = resolved.resolved_commit[:8] if resolved.resolved_commit else ""
+                            if _r and _s:
+                                _ref_suffix = f" #{_r} @{_s}"
+                            elif _r:
+                                _ref_suffix = f" #{_r}"
+                            elif _s:
+                                _ref_suffix = f" @{_s}"
+                        _rich_success(f"[+] {display_name}{_ref_suffix}")
 
                     # Track unpinned deps for aggregated diagnostic
                     if not dep_ref.reference:
@@ -1613,30 +1873,25 @@ def _install_apm_dependencies(
                         package_types[dep_ref.get_unique_key()] = package_info.package_type.value
 
                     # Show package type in verbose mode
-                    if verbose and hasattr(package_info, "package_type"):
+                    if hasattr(package_info, "package_type"):
                         from apm_cli.models.apm_package import PackageType
 
                         package_type = package_info.package_type
-                        if package_type == PackageType.CLAUDE_SKILL:
-                            _rich_info(
-                                f"  └─ Package type: Skill (SKILL.md detected)"
-                            )
-                        elif package_type == PackageType.MARKETPLACE_PLUGIN:
-                            _rich_info(
-                                f"  └─ Package type: Marketplace Plugin (plugin.json detected)"
-                            )
-                        elif package_type == PackageType.HYBRID:
-                            _rich_info(
-                                f"  └─ Package type: Hybrid (apm.yml + SKILL.md)"
-                            )
-                        elif package_type == PackageType.APM_PACKAGE:
-                            _rich_info(f"  └─ Package type: APM Package (apm.yml)")
+                        _type_label = {
+                            PackageType.CLAUDE_SKILL: "Skill (SKILL.md detected)",
+                            PackageType.MARKETPLACE_PLUGIN: "Marketplace Plugin (plugin.json detected)",
+                            PackageType.HYBRID: "Hybrid (apm.yml + SKILL.md)",
+                            PackageType.APM_PACKAGE: "APM Package (apm.yml)",
+                        }.get(package_type)
+                        if _type_label and logger:
+                            logger.package_type_info(_type_label)
 
                     # Auto-integrate prompts and agents if enabled
                     # Pre-deploy security gate
                     if not _pre_deploy_security_scan(
                         package_info.install_path, diagnostics,
                         package_name=dep_ref.get_unique_key(), force=force,
+                        logger=logger,
                     ):
                         package_deployed_files[dep_ref.get_unique_key()] = []
                         continue
@@ -1658,6 +1913,7 @@ def _install_apm_dependencies(
                                 managed_files=managed_files,
                                 diagnostics=diagnostics,
                                 package_name=dep_ref.get_unique_key(),
+                                logger=logger,
                             )
                             total_prompts_integrated += int_result["prompts"]
                             total_agents_integrated += int_result["agents"]
@@ -1676,6 +1932,18 @@ def _install_apm_dependencies(
                                 package=dep_ref.get_unique_key(),
                             )
 
+                        # In verbose mode, show inline skip/error count for this package
+                        if logger and logger.verbose:
+                            pkg_key = dep_ref.get_unique_key()
+                            _skip_count = diagnostics.count_for_package(pkg_key, "collision")
+                            _err_count = diagnostics.count_for_package(pkg_key, "error")
+                            if _skip_count > 0:
+                                noun = "file" if _skip_count == 1 else "files"
+                                logger.package_inline_warning(f"    [!] {_skip_count} {noun} skipped (local files exist)")
+                            if _err_count > 0:
+                                noun = "error" if _err_count == 1 else "errors"
+                                logger.package_inline_warning(f"    [!] {_err_count} integration {noun}")
+
                 except Exception as e:
                     display_name = (
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
@@ -1691,7 +1959,7 @@ def _install_apm_dependencies(
                     continue
 
         # Update .gitignore
-        _update_gitignore_for_apm_modules()
+        _update_gitignore_for_apm_modules(logger=logger)
 
         # ------------------------------------------------------------------
         # Orphan cleanup: remove deployed files for packages that were
@@ -1719,18 +1987,20 @@ def _install_apm_dependencies(
                             _deleted_orphan_paths.append(_target)
                             _removed_orphan_count += 1
                         except Exception as _orphan_err:
-                            _rich_warning(
-                                f"  └─ Could not remove orphaned path {_orphan_path}: {_orphan_err}"
-                            )
+                            _orphan_msg = f"Could not remove orphaned path {_orphan_path}: {_orphan_err}"
+                            diagnostics.error(_orphan_msg)
+                            if logger:
+                                logger.verbose_detail(f"  {_orphan_msg}")
                             _failed_orphan_count += 1
             # Clean up empty parent directories left after file removal
             if _deleted_orphan_paths:
                 BaseIntegrator.cleanup_empty_parents(_deleted_orphan_paths, project_root)
             if _removed_orphan_count > 0:
-                _rich_info(
-                    f"Removed {_removed_orphan_count} file(s) from packages "
-                    "no longer in apm.yml"
-                )
+                if logger:
+                    logger.verbose_detail(
+                        f"Removed {_removed_orphan_count} file(s) from packages "
+                        "no longer in apm.yml"
+                    )
 
         # Generate apm.lock for reproducible installs (T4: lockfile generation)
         if installed_packages:
@@ -1779,27 +2049,34 @@ def _install_apm_dependencies(
                         lockfile = existing
 
                 lockfile.save(lockfile_path)
-                _rich_info(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
+                if logger:
+                    logger.verbose_detail(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
-                _rich_warning(f"Could not generate apm.lock.yaml: {e}")
+                _lock_msg = f"Could not generate apm.lock.yaml: {e}"
+                diagnostics.error(_lock_msg)
+                if logger:
+                    logger.error(_lock_msg)
 
-        # Show link resolution stats if any were resolved
+        # Show integration stats (verbose-only when logger is available)
         if total_links_resolved > 0:
-            _rich_info(f"✓ Resolved {total_links_resolved} context file links")
+            if logger:
+                logger.verbose_detail(f"Resolved {total_links_resolved} context file links")
 
-        # Show Claude commands stats if any were integrated
         if total_commands_integrated > 0:
-            _rich_info(f"✓ Integrated {total_commands_integrated} command(s)")
+            if logger:
+                logger.verbose_detail(f"Integrated {total_commands_integrated} command(s)")
 
-        # Show hooks stats if any were integrated
         if total_hooks_integrated > 0:
-            _rich_info(f"✓ Integrated {total_hooks_integrated} hook(s)")
+            if logger:
+                logger.verbose_detail(f"Integrated {total_hooks_integrated} hook(s)")
 
-        # Show instructions stats if any were integrated
         if total_instructions_integrated > 0:
-            _rich_info(f"✓ Integrated {total_instructions_integrated} instruction(s)")
+            if logger:
+                logger.verbose_detail(f"Integrated {total_instructions_integrated} instruction(s)")
 
-        _rich_success(f"Installed {installed_count} APM dependencies")
+        # Summary is now emitted by the caller via logger.install_summary()
+        if not logger:
+            _rich_success(f"Installed {installed_count} APM dependencies")
 
         if unpinned_count:
             noun = "dependency has" if unpinned_count == 1 else "dependencies have"
@@ -1814,29 +2091,5 @@ def _install_apm_dependencies(
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
 
 
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
 
 
-def _show_install_summary(
-    apm_count: int, prompt_count: int, agent_count: int, mcp_count: int, apm_config
-):
-    """Show post-install summary.
-
-    Args:
-        apm_count: Number of APM packages installed
-        prompt_count: Number of prompts integrated
-        agent_count: Number of agents integrated
-        mcp_count: Number of MCP servers configured
-        apm_config: The apm.yml configuration dict
-    """
-    parts = []
-    if apm_count > 0:
-        parts.append(f"{apm_count} APM package(s)")
-    if mcp_count > 0:
-        parts.append(f"{mcp_count} MCP server(s)")
-    if parts:
-        _rich_success(f"Installation complete: {', '.join(parts)}")
-    else:
-        _rich_success("Installation complete")

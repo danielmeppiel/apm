@@ -2,7 +2,11 @@
     - Use `uv sync` to create the virtual environment and install all dependencies automatically.
     - Use `uv run <command>` to run commands in the uv-managed environment.
     - For development dependencies, use `uv sync --extra dev`.
-- Unit tests are run with pytest, but remember you must activate the virtual environment first as described above.
+- **Running tests**: Use pytest via `uv run`. Prefer targeted test runs during development:
+    - **Targeted (fastest, use during iteration):** `uv run pytest tests/unit/path/to/relevant_test.py -x`
+    - **Unit suite (default validation):** `uv run pytest tests/unit tests/test_console.py -x` (~2,400 tests, matches CI)
+    - **Full suite (only before final commit):** `uv run pytest`
+    - When modifying a specific module, run only its corresponding test file(s) first. Run the full unit suite once as final validation before considering your work done.
 - **Test coverage principle**: When modifying existing code, add tests for the code paths you touch, on top of tests for the new functionality.
 - **Development Workflow**: To run APM from source while working in other directories:
     - Install in development mode: `cd /path/to/awd-cli && uv run pip install -e .`

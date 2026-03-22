@@ -10,18 +10,7 @@ from typing import List, Optional
 from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from ..models.apm_package import APMPackage
 from ..core.target_detection import detect_target
-from .lockfile_enrichment import enrich_lockfile_for_pack
-
-
-# Target prefix mapping ("copilot" and "vscode" both map to .github/)
-_TARGET_PREFIXES = {
-    "copilot": [".github/"],
-    "vscode": [".github/"],
-    "claude": [".claude/"],
-    "cursor": [".cursor/"],
-    "opencode": [".opencode/"],
-    "all": [".github/", ".claude/", ".cursor/", ".opencode/"],
-}
+from .lockfile_enrichment import enrich_lockfile_for_pack, _TARGET_PREFIXES, _filter_files_by_target
 
 
 @dataclass
@@ -33,12 +22,6 @@ class PackResult:
     lockfile_enriched: bool = False
 
 
-def _filter_files_by_target(deployed_files: List[str], target: str) -> List[str]:
-    """Filter deployed file paths by target prefix."""
-    prefixes = _TARGET_PREFIXES.get(target, _TARGET_PREFIXES["all"])
-    return [f for f in deployed_files if any(f.startswith(p) for p in prefixes)]
-
-
 def pack_bundle(
     project_root: Path,
     output_dir: Path,
@@ -47,6 +30,7 @@ def pack_bundle(
     archive: bool = False,
     dry_run: bool = False,
     force: bool = False,
+    logger=None,
 ) -> PackResult:
     """Create a self-contained bundle from installed APM dependencies.
 
@@ -81,6 +65,7 @@ def pack_bundle(
             archive=archive,
             dry_run=dry_run,
             force=force,
+            logger=logger,
         )
 
     lockfile_path = get_lockfile_path(project_root)
@@ -196,10 +181,14 @@ def pack_bundle(
             )
             _scan_findings_total += len(verdict.all_findings)
     if _scan_findings_total:
-        _rich_warning(
+        _warn_msg = (
             f"Bundle contains {_scan_findings_total} hidden character(s) across source files "
             f"— run 'apm audit' to inspect before publishing"
         )
+        if logger:
+            logger.warning(_warn_msg)
+        else:
+            _rich_warning(_warn_msg)
 
     # 6. Build output directory
     bundle_dir = output_dir / f"{pkg_name}-{pkg_version}"

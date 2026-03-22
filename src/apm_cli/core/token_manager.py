@@ -20,6 +20,7 @@ Runtime Requirements:
 
 import os
 import subprocess
+import sys
 from typing import Dict, Optional, Tuple
 
 
@@ -69,6 +70,27 @@ class GitHubTokenManager:
             return False
         return True
 
+    # `git credential fill` may invoke OS credential helpers that show
+    # interactive dialogs (e.g. Windows Credential Manager account picker).
+    # The 60s default prevents false negatives on slow helpers.
+    DEFAULT_CREDENTIAL_TIMEOUT = 60
+    MAX_CREDENTIAL_TIMEOUT = 180
+
+    @classmethod
+    def _get_credential_timeout(cls) -> int:
+        """Return timeout (seconds) for ``git credential fill``.
+
+        Configurable via ``APM_GIT_CREDENTIAL_TIMEOUT`` (1–180).
+        """
+        raw = os.environ.get("APM_GIT_CREDENTIAL_TIMEOUT", "").strip()
+        if not raw:
+            return cls.DEFAULT_CREDENTIAL_TIMEOUT
+        try:
+            val = int(raw)
+        except ValueError:
+            return cls.DEFAULT_CREDENTIAL_TIMEOUT
+        return max(1, min(val, cls.MAX_CREDENTIAL_TIMEOUT))
+
     @staticmethod
     def resolve_credential_from_git(host: str) -> Optional[str]:
         """Resolve a credential from the git credential store.
@@ -89,8 +111,9 @@ class GitHubTokenManager:
                 input=f"protocol=https\nhost={host}\n\n",
                 capture_output=True,
                 text=True,
-                timeout=5,
-                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': ''},
+                timeout=GitHubTokenManager._get_credential_timeout(),
+                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0',
+                     'GIT_ASKPASS': '' if sys.platform != 'win32' else 'echo'},
             )
             if result.returncode != 0:
                 return None

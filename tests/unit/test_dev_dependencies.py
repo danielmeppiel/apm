@@ -412,8 +412,8 @@ class TestValidateAndAddDevDeps:
         )
 
         mock_validate.return_value = True
-        result = _validate_and_add_packages_to_apm_yml(["org/dev-pkg"], dev=True)
-        assert "org/dev-pkg" in result
+        validated, _outcome = _validate_and_add_packages_to_apm_yml(["org/dev-pkg"], dev=True)
+        assert "org/dev-pkg" in validated
 
         with open(apm_yml) as f:
             data = yaml.safe_load(f)

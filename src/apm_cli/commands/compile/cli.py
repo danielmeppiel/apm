@@ -7,15 +7,12 @@ import click
 
 from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME
 from ...compilation import AgentsCompiler, CompilationConfig
+from ...core.command_logger import CommandLogger
 from ...primitives.discovery import discover_primitives
 from ...utils.console import (
-    STATUS_SYMBOLS,
-    _rich_echo,
     _rich_error,
     _rich_info,
     _rich_panel,
-    _rich_success,
-    _rich_warning,
 )
 from .._helpers import (
     _atomic_write,
@@ -250,14 +247,16 @@ def compile(
     * --local-only: Ignore dependencies, compile only local .apm/ primitives
     * --clean: Remove orphaned AGENTS.md files that are no longer generated
     """
+    logger = CommandLogger("compile", verbose=verbose, dry_run=dry_run)
+
     try:
         # Check if this is an APM project first
         from pathlib import Path
 
         if not Path(APM_YML_FILENAME).exists():
-            _rich_error("[x] Not an APM project - no apm.yml found")
-            _rich_info(" To initialize an APM project, run:")
-            _rich_info("   apm init")
+            logger.error("Not an APM project - no apm.yml found")
+            logger.progress(" To initialize an APM project, run:")
+            logger.progress("   apm init")
             sys.exit(1)
 
         # Check if there are any instruction files to compile
@@ -287,59 +286,59 @@ def compile(
             )
 
             if has_empty_apm:
-                _rich_error("[x] No instruction files found in .apm/ directory")
-                _rich_info(" To add instructions, create files like:")
-                _rich_info("   .apm/instructions/coding-standards.instructions.md")
-                _rich_info("   .apm/chatmodes/backend-engineer.chatmode.md")
+                logger.error("No instruction files found in .apm/ directory")
+                logger.progress(" To add instructions, create files like:")
+                logger.progress("   .apm/instructions/coding-standards.instructions.md")
+                logger.progress("   .apm/chatmodes/backend-engineer.chatmode.md")
             else:
-                _rich_error("[x] No APM content found to compile")
-                _rich_info(" To get started:")
-                _rich_info("   1. Install APM dependencies: apm install <owner>/<repo>")
-                _rich_info(
+                logger.error("No APM content found to compile")
+                logger.progress(" To get started:")
+                logger.progress("   1. Install APM dependencies: apm install <owner>/<repo>")
+                logger.progress(
                     "   2. Or create local instructions: mkdir -p .apm/instructions"
                 )
-                _rich_info("   3. Then create .instructions.md or .chatmode.md files")
+                logger.progress("   3. Then create .instructions.md or .chatmode.md files")
 
             if not dry_run:  # Don't exit on dry-run to allow testing
                 sys.exit(1)
 
         # Validation-only mode
         if validate:
-            _rich_info("Validating APM context...", symbol="gear")
+            logger.start("Validating APM context...", symbol="gear")
             compiler = AgentsCompiler(".")
             try:
                 primitives = discover_primitives(".")
             except Exception as e:
-                _rich_error(f"Failed to discover primitives: {e}")
-                _rich_info(f" Error details: {type(e).__name__}")
+                logger.error(f"Failed to discover primitives: {e}")
+                logger.progress(f" Error details: {type(e).__name__}")
                 sys.exit(1)
             validation_errors = compiler.validate_primitives(primitives)
             if validation_errors:
                 _display_validation_errors(validation_errors)
-                _rich_error(f"Validation failed with {len(validation_errors)} errors")
+                logger.error(f"Validation failed with {len(validation_errors)} errors")
                 sys.exit(1)
-            _rich_success("All primitives validated successfully!", symbol="sparkles")
-            _rich_info(f"Validated {primitives.count()} primitives:")
-            _rich_info(f"  * {len(primitives.chatmodes)} chatmodes")
-            _rich_info(f"  * {len(primitives.instructions)} instructions")
-            _rich_info(f"  * {len(primitives.contexts)} contexts")
+            logger.success("All primitives validated successfully!")
+            logger.progress(f"Validated {primitives.count()} primitives:")
+            logger.progress(f"  * {len(primitives.chatmodes)} chatmodes")
+            logger.progress(f"  * {len(primitives.instructions)} instructions")
+            logger.progress(f"  * {len(primitives.contexts)} contexts")
             # Show MCP dependency validation count
             try:
                 from ...models.apm_package import APMPackage
                 apm_pkg = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
                 mcp_count = len(apm_pkg.get_mcp_dependencies())
                 if mcp_count > 0:
-                    _rich_info(f"  * {mcp_count} MCP dependencies")
+                    logger.progress(f"  * {mcp_count} MCP dependencies")
             except Exception:
                 pass
             return
 
         # Watch mode
         if watch:
-            _watch_mode(output, chatmode, no_links, dry_run)
+            _watch_mode(output, chatmode, no_links, dry_run, verbose=verbose)
             return
 
-        _rich_info("Starting context compilation...", symbol="cogs")
+        logger.start("Starting context compilation...", symbol="cogs")
 
         # Auto-detect target if not explicitly provided
         from ...core.target_detection import detect_target, get_target_description
@@ -383,38 +382,36 @@ def compile(
         if config.strategy == "distributed" and not single_agents:
             # Show target-aware message with detection reason
             if detected_target == "minimal":
-                _rich_info(f"Compiling for AGENTS.md only ({detection_reason})")
-                _rich_info(
+                logger.progress(f"Compiling for AGENTS.md only ({detection_reason})")
+                logger.progress(
                     " Create .github/ or .claude/ folder for full integration",
                     symbol="light_bulb",
                 )
             elif detected_target == "vscode" or detected_target == "agents":
-                _rich_info(
+                logger.progress(
                     f"Compiling for AGENTS.md (VSCode/Copilot) - {detection_reason}"
                 )
             elif detected_target == "claude":
-                _rich_info(
+                logger.progress(
                     f"Compiling for CLAUDE.md (Claude Code) - {detection_reason}"
                 )
             else:  # "all"
-                _rich_info(f"Compiling for AGENTS.md + CLAUDE.md - {detection_reason}")
+                logger.progress(f"Compiling for AGENTS.md + CLAUDE.md - {detection_reason}")
 
             if dry_run:
-                _rich_info(
-                    "Dry run mode: showing placement without writing files",
-                    symbol="eye",
+                logger.dry_run_notice(
+                    "showing placement without writing files"
                 )
             if verbose:
-                _rich_info(
-                    "Verbose mode: showing source attribution and optimizer analysis",
-                    symbol="magnifying_glass",
+                logger.verbose_detail(
+                    "Verbose mode: showing source attribution and optimizer analysis"
                 )
         else:
-            _rich_info("Using single-file compilation (legacy mode)", symbol="page")
+            logger.progress("Using single-file compilation (legacy mode)", symbol="page")
 
         # Perform compilation
         compiler = AgentsCompiler(".")
-        result = compiler.compile(config)
+        result = compiler.compile(config, logger=logger)
         compile_has_critical = result.has_critical_security
 
         if result.success:
@@ -427,7 +424,7 @@ def compile(
                     pass
                 else:
                     # Success message for actual compilation
-                    _rich_success("Compilation completed successfully!", symbol="check")
+                    logger.success("Compilation completed successfully!", symbol="check")
 
             else:
                 # Traditional single-file compilation - keep existing logic
@@ -488,30 +485,29 @@ def compile(
                                 if verdict.has_critical:
                                     compile_has_critical = True
                                 if actionable:
-                                    _rich_warning(
+                                    logger.warning(
                                         f"Compiled output contains {actionable} hidden character(s) "
-                                        f"— run 'apm audit --file {output_path}' to inspect"
+                                        f"-- run 'apm audit --file {output_path}' to inspect"
                                     )
                             try:
                                 _atomic_write(output_path, final_content)
                             except OSError as e:
-                                _rich_error(f"Failed to write final AGENTS.md: {e}")
+                                logger.error(f"Failed to write final AGENTS.md: {e}")
                                 sys.exit(1)
                         else:
-                            _rich_info(
+                            logger.progress(
                                 "No changes detected; preserving existing AGENTS.md for idempotency"
                             )
 
                     # Report success at the top
                     if dry_run:
-                        _rich_success(
+                        logger.success(
                             "Context compilation completed successfully (dry run)",
                             symbol="check",
                         )
                     else:
-                        _rich_success(
+                        logger.success(
                             f"Context compiled successfully to {output_path}",
-                            symbol="sparkles",
                         )
 
                     stats = (
@@ -538,16 +534,16 @@ def compile(
         if config.strategy != "distributed" or single_agents:
             # Only show warnings for single-file mode (backward compatibility)
             if result.warnings:
-                _rich_warning(
+                logger.warning(
                     f"Compilation completed with {len(result.warnings)} warnings:"
                 )
                 for warning in result.warnings:
-                    click.echo(f"  [!]  {warning}")
+                    logger.warning(f"  {warning}")
 
         if result.errors:
-            _rich_error(f"Compilation failed with {len(result.errors)} errors:")
+            logger.error(f"Compilation failed with {len(result.errors)} errors:")
             for error in result.errors:
-                click.echo(f"  [x] {error}")
+                logger.error(f"  {error}")
             sys.exit(1)
 
         # Check for orphaned packages after successful compilation
@@ -555,28 +551,28 @@ def compile(
             orphaned_packages = _check_orphaned_packages()
             if orphaned_packages:
                 _rich_blank_line()
-                _rich_warning(
-                    f"[!] Found {len(orphaned_packages)} orphaned package(s) that were included in compilation:"
+                logger.warning(
+                    f"Found {len(orphaned_packages)} orphaned package(s) that were included in compilation:"
                 )
                 for pkg in orphaned_packages:
-                    _rich_info(f"  * {pkg}")
-                _rich_info(" Run 'apm prune' to remove orphaned packages")
+                    logger.progress(f"  * {pkg}")
+                logger.progress(" Run 'apm prune' to remove orphaned packages")
         except Exception:
             pass  # Continue if orphan check fails
 
         # Hard-fail when critical security findings were detected in compiled
         # output. Consistent with apm install and apm unpack behavior.
         if compile_has_critical:
-            _rich_error(
+            logger.error(
                 "Compiled output contains critical hidden characters"
-                " — run 'apm audit' to inspect, 'apm audit --strip' to clean"
+                " -- run 'apm audit' to inspect, 'apm audit --strip' to clean"
             )
             sys.exit(1)
 
     except ImportError as e:
-        _rich_error(f"Compilation module not available: {e}")
-        _rich_info("This might be a development environment issue.")
+        logger.error(f"Compilation module not available: {e}")
+        logger.progress("This might be a development environment issue.")
         sys.exit(1)
     except Exception as e:
-        _rich_error(f"Error during compilation: {e}")
+        logger.error(f"Error during compilation: {e}")
         sys.exit(1)

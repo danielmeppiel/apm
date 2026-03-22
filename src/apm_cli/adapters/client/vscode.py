@@ -32,7 +32,7 @@ class VSCodeClientAdapter(MCPClientAdapter):
         self.registry_client = SimpleRegistryClient(registry_url)
         self.registry_integration = RegistryIntegration(registry_url)
     
-    def get_config_path(self):
+    def get_config_path(self, logger=None):
         """Get the path to the VSCode MCP configuration file in the repository.
         
         Returns:
@@ -50,11 +50,14 @@ class VSCodeClientAdapter(MCPClientAdapter):
             if not vscode_dir.exists():
                 vscode_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            print(f"Warning: Could not create .vscode directory: {e}")
+            if logger:
+                logger.warning(f"Could not create .vscode directory: {e}")
+            else:
+                print(f"Warning: Could not create .vscode directory: {e}")
             
         return str(mcp_config_path)
     
-    def update_config(self, new_config):
+    def update_config(self, new_config, logger=None):
         """Update the VSCode MCP configuration with new values.
         
         Args:
@@ -63,7 +66,7 @@ class VSCodeClientAdapter(MCPClientAdapter):
         Returns:
             bool: True if successful, False otherwise.
         """
-        config_path = self.get_config_path()
+        config_path = self.get_config_path(logger=logger)
         
         try:
             # Write the updated config
@@ -72,16 +75,19 @@ class VSCodeClientAdapter(MCPClientAdapter):
                 
             return True
         except Exception as e:
-            print(f"Error updating VSCode MCP configuration: {e}")
+            if logger:
+                logger.error(f"Error updating VSCode MCP configuration: {e}")
+            else:
+                print(f"Error updating VSCode MCP configuration: {e}")
             return False
     
-    def get_current_config(self):
+    def get_current_config(self, logger=None):
         """Get the current VSCode MCP configuration.
         
         Returns:
             dict: Current VSCode MCP configuration from the local .vscode/mcp.json file.
         """
-        config_path = self.get_config_path()
+        config_path = self.get_config_path(logger=logger)
         
         try:
             try:
@@ -90,10 +96,13 @@ class VSCodeClientAdapter(MCPClientAdapter):
             except (FileNotFoundError, json.JSONDecodeError):
                 return {}
         except Exception as e:
-            print(f"Error reading VSCode MCP configuration: {e}")
+            if logger:
+                logger.error(f"Error reading VSCode MCP configuration: {e}")
+            else:
+                print(f"Error reading VSCode MCP configuration: {e}")
             return {}
     
-    def configure_mcp_server(self, server_url, server_name=None, enabled=True, env_overrides=None, server_info_cache=None, runtime_vars=None):
+    def configure_mcp_server(self, server_url, server_name=None, enabled=True, env_overrides=None, server_info_cache=None, runtime_vars=None, logger=None):
         """Configure an MCP server in VS Code mcp.json file.
         
         This method updates the .vscode/mcp.json file to add or update
@@ -105,6 +114,7 @@ class VSCodeClientAdapter(MCPClientAdapter):
             enabled (bool, optional): Whether to enable the server. Defaults to True.
             env_overrides (dict, optional): Environment variable overrides. Defaults to None.
             server_info_cache (dict, optional): Pre-fetched server info to avoid duplicate registry calls.
+            logger: Optional CommandLogger for structured output.
             
         Returns:
             bool: True if successful, False otherwise.
@@ -113,7 +123,10 @@ class VSCodeClientAdapter(MCPClientAdapter):
             ValueError: If server is not found in registry.
         """
         if not server_url:
-            print("Error: server_url cannot be empty")
+            if logger:
+                logger.error("server_url cannot be empty")
+            else:
+                print("Error: server_url cannot be empty")
             return False
             
         try:
@@ -133,14 +146,17 @@ class VSCodeClientAdapter(MCPClientAdapter):
             server_config, input_vars = self._format_server_config(server_info)
             
             if not server_config:
-                print(f"Unable to configure server: {server_url}")
+                if logger:
+                    logger.error(f"Unable to configure server: {server_url}")
+                else:
+                    print(f"Unable to configure server: {server_url}")
                 return False
             
             # Use provided server name or fallback to server_url
             config_key = server_name or server_url
             
             # Get current config
-            current_config = self.get_current_config()
+            current_config = self.get_current_config(logger=logger)
             
             # Ensure servers and inputs sections exist
             if "servers" not in current_config:
@@ -159,17 +175,23 @@ class VSCodeClientAdapter(MCPClientAdapter):
                     existing_input_ids.add(var.get("id"))
             
             # Update the configuration
-            result = self.update_config(current_config)
+            result = self.update_config(current_config, logger=logger)
             
             if result:
-                print(f"Successfully configured MCP server '{config_key}' for VS Code")
+                if logger:
+                    logger.verbose_detail(f"Configured MCP server '{config_key}' for VS Code")
+                else:
+                    print(f"Successfully configured MCP server '{config_key}' for VS Code")
             return result
             
         except ValueError:
             # Re-raise ValueError for registry errors
             raise
         except Exception as e:
-            print(f"Error configuring MCP server: {e}")
+            if logger:
+                logger.error(f"Error configuring MCP server: {e}")
+            else:
+                print(f"Error configuring MCP server: {e}")
             return False
 
     def _format_server_config(self, server_info):
