@@ -618,14 +618,17 @@ jobs:
             ./dist/apm-windows-x86_64.zip
             ./dist/apm-windows-x86_64.zip.sha256
 
-  # GH-AW Compatibility Gate — validates the released binary works in the
+  # GH-AW Compatibility — validates the released binary works in the
   # exact flow GitHub Agentic Workflows uses (isolated install + pack, no token).
-  # Gates publish-pypi and update-homebrew so broken versions don't reach stable distribution.
+  # Informational: runs as continue-on-error because it depends on external services
+  # (GitHub API, npm, microsoft/apm-action, microsoft/apm-sample-package) that can
+  # fail independently of APM code quality (~4% false-negative rate per execution).
   gh-aw-compat:
     name: GH-AW Compatibility
     needs: [create-release]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
+    continue-on-error: true
     steps:
       - name: Install and pack with apm-action
         uses: microsoft/apm-action@v1
@@ -645,44 +648,10 @@ jobs:
           test -f "${{ steps.pack.outputs.bundle-path }}"
           echo "✅ GH-AW compatibility test passed"
 
-  # Publish Docker image to GitHub Container Registry (all tags, public repos only)
-  publish-docker:
-    name: Publish Docker Image
-    needs: [create-release]
-    if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            # Only tag stable releases as 'latest' (is_prerelease is 'true' or 'false' string)
-            type=raw,value=latest,enable=${{ needs.create-release.outputs.is_prerelease != 'true' }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Warn on failure
+        if: failure()
+        run: |
+          echo "::warning::GH-AW compatibility test failed. This is informational — external dependency may be unavailable. Investigate before next release."
 
   # Publish to PyPI (only stable releases from public repo)
   publish-pypi:

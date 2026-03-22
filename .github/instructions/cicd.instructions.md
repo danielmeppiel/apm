@@ -23,7 +23,6 @@ Four workflows split by trigger and secret requirements:
    - **macOS Intel** uses `build-and-validate-macos-intel` (root node, runs own unit tests — no dependency on `build-and-test`). Builds the binary on every push for early regression feedback; integration + release-validation phases conditional on tag/schedule/dispatch.
    - **macOS ARM** uses `build-and-validate-macos-arm` (root node, tag/schedule/dispatch only — ARM runners are extremely scarce with 2-4h+ queue waits). Only requested when the binary is actually needed for a release.
    - Secrets always available. Full 5-platform binary output (linux x86_64/arm64, darwin x86_64/arm64, windows x86_64).
-   - Docker image published to ghcr.io on tag releases.
 4. **`ci-runtime.yml`** — nightly schedule, manual dispatch, path-filtered push
    - **Linux x86_64 only**. Live inference smoke tests (`apm run`) isolated from release pipeline.
    - Uses `GH_MODELS_PAT` for GitHub Models API access.
@@ -58,18 +57,12 @@ Four workflows split by trigger and secret requirements:
 
 ## Release Flow Dependencies
 - **PR workflow**: ci.yml (build-and-test, Linux-only) then ci-integration.yml via workflow_run (approve → smoke-test → integration-tests → release-validation → report-status, all Linux-only)
-- **Push/Release workflow (Linux + Windows)**: build-and-test → integration-tests → release-validation → create-release → publish-docker + gh-aw-compat → publish-pypi → update-homebrew
+- **Push/Release workflow (Linux + Windows)**: build-and-test → integration-tests → release-validation → create-release → gh-aw-compat (informational, continue-on-error) → publish-pypi → update-homebrew
 - **Push/Release workflow (macOS Intel)**: build-and-validate-macos-intel (root node: unit tests + build always + conditional integration/release-validation) → create-release
 - **Push/Release workflow (macOS ARM)**: build-and-validate-macos-arm (root node, tag/schedule/dispatch only; all phases run) → create-release
 - **Tag Triggers**: Only `v*.*.*` tags trigger full release pipeline
 - **Artifact Retention**: 30 days for debugging failed releases
 - **Cross-workflow artifacts**: ci-integration.yml downloads artifacts from ci.yml using `run-id` and `github-token`
-
-## Docker Image Publishing
-- Built from source using `Dockerfile` at repo root (Python 3.12-slim + git + pip install)
-- Published to `ghcr.io/microsoft/apm` on all tag releases (public repos only)
-- Tags: semver (`0.8.4`), minor (`0.8`), `latest` (stable releases only)
-- Runs after `create-release` job, in parallel with `gh-aw-compat`
 
 ## Fork PR Security Model
 - Fork PRs get unit tests + build via `ci.yml` (no secrets, runs PR code safely)
