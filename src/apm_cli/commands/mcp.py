@@ -292,7 +292,7 @@ def show(ctx, server_name, verbose):
 
 
 @mcp.command(help="List all available MCP servers")
-@click.option("--limit", default=20, help="Number of results to show")
+@click.option("--limit", default=20, show_default=True, help="Number of results to show")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.pass_context
 def list(ctx, limit, verbose):
