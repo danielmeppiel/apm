@@ -156,6 +156,29 @@ class TestDiagnosticCollectorQueryHelpers:
         collisions = dc.by_category()[CATEGORY_COLLISION]
         assert [d.message for d in collisions] == ["first", "second", "third"]
 
+    # ── count_for_package ───────────────────────────────────────────
+
+    def test_count_for_package_filtered_by_category(self):
+        dc = DiagnosticCollector()
+        dc.skip("a.md", package="pkg1")
+        dc.skip("b.md", package="pkg1")
+        dc.error("fail", package="pkg1")
+        dc.warn("w", package="pkg2")
+        assert dc.count_for_package("pkg1", CATEGORY_COLLISION) == 2
+
+    def test_count_for_package_all_categories(self):
+        dc = DiagnosticCollector()
+        dc.skip("a.md", package="pkg1")
+        dc.error("fail", package="pkg1")
+        dc.warn("w", package="pkg1")
+        dc.warn("other", package="pkg2")
+        assert dc.count_for_package("pkg1") == 3
+
+    def test_count_for_package_nonexistent(self):
+        dc = DiagnosticCollector()
+        dc.skip("a.md", package="pkg1")
+        assert dc.count_for_package("nonexistent") == 0
+
 
 # ── DiagnosticCollector — rendering ─────────────────────────────────
 

@@ -303,3 +303,158 @@ class TestInstallLogger:
         logger = InstallLogger()
         logger.download_complete("pkg/repo")
         assert "pkg/repo" in mock_echo.call_args[0][0]
+
+    # --- tree_item ---
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_tree_item_calls_rich_echo_green_no_symbol(self, mock_echo):
+        logger = CommandLogger("test")
+        logger.tree_item("  └─ .github/copilot-instructions.md")
+        mock_echo.assert_called_once_with(
+            "  └─ .github/copilot-instructions.md", color="green"
+        )
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_tree_item_renders_regardless_of_verbose(self, mock_echo):
+        """tree_item always renders — it is not gated on verbose."""
+        logger_quiet = CommandLogger("test", verbose=False)
+        logger_verbose = CommandLogger("test", verbose=True)
+
+        logger_quiet.tree_item("line1")
+        logger_verbose.tree_item("line2")
+
+        assert mock_echo.call_count == 2
+
+    # --- package_inline_warning ---
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_package_inline_warning_verbose(self, mock_echo):
+        logger = CommandLogger("test", verbose=True)
+        logger.package_inline_warning("  ⚠ path collision on file.md")
+        mock_echo.assert_called_once_with(
+            "  ⚠ path collision on file.md", color="yellow"
+        )
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_package_inline_warning_not_verbose(self, mock_echo):
+        logger = CommandLogger("test", verbose=False)
+        logger.package_inline_warning("  ⚠ path collision on file.md")
+        mock_echo.assert_not_called()
+
+    # --- download_complete (structured ref/sha/cached) ---
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_download_complete_ref_and_sha(self, mock_echo):
+        logger = InstallLogger()
+        logger.download_complete("owner/repo", ref="v1.0", sha="abc12345")
+        msg = mock_echo.call_args[0][0]
+        assert "#v1.0" in msg
+        assert "@abc12345" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_download_complete_cached_no_ref(self, mock_echo):
+        logger = InstallLogger()
+        logger.download_complete("owner/repo", ref="", sha="", cached=True)
+        msg = mock_echo.call_args[0][0]
+        assert "(cached)" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_download_complete_ref_sha_and_cached(self, mock_echo):
+        logger = InstallLogger()
+        logger.download_complete("owner/repo", ref="v1.0", sha="abc12345", cached=True)
+        msg = mock_echo.call_args[0][0]
+        assert "#v1.0" in msg
+        assert "(cached)" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_download_complete_legacy_ref_suffix(self, mock_echo):
+        logger = InstallLogger()
+        logger.download_complete("owner/repo", ref_suffix="old-style")
+        msg = mock_echo.call_args[0][0]
+        assert "(old-style)" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_download_complete_no_args(self, mock_echo):
+        logger = InstallLogger()
+        logger.download_complete("owner/repo")
+        msg = mock_echo.call_args[0][0]
+        assert "owner/repo" in msg
+        assert "#" not in msg
+        assert "@" not in msg
+        assert "(cached)" not in msg
+
+    # --- lockfile_entry ---
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_lockfile_entry_sha_verbose(self, mock_echo):
+        logger = InstallLogger(verbose=True)
+        logger.lockfile_entry("owner/repo", sha="abc12345")
+        msg = mock_echo.call_args[0][0]
+        assert "locked at abc12345" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_lockfile_entry_ref_verbose(self, mock_echo):
+        logger = InstallLogger(verbose=True)
+        logger.lockfile_entry("owner/repo", ref="main")
+        msg = mock_echo.call_args[0][0]
+        assert "pinned to main" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_lockfile_entry_no_ref_no_sha_verbose(self, mock_echo):
+        """Unpinned deps omit the line entirely."""
+        logger = InstallLogger(verbose=True)
+        logger.lockfile_entry("owner/repo")
+        mock_echo.assert_not_called()
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_lockfile_entry_not_verbose(self, mock_echo):
+        """All lockfile_entry calls are suppressed when not verbose."""
+        logger = InstallLogger(verbose=False)
+        logger.lockfile_entry("owner/repo", sha="abc12345")
+        logger.lockfile_entry("owner/repo", ref="main")
+        logger.lockfile_entry("owner/repo")
+        mock_echo.assert_not_called()
+
+    # --- package_auth ---
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_package_auth_verbose(self, mock_echo):
+        logger = InstallLogger(verbose=True)
+        logger.package_auth("GITHUB_TOKEN", token_type="fine-grained")
+        msg = mock_echo.call_args[0][0]
+        assert "Auth: GITHUB_TOKEN" in msg
+        assert "(fine-grained)" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_package_auth_not_verbose(self, mock_echo):
+        logger = InstallLogger(verbose=False)
+        logger.package_auth("GITHUB_TOKEN", token_type="fine-grained")
+        mock_echo.assert_not_called()
+
+    # --- package_type_info ---
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_package_type_info_verbose(self, mock_echo):
+        logger = InstallLogger(verbose=True)
+        logger.package_type_info("GitHub repository (rules-only)")
+        msg = mock_echo.call_args[0][0]
+        assert "Package type: GitHub repository (rules-only)" in msg
+
+    @patch("apm_cli.core.command_logger._rich_echo")
+    def test_package_type_info_not_verbose(self, mock_echo):
+        logger = InstallLogger(verbose=False)
+        logger.package_type_info("GitHub repository (rules-only)")
+        mock_echo.assert_not_called()
+
+
+class TestVerboseFlagAcceptance:
+    """Verify CLI commands accept --verbose without crashing on unknown option."""
+
+    def test_uninstall_accepts_verbose_flag(self):
+        from click.testing import CliRunner
+        from apm_cli.commands.uninstall.cli import uninstall
+
+        runner = CliRunner()
+        result = runner.invoke(uninstall, ["some-package", "--verbose"])
+        # exit code 2 = click UsageError (unknown option) — must not happen
+        assert result.exit_code != 2
