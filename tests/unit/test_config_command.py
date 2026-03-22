@@ -29,53 +29,62 @@ class TestConfigShow:
         """Show config when not in an APM project directory."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
-            with patch("apm_cli.commands.config.get_version", return_value="1.2.3"):
-                result = self.runner.invoke(config, [])
+            try:
+                with patch("apm_cli.commands.config.get_version", return_value="1.2.3"):
+                    result = self.runner.invoke(config, [])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
 
     def test_config_show_inside_project(self):
         """Show config when apm.yml is present."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
-            apm_yml = Path(tmp_dir) / "apm.yml"
-            apm_yml.write_text("name: myproject\nversion: '0.1'\n")
-            with (
-                patch("apm_cli.commands.config.get_version", return_value="1.2.3"),
-                patch(
-                    "apm_cli.commands.config._load_apm_config",
-                    return_value={
-                        "name": "myproject",
-                        "version": "0.1",
-                        "entrypoint": "main.md",
-                    },
-                ),
-            ):
-                result = self.runner.invoke(config, [])
+            try:
+                apm_yml = Path(tmp_dir) / "apm.yml"
+                apm_yml.write_text("name: myproject\nversion: '0.1'\n")
+                with (
+                    patch("apm_cli.commands.config.get_version", return_value="1.2.3"),
+                    patch(
+                        "apm_cli.commands.config._load_apm_config",
+                        return_value={
+                            "name": "myproject",
+                            "version": "0.1",
+                            "entrypoint": "main.md",
+                        },
+                    ),
+                ):
+                    result = self.runner.invoke(config, [])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
 
     def test_config_show_inside_project_with_compilation(self):
         """Show config when apm.yml has compilation settings."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
-            apm_yml = Path(tmp_dir) / "apm.yml"
-            apm_yml.write_text("name: myproject\ncompilation:\n  output: AGENTS.md\n")
-            apm_config = {
-                "name": "myproject",
-                "version": "0.1",
-                "compilation": {
-                    "output": "AGENTS.md",
-                    "chatmode": "copilot",
-                    "resolve_links": False,
-                },
-                "dependencies": {"mcp": ["server1", "server2"]},
-            }
-            with (
-                patch("apm_cli.commands.config.get_version", return_value="1.2.3"),
-                patch(
-                    "apm_cli.commands.config._load_apm_config", return_value=apm_config
-                ),
-            ):
-                result = self.runner.invoke(config, [])
+            try:
+                apm_yml = Path(tmp_dir) / "apm.yml"
+                apm_yml.write_text("name: myproject\ncompilation:\n  output: AGENTS.md\n")
+                apm_config = {
+                    "name": "myproject",
+                    "version": "0.1",
+                    "compilation": {
+                        "output": "AGENTS.md",
+                        "chatmode": "copilot",
+                        "resolve_links": False,
+                    },
+                    "dependencies": {"mcp": ["server1", "server2"]},
+                }
+                with (
+                    patch("apm_cli.commands.config.get_version", return_value="1.2.3"),
+                    patch(
+                        "apm_cli.commands.config._load_apm_config", return_value=apm_config
+                    ),
+                ):
+                    result = self.runner.invoke(config, [])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
 
     def test_config_show_rich_import_error_fallback(self):
@@ -85,11 +94,14 @@ class TestConfigShow:
         mock_table_cls = MagicMock(side_effect=ImportError("no rich"))
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
-            with (
-                patch("apm_cli.commands.config.get_version", return_value="0.9.0"),
-                patch.object(rich.table, "Table", side_effect=ImportError("no rich")),
-            ):
-                result = self.runner.invoke(config, [])
+            try:
+                with (
+                    patch("apm_cli.commands.config.get_version", return_value="0.9.0"),
+                    patch.object(rich.table, "Table", side_effect=ImportError("no rich")),
+                ):
+                    result = self.runner.invoke(config, [])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
 
     def test_config_show_fallback_inside_project(self):
@@ -98,22 +110,25 @@ class TestConfigShow:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
-            apm_yml = Path(tmp_dir) / "apm.yml"
-            apm_yml.write_text("name: proj\n")
-            apm_config = {
-                "name": "proj",
-                "version": "1.0",
-                "entrypoint": None,
-                "dependencies": {"mcp": []},
-            }
-            with (
-                patch("apm_cli.commands.config.get_version", return_value="0.9.0"),
-                patch(
-                    "apm_cli.commands.config._load_apm_config", return_value=apm_config
-                ),
-                patch.object(rich.table, "Table", side_effect=ImportError("no rich")),
-            ):
-                result = self.runner.invoke(config, [])
+            try:
+                apm_yml = Path(tmp_dir) / "apm.yml"
+                apm_yml.write_text("name: proj\n")
+                apm_config = {
+                    "name": "proj",
+                    "version": "1.0",
+                    "entrypoint": None,
+                    "dependencies": {"mcp": []},
+                }
+                with (
+                    patch("apm_cli.commands.config.get_version", return_value="0.9.0"),
+                    patch(
+                        "apm_cli.commands.config._load_apm_config", return_value=apm_config
+                    ),
+                    patch.object(rich.table, "Table", side_effect=ImportError("no rich")),
+                ):
+                    result = self.runner.invoke(config, [])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
 
 
