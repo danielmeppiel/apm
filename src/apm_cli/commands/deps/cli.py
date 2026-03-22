@@ -397,7 +397,9 @@ def tree():
 
 
 @deps.command(help="Remove all APM dependencies")
-def clean():
+@click.option("--dry-run", is_flag=True, default=False, help="Show what would be removed without removing")
+@click.option("--yes", "-y", is_flag=True, default=False, help="Skip confirmation prompt")
+def clean(dry_run: bool, yes: bool):
     """Remove entire apm_modules/ directory."""
     logger = CommandLogger("deps-clean")
 
@@ -408,21 +410,30 @@ def clean():
         logger.progress("No apm_modules/ directory found - already clean")
         return
     
-    # Show what will be removed
-    package_count = len([d for d in apm_modules_path.iterdir() if d.is_dir()])
+    # Count actual installed packages (not just top-level dirs like org namespaces or _local)
+    from ._utils import _scan_installed_packages
+    packages = _scan_installed_packages(apm_modules_path)
+    package_count = len(packages)
     
-    logger.warning(f"This will remove the entire apm_modules/ directory ({package_count} packages)")
-    
-    # Confirmation prompt
-    try:
-        from rich.prompt import Confirm
-        confirm = Confirm.ask("Continue?")
-    except ImportError:
-        confirm = click.confirm("Continue?")
-    
-    if not confirm:
-        logger.progress("Operation cancelled")
+    if dry_run:
+        logger.progress(f"Dry run: would remove apm_modules/ ({package_count} package(s))")
+        for pkg in sorted(packages):
+            logger.progress(f"  - {pkg}")
         return
+    
+    logger.warning(f"This will remove the entire apm_modules/ directory ({package_count} package(s))")
+    
+    # Confirmation prompt (skip if --yes provided)
+    if not yes:
+        try:
+            from rich.prompt import Confirm
+            confirm = Confirm.ask("Continue?")
+        except ImportError:
+            confirm = click.confirm("Continue?")
+        
+        if not confirm:
+            logger.progress("Operation cancelled")
+            return
     
     try:
         shutil.rmtree(apm_modules_path)

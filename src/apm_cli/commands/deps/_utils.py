@@ -8,6 +8,29 @@ from ...models.apm_package import APMPackage
 from ...deps.github_downloader import GitHubPackageDownloader
 
 
+def _scan_installed_packages(apm_modules_dir: Path) -> list:
+    """Scan *apm_modules_dir* for installed package paths.
+
+    Walks the tree to find directories containing ``apm.yml`` or ``.apm``,
+    supporting GitHub (2-level), ADO (3-level), and subdirectory packages.
+
+    Returns:
+        List of ``"owner/repo"`` or ``"org/project/repo"`` path keys.
+    """
+    installed: list = []
+    if not apm_modules_dir.exists():
+        return installed
+    for candidate in apm_modules_dir.rglob("*"):
+        if not candidate.is_dir() or candidate.name.startswith("."):
+            continue
+        if not ((candidate / APM_YML_FILENAME).exists() or (candidate / APM_DIR).exists()):
+            continue
+        rel_parts = candidate.relative_to(apm_modules_dir).parts
+        if len(rel_parts) >= 2:
+            installed.append("/".join(rel_parts))
+    return installed
+
+
 def _is_nested_under_package(candidate: Path, apm_modules_path: Path) -> bool:
     """Check if *candidate* is a sub-directory of another installed package.
 
