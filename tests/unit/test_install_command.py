@@ -314,6 +314,46 @@ class TestValidationFailureReasonMessages:
             assert call_args[0][0] == "github.com"  # host
             assert call_args[0][1].endswith("owner/repo")  # operation
 
+    def test_verbose_virtual_package_validation_shows_auth_diagnostics(self):
+        """When virtual package validation fails in verbose mode, auth diagnostics are shown."""
+        from apm_cli.commands.install import _validate_package_exists
+
+        with patch(
+            "apm_cli.deps.github_downloader.GitHubPackageDownloader.validate_virtual_package_exists",
+            return_value=False,
+        ), patch.object(
+            __import__("apm_cli.core.auth", fromlist=["AuthResolver"]).AuthResolver,
+            "resolve",
+            return_value=MagicMock(source="none", token_type="none", token=None),
+        ), patch.object(
+            __import__("apm_cli.core.auth", fromlist=["AuthResolver"]).AuthResolver,
+            "build_error_context",
+            return_value="Authentication failed for accessing owner/repo/skills/my-skill on github.com.\nNo token available.",
+        ) as mock_build_ctx:
+            result = _validate_package_exists("owner/repo/skills/my-skill", verbose=True)
+            assert result is False
+            mock_build_ctx.assert_called_once()
+            call_args = mock_build_ctx.call_args
+            assert call_args[0][0] == "github.com"  # host
+            assert "owner/repo/skills/my-skill" in call_args[0][1]  # operation
+
+    def test_virtual_package_validation_reuses_auth_resolver(self):
+        """Virtual package validation should pass its AuthResolver to the downloader."""
+        from apm_cli.commands.install import _validate_package_exists
+
+        with patch(
+            "apm_cli.deps.github_downloader.GitHubPackageDownloader.__init__",
+            return_value=None,
+        ) as mock_init, patch(
+            "apm_cli.deps.github_downloader.GitHubPackageDownloader.validate_virtual_package_exists",
+            return_value=True,
+        ):
+            _validate_package_exists("owner/repo/skills/my-skill", verbose=False)
+            mock_init.assert_called_once()
+            # The auth_resolver kwarg should be passed (not creating a new one)
+            _, kwargs = mock_init.call_args
+            assert "auth_resolver" in kwargs
+
 
 # ---------------------------------------------------------------------------
 # Transitive dep parent chain breadcrumb
