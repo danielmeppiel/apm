@@ -156,7 +156,14 @@ run_with_timeout() {
 
 # HERO SCENARIO 1: 30-Second Zero-Config
 # Test the exact README flow: runtime setup → run virtual package
+# Gated by APM_RUN_INFERENCE_TESTS — live inference tests are decoupled from
+# the release pipeline and run in ci-runtime.yml (nightly/manual/path-filtered).
 test_hero_zero_config() {
+    if [[ "${APM_RUN_INFERENCE_TESTS:-}" != "1" ]]; then
+        log_info "Skipping HERO SCENARIO 1 (inference tests decoupled — set APM_RUN_INFERENCE_TESTS=1 to enable)"
+        return 0
+    fi
+
     log_test "HERO SCENARIO 1: 30-Second Zero-Config (README lines 35-44)"
     
     # Create temporary directory for this test
@@ -288,22 +295,28 @@ test_hero_guardrailing() {
     log_success "Compiled to AGENTS.md (guardrails active)"
     
     # Step 5: apm run design-review (from installed package)
-    echo "Running: $BINARY_PATH run design-review (with 10s timeout)"
-    echo "--- Command Output Start ---"
-    run_with_timeout 10 "$BINARY_PATH run design-review"
-    exit_code=$?
-    echo "--- Command Output End ---"
-    echo "Exit code: $exit_code"
-    
-    if [[ $exit_code -eq 124 ]]; then
-        # Timeout is expected and OK - prompt started executing
-        log_success "design-review prompt executed with compiled guardrails"
-    elif [[ $exit_code -eq 0 ]]; then
-        log_success "design-review completed successfully"
+    # Gated by APM_RUN_INFERENCE_TESTS — live inference is decoupled from
+    # the release pipeline and runs in ci-runtime.yml.
+    if [[ "${APM_RUN_INFERENCE_TESTS:-}" == "1" ]]; then
+        echo "Running: $BINARY_PATH run design-review (with 10s timeout)"
+        echo "--- Command Output Start ---"
+        run_with_timeout 10 "$BINARY_PATH run design-review"
+        exit_code=$?
+        echo "--- Command Output End ---"
+        echo "Exit code: $exit_code"
+
+        if [[ $exit_code -eq 124 ]]; then
+            # Timeout is expected and OK - prompt started executing
+            log_success "design-review prompt executed with compiled guardrails"
+        elif [[ $exit_code -eq 0 ]]; then
+            log_success "design-review completed successfully"
+        else
+            log_error "apm run design-review failed immediately"
+            cd ..
+            return 1
+        fi
     else
-        log_error "apm run design-review failed immediately"
-        cd ..
-        return 1
+        log_info "Skipping apm run design-review (inference tests decoupled — set APM_RUN_INFERENCE_TESTS=1 to enable)"
     fi
     
     cd ..
@@ -432,11 +445,21 @@ echo ""
     echo "Binary found and executable: $BINARY_PATH"
     
     local tests_passed=0
-    local tests_total=6  # Prerequisites, basic commands, gh-aw compat, runtime setup, 2 hero scenarios
+    local tests_total=5  # Prerequisites, basic commands, gh-aw compat, runtime setup, guardrailing (init/install/compile)
     local dependency_tests_run=false
+    local inference_tests_run=false
+    
+    # Hero scenario 1 (zero-config) is entirely inference-based — only counted when enabled
+    if [[ "${APM_RUN_INFERENCE_TESTS:-}" == "1" ]]; then
+        tests_total=$((tests_total + 1))
+        inference_tests_run=true
+        log_info "Inference tests enabled (APM_RUN_INFERENCE_TESTS=1)"
+    else
+        log_info "Inference tests decoupled — skipping apm run tests (set APM_RUN_INFERENCE_TESTS=1 to enable)"
+    fi
     
     # Add dependency tests to total if available and GITHUB token is present
-    if [[ "$DEPENDENCY_TESTS_AVAILABLE" == "true" ]] && [[ -n "${GITHUB_CLI_PAT:-}" || -n "${GITHUB_TOKEN:-}" ]]; then
+    if [[ "$DEPENDENCY_TESTS_AVAILABLE" == "true" ]] && [[ -n "${GITHUB_APM_PAT:-}" || -n "${GITHUB_TOKEN:-}" ]]; then
         tests_total=$((tests_total + 1))
         dependency_tests_run=true
         log_info "Dependency integration tests will be included"
@@ -475,11 +498,15 @@ echo ""
         log_error "Runtime setup test failed"
     fi
     
-    # HERO SCENARIO 1: 30-second zero-config
-    if test_hero_zero_config; then
-        ((tests_passed++))
+    # HERO SCENARIO 1: 30-second zero-config (only when inference tests enabled)
+    if [[ "$inference_tests_run" == "true" ]]; then
+        if test_hero_zero_config; then
+            ((tests_passed++))
+        else
+            log_error "Hero scenario 1 (30-sec zero-config) failed"
+        fi
     else
-        log_error "Hero scenario 1 (30-sec zero-config) failed"
+        test_hero_zero_config  # Runs but auto-skips and returns 0
     fi
     
     # HERO SCENARIO 2: 2-minute guardrailing
@@ -510,24 +537,29 @@ echo ""
         echo ""
         echo "🚀 Binary is ready for production release"
         echo "📦 End-user experience validated successfully" 
-        echo "🎯 Both README hero scenarios work perfectly"
         echo ""
         echo "Validated user journeys:"
-        echo "  1. Prerequisites (GITHUB_TOKEN) ✅"
+        echo "  1. Prerequisites (GITHUB_APM_PAT) ✅"
         echo "  2. Binary accessibility ✅"
         echo "  3. Runtime setup (copilot) ✅"
         echo "  4. GH-AW compatibility (tokenless install + pack) ✅"
         echo ""
-        echo "  HERO SCENARIO 1: 30-Second Zero-Config ✨"
-        echo "    - Run virtual package directly ✅"
-        echo "    - Auto-install on first run ✅"
-        echo "    - Use cached package on second run ✅"
-        echo ""
+        if [[ "$inference_tests_run" == "true" ]]; then
+            echo "  HERO SCENARIO 1: 30-Second Zero-Config ✨"
+            echo "    - Run virtual package directly ✅"
+            echo "    - Auto-install on first run ✅"
+            echo "    - Use cached package on second run ✅"
+            echo ""
+        fi
         echo "  HERO SCENARIO 2: 2-Minute Guardrailing ✨"
         echo "    - Project initialization ✅"
         echo "    - Install APM packages ✅"
         echo "    - Compile to AGENTS.md guardrails ✅"
-        echo "    - Run prompts with guardrails ✅"
+        if [[ "$inference_tests_run" == "true" ]]; then
+            echo "    - Run prompts with guardrails ✅"
+        else
+            echo "    - Run prompts (decoupled to ci-runtime.yml) ⏭️"
+        fi
         if [[ "$dependency_tests_run" == "true" ]]; then
             echo ""
             echo "  BONUS: Real dependency integration ✅"
