@@ -46,7 +46,7 @@ import json
 import re
 import shutil
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import Any, List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
 
 from apm_cli.integration.base_integrator import BaseIntegrator
@@ -58,6 +58,7 @@ class HookIntegrationResult:
     hooks_integrated: int
     scripts_copied: int
     target_paths: List[Path] = field(default_factory=list)
+    display_payloads: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class HookIntegrator(BaseIntegrator):
@@ -69,6 +70,75 @@ class HookIntegrator(BaseIntegrator):
     - Claude: Merged into .claude/settings.json hooks key + .claude/hooks/<pkg>/
     - Cursor: Merged into .cursor/hooks.json hooks key + .cursor/hooks/<pkg>/
     """
+
+    @staticmethod
+    def _iter_hook_entries(payload: Dict) -> List[Tuple[str, Dict]]:
+        """Flatten hook payloads into ``(event_name, entry_dict)`` pairs."""
+        entries: List[Tuple[str, Dict]] = []
+        hooks = payload.get("hooks", {})
+        if not isinstance(hooks, dict):
+            return entries
+
+        for event_name, matchers in hooks.items():
+            if not isinstance(matchers, list):
+                continue
+            for matcher in matchers:
+                if not isinstance(matcher, dict):
+                    continue
+
+                for key in ("command", "bash", "powershell"):
+                    value = matcher.get(key)
+                    if isinstance(value, str):
+                        entries.append((event_name, {key: value}))
+
+                nested_hooks = matcher.get("hooks", [])
+                if not isinstance(nested_hooks, list):
+                    continue
+                for hook in nested_hooks:
+                    if not isinstance(hook, dict):
+                        continue
+                    for key in ("command", "bash", "powershell"):
+                        value = hook.get(key)
+                        if isinstance(value, str):
+                            entries.append((event_name, {key: value}))
+        return entries
+
+    @staticmethod
+    def _summarize_command(entry: Dict) -> str:
+        """Return a human-readable summary for a single hook command entry."""
+        command = ""
+        for key in ("command", "bash", "powershell"):
+            value = entry.get(key)
+            if isinstance(value, str) and value.strip():
+                command = value.strip()
+                break
+
+        if not command:
+            return "runs hook command"
+
+        for token in command.split():
+            cleaned = token.strip("\"'")
+            if "/" in cleaned or cleaned.startswith("."):
+                return f"runs {cleaned}"
+
+        return f"runs {command}"
+
+    def _build_display_payload(self, target_label: str, output_path: str, source_hook_file: Path, rewritten: Dict) -> Dict[str, Any]:
+        """Build CLI display metadata for an integrated hook file."""
+        actions = []
+        for event_name, entry in self._iter_hook_entries(rewritten):
+            actions.append({
+                "event": event_name,
+                "summary": self._summarize_command(entry),
+            })
+
+        return {
+            "target_label": target_label,
+            "output_path": output_path,
+            "source_hook_file": source_hook_file.name,
+            "actions": actions,
+            "rendered_json": json.dumps(rewritten, indent=2, sort_keys=True),
+        }
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
         """Find all hook JSON files in a package.
@@ -297,6 +367,7 @@ class HookIntegrator(BaseIntegrator):
         hooks_integrated = 0
         scripts_copied = 0
         target_paths: List[Path] = []
+        display_payloads: List[Dict[str, Any]] = []
 
         for hook_file in hook_files:
             data = self._parse_hook_json(hook_file)
@@ -325,6 +396,14 @@ class HookIntegrator(BaseIntegrator):
 
             hooks_integrated += 1
             target_paths.append(target_path)
+            display_payloads.append(
+                self._build_display_payload(
+                    ".github/hooks/",
+                    target_filename,
+                    hook_file,
+                    rewritten,
+                )
+            )
 
             # Copy referenced scripts (individual file tracking)
             for source_file, target_rel in scripts:
@@ -340,6 +419,7 @@ class HookIntegrator(BaseIntegrator):
             hooks_integrated=hooks_integrated,
             scripts_copied=scripts_copied,
             target_paths=target_paths,
+            display_payloads=display_payloads,
         )
 
     def integrate_package_hooks_claude(self, package_info, project_root: Path,
@@ -373,6 +453,7 @@ class HookIntegrator(BaseIntegrator):
         hooks_integrated = 0
         scripts_copied = 0
         target_paths: List[Path] = []
+        display_payloads: List[Dict[str, Any]] = []
 
         # Read existing settings
         settings_path = project_root / ".claude" / "settings.json"
@@ -414,6 +495,14 @@ class HookIntegrator(BaseIntegrator):
                 settings["hooks"][event_name].extend(matchers)
 
             hooks_integrated += 1
+            display_payloads.append(
+                self._build_display_payload(
+                    ".claude/settings.json",
+                    ".claude/settings.json",
+                    hook_file,
+                    rewritten,
+                )
+            )
 
             # Copy referenced scripts
             for source_file, target_rel in scripts:
@@ -437,6 +526,7 @@ class HookIntegrator(BaseIntegrator):
             hooks_integrated=hooks_integrated,
             scripts_copied=scripts_copied,
             target_paths=target_paths,
+            display_payloads=display_payloads,
         )
 
     def integrate_package_hooks_cursor(self, package_info, project_root: Path,
@@ -478,6 +568,7 @@ class HookIntegrator(BaseIntegrator):
         hooks_integrated = 0
         scripts_copied = 0
         target_paths: List[Path] = []
+        display_payloads: List[Dict[str, Any]] = []
 
         # Read existing hooks.json
         hooks_json_path = project_root / ".cursor" / "hooks.json"
@@ -519,6 +610,14 @@ class HookIntegrator(BaseIntegrator):
                 hooks_config["hooks"][event_name].extend(entries)
 
             hooks_integrated += 1
+            display_payloads.append(
+                self._build_display_payload(
+                    ".cursor/hooks.json",
+                    ".cursor/hooks.json",
+                    hook_file,
+                    rewritten,
+                )
+            )
 
             # Copy referenced scripts
             for source_file, target_rel in scripts:
@@ -542,6 +641,7 @@ class HookIntegrator(BaseIntegrator):
             hooks_integrated=hooks_integrated,
             scripts_copied=scripts_copied,
             target_paths=target_paths,
+            display_payloads=display_payloads,
         )
 
     def sync_integration(self, apm_package, project_root: Path,
@@ -674,4 +774,3 @@ class HookIntegrator(BaseIntegrator):
                 stats['files_removed'] += 1
         except (json.JSONDecodeError, OSError):
             stats['errors'] += 1
-

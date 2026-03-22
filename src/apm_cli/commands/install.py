@@ -777,6 +777,27 @@ def _integrate_package_primitives(
         if logger:
             logger.tree_item(msg)
 
+    def _log_hook_details(hook_result):
+        if not logger:
+            return
+        for payload in hook_result.display_payloads:
+            source_name = payload.get("source_hook_file", "hook file")
+            actions = payload.get("actions", [])
+            if actions:
+                for action in actions:
+                    logger.tree_item(
+                        f"    {action['event']}: {action['summary']} ({source_name})"
+                    )
+            else:
+                logger.tree_item(f"    Hook file integrated: {source_name}")
+
+            if logger.verbose:
+                logger.verbose_detail(
+                    f"    Hook JSON ({source_name} -> {payload['output_path']}):"
+                )
+                for line in payload["rendered_json"].splitlines():
+                    logger.verbose_detail(f"      {line}")
+
     # --- prompts ---
     prompt_result = prompt_integrator.integrate_package_prompts(
         package_info, project_root,
@@ -927,6 +948,7 @@ def _integrate_package_primitives(
         if hook_result.hooks_integrated > 0:
             result["hooks"] += hook_result.hooks_integrated
             _log_integration(f"  └─ {hook_result.hooks_integrated} hook(s) integrated -> .github/hooks/")
+            _log_hook_details(hook_result)
         for tp in hook_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
     if integrate_claude:
@@ -938,6 +960,7 @@ def _integrate_package_primitives(
         if hook_result_claude.hooks_integrated > 0:
             result["hooks"] += hook_result_claude.hooks_integrated
             _log_integration(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated -> .claude/settings.json")
+            _log_hook_details(hook_result_claude)
         for tp in hook_result_claude.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
 
@@ -950,6 +973,7 @@ def _integrate_package_primitives(
     if hook_result_cursor.hooks_integrated > 0:
         result["hooks"] += hook_result_cursor.hooks_integrated
         _log_integration(f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated -> .cursor/hooks.json")
+        _log_hook_details(hook_result_cursor)
     for tp in hook_result_cursor.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
 
@@ -2089,7 +2113,6 @@ def _install_apm_dependencies(
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
-
 
 
 
