@@ -57,7 +57,7 @@ Four workflows split by trigger and secret requirements:
 
 ## Release Flow Dependencies
 - **PR workflow**: ci.yml (build-and-test, Linux-only) then ci-integration.yml via workflow_run (approve → smoke-test → integration-tests → release-validation → report-status, all Linux-only)
-- **Push/Release workflow (Linux + Windows)**: build-and-test → integration-tests → release-validation → create-release → gh-aw-compat (informational, continue-on-error) → publish-pypi → update-homebrew
+- **Push/Release workflow (Linux + Windows)**: build-and-test → integration-tests → release-validation → create-release → publish-pypi → update-homebrew (gh-aw-compat runs in parallel, informational)
 - **Push/Release workflow (macOS Intel)**: build-and-validate-macos-intel (root node: unit tests + build always + conditional integration/release-validation) → create-release
 - **Push/Release workflow (macOS ARM)**: build-and-validate-macos-arm (root node, tag/schedule/dispatch only; all phases run) → create-release
 - **Tag Triggers**: Only `v*.*.*` tags trigger full release pipeline
