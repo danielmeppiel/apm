@@ -8,23 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-03-22
+
 ### Added
 
-- Documented `${input:...}` variable support in `headers` and `env` MCP server fields, with runtime support matrix and examples (#343)
-- Parent chain breadcrumb in transitive dependency error messages — failures now show "root-pkg > mid-pkg > failing-dep" (#393)
-- Verbose output coverage: dependency tree resolution summary, auth source/type per download, manifest parsing details, per-dep lockfile SHA, download URL (#393)
-- `DownloadCallback` Protocol type for type-safe resolver callbacks (#393)
-- `DependencyNode.get_ancestor_chain()` method for human-readable dependency ancestry (#393)
-- `diagnostics` parameter threaded through `MCPIntegrator.install()` for deferred warning summaries (#393)
-- Chaos mega-manifest auth acceptance test (`--mega` flag) covering 8 auth scenarios in a single install (#393)
+- Centralized `AuthResolver` with per-(host, org) token resolution, cached and thread-safe — replaces 4 scattered auth implementations (#394)
+- `CommandLogger` and `InstallLogger` base classes for structured CLI output with validation, resolution, and download phases (#394)
+- `--verbose` flag on `uninstall`, `pack`, and `unpack` commands (#394)
+- Verbose output: dependency tree resolution, auth source/type per download, lockfile SHA, package type, inline per-package diagnostics (#394)
+- Parent chain breadcrumb in transitive dependency error messages — "root-pkg > mid-pkg > failing-dep" (#394)
+- `DiagnosticCollector.count_for_package()` for inline per-package verbose hints (#394)
+- Auth flow diagram and package source behavior matrix in authentication docs (#394)
+- Documented `${input:...}` variable support in `headers` and `env` MCP server fields (#349)
 
 ### Changed
 
-- All CLI output now uses ASCII symbols (`[+]`, `[x]`, `[!]`) instead of Unicode characters (`✓`, `✗`, `⚠`) (#393)
-- Migrated `_rich_*` calls to `CommandLogger` across install, compile, uninstall, audit, pack, and bundle modules (#393)
-- "No dependencies found" downgraded from warning to info (non-actionable state) (#393)
-- Lockfile generation failure upgraded from warning to error (actual failure) (#393)
-- Deduplicated `AuthResolver` instantiation in package validation (#393)
+- All CLI output now uses ASCII symbols (`[+]`, `[x]`, `[!]`) instead of Unicode characters (#394)
+- Migrated `_rich_*` calls to `CommandLogger` across install, compile, uninstall, audit, pack, and bundle modules (#394)
+- Verbose ref display uses clean `#tag @sha` format instead of nested parentheses (#394)
+- Integration tree lines (`└─`) no longer have `[i]` prefix — clean visual hierarchy (#394)
+- Global env vars (`GITHUB_APM_PAT`, `GITHUB_TOKEN`, `GH_TOKEN`) apply to all hosts — HTTPS is the security boundary, not host-gating (#394)
+- Credential-fill timeout increased from 5s to 60s (configurable via `APM_GIT_CREDENTIAL_TIMEOUT`, max 180s) — fixes Windows credential picker timeouts (#394)
+
+### Fixed
+
+- Bundle lockfile includes non-target `deployed_files` causing `apm unpack` verification failure when packing with `--target` (#394)
+- Verbose lockfile iteration crashed with `'str' object has no attribute 'resolved_commit'` (#394)
+- CodeQL incomplete URL substring sanitization in test assertions (#394)
+
+### Security
+
+- Bumped `h3` from 1.15.6 to 1.15.9 in docs (#400)
+
+### Removed
+
+- Unused image files: `copilot-banner.png`, `copilot-cli-screenshot.png` (#391)
 
 ## [0.8.3] - 2026-03-20
 
