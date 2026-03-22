@@ -10,7 +10,7 @@ APM works without tokens for public packages on github.com. Authentication is ne
 
 APM resolves tokens per `(host, org)` pair. For each dependency, it walks a resolution chain until it finds a token:
 
-1. **Per-org env var** — `GITHUB_APM_PAT_{ORG}` (checked for any host)
+1. **Per-org env var** — `GITHUB_APM_PAT_{ORG}` (GitHub-like hosts — not ADO)
 2. **Global env vars** — `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` (any host)
 3. **Git credential helper** — `git credential fill` (any host except ADO)
 
@@ -20,11 +20,34 @@ Results are cached per-process — the same `(host, org)` pair is resolved once.
 
 All token-bearing requests use HTTPS. Tokens are never sent over unencrypted connections.
 
+```mermaid
+flowchart TD
+    A[Dependency Reference] --> B{Per-org env var?}
+    B -->|GITHUB_APM_PAT_ORG| C[Use per-org token]
+    B -->|Not set| D{Global env var?}
+    D -->|GITHUB_APM_PAT / GITHUB_TOKEN / GH_TOKEN| E[Use global token]
+    D -->|Not set| F{Git credential fill?}
+    F -->|Found| G[Use credential]
+    F -->|Not found| H[No token]
+
+    E --> I{try_with_fallback}
+    C --> I
+    G --> I
+    H --> I
+
+    I -->|Token works| J[Success]
+    I -->|Token fails| K{Credential-fill fallback}
+    K -->|Found credential| J
+    K -->|No credential| L{Host has public repos?}
+    L -->|Yes| M[Try unauthenticated]
+    L -->|No| N[Auth error with actionable message]
+```
+
 ## Token lookup
 
 | Priority | Variable | Scope | Notes |
 |----------|----------|-------|-------|
-| 1 | `GITHUB_APM_PAT_{ORG}` | Per-org, any host | Org name uppercased, hyphens → underscores |
+| 1 | `GITHUB_APM_PAT_{ORG}` | Per-org, GitHub-like hosts | Org name uppercased, hyphens → underscores |
 | 2 | `GITHUB_APM_PAT` | Any host | Falls back to git credential helpers if rejected |
 | 3 | `GITHUB_TOKEN` | Any host | Shared with GitHub Actions |
 | 4 | `GH_TOKEN` | Any host | Set by `gh auth login` |
@@ -35,6 +58,13 @@ For Azure DevOps, the only token source is `ADO_APM_PAT`.
 For JFrog Artifactory, use `ARTIFACTORY_APM_TOKEN`.
 
 For runtime features (`GITHUB_COPILOT_PAT`), see [Agent Workflows](../../guides/agent-workflows/).
+
+### Configuration variables
+
+| Variable | Purpose |
+|----------|---------|
+| `APM_GIT_CREDENTIAL_TIMEOUT` | Timeout in seconds for `git credential fill` (default: 60, max: 180) |
+| `GITHUB_HOST` | Default host for bare package names (e.g., GHES hostname) |
 
 ## Multi-org setup
 
@@ -133,11 +163,21 @@ apm install mycompany.visualstudio.com/org/project/repo  # legacy URL
 
 Create the PAT at `https://dev.azure.com/{org}/_usersSettings/tokens` with **Code (Read)** permission.
 
+## Package source behavior
+
+| Package source | Host | Auth behavior | Fallback |
+|---|---|---|---|
+| `org/repo` (bare) | `default_host()` | Global env vars → credential fill | Unauth for public repos |
+| `github.com/org/repo` | github.com | Global env vars → credential fill | Unauth for public repos |
+| `contoso.ghe.com/org/repo` | *.ghe.com | Global env vars → credential fill | Auth-only (no public repos) |
+| GHES via `GITHUB_HOST` | ghes.company.com | Global env vars → credential fill | Unauth for public repos |
+| `dev.azure.com/org/proj/repo` | ADO | `ADO_APM_PAT` only | Auth-only |
+
 ## Troubleshooting
 
 ### Rate limits on github.com
 
-APM tries unauthenticated access first for public repos to conserve rate limits. If you hit limits, set any token:
+APM tries unauthenticated access first for public repos to conserve rate limits during validation (e.g., checking if a repo exists). For downloads, authenticated requests are preferred — with unauthenticated fallback for public repos on github.com. If you hit rate limits, set any token:
 
 ```bash
 export GITHUB_TOKEN=ghp_any_valid_token
