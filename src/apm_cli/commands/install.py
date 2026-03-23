@@ -247,8 +247,21 @@ def _validate_package_exists(package, verbose=False):
 
         # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
-            downloader = GitHubPackageDownloader()
-            return downloader.validate_virtual_package_exists(dep_ref)
+            ctx = auth_resolver.resolve_for_dep(dep_ref)
+            host = dep_ref.host or default_host()
+            org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
+            if verbose_log:
+                verbose_log(f"Auth resolved: host={host}, org={org}, source={ctx.source}, type={ctx.token_type}")
+            downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
+            result = downloader.validate_virtual_package_exists(dep_ref)
+            if not result and verbose_log:
+                try:
+                    err_ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
+                    for line in err_ctx.splitlines():
+                        verbose_log(line)
+                except Exception:
+                    pass
+            return result
 
         # For Azure DevOps or GitHub Enterprise (non-github.com hosts),
         # use the downloader which handles authentication properly
