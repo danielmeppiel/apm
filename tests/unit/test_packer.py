@@ -48,15 +48,112 @@ def _setup_project(tmp_path: Path, deployed_files: list[str], *, target: str | N
 class TestFilterFilesByTarget:
     def test_vscode_only(self):
         files = [".github/agents/a.md", ".claude/commands/b.md"]
-        assert _filter_files_by_target(files, "vscode") == [".github/agents/a.md"]
+        result, mappings = _filter_files_by_target(files, "vscode")
+        assert result == [".github/agents/a.md"]
+        assert mappings == {}
 
     def test_claude_only(self):
         files = [".github/agents/a.md", ".claude/commands/b.md"]
-        assert _filter_files_by_target(files, "claude") == [".claude/commands/b.md"]
+        result, mappings = _filter_files_by_target(files, "claude")
+        # .claude/commands/b.md is a direct match; .github/agents/a.md is
+        # cross-mapped to .claude/agents/a.md (agents are target-equivalent).
+        assert ".claude/commands/b.md" in result
+        assert ".claude/agents/a.md" in result
+        assert mappings == {".claude/agents/a.md": ".github/agents/a.md"}
 
     def test_all_includes_both(self):
         files = [".github/agents/a.md", ".claude/commands/b.md"]
-        assert _filter_files_by_target(files, "all") == files
+        result, mappings = _filter_files_by_target(files, "all")
+        assert result == files
+        assert mappings == {}
+
+
+class TestCrossTargetMapping:
+    """Tests for cross-target path mapping in _filter_files_by_target."""
+
+    def test_github_skills_mapped_to_claude(self):
+        """Skills under .github/ are remapped to .claude/ when target=claude."""
+        files = [
+            ".github/skills/my-plugin/",
+            ".github/skills/my-plugin/SKILL.md",
+            ".github/skills/my-plugin/scripts/do-thing.sh",
+        ]
+        result, mappings = _filter_files_by_target(files, "claude")
+        assert ".claude/skills/my-plugin/" in result
+        assert ".claude/skills/my-plugin/SKILL.md" in result
+        assert ".claude/skills/my-plugin/scripts/do-thing.sh" in result
+        assert len(result) == 3
+        assert len(mappings) == 3
+        assert mappings[".claude/skills/my-plugin/SKILL.md"] == ".github/skills/my-plugin/SKILL.md"
+
+    def test_claude_skills_mapped_to_vscode(self):
+        """Reverse mapping: .claude/skills/ -> .github/skills/ for vscode."""
+        files = [".claude/skills/review/SKILL.md"]
+        result, mappings = _filter_files_by_target(files, "vscode")
+        assert result == [".github/skills/review/SKILL.md"]
+        assert mappings == {".github/skills/review/SKILL.md": ".claude/skills/review/SKILL.md"}
+
+    def test_commands_not_mapped(self):
+        """Commands are target-specific and must NOT be cross-mapped."""
+        files = [".github/commands/run.md"]
+        result, mappings = _filter_files_by_target(files, "claude")
+        assert result == []
+        assert mappings == {}
+
+    def test_instructions_not_mapped(self):
+        """Instructions are target-specific and must NOT be cross-mapped."""
+        files = [".github/instructions/rules.md"]
+        result, mappings = _filter_files_by_target(files, "claude")
+        assert result == []
+        assert mappings == {}
+
+    def test_direct_match_not_double_mapped(self):
+        """When file already matches target, it should not be remapped."""
+        files = [
+            ".claude/skills/review/SKILL.md",
+            ".github/skills/review/SKILL.md",
+        ]
+        result, mappings = _filter_files_by_target(files, "claude")
+        # Direct match exists, so no mapping needed
+        assert ".claude/skills/review/SKILL.md" in result
+        # The .github/ version should NOT create a duplicate
+        assert result.count(".claude/skills/review/SKILL.md") == 1
+        assert mappings == {}
+
+    def test_mixed_direct_and_mapped(self):
+        """Mix of direct matches and cross-mapped files."""
+        files = [
+            ".claude/commands/cmd.md",
+            ".github/skills/my-skill/SKILL.md",
+            ".github/agents/helper.md",
+        ]
+        result, mappings = _filter_files_by_target(files, "claude")
+        assert ".claude/commands/cmd.md" in result
+        assert ".claude/skills/my-skill/SKILL.md" in result
+        assert ".claude/agents/helper.md" in result
+        assert len(result) == 3
+        assert len(mappings) == 2  # skills and agents mapped
+
+    def test_cursor_mapping(self):
+        """Skills under .github/ are remapped to .cursor/ when target=cursor."""
+        files = [".github/skills/x/SKILL.md"]
+        result, mappings = _filter_files_by_target(files, "cursor")
+        assert result == [".cursor/skills/x/SKILL.md"]
+        assert mappings == {".cursor/skills/x/SKILL.md": ".github/skills/x/SKILL.md"}
+
+    def test_opencode_mapping(self):
+        """Skills under .github/ are remapped to .opencode/ when target=opencode."""
+        files = [".github/agents/a.md"]
+        result, mappings = _filter_files_by_target(files, "opencode")
+        assert result == [".opencode/agents/a.md"]
+        assert mappings == {".opencode/agents/a.md": ".github/agents/a.md"}
+
+    def test_all_target_no_mapping(self):
+        """Target 'all' should include everything with no mapping."""
+        files = [".github/skills/x/SKILL.md", ".claude/skills/y/SKILL.md"]
+        result, mappings = _filter_files_by_target(files, "all")
+        assert result == files
+        assert mappings == {}
 
 
 class TestPackBundle:
@@ -190,6 +287,72 @@ class TestPackBundle:
 
         assert result.files == [".github/agents/a.md"]
         assert not (result.bundle_path / ".claude").exists()
+
+    def test_pack_cross_target_mapping_github_to_claude(self, tmp_path):
+        """Skills under .github/ are remapped into .claude/ in the bundle."""
+        deployed = [
+            ".github/skills/my-plugin/",
+            ".github/skills/my-plugin/SKILL.md",
+            ".github/skills/my-plugin/scripts/do-thing.sh",
+        ]
+        project = _setup_project(tmp_path, deployed)
+        out = tmp_path / "build"
+
+        result = pack_bundle(project, out, target="claude")
+
+        assert result.mapped_count == 3
+        assert ".claude/skills/my-plugin/SKILL.md" in result.files
+        # Bundle has files at the .claude/ path
+        assert (result.bundle_path / ".claude/skills/my-plugin/SKILL.md").exists()
+        assert (result.bundle_path / ".claude/skills/my-plugin/scripts/do-thing.sh").exists()
+        # No .github/ files in bundle
+        assert not (result.bundle_path / ".github").exists()
+
+    def test_pack_cross_target_mapping_dry_run(self, tmp_path):
+        """Dry-run with cross-target mapping returns correct files and mappings."""
+        deployed = [".github/skills/x/SKILL.md"]
+        project = _setup_project(tmp_path, deployed)
+        out = tmp_path / "build"
+
+        result = pack_bundle(project, out, target="claude", dry_run=True)
+
+        assert ".claude/skills/x/SKILL.md" in result.files
+        assert result.mapped_count == 1
+        assert result.path_mappings[".claude/skills/x/SKILL.md"] == ".github/skills/x/SKILL.md"
+        # Nothing written to disk
+        assert not out.exists()
+
+    def test_pack_cross_target_enriched_lockfile(self, tmp_path):
+        """Enriched lockfile in bundle uses mapped paths and records mapped_from."""
+        deployed = [".github/skills/x/SKILL.md", ".github/agents/a.md"]
+        project = _setup_project(tmp_path, deployed)
+        out = tmp_path / "build"
+
+        result = pack_bundle(project, out, target="claude")
+
+        lock_yaml = yaml.safe_load(
+            (result.bundle_path / "apm.lock.yaml").read_text()
+        )
+        bundle_deployed = lock_yaml["dependencies"][0]["deployed_files"]
+        assert ".claude/skills/x/SKILL.md" in bundle_deployed
+        assert ".claude/agents/a.md" in bundle_deployed
+        # mapped_from recorded in pack section
+        assert "mapped_from" in lock_yaml["pack"]
+
+    def test_pack_cross_target_no_double_map(self, tmp_path):
+        """When both .github/ and .claude/ versions exist, no duplicate."""
+        deployed = [
+            ".github/skills/x/SKILL.md",
+            ".claude/skills/x/SKILL.md",
+        ]
+        project = _setup_project(tmp_path, deployed)
+        out = tmp_path / "build"
+
+        result = pack_bundle(project, out, target="claude")
+
+        # Should contain .claude/ version (direct match), not duplicate
+        assert result.files.count(".claude/skills/x/SKILL.md") == 1
+        assert result.mapped_count == 0
 
     def test_pack_lockfile_enrichment(self, tmp_path):
         deployed = [".github/agents/a.md"]

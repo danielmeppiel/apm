@@ -54,13 +54,29 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force, verbose):
 
         if dry_run:
             logger.dry_run_notice("No files written")
+            if result.mapped_count:
+                logger.info(
+                    f"[dry-run] Would remap {result.mapped_count} file(s) "
+                    f"to match target"
+                )
+                if verbose:
+                    for mapped, original in result.path_mappings.items():
+                        logger.verbose_detail(f"    {original} -> {mapped}")
             if result.files:
                 logger.progress(f"Would pack {len(result.files)} file(s):")
                 for f in result.files:
-                    logger.tree_item(f"  └─ {f}")
+                    logger.tree_item(f"  {f}")
             else:
                 logger.warning("No files to pack")
             return
+
+        if result.mapped_count:
+            logger.info(
+                f"Mapped {result.mapped_count} file(s) to match target"
+            )
+            if verbose:
+                for mapped, original in result.path_mappings.items():
+                    logger.verbose_detail(f"    {original} -> {mapped}")
 
         if not result.files:
             logger.warning("No deployed files found -- empty bundle created")

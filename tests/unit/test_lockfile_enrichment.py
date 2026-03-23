@@ -99,3 +99,73 @@ class TestLockfileEnrichment:
 
         deployed = parsed["dependencies"][0]["deployed_files"]
         assert len(deployed) == 2
+
+    def test_cross_target_mapping_github_to_claude(self):
+        """Skills under .github/ should be remapped to .claude/ in enriched lockfile."""
+        lf = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            version="1.0.0",
+            deployed_files=[
+                ".github/skills/my-plugin/",
+                ".github/skills/my-plugin/SKILL.md",
+            ],
+        )
+        lf.add_dependency(dep)
+
+        result = enrich_lockfile_for_pack(lf, fmt="apm", target="claude")
+        parsed = yaml.safe_load(result)
+
+        deployed = parsed["dependencies"][0]["deployed_files"]
+        assert ".claude/skills/my-plugin/" in deployed
+        assert ".claude/skills/my-plugin/SKILL.md" in deployed
+        assert all(f.startswith(".claude/") for f in deployed)
+
+    def test_cross_target_mapping_records_mapped_from(self):
+        """When mapping occurs, pack section records mapped_from."""
+        lf = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            version="1.0.0",
+            deployed_files=[".github/skills/x/SKILL.md"],
+        )
+        lf.add_dependency(dep)
+
+        result = enrich_lockfile_for_pack(lf, fmt="apm", target="claude")
+        parsed = yaml.safe_load(result)
+
+        assert "mapped_from" in parsed["pack"]
+        assert ".github/skills/" in parsed["pack"]["mapped_from"]
+
+    def test_no_mapped_from_when_no_mapping(self):
+        """When no mapping occurs, pack section should not have mapped_from."""
+        lf = _make_lockfile()
+        result = enrich_lockfile_for_pack(lf, fmt="apm", target="vscode")
+        parsed = yaml.safe_load(result)
+
+        assert "mapped_from" not in parsed["pack"]
+
+    def test_cross_target_commands_not_mapped(self):
+        """Commands should NOT be cross-mapped -- they are target-specific."""
+        lf = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            version="1.0.0",
+            deployed_files=[
+                ".github/commands/run.md",
+                ".github/skills/x/SKILL.md",
+            ],
+        )
+        lf.add_dependency(dep)
+
+        result = enrich_lockfile_for_pack(lf, fmt="apm", target="claude")
+        parsed = yaml.safe_load(result)
+
+        deployed = parsed["dependencies"][0]["deployed_files"]
+        # Skills mapped, commands dropped
+        assert ".claude/skills/x/SKILL.md" in deployed
+        assert ".github/commands/run.md" not in deployed
+        assert ".claude/commands/run.md" not in deployed
