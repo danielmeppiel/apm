@@ -1848,13 +1848,18 @@ author: {dep_ref.repo_url.split('/')[0]}
         
         # Handle virtual packages differently
         if dep_ref.is_virtual:
+            art_proxy = self._parse_artifactory_base_url()
+            if self._is_artifactory_only() and not dep_ref.is_artifactory() and not art_proxy:
+                raise RuntimeError(
+                    f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                    "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                )
             if dep_ref.is_virtual_file():
                 return self.download_virtual_file_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_collection():
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_subdirectory():
                 # When ARTIFACTORY_ONLY is set, download full archive and extract subdir
-                art_proxy = self._parse_artifactory_base_url()
                 if self._is_artifactory_only() and art_proxy:
                     return self._download_subdirectory_from_artifactory(
                         dep_ref, target_path, art_proxy, progress_task_id, progress_obj
