@@ -789,3 +789,56 @@ class TestArtifactoryOnlyMode:
             dl = GitHubPackageDownloader()
             with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
                 dl.download_package("microsoft/some-package", Path("/tmp/test-pkg"))
+
+    def test_virtual_file_errors_without_base_url(self):
+        """ARTIFACTORY_ONLY without ARTIFACTORY_BASE_URL raises for virtual file packages."""
+        with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
+            dl = GitHubPackageDownloader()
+            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+                dl.download_package(
+                    "owner/repo/prompts/deploy.prompt.md", Path("/tmp/test-pkg")
+                )
+
+    def test_virtual_collection_errors_without_base_url(self):
+        """ARTIFACTORY_ONLY without ARTIFACTORY_BASE_URL raises for virtual collection packages."""
+        with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
+            dl = GitHubPackageDownloader()
+            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+                dl.download_package(
+                    "owner/repo/collections/my-collection", Path("/tmp/test-pkg")
+                )
+
+    def test_virtual_subdirectory_errors_without_base_url(self):
+        """ARTIFACTORY_ONLY without ARTIFACTORY_BASE_URL raises for virtual subdirectory packages."""
+        with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
+            dl = GitHubPackageDownloader()
+            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+                dl.download_package(
+                    "owner/repo/skills/my-skill", Path("/tmp/test-pkg")
+                )
+
+    def test_explicit_artifactory_fqdn_virtual_file_passes(self):
+        """Explicit Artifactory FQDN on virtual file dep is NOT blocked by ARTIFACTORY_ONLY."""
+        with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
+            dl = GitHubPackageDownloader()
+            dep = DependencyReference.parse(
+                "art.example.com/artifactory/github/owner/repo/prompts/deploy.prompt.md"
+            )
+            assert dep.is_artifactory()
+            assert dep.is_virtual_file()
+            # Should not raise - explicit Artifactory FQDN bypasses the guard
+            with patch.object(dl, 'download_virtual_file_package', return_value=MagicMock()):
+                dl.download_package(dep, Path("/tmp/test-pkg"))
+
+    def test_explicit_artifactory_fqdn_virtual_collection_passes(self):
+        """Explicit Artifactory FQDN on virtual collection dep is NOT blocked by ARTIFACTORY_ONLY."""
+        with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
+            dl = GitHubPackageDownloader()
+            dep = DependencyReference.parse(
+                "art.example.com/artifactory/github/owner/repo/collections/my-collection"
+            )
+            assert dep.is_artifactory()
+            assert dep.is_virtual_collection()
+            # Should not raise - explicit Artifactory FQDN bypasses the guard
+            with patch.object(dl, 'download_collection_package', return_value=MagicMock()):
+                dl.download_package(dep, Path("/tmp/test-pkg"))
