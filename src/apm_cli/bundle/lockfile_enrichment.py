@@ -124,9 +124,12 @@ def enrich_lockfile_for_pack(
     if all_mappings:
         # Record the source prefixes that were remapped so consumers know the
         # bundle paths differ from the original lockfile.
-        sources = sorted({v.split("/", 2)[0] + "/" + v.split("/", 2)[1] + "/"
-                          for v in all_mappings.values()})
-        pack_meta["mapped_from"] = sources
+        prefixes = set()
+        for v in all_mappings.values():
+            parts = v.split("/")
+            if len(parts) >= 2:
+                prefixes.add(parts[0] + "/" + parts[1] + "/")
+        pack_meta["mapped_from"] = sorted(prefixes)
 
     pack_section = yaml.dump(
         {"pack": pack_meta},

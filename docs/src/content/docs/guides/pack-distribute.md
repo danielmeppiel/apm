@@ -83,6 +83,20 @@ The target flag controls which deployed files are included based on path prefix:
 
 When no target is specified, APM auto-detects from the `target` field in `apm.yml`, falling back to `all`.
 
+### Cross-target path mapping
+
+Skills and agents are semantically identical across targets -- `.github/skills/X` and `.claude/skills/X` contain the same content. When the lockfile records files under a different target prefix than the one you are packing for, APM automatically remaps `skills/` and `agents/` paths:
+
+```
+apm pack --target claude
+# .github/skills/my-plugin/SKILL.md  ->  .claude/skills/my-plugin/SKILL.md
+# .github/agents/helper.md           ->  .claude/agents/helper.md
+```
+
+Only `skills/` and `agents/` are remapped. Commands, instructions, and hooks are target-specific and are never mapped.
+
+The enriched lockfile inside the bundle uses the remapped paths, so the bundle is self-consistent. When mapping occurs, the `pack:` section includes a `mapped_from` field listing the original prefixes.
+
 ## Bundle structure
 
 The bundle mirrors the directory structure that `apm install` produces. It is not an intermediate format — extract it at the project root and the files land exactly where they belong.

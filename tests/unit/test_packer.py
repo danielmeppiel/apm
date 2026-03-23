@@ -57,6 +57,7 @@ class TestFilterFilesByTarget:
         result, mappings = _filter_files_by_target(files, "claude")
         # .claude/commands/b.md is a direct match; .github/agents/a.md is
         # cross-mapped to .claude/agents/a.md (agents are target-equivalent).
+        # Commands are target-specific and are NOT mapped.
         assert ".claude/commands/b.md" in result
         assert ".claude/agents/a.md" in result
         assert mappings == {".claude/agents/a.md": ".github/agents/a.md"}
