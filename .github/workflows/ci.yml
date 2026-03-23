@@ -45,7 +45,7 @@ jobs:
     - name: Lint - no raw str(relative_to) patterns
       run: |
         # Fail if any code uses str(x.relative_to(y)) instead of portable_relpath()
-        if grep -rn 'str(.*\.relative_to(' src/apm_cli/ --include="*.py" | grep -v portable_relpath | grep -v '\.pyc'; then
+        if grep -rn --include="*.py" -P 'str\([^)]*\.relative_to\(' src/apm_cli/ | grep -v portable_relpath | grep -v '\.pyc'; then
           echo "::error::Found raw str(path.relative_to()) calls. Use portable_relpath() from apm_cli.utils.paths instead."
           exit 1
         fi

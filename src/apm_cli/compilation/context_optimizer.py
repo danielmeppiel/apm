@@ -811,10 +811,8 @@ class ContextOptimizer:
             else:
                 # For non-recursive patterns, use fnmatch as before
                 try:
-                    # Resolve both paths to handle symlinks and path inconsistencies
-                    resolved_file = file_path.resolve()
-                    rel_path = resolved_file.relative_to(self.base_dir.resolve())
-                    if fnmatch.fnmatch(str(rel_path), expanded_pattern):
+                    rel_str = portable_relpath(file_path, self.base_dir)
+                    if fnmatch.fnmatch(rel_str, expanded_pattern):
                         return True
                 except ValueError:
                     pass

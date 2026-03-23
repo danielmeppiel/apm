@@ -542,10 +542,7 @@ class DistributedAgentsCompiler:
                     # Add source attribution for individual instructions
                     if placement.source_attribution:
                         source = placement.source_attribution.get(str(instruction.file_path), 'local')
-                        try:
-                            rel_path = portable_relpath(instruction.file_path, self.base_dir)
-                        except ValueError:
-                            rel_path = instruction.file_path
+                        rel_path = portable_relpath(instruction.file_path, self.base_dir)
                         
                         sections.append(f"<!-- Source: {source} {rel_path} -->")
                     

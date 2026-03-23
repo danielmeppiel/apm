@@ -52,9 +52,8 @@ class TestPortableRelpath:
         base = tmp_path / "base"
         base.mkdir()
         result = portable_relpath(other, base)
-        # Should fall back to str(path) — which may vary by platform,
-        # but must not raise an exception
-        assert isinstance(result, str)
+        # Should fall back to str(path) — resolved absolute path
+        assert result == str(other.resolve())
 
     def test_result_never_contains_backslash(self, tmp_path):
         """Returned string never contains backslashes (Windows safety)."""

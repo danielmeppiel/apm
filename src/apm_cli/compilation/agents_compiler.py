@@ -772,11 +772,7 @@ class AgentsCompiler:
         self._log("progress", "")
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = portable_relpath(placement.agents_path, self.base_dir)
-            except ValueError:
-                # Fallback for path resolution issues
-                rel_path = placement.agents_path
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             self._log("verbose_detail", f"{rel_path}")
             self._log("verbose_detail", f"   Instructions: {len(placement.instructions)}")
             self._log("verbose_detail", f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
@@ -796,18 +792,12 @@ class AgentsCompiler:
         self._log("progress", "")
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = portable_relpath(placement.agents_path, self.base_dir)
-            except ValueError:
-                rel_path = placement.agents_path
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             self._log("verbose_detail", f"{rel_path}")
             
             for instruction in placement.instructions:
                 source = getattr(instruction, 'source', 'local')
-                try:
-                    inst_path = portable_relpath(instruction.file_path, self.base_dir)
-                except ValueError:
-                    inst_path = instruction.file_path
+                inst_path = portable_relpath(instruction.file_path, self.base_dir)
                 
                 self._log("verbose_detail", f"   * {instruction.apply_to or 'no pattern'} <- {source} {inst_path}")
             self._log("verbose_detail", "")
@@ -824,10 +814,7 @@ class AgentsCompiler:
         lines = ["Distributed AGENTS.md Placement Summary:", ""]
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = portable_relpath(placement.agents_path, self.base_dir)
-            except ValueError:
-                rel_path = str(placement.agents_path)
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             lines.append(f"{rel_path}")
             lines.append(f"   Instructions: {len(placement.instructions)}")
             lines.append(f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
@@ -854,10 +841,7 @@ class AgentsCompiler:
         ]
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = portable_relpath(placement.agents_path, self.base_dir)
-            except ValueError:
-                rel_path = str(placement.agents_path)
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             lines.append(f"- {rel_path} ({len(placement.instructions)} instructions)")
         
         lines.extend([

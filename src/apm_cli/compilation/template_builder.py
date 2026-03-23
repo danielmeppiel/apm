@@ -48,7 +48,7 @@ def build_conditional_sections(instructions: List[Instruction]) -> str:
                     if instruction.file_path.is_absolute():
                         relative_path = portable_relpath(instruction.file_path, Path.cwd())
                     else:
-                        relative_path = instruction.file_path
+                        relative_path = str(instruction.file_path)
                 except (ValueError, OSError):
                     # Fall back to absolute or given path if relative fails
                     relative_path = instruction.file_path
