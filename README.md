@@ -6,7 +6,11 @@ Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent c
 
 GitHub Copilot · Claude Code · Cursor · OpenCode
 
+[![Handbook](https://img.shields.io/badge/Handbook-Read_Free-blue)](https://danielmeppiel.github.io/apm-handbook/?utm_source=github-readme&utm_medium=referral&utm_campaign=apm-readme)
+
 **[Documentation](https://microsoft.github.io/apm/)** · **[Quick Start](https://microsoft.github.io/apm/getting-started/quick-start/)** · **[CLI Reference](https://microsoft.github.io/apm/reference/cli-commands/)**
+
+> **[The Agentic SDLC Handbook](https://danielmeppiel.github.io/apm-handbook/?utm_source=github-readme&utm_medium=referral&utm_campaign=apm-readme)** -- the methodology behind APM. Free, 62,500 words. Covers the PROSE framework, reference architecture, and everything you need to know about AI-native software development.
 
 ## Why APM
 
