@@ -323,15 +323,16 @@ class TestValidationFailureReasonMessages:
             return_value=False,
         ), patch.object(
             __import__("apm_cli.core.auth", fromlist=["AuthResolver"]).AuthResolver,
-            "resolve",
+            "resolve_for_dep",
             return_value=MagicMock(source="none", token_type="none", token=None),
-        ), patch.object(
+        ) as mock_resolve, patch.object(
             __import__("apm_cli.core.auth", fromlist=["AuthResolver"]).AuthResolver,
             "build_error_context",
             return_value="Authentication failed for accessing owner/repo/skills/my-skill on github.com.\nNo token available.",
         ) as mock_build_ctx:
             result = _validate_package_exists("owner/repo/skills/my-skill", verbose=True)
             assert result is False
+            mock_resolve.assert_called_once()
             mock_build_ctx.assert_called_once()
             call_args = mock_build_ctx.call_args
             assert call_args[0][0] == "github.com"  # host
