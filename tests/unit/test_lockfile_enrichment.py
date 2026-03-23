@@ -56,7 +56,7 @@ class TestLockfileEnrichment:
         assert lf.to_yaml() == original_yaml
 
     def test_filters_deployed_files_by_target(self):
-        """Pack with --target vscode should exclude .claude/ files from lockfile."""
+        """Pack with --target copilot should exclude .claude/ files from lockfile."""
         lf = LockFile()
         dep = LockedDependency(
             repo_url="owner/repo",
@@ -171,7 +171,7 @@ class TestLockfileEnrichment:
         assert ".claude/commands/run.md" not in deployed
 
     def test_copilot_alias_equivalent_to_vscode(self):
-        """'copilot' target should produce the same enriched lockfile as 'vscode'."""
+        """'copilot' target should produce the same enriched lockfile as 'vscode' (deprecated alias)."""
         lf = LockFile()
         dep = LockedDependency(
             repo_url="owner/repo",

@@ -40,7 +40,7 @@ Creates a self-contained bundle from installed dependencies. Reads the `deployed
 apm pack
 
 # Filter by target
-apm pack --target vscode          # only .github/ files
+apm pack --target copilot         # only .github/ files
 apm pack --target claude          # only .claude/ files
 apm pack --target all             # both targets
 
@@ -62,7 +62,7 @@ apm pack --dry-run
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format` | `apm` | Bundle format (`apm` or `plugin`) |
-| `-t, --target` | auto-detect | File filter: `copilot`, `vscode`, `claude`, `cursor`, `opencode`, `all`. `vscode` is an alias for `copilot` |
+| `-t, --target` | auto-detect | File filter: `copilot`, `claude`, `cursor`, `opencode`, `all`. `vscode` is a deprecated alias for `copilot` |
 | `--archive` | off | Produce `.tar.gz` instead of directory |
 | `-o, --output` | `./build` | Output directory |
 | `--dry-run` | off | List files without writing |
@@ -75,7 +75,7 @@ The target flag controls which deployed files are included based on path prefix:
 | Target | Includes |
 |--------|----------|
 | `copilot` | Paths starting with `.github/` |
-| `vscode` | Alias for `copilot` |
+| `vscode` | Deprecated alias for `copilot` |
 | `claude` | Paths starting with `.claude/` |
 | `cursor` | Paths starting with `.cursor/` |
 | `opencode` | Paths starting with `.opencode/` |
@@ -111,7 +111,7 @@ When unpacking, APM reads the bundle's `pack:` metadata and shows the target it 
 $ apm unpack team-skills.tar.gz
 [*] Unpacking team-skills.tar.gz -> .
 [i] Bundle target: claude (1 dep(s), 3 file(s))
-[!] Bundle target 'claude' differs from project target 'vscode'
+[!] Bundle target 'claude' differs from project target 'copilot'
 [+] Unpacked 3 file(s) (verified)
 ```
 
@@ -246,7 +246,7 @@ The bundle includes a copy of `apm.lock.yaml` enriched with a `pack:` section. T
 ```yaml
 pack:
   format: apm
-  target: vscode
+  target: copilot
   packed_at: '2025-07-14T09:30:00+00:00'
 lockfile_version: '1'
 generated_at: '2025-07-14T09:28:00+00:00'

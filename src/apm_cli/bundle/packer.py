@@ -40,7 +40,7 @@ def pack_bundle(
         project_root: Root of the project containing ``apm.lock.yaml`` and ``apm.yml``.
         output_dir: Directory where the bundle will be created.
         fmt: Bundle format  -- ``"apm"`` (default) or ``"plugin"``.
-        target: Target filter  -- ``"vscode"``, ``"claude"``, ``"all"``, or *None*
+        target: Target filter  -- ``"copilot"``, ``"claude"``, ``"all"``, or *None*
             (auto-detect from apm.yml / project structure).
         archive: If *True*, produce a ``.tar.gz`` and remove the directory.
         dry_run: If *True*, resolve the file list but write nothing to disk.

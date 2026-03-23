@@ -21,7 +21,7 @@ _TARGET_PREFIXES = {
 # commands, instructions, hooks are target-specific and are NOT mapped.
 #
 # .github/ is the canonical interop prefix -- install always creates it, so
-# all non-github targets map FROM .github/.  The vscode target additionally
+# all non-github targets map FROM .github/.  The copilot target additionally
 # maps FROM .claude/ for the common case of Claude-first projects packing
 # for Copilot.  Cursor/opencode sources are niche; if someone publishes
 # skills exclusively under .cursor/, they must pack with --target cursor.
@@ -103,7 +103,7 @@ def enrich_lockfile_for_pack(
     Args:
         lockfile: The resolved lockfile to enrich.
         fmt: Bundle format (``"apm"`` or ``"plugin"``).
-        target: Effective target used for packing (``"vscode"``, ``"claude"``, ``"all"``).
+        target: Effective target used for packing (``"copilot"``, ``"claude"``, ``"all"``).
 
     Returns:
         A YAML string with the ``pack:`` block followed by the original

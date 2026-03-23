@@ -46,7 +46,7 @@ def _setup_project(tmp_path: Path, deployed_files: list[str], *, target: str | N
 
 
 class TestFilterFilesByTarget:
-    def test_vscode_only(self):
+    def test_copilot_only(self):
         files = [".github/agents/a.md", ".claude/commands/b.md"]
         result, mappings = _filter_files_by_target(files, "vscode")
         assert result == [".github/agents/a.md"]
@@ -87,8 +87,8 @@ class TestCrossTargetMapping:
         assert len(mappings) == 3
         assert mappings[".claude/skills/my-plugin/SKILL.md"] == ".github/skills/my-plugin/SKILL.md"
 
-    def test_claude_skills_mapped_to_vscode(self):
-        """Reverse mapping: .claude/skills/ -> .github/skills/ for vscode."""
+    def test_claude_skills_mapped_to_copilot(self):
+        """Reverse mapping: .claude/skills/ -> .github/skills/ for copilot."""
         files = [".claude/skills/review/SKILL.md"]
         result, mappings = _filter_files_by_target(files, "vscode")
         assert result == [".github/skills/review/SKILL.md"]
@@ -157,7 +157,7 @@ class TestCrossTargetMapping:
         assert mappings == {}
 
     def test_copilot_alias_same_as_vscode(self):
-        """'copilot' target should produce same result as 'vscode'."""
+        """'copilot' target should produce same result as 'vscode' (deprecated alias)."""
         files = [".claude/skills/x/SKILL.md", ".claude/agents/a.md"]
         result_v, maps_v = _filter_files_by_target(files, "vscode")
         result_c, maps_c = _filter_files_by_target(files, "copilot")
@@ -166,7 +166,7 @@ class TestCrossTargetMapping:
 
 
 class TestPackBundle:
-    def test_pack_apm_format_vscode(self, tmp_path):
+    def test_pack_apm_format_copilot(self, tmp_path):
         deployed = [".github/agents/helper.agent.md", ".github/instructions/rules.md"]
         project = _setup_project(tmp_path, deployed, target="vscode")
         out = tmp_path / "build"
