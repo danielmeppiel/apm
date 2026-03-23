@@ -202,20 +202,19 @@ class GitHubPackageDownloader:
         else:
             env['GIT_CONFIG_GLOBAL'] = '/dev/null'
 
-        # Resolve default host tokens via AuthResolver (backward compat properties)
-        default_ctx = self.auth_resolver.resolve(default_host())
-        self._default_github_ctx = default_ctx
-        self.github_token = default_ctx.token
-        self.has_github_token = default_ctx.token is not None
-        self._github_token_from_credential_fill = (
-            self.has_github_token
-            and self.token_manager.get_token_for_purpose('modules', env) is None
-        )
+        # IMPORTANT: Do not resolve credentials via helpers at construction time.
+        # AuthResolver.resolve(...) can trigger OS credential helper UI. If we do
+        # this eagerly (host-only key) and later resolve per-dependency (host+org),
+        # users can see duplicate auth prompts. Keep constructor token state env-only
+        # and resolve lazily per dependency during clone/validate flows.
+        self._default_github_ctx = None
+        self.github_token = self.token_manager.get_token_for_purpose('modules', env)
+        self.has_github_token = self.github_token is not None
+        self._github_token_from_credential_fill = False
 
-        # Azure DevOps
-        ado_ctx = self.auth_resolver.resolve("dev.azure.com")
-        self.ado_token = ado_ctx.token
-        self.has_ado_token = ado_ctx.token is not None
+        # Azure DevOps (env-only at init; lazy auth resolution happens per dep)
+        self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
+        self.has_ado_token = self.ado_token is not None
 
         # JFrog Artifactory (not host-based, uses dedicated env var)
         self.artifactory_token = self.token_manager.get_token_for_purpose('artifactory_modules', env)

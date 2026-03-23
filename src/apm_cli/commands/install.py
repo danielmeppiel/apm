@@ -39,6 +39,7 @@ dict = builtins.dict
 APM_DEPS_AVAILABLE = False
 _APM_IMPORT_ERROR = None
 try:
+    from ..core.auth import AuthResolver
     from ..deps.apm_resolver import APMDependencyResolver
     from ..deps.github_downloader import GitHubPackageDownloader
     from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
@@ -56,7 +57,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, auth_resolver=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -68,6 +69,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         dry_run: If True, only show what would be added.
         dev: If True, write to devDependencies instead of dependencies.
         logger: InstallLogger for structured output.
+        auth_resolver: Shared auth resolver for caching credentials.
 
     Returns:
         Tuple of (validated_packages list, _ValidationOutcome).
@@ -148,7 +150,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
         # Validate package exists and is accessible
         verbose = bool(logger and logger.verbose)
-        if _validate_package_exists(package, verbose=verbose):
+        if _validate_package_exists(package, verbose=verbose, auth_resolver=auth_resolver):
             valid_outcomes.append((canonical, already_in_deps))
             if logger:
                 logger.validation_pass(canonical, already_present=already_in_deps)
@@ -214,7 +216,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     return validated_packages, outcome
 
 
-def _validate_package_exists(package, verbose=False):
+def _validate_package_exists(package, verbose=False, auth_resolver=None):
     """Validate that a package exists and is accessible on GitHub, Azure DevOps, or locally."""
     import os
     import subprocess
@@ -222,7 +224,9 @@ def _validate_package_exists(package, verbose=False):
     from apm_cli.core.auth import AuthResolver
 
     verbose_log = (lambda msg: _rich_echo(f"  {msg}", color="dim")) if verbose else None
-    auth_resolver = AuthResolver()
+    # Use provided resolver or create new one if not in a CLI session context
+    if auth_resolver is None:
+        auth_resolver = AuthResolver()
 
     try:
         # Parse the package to check if it's a virtual package or ADO
@@ -252,8 +256,8 @@ def _validate_package_exists(package, verbose=False):
             org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
             if verbose_log:
                 verbose_log(f"Auth resolved: host={host}, org={org}, source={ctx.source}, type={ctx.token_type}")
-            downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
-            result = downloader.validate_virtual_package_exists(dep_ref)
+            virtual_downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
+            result = virtual_downloader.validate_virtual_package_exists(dep_ref)
             if not result and verbose_log:
                 try:
                     err_ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
@@ -268,13 +272,13 @@ def _validate_package_exists(package, verbose=False):
         if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
             from apm_cli.utils.github_host import is_github_hostname, is_azure_devops_hostname
 
-            downloader = GitHubPackageDownloader()
+            ado_downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
             # Set the host
             if dep_ref.host:
-                downloader.github_host = dep_ref.host
+                ado_downloader.github_host = dep_ref.host
 
             # Build authenticated URL using downloader's auth
-            package_url = downloader._build_repo_url(
+            package_url = ado_downloader._build_repo_url(
                 dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref
             )
 
@@ -283,11 +287,11 @@ def _validate_package_exists(package, verbose=False):
             # This mirrors _clone_with_fallback() which does the same relaxation.
             is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
             if is_generic:
-                validate_env = {k: v for k, v in downloader.git_env.items()
+                validate_env = {k: v for k, v in ado_downloader.git_env.items()
                                 if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
                 validate_env['GIT_TERMINAL_PROMPT'] = '0'
             else:
-                validate_env = {**os.environ, **downloader.git_env}
+                validate_env = {**os.environ, **ado_downloader.git_env}
 
             if verbose_log:
                 verbose_log(f"Trying git ls-remote for {dep_ref.host}")
@@ -491,6 +495,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         is_partial = bool(packages)
         logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
 
+        # Create shared auth resolver for all downloads in this CLI invocation
+        # to ensure credentials are cached and reused (prevents duplicate auth popups)
+        auth_resolver = AuthResolver()
+
         # Check if apm.yml exists
         apm_yml_exists = Path(APM_YML_FILENAME).exists()
 
@@ -512,7 +520,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # If packages are specified, validate and add them to apm.yml first
         if packages:
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
-                packages, dry_run, dev=dev, logger=logger,
+                packages, dry_run, dev=dev, logger=logger, auth_resolver=auth_resolver,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -613,6 +621,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    auth_resolver=auth_resolver,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -1023,6 +1032,7 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    auth_resolver: "AuthResolver" = None,
 ):
     """Install APM package dependencies.
 
@@ -1034,6 +1044,7 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        auth_resolver: Shared auth resolver for caching credentials
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -1066,8 +1077,12 @@ def _install_apm_dependencies(
     apm_modules_dir = project_root / APM_MODULES_DIR
     apm_modules_dir.mkdir(exist_ok=True)
 
+    # Use provided resolver or create new one if not in a CLI session context
+    if auth_resolver is None:
+        auth_resolver = AuthResolver()
+
     # Create downloader early so it can be used for transitive dependency resolution
-    downloader = GitHubPackageDownloader()
+    downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
 
     # Track direct dependency keys so the download callback can distinguish them from transitive
     direct_dep_keys = builtins.set(dep.get_unique_key() for dep in apm_deps)

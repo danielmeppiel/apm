@@ -182,25 +182,26 @@ class AuthResolver:
         """Resolve auth for *(host, org)*.  Cached & thread-safe."""
         key = (host.lower() if host else host, org.lower() if org else org)
         with self._lock:
-            if key in self._cache:
-                return self._cache[key]
+            cached = self._cache.get(key)
+            if cached is not None:
+                return cached
 
-        host_info = self.classify_host(host)
-        token, source = self._resolve_token(host_info, org)
-        token_type = self.detect_token_type(token) if token else "unknown"
-        git_env = self._build_git_env(token)
+            # Keep cache fill inside the lock to avoid concurrent duplicate
+            # credential-helper lookups for the same host/org.
+            host_info = self.classify_host(host)
+            token, source = self._resolve_token(host_info, org)
+            token_type = self.detect_token_type(token) if token else "unknown"
+            git_env = self._build_git_env(token)
 
-        ctx = AuthContext(
-            token=token,
-            source=source,
-            token_type=token_type,
-            host_info=host_info,
-            git_env=git_env,
-        )
-
-        with self._lock:
+            ctx = AuthContext(
+                token=token,
+                source=source,
+                token_type=token_type,
+                host_info=host_info,
+                git_env=git_env,
+            )
             self._cache[key] = ctx
-        return ctx
+            return ctx
 
     def resolve_for_dep(self, dep_ref: "DependencyReference") -> AuthContext:
         """Resolve auth from a ``DependencyReference``."""
