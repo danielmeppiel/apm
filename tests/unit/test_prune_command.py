@@ -18,7 +18,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 from click.testing import CliRunner
 
 from apm_cli.cli import cli
@@ -258,6 +257,8 @@ class TestPruneCommand:
             ):
                 result = self.runner.invoke(cli, ["prune"])
 
+            # Command should continue gracefully and not fail the whole prune run
+            assert result.exit_code == 0
             # Should report the failure (not crash silently)
             assert "bad-org/bad-repo" in result.output or "Failed" in result.output
 
@@ -281,11 +282,13 @@ dependencies:
             _write_lockfile(tmp, lockfile_content)
             result = self.runner.invoke(cli, ["prune"])
             assert result.exit_code == 0
-            lockfile_path = tmp / "apm.lock"
-            # When all packages are pruned, lockfile should be removed
-            assert lockfile_path.exists() or "orphan-org/orphan-repo" not in (
-                lockfile_path.read_text() if lockfile_path.exists() else ""
-            )
+            lockfile_path = tmp / "apm.lock.yaml"
+            # When the package is pruned, its lockfile entry should be removed;
+            # the lockfile itself may also be deleted.
+            if lockfile_path.exists():
+                assert "orphan-org/orphan-repo" not in lockfile_path.read_text()
+            else:
+                pass
 
     def test_prune_removes_lockfile_entry_exact(self):
         """prune deletes apm.lock.yaml when it only contained the pruned package."""
@@ -335,7 +338,7 @@ dependencies:
             assert not deployed.exists(), "Deployed file must be removed by prune"
 
     def test_prune_deletes_lockfile_when_empty(self):
-        """prune deletes apm.lock entirely when all dependencies are pruned."""
+        """prune deletes apm.lock.yaml entirely when all dependencies are pruned."""
         lockfile_content = """\
 version: 1
 dependencies:
@@ -386,7 +389,7 @@ dependencies:
     # ------------------------------------------------------------------
 
     def test_prune_works_without_lockfile(self):
-        """prune removes orphaned packages even when no apm.lock exists."""
+        """prune removes orphaned packages even when no apm.lock.yaml exists."""
         with self._chdir_tmp() as tmp:
             (tmp / "apm.yml").write_text(_APM_YML_NO_DEPS)
             orphan_dir = _make_package_dir(tmp, "orphan-org", "orphan-repo")
