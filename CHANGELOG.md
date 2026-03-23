@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `gh-aw-compat` is now informational (`continue-on-error: true`) — non-deterministic external dependencies should not block releases (#371)
 - Copilot encoding instructions: `encoding.instructions.md` (`applyTo: "**"`) bans non-ASCII characters in source and CLI output; updated `copilot-instructions.md` and `cli.instructions.md` to use ASCII bracket notation (`[+]`/`[!]`/`[x]`/`[i]`/`[*]`/`[>]`) instead of emoji STATUS_SYMBOLS (#282)
 
+### Fixed
+
+- Resolved Windows 8.3 short-name path mismatch: call `.resolve()` on both sides of `relative_to()` in `_generate_placement_summary` and `_generate_distributed_summary` so paths display correctly on Windows CI runners (#411)
+
 ## [0.8.4] - 2026-03-22
 
 ### Added
