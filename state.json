@@ -1,26 +1,27 @@
 {
-  "last_updated": "2026-03-22T01:06:36Z",
+  "last_updated": "2026-03-23T01:06:46Z",
   "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit/ --no-header -q",
     "test_with_coverage": "python3 -m uv run pytest tests/unit/ --no-header -q --cov=apm_cli --cov-report=term-missing",
     "format": "python3 -m uv run black . && python3 -m uv run isort .",
     "install_dev": "python3 -m uv sync --extra dev",
-    "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'"
+    "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'. Lockfile is apm.lock.yaml (not apm.lock). Legacy apm.lock still supported via migration."
   },
   "coverage_baseline": {
     "total": "61%",
-    "run_date": "2026-03-22",
-    "test_count": 2290,
-    "passing": 2290,
+    "run_date": "2026-03-23",
+    "test_count": 2613,
+    "passing": 2613,
     "pre_existing_failures": 0,
-    "notes": "All 2290 tests pass as of 2026-03-22. +29 new tests for constitution_block and injector."
+    "notes": "All 2613 tests pass as of 2026-03-23. +20 new tests for prune command."
   },
   "monthly_activity_issue": "open-2026-03",
   "monthly_activity_issue_number": 352,
   "yaml_pollution_note": "Running tests with --cov causes PyYAML global state corruption from some earlier test. Tests pass without --cov.",
   "ansi_strip_note": "7 ANSI failures fully resolved as of 2026-03-16. No longer a concern.",
   "config_bug_note": "set_auto_integrate/get_auto_integrate were missing from apm_cli/config.py - fixed in PR 2026-03-19.",
+  "lockfile_format_note": "Lockfile is apm.lock.yaml (LOCKFILE_NAME constant). Legacy apm.lock read via get_lockfile_path fallback. Tests should write apm.lock.yaml.",
   "testing_backlog": [
     {"id": "config-command", "file": "src/apm_cli/commands/config.py", "coverage": "100%", "priority": "done", "notes": "PR #366 open. 23 tests."},
     {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "90%", "priority": "done", "notes": "PR #351 open."},
@@ -28,11 +29,11 @@
     {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "90%", "priority": "done", "notes": "PR #380 open. 53 tests."},
     {"id": "teardown-cleanup", "file": "tests/unit/test_deps.py, test_env_variables.py, test_vscode_adapter.py, test_helpers.py, workflow/test_workflow.py", "priority": "done", "notes": "PR created 2026-03-21, closes #185."},
     {"id": "constitution-injector", "file": "src/apm_cli/compilation/constitution_block.py, injector.py", "coverage_before": "53%/44%", "coverage_after": "93%/95%", "priority": "done", "notes": "PR created 2026-03-22. 29 tests."},
-    {"id": "prune-command", "file": "src/apm_cli/commands/prune.py", "coverage": "14%", "priority": "medium", "notes": "Good candidate for next run. 148 lines, user-facing CLI command."},
-    {"id": "run-command", "file": "src/apm_cli/commands/run.py", "coverage": "12%", "priority": "low", "notes": "Requires ScriptRunner mocking."},
+    {"id": "prune-command", "file": "src/apm_cli/commands/prune.py", "coverage_before": "14%", "coverage_after": "91%", "priority": "done", "notes": "PR created 2026-03-23. 20 tests."},
+    {"id": "run-command", "file": "src/apm_cli/commands/run.py", "coverage": "12%", "priority": "medium", "notes": "Next candidate. Requires ScriptRunner mocking."},
     {"id": "registry-operations", "file": "src/apm_cli/registry/operations.py", "coverage": "14%", "priority": "low", "notes": "Heavy network dependency."}
   ],
-  "backlog_cursor": "prune-command",
+  "backlog_cursor": "run-command",
   "open_test_assist_prs": [
     {"number": 221, "title": "test: add unit tests for AgentsCompiler (65%->82%)", "branch": "test-assist/agents-compiler-coverage-1773105017-70450d4bafccea6d", "ci": "passing"},
     {"number": 291, "title": "fix(tests): strip ANSI codes before plain-text assertions", "branch": "test-assist/fix-ansi-failures-2026-03-14-4cae0cad88219467", "ci": "passing", "note": "may be superseded"},
@@ -42,9 +43,19 @@
     {"number": 366, "title": "[Test Improver] test: add unit tests for config command (22% -> 100%) + fix missing functions", "branch": "test-assist/config-command-coverage-23274791617-f5fc9b556fa309ac", "ci": "passing"},
     {"number": 380, "title": "[Test Improver] test: add unit tests for RuntimeManager and runtime CLI", "branch": "test-assist/runtime-manager-coverage-23324556076-2111a21d57ba6a0f", "ci": "passing"},
     {"number": null, "title": "[Test Improver] test: replace gc.collect+sleep teardown with shutil.rmtree(ignore_errors=True)", "branch": "test-assist/fix-teardown-gc-sleep-23368659522", "ci": "pending", "note": "created 2026-03-21"},
-    {"number": null, "title": "[Test Improver] test: add unit tests for constitution_block and ConstitutionInjector", "branch": "test-assist/constitution-injector-coverage-1774141812", "ci": "pending", "note": "created 2026-03-22"}
+    {"number": null, "title": "[Test Improver] test: add unit tests for constitution_block and ConstitutionInjector", "branch": "test-assist/constitution-injector-coverage-1774141812", "ci": "pending", "note": "created 2026-03-22"},
+    {"number": null, "title": "[Test Improver] test: add unit tests for prune command (14% -> 91%)", "branch": "test-assist/prune-command-coverage-23417039631", "ci": "pending", "note": "created 2026-03-23"}
   ],
   "completed_work": [
+    {
+      "run": "2026-03-23T01:06:46Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/prune-command-coverage-23417039631",
+      "pr_status": "pr_created",
+      "description": "Task3: 20 new tests for prune command (14%->91%). 2613 total tests passing.",
+      "coverage_before": {"prune": "14%"},
+      "coverage_after": {"prune": "91%"}
+    },
     {
       "run": "2026-03-22T01:06:36Z",
       "tasks": ["task3", "task7"],
@@ -60,15 +71,6 @@
       "branch": "test-assist/fix-teardown-gc-sleep-23368659522",
       "pr_status": "pr_created",
       "description": "Task4: all 7 open TI PRs have passing CI. Task3: fixed gc.collect+sleep teardown pattern in 5 test files (closes #185). 2261 tests passing."
-    },
-    {
-      "run": "2026-03-20T01:07:42Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/runtime-manager-coverage-23324556076",
-      "pr_status": "pr_created",
-      "coverage_before": {"runtime_manager": "49%", "commands_runtime": "20%"},
-      "coverage_after": {"runtime_manager": "90%", "commands_runtime": "92%"},
-      "description": "Added 53 tests for runtime/manager.py (49%->90%) and commands/runtime.py (20%->92%). 2157 passing."
     }
   ]
 }
