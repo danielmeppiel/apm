@@ -52,38 +52,38 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force, verbose):
             logger=logger,
         )
 
+        mapping_summary = _mapping_summary(result.path_mappings)
+
         if dry_run:
-            logger.dry_run_notice("No files written")
             if result.mapped_count:
-                logger.info(
-                    f"[dry-run] Would remap {result.mapped_count} file(s) "
-                    f"to match target"
+                logger.dry_run_notice(
+                    f"Would remap {result.mapped_count} file(s){mapping_summary}"
                 )
-                if verbose:
-                    for mapped, original in result.path_mappings.items():
-                        logger.verbose_detail(f"    {original} -> {mapped}")
+                for mapped, original in result.path_mappings.items():
+                    logger.verbose_detail(f"    {original} -> {mapped}")
             if result.files:
-                logger.progress(f"Would pack {len(result.files)} file(s):")
+                logger.dry_run_notice(
+                    f"Would pack {len(result.files)} file(s) -> {result.bundle_path}"
+                )
                 for f in result.files:
                     logger.tree_item(f"  {f}")
             else:
-                logger.warning("No files to pack")
+                _warn_empty(logger, target, result)
             return
 
         if result.mapped_count:
-            logger.info(
-                f"Mapped {result.mapped_count} file(s) to match target"
+            logger.progress(
+                f"Mapped {result.mapped_count} file(s){mapping_summary}"
             )
-            if verbose:
-                for mapped, original in result.path_mappings.items():
-                    logger.verbose_detail(f"    {original} -> {mapped}")
+            for mapped, original in result.path_mappings.items():
+                logger.verbose_detail(f"    {original} -> {mapped}")
 
         if not result.files:
-            logger.warning("No deployed files found -- empty bundle created")
+            _warn_empty(logger, target, result)
         else:
             logger.success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
             for f in result.files:
-                logger.verbose_detail(f"    └─ {f}")
+                logger.verbose_detail(f"    {f}")
             if fmt == "plugin":
                 logger.progress(
                     "Plugin bundle ready -- contains plugin.json and "
@@ -169,3 +169,33 @@ def _log_unpack_file_list(result, logger):
     else:
         for f in result.files:
             logger.tree_item(f"  └─ {f}")
+
+
+def _mapping_summary(path_mappings):
+    """Build a compact ': src/ -> dst/' suffix from path mappings, or empty string."""
+    if not path_mappings:
+        return ""
+    # Derive source and destination prefixes from the first mapping entry
+    src_sample = next(iter(path_mappings.values()))
+    dst_sample = next(iter(path_mappings))
+    src_root = src_sample.split("/")[0] + "/"
+    dst_root = dst_sample.split("/")[0] + "/"
+    return f": {src_root} -> {dst_root}"
+
+
+def _warn_empty(logger, target, result):
+    """Emit a contextual warning when the bundle has no files."""
+    if target:
+        # User explicitly asked for a target but got nothing
+        # Check if there are source files under other prefixes
+        if result.path_mappings or result.mapped_count:
+            # Mapping was attempted but somehow produced nothing
+            logger.warning(f"No files to pack for target '{target}'")
+        else:
+            logger.warning(f"No files to pack for target '{target}'")
+            logger.verbose_detail(
+                f"    Hint: use '--target all' to include all platforms"
+            )
+    else:
+        logger.warning("No deployed files found -- empty bundle created")
+

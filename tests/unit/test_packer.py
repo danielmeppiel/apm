@@ -156,6 +156,14 @@ class TestCrossTargetMapping:
         assert result == files
         assert mappings == {}
 
+    def test_copilot_alias_same_as_vscode(self):
+        """'copilot' target should produce same result as 'vscode'."""
+        files = [".claude/skills/x/SKILL.md", ".claude/agents/a.md"]
+        result_v, maps_v = _filter_files_by_target(files, "vscode")
+        result_c, maps_c = _filter_files_by_target(files, "copilot")
+        assert result_v == result_c
+        assert maps_v == maps_c
+
 
 class TestPackBundle:
     def test_pack_apm_format_vscode(self, tmp_path):

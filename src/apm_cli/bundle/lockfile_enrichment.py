@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 from ..deps.lockfile import LockFile
 
 
-# Must stay in sync with packer._TARGET_PREFIXES
+# Authoritative mapping of target names to deployed-file path prefixes.
 _TARGET_PREFIXES = {
     "copilot": [".github/"],
     "vscode": [".github/"],
@@ -19,12 +19,22 @@ _TARGET_PREFIXES = {
 # Cross-target path equivalences for skills/ and agents/ directories.
 # Only these two directory types are semantically identical across targets;
 # commands, instructions, hooks are target-specific and are NOT mapped.
+#
+# .github/ is the canonical interop prefix -- install always creates it, so
+# all non-github targets map FROM .github/.  The vscode target additionally
+# maps FROM .claude/ for the common case of Claude-first projects packing
+# for Copilot.  Cursor/opencode sources are niche; if someone publishes
+# skills exclusively under .cursor/, they must pack with --target cursor.
 _CROSS_TARGET_MAPS: Dict[str, Dict[str, str]] = {
     "claude": {
         ".github/skills/": ".claude/skills/",
         ".github/agents/": ".claude/agents/",
     },
     "vscode": {
+        ".claude/skills/": ".github/skills/",
+        ".claude/agents/": ".github/agents/",
+    },
+    "copilot": {
         ".claude/skills/": ".github/skills/",
         ".claude/agents/": ".github/agents/",
     },
@@ -123,13 +133,17 @@ def enrich_lockfile_for_pack(
     }
     if all_mappings:
         # Record the source prefixes that were remapped so consumers know the
-        # bundle paths differ from the original lockfile.
-        prefixes = set()
-        for v in all_mappings.values():
-            parts = v.split("/")
-            if len(parts) >= 2:
-                prefixes.add(parts[0] + "/" + parts[1] + "/")
-        pack_meta["mapped_from"] = sorted(prefixes)
+        # bundle paths differ from the original lockfile.  Use the canonical
+        # prefix keys from _CROSS_TARGET_MAPS rather than reverse-engineering
+        # them from file paths.
+        cross_map = _CROSS_TARGET_MAPS.get(target, {})
+        used_src_prefixes = set()
+        for original in all_mappings.values():
+            for src_prefix in cross_map:
+                if original.startswith(src_prefix):
+                    used_src_prefixes.add(src_prefix)
+                    break
+        pack_meta["mapped_from"] = sorted(used_src_prefixes)
 
     pack_section = yaml.dump(
         {"pack": pack_meta},

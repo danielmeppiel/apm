@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from ..models.apm_package import APMPackage
 from ..core.target_detection import detect_target
-from .lockfile_enrichment import enrich_lockfile_for_pack, _TARGET_PREFIXES, _filter_files_by_target
+from .lockfile_enrichment import enrich_lockfile_for_pack, _filter_files_by_target
 
 
 @dataclass
@@ -200,6 +200,7 @@ def pack_bundle(
     # 6. Build output directory
     bundle_dir = output_dir / f"{pkg_name}-{pkg_version}"
     bundle_dir.mkdir(parents=True, exist_ok=True)
+    bundle_dir_resolved = bundle_dir.resolve()
 
     # 7. Copy files preserving directory structure
     for rel_path in unique_files:
@@ -209,6 +210,11 @@ def pack_bundle(
         if src.is_symlink():
             continue  # Never bundle symlinks
         dest = bundle_dir / rel_path
+        # Defense-in-depth: verify mapped destination stays inside the bundle
+        if not dest.resolve().is_relative_to(bundle_dir_resolved):
+            raise ValueError(
+                f"Refusing to write outside bundle directory: {rel_path!r}"
+            )
         if src.is_dir():
             from ..security.gate import ignore_symlinks
             shutil.copytree(src, dest, dirs_exist_ok=True, ignore=ignore_symlinks)

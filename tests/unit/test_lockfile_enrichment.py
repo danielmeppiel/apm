@@ -169,3 +169,79 @@ class TestLockfileEnrichment:
         assert ".claude/skills/x/SKILL.md" in deployed
         assert ".github/commands/run.md" not in deployed
         assert ".claude/commands/run.md" not in deployed
+
+    def test_copilot_alias_equivalent_to_vscode(self):
+        """'copilot' target should produce the same enriched lockfile as 'vscode'."""
+        lf = LockFile()
+        dep = LockedDependency(
+            repo_url="owner/repo",
+            resolved_commit="abc123",
+            version="1.0.0",
+            deployed_files=[
+                ".claude/skills/x/SKILL.md",
+                ".claude/agents/a.md",
+            ],
+        )
+        lf.add_dependency(dep)
+
+        result_vscode = enrich_lockfile_for_pack(lf, fmt="apm", target="vscode")
+        result_copilot = enrich_lockfile_for_pack(lf, fmt="apm", target="copilot")
+
+        parsed_vscode = yaml.safe_load(result_vscode)
+        parsed_copilot = yaml.safe_load(result_copilot)
+
+        # Deployed files should be identical (both remap .claude/ -> .github/)
+        assert (
+            parsed_vscode["dependencies"][0]["deployed_files"]
+            == parsed_copilot["dependencies"][0]["deployed_files"]
+        )
+
+
+class TestFilterFilesByTarget:
+    """Direct tests for _filter_files_by_target."""
+
+    def test_direct_match_no_mapping(self):
+        from apm_cli.bundle.lockfile_enrichment import _filter_files_by_target
+
+        files = [".github/skills/x/SKILL.md"]
+        filtered, mappings = _filter_files_by_target(files, "vscode")
+        assert filtered == [".github/skills/x/SKILL.md"]
+        assert mappings == {}
+
+    def test_cross_map_github_to_claude(self):
+        from apm_cli.bundle.lockfile_enrichment import _filter_files_by_target
+
+        files = [".github/skills/x/SKILL.md", ".github/agents/a.md"]
+        filtered, mappings = _filter_files_by_target(files, "claude")
+        assert ".claude/skills/x/SKILL.md" in filtered
+        assert ".claude/agents/a.md" in filtered
+        assert mappings[".claude/skills/x/SKILL.md"] == ".github/skills/x/SKILL.md"
+
+    def test_dedup_direct_over_mapped(self):
+        """If a file exists under both .github/ and .claude/, direct wins."""
+        from apm_cli.bundle.lockfile_enrichment import _filter_files_by_target
+
+        files = [
+            ".claude/skills/x/SKILL.md",
+            ".github/skills/x/SKILL.md",
+        ]
+        filtered, mappings = _filter_files_by_target(files, "claude")
+        assert filtered.count(".claude/skills/x/SKILL.md") == 1
+        # The direct match should NOT appear in mappings
+        assert ".claude/skills/x/SKILL.md" not in mappings
+
+    def test_traversal_path_not_escaped(self):
+        """Mapping must not allow path components to escape target prefix."""
+        from apm_cli.bundle.lockfile_enrichment import _filter_files_by_target
+
+        # A crafted file path with traversal should only remap the prefix,
+        # the traversal components remain as literal path segments
+        files = [".github/skills/../../etc/passwd"]
+        filtered, mappings = _filter_files_by_target(files, "claude")
+        # The mapping still happens (prefix replacement) but the packer's
+        # bundle-escape check will catch the bad destination path
+        if filtered:
+            for f in filtered:
+                assert f.startswith(".claude/skills/")
+        # Either way, the original .github/ path should not sneak through
+        assert ".github/skills/../../etc/passwd" not in filtered
