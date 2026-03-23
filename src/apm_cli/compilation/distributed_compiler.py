@@ -20,6 +20,7 @@ from .context_optimizer import ContextOptimizer
 from .link_resolver import UnifiedLinkResolver
 from ..output.formatters import CompilationFormatter
 from ..output.models import CompilationResults
+from ..utils.paths import portable_relpath
 
 # CRITICAL: Shadow Click commands to prevent namespace collision
 set = builtins.set
@@ -241,7 +242,7 @@ class DistributedAgentsCompiler:
                 directories[abs_dir].add(pattern)
                 
                 # Calculate depth and parent relationships
-                depth = len(abs_dir.relative_to(self.base_dir).parts)
+                depth = len(abs_dir.resolve().relative_to(self.base_dir.resolve()).parts)
                 depth_map[abs_dir] = depth
                 
                 if depth > 0:
@@ -542,7 +543,7 @@ class DistributedAgentsCompiler:
                     if placement.source_attribution:
                         source = placement.source_attribution.get(str(instruction.file_path), 'local')
                         try:
-                            rel_path = instruction.file_path.relative_to(self.base_dir)
+                            rel_path = portable_relpath(instruction.file_path, self.base_dir)
                         except ValueError:
                             rel_path = instruction.file_path
                         
@@ -612,7 +613,7 @@ class DistributedAgentsCompiler:
         for agents_file in self.base_dir.rglob("AGENTS.md"):
             # Skip files that are outside our project or in special directories
             try:
-                relative_path = agents_file.relative_to(self.base_dir)
+                relative_path = agents_file.resolve().relative_to(self.base_dir.resolve())
                 
                 # Skip files in certain directories that shouldn't be cleaned
                 skip_dirs = {".git", ".apm", "node_modules", "__pycache__", ".pytest_cache", "apm_modules"}
@@ -645,13 +646,13 @@ class DistributedAgentsCompiler:
         
         # Professional warning format with readable list for multiple files
         if len(orphaned_files) == 1:
-            rel_path = orphaned_files[0].relative_to(self.base_dir)
+            rel_path = portable_relpath(orphaned_files[0], self.base_dir)
             warning_messages.append(f"Orphaned AGENTS.md found: {rel_path} - run 'apm compile --clean' to remove")
         else:
             # For multiple files, create a single multi-line warning message
             file_list = []
             for file_path in orphaned_files[:5]:  # Show first 5
-                rel_path = file_path.relative_to(self.base_dir)
+                rel_path = portable_relpath(file_path, self.base_dir)
                 file_list.append(f"  * {rel_path}")
             if len(orphaned_files) > 5:
                 file_list.append(f"  * ...and {len(orphaned_files) - 5} more")
@@ -681,14 +682,14 @@ class DistributedAgentsCompiler:
             # In dry-run mode, just report what would be cleaned
             cleanup_messages.append(f"Would clean up {len(orphaned_files)} orphaned AGENTS.md files")
             for file_path in orphaned_files:
-                rel_path = file_path.relative_to(self.base_dir)
+                rel_path = portable_relpath(file_path, self.base_dir)
                 cleanup_messages.append(f"  * {rel_path}")
         else:
             # Actually perform the cleanup
             cleanup_messages.append(f"Cleaning up {len(orphaned_files)} orphaned AGENTS.md files")
             for file_path in orphaned_files:
                 try:
-                    rel_path = file_path.relative_to(self.base_dir)
+                    rel_path = portable_relpath(file_path, self.base_dir)
                     file_path.unlink()
                     cleanup_messages.append(f"  + Removed {rel_path}")
                 except Exception as e:

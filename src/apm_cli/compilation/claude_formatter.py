@@ -18,6 +18,7 @@ import frontmatter
 
 from ..primitives.models import Instruction, PrimitiveCollection, Chatmode
 from ..version import get_version
+from ..utils.paths import portable_relpath
 from .constants import BUILD_ID_PLACEHOLDER
 from .constitution import read_constitution
 
@@ -299,7 +300,7 @@ class ClaudeFormatter:
                                 str(instruction.file_path), 'local'
                             )
                             try:
-                                rel_path = instruction.file_path.relative_to(self.base_dir)
+                                rel_path = portable_relpath(instruction.file_path, self.base_dir)
                             except ValueError:
                                 rel_path = instruction.file_path
                             

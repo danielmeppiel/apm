@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
+from apm_cli.utils.paths import portable_relpath
 
 
 class PromptIntegrator(BaseIntegrator):
@@ -111,7 +112,7 @@ class PromptIntegrator(BaseIntegrator):
         for source_file in prompt_files:
             target_filename = self.get_target_filename(source_file, package_info.package.name)
             target_path = prompts_dir / target_filename
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
             
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
