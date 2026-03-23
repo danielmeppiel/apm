@@ -172,9 +172,9 @@ def _get_validation_suggestion(error_msg):
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["vscode", "agents", "claude", "opencode", "all"]),
+    type=click.Choice(["copilot", "vscode", "agents", "claude", "cursor", "opencode", "all"]),
     default=None,
-    help="Target platform: vscode/agents (AGENTS.md), claude (CLAUDE.md), opencode (AGENTS.md), or all. Auto-detects if not specified.",
+    help="Target platform: copilot (AGENTS.md), claude (CLAUDE.md), cursor, opencode, or all. 'vscode' and 'agents' are deprecated aliases for 'copilot'. Auto-detects if not specified.",
 )
 @click.option(
     "--dry-run",
