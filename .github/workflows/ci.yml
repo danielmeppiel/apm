@@ -42,6 +42,14 @@ jobs:
     - name: Run tests
       run: uv run pytest tests/unit tests/test_console.py -n auto --dist worksteal
 
+    - name: Lint - no raw str(relative_to) patterns
+      run: |
+        # Fail if any code uses str(x.relative_to(y)) instead of portable_relpath()
+        if grep -rn 'str(.*\.relative_to(' src/apm_cli/ --include="*.py" | grep -v portable_relpath | grep -v '\.pyc'; then
+          echo "::error::Found raw str(path.relative_to()) calls. Use portable_relpath() from apm_cli.utils.paths instead."
+          exit 1
+        fi
+
     - name: Install UPX
       run: |
         sudo apt-get update
