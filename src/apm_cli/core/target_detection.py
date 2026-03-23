@@ -1,7 +1,7 @@
 """Target detection for auto-selecting compilation and integration targets.
 
 This module implements the auto-detection pattern for determining which agent
-targets (VSCode/Copilot, Claude, OpenCode) should be used based on existing
+targets (Copilot, Claude, Cursor, OpenCode) should be used based on existing
 project structure and configuration.
 
 Detection priority (highest to lowest):
@@ -10,6 +10,7 @@ Detection priority (highest to lowest):
 3. Auto-detect from existing folders:
    - .github/ only -> copilot (internal: "vscode")
    - .claude/ only -> claude
+   - .cursor/ only -> cursor
    - .opencode/ only -> opencode
    - Multiple target folders -> all
    - None exist -> minimal (AGENTS.md only, no folder integration)
@@ -22,10 +23,10 @@ from pathlib import Path
 from typing import Literal, Optional, Tuple
 
 # Valid target values (internal canonical form)
-TargetType = Literal["vscode", "claude", "opencode", "all", "minimal"]
+TargetType = Literal["vscode", "claude", "cursor", "opencode", "all", "minimal"]
 
 # User-facing target values (includes aliases accepted by CLI)
-UserTargetType = Literal["copilot", "vscode", "agents", "claude", "opencode", "all", "minimal"]
+UserTargetType = Literal["copilot", "vscode", "agents", "claude", "cursor", "opencode", "all", "minimal"]
 
 
 def detect_target(
@@ -51,6 +52,8 @@ def detect_target(
             return "vscode", "explicit --target flag"
         elif explicit_target == "claude":
             return "claude", "explicit --target flag"
+        elif explicit_target == "cursor":
+            return "cursor", "explicit --target flag"
         elif explicit_target == "opencode":
             return "opencode", "explicit --target flag"
         elif explicit_target == "all":
@@ -62,6 +65,8 @@ def detect_target(
             return "vscode", "apm.yml target"
         elif config_target == "claude":
             return "claude", "apm.yml target"
+        elif config_target == "cursor":
+            return "cursor", "apm.yml target"
         elif config_target == "opencode":
             return "opencode", "apm.yml target"
         elif config_target == "all":
@@ -70,12 +75,15 @@ def detect_target(
     # Priority 3: Auto-detect from existing folders
     github_exists = (project_root / ".github").exists()
     claude_exists = (project_root / ".claude").exists()
+    cursor_exists = (project_root / ".cursor").is_dir()
     opencode_exists = (project_root / ".opencode").is_dir()
     detected = []
     if github_exists:
         detected.append(".github/")
     if claude_exists:
         detected.append(".claude/")
+    if cursor_exists:
+        detected.append(".cursor/")
     if opencode_exists:
         detected.append(".opencode/")
 
@@ -85,11 +93,13 @@ def detect_target(
         return "vscode", "detected .github/ folder"
     elif claude_exists:
         return "claude", "detected .claude/ folder"
+    elif cursor_exists:
+        return "cursor", "detected .cursor/ folder"
     elif opencode_exists:
         return "opencode", "detected .opencode/ folder"
     else:
         # No known target folders exist - minimal output
-        return "minimal", "no .github/, .claude/, or .opencode/ folder found"
+        return "minimal", "no .github/, .claude/, .cursor/, or .opencode/ folder found"
 
 
 def should_integrate_vscode(target: TargetType) -> bool:
@@ -126,6 +136,18 @@ def should_integrate_opencode(target: TargetType) -> bool:
         bool: True if OpenCode integration (agents, commands, skills) should run
     """
     return target in ("opencode", "all")
+
+
+def should_integrate_cursor(target: TargetType) -> bool:
+    """Check if Cursor integration should be performed.
+
+    Args:
+        target: The detected or configured target
+
+    Returns:
+        bool: True if Cursor integration (agents, skills, rules) should run
+    """
+    return target in ("cursor", "all")
 
 
 def should_compile_agents_md(target: TargetType) -> bool:
@@ -171,8 +193,9 @@ def get_target_description(target: UserTargetType) -> str:
     descriptions = {
         "vscode": "AGENTS.md + .github/prompts/ + .github/agents/",
         "claude": "CLAUDE.md + .claude/commands/ + .claude/agents/ + .claude/skills/",
+        "cursor": ".cursor/agents/ + .cursor/skills/ + .cursor/rules/",
         "opencode": "AGENTS.md + .opencode/agents/ + .opencode/commands/ + .opencode/skills/",
-        "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/ (+ .cursor/ .opencode/ if present)",
+        "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/ + .cursor/ + .opencode/",
         "minimal": "AGENTS.md only (create .github/ or .claude/ for full integration)",
     }
     return descriptions.get(normalized, "unknown target")
