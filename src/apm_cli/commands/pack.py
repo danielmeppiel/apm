@@ -23,7 +23,7 @@ from ..core.command_logger import CommandLogger
     "-t",
     type=click.Choice(["copilot", "vscode", "claude", "cursor", "opencode", "all"]),
     default=None,
-    help="Filter files by target (default: auto-detect). 'copilot' is an alias for 'vscode'.",
+    help="Filter files by target (default: auto-detect). 'vscode' is a deprecated alias for 'copilot'.",
 )
 @click.option("--archive", is_flag=True, default=False, help="Produce a .tar.gz archive.")
 @click.option(
@@ -52,22 +52,38 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run, force, verbose):
             logger=logger,
         )
 
+        mapping_summary = _mapping_summary(result.path_mappings)
+
         if dry_run:
-            logger.dry_run_notice("No files written")
+            if result.mapped_count:
+                logger.dry_run_notice(
+                    f"Would remap {result.mapped_count} file(s){mapping_summary}"
+                )
+                for mapped, original in result.path_mappings.items():
+                    logger.verbose_detail(f"    {original} -> {mapped}")
             if result.files:
-                logger.progress(f"Would pack {len(result.files)} file(s):")
+                logger.dry_run_notice(
+                    f"Would pack {len(result.files)} file(s) -> {result.bundle_path}"
+                )
                 for f in result.files:
-                    logger.tree_item(f"  └─ {f}")
+                    logger.tree_item(f"  {f}")
             else:
-                logger.warning("No files to pack")
+                _warn_empty(logger, target, result)
             return
 
+        if result.mapped_count:
+            logger.progress(
+                f"Mapped {result.mapped_count} file(s){mapping_summary}"
+            )
+            for mapped, original in result.path_mappings.items():
+                logger.verbose_detail(f"    {original} -> {mapped}")
+
         if not result.files:
-            logger.warning("No deployed files found -- empty bundle created")
+            _warn_empty(logger, target, result)
         else:
             logger.success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
             for f in result.files:
-                logger.verbose_detail(f"    └─ {f}")
+                logger.verbose_detail(f"    {f}")
             if fmt == "plugin":
                 logger.progress(
                     "Plugin bundle ready -- contains plugin.json and "
@@ -107,6 +123,9 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force, verbose):
             dry_run=dry_run,
             force=force,
         )
+
+        # Surface bundle metadata and warn on target mismatch
+        _log_bundle_meta(result, Path(output), logger)
 
         if dry_run:
             logger.dry_run_notice("No files written")
@@ -149,7 +168,84 @@ def _log_unpack_file_list(result, logger):
         for dep_name, dep_files in result.dependency_files.items():
             logger.progress(f"  {dep_name}")
             for f in dep_files:
-                logger.tree_item(f"    └─ {f}")
+                logger.tree_item(f"    - {f}")
     else:
         for f in result.files:
-            logger.tree_item(f"  └─ {f}")
+            logger.tree_item(f"  - {f}")
+
+
+def _mapping_summary(path_mappings):
+    """Build a compact ': src/ -> dst/' suffix from path mappings, or empty string."""
+    if not path_mappings:
+        return ""
+    # Derive source and destination prefixes from the first mapping entry
+    src_sample = next(iter(path_mappings.values()))
+    dst_sample = next(iter(path_mappings))
+    src_root = src_sample.split("/")[0] + "/"
+    dst_root = dst_sample.split("/")[0] + "/"
+    return f": {src_root} -> {dst_root}"
+
+
+def _warn_empty(logger, target, result):
+    """Emit a contextual warning when the bundle has no files."""
+    if target:
+        # User explicitly asked for a target but got nothing
+        # Check if there are source files under other prefixes
+        if result.path_mappings or result.mapped_count:
+            # Mapping was attempted but somehow produced nothing
+            logger.warning(f"No files to pack for target '{target}'")
+        else:
+            logger.warning(f"No files to pack for target '{target}'")
+            logger.verbose_detail(
+                f"    Hint: use '--target all' to include all platforms"
+            )
+    else:
+        logger.warning("No deployed files found -- empty bundle created")
+
+
+def _log_bundle_meta(result, output_dir, logger):
+    """Show bundle provenance and warn if target mismatches the project."""
+    meta = result.pack_meta
+    if not meta:
+        return
+
+    bundle_target = meta.get("target", "")
+    dep_count = len(result.dependency_files) if result.dependency_files else 0
+    file_count = len(result.files) if result.files else 0
+
+    # Map internal canonical names to user-facing names for display
+    _DISPLAY = {"vscode": "copilot", "agents": "copilot"}
+    display_bundle = _DISPLAY.get(bundle_target, bundle_target)
+
+    logger.progress(
+        f"Bundle target: {display_bundle} "
+        f"({dep_count} dep(s), {file_count} file(s))"
+    )
+
+    # Detect project target from output directory
+    try:
+        from ..core.target_detection import detect_target
+        project_target, _reason = detect_target(output_dir.resolve())
+    except Exception:
+        return  # can't detect -- skip mismatch check
+
+    display_project = _DISPLAY.get(project_target, project_target)
+
+    # Normalize to canonical internal names for comparison
+    _CANONICAL = {"copilot": "vscode", "agents": "vscode"}
+    norm_bundle = _CANONICAL.get(bundle_target, bundle_target)
+    norm_project = _CANONICAL.get(project_target, project_target)
+
+    if norm_bundle == "all" or norm_project in ("all", "minimal"):
+        return  # universal bundle or no strong project signal
+
+    if norm_bundle != norm_project:
+        logger.warning(
+            f"Bundle target '{display_bundle}' differs from project "
+            f"target '{display_project}'"
+        )
+        logger.verbose_detail(
+            f"    To get a {display_project}-targeted bundle, "
+            f"ask the publisher to run: apm pack --target {display_project}"
+        )
+

@@ -22,6 +22,7 @@ class UnpackResult:
     skipped_count: int = 0
     security_warnings: int = 0
     security_critical: int = 0
+    pack_meta: Dict = field(default_factory=dict)
 
 
 def unpack_bundle(
@@ -98,6 +99,18 @@ def unpack_bundle(
             legacy_lockfile_path = source_dir / LEGACY_LOCKFILE_NAME
             if legacy_lockfile_path.exists():
                 lockfile_path = legacy_lockfile_path
+
+        # Extract pack: metadata (written by apm pack) before structured parse
+        pack_meta: Dict = {}
+        try:
+            import yaml
+            raw = yaml.safe_load(lockfile_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                val = raw.get("pack", {})
+                pack_meta = val if isinstance(val, dict) else {}
+        except Exception:
+            pass  # non-critical -- proceed without metadata
+
         lockfile = LockFile.read(lockfile_path)
         if lockfile is None:
             if not lockfile_path.exists():
@@ -176,6 +189,7 @@ def unpack_bundle(
                 dependency_files=dep_file_map,
                 security_warnings=security_warnings,
                 security_critical=security_critical,
+                pack_meta=pack_meta,
             )
 
         # 4. Copy target files to output_dir (additive, no deletes)
@@ -219,6 +233,7 @@ def unpack_bundle(
             skipped_count=skipped,
             security_warnings=security_warnings,
             security_critical=security_critical,
+            pack_meta=pack_meta,
         )
     finally:
         # Clean up temp dir if we created one
