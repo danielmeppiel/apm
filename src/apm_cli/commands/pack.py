@@ -124,6 +124,9 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force, verbose):
             force=force,
         )
 
+        # Surface bundle metadata and warn on target mismatch
+        _log_bundle_meta(result, Path(output), logger)
+
         if dry_run:
             logger.dry_run_notice("No files written")
             if result.files:
@@ -198,4 +201,44 @@ def _warn_empty(logger, target, result):
             )
     else:
         logger.warning("No deployed files found -- empty bundle created")
+
+
+def _log_bundle_meta(result, output_dir, logger):
+    """Show bundle provenance and warn if target mismatches the project."""
+    meta = result.pack_meta
+    if not meta:
+        return
+
+    bundle_target = meta.get("target", "")
+    dep_count = len(result.dependency_files) if result.dependency_files else 0
+    file_count = len(result.files) if result.files else 0
+    logger.progress(
+        f"Bundle target: {bundle_target} "
+        f"({dep_count} dep(s), {file_count} file(s))"
+    )
+
+    # Detect project target from output directory
+    try:
+        from ..core.target_detection import detect_target
+        project_target, _reason = detect_target(output_dir.resolve())
+    except Exception:
+        return  # can't detect -- skip mismatch check
+
+    # Normalize aliases for comparison
+    _ALIASES = {"copilot": "vscode", "agents": "vscode"}
+    norm_bundle = _ALIASES.get(bundle_target, bundle_target)
+    norm_project = _ALIASES.get(project_target, project_target)
+
+    if norm_bundle == "all" or norm_project in ("all", "minimal"):
+        return  # universal bundle or no strong project signal
+
+    if norm_bundle != norm_project:
+        logger.warning(
+            f"Bundle target '{bundle_target}' differs from project "
+            f"target '{project_target}'"
+        )
+        logger.verbose_detail(
+            f"    To get a {project_target}-targeted bundle, "
+            f"ask the publisher to run: apm pack --target {project_target}"
+        )
 
