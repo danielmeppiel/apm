@@ -35,11 +35,12 @@ set = builtins.set
 list = builtins.list
 dict = builtins.dict
 
+from ..core.auth import AuthResolver
+
 # APM Dependencies (conditional import for graceful degradation)
 APM_DEPS_AVAILABLE = False
 _APM_IMPORT_ERROR = None
 try:
-    from ..core.auth import AuthResolver
     from ..deps.apm_resolver import APMDependencyResolver
     from ..deps.github_downloader import GitHubPackageDownloader
     from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
