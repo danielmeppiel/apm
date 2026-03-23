@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- SSL certificate verification failures in PyInstaller binary on systems without python.org Python installed -- bundled `certifi` CA bundle is now auto-configured via runtime hook (#420)
+- SSL certificate verification failures in PyInstaller binary on systems without python.org Python installed; bundled `certifi` CA bundle is now auto-configured via runtime hook (#420)
 - Virtual package types (files, collections, subdirectories) now respect `ARTIFACTORY_ONLY=1`, matching the primary zip-archive proxy-only behavior (#418)
 
 ### Added

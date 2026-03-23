@@ -20,15 +20,27 @@ import pytest
 
 # The runtime hook is not inside a regular Python package, so we import it
 # manually from its file path.
-_HOOK_PATH = Path(__file__).resolve().parents[2] / "build" / "hooks" / "runtime_hook_ssl_certs.py"
+def _find_repo_root() -> Path:
+    """Walk up from this file until we find pyproject.toml (the repo root)."""
+    current = Path(__file__).resolve().parent
+    for parent in [current] + list(current.parents):
+        if (parent / "pyproject.toml").is_file():
+            return parent
+    raise RuntimeError("Cannot locate repository root (no pyproject.toml found)")
+
+
+_HOOK_PATH = _find_repo_root() / "build" / "hooks" / "runtime_hook_ssl_certs.py"
 
 
 def _load_hook_module():
-    """Import the runtime hook as a module without triggering side-effects."""
+    """Import the runtime hook as a module.
+
+    Executes the module which defines ``_configure_ssl_certs`` *and* calls it
+    at module scope.  Tests invoke the function again with controlled env vars
+    to exercise each code path independently.
+    """
     spec = importlib.util.spec_from_file_location("runtime_hook_ssl_certs", _HOOK_PATH)
     mod = importlib.util.module_from_spec(spec)
-    # We don't exec_module() here because that would call _configure_ssl_certs()
-    # at module level.  Instead we exec just the function definition.
     spec.loader.exec_module(mod)
     return mod
 
