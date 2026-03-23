@@ -106,7 +106,8 @@ def unpack_bundle(
             import yaml
             raw = yaml.safe_load(lockfile_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                pack_meta = raw.get("pack", {})
+                val = raw.get("pack", {})
+                pack_meta = val if isinstance(val, dict) else {}
         except Exception:
             pass  # non-critical -- proceed without metadata
 

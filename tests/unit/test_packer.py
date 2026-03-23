@@ -48,7 +48,7 @@ def _setup_project(tmp_path: Path, deployed_files: list[str], *, target: str | N
 class TestFilterFilesByTarget:
     def test_copilot_only(self):
         files = [".github/agents/a.md", ".claude/commands/b.md"]
-        result, mappings = _filter_files_by_target(files, "vscode")
+        result, mappings = _filter_files_by_target(files, "copilot")
         assert result == [".github/agents/a.md"]
         assert mappings == {}
 

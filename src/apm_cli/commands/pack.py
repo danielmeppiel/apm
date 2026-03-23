@@ -168,10 +168,10 @@ def _log_unpack_file_list(result, logger):
         for dep_name, dep_files in result.dependency_files.items():
             logger.progress(f"  {dep_name}")
             for f in dep_files:
-                logger.tree_item(f"    └─ {f}")
+                logger.tree_item(f"    - {f}")
     else:
         for f in result.files:
-            logger.tree_item(f"  └─ {f}")
+            logger.tree_item(f"  - {f}")
 
 
 def _mapping_summary(path_mappings):
@@ -212,8 +212,13 @@ def _log_bundle_meta(result, output_dir, logger):
     bundle_target = meta.get("target", "")
     dep_count = len(result.dependency_files) if result.dependency_files else 0
     file_count = len(result.files) if result.files else 0
+
+    # Map internal canonical names to user-facing names for display
+    _DISPLAY = {"vscode": "copilot", "agents": "copilot"}
+    display_bundle = _DISPLAY.get(bundle_target, bundle_target)
+
     logger.progress(
-        f"Bundle target: {bundle_target} "
+        f"Bundle target: {display_bundle} "
         f"({dep_count} dep(s), {file_count} file(s))"
     )
 
@@ -224,21 +229,23 @@ def _log_bundle_meta(result, output_dir, logger):
     except Exception:
         return  # can't detect -- skip mismatch check
 
-    # Normalize aliases for comparison
-    _ALIASES = {"copilot": "vscode", "agents": "vscode"}
-    norm_bundle = _ALIASES.get(bundle_target, bundle_target)
-    norm_project = _ALIASES.get(project_target, project_target)
+    display_project = _DISPLAY.get(project_target, project_target)
+
+    # Normalize to canonical internal names for comparison
+    _CANONICAL = {"copilot": "vscode", "agents": "vscode"}
+    norm_bundle = _CANONICAL.get(bundle_target, bundle_target)
+    norm_project = _CANONICAL.get(project_target, project_target)
 
     if norm_bundle == "all" or norm_project in ("all", "minimal"):
         return  # universal bundle or no strong project signal
 
     if norm_bundle != norm_project:
         logger.warning(
-            f"Bundle target '{bundle_target}' differs from project "
-            f"target '{project_target}'"
+            f"Bundle target '{display_bundle}' differs from project "
+            f"target '{display_project}'"
         )
         logger.verbose_detail(
-            f"    To get a {project_target}-targeted bundle, "
-            f"ask the publisher to run: apm pack --target {project_target}"
+            f"    To get a {display_project}-targeted bundle, "
+            f"ask the publisher to run: apm pack --target {display_project}"
         )
 

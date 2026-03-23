@@ -71,7 +71,7 @@ class TestLockfileEnrichment:
         )
         lf.add_dependency(dep)
 
-        result = enrich_lockfile_for_pack(lf, fmt="apm", target="vscode")
+        result = enrich_lockfile_for_pack(lf, fmt="apm", target="copilot")
         parsed = yaml.safe_load(result)
 
         deployed = parsed["dependencies"][0]["deployed_files"]
