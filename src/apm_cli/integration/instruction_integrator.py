@@ -49,6 +49,7 @@ class InstructionIntegrator(BaseIntegrator):
         force: bool = False,
         managed_files: Optional[Set[str]] = None,
         diagnostics=None,
+        logger=None,
     ) -> IntegrationResult:
         """Integrate all instructions from a package into .github/instructions/.
 
@@ -182,6 +183,7 @@ class InstructionIntegrator(BaseIntegrator):
         force: bool = False,
         managed_files: Optional[Set[str]] = None,
         diagnostics=None,
+        logger=None,
     ) -> IntegrationResult:
         """Integrate instructions as Cursor Rules into ``.cursor/rules/``.
 

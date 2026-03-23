@@ -7,7 +7,7 @@ import click
 
 from ..bundle.packer import pack_bundle
 from ..bundle.unpacker import unpack_bundle
-from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, _rich_warning
+from ..core.command_logger import CommandLogger
 
 
 @click.command(name="pack", help="Create a self-contained bundle from installed dependencies")
@@ -23,7 +23,7 @@ from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, 
     "-t",
     type=click.Choice(["copilot", "vscode", "claude", "cursor", "opencode", "all"]),
     default=None,
-    help="Filter files by target (default: auto-detect). 'vscode' is an alias for 'copilot'.",
+    help="Filter files by target (default: auto-detect). 'vscode' is a deprecated alias for 'copilot'.",
 )
 @click.option("--archive", is_flag=True, default=False, help="Produce a .tar.gz archive.")
 @click.option(
@@ -34,9 +34,12 @@ from ..utils.console import _rich_echo, _rich_success, _rich_error, _rich_info, 
     help="Output directory (default: ./build).",
 )
 @click.option("--dry-run", is_flag=True, default=False, help="Show what would be packed without writing.")
+@click.option("--force", is_flag=True, default=False, help="On collision, last writer wins.")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed packing information")
 @click.pass_context
-def pack_cmd(ctx, fmt, target, archive, output, dry_run):
+def pack_cmd(ctx, fmt, target, archive, output, dry_run, force, verbose):
     """Create a self-contained APM bundle."""
+    logger = CommandLogger("pack", verbose=verbose, dry_run=dry_run)
     try:
         result = pack_bundle(
             project_root=Path("."),
@@ -45,25 +48,51 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
             target=target,
             archive=archive,
             dry_run=dry_run,
+            force=force,
+            logger=logger,
         )
 
+        mapping_summary = _mapping_summary(result.path_mappings)
+
         if dry_run:
-            _rich_info("Dry run  -- no files written")
+            if result.mapped_count:
+                logger.dry_run_notice(
+                    f"Would remap {result.mapped_count} file(s){mapping_summary}"
+                )
+                for mapped, original in result.path_mappings.items():
+                    logger.verbose_detail(f"    {original} -> {mapped}")
             if result.files:
-                _rich_info(f"Would pack {len(result.files)} file(s):")
+                logger.dry_run_notice(
+                    f"Would pack {len(result.files)} file(s) -> {result.bundle_path}"
+                )
                 for f in result.files:
-                    click.echo(f"  {f}")
+                    logger.tree_item(f"  {f}")
             else:
-                _rich_warning("No files to pack")
+                _warn_empty(logger, target, result)
             return
 
+        if result.mapped_count:
+            logger.progress(
+                f"Mapped {result.mapped_count} file(s){mapping_summary}"
+            )
+            for mapped, original in result.path_mappings.items():
+                logger.verbose_detail(f"    {original} -> {mapped}")
+
         if not result.files:
-            _rich_warning("No deployed files found  -- empty bundle created")
+            _warn_empty(logger, target, result)
         else:
-            _rich_success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
+            logger.success(f"Packed {len(result.files)} file(s) -> {result.bundle_path}")
+            for f in result.files:
+                logger.verbose_detail(f"    {f}")
+            if fmt == "plugin":
+                logger.progress(
+                    "Plugin bundle ready -- contains plugin.json and "
+                    "plugin-native directories (agents/, skills/, commands/, ...). "
+                    "No APM-specific files included."
+                )
 
     except (FileNotFoundError, ValueError) as exc:
-        _rich_error(str(exc))
+        logger.error(str(exc))
         sys.exit(1)
 
 
@@ -79,11 +108,13 @@ def pack_cmd(ctx, fmt, target, archive, output, dry_run):
 @click.option("--skip-verify", is_flag=True, default=False, help="Skip bundle completeness check.")
 @click.option("--dry-run", is_flag=True, default=False, help="Show what would be unpacked without writing.")
 @click.option("--force", is_flag=True, default=False, help="Deploy despite critical hidden-character findings.")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed unpacking information")
 @click.pass_context
-def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
+def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force, verbose):
     """Extract an APM bundle into the project."""
+    logger = CommandLogger("unpack", verbose=verbose, dry_run=dry_run)
     try:
-        _rich_info(f"Unpacking {bundle_path} → {output}")
+        logger.start(f"Unpacking {bundle_path} -> {output}")
 
         result = unpack_bundle(
             bundle_path=Path(bundle_path),
@@ -93,49 +124,128 @@ def unpack_cmd(ctx, bundle_path, output, skip_verify, dry_run, force):
             force=force,
         )
 
+        # Surface bundle metadata and warn on target mismatch
+        _log_bundle_meta(result, Path(output), logger)
+
         if dry_run:
-            _rich_info("Dry run  -- no files written")
+            logger.dry_run_notice("No files written")
             if result.files:
-                _rich_info(f"Would unpack {len(result.files)} file(s):")
-                _log_unpack_file_list(result)
+                logger.progress(f"Would unpack {len(result.files)} file(s):")
+                _log_unpack_file_list(result, logger)
             else:
-                _rich_warning("No files in bundle")
+                logger.warning("No files in bundle")
             return
 
         if not result.files:
-            _rich_warning("No files were unpacked")
+            logger.warning("No files were unpacked")
         else:
-            _log_unpack_file_list(result)
+            _log_unpack_file_list(result, logger)
             if result.skipped_count > 0:
-                _rich_warning(
+                logger.warning(
                     f"  {result.skipped_count} file(s) skipped (missing from bundle)"
                 )
             if result.security_critical > 0:
-                _rich_warning(
+                logger.warning(
                     f"  Deployed with --force despite {result.security_critical} "
                     f"critical hidden-character finding(s)"
                 )
             elif result.security_warnings > 0:
-                _rich_warning(
+                logger.warning(
                     f"  {result.security_warnings} hidden-character warning(s) "
                     f"-- run 'apm audit' to inspect"
                 )
             verified_msg = " (verified)" if result.verified else ""
-            _rich_success(f"Unpacked {len(result.files)} file(s){verified_msg}")
+            logger.success(f"Unpacked {len(result.files)} file(s){verified_msg}")
 
     except (FileNotFoundError, ValueError) as exc:
-        _rich_error(str(exc))
+        logger.error(str(exc))
         sys.exit(1)
 
 
-def _log_unpack_file_list(result):
+def _log_unpack_file_list(result, logger):
     """Log unpacked files grouped by dependency, using tree-style output."""
     if result.dependency_files:
         for dep_name, dep_files in result.dependency_files.items():
-            _rich_echo(f"  {dep_name}", color="cyan")
+            logger.progress(f"  {dep_name}")
             for f in dep_files:
-                _rich_echo(f"    └─ {f}", color="white")
+                logger.tree_item(f"    - {f}")
     else:
-        # Fallback: flat file list (no dependency info)
         for f in result.files:
-            _rich_echo(f"  └─ {f}", color="white")
+            logger.tree_item(f"  - {f}")
+
+
+def _mapping_summary(path_mappings):
+    """Build a compact ': src/ -> dst/' suffix from path mappings, or empty string."""
+    if not path_mappings:
+        return ""
+    # Derive source and destination prefixes from the first mapping entry
+    src_sample = next(iter(path_mappings.values()))
+    dst_sample = next(iter(path_mappings))
+    src_root = src_sample.split("/")[0] + "/"
+    dst_root = dst_sample.split("/")[0] + "/"
+    return f": {src_root} -> {dst_root}"
+
+
+def _warn_empty(logger, target, result):
+    """Emit a contextual warning when the bundle has no files."""
+    if target:
+        # User explicitly asked for a target but got nothing
+        # Check if there are source files under other prefixes
+        if result.path_mappings or result.mapped_count:
+            # Mapping was attempted but somehow produced nothing
+            logger.warning(f"No files to pack for target '{target}'")
+        else:
+            logger.warning(f"No files to pack for target '{target}'")
+            logger.verbose_detail(
+                f"    Hint: use '--target all' to include all platforms"
+            )
+    else:
+        logger.warning("No deployed files found -- empty bundle created")
+
+
+def _log_bundle_meta(result, output_dir, logger):
+    """Show bundle provenance and warn if target mismatches the project."""
+    meta = result.pack_meta
+    if not meta:
+        return
+
+    bundle_target = meta.get("target", "")
+    dep_count = len(result.dependency_files) if result.dependency_files else 0
+    file_count = len(result.files) if result.files else 0
+
+    # Map internal canonical names to user-facing names for display
+    _DISPLAY = {"vscode": "copilot", "agents": "copilot"}
+    display_bundle = _DISPLAY.get(bundle_target, bundle_target)
+
+    logger.progress(
+        f"Bundle target: {display_bundle} "
+        f"({dep_count} dep(s), {file_count} file(s))"
+    )
+
+    # Detect project target from output directory
+    try:
+        from ..core.target_detection import detect_target
+        project_target, _reason = detect_target(output_dir.resolve())
+    except Exception:
+        return  # can't detect -- skip mismatch check
+
+    display_project = _DISPLAY.get(project_target, project_target)
+
+    # Normalize to canonical internal names for comparison
+    _CANONICAL = {"copilot": "vscode", "agents": "vscode"}
+    norm_bundle = _CANONICAL.get(bundle_target, bundle_target)
+    norm_project = _CANONICAL.get(project_target, project_target)
+
+    if norm_bundle == "all" or norm_project in ("all", "minimal"):
+        return  # universal bundle or no strong project signal
+
+    if norm_bundle != norm_project:
+        logger.warning(
+            f"Bundle target '{display_bundle}' differs from project "
+            f"target '{display_project}'"
+        )
+        logger.verbose_detail(
+            f"    To get a {display_project}-targeted bundle, "
+            f"ask the publisher to run: apm pack --target {display_project}"
+        )
+

@@ -88,7 +88,7 @@ class TestGitHubPackageDownloader:
             result = self.downloader.resolve_git_reference('user/repo#main')
             
             assert isinstance(result, ResolvedReference)
-            assert result.original_ref == 'user/repo#main'
+            assert result.original_ref == 'github.com/user/repo#main'
             assert result.ref_type == GitReferenceType.BRANCH
             assert result.resolved_commit == 'abc123def456'
             assert result.ref_name == 'main'
@@ -1334,15 +1334,14 @@ class TestDownloaderCredentialFallback:
                 actual_headers = mock_get.call_args[1].get('headers') or mock_get.call_args[0][1]
                 assert actual_headers.get('Authorization') == 'token enterprise-token'
 
-    def test_non_default_host_ignores_default_host_token(self):
-        """When default host has a token, non-default host should use its own credential, not the default."""
+    def test_non_default_host_uses_global_token(self):
+        """Global env vars (GITHUB_APM_PAT) are now tried for all hosts, not just the default."""
         with patch.dict(os.environ, {'GITHUB_APM_PAT': 'default-host-pat'}, clear=True), \
              patch(
                  'apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git',
              ) as mock_cred:
             mock_cred.return_value = 'enterprise-cred'
             downloader = GitHubPackageDownloader()
-            # Default host token from env
             assert downloader.github_token == 'default-host-pat'
 
             dep_ref = DependencyReference(
@@ -1360,8 +1359,11 @@ class TestDownloaderCredentialFallback:
                 assert result == b'enterprise content'
 
                 actual_headers = mock_get.call_args[1].get('headers') or mock_get.call_args[0][1]
-                # Must use the enterprise credential, NOT the default-host PAT
-                assert actual_headers.get('Authorization') == 'token enterprise-cred'
+                # Global PAT is now used for non-default hosts too
+                assert actual_headers.get('Authorization') == 'token default-host-pat'
+
+            # Credential fill is not reached because the global env var is found first
+            mock_cred.assert_not_called()
 
     def test_error_message_mentions_gh_auth_login(self):
         """Error message should mention 'gh auth login' when no token is available."""

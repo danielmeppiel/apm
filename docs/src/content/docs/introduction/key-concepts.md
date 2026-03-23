@@ -29,11 +29,9 @@ my-project/
     ├── instructions/    # Targeted guidance by file type and domain  
     │   ├── security.instructions.md    # applyTo: "auth/**"
     │   └── testing.instructions.md     # applyTo: "**/*test*"
-    ├── prompts/         # Reusable agent workflows
-    │   ├── code-review.prompt.md       # Systematic review process
-    │   └── feature-spec.prompt.md      # Spec-first development
-    └── context/         # Optimized information retrieval
-        └── architecture.context.md     # Project patterns and decisions
+    └── prompts/         # Reusable agent workflows
+        ├── code-review.prompt.md       # Systematic review process
+        └── feature-spec.prompt.md      # Spec-first development
 ```
 
 ### Intelligent Compilation
@@ -77,9 +75,8 @@ The APM CLI supports the following types of primitives:
 - **Agents** (`.agent.md`) - Define AI assistant personalities and behaviors (legacy: `.chatmode.md`)
 - **Instructions** (`.instructions.md`) - Provide coding standards and guidelines for specific file types
 - **Skills** (`SKILL.md`) - Package meta-guides that help AI agents understand what a package does
-- **Context** (`.context.md`, `.memory.md`) - Supply background information and project context
 - **Hooks** (`.json` in `.apm/hooks/` or `hooks/`) - Define lifecycle event handlers with script references
-- **Plugins** (`plugin.json`) - Pre-packaged agent bundles auto-normalized into APM packages
+- **Plugins** (`plugin.json`) - Pre-packaged agent bundles auto-normalized into APM packages. Projects may use `apm.yml` only, `plugin.json` only, or both. See [Plugin authoring](../../guides/plugins/#plugin-authoring)
 
 > **Note**: Both `.agent.md` (new format) and `.chatmode.md` (legacy format) are fully supported. VSCode provides Quick Fix actions to help migrate from `.chatmode.md` to `.agent.md`.
 
@@ -98,10 +95,6 @@ APM discovers primitives in these locations:
 │   └── *.chatmode.md
 ├── instructions/        # Coding standards and guidelines  
 │   └── *.instructions.md
-├── context/            # Project context files
-│   └── *.context.md
-├── memory/             # Team info, contacts, etc.
-│   └── *.memory.md
 └── hooks/              # Lifecycle event handlers
     ├── *.json          # Hook definitions (JSON)
     └── scripts/        # Referenced scripts
@@ -120,8 +113,6 @@ APM discovers primitives in these locations:
 *.agent.md
 *.chatmode.md
 *.instructions.md
-*.context.md
-*.memory.md
 ```
 
 ## Component Types Overview
@@ -197,19 +188,6 @@ When asked about branding, apply these standards...
 - Resources (scripts, references) stay in `apm_modules/`
 
 → [Complete Skills Guide](../../guides/skills/)
-
-### Context (.context.md)
-**Knowledge Management Layer** - Optimized project information for AI consumption
-
-Context files package project knowledge, architectural decisions, and team standards in formats optimized for LLM consumption and token efficiency.
-
-```markdown
-# Project Architecture
-## Core Patterns
-- Repository pattern for data access
-- Clean architecture with domain separation
-- Event-driven communication between services
-```
 
 ## Primitive Types
 
@@ -297,58 +275,6 @@ def calculate_metrics(data: List[Dict], threshold: float = 0.5) -> Dict[str, flo
     """
 ```
 
-### Context Files
-
-Context files provide background information, project details, and other relevant context that AI assistants should be aware of.
-
-**Format:** `.context.md` or `.memory.md` files
-
-**Frontmatter:**
-- `description` (optional) - Brief description of the context
-- `author` (optional) - Creator information
-- `version` (optional) - Version string
-
-**Examples:**
-
-Project context (`.apm/context/project-info.context.md`):
-```markdown
----
-description: Project overview and architecture
----
-
-# APM CLI Project
-
-## Overview
-Command-line tool for AI-powered development workflows.
-
-## Key Technologies
-- Python 3.10+ with Click framework
-- YAML frontmatter for configuration
-- Rich library for terminal output
-
-## Architecture
-- Modular runtime system
-- Plugin-based workflow engine
-- Extensible primitive system
-```
-
-Team information (`.apm/memory/team-contacts.memory.md`):
-```markdown
-# Team Contacts
-
-## Development Team
-- Lead Developer: Alice Johnson (alice@company.com)
-- Backend Engineer: Bob Smith (bob@company.com)
-
-## Emergency Contacts
-- On-call: +1-555-0123
-- Incidents: incidents@company.com
-
-## Meeting Schedule
-- Daily standup: 9:00 AM PST
-- Sprint planning: Mondays 2:00 PM PST
-```
-
 ### Hooks
 
 Hooks define lifecycle event handlers that run scripts at specific points during AI agent operations (e.g., before/after tool use).
@@ -391,7 +317,6 @@ All primitives are automatically validated during discovery:
 
 - **Agents**: Must have description and content (supports both `.agent.md` and `.chatmode.md`)
 - **Instructions**: Must have description, applyTo pattern, and content
-- **Context**: Must have content (description optional)
 
 Invalid files are skipped with warning messages, allowing valid primitives to continue loading.
 
@@ -475,12 +400,9 @@ Use the structured `.apm/` directories for better organization:
 ├── agents/
 │   ├── code-reviewer.agent.md
 │   └── documentation-writer.agent.md
-├── instructions/
-│   ├── python-style.instructions.md
-│   └── typescript-conventions.instructions.md
-└── context/
-    ├── project-info.context.md
-    └── architecture-overview.context.md
+└── instructions/
+    ├── python-style.instructions.md
+    └── typescript-conventions.instructions.md
 ```
 
 ### 5. Team Collaboration

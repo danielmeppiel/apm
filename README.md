@@ -12,7 +12,7 @@ GitHub Copilot · Claude Code · Cursor · OpenCode
 
 AI coding agents need context to be useful — standards, prompts, skills, plugins — but today every developer sets this up manually. Nothing is portable nor reproducible. There's no manifest for it.
 
-**APM fixes this.** Declare your project's agentic dependencies once in `apm.yml`, and every developer who clones your repo gets a fully configured agent setup in seconds — with transitive dependency resolution, just like npm or pip.
+**APM fixes this.** Declare your project's agentic dependencies once in `apm.yml`, and every developer who clones your repo gets a fully configured agent setup in seconds — with transitive dependency resolution, just like npm or pip. It's also the first tool that lets you **author plugins** with a real dependency manager and export standard `plugin.json` packages.
 
 ```yaml
 # apm.yml — ships with your project
@@ -37,26 +37,26 @@ apm install    # every agent is configured
 
 ## Highlights
 
-- **One manifest for everything** — instructions, skills, prompts, agents, hooks, plugins, MCP servers
-- **Install from anywhere** — GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, any git host
-- **Transitive dependencies** — packages can depend on packages; APM resolves the full tree
-- **Compile to standards** — `apm compile` produces `AGENTS.md` (GitHub Copilot, OpenCode), `CLAUDE.md` (Claude Code), and `.cursor/rules/` (Cursor)
-- **Content security** — `apm audit` scans for hidden Unicode characters; `apm install` blocks compromised packages before agents can read them
-- **Create & share** — `apm pack` bundles your current configuration as a zipped package
-- **CI/CD ready** — [GitHub Action](https://github.com/microsoft/apm-action) for automated workflows
+- **[One manifest for everything](https://microsoft.github.io/apm/reference/primitive-types/)** — instructions, skills, prompts, agents, hooks, plugins, MCP servers
+- **[Install from anywhere](https://microsoft.github.io/apm/guides/dependencies/)** — GitHub, GitLab, Bitbucket, Azure DevOps, GitHub Enterprise, any git host
+- **[Transitive dependencies](https://microsoft.github.io/apm/guides/dependencies/)** — packages can depend on packages; APM resolves the full tree
+- **[Content security](https://microsoft.github.io/apm/enterprise/security/)** — `apm audit` scans for hidden Unicode; `apm install` blocks compromised packages before agents read them
+- **[Author plugins](https://microsoft.github.io/apm/guides/plugins/)** — build Copilot, Claude, and Cursor plugins with dependency management and security scanning, then export standard `plugin.json`
+- **[Pack & distribute](https://microsoft.github.io/apm/guides/pack-distribute/)** — `apm pack` bundles your configuration as a zipped package or a standalone plugin
+- **[CI/CD ready](https://github.com/microsoft/apm-action)** — GitHub Action for automated workflows
 
 ## Get Started
 
 #### Linux / macOS
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh
+curl -sSL https://aka.ms/apm-unix | sh
 ```
 
 #### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex
+irm https://aka.ms/apm-windows | iex
 ```
 
 Native release binaries are published for macOS, Linux, and Windows x86_64. `apm update` reuses the matching platform installer.

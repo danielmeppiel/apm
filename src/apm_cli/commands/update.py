@@ -6,7 +6,7 @@ import sys
 
 import click
 
-from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success, _rich_warning
+from ..core.command_logger import CommandLogger
 from ..version import get_version
 
 
@@ -17,8 +17,7 @@ def _is_windows_platform() -> bool:
 
 def _get_update_installer_url() -> str:
     """Return the official installer URL for the current platform."""
-    installer_name = "install.ps1" if _is_windows_platform() else "install.sh"
-    return f"https://raw.githubusercontent.com/microsoft/apm/main/{installer_name}"
+    return "https://aka.ms/apm-windows" if _is_windows_platform() else "https://aka.ms/apm-unix"
 
 
 def _get_update_installer_suffix() -> str:
@@ -31,9 +30,9 @@ def _get_manual_update_command() -> str:
     if _is_windows_platform():
         return (
             'powershell -ExecutionPolicy Bypass -c '
-            '"irm https://raw.githubusercontent.com/microsoft/apm/main/install.ps1 | iex"'
+            '"irm https://aka.ms/apm-windows | iex"'
         )
-    return "curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | sh"
+    return "curl -sSL https://aka.ms/apm-unix | sh"
 
 
 def _get_installer_run_command(script_path: str) -> list[str]:
@@ -65,19 +64,20 @@ def update(check):
         import subprocess
         import tempfile
 
+        logger = CommandLogger("update")
         current_version = get_version()
 
         # Skip check for development versions
         if current_version == "unknown":
-            _rich_warning(
+            logger.warning(
                 "Cannot determine current version. Running in development mode?"
             )
             if not check:
-                _rich_info("To update, reinstall from the repository.")
+                logger.progress("To update, reinstall from the repository.")
             return
 
-        _rich_info(f"Current version: {current_version}", symbol="info")
-        _rich_info("Checking for updates...", symbol="running")
+        logger.progress(f"Current version: {current_version}")
+        logger.start("Checking for updates...")
 
         # Check for latest version
         from ..utils.version_checker import get_latest_version_from_github
@@ -85,28 +85,28 @@ def update(check):
         latest_version = get_latest_version_from_github()
 
         if not latest_version:
-            _rich_error("Unable to fetch latest version from GitHub")
-            _rich_info("Please check your internet connection or try again later")
+            logger.error("Unable to fetch latest version from GitHub")
+            logger.progress("Please check your internet connection or try again later")
             sys.exit(1)
 
         from ..utils.version_checker import is_newer_version
 
         if not is_newer_version(current_version, latest_version):
-            _rich_success(
+            logger.success(
                 f"You're already on the latest version: {current_version}",
                 symbol="check",
             )
             return
 
-        _rich_info(f"Latest version available: {latest_version}", symbol="sparkles")
+        logger.progress(f"Latest version available: {latest_version}", symbol="sparkles")
 
         if check:
-            _rich_warning(f"Update available: {current_version} -> {latest_version}")
-            _rich_info("Run 'apm update' (without --check) to install", symbol="info")
+            logger.warning(f"Update available: {current_version} -> {latest_version}")
+            logger.progress("Run 'apm update' (without --check) to install")
             return
 
         # Proceed with update
-        _rich_info("Downloading and installing update...", symbol="running")
+        logger.start("Downloading and installing update...")
 
         # Download install script to temp file
         try:
@@ -127,7 +127,7 @@ def update(check):
                 os.chmod(temp_script, 0o755)
 
             # Run install script
-            _rich_info("Running installer...", symbol="gear")
+            logger.progress("Running installer...", symbol="gear")
 
             # Note: We don't capture output so the installer can prompt when needed.
             result = subprocess.run(_get_installer_run_command(temp_script), check=False)
@@ -140,28 +140,28 @@ def update(check):
                 pass
 
             if result.returncode == 0:
-                _rich_success(
+                logger.success(
                     f"Successfully updated to version {latest_version}!",
-                    symbol="sparkles",
                 )
-                _rich_info(
+                logger.progress(
                     "Please restart your terminal or run 'apm --version' to verify"
                 )
             else:
-                _rich_error("Installation failed - see output above for details")
+                logger.error("Installation failed - see output above for details")
                 sys.exit(1)
 
         except ImportError:
-            _rich_error("'requests' library not available")
-            _rich_info("Please update manually using:")
+            logger.error("'requests' library not available")
+            logger.progress("Please update manually using:")
             click.echo(f"  {_get_manual_update_command()}")
             sys.exit(1)
         except Exception as e:
-            _rich_error(f"Update failed: {e}")
-            _rich_info("Please update manually using:")
+            logger.error(f"Update failed: {e}")
+            logger.progress("Please update manually using:")
             click.echo(f"  {_get_manual_update_command()}")
             sys.exit(1)
 
     except Exception as e:
-        _rich_error(f"Error during update: {e}")
+        _logger = CommandLogger("update")
+        _logger.error(f"Error during update: {e}")
         sys.exit(1)

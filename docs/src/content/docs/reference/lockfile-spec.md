@@ -121,12 +121,16 @@ fields:
 | `depth` | integer | MUST | Dependency depth. `1` = direct dependency, `2`+ = transitive. |
 | `resolved_by` | string | MAY | `repo_url` of the parent that introduced this transitive dependency. Present only when `depth >= 2`. |
 | `package_type` | string | MUST | Package type: `apm_package`, `plugin`, `virtual`, or other registered types. |
+| `content_hash` | string | MAY | SHA-256 hash of the package file tree, in the format `"sha256:<hex>"`. Used to verify cached packages on subsequent installs. Omitted for local path dependencies. See [section 4.4](#44-content-integrity). |
+| `is_dev` | boolean | MAY | `true` if the dependency was resolved through [`devDependencies`](../manifest-schema/#5-devdependencies). Omitted when `false`. Dev deps are excluded from `apm pack --format plugin` bundles. |
 | `deployed_files` | array of strings | MUST | Every file path APM deployed for this dependency, relative to project root. |
 | `source` | string | MAY | Dependency source. `"local"` for local path dependencies. Omitted for remote (git) dependencies. |
 | `local_path` | string | MAY | Filesystem path (relative or absolute) to the local package. Present only when `source` is `"local"`. |
 
 Fields with empty or default values (empty strings, `false` booleans, empty
 lists) SHOULD be omitted from the serialized output to keep the file concise.
+
+**Dev dependency tracking:** Packages installed via `apm install --dev` are marked with `is_dev: true`. When building plugin bundles (`apm pack --format plugin`), dev dependencies are excluded from the output. Resolvers and CI tools should respect this flag when producing distributable artifacts.
 
 ### 4.3 Unique Key
 
@@ -135,6 +139,26 @@ combination of `repo_url` and `virtual_path` for virtual packages.
 For local path dependencies (`source: "local"`), the unique key is the
 `local_path` value. A conforming lock file MUST NOT contain duplicate
 entries for the same key.
+
+### 4.4 Content Integrity
+
+APM computes a SHA-256 hash of each package's file tree after download and stores
+it as `content_hash` in the lock file. On subsequent installs, cached packages are
+verified against this hash. A mismatch triggers a warning and re-download.
+
+The hash covers all regular files sorted by POSIX path (deterministic regardless of
+filesystem ordering). `.git/` and `__pycache__/` directories are excluded.
+
+```yaml
+dependencies:
+  - repo_url: https://github.com/acme-corp/security-baseline
+    resolved_commit: a1b2c3d4e5f6789012345678901234567890abcd
+    content_hash: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    # ...
+```
+
+Lock files generated before this feature omit `content_hash`. APM handles this
+gracefully — verification is skipped and the hash is populated on the next install.
 
 ## 5. Path Conventions
 
@@ -247,6 +271,7 @@ dependencies:
     version: "2.1.0"
     depth: 1
     package_type: apm_package
+    content_hash: "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
     deployed_files:
       - .github/instructions/security.instructions.md
       - .github/agents/security-auditor.agent.md
@@ -258,6 +283,7 @@ dependencies:
     depth: 2
     resolved_by: https://github.com/acme-corp/security-baseline
     package_type: apm_package
+    content_hash: "sha256:d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
     deployed_files:
       - .github/instructions/common-guidelines.instructions.md
 
@@ -272,6 +298,16 @@ dependencies:
     package_type: virtual
     deployed_files:
       - .github/instructions/linter.instructions.md
+
+  - repo_url: https://github.com/acme-corp/test-helpers
+    resolved_commit: abcdef1234567890abcdef1234567890abcdef12
+    resolved_ref: main
+    depth: 1
+    package_type: apm_package
+    is_dev: true
+    content_hash: "sha256:4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5"
+    deployed_files:
+      - .github/instructions/test-helpers.instructions.md
 
 mcp_servers:
   - security-scanner

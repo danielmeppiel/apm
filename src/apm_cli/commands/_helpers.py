@@ -12,6 +12,14 @@ import click
 from colorama import Fore, Style
 from colorama import init as colorama_init
 
+from ..constants import (
+    APM_DIR,
+    APM_LOCK_FILENAME,
+    APM_MODULES_DIR,
+    APM_MODULES_GITIGNORE_PATTERN,
+    APM_YML_FILENAME,
+    GITIGNORE_FILENAME,
+)
 from ..utils.console import _rich_echo, _rich_info, _rich_warning
 from ..version import get_build_sha, get_version
 from ..utils.version_checker import check_for_updates
@@ -157,7 +165,7 @@ def _scan_installed_packages(apm_modules_dir: Path) -> list:
     for candidate in apm_modules_dir.rglob("*"):
         if not candidate.is_dir() or candidate.name.startswith("."):
             continue
-        if not ((candidate / "apm.yml").exists() or (candidate / ".apm").exists()):
+        if not ((candidate / APM_YML_FILENAME).exists() or (candidate / APM_DIR).exists()):
             continue
         rel_parts = candidate.relative_to(apm_modules_dir).parts
         if len(rel_parts) >= 2:
@@ -176,10 +184,10 @@ def _check_orphaned_packages():
         List[str]: List of orphaned package names in org/repo or org/project/repo format
     """
     try:
-        if not Path("apm.yml").exists():
+        if not Path(APM_YML_FILENAME).exists():
             return []
 
-        apm_modules_dir = Path("apm_modules")
+        apm_modules_dir = Path(APM_MODULES_DIR)
         if not apm_modules_dir.exists():
             return []
 
@@ -187,7 +195,7 @@ def _check_orphaned_packages():
             from ..models.apm_package import APMPackage
             from ..deps.lockfile import LockFile, get_lockfile_path
 
-            apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             declared_deps = apm_package.get_apm_dependencies()
             lockfile = LockFile.read(get_lockfile_path(Path.cwd()))
             expected = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
@@ -275,10 +283,10 @@ def _atomic_write(path: Path, data: str) -> None:
         raise
 
 
-def _update_gitignore_for_apm_modules():
+def _update_gitignore_for_apm_modules(logger=None):
     """Add apm_modules/ to .gitignore if not already present."""
-    gitignore_path = Path(".gitignore")
-    apm_modules_pattern = "apm_modules/"
+    gitignore_path = Path(GITIGNORE_FILENAME)
+    apm_modules_pattern = APM_MODULES_GITIGNORE_PATTERN
 
     # Read current .gitignore content
     current_content = []
@@ -287,7 +295,10 @@ def _update_gitignore_for_apm_modules():
             with open(gitignore_path, "r", encoding="utf-8") as f:
                 current_content = [line.rstrip("\n\r") for line in f.readlines()]
         except Exception as e:
-            _rich_warning(f"Could not read .gitignore: {e}")
+            if logger:
+                logger.warning(f"Could not read .gitignore: {e}")
+            else:
+                _rich_warning(f"Could not read .gitignore: {e}")
             return
 
     # Check if apm_modules/ is already in .gitignore
@@ -302,9 +313,15 @@ def _update_gitignore_for_apm_modules():
                 f.write("\n")
             f.write(f"\n# APM dependencies\n{apm_modules_pattern}\n")
 
-        _rich_info(f"Added {apm_modules_pattern} to .gitignore")
+        if logger:
+            logger.progress(f"Added {apm_modules_pattern} to .gitignore")
+        else:
+            _rich_info(f"Added {apm_modules_pattern} to .gitignore")
     except Exception as e:
-        _rich_warning(f"Could not update .gitignore: {e}")
+        if logger:
+            logger.warning(f"Could not update .gitignore: {e}")
+        else:
+            _rich_warning(f"Could not update .gitignore: {e}")
 
 
 # ------------------------------------------------------------------
@@ -313,8 +330,8 @@ def _update_gitignore_for_apm_modules():
 
 def _load_apm_config():
     """Load configuration from apm.yml."""
-    if Path("apm.yml").exists():
-        with open("apm.yml", "r") as f:
+    if Path(APM_YML_FILENAME).exists():
+        with open(APM_YML_FILENAME, "r") as f:
             yaml = _lazy_yaml()
             return yaml.safe_load(f)
     return None
@@ -386,8 +403,43 @@ def _get_default_config(project_name):
     }
 
 
-def _create_minimal_apm_yml(config):
-    """Create minimal apm.yml file with auto-detected metadata."""
+def _validate_plugin_name(name):
+    """Validate plugin name is kebab-case (lowercase, numbers, hyphens).
+
+    Returns True if valid, False otherwise.
+    """
+    import re
+
+    return bool(re.match(r"^[a-z][a-z0-9-]{0,63}$", name))
+
+
+def _create_plugin_json(config):
+    """Create plugin.json file with package metadata.
+
+    Args:
+        config: dict with name, version, description, author keys.
+    """
+    import json
+
+    plugin_data = {
+        "name": config["name"],
+        "version": config.get("version", "0.1.0"),
+        "description": config.get("description", ""),
+        "author": {"name": config.get("author", "")},
+        "license": "MIT",
+    }
+
+    with open("plugin.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(plugin_data, indent=2) + "\n")
+
+
+def _create_minimal_apm_yml(config, plugin=False):
+    """Create minimal apm.yml file with auto-detected metadata.
+
+    Args:
+        config: dict with name, version, description, author keys.
+        plugin: if True, include a devDependencies section.
+    """
     yaml = _lazy_yaml()
 
     # Create minimal apm.yml structure
@@ -397,9 +449,13 @@ def _create_minimal_apm_yml(config):
         "description": config["description"],
         "author": config["author"],
         "dependencies": {"apm": [], "mcp": []},
-        "scripts": {},
     }
 
+    if plugin:
+        apm_yml_data["devDependencies"] = {"apm": []}
+
+    apm_yml_data["scripts"] = {}
+
     # Write apm.yml
-    with open("apm.yml", "w") as f:
+    with open(APM_YML_FILENAME, "w") as f:
         yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)

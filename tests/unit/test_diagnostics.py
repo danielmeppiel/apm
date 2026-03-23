@@ -7,6 +7,7 @@ from unittest.mock import call, patch
 import pytest
 
 from apm_cli.utils.diagnostics import (
+    CATEGORY_AUTH,
     CATEGORY_COLLISION,
     CATEGORY_ERROR,
     CATEGORY_INFO,
@@ -154,6 +155,29 @@ class TestDiagnosticCollectorQueryHelpers:
         dc.skip("third")
         collisions = dc.by_category()[CATEGORY_COLLISION]
         assert [d.message for d in collisions] == ["first", "second", "third"]
+
+    # ── count_for_package ───────────────────────────────────────────
+
+    def test_count_for_package_filtered_by_category(self):
+        dc = DiagnosticCollector()
+        dc.skip("a.md", package="pkg1")
+        dc.skip("b.md", package="pkg1")
+        dc.error("fail", package="pkg1")
+        dc.warn("w", package="pkg2")
+        assert dc.count_for_package("pkg1", CATEGORY_COLLISION) == 2
+
+    def test_count_for_package_all_categories(self):
+        dc = DiagnosticCollector()
+        dc.skip("a.md", package="pkg1")
+        dc.error("fail", package="pkg1")
+        dc.warn("w", package="pkg1")
+        dc.warn("other", package="pkg2")
+        assert dc.count_for_package("pkg1") == 3
+
+    def test_count_for_package_nonexistent(self):
+        dc = DiagnosticCollector()
+        dc.skip("a.md", package="pkg1")
+        assert dc.count_for_package("nonexistent") == 0
 
 
 # ── DiagnosticCollector — rendering ─────────────────────────────────
@@ -430,3 +454,126 @@ class TestInfoCategory:
                 "  [i] 3 dependencies have no pinned version "
                 "-- pin with #tag or #sha to prevent drift"
             )
+
+
+# ── Auth category ───────────────────────────────────────────────────
+
+
+class TestAuthCategory:
+    def test_auth_adds_diagnostic(self):
+        dc = DiagnosticCollector()
+        dc.auth("EMU token detected — fallback to unauthenticated", package="pkg-a")
+        assert dc.has_diagnostics is True
+        assert len(dc._diagnostics) == 1
+        assert dc._diagnostics[0].category == CATEGORY_AUTH
+        assert dc._diagnostics[0].message == "EMU token detected — fallback to unauthenticated"
+        assert dc._diagnostics[0].package == "pkg-a"
+
+    def test_auth_with_detail(self):
+        dc = DiagnosticCollector()
+        dc.auth("credential fallback", package="pkg-b", detail="tried GITHUB_APM_PAT first")
+        d = dc._diagnostics[0]
+        assert d.detail == "tried GITHUB_APM_PAT first"
+
+    def test_auth_count_zero_when_empty(self):
+        dc = DiagnosticCollector()
+        dc.warn("unrelated")
+        assert dc.auth_count == 0
+
+    def test_auth_count_returns_correct_count(self):
+        dc = DiagnosticCollector()
+        dc.auth("issue 1")
+        dc.auth("issue 2")
+        dc.warn("not auth")
+        assert dc.auth_count == 2
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
+    def test_auth_render_singular(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector()
+        dc.auth("token expired", package="pkg-x")
+        dc.render_summary()
+        warning_texts = [str(c) for c in mock_warning.call_args_list]
+        assert any("1 authentication issue" in t for t in warning_texts)
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
+    def test_auth_render_plural(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector()
+        dc.auth("issue 1", package="p1")
+        dc.auth("issue 2", package="p2")
+        dc.render_summary()
+        warning_texts = [str(c) for c in mock_warning.call_args_list]
+        assert any("2 authentication issues" in t for t in warning_texts)
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
+    def test_auth_render_shows_package_and_message(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector()
+        dc.auth("EMU token fallback", package="my-pkg")
+        dc.render_summary()
+        echo_texts = [str(c) for c in mock_echo.call_args_list]
+        assert any("my-pkg" in t and "EMU token fallback" in t for t in echo_texts)
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
+    def test_auth_verbose_renders_detail(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector(verbose=True)
+        dc.auth("fallback used", package="pkg", detail="GITHUB_APM_PAT → unauthenticated")
+        dc.render_summary()
+        echo_texts = [str(c) for c in mock_echo.call_args_list]
+        assert any("GITHUB_APM_PAT" in t for t in echo_texts)
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
+    def test_auth_non_verbose_shows_hint(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector(verbose=False)
+        dc.auth("credential issue", detail="secret detail")
+        dc.render_summary()
+        info_texts = [str(c) for c in mock_info.call_args_list]
+        assert any("--verbose" in t for t in info_texts)
+        # detail should NOT appear in non-verbose mode
+        echo_texts = [str(c) for c in mock_echo.call_args_list]
+        assert not any("secret detail" in t for t in echo_texts)
+
+    @patch(f"{_MOCK_BASE}._get_console", return_value=None)
+    @patch(f"{_MOCK_BASE}._rich_echo")
+    @patch(f"{_MOCK_BASE}._rich_warning")
+    @patch(f"{_MOCK_BASE}._rich_info")
+    def test_auth_renders_before_collision(
+        self, mock_info, mock_warning, mock_echo, mock_console
+    ):
+        dc = DiagnosticCollector()
+        dc.skip("collision.md", package="p1")
+        dc.auth("auth issue", package="p2")
+        call_order = []
+
+        with patch(f"{_MOCK_BASE}._get_console", return_value=None), \
+             patch(f"{_MOCK_BASE}._rich_echo"), \
+             patch(f"{_MOCK_BASE}._rich_warning", side_effect=lambda *a, **k: call_order.append(str(a))), \
+             patch(f"{_MOCK_BASE}._rich_info"):
+            dc.render_summary()
+
+        auth_idx = next(i for i, t in enumerate(call_order) if "authentication" in t)
+        coll_idx = next(i for i, t in enumerate(call_order) if "skipped" in t)
+        assert auth_idx < coll_idx, "auth should render before collision"

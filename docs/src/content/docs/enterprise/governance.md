@@ -304,22 +304,21 @@ Drift occurs when the on-disk state of agent configuration diverges from what th
 ### Usage
 
 ```bash
-# Check for drift (human-readable output)
-apm audit --drift
+# Planned command syntax once drift detection ships:
+# apm audit --drift
 
-# Check for drift in CI (non-zero exit code on detection)
-apm audit --drift --ci
+# Planned CI syntax once drift detection ships:
+# apm audit --drift --ci
 
-# Use as a pre-commit check
-# .pre-commit-config.yaml
-repos:
-  - repo: local
-    hooks:
-      - id: apm-drift
-        name: APM drift check
-        entry: apm audit --drift
-        language: system
-        pass_filenames: false
+# Planned .pre-commit-config.yaml entry (NOT YET AVAILABLE)
+# repos:
+#   - repo: local
+#     hooks:
+#       - id: apm-drift
+#         name: APM drift check
+#         entry: apm audit --drift
+#         language: system
+#         pass_filenames: false
 ```
 
 Drift detection complements lock file verification. The audit checks that the lock file matches the manifest; drift detection checks that the file system matches the lock file.

@@ -420,7 +420,7 @@ APM provides first-class support for MCP servers, including registry-based serve
 APM auto-discovers MCP server declarations from packages during `apm install`:
 
 - **apm.yml dependencies**: MCP servers listed under `dependencies.mcp` in a package's `apm.yml` are collected automatically.
-- **plugin.json**: Packages with a `plugin.json` (at the root, `.github/plugin/`, or `.claude-plugin/`) are recognized as marketplace plugins. APM synthesizes an `apm.yml` from `plugin.json` metadata when no `apm.yml` exists.
+- **plugin.json**: Packages with a `plugin.json` (at the root, `.github/plugin/`, or `.claude-plugin/`) are recognized as marketplace plugins. APM synthesizes an `apm.yml` from `plugin.json` metadata when no `apm.yml` exists. When both files are present (hybrid mode), APM uses `apm.yml` for dependency management while preserving `plugin.json` for plugin ecosystem compatibility. See [Plugin authoring](../../guides/plugins/#plugin-authoring).
 - **Transitive collection**: APM walks the dependency tree and collects MCP servers from all transitive packages.
 
 ### Trust Model
@@ -454,6 +454,8 @@ APM configures MCP servers in the native config format for each supported client
 | Codex CLI | `~/.codex/config.toml` | TOML `mcp_servers` section |
 
 **Runtime targeting**: APM detects which runtimes are installed and configures MCP servers for all of them. Use `--runtime <name>` or `--exclude <name>` to control which clients receive configuration.
+
+> **VS Code detection**: APM considers VS Code available when either the `code` CLI command is on PATH **or** a `.vscode/` directory exists in the current working directory. This means VS Code MCP configuration works even when `code` is not on PATH — common on macOS and Linux when "Install 'code' command in PATH" has not been run from the VS Code command palette, or when VS Code was installed via a method that doesn't register the CLI (e.g. `.tar.gz`, Flatpak, or a non-standard macOS install location).
 
 ```bash
 # Install MCP dependencies for all detected runtimes
@@ -534,6 +536,32 @@ apm mcp info ghcr.io/github/github-mcp-server
 # List available MCP servers
 apm mcp list
 ```
+
+#### `${input:...}` Variables in `headers` and `env`
+
+Values in `headers` and `env` can reference VS Code input variables using `${input:<variable-id>}`. At runtime, VS Code prompts the user for each referenced input before starting the server.
+
+For registry-backed servers, APM auto-generates input prompts from registry metadata. For self-defined servers, APM detects the `${input:...}` patterns in your `apm.yml` and generates matching input definitions.
+
+```yaml
+dependencies:
+  mcp:
+    - name: my-server
+      registry: false
+      transport: http
+      url: https://my-server.example.com/mcp/
+      headers:
+        Authorization: "Bearer ${input:my-server-token}"
+        X-Project: "${input:my-server-project}"
+```
+
+**Runtime support:**
+
+| Runtime | `${input:...}` support |
+|---------|----------------------|
+| VS Code | ✅ Prompts user at runtime |
+| Copilot CLI | ❌ Use environment variables instead |
+| Codex | ❌ Use environment variables instead |
 
 ## Roadmap
 

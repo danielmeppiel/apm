@@ -2,7 +2,11 @@
     - Use `uv sync` to create the virtual environment and install all dependencies automatically.
     - Use `uv run <command>` to run commands in the uv-managed environment.
     - For development dependencies, use `uv sync --extra dev`.
-- Unit tests are run with pytest, but remember you must activate the virtual environment first as described above.
+- **Running tests**: Use pytest via `uv run`. Prefer targeted test runs during development:
+    - **Targeted (fastest, use during iteration):** `uv run pytest tests/unit/path/to/relevant_test.py -x`
+    - **Unit suite (default validation):** `uv run pytest tests/unit tests/test_console.py -x` (~2,400 tests, matches CI)
+    - **Full suite (only before final commit):** `uv run pytest`
+    - When modifying a specific module, run only its corresponding test file(s) first. Run the full unit suite once as final validation before considering your work done.
 - **Test coverage principle**: When modifying existing code, add tests for the code paths you touch, on top of tests for the new functionality.
 - **Development Workflow**: To run APM from source while working in other directories:
     - Install in development mode: `cd /path/to/awd-cli && uv run pip install -e .`
@@ -18,3 +22,4 @@ The architectural decisions and basis for the project in that document are only 
 - The philosophy when architecting and implementing the project is to prime speed and simplicity over complexity. Do NOT over-engineer, but rather build a solid foundation that can be iterated on.
 - APM is an active OSS project under the `microsoft` org with a growing community (250+ stars, external contributors). Breaking changes should be communicated clearly (CHANGELOG.md), but we still favor shipping fast over lengthy deprecation cycles.
 - The goal is to deliver a solid and scalable architecture but simple starting implementation. Not building something complex from the start and then having to simplify it later. Remember we are delivering a new tool to the developer community and we will need to rapidly adapt to what's really useful, evolving standards, etc.
+- **Cross-platform encoding rule**: All source code and CLI output must stay within printable ASCII (U+0020–U+007E). Do NOT use emojis, Unicode symbols, box-drawing characters, em dashes, or any character outside the ASCII range in source files or CLI output strings. Use bracket notation for status symbols: `[+]` success, `[!]` warning, `[x]` error, `[i]` info, `[*]` action, `[>]` running. This is required to prevent `charmap` codec errors on Windows cp1252 terminals.

@@ -44,6 +44,7 @@ Scope / non-goals
 from __future__ import annotations
 
 import builtins
+from dataclasses import replace as _dataclass_replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
@@ -61,6 +62,7 @@ def detect_ref_change(
     locked_dep: "Optional[LockedDependency]",
     *,
     update_refs: bool = False,
+    logger=None,
 ) -> bool:
     """Return ``True`` when the manifest ref differs from the locked resolved_ref.
 
@@ -101,6 +103,7 @@ def detect_orphans(
     intended_dep_keys: builtins.set,
     *,
     only_packages: builtins.list,
+    logger=None,
 ) -> builtins.set:
     """Return the set of deployed file paths whose owning package left the manifest.
 
@@ -137,6 +140,7 @@ def detect_orphans(
 def detect_config_drift(
     current_configs: Dict[str, dict],
     stored_configs: Dict[str, dict],
+    logger=None,
 ) -> builtins.set:
     """Return names of entries whose current config differs from the stored baseline.
 
@@ -171,8 +175,14 @@ def build_download_ref(
     *,
     update_refs: bool,
     ref_changed: bool,
-) -> str:
-    """Build the download-ref string passed to the package downloader.
+    logger=None,
+) -> "DependencyReference":
+    """Build the dependency reference passed to the package downloader.
+
+    Returns a :class:`DependencyReference` (not a flat string) so that
+    structured fields like ``virtual_path`` survive the trip to
+    ``download_package()`` without a lossy ``str()`` → ``parse()``
+    round-trip.  See :issue:`382`.
 
     Uses the locked commit SHA for reproducibility, unless:
     * ``update_refs=True`` — intentional update run; use the manifest ref.
@@ -186,20 +196,11 @@ def build_download_ref(
                      this dependency.
 
     Returns:
-        A ref string suitable for ``GitHubPackageDownloader.download_package``.
+        A :class:`DependencyReference` suitable for
+        ``GitHubPackageDownloader.download_package``.
     """
-    download_ref = str(dep_ref)
     if existing_lockfile and not update_refs and not ref_changed:
         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
         if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-            # Include the host so the downloader can resolve the correct
-            # server (e.g. GitHub Enterprise custom domains).  Without it
-            # ``DependencyReference.parse()`` would fall back to github.com.
-            if dep_ref.host:
-                base_ref = f"{dep_ref.host}/{dep_ref.repo_url}"
-            else:
-                base_ref = dep_ref.repo_url
-            if dep_ref.virtual_path:
-                base_ref = f"{base_ref}/{dep_ref.virtual_path}"
-            download_ref = f"{base_ref}#{locked_dep.resolved_commit}"
-    return download_ref
+            return _dataclass_replace(dep_ref, reference=locked_dep.resolved_commit)
+    return dep_ref

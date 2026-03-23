@@ -2,7 +2,7 @@
 title: "Private Packages"
 description: "Create and distribute private APM packages within your team or organization."
 sidebar:
-  order: 8
+  order: 9
 ---
 
 A private APM package is just a private git repository with an `apm.yml`. There is no registry and no publish step — make the repo private, grant read access, and `apm install` handles the rest.
@@ -36,7 +36,7 @@ dependencies:
     - your-org/my-private-package#v1.0.0
 ```
 
-For GitLab, Bitbucket, or self-hosted git servers, use the `git:` object form and rely on your [existing git credentials](../../getting-started/authentication/#object-style-git-references):
+For GitLab, Bitbucket, or self-hosted git servers, use the [`git:` object form](../dependencies/) and rely on your [existing git credentials](../../getting-started/authentication/):
 
 ```yaml
 dependencies:

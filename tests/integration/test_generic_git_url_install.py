@@ -209,11 +209,11 @@ class TestNormalizeOnWriteRoundtrip:
 
         with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
             from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-            result = _validate_and_add_packages_to_apm_yml(
+            validated, _outcome = _validate_and_add_packages_to_apm_yml(
                 ["https://github.com/microsoft/apm-sample-package.git"]
             )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
         data = yaml.safe_load(self.apm_yml_path.read_text())
         assert "microsoft/apm-sample-package" in data["dependencies"]["apm"]
         # Verify raw URL is NOT stored
@@ -230,11 +230,11 @@ class TestNormalizeOnWriteRoundtrip:
 
         with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
             from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-            result = _validate_and_add_packages_to_apm_yml(
+            validated, _outcome = _validate_and_add_packages_to_apm_yml(
                 ["git@github.com:microsoft/apm-sample-package.git"]
             )
 
-        assert result == ["microsoft/apm-sample-package"]
+        assert validated == ["microsoft/apm-sample-package"]
         data = yaml.safe_load(self.apm_yml_path.read_text())
         assert "microsoft/apm-sample-package" in data["dependencies"]["apm"]
 
@@ -249,11 +249,11 @@ class TestNormalizeOnWriteRoundtrip:
 
         with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
             from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-            result = _validate_and_add_packages_to_apm_yml(
+            validated, _outcome = _validate_and_add_packages_to_apm_yml(
                 ["microsoft/apm-sample-package"]
             )
 
-        assert result == []
+        assert validated == []
         data = yaml.safe_load(self.apm_yml_path.read_text())
         assert data["dependencies"]["apm"].count("microsoft/apm-sample-package") == 1
 
@@ -264,11 +264,11 @@ class TestNormalizeOnWriteRoundtrip:
 
         with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
             from apm_cli.commands.install import _validate_and_add_packages_to_apm_yml
-            result = _validate_and_add_packages_to_apm_yml(
+            validated, _outcome = _validate_and_add_packages_to_apm_yml(
                 ["https://github.com/microsoft/apm-sample-package.git"]
             )
 
-        assert result == []
+        assert validated == []
         data = yaml.safe_load(self.apm_yml_path.read_text())
         # Should still be exactly 1 entry
         apm_deps = data["dependencies"]["apm"]

@@ -15,6 +15,7 @@ class DependencyNode:
     depth: int = 0
     children: List['DependencyNode'] = field(default_factory=list)
     parent: Optional['DependencyNode'] = None
+    is_dev: bool = False  # True when reached exclusively through devDependencies
     
     def get_id(self) -> str:
         """Get unique identifier for this node."""
@@ -27,6 +28,21 @@ class DependencyNode:
     def get_display_name(self) -> str:
         """Get display name for this dependency."""
         return self.dependency_ref.get_display_name()
+
+    def get_ancestor_chain(self) -> str:
+        """Build a human-readable breadcrumb from this node's ancestry.
+
+        Walks up ``parent`` links to produce e.g. ``"root-pkg > mid-pkg > this-pkg"``
+        so error messages can show which dependency path led here.
+        Returns just the node's display name for root-level (depth-0/1) deps.
+        """
+        parts: list[str] = []
+        current: Optional['DependencyNode'] = self
+        while current is not None:
+            parts.append(current.get_display_name())
+            current = current.parent
+        parts.reverse()
+        return " > ".join(parts)
 
 
 @dataclass

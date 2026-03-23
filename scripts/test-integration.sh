@@ -117,7 +117,13 @@ detect_environment() {
         log_info "Found existing binary: ./dist/$BINARY_NAME/apm (CI mode)"
     else
         USE_EXISTING_BINARY=false
-        log_info "No existing binary found, will build locally"
+        log_info "No existing binary found at ./dist/$BINARY_NAME/apm, will build locally"
+        # Debug: show what's actually in dist/ to diagnose artifact download issues
+        if [[ -d "./dist" ]]; then
+            log_info "Contents of ./dist/: $(ls -la ./dist/ 2>/dev/null | head -10)"
+        else
+            log_info "No ./dist/ directory exists"
+        fi
     fi
 }
 # Build binary (like CI build job does) - only if needed
@@ -133,7 +139,11 @@ build_binary() {
     log_info "Installing Python dependencies..."
     if command -v uv >/dev/null 2>&1; then
         log_info "Using uv for binary build dependencies..."
-        uv venv
+        if [[ -d ".venv" ]]; then
+            log_info "Virtual environment already exists, reusing it..."
+        else
+            uv venv
+        fi
         source .venv/bin/activate
         uv pip install -e ".[dev]"
         uv pip install pyinstaller

@@ -8,6 +8,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Virtual package types (files, collections, subdirectories) now respect `ARTIFACTORY_ONLY=1`, matching the primary zip-archive proxy-only behavior (#418)
+- `apm pack --target claude` no longer produces an empty bundle when skills/agents are installed under `.github/` -- cross-target path mapping remaps `skills/` and `agents/` to the pack target prefix (#420)
+
+### Added
+
+- `ci-runtime.yml` workflow for nightly + manual runtime inference tests, decoupled from release pipeline (#371)
+- `APM_RUN_INFERENCE_TESTS` env var to gate live inference (`apm run`) in test scripts (#371)
+- PR traceability `::notice` annotation in `ci-integration.yml` smoke-test job (#371)
+
+### Changed
+
+- Merged `test` + `build` into single `build-and-test` job across `ci.yml` and `build-release.yml` — eliminates ~1.5m runner re-provisioning per platform (#371)
+- macOS consolidated jobs are now root nodes (no `needs: [test]`) — run own unit tests for full independence (#371)
+- Removed `setup-node@v4` from unit test and build jobs that don't need Node.js (#371)
+- Enabled native `setup-uv` caching (`enable-cache: true`), removed manual `actions/cache@v3` blocks (#371)
+- Decoupled live inference tests (`apm run`) from release pipeline — reduces 14.9% false-negative rate and `GH_MODELS_PAT` secret exposure (#371)
+- `ci-integration.yml` report-status now detects CI circular dependency (upstream failure) and reports `pending` instead of blocking (#371)
+- `gh-aw-compat` is now informational (`continue-on-error: true`) — non-deterministic external dependencies should not block releases (#371)
+- Copilot encoding instructions: `encoding.instructions.md` (`applyTo: "**"`) bans non-ASCII characters in source and CLI output; updated `copilot-instructions.md` and `cli.instructions.md` to use ASCII bracket notation (`[+]`/`[!]`/`[x]`/`[i]`/`[*]`/`[>]`) instead of emoji STATUS_SYMBOLS (#282)
+
+### Fixed
+
+- Resolved Windows 8.3 short-name path mismatch: call `.resolve()` on both sides of `relative_to()` in `_generate_placement_summary` and `_generate_distributed_summary` so paths display correctly on Windows CI runners (#411)
+
+## [0.8.4] - 2026-03-22
+
+### Added
+
+- Centralized `AuthResolver` with per-(host, org) token resolution, cached and thread-safe — replaces 4 scattered auth implementations (#394)
+- `CommandLogger` and `InstallLogger` base classes for structured CLI output with validation, resolution, and download phases (#394)
+- `--verbose` flag on `uninstall`, `pack`, and `unpack` commands (#394)
+- Verbose output: dependency tree resolution, auth source/type per download, lockfile SHA, package type, inline per-package diagnostics (#394)
+- Parent chain breadcrumb in transitive dependency error messages — "root-pkg > mid-pkg > failing-dep" (#394)
+- `DiagnosticCollector.count_for_package()` for inline per-package verbose hints (#394)
+- Auth flow diagram and package source behavior matrix in authentication docs (#394)
+- Documented `${input:...}` variable support in `headers` and `env` MCP server fields (#349)
+
+### Changed
+
+- All CLI output now uses ASCII symbols (`[+]`, `[x]`, `[!]`) instead of Unicode characters (#394)
+- Migrated `_rich_*` calls to `CommandLogger` across install, compile, uninstall, audit, pack, and bundle modules (#394)
+- Verbose ref display uses clean `#tag @sha` format instead of nested parentheses (#394)
+- Integration tree lines (`└─`) no longer have `[i]` prefix — clean visual hierarchy (#394)
+- Global env vars (`GITHUB_APM_PAT`, `GITHUB_TOKEN`, `GH_TOKEN`) apply to all hosts — HTTPS is the security boundary, not host-gating (#394)
+- Credential-fill timeout increased from 5s to 60s (configurable via `APM_GIT_CREDENTIAL_TIMEOUT`, max 180s) — fixes Windows credential picker timeouts (#394)
+
+### Fixed
+
+- Bundle lockfile includes non-target `deployed_files` causing `apm unpack` verification failure when packing with `--target` (#394)
+- Verbose lockfile iteration crashed with `'str' object has no attribute 'resolved_commit'` (#394)
+- CodeQL incomplete URL substring sanitization in test assertions (#394)
+
+### Security
+
+- Bumped `h3` from 1.15.6 to 1.15.9 in docs (#400)
+
+### Removed
+
+- Unused image files: `copilot-banner.png`, `copilot-cli-screenshot.png` (#391)
+
+## [0.8.3] - 2026-03-20
+
+### Added
+
+- Plugin authoring — `apm pack --format plugin` exports APM packages as standalone plugin directories (`plugin.json`, agents, skills, commands) consumable by Copilot CLI, Claude Code, and Cursor without APM installed (#379)
+- `apm init --plugin` scaffolds a hybrid project with both `apm.yml` and `plugin.json`, including a `devDependencies` section (#379)
+- `devDependencies` in `apm.yml` — dev deps install normally but are excluded from `apm pack` output; `apm install --dev` writes to the dev section (#379)
+- VS Code runtime detection now falls back to `.vscode/` directory presence when the `code` binary is not on PATH — by @sergio-sisternes-epam (#359)
+
+### Security
+
+- Content integrity hashing — SHA-256 `content_hash` per dependency in `apm.lock.yaml`, verified on subsequent installs to detect tampering or force-pushed commits (#315, #379)
+- `apm audit --strip` now preserves a leading BOM while stripping suspicious mid-file BOMs, preventing false negatives — by @dadavidtseng (#372)
+
+### Changed
+
+- Install URLs now use short `aka.ms/apm-unix` and `aka.ms/apm-windows` redirects across README, docs, and CLI output (#384)
+- README highlights link to relevant docs pages; plugin authoring featured as a key value proposition (#385)
+
+### Fixed
+
+- `DependencyReference` preserved through the download pipeline so lockfile records the original ref, not an empty object — by @sergio-sisternes-epam (#383)
+- Refactor command and model modules for readability and maintainability — by @sergio-sisternes-epam (#232)
+- CLI docs align `compile --target opencode`, `audit --dry-run`, and planned `audit --drift` with current behavior (#373)
+
 ## [0.8.2] - 2026-03-19
 
 ### Added
@@ -23,7 +110,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Harden dependency path validation — reject invalid path segments at parse time, enforce install-path containment, safe deletion wrappers across `uninstall`, `prune`, and `install` (#364)
-
 
 ## [0.8.1] - 2026-03-17
 
@@ -242,7 +328,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SKILL.md Parsing**: Parse SKILL.md directly without requiring apm.yml generation
 - **Git Host Errors**: Actionable error messages for unsupported Git hosts
 
-## [0.7.0] - 2025-12-19
+## [0.7.0] - 2024-12-19
 
 ### Changed
 

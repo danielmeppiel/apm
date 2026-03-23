@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apm-cli"
-version = "0.8.2"
+version = "0.8.4"
 description = "MCP configuration tool"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,6 +41,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
     "black>=26.3.1; python_version>='3.10'",
     "isort>=5.0.0",
     "mypy>=1.0.0",

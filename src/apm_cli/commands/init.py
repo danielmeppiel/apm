@@ -6,23 +6,22 @@ from pathlib import Path
 
 import click
 
+from ..constants import APM_YML_FILENAME
+from ..core.command_logger import CommandLogger
 from ..utils.console import (
     _create_files_table,
-    _rich_echo,
-    _rich_error,
-    _rich_info,
     _rich_panel,
-    _rich_success,
-    _rich_warning,
 )
 from ._helpers import (
     INFO,
     RESET,
     _create_minimal_apm_yml,
+    _create_plugin_json,
     _get_console,
     _get_default_config,
     _lazy_confirm,
     _rich_blank_line,
+    _validate_plugin_name,
 )
 
 
@@ -31,12 +30,18 @@ from ._helpers import (
 @click.option(
     "--yes", "-y", is_flag=True, help="Skip interactive prompts and use auto-detected defaults"
 )
+@click.option(
+    "--plugin", is_flag=True, help="Initialize as plugin author (creates plugin.json + apm.yml)"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.pass_context
-def init(ctx, project_name, yes):
+def init(ctx, project_name, yes, plugin, verbose):
     """Initialize a new APM project (like npm init).
 
     Creates a minimal apm.yml with auto-detected metadata.
+    With --plugin, also creates plugin.json for plugin authors.
     """
+    logger = CommandLogger("init", verbose=verbose)
     try:
         # Handle explicit current directory
         if project_name == ".":
@@ -47,18 +52,27 @@ def init(ctx, project_name, yes):
             project_dir = Path(project_name)
             project_dir.mkdir(exist_ok=True)
             os.chdir(project_dir)
-            _rich_info(f"Created project directory: {project_name}", symbol="folder")
+            logger.progress(f"Created project directory: {project_name}", symbol="folder")
             final_project_name = project_name
         else:
             project_dir = Path.cwd()
             final_project_name = project_dir.name
 
+        # Validate plugin name early
+        if plugin and not _validate_plugin_name(final_project_name):
+            logger.error(
+                f"Invalid plugin name '{final_project_name}'. "
+                "Must be kebab-case (lowercase letters, numbers, hyphens), "
+                "start with a letter, and be at most 64 characters."
+            )
+            sys.exit(1)
+
         # Check for existing apm.yml
-        apm_yml_exists = Path("apm.yml").exists()
+        apm_yml_exists = Path(APM_YML_FILENAME).exists()
 
         # Handle existing apm.yml in brownfield projects
         if apm_yml_exists:
-            _rich_warning("apm.yml already exists")
+            logger.warning("apm.yml already exists")
 
             if not yes:
                 Confirm = _lazy_confirm()
@@ -71,47 +85,65 @@ def init(ctx, project_name, yes):
                     confirm = click.confirm("Continue and overwrite?")
 
                 if not confirm:
-                    _rich_info("Initialization cancelled.")
+                    logger.progress("Initialization cancelled.")
                     return
             else:
-                _rich_info("--yes specified, overwriting apm.yml...")
+                logger.progress("--yes specified, overwriting apm.yml...")
 
         # Get project configuration (interactive mode or defaults)
         if not yes:
-            config = _interactive_project_setup(final_project_name)
+            config = _interactive_project_setup(final_project_name, logger)
         else:
             # Use auto-detected defaults
             config = _get_default_config(final_project_name)
 
-        _rich_success(f"Initializing APM project: {config['name']}", symbol="rocket")
+        # Plugin mode uses 0.1.0 as default version
+        if plugin and yes:
+            config["version"] = "0.1.0"
 
-        # Create minimal apm.yml
-        _create_minimal_apm_yml(config)
+        logger.start(f"Initializing APM project: {config['name']}", symbol="running")
 
-        _rich_success("APM project initialized successfully!", symbol="sparkles")
+        # Create apm.yml (with devDependencies for plugin mode)
+        _create_minimal_apm_yml(config, plugin=plugin)
+
+        # Create plugin.json for plugin mode
+        if plugin:
+            _create_plugin_json(config)
+
+        logger.success("APM project initialized successfully!")
 
         # Display created file info
         try:
             console = _get_console()
             if console:
                 files_data = [
-                    ("*", "apm.yml", "Project configuration"),
+                    ("*", APM_YML_FILENAME, "Project configuration"),
                 ]
+                if plugin:
+                    files_data.append(("*", "plugin.json", "Plugin metadata"))
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
         except (ImportError, NameError):
-            _rich_info("Created:")
-            _rich_echo("  * apm.yml - Project configuration", style="muted")
+            logger.progress("Created:")
+            click.echo("  * apm.yml - Project configuration")
+            if plugin:
+                click.echo("  * plugin.json - Plugin metadata")
 
         _rich_blank_line()
 
         # Next steps - actionable commands matching README workflow
-        next_steps = [
-            "Install a runtime:       apm runtime setup copilot",
-            "Add APM dependencies:    apm install <owner>/<repo>",
-            "Compile agent context:   apm compile",
-            "Run your first workflow: apm run start",
-        ]
+        if plugin:
+            next_steps = [
+                "Add dev dependencies:    apm install --dev <owner>/<repo>",
+                "Pack as plugin:          apm pack --format plugin",
+            ]
+        else:
+            next_steps = [
+                "Install a runtime:       apm runtime setup copilot",
+                "Add APM dependencies:    apm install <owner>/<repo>",
+                "Compile agent context:   apm compile",
+                "Run your first workflow: apm run start",
+            ]
 
         try:
             _rich_panel(
@@ -120,16 +152,16 @@ def init(ctx, project_name, yes):
                 style="cyan",
             )
         except (ImportError, NameError):
-            _rich_info("Next steps:")
+            logger.progress("Next steps:")
             for step in next_steps:
                 click.echo(f"  * {step}")
 
     except Exception as e:
-        _rich_error(f"Error initializing project: {e}")
+        logger.error(f"Error initializing project: {e}")
         sys.exit(1)
 
 
-def _interactive_project_setup(default_name):
+def _interactive_project_setup(default_name, logger):
     """Interactive setup for new APM projects with auto-detection."""
     from ._helpers import _auto_detect_author, _auto_detect_description
 
@@ -166,8 +198,8 @@ author: {author}"""
 
     except (ImportError, NameError):
         # Fallback to click prompts
-        _rich_info("Setting up your APM project...")
-        _rich_info("Press ^C at any time to quit.")
+        logger.progress("Setting up your APM project...")
+        logger.progress("Press ^C at any time to quit.")
 
         name = click.prompt("Project name", default=default_name).strip()
         version = click.prompt("Version", default="1.0.0").strip()
@@ -181,7 +213,7 @@ author: {author}"""
         click.echo(f"  author: {author}")
 
         if not click.confirm("\nIs this OK?", default=True):
-            _rich_info("Aborted.")
+            logger.progress("Aborted.")
             sys.exit(0)
 
     return {

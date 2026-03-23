@@ -6,7 +6,8 @@ from pathlib import Path
 
 import click
 
-from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ..constants import APM_LOCK_FILENAME, APM_MODULES_DIR, APM_YML_FILENAME
+from ..core.command_logger import CommandLogger
 from ..utils.path_security import PathTraversalError, safe_rmtree
 from ._helpers import _build_expected_install_paths, _scan_installed_packages
 
@@ -30,47 +31,48 @@ def prune(ctx, dry_run):
         apm prune           # Remove orphaned packages
         apm prune --dry-run # Show what would be removed
     """
+    logger = CommandLogger("prune", dry_run=dry_run)
     try:
         # Check if apm.yml exists
-        if not Path("apm.yml").exists():
-            _rich_error("No apm.yml found. Run 'apm init' first.")
+        if not Path(APM_YML_FILENAME).exists():
+            logger.error("No apm.yml found. Run 'apm init' first.")
             sys.exit(1)
 
         # Check if apm_modules exists
-        apm_modules_dir = Path("apm_modules")
+        apm_modules_dir = Path(APM_MODULES_DIR)
         if not apm_modules_dir.exists():
-            _rich_info("No apm_modules/ directory found. Nothing to prune.")
+            logger.progress("No apm_modules/ directory found. Nothing to prune.")
             return
 
-        _rich_info("Analyzing installed packages vs apm.yml...")
+        logger.start("Analyzing installed packages vs apm.yml...")
 
         # Build expected vs installed using shared helpers
         try:
-            apm_package = APMPackage.from_apm_yml(Path("apm.yml"))
+            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             declared_deps = apm_package.get_apm_dependencies()
             lockfile = LockFile.read(get_lockfile_path(Path.cwd()))
             expected_installed = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
         except Exception as e:
-            _rich_error(f"Failed to parse apm.yml: {e}")
+            logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
             sys.exit(1)
 
         installed_packages = _scan_installed_packages(apm_modules_dir)
         orphaned_packages = [p for p in installed_packages if p not in expected_installed]
 
         if not orphaned_packages:
-            _rich_success("No orphaned packages found. apm_modules/ is clean.")
+            logger.success("No orphaned packages found. apm_modules/ is clean.", symbol="check")
             return
 
         # Show what will be removed
-        _rich_info(f"Found {len(orphaned_packages)} orphaned package(s):")
+        logger.progress(f"Found {len(orphaned_packages)} orphaned package(s):")
         for pkg_name in orphaned_packages:
             if dry_run:
-                _rich_info(f"  - {pkg_name} (would be removed)")
+                logger.progress(f"  - {pkg_name} (would be removed)")
             else:
-                _rich_info(f"  - {pkg_name}")
+                logger.progress(f"  - {pkg_name}")
 
         if dry_run:
-            _rich_success("Dry run complete - no changes made")
+            logger.success("Dry run complete - no changes made")
             return
 
         # Remove orphaned packages
@@ -82,12 +84,12 @@ def prune(ctx, dry_run):
             pkg_path = apm_modules_dir.joinpath(*path_parts)
             try:
                 safe_rmtree(pkg_path, apm_modules_dir)
-                _rich_info(f"+ Removed {org_repo_name}")
+                logger.progress(f"+ Removed {org_repo_name}")
                 removed_count += 1
                 pruned_keys.append(org_repo_name)
                 deleted_pkg_paths.append(pkg_path)
             except Exception as e:
-                _rich_error(f"x Failed to remove {org_repo_name}: {e}")
+                logger.error(f"x Failed to remove {org_repo_name}: {e}")
 
         # Batch parent cleanup  -- single bottom-up pass
         from ..integration.base_integrator import BaseIntegrator
@@ -103,26 +105,30 @@ def prune(ctx, dry_run):
                 deleted_targets: list = []
                 for dep_key in pruned_keys:
                     dep = lockfile.get_dependency(dep_key)
-                    if dep and dep.deployed_files:
-                        for rel_path in dep.deployed_files:
-                            if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
-                                continue
-                            target = project_root / rel_path
-                            if target.is_file():
-                                target.unlink()
-                                deployed_cleaned += 1
-                                deleted_targets.append(target)
-                            elif target.is_dir():
-                                shutil.rmtree(target)
-                                deployed_cleaned += 1
-                                deleted_targets.append(target)
+                    if not dep or not dep.deployed_files:
+                        # No deployed files to clean — just remove lockfile entry
+                        if dep_key in lockfile.dependencies:
+                            del lockfile.dependencies[dep_key]
+                        continue
+                    for rel_path in dep.deployed_files:
+                        if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
+                            continue
+                        target = project_root / rel_path
+                        if target.is_file():
+                            target.unlink()
+                            deployed_cleaned += 1
+                            deleted_targets.append(target)
+                        elif target.is_dir():
+                            shutil.rmtree(target)
+                            deployed_cleaned += 1
+                            deleted_targets.append(target)
                     # Remove from lockfile
                     if dep_key in lockfile.dependencies:
                         del lockfile.dependencies[dep_key]
                 # Batch parent cleanup  -- single bottom-up pass
                 BaseIntegrator.cleanup_empty_parents(deleted_targets, stop_at=project_root)
                 if deployed_cleaned > 0:
-                    _rich_info(f"+ Cleaned {deployed_cleaned} deployed integration file(s)")
+                    logger.progress(f"+ Cleaned {deployed_cleaned} deployed integration file(s)")
                 # Write updated lockfile (or remove if empty)
                 try:
                     if lockfile.dependencies:
@@ -134,10 +140,10 @@ def prune(ctx, dry_run):
 
         # Final summary
         if removed_count > 0:
-            _rich_success(f"Pruned {removed_count} orphaned package(s)")
+            logger.success(f"Pruned {removed_count} orphaned package(s)")
         else:
-            _rich_warning("No packages were removed")
+            logger.warning("No packages were removed")
 
     except Exception as e:
-        _rich_error(f"Error pruning packages: {e}")
+        logger.error(f"Error pruning packages: {e}")
         sys.exit(1)

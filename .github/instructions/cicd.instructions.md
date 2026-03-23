@@ -6,25 +6,32 @@ description: "CI/CD Pipeline configuration for PyInstaller binary packaging and 
 # CI/CD Pipeline Instructions
 
 ## Workflow Architecture (Fork-safe)
-Three workflows split by trigger and secret requirements:
+Four workflows split by trigger and secret requirements:
 
 1. **`ci.yml`** — `pull_request` trigger (all PRs, including forks)
-   - **Linux + Windows** (ubuntu-24.04, windows-latest). Unit tests in parallel on both platforms + single Linux binary build. No secrets needed.
-   - Windows job catches path separator, encoding, and platform-specific issues before merge.
+   - **Linux-only** (ubuntu-24.04). Combined `build-and-test` job: unit tests + binary build in a single runner. No secrets needed.
    - Uploads Linux x86_64 binary artifact for downstream integration testing.
 2. **`ci-integration.yml`** — `workflow_run` trigger (after CI completes, environment-gated)
    - **Linux-only**. Smoke tests, integration tests, release validation. Requires `integration-tests` environment approval.
    - Security: uses `workflow_run` (not `pull_request_target`) — PR code is NEVER checked out.
    - Downloads Linux binary artifact from ci.yml, runs test scripts from default branch (main).
    - Reports results back to PR via commit status API.
+   - Detects CI circular dependency (upstream failure → reports `pending` instead of blocking).
+   - Annotates originating PR URL for traceability.
 3. **`build-release.yml`** — `push` to main, tags, schedule, `workflow_dispatch`
-   - **Full 4-platform matrix** (linux x86_64/arm64, darwin x86_64/arm64). Secrets always available.
-   - macOS builds and cross-platform validation happen here, where queue time doesn't block PRs.
+   - **Linux + Windows** run combined `build-and-test` (unit tests + binary build in one job).
+   - **macOS Intel** uses `build-and-validate-macos-intel` (root node, runs own unit tests — no dependency on `build-and-test`). Builds the binary on every push for early regression feedback; integration + release-validation phases conditional on tag/schedule/dispatch.
+   - **macOS ARM** uses `build-and-validate-macos-arm` (root node, tag/schedule/dispatch only — ARM runners are extremely scarce with 2-4h+ queue waits). Only requested when the binary is actually needed for a release.
+   - Secrets always available. Full 5-platform binary output (linux x86_64/arm64, darwin x86_64/arm64, windows x86_64).
+4. **`ci-runtime.yml`** — nightly schedule, manual dispatch, path-filtered push
+   - **Linux x86_64 only**. Live inference smoke tests (`apm run`) isolated from release pipeline.
+   - Uses `GH_MODELS_PAT` for GitHub Models API access.
+   - Failures do not block releases — annotated as warnings.
 
 ## Platform Testing Strategy
-- **PR time**: Linux + Windows in parallel. Catches logic bugs, dependency issues, path separators, encoding, and Windows-specific problems before merge.
+- **PR time**: Linux-only combined build-and-test in `ci.yml`. Catches logic bugs and dependency issues before merge. Windows + macOS are tested post-merge (platform-specific issues are rare and the full matrix runs on every push to main).
 - **Post-merge**: Full 5-platform matrix (linux x86_64/arm64, darwin x86_64/arm64, windows x86_64) catches remaining platform-specific issues on main.
-- **Rationale**: Linux + Windows PR coverage catches the two fundamentally different platform families (Unix vs Windows). macOS-specific issues are rare and caught post-merge.
+- **Rationale**: ci.yml has always been Linux-only — Windows and macOS are covered by `build-release.yml` on every push to main. This keeps PR feedback fast while still catching platform issues before release.
 
 ## PyInstaller Binary Packaging
 - **CRITICAL**: Uses `--onedir` mode (NOT `--onefile`) for faster CLI startup performance
@@ -42,9 +49,17 @@ Three workflows split by trigger and secret requirements:
 2. **Release Validation**: ISOLATION testing - no source checkout, validates exact shipped binary experience
 3. **Path Resolution**: Use symlinks and PATH manipulation for isolated binary testing
 
+## Inference Testing (Decoupled)
+- Live inference tests (`apm run`) are **isolated** in `ci-runtime.yml` — they do NOT gate releases
+- `APM_RUN_INFERENCE_TESTS=1` env var enables inference in test scripts; absent = skipped
+- `GH_MODELS_PAT` is only used in `ci-runtime.yml` and smoke-test jobs — NOT in integration-tests or release-validation
+- Rationale: 8 inference executions × 2% failure rate = 14.9% false-negative per release; APM core UVPs require zero live inference
+
 ## Release Flow Dependencies
-- **PR workflow**: ci.yml (test → build, Linux-only) then ci-integration.yml via workflow_run (approve → smoke-test → integration-tests → release-validation → report-status, all Linux-only)
-- **Push/Release workflow**: test → build → integration-tests → release-validation → create-release → publish-pypi → update-homebrew (full 4-platform matrix)
+- **PR workflow**: ci.yml (build-and-test, Linux-only) then ci-integration.yml via workflow_run (approve → smoke-test → integration-tests → release-validation → report-status, all Linux-only)
+- **Push/Release workflow (Linux + Windows)**: build-and-test → integration-tests → release-validation → create-release → publish-pypi → update-homebrew (gh-aw-compat runs in parallel, informational)
+- **Push/Release workflow (macOS Intel)**: build-and-validate-macos-intel (root node: unit tests + build always + conditional integration/release-validation) → create-release
+- **Push/Release workflow (macOS ARM)**: build-and-validate-macos-arm (root node, tag/schedule/dispatch only; all phases run) → create-release
 - **Tag Triggers**: Only `v*.*.*` tags trigger full release pipeline
 - **Artifact Retention**: 30 days for debugging failed releases
 - **Cross-workflow artifacts**: ci-integration.yml downloads artifacts from ci.yml using `run-id` and `github-token`
@@ -59,9 +74,15 @@ Three workflows split by trigger and secret requirements:
 ## Key Environment Variables
 - `PYTHON_VERSION: '3.12'` - Standardized across all jobs
 - `GITHUB_TOKEN` - Fallback token for compatibility (GitHub Actions built-in)
+- `APM_RUN_INFERENCE_TESTS` - When `1`, enables live inference tests in validation scripts
 
 ## Performance Considerations
-- **PR CI is Linux-only**: Eliminates macOS runner queue delays (20-40+ min). Full platform coverage runs post-merge.
+- **Combined build-and-test**: Eliminates ~1.5m runner re-provisioning overhead by running unit tests and binary build in the same job.
+- **macOS as root nodes**: macOS consolidated jobs run their own unit tests and start immediately — no dependency on Linux/Windows test completion.
+- **Native uv caching**: `setup-uv` action with `enable-cache: true` replaces manual `actions/cache@v3` blocks.
+- **Targeted setup-node usage**: Node.js is only installed in `ci-runtime.yml`, macOS consolidated jobs, and integration-tests/release-validation phases (for `apm runtime setup copilot` → npm install).
+- **macOS runner consolidation**: Each macOS arch has a single consolidated job (build + integration + release-validation). Intel (`build-and-validate-macos-intel`) runs on every push since Intel runners are plentiful. ARM (`build-and-validate-macos-arm`) is gated to tag/schedule/dispatch only since ARM runners are extremely scarce (2-4h+ queue waits). This avoids serial re-queuing of runners across multiple jobs.
+- **Unit tests skip macOS**: Python unit tests are platform-agnostic; Linux + Windows coverage is sufficient. macOS-specific validation (binary build, integration tests, release validation) still runs via the consolidated job.
 - UPX compression when available (reduces binary size ~50%)
 - Python optimization level 2 in PyInstaller
 - Aggressive module exclusions (tkinter, matplotlib, etc.)

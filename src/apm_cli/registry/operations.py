@@ -7,6 +7,7 @@ from pathlib import Path
 
 import requests
 
+from ..core.token_manager import GitHubTokenManager
 from .client import SimpleRegistryClient
 
 logger = logging.getLogger(__name__)
@@ -329,9 +330,14 @@ class MCPServerOperations:
                     if var_name == 'GITHUB_DYNAMIC_TOOLSETS':
                         env_vars[var_name] = '1'  # Enable dynamic toolsets for GitHub MCP server
                     elif 'token' in var_name.lower() or 'key' in var_name.lower():
-                        # For tokens/keys, try environment defaults with fallback chain
-                        # Priority: GITHUB_APM_PAT (APM modules) > GITHUB_TOKEN (user tokens)
-                        env_vars[var_name] = os.getenv('GITHUB_APM_PAT') or os.getenv('GITHUB_TOKEN', '')
+                        # Map known token vars to appropriate purposes
+                        _tm = GitHubTokenManager()
+                        if 'ado' in var_name.lower():
+                            env_vars[var_name] = _tm.get_token_for_purpose('ado_modules') or ''
+                        elif 'copilot' in var_name.lower():
+                            env_vars[var_name] = _tm.get_token_for_purpose('copilot') or ''
+                        else:
+                            env_vars[var_name] = _tm.get_token_for_purpose('modules') or ''
                     else:
                         # For other variables, use empty string or reasonable default
                         env_vars[var_name] = ''

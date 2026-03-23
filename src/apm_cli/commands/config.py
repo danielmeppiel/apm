@@ -6,7 +6,8 @@ from pathlib import Path
 
 import click
 
-from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success
+from ..constants import APM_YML_FILENAME
+from ..core.command_logger import CommandLogger
 from ..version import get_version
 from ._helpers import HIGHLIGHT, RESET, _get_console, _load_apm_config
 
@@ -20,6 +21,7 @@ def config(ctx):
     """Configure APM CLI settings."""
     # If no subcommand, show current configuration
     if ctx.invoked_subcommand is None:
+        logger = CommandLogger("config")
         try:
             # Lazy import rich table
             from rich.table import Table  # type: ignore
@@ -36,7 +38,7 @@ def config(ctx):
             config_table.add_column("Value", style="cyan")
 
             # Show apm.yml if in project
-            if Path("apm.yml").exists():
+            if Path(APM_YML_FILENAME).exists():
                 apm_config = _load_apm_config()
                 config_table.add_row(
                     "Project", "Name", apm_config.get("name", "Unknown")
@@ -86,9 +88,9 @@ def config(ctx):
 
         except (ImportError, NameError):
             # Fallback display
-            _rich_info("Current APM Configuration:")
+            logger.progress("Current APM Configuration:")
 
-            if Path("apm.yml").exists():
+            if Path(APM_YML_FILENAME).exists():
                 apm_config = _load_apm_config()
                 click.echo(f"\n{HIGHLIGHT}Project (apm.yml):{RESET}")
                 click.echo(f"  Name: {apm_config.get('name', 'Unknown')}")
@@ -98,7 +100,7 @@ def config(ctx):
                     f"  MCP Dependencies: {len(apm_config.get('dependencies', {}).get('mcp', []))}"
                 )
             else:
-                _rich_info("Not in an APM project directory")
+                logger.progress("Not in an APM project directory")
 
             click.echo(f"\n{HIGHLIGHT}Global:{RESET}")
             click.echo(f"  APM CLI Version: {get_version()}")
@@ -116,20 +118,21 @@ def set(key, value):
     """
     from ..config import set_auto_integrate
 
+    logger = CommandLogger("config set")
     if key == "auto-integrate":
         if value.lower() in ["true", "1", "yes"]:
             set_auto_integrate(True)
-            _rich_success("Auto-integration enabled")
+            logger.success("Auto-integration enabled")
         elif value.lower() in ["false", "0", "no"]:
             set_auto_integrate(False)
-            _rich_success("Auto-integration disabled")
+            logger.success("Auto-integration disabled")
         else:
-            _rich_error(f"Invalid value '{value}'. Use 'true' or 'false'.")
+            logger.error(f"Invalid value '{value}'. Use 'true' or 'false'.")
             sys.exit(1)
     else:
-        _rich_error(f"Unknown configuration key: '{key}'")
-        _rich_info("Valid keys: auto-integrate")
-        _rich_info(
+        logger.error(f"Unknown configuration key: '{key}'")
+        logger.progress("Valid keys: auto-integrate")
+        logger.progress(
             "This error may indicate a bug in command routing. Please report this issue."
         )
         sys.exit(1)
@@ -146,21 +149,22 @@ def get(key):
     """
     from ..config import get_config, get_auto_integrate
 
+    logger = CommandLogger("config get")
     if key:
         if key == "auto-integrate":
             value = get_auto_integrate()
             click.echo(f"auto-integrate: {value}")
         else:
-            _rich_error(f"Unknown configuration key: '{key}'")
-            _rich_info("Valid keys: auto-integrate")
-            _rich_info(
+            logger.error(f"Unknown configuration key: '{key}'")
+            logger.progress("Valid keys: auto-integrate")
+            logger.progress(
                 "This error may indicate a bug in command routing. Please report this issue."
             )
             sys.exit(1)
     else:
         # Show all config
         config_data = get_config()
-        _rich_info("APM Configuration:")
+        logger.progress("APM Configuration:")
         for k, v in config_data.items():
             # Map internal keys to user-friendly names
             if k == "auto_integrate":

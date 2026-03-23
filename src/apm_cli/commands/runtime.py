@@ -5,12 +5,10 @@ import sys
 
 import click
 
+from ..core.command_logger import CommandLogger
 from ..utils.console import (
     STATUS_SYMBOLS,
-    _rich_error,
-    _rich_info,
     _rich_panel,
-    _rich_success,
 )
 from ._helpers import HIGHLIGHT, RESET, _get_console
 
@@ -34,8 +32,9 @@ def runtime():
 )
 def setup(runtime_name, version, vanilla):
     """Set up an AI runtime with APM-managed installation."""
+    logger = CommandLogger("runtime setup")
     try:
-        _rich_info(f"Setting up {runtime_name} runtime...")
+        logger.start(f"Setting up {runtime_name} runtime...")
 
         from ..runtime.manager import RuntimeManager
 
@@ -45,16 +44,17 @@ def setup(runtime_name, version, vanilla):
         if not success:
             sys.exit(1)
         else:
-            _rich_success(f"{runtime_name} runtime setup complete!", symbol="sparkles")
+            logger.success(f"{runtime_name} runtime setup complete!")
 
     except Exception as e:
-        _rich_error(f"Error setting up runtime: {e}")
+        logger.error(f"Error setting up runtime: {e}")
         sys.exit(1)
 
 
 @runtime.command(help="List available and installed runtimes")
 def list():
     """List all available runtimes and their installation status."""
+    logger = CommandLogger("runtime list")
     try:
         from ..runtime.manager import RuntimeManager
 
@@ -99,7 +99,7 @@ def list():
 
         except (ImportError, NameError):
             # Fallback to simple output
-            _rich_info("Available Runtimes:")
+            logger.progress("Available Runtimes:")
             click.echo()
 
             for name, info in runtimes.items():
@@ -118,7 +118,7 @@ def list():
                 click.echo()
 
     except Exception as e:
-        _rich_error(f"Error listing runtimes: {e}")
+        logger.error(f"Error listing runtimes: {e}")
         sys.exit(1)
 
 
@@ -127,8 +127,9 @@ def list():
 @click.confirmation_option(prompt="Are you sure you want to remove this runtime?", help="Confirm the action without prompting")
 def remove(runtime_name):
     """Remove an installed runtime from APM management."""
+    logger = CommandLogger("runtime remove")
     try:
-        _rich_info(f"Removing {runtime_name} runtime...")
+        logger.start(f"Removing {runtime_name} runtime...")
 
         from ..runtime.manager import RuntimeManager
 
@@ -138,18 +139,17 @@ def remove(runtime_name):
         if not success:
             sys.exit(1)
         else:
-            _rich_success(
-                f"{runtime_name} runtime removed successfully!", symbol="sparkles"
-            )
+            logger.success(f"{runtime_name} runtime removed successfully!")
 
     except Exception as e:
-        _rich_error(f"Error removing runtime: {e}")
+        logger.error(f"Error removing runtime: {e}")
         sys.exit(1)
 
 
-@runtime.command(help="Check which runtime will be used")
+@runtime.command(help="Show active runtime and preference order")
 def status():
-    """Show which runtime APM will use for execution."""
+    """Show active runtime and preference order."""
+    logger = CommandLogger("runtime status")
     try:
         from ..runtime.manager import RuntimeManager
 
@@ -170,19 +170,19 @@ Active runtime: {available_runtime if available_runtime else 'None available'}""
 
         except (ImportError, NameError):
             # Fallback display
-            _rich_info("Runtime Status:")
+            logger.progress("Runtime Status:")
             click.echo()
 
             click.echo(f"Preference order: {' -> '.join(preference)}")
 
             if available_runtime:
-                _rich_success(f"Active runtime: {available_runtime}")
+                logger.success(f"Active runtime: {available_runtime}")
             else:
-                _rich_error("No runtimes available")
-                _rich_info(
+                logger.error("No runtimes available")
+                logger.progress(
                     "Run 'apm runtime setup copilot' to install the primary runtime"
                 )
 
     except Exception as e:
-        _rich_error(f"Error checking runtime status: {e}")
+        logger.error(f"Error checking runtime status: {e}")
         sys.exit(1)

@@ -6,7 +6,9 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+from ..constants import APM_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
 
 if TYPE_CHECKING:
     from .apm_package import APMPackage
@@ -127,10 +129,49 @@ class ValidationResult:
 
 def _has_hook_json(package_path: Path) -> bool:
     """Check if the package has hook JSON files in hooks/ or .apm/hooks/."""
-    for hooks_dir in [package_path / "hooks", package_path / ".apm" / "hooks"]:
+    for hooks_dir in [package_path / "hooks", package_path / APM_DIR / "hooks"]:
         if hooks_dir.exists() and any(hooks_dir.glob("*.json")):
             return True
     return False
+
+
+def detect_package_type(
+    package_path: Path,
+) -> Tuple[PackageType, Optional[Path]]:
+    """Classify a package directory into a ``PackageType``.
+
+    This is the **single source of truth** for the detection cascade.
+    The function is pure — no side-effects, no file mutations.
+
+    Returns:
+        A ``(package_type, plugin_json_path)`` tuple.
+        *plugin_json_path* is non-None only for ``MARKETPLACE_PLUGIN``.
+    """
+    from ..utils.helpers import find_plugin_json
+
+    has_apm_yml = (package_path / APM_YML_FILENAME).exists()
+    has_skill_md = (package_path / SKILL_MD_FILENAME).exists()
+
+    if has_apm_yml and has_skill_md:
+        return PackageType.HYBRID, None
+    if has_apm_yml:
+        return PackageType.APM_PACKAGE, None
+    if has_skill_md:
+        return PackageType.CLAUDE_SKILL, None
+    if _has_hook_json(package_path):
+        return PackageType.HOOK_PACKAGE, None
+
+    plugin_json_path = find_plugin_json(package_path)
+    has_plugin_evidence = (
+        plugin_json_path is not None
+        or (package_path / "agents").is_dir()
+        or (package_path / "skills").is_dir()
+        or (package_path / "commands").is_dir()
+    )
+    if has_plugin_evidence:
+        return PackageType.MARKETPLACE_PLUGIN, plugin_json_path
+
+    return PackageType.INVALID, None
 
 
 def validate_apm_package(package_path: Path) -> ValidationResult:
@@ -161,49 +202,22 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         return result
     
     # Detect package type
-    apm_yml_path = package_path / "apm.yml"
-    skill_md_path = package_path / "SKILL.md"
+    pkg_type, plugin_json_path = detect_package_type(package_path)
+    result.package_type = pkg_type
 
-    # Check for plugin.json  -- optional metadata, not a detection gate
-    from ..utils.helpers import find_plugin_json
-    plugin_json_path = find_plugin_json(package_path)
-
-    has_apm_yml = apm_yml_path.exists()
-    has_skill_md = skill_md_path.exists()
-    has_hooks = _has_hook_json(package_path)
-
-    # Determine package type.  apm.yml / SKILL.md take precedence; everything
-    # else (hooks-only or bare plugin directories) normalizes as a Claude plugin.
-    if has_apm_yml and has_skill_md:
-        result.package_type = PackageType.HYBRID
-    elif has_apm_yml:
-        result.package_type = PackageType.APM_PACKAGE
-    elif has_skill_md:
-        result.package_type = PackageType.CLAUDE_SKILL
-    elif has_hooks:
-        result.package_type = PackageType.HOOK_PACKAGE
-    else:
-        # Require plugin.json or at least one standard component directory
-        has_plugin_evidence = (
-            plugin_json_path is not None
-            or (package_path / "agents").is_dir()
-            or (package_path / "skills").is_dir()
-            or (package_path / "commands").is_dir()
+    if pkg_type == PackageType.INVALID:
+        result.add_error(
+            f"Not a valid APM package: no apm.yml, SKILL.md, hooks, or "
+            f"plugin structure found in {package_path.name}"
         )
-        if has_plugin_evidence:
-            result.package_type = PackageType.MARKETPLACE_PLUGIN
-        else:
-            result.add_error(
-                f"Not a valid APM package: no apm.yml, SKILL.md, hooks, or "
-                f"plugin structure found in {package_path.name}"
-            )
-            return result
+        return result
     
     # Handle hook-only packages (no apm.yml or SKILL.md)
     if result.package_type == PackageType.HOOK_PACKAGE:
         return _validate_hook_package(package_path, result)
     
     # Handle Claude Skills (no apm.yml) - auto-generate minimal apm.yml
+    skill_md_path = package_path / SKILL_MD_FILENAME
     if result.package_type == PackageType.CLAUDE_SKILL:
         return _validate_claude_skill(package_path, skill_md_path, result)
     
@@ -212,6 +226,7 @@ def validate_apm_package(package_path: Path) -> ValidationResult:
         return _validate_marketplace_plugin(package_path, plugin_json_path, result)
     
     # Standard APM package validation (has apm.yml)
+    apm_yml_path = package_path / APM_YML_FILENAME
     return _validate_apm_package_with_yml(package_path, apm_yml_path, result)
 
 
@@ -280,7 +295,7 @@ def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: Vali
         result.package = package
         
     except Exception as e:
-        result.add_error(f"Failed to process SKILL.md: {e}")
+        result.add_error(f"Failed to process {SKILL_MD_FILENAME}: {e}")
         return result
     
     return result
@@ -342,13 +357,13 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
         return result
     
     # Check for .apm directory
-    apm_dir = package_path / ".apm"
+    apm_dir = package_path / APM_DIR
     if not apm_dir.exists():
-        result.add_error("Missing required directory: .apm/")
+        result.add_error(f"Missing required directory: {APM_DIR}/")
         return result
     
     if not apm_dir.is_dir():
-        result.add_error(".apm must be a directory")
+        result.add_error(f"{APM_DIR} must be a directory")
         return result
     
     # Check if .apm directory has any content
@@ -376,7 +391,7 @@ def _validate_apm_package_with_yml(package_path: Path, apm_yml_path: Path, resul
         has_primitives = _has_hook_json(package_path)
     
     if not has_primitives:
-        result.add_warning("No primitive files found in .apm/ directory")
+        result.add_warning(f"No primitive files found in {APM_DIR}/ directory")
     
     # Version format validation (basic semver check)
     if package and package.version is not None:

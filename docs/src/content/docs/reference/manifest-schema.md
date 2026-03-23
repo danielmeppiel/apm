@@ -51,6 +51,9 @@ scripts:       <map<string, string>>
 dependencies:
   apm:         <list<ApmDependency>>
   mcp:         <list<McpDependency>>
+devDependencies:
+  apm:         <list<ApmDependency>>
+  mcp:         <list<McpDependency>>
 compilation:   <CompilationConfig>
 ```
 
@@ -277,12 +280,12 @@ A plain registry reference: `io.github.github/github-mcp-server`
 |---|---|---|---|---|
 | `name` | `string` | REQUIRED | Non-empty | Server identifier (registry name or custom name). |
 | `transport` | `enum<string>` | Conditional | `stdio` · `sse` · `http` · `streamable-http` | Transport protocol. REQUIRED when `registry: false`. |
-| `env` | `map<string, string>` | OPTIONAL | | Environment variable overrides. |
+| `env` | `map<string, string>` | OPTIONAL | | Environment variable overrides. Values may contain `${input:<id>}` references (VS Code only — see §4.2.4). |
 | `args` | `dict` or `list` | OPTIONAL | | Dict for overlay variable overrides (registry), list for positional args (self-defined). |
 | `version` | `string` | OPTIONAL | | Pin to a specific server version. |
 | `registry` | `bool` or `string` | OPTIONAL | Default: `true` (public registry) | `false` = self-defined (private) server. String = custom registry URL. |
 | `package` | `enum<string>` | OPTIONAL | `npm` · `pypi` · `oci` | Package manager type hint. |
-| `headers` | `map<string, string>` | OPTIONAL | | Custom HTTP headers for remote endpoints. |
+| `headers` | `map<string, string>` | OPTIONAL | | Custom HTTP headers for remote endpoints. Values may contain `${input:<id>}` references (VS Code only — see §4.2.4). |
 | `tools` | `list<string>` | OPTIONAL | Default: `["*"]` | Restrict which tools are exposed. |
 | `url` | `string` | Conditional | | Endpoint URL. REQUIRED when `registry: false` and `transport` is `http`, `sse`, or `streamable-http`. |
 | `command` | `string` | Conditional | | Binary path. REQUIRED when `registry: false` and `transport` is `stdio`. |
@@ -317,9 +320,59 @@ dependencies:
         API_KEY: ${{ secrets.KEY }}
 ```
 
+#### 4.2.4. `${input:...}` Variables
+
+Values in `headers` and `env` may contain VS Code input variable references using the syntax `${input:<variable-id>}`. At runtime, VS Code prompts the user for each referenced input before starting the server.
+
+- **Registry-backed servers** — APM auto-generates input prompts from registry metadata.
+- **Self-defined servers** — APM detects `${input:...}` patterns in `apm.yml` and generates matching input definitions automatically.
+
+```yaml
+dependencies:
+  mcp:
+    - name: my-server
+      registry: false
+      transport: http
+      url: https://my-server.example.com/mcp/
+      headers:
+        Authorization: "Bearer ${input:my-server-token}"
+        X-Project: "${input:my-server-project}"
+```
+
+| Runtime | `${input:...}` support |
+|---------|----------------------|
+| VS Code | Yes — prompts user at runtime |
+| Copilot CLI | No — use environment variables |
+| Codex | No — use environment variables |
+
 ---
 
-## 5. Compilation
+## 5. devDependencies
+
+| | |
+|---|---|
+| **Type** | `object` |
+| **Required** | OPTIONAL |
+| **Known keys** | `apm`, `mcp` |
+
+Development-only dependencies installed locally but excluded from plugin bundles (`apm pack --format plugin`). Uses the same structure as [`dependencies`](#4-dependencies).
+
+```yaml
+devDependencies:
+  apm:
+    - owner/test-helpers
+    - owner/lint-rules#v2.0.0
+```
+
+Created automatically by `apm init --plugin`. Use [`apm install --dev`](../cli-commands/#apm-install---install-apm-and-mcp-dependencies) to add packages:
+
+```bash
+apm install --dev owner/test-helpers
+```
+
+---
+
+## 6. Compilation
 
 The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fields have sensible defaults; omitting the entire section is valid.
 
@@ -333,9 +386,9 @@ The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fiel
 | `resolve_links` | `bool` | `true` | | Resolve relative Markdown links in primitives. |
 | `source_attribution` | `bool` | `true` | | Include source-file origin comments in compiled output. |
 | `exclude` | `list<string>` or `string` | `[]` | Glob patterns | Directories to skip during compilation (e.g. `apm_modules/**`). |
-| `placement` | `object` | — | | Placement tuning. See §5.1. |
+| `placement` | `object` | — | | Placement tuning. See §6.1. |
 
-### 5.1. `compilation.placement`
+### 6.1. `compilation.placement`
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -355,11 +408,11 @@ compilation:
 
 ---
 
-## 6. Lockfile (`apm.lock.yaml`)
+## 7. Lockfile (`apm.lock.yaml`)
 
 After successful dependency resolution, a conforming resolver MUST write a lockfile capturing the exact resolved state. The lockfile MUST be a YAML file named `apm.lock.yaml` at the project root. It SHOULD be committed to version control.
 
-### 6.1. Structure
+### 7.1. Structure
 
 ```yaml
 lockfile_version: "1"
@@ -376,11 +429,13 @@ dependencies:                              # YAML list (not a map)
     depth:           <int>                 # 1 = direct, 2+ = transitive
     resolved_by:     <string>              # Parent dependency (transitive only)
     package_type:    <string>              # Package type (e.g. "apm_package", "marketplace_plugin")
+    content_hash:    <string>              # SHA-256 of package file tree (e.g. "sha256:a1b2c3...")
+    is_dev:          <bool>                # True for devDependencies
     deployed_files:  <list<string>>        # Workspace-relative paths of installed files
 mcp_servers:       <list<string>>          # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
 ```
 
-### 6.2. Resolver Behaviour
+### 7.2. Resolver Behaviour
 
 1. **First install** — Resolve all dependencies, write `apm.lock.yaml`.
 2. **Subsequent installs** — Read `apm.lock.yaml`, use locked commit SHAs. A resolver SHOULD skip download if local checkout already matches.
@@ -388,7 +443,7 @@ mcp_servers:       <list<string>>          # MCP dependency references managed b
 
 ---
 
-## 7. Integrator Contract
+## 8. Integrator Contract
 
 Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDEs) MUST implement these steps:
 
@@ -396,7 +451,7 @@ Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDE
 2. **Resolve `dependencies.apm`** — For each entry, clone/fetch the git repo (respecting `ref`), locate the `.apm/` directory (or virtual path), and extract primitives.
 3. **Resolve `dependencies.mcp`** — For each entry, resolve from the MCP registry or validate self-defined transport config per §4.2.3.
 4. **Transitive resolution** — Resolved packages MAY contain their own `apm.yml` with further dependencies, forming a dependency tree. Resolvers MUST resolve transitively. Conflicts are merged at instruction level (by `applyTo` pattern), not file level.
-5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock.yaml` per §6.
+5. **Write lockfile** — Record exact commit SHAs and deployed file paths in `apm.lock.yaml` per §7.
 
 ---
 
@@ -430,6 +485,10 @@ dependencies:
       command: ./bin/my-server
       env:
         API_KEY: ${{ secrets.KEY }}
+
+devDependencies:
+  apm:
+    - owner/test-helpers
 
 compilation:
   target: all

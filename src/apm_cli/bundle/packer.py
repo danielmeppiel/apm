@@ -5,23 +5,12 @@ import shutil
 import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from ..models.apm_package import APMPackage
 from ..core.target_detection import detect_target
-from .lockfile_enrichment import enrich_lockfile_for_pack
-
-
-# Target prefix mapping ("copilot" and "vscode" both map to .github/)
-_TARGET_PREFIXES = {
-    "copilot": [".github/"],
-    "vscode": [".github/"],
-    "claude": [".claude/"],
-    "cursor": [".cursor/"],
-    "opencode": [".opencode/"],
-    "all": [".github/", ".claude/", ".cursor/", ".opencode/"],
-}
+from .lockfile_enrichment import enrich_lockfile_for_pack, _filter_files_by_target
 
 
 @dataclass
@@ -31,12 +20,8 @@ class PackResult:
     bundle_path: Path
     files: List[str] = field(default_factory=list)
     lockfile_enriched: bool = False
-
-
-def _filter_files_by_target(deployed_files: List[str], target: str) -> List[str]:
-    """Filter deployed file paths by target prefix."""
-    prefixes = _TARGET_PREFIXES.get(target, _TARGET_PREFIXES["all"])
-    return [f for f in deployed_files if any(f.startswith(p) for p in prefixes)]
+    mapped_count: int = 0
+    path_mappings: Dict[str, str] = field(default_factory=dict)
 
 
 def pack_bundle(
@@ -46,6 +31,8 @@ def pack_bundle(
     target: Optional[str] = None,
     archive: bool = False,
     dry_run: bool = False,
+    force: bool = False,
+    logger=None,
 ) -> PackResult:
     """Create a self-contained bundle from installed APM dependencies.
 
@@ -53,10 +40,11 @@ def pack_bundle(
         project_root: Root of the project containing ``apm.lock.yaml`` and ``apm.yml``.
         output_dir: Directory where the bundle will be created.
         fmt: Bundle format  -- ``"apm"`` (default) or ``"plugin"``.
-        target: Target filter  -- ``"vscode"``, ``"claude"``, ``"all"``, or *None*
+        target: Target filter  -- ``"copilot"``, ``"claude"``, ``"all"``, or *None*
             (auto-detect from apm.yml / project structure).
         archive: If *True*, produce a ``.tar.gz`` and remove the directory.
         dry_run: If *True*, resolve the file list but write nothing to disk.
+        force: On collision (plugin format), last writer wins.
 
     Returns:
         :class:`PackResult` describing what was (or would be) produced.
@@ -67,6 +55,21 @@ def pack_bundle(
     """
     # 1. Read lockfile (migrate legacy apm.lock → apm.lock.yaml if needed)
     migrate_lockfile_if_needed(project_root)
+
+    # Plugin format: delegate to dedicated exporter
+    if fmt == "plugin":
+        from .plugin_exporter import export_plugin_bundle
+
+        return export_plugin_bundle(
+            project_root=project_root,
+            output_dir=output_dir,
+            target=target,
+            archive=archive,
+            dry_run=dry_run,
+            force=force,
+            logger=logger,
+        )
+
     lockfile_path = get_lockfile_path(project_root)
     lockfile = LockFile.read(lockfile_path)
     if lockfile is None:
@@ -113,7 +116,7 @@ def pack_bundle(
     for dep in lockfile.get_all_dependencies():
         all_deployed.extend(dep.deployed_files)
 
-    filtered_files = _filter_files_by_target(all_deployed, effective_target)
+    filtered_files, path_mappings = _filter_files_by_target(all_deployed, effective_target)
     # Deduplicate while preserving order
     seen = set()
     unique_files: List[str] = []
@@ -132,14 +135,16 @@ def pack_bundle(
             raise ValueError(
                 f"Refusing to pack unsafe path from lockfile: {rel_path!r}"
             )
-        abs_path = project_root / rel_path
+        # For cross-target mapped files, verify the original (on-disk) path
+        disk_path = path_mappings.get(rel_path, rel_path)
+        abs_path = project_root / disk_path
         if not abs_path.resolve().is_relative_to(project_root_resolved):
             raise ValueError(
-                f"Refusing to pack path that escapes project root: {rel_path!r}"
+                f"Refusing to pack path that escapes project root: {disk_path!r}"
             )
         # deployed_files may reference directories (ending with /)
         if not abs_path.exists():
-            missing.append(rel_path)
+            missing.append(disk_path)
     if missing:
         raise ValueError(
             f"The following deployed files are missing on disk  -- "
@@ -154,6 +159,8 @@ def pack_bundle(
             bundle_path=bundle_dir,
             files=unique_files,
             lockfile_enriched=True,
+            mapped_count=len(path_mappings),
+            path_mappings=path_mappings,
         )
 
     # 5b. Scan files for hidden characters before bundling.
@@ -167,7 +174,8 @@ def pack_bundle(
 
     _scan_findings_total = 0
     for rel_path in unique_files:
-        src = project_root / rel_path
+        disk_path = path_mappings.get(rel_path, rel_path)
+        src = project_root / disk_path
         if src.is_symlink():
             continue
         if src.is_dir():
@@ -180,21 +188,33 @@ def pack_bundle(
             )
             _scan_findings_total += len(verdict.all_findings)
     if _scan_findings_total:
-        _rich_warning(
+        _warn_msg = (
             f"Bundle contains {_scan_findings_total} hidden character(s) across source files "
             f"— run 'apm audit' to inspect before publishing"
         )
+        if logger:
+            logger.warning(_warn_msg)
+        else:
+            _rich_warning(_warn_msg)
 
     # 6. Build output directory
     bundle_dir = output_dir / f"{pkg_name}-{pkg_version}"
     bundle_dir.mkdir(parents=True, exist_ok=True)
+    bundle_dir_resolved = bundle_dir.resolve()
 
     # 7. Copy files preserving directory structure
     for rel_path in unique_files:
-        src = project_root / rel_path
+        # For cross-target mapped files, read from the original disk path
+        disk_path = path_mappings.get(rel_path, rel_path)
+        src = project_root / disk_path
         if src.is_symlink():
             continue  # Never bundle symlinks
         dest = bundle_dir / rel_path
+        # Defense-in-depth: verify mapped destination stays inside the bundle
+        if not dest.resolve().is_relative_to(bundle_dir_resolved):
+            raise ValueError(
+                f"Refusing to write outside bundle directory: {rel_path!r}"
+            )
         if src.is_dir():
             from ..security.gate import ignore_symlinks
             shutil.copytree(src, dest, dirs_exist_ok=True, ignore=ignore_symlinks)
@@ -210,6 +230,8 @@ def pack_bundle(
         bundle_path=bundle_dir,
         files=unique_files,
         lockfile_enriched=True,
+        mapped_count=len(path_mappings),
+        path_mappings=path_mappings,
     )
 
     # 10. Archive if requested

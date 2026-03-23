@@ -1,6 +1,8 @@
 """Unit tests for MCP runtime detection functionality."""
 
+import shutil
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from apm_cli.integration.mcp_integrator import MCPIntegrator
@@ -193,6 +195,40 @@ class TestRuntimeDetectionIntegration(unittest.TestCase):
                     self.assertIsNotNone(client)
                 except ValueError:
                     self.fail(f"Runtime {runtime} reported as available but not creatable")
+
+
+class TestVSCodeRuntimeDetection(unittest.TestCase):
+    """Tests for the _is_vscode_available() production helper."""
+
+    MODULE = "apm_cli.integration.mcp_integrator"
+
+    def _run(self, code_on_path: bool, vscode_dir_exists: bool) -> bool:
+        from apm_cli.integration.mcp_integrator import _is_vscode_available
+
+        which_result = "/usr/local/bin/code" if code_on_path else None
+        with patch(f"{self.MODULE}.shutil.which", return_value=which_result):
+            with patch(f"{self.MODULE}.Path.cwd") as mock_cwd:
+                mock_vscode = MagicMock()
+                mock_vscode.__truediv__ = lambda self, other: mock_vscode
+                mock_vscode.is_dir.return_value = vscode_dir_exists
+                mock_cwd.return_value = mock_vscode
+                return _is_vscode_available()
+
+    def test_vscode_detected_via_code_binary(self):
+        """`code` binary on PATH is sufficient to detect VS Code."""
+        self.assertTrue(self._run(code_on_path=True, vscode_dir_exists=False))
+
+    def test_vscode_detected_via_vscode_directory(self):
+        """.vscode/ directory presence detects VS Code even without `code` on PATH."""
+        self.assertTrue(self._run(code_on_path=False, vscode_dir_exists=True))
+
+    def test_vscode_not_detected_without_binary_or_dir(self):
+        """VS Code is NOT detected when neither `code` is on PATH nor .vscode/ exists."""
+        self.assertFalse(self._run(code_on_path=False, vscode_dir_exists=False))
+
+    def test_vscode_detected_when_both_binary_and_dir_present(self):
+        """_is_vscode_available() returns True (not duplicated) when both are present."""
+        self.assertTrue(self._run(code_on_path=True, vscode_dir_exists=True))
 
 
 if __name__ == "__main__":

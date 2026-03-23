@@ -33,6 +33,8 @@ class LockedDependency:
     deployed_files: List[str] = field(default_factory=list)
     source: Optional[str] = None  # "local" for local deps, None/absent for remote
     local_path: Optional[str] = None  # Original local path (relative to project root)
+    content_hash: Optional[str] = None  # SHA-256 of package file tree
+    is_dev: bool = False  # True for devDependencies
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
@@ -69,6 +71,10 @@ class LockedDependency:
             result["source"] = self.source
         if self.local_path:
             result["local_path"] = self.local_path
+        if self.content_hash:
+            result["content_hash"] = self.content_hash
+        if self.is_dev:
+            result["is_dev"] = True
         return result
 
     @classmethod
@@ -102,6 +108,8 @@ class LockedDependency:
             deployed_files=deployed_files,
             source=data.get("source"),
             local_path=data.get("local_path"),
+            content_hash=data.get("content_hash"),
+            is_dev=data.get("is_dev", False),
         )
 
     @classmethod
@@ -111,6 +119,7 @@ class LockedDependency:
         resolved_commit: Optional[str],
         depth: int,
         resolved_by: Optional[str],
+        is_dev: bool = False,
     ) -> "LockedDependency":
         """Create from a DependencyReference with resolution info."""
         return cls(
@@ -124,6 +133,7 @@ class LockedDependency:
             resolved_by=resolved_by,
             source="local" if dep_ref.is_local else None,
             local_path=dep_ref.local_path if dep_ref.is_local else None,
+            is_dev=is_dev,
         )
 
 
@@ -222,7 +232,9 @@ class LockFile:
         """Create a lock file from installed packages.
         
         Args:
-            installed_packages: List of (dep_ref, resolved_commit, depth, resolved_by) tuples
+            installed_packages: List of (dep_ref, resolved_commit, depth, resolved_by)
+                or (dep_ref, resolved_commit, depth, resolved_by, is_dev) tuples.
+                The 5th element is optional for backward compatibility.
             dependency_graph: The resolved DependencyGraph for additional metadata
         """
         # Get APM version
@@ -234,12 +246,18 @@ class LockFile:
         
         lock = cls(apm_version=apm_version)
         
-        for dep_ref, resolved_commit, depth, resolved_by in installed_packages:
+        for entry in installed_packages:
+            if len(entry) >= 5:
+                dep_ref, resolved_commit, depth, resolved_by, is_dev = entry[:5]
+            else:
+                dep_ref, resolved_commit, depth, resolved_by = entry[:4]
+                is_dev = False
             locked_dep = LockedDependency.from_dependency_ref(
                 dep_ref=dep_ref,
                 resolved_commit=resolved_commit,
                 depth=depth,
                 resolved_by=resolved_by,
+                is_dev=is_dev,
             )
             lock.add_dependency(locked_dep)
         

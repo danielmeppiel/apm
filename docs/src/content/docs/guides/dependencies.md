@@ -25,7 +25,9 @@ APM supports multiple dependency types:
 |------|-----------|---------|
 | **APM Package** | Has `apm.yml` | `microsoft/apm-sample-package` |
 | **Marketplace Plugin** | Has `plugin.json` (no `apm.yml`) | `github/awesome-copilot/plugins/context-engineering` |
-| **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` || **Hook Package** | Has `hooks/*.json` (no `apm.yml` or `SKILL.md`) | `anthropics/claude-plugins-official/plugins/hookify` || **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
+| **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` |
+| **Hook Package** | Has `hooks/*.json` (no `apm.yml` or `SKILL.md`) | `anthropics/claude-plugins-official/plugins/hookify` |
+| **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
 | **Virtual Subdirectory Package** | Folder path in repo | `github/awesome-copilot/skills/review-and-refactor` |
 | **Local Path Package** | Path starts with `./`, `../`, or `/` | `./packages/my-shared-skills` |
 | **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` |
@@ -221,10 +223,27 @@ apm deps info apm-sample-package
 # Compile with dependencies
 apm compile
 
-# The compilation process generates distributed AGENTS.md files across the project
+# Compilation generates distributed files across the project
 # Instructions with matching applyTo patterns are merged from all sources
-# See docs/wip/distributed-agents-compilation-strategy.md for detailed compilation logic
 ```
+
+## Development Dependencies
+
+Some packages are only needed during authoring — test fixtures, linting rules, internal helpers. Install them as dev dependencies so they stay out of distributed bundles:
+
+```bash
+apm install --dev owner/test-helpers
+```
+
+Or declare them directly:
+
+```yaml
+devDependencies:
+  apm:
+    - source: owner/test-helpers
+```
+
+Dev dependencies install to `apm_modules/` like production deps but are excluded from `apm pack --format plugin` output. See [Pack & Distribute](../pack-distribute/) for details.
 
 ## Local Path Dependencies
 

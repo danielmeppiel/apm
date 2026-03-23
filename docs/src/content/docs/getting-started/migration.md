@@ -56,7 +56,7 @@ No uninstall script, no cleanup command. Zero risk.
 
 ## Next steps
 
-- [Quick start](../quickstart/) — first-time setup walkthrough
+- [Quick start](../quick-start/) — first-time setup walkthrough
 - [Dependencies](../../guides/dependencies/) — managing external packages
 - [Manifest schema](../../reference/manifest-schema/) — full `apm.yml` reference
 - [CLI commands](../../reference/cli-commands/) — complete command reference

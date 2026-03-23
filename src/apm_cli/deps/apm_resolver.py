@@ -1,7 +1,7 @@
 """APM dependency resolution engine with recursive resolution and conflict detection."""
 
 from pathlib import Path
-from typing import List, Set, Optional, Tuple, Callable
+from typing import List, Set, Optional, Protocol, Tuple, runtime_checkable
 from collections import deque
 
 from ..models.apm_package import APMPackage, DependencyReference
@@ -10,9 +10,19 @@ from .dependency_graph import (
     CircularRef, ConflictInfo
 )
 
-# Type alias for the download callback
-# Takes a DependencyReference and apm_modules_dir, returns the install path if successful
-DownloadCallback = Callable[[DependencyReference, Path], Optional[Path]]
+# Type alias for the download callback.
+# Takes (dep_ref, apm_modules_dir, parent_chain) and returns the install path
+# if successful.  ``parent_chain`` is a human-readable breadcrumb string like
+# "root-pkg > mid-pkg > this-pkg" showing the full dependency path including
+# the current node, or just the node's display name for direct (depth-1) deps.
+@runtime_checkable
+class DownloadCallback(Protocol):
+    def __call__(
+        self,
+        dep_ref: 'DependencyReference',
+        apm_modules_dir: Path,
+        parent_chain: str = "",
+    ) -> Optional[Path]: ...
 
 
 class APMDependencyResolver:
@@ -34,7 +44,6 @@ class APMDependencyResolver:
                                the resolver will attempt to fetch uninstalled transitive deps.
         """
         self.max_depth = max_depth
-        self._resolution_path = []  # For test compatibility
         self._apm_modules_dir: Optional[Path] = apm_modules_dir
         self._project_root: Optional[Path] = None
         self._download_callback = download_callback
@@ -127,8 +136,8 @@ class APMDependencyResolver:
         # Initialize the tree
         tree = DependencyTree(root_package=root_package)
         
-        # Queue for breadth-first traversal: (dependency_ref, depth, parent_node)
-        processing_queue: deque[Tuple[DependencyReference, int, Optional[DependencyNode]]] = deque()
+        # Queue for breadth-first traversal: (dependency_ref, depth, parent_node, is_dev)
+        processing_queue: deque[Tuple[DependencyReference, int, Optional[DependencyNode], bool]] = deque()
         
         # Set to track queued unique keys for O(1) lookup instead of O(n) list comprehension
         queued_keys: Set[str] = set()
@@ -136,12 +145,21 @@ class APMDependencyResolver:
         # Add root dependencies to queue
         root_deps = root_package.get_apm_dependencies()
         for dep_ref in root_deps:
-            processing_queue.append((dep_ref, 1, None))
+            processing_queue.append((dep_ref, 1, None, False))
             queued_keys.add(dep_ref.get_unique_key())
+
+        # Add root devDependencies to queue (marked is_dev=True)
+        root_dev_deps = root_package.get_dev_apm_dependencies()
+        for dep_ref in root_dev_deps:
+            key = dep_ref.get_unique_key()
+            if key not in queued_keys:
+                processing_queue.append((dep_ref, 1, None, True))
+                queued_keys.add(key)
+            # If already queued as prod, prod wins — skip
         
         # Process dependencies breadth-first
         while processing_queue:
-            dep_ref, depth, parent_node = processing_queue.popleft()
+            dep_ref, depth, parent_node, is_dev = processing_queue.popleft()
             
             # Remove from queued set since we're now processing this dependency
             queued_keys.discard(dep_ref.get_unique_key())
@@ -153,6 +171,9 @@ class APMDependencyResolver:
             # Check if we already processed this dependency at this level or higher
             existing_node = tree.get_node(dep_ref.get_unique_key())
             if existing_node and existing_node.depth <= depth:
+                # Prod wins over dev: if existing was dev and this is prod, promote it
+                if existing_node.is_dev and not is_dev:
+                    existing_node.is_dev = False
                 # We've already processed this dependency at a shallower or equal depth
                 # Create parent-child relationship if parent exists
                 if parent_node and existing_node not in parent_node.children:
@@ -172,7 +193,8 @@ class APMDependencyResolver:
                 package=placeholder_package,
                 dependency_ref=dep_ref,
                 depth=depth,
-                parent=parent_node
+                parent=parent_node,
+                is_dev=is_dev,
             )
             
             # Add to tree
@@ -186,20 +208,25 @@ class APMDependencyResolver:
             # For Task 3, this focuses on the resolution algorithm structure
             # Package loading integration will be completed in Tasks 2 & 4
             try:
-                # Attempt to load package - currently returns None (placeholder implementation)
-                # This will integrate with Task 2 (GitHub downloader) and Task 4 (apm_modules scanning)
-                loaded_package = self._try_load_dependency_package(dep_ref)
+                # Compute breadcrumb chain from this node's ancestry so download
+                # errors can report "root > mid > failing-dep" context.
+                parent_chain = node.get_ancestor_chain()
+
+                loaded_package = self._try_load_dependency_package(
+                    dep_ref, parent_chain=parent_chain
+                )
                 if loaded_package:
                     # Update the node with the actual loaded package
                     node.package = loaded_package
                     
                     # Get sub-dependencies and add them to the processing queue
+                    # Transitive deps inherit is_dev from parent
                     sub_dependencies = loaded_package.get_apm_dependencies()
                     for sub_dep in sub_dependencies:
                         # Avoid infinite recursion by checking if we're already processing this dep
                         # Use O(1) set lookup instead of O(n) list comprehension
                         if sub_dep.get_unique_key() not in queued_keys:
-                            processing_queue.append((sub_dep, depth + 1, node))
+                            processing_queue.append((sub_dep, depth + 1, node, is_dev))
                             queued_keys.add(sub_dep.get_unique_key())
             except (ValueError, FileNotFoundError) as e:
                 # Could not load dependency package - this is expected for remote dependencies
@@ -330,7 +357,9 @@ class APMDependencyResolver:
         
         return True
     
-    def _try_load_dependency_package(self, dep_ref: DependencyReference) -> Optional[APMPackage]:
+    def _try_load_dependency_package(
+        self, dep_ref: DependencyReference, parent_chain: str = ""
+    ) -> Optional[APMPackage]:
         """
         Try to load a dependency package from apm_modules/.
         
@@ -341,6 +370,9 @@ class APMDependencyResolver:
         
         Args:
             dep_ref: Reference to the dependency to load
+            parent_chain: Human-readable breadcrumb of the dependency path
+                that led here (e.g. "root-pkg > mid-pkg").  Forwarded to the
+                download callback for contextual error messages.
             
         Returns:
             APMPackage: Loaded package if found, None otherwise
@@ -362,7 +394,9 @@ class APMDependencyResolver:
                 # Avoid re-downloading the same package in a single resolution
                 if unique_key not in self._downloaded_packages:
                     try:
-                        downloaded_path = self._download_callback(dep_ref, self._apm_modules_dir)
+                        downloaded_path = self._download_callback(
+                            dep_ref, self._apm_modules_dir, parent_chain
+                        )
                         if downloaded_path and downloaded_path.exists():
                             self._downloaded_packages.add(unique_key)
                             install_path = downloaded_path

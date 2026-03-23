@@ -16,7 +16,9 @@ permissions:
 
 jobs:
   # Linux-only for PR feedback. Full platform matrix (incl. macOS + Windows) runs post-merge in build-release.yml.
-  test:
+  # Combines unit tests + binary build into a single job to eliminate runner re-provisioning overhead.
+  build-and-test:
+    name: Build & Test (Linux)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -24,82 +26,44 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
-
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-    - name: Cache uv environments
-      uses: actions/cache@v3
+      uses: astral-sh/setup-uv@v6
       with:
-        path: |
-          ~/.cache/uv
-          ~/.local/share/uv
-        key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-uv-
+        enable-cache: true
 
     - name: Install dependencies
-      run: uv sync --extra dev
+      run: uv sync --extra dev --extra build
 
-    - name: Test with pytest
-      run: uv run pytest tests/unit tests/test_console.py
+    - name: Run tests
+      run: uv run pytest tests/unit tests/test_console.py -n auto --dist worksteal
 
-  # Linux-only binary build for PR validation. Full platform builds run post-merge.
-  build:
-    name: Build APM Binary (Linux)
-    needs: [test]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
+    - name: Install UPX
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y upx-ucl
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Build binary
+      run: |
+        chmod +x scripts/build-binary.sh
+        uv run ./scripts/build-binary.sh
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install UPX
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y upx-ucl
-
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Install Python dependencies
-        run: |
-          uv sync --extra dev --extra build
-
-      - name: Build binary
-        run: |
-          chmod +x scripts/build-binary.sh
-          uv run ./scripts/build-binary.sh
-
-      - name: Upload binary as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: apm-linux-x86_64
-          path: |
-            ./dist/apm-linux-x86_64
-            ./dist/apm-linux-x86_64.sha256
-            ./scripts/test-release-validation.sh
-            ./scripts/github-token-helper.sh
-          include-hidden-files: true
-          retention-days: 30
-          if-no-files-found: error
+    - name: Upload binary as workflow artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: apm-linux-x86_64
+        # Scripts are included to preserve the artifact root at ./ (not ./dist/).
+        # Without a sibling directory, upload-artifact strips the dist/ prefix,
+        # breaking download paths in ci-integration.yml which expects dist/$BINARY_NAME/apm.
+        path: |
+          ./dist/apm-linux-x86_64
+          ./dist/apm-linux-x86_64.sha256
+          ./scripts/test-release-validation.sh
+          ./scripts/github-token-helper.sh
+        include-hidden-files: true
+        retention-days: 30
+        if-no-files-found: error

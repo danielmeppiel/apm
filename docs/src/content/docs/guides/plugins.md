@@ -6,6 +6,33 @@ sidebar:
 
 APM supports plugins through the `plugin.json` format. Plugins are automatically detected and integrated into your project as standard APM dependencies.
 
+## Plugin authoring
+
+Plugin ecosystems handle distribution but lack dependency management, security scanning, version locking, and dev/prod separation. As plugins depend on shared primitives, these gaps compound.
+
+APM is the supply-chain layer. Author packages with full tooling — transitive dependencies, lockfile pinning, [security scanning](../../enterprise/security/), [`devDependencies`](../../reference/manifest-schema/#5-devdependencies) — then export as standard plugins. Consumers never need APM installed.
+
+### Three modes
+
+| Mode | Manifests | Use when |
+|------|-----------|----------|
+| **APM-only** | `apm.yml` | Full APM workflow — deploy to `.github/`, `.claude/`, `.cursor/`, `.opencode/` |
+| **Plugin-only** | `plugin.json` | Standard plugin consumed by APM via `apm install` — metadata synthesized automatically |
+| **Hybrid** | `apm.yml` + `plugin.json` | Author with dependency management + security, export as standalone plugins |
+
+**APM-only** is the default for teams using APM end-to-end. **Plugin-only** requires no changes to existing plugins — APM consumes them as-is. **Hybrid** is for plugin authors who want APM's supply-chain features during development while distributing standard plugins.
+
+### Hybrid authoring workflow
+
+```bash
+apm init my-plugin --plugin    # Creates both apm.yml and plugin.json
+apm install --dev owner/helpers # Dev-only dependency (excluded from export)
+apm install owner/core-rules   # Production dependency
+apm pack --format plugin       # Export — dev deps excluded, security scanned
+```
+
+The exported plugin directory contains no APM-specific files. See [Pack & Distribute — Plugin format](../../guides/pack-distribute/#plugin-format) for the output mapping.
+
 ## Overview
 
 Plugins are packages that contain:
@@ -305,6 +332,10 @@ This:
 - Generates `AGENTS.md` from plugin agents
 - Integrates skills into the runtime
 - Includes prompt primitives
+
+## Exporting APM packages as plugins
+
+Use the [hybrid authoring workflow](#hybrid-authoring-workflow) to develop plugins with APM's full tooling and export them as standalone plugin directories. See [Pack & Distribute — Plugin format](../../guides/pack-distribute/#plugin-format) for the output mapping and structure.
 
 ## Finding Plugins
 

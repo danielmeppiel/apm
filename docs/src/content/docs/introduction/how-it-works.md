@@ -160,7 +160,6 @@ Package your prompt engineering into reusable, configurable components:
 - **Prompts** (.prompt.md) - Executable AI workflows  
 - **Agents** (.agent.md) - AI assistant personalities
 - **Skills** (SKILL.md) - Package meta-guides for AI agents
-- **Context** (.context.md) - Project knowledge base
 - **Hooks** (.json) - Lifecycle event handlers
 
 ### Layer 3: Context Engineering
@@ -226,18 +225,6 @@ Apply these colors and typography standards...
 ```
 
 Skills provide AI agents with a quick summary of package purpose and usage.
-
-### Context (.context.md)
-Optimized project knowledge for AI consumption:
-
-```markdown
-# Project Architecture
-
-## Core Patterns
-- Repository pattern for data access
-- Clean architecture with domain separation
-- Event-driven communication between services
-```
 
 ### Hooks (.json)
 Lifecycle event handlers that run scripts at specific points during AI operations:

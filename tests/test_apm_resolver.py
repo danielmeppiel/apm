@@ -25,8 +25,6 @@ class TestAPMDependencyResolver(unittest.TestCase):
         # Default initialization
         resolver = APMDependencyResolver()
         assert resolver.max_depth == 50
-        assert resolver._resolution_path == []
-        
         # Custom initialization
         custom_resolver = APMDependencyResolver(max_depth=10)
         assert custom_resolver.max_depth == 10

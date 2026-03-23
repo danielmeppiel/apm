@@ -363,6 +363,40 @@ class TestUnpackBundle:
         assert set(result.files) == set(deployed)
         assert (output / ".github" / "agents" / "a.md").exists()
 
+    def test_unpack_returns_pack_meta(self, tmp_path):
+        """Enriched bundles expose the pack: metadata in UnpackResult."""
+        import yaml
+
+        deployed = [".claude/skills/x/SKILL.md"]
+        bundle_dir = _build_bundle_dir(tmp_path, deployed)
+
+        # Prepend a pack: section to the lockfile (simulates apm pack output)
+        lf_path = bundle_dir / "apm.lock.yaml"
+        existing = lf_path.read_text(encoding="utf-8")
+        pack_section = yaml.dump(
+            {"pack": {"format": "apm", "target": "claude"}},
+            default_flow_style=False,
+        )
+        lf_path.write_text(pack_section + existing, encoding="utf-8")
+
+        output = tmp_path / "out"
+        output.mkdir()
+        result = unpack_bundle(bundle_dir, output)
+
+        assert result.pack_meta.get("target") == "claude"
+        assert result.pack_meta.get("format") == "apm"
+
+    def test_unpack_pack_meta_empty_for_plain_bundles(self, tmp_path):
+        """Bundles without pack: section return empty pack_meta."""
+        deployed = [".github/agents/a.md"]
+        bundle_dir = _build_bundle_dir(tmp_path, deployed)
+
+        output = tmp_path / "out"
+        output.mkdir()
+        result = unpack_bundle(bundle_dir, output)
+
+        assert result.pack_meta == {}
+
 
 class TestUnpackCmdLogging:
     """Verify CLI output for the unpack command."""
@@ -417,7 +451,7 @@ class TestUnpackCmdLogging:
             os.chdir(original_dir)
 
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        assert "dry-run" in result.output
         assert "Would unpack 1 file(s)" in result.output
         assert ".github/agents/a.md" in result.output
 

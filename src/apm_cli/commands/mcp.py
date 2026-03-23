@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..utils.console import _rich_error, _rich_info, _rich_success, _rich_warning
+from ..core.command_logger import CommandLogger
 from ._helpers import _get_console
 
 # Restore builtin since a subcommand is named ``list``
@@ -21,9 +21,11 @@ def mcp():
 @mcp.command(help="Search MCP servers in registry")
 @click.argument("query", required=True)
 @click.option("--limit", default=10, show_default=True, help="Number of results to show")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.pass_context
-def search(ctx, query, limit):
+def search(ctx, query, limit, verbose):
     """Search for MCP servers in the registry."""
+    logger = CommandLogger("mcp-search", verbose=verbose)
     try:
         from ..registry.integration import RegistryIntegration
 
@@ -33,9 +35,9 @@ def search(ctx, query, limit):
         console = _get_console()
         if not console:
             # Fallback for non-rich environments
-            click.echo(f"Searching for: {query}")
+            logger.progress(f"Searching for: {query}", symbol="search")
             if not servers:
-                click.echo("No servers found")
+                logger.warning("No servers found")
                 return
             for server in servers:
                 click.echo(f"  {server.get('name', 'Unknown')}")
@@ -98,15 +100,17 @@ def search(ctx, query, limit):
             )
 
     except Exception as e:
-        _rich_error(f"Error searching registry: {e}")
+        logger.error(f"Error searching registry: {e}")
         sys.exit(1)
 
 
 @mcp.command(help="Show detailed MCP server information")
 @click.argument("server_name", required=True)
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.pass_context
-def show(ctx, server_name):
+def show(ctx, server_name, verbose):
     """Show detailed information about an MCP server."""
+    logger = CommandLogger("mcp-show", verbose=verbose)
     try:
         from ..registry.integration import RegistryIntegration
 
@@ -115,7 +119,7 @@ def show(ctx, server_name):
         console = _get_console()
         if not console:
             # Fallback for non-rich environments
-            click.echo(f"Getting details for: {server_name}")
+            logger.progress(f"Getting details for: {server_name}", symbol="search")
             try:
                 server_info = registry.get_package_info(server_name)
                 click.echo(f"Name: {server_info.get('name', 'Unknown')}")
@@ -126,7 +130,7 @@ def show(ctx, server_name):
                     f"Repository: {server_info.get('repository', {}).get('url', 'Unknown')}"
                 )
             except ValueError:
-                click.echo(f"Server '{server_name}' not found")
+                logger.error(f"Server '{server_name}' not found")
                 sys.exit(1)
             return
 
@@ -283,15 +287,17 @@ def show(ctx, server_name):
         console.print(install_table)
 
     except Exception as e:
-        _rich_error(f"Error getting server details: {e}")
+        logger.error(f"Error getting server details: {e}")
         sys.exit(1)
 
 
 @mcp.command(help="List all available MCP servers")
-@click.option("--limit", default=20, help="Number of results to show")
+@click.option("--limit", default=20, show_default=True, help="Number of results to show")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.pass_context
-def list(ctx, limit):
+def list(ctx, limit, verbose):
     """List all available MCP servers in the registry."""
+    logger = CommandLogger("mcp-list", verbose=verbose)
     try:
         from ..registry.integration import RegistryIntegration
 
@@ -300,10 +306,10 @@ def list(ctx, limit):
         console = _get_console()
         if not console:
             # Fallback for non-rich environments
-            click.echo("Fetching available MCP servers...")
+            logger.progress("Fetching available MCP servers...", symbol="search")
             servers = registry.list_available_packages()[:limit]
             if not servers:
-                click.echo("No servers found")
+                logger.warning("No servers found")
                 return
             for server in servers:
                 click.echo(f"  {server.get('name', 'Unknown')}")
@@ -369,5 +375,5 @@ def list(ctx, limit):
         )
 
     except Exception as e:
-        _rich_error(f"Error listing servers: {e}")
+        logger.error(f"Error listing servers: {e}")
         sys.exit(1)
