@@ -40,7 +40,7 @@ Creates a self-contained bundle from installed dependencies. Reads the `deployed
 apm pack
 
 # Filter by target
-apm pack --target vscode          # only .github/ files
+apm pack --target copilot         # only .github/ files
 apm pack --target claude          # only .claude/ files
 apm pack --target all             # both targets
 
@@ -62,7 +62,7 @@ apm pack --dry-run
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format` | `apm` | Bundle format (`apm` or `plugin`) |
-| `-t, --target` | auto-detect | File filter: `copilot`, `vscode`, `claude`, `cursor`, `opencode`, `all`. `vscode` is an alias for `copilot` |
+| `-t, --target` | auto-detect | File filter: `copilot`, `claude`, `cursor`, `opencode`, `all`. `vscode` is a deprecated alias for `copilot` |
 | `--archive` | off | Produce `.tar.gz` instead of directory |
 | `-o, --output` | `./build` | Output directory |
 | `--dry-run` | off | List files without writing |
@@ -75,13 +75,47 @@ The target flag controls which deployed files are included based on path prefix:
 | Target | Includes |
 |--------|----------|
 | `copilot` | Paths starting with `.github/` |
-| `vscode` | Alias for `copilot` |
+| `vscode` | Deprecated alias for `copilot` |
 | `claude` | Paths starting with `.claude/` |
 | `cursor` | Paths starting with `.cursor/` |
 | `opencode` | Paths starting with `.opencode/` |
 | `all` | `.github/`, `.claude/`, `.cursor/`, and `.opencode/` |
 
 When no target is specified, APM auto-detects from the `target` field in `apm.yml`, falling back to `all`.
+
+### Cross-target path mapping
+
+Skills and agents are semantically identical across targets -- `.github/skills/X` and `.claude/skills/X` contain the same content. When the lockfile records files under a different target prefix than the one you are packing for, APM automatically remaps `skills/` and `agents/` paths:
+
+```
+apm pack --target claude
+# .github/skills/my-plugin/SKILL.md  ->  .claude/skills/my-plugin/SKILL.md
+# .github/agents/helper.md           ->  .claude/agents/helper.md
+```
+
+Only `skills/` and `agents/` are remapped. Commands, instructions, and hooks are target-specific and are never mapped.
+
+The enriched lockfile inside the bundle uses the remapped paths, so the bundle is self-consistent. When mapping occurs, the `pack:` section includes a `mapped_from` field listing the original prefixes.
+
+### Targeting mental model
+
+**Choose your target when you pack. Unpack delivers exactly what was packed.**
+
+A bundle is a deployable snapshot, not a retargetable source artifact. Target selection happens at pack time because that is when the full context is available -- which file types are remappable (skills, agents) and which are target-specific (commands, instructions, hooks).
+
+`apm unpack` does not remap paths. If the bundle was packed for Claude, the files land under `.claude/`. If you need a different target, re-pack from source with the desired `--target` flag, or use `--target all` to include all platforms.
+
+When unpacking, APM reads the bundle's `pack:` metadata and shows the target it was packed for. If the bundle target does not match the project's detected target, a warning is displayed:
+
+```
+$ apm unpack team-skills.tar.gz
+[*] Unpacking team-skills.tar.gz -> .
+[i] Bundle target: claude (1 dep(s), 3 file(s))
+[!] Bundle target 'claude' differs from project target 'copilot'
+[+] Unpacked 3 file(s) (verified)
+```
+
+This is informational -- the files still extract. The warning helps users understand why their tool may not see the unpacked files and suggests the correct workflow.
 
 ## Bundle structure
 
@@ -212,7 +246,7 @@ The bundle includes a copy of `apm.lock.yaml` enriched with a `pack:` section. T
 ```yaml
 pack:
   format: apm
-  target: vscode
+  target: copilot
   packed_at: '2025-07-14T09:30:00+00:00'
 lockfile_version: '1'
 generated_at: '2025-07-14T09:28:00+00:00'
@@ -263,6 +297,7 @@ apm unpack ./build/my-project-1.0.0.tar.gz --dry-run
 | `-o, --output` | `.` (current dir) | Target project directory |
 | `--skip-verify` | off | Skip completeness check against lockfile |
 | `--dry-run` | off | List files without writing |
+| `--force` | off | Deploy despite critical hidden-character findings |
 
 ### Behavior
 
@@ -390,4 +425,7 @@ During unpack, verification found files listed in the bundle's lockfile that are
 
 ### Empty bundle
 
-If `apm pack` produces zero files, check that your dependencies have `deployed_files` entries in `apm.lock.yaml`. This can happen if `apm install` completed but no integration files were deployed (e.g., the package has no prompts or agents for the active target).
+If `apm pack` produces zero files, check:
+
+1. Your dependencies have `deployed_files` entries in `apm.lock.yaml`. This can happen if `apm install` completed but no integration files were deployed (e.g., the package has no prompts or agents for the active target).
+2. The `--target` filter matches where files were deployed. For example, if files are under `.github/` but you pack with `--target claude`, APM will remap `skills/` and `agents/` automatically. If no remappable files exist, the bundle will be empty. Try `--target all` or check `apm.lock.yaml` to see which prefixes your files use.

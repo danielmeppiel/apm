@@ -4,6 +4,7 @@ from apm_cli.core.target_detection import (
     detect_target,
     should_integrate_vscode,
     should_integrate_claude,
+    should_integrate_cursor,
     should_integrate_opencode,
     should_compile_agents_md,
     should_compile_claude_md,
@@ -286,6 +287,30 @@ class TestGetTargetDescription:
         assert ".opencode/" in desc
 
 
+class TestShouldIntegrateCursor:
+    """Tests for should_integrate_cursor function."""
+
+    def test_cursor_target(self):
+        """Cursor integration enabled for cursor target."""
+        assert should_integrate_cursor("cursor") is True
+
+    def test_all_target(self):
+        """Cursor integration enabled for all target."""
+        assert should_integrate_cursor("all") is True
+
+    def test_vscode_target(self):
+        """Cursor integration disabled for vscode target."""
+        assert should_integrate_cursor("vscode") is False
+
+    def test_claude_target(self):
+        """Cursor integration disabled for claude target."""
+        assert should_integrate_cursor("claude") is False
+
+    def test_minimal_target(self):
+        """Cursor integration disabled for minimal target."""
+        assert should_integrate_cursor("minimal") is False
+
+
 class TestShouldIntegrateOpencode:
     """Tests for should_integrate_opencode function."""
 
@@ -308,6 +333,64 @@ class TestShouldIntegrateOpencode:
     def test_minimal_target(self):
         """OpenCode integration disabled for minimal target."""
         assert should_integrate_opencode("minimal") is False
+
+
+class TestDetectTargetCursor:
+    """Tests for auto-detection and explicit cursor target."""
+
+    def test_explicit_target_cursor(self, tmp_path):
+        """Explicit --target cursor always wins."""
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target="cursor",
+        )
+        assert target == "cursor"
+        assert reason == "explicit --target flag"
+
+    def test_config_target_cursor(self, tmp_path):
+        """Config target cursor is used when no explicit target."""
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target=None,
+            config_target="cursor",
+        )
+        assert target == "cursor"
+        assert reason == "apm.yml target"
+
+    def test_auto_detect_cursor_only(self, tmp_path):
+        """Auto-detect cursor when only .cursor/ exists."""
+        (tmp_path / ".cursor").mkdir()
+        target, reason = detect_target(
+            project_root=tmp_path,
+            explicit_target=None,
+            config_target=None,
+        )
+        assert target == "cursor"
+        assert ".cursor/" in reason
+
+    def test_auto_detect_cursor_plus_github(self, tmp_path):
+        """Auto-detect all when .cursor/ and .github/ exist."""
+        (tmp_path / ".github").mkdir()
+        (tmp_path / ".cursor").mkdir()
+        target, _ = detect_target(
+            project_root=tmp_path,
+            explicit_target=None,
+            config_target=None,
+        )
+        assert target == "all"
+
+    def test_cursor_no_compile_agents_md(self):
+        """Cursor target should NOT compile AGENTS.md (uses .cursor/agents/)."""
+        assert should_compile_agents_md("cursor") is False
+
+    def test_cursor_no_compile_claude_md(self):
+        """Cursor target should NOT compile CLAUDE.md."""
+        assert should_compile_claude_md("cursor") is False
+
+    def test_cursor_description(self):
+        """Description for cursor target."""
+        desc = get_target_description("cursor")
+        assert ".cursor/" in desc
 
 
 class TestDetectTargetOpencode:
