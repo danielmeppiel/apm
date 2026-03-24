@@ -4,6 +4,10 @@ sidebar:
   order: 5
 ---
 
+:::caution[Experimental Feature]
+Policy enforcement (`apm audit --ci --policy`) is an early preview for testing and feedback. The policy schema, check behavior, and inheritance model may change based on community input. Do not use as a production governance gate without understanding that breaking changes are possible in upcoming releases.
+:::
+
 Set up automated policy enforcement so every pull request is checked against your organization's governance rules.
 
 ## Prerequisites

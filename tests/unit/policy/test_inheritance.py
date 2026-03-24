@@ -92,14 +92,14 @@ class TestDependencyDenyMerge(unittest.TestCase):
             ApmPolicy(dependencies=DependencyPolicy(deny=["a/*"])),
             ApmPolicy(dependencies=DependencyPolicy(deny=["a/*"])),
         )
-        self.assertEqual(result.dependencies.deny, ["a/*"])
+        self.assertEqual(result.dependencies.deny, ("a/*",))
 
     def test_empty_parent(self):
         result = merge_policies(
             ApmPolicy(dependencies=DependencyPolicy(deny=[])),
             ApmPolicy(dependencies=DependencyPolicy(deny=["x/*"])),
         )
-        self.assertEqual(result.dependencies.deny, ["x/*"])
+        self.assertEqual(result.dependencies.deny, ("x/*",))
 
 
 class TestDependencyAllowMerge(unittest.TestCase):
@@ -112,29 +112,29 @@ class TestDependencyAllowMerge(unittest.TestCase):
             ),
             ApmPolicy(dependencies=DependencyPolicy(allow=["contoso/*"])),
         )
-        self.assertEqual(result.dependencies.allow, ["contoso/*"])
+        self.assertEqual(result.dependencies.allow, ("contoso/*",))
 
     def test_parent_empty_child_adds(self):
-        """Parent empty (deny-only mode) → child can introduce allow-list."""
+        """Parent empty (deny-only mode) -> child can introduce allow-list."""
         result = merge_policies(
             ApmPolicy(dependencies=DependencyPolicy(allow=[])),
             ApmPolicy(dependencies=DependencyPolicy(allow=["contoso/*"])),
         )
-        self.assertEqual(result.dependencies.allow, ["contoso/*"])
+        self.assertEqual(result.dependencies.allow, ())
 
     def test_child_narrows_to_nothing(self):
         result = merge_policies(
             ApmPolicy(dependencies=DependencyPolicy(allow=["contoso/*"])),
             ApmPolicy(dependencies=DependencyPolicy(allow=[])),
         )
-        self.assertEqual(result.dependencies.allow, [])
+        self.assertEqual(result.dependencies.allow, ())
 
     def test_both_empty(self):
         result = merge_policies(
             ApmPolicy(dependencies=DependencyPolicy(allow=[])),
             ApmPolicy(dependencies=DependencyPolicy(allow=[])),
         )
-        self.assertEqual(result.dependencies.allow, [])
+        self.assertEqual(result.dependencies.allow, ())
 
 
 class TestDependencyRequireMerge(unittest.TestCase):
@@ -155,7 +155,7 @@ class TestDependencyRequireMerge(unittest.TestCase):
             ApmPolicy(dependencies=DependencyPolicy(require=["contoso/hooks"])),
             ApmPolicy(dependencies=DependencyPolicy(require=["contoso/hooks"])),
         )
-        self.assertEqual(result.dependencies.require, ["contoso/hooks"])
+        self.assertEqual(result.dependencies.require, ("contoso/hooks",))
 
 
 class TestRequireResolutionEscalation(unittest.TestCase):
@@ -217,7 +217,7 @@ class TestMcpMerge(unittest.TestCase):
             ApmPolicy(mcp=McpPolicy(allow=["good/*", "ok/*"])),
             ApmPolicy(mcp=McpPolicy(allow=["good/*"])),
         )
-        self.assertEqual(result.mcp.allow, ["good/*"])
+        self.assertEqual(result.mcp.allow, ("good/*",))
 
     def test_transport_allow_intersection(self):
         result = merge_policies(
@@ -228,7 +228,7 @@ class TestMcpMerge(unittest.TestCase):
                 mcp=McpPolicy(transport=McpTransportPolicy(allow=["stdio"]))
             ),
         )
-        self.assertEqual(result.mcp.transport.allow, ["stdio"])
+        self.assertEqual(result.mcp.transport.allow, ("stdio",))
 
     def test_self_defined_escalation(self):
         result = merge_policies(
@@ -326,7 +326,7 @@ class TestCompilationMerge(unittest.TestCase):
                 )
             ),
         )
-        self.assertEqual(result.compilation.target.allow, ["vscode"])
+        self.assertEqual(result.compilation.target.allow, ("vscode",))
 
     def test_strategy_enforce_parent_wins(self):
         result = merge_policies(
@@ -376,7 +376,7 @@ class TestManifestMerge(unittest.TestCase):
             ApmPolicy(manifest=ManifestPolicy(required_fields=["name"])),
             ApmPolicy(manifest=ManifestPolicy(required_fields=["name"])),
         )
-        self.assertEqual(result.manifest.required_fields, ["name"])
+        self.assertEqual(result.manifest.required_fields, ("name",))
 
     def test_scripts_escalation(self):
         result = merge_policies(
@@ -468,7 +468,7 @@ class TestUnmanagedFilesMerge(unittest.TestCase):
                 unmanaged_files=UnmanagedFilesPolicy(directories=[".prompts"])
             ),
         )
-        self.assertEqual(result.unmanaged_files.directories, [".prompts"])
+        self.assertEqual(result.unmanaged_files.directories, (".prompts",))
 
 
 class TestResolvePolicyChain(unittest.TestCase):
@@ -506,7 +506,7 @@ class TestResolvePolicyChain(unittest.TestCase):
         self.assertEqual(
             sorted(result.dependencies.deny), ["evil/*", "extra/*", "sketchy/*"]
         )
-        self.assertEqual(result.dependencies.allow, ["contoso/*"])
+        self.assertEqual(result.dependencies.allow, ("contoso/*",))
         self.assertIsNone(result.extends)
 
     def test_empty_chain(self):
@@ -564,7 +564,7 @@ class TestEdgeCases(unittest.TestCase):
         )
         result = merge_policies(ApmPolicy(), child)
         self.assertEqual(result.enforcement, "block")
-        self.assertEqual(result.dependencies.deny, ["bad/*"])
+        self.assertEqual(result.dependencies.deny, ("bad/*",))
         self.assertEqual(result.name, "child")
 
     def test_merge_with_default_child(self):
@@ -575,15 +575,15 @@ class TestEdgeCases(unittest.TestCase):
         )
         result = merge_policies(parent, ApmPolicy())
         self.assertEqual(result.enforcement, "block")
-        self.assertEqual(result.dependencies.deny, ["bad/*"])
+        self.assertEqual(result.dependencies.deny, ("bad/*",))
         self.assertEqual(result.name, "parent")
 
     def test_both_defaults(self):
         result = merge_policies(ApmPolicy(), ApmPolicy())
         self.assertEqual(result.enforcement, "warn")
         self.assertEqual(result.cache.ttl, 3600)
-        self.assertEqual(result.dependencies.deny, [])
-        self.assertEqual(result.dependencies.allow, [])
+        self.assertEqual(result.dependencies.deny, ())
+        self.assertIsNone(result.dependencies.allow)
 
     def test_extends_cleared_after_merge(self):
         result = merge_policies(

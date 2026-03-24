@@ -1,12 +1,20 @@
 """Frozen dataclasses modeling the full apm-policy.yml schema.
 
 Every field maps 1:1 to a concrete ``apm audit`` check.
+
+Allow-list semantics:
+  * ``None``  -- "no opinion" (transparent during inheritance merge).
+  * ``()``    -- "explicitly empty" (after merge: nothing is allowed).
+  * ``(...)`` -- "allow only matching patterns".
+
+Deny/require lists use ``Tuple[str, ...]`` (never ``None``) because
+they accumulate via union -- an absent key simply means "nothing to add".
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -20,9 +28,9 @@ class PolicyCache:
 class DependencyPolicy:
     """Rules governing which APM dependencies are permitted."""
 
-    allow: List[str] = field(default_factory=list)
-    deny: List[str] = field(default_factory=list)
-    require: List[str] = field(default_factory=list)
+    allow: Optional[Tuple[str, ...]] = None
+    deny: Tuple[str, ...] = ()
+    require: Tuple[str, ...] = ()
     require_resolution: str = "project-wins"  # project-wins | policy-wins | block
     max_depth: int = 50
 
@@ -31,15 +39,15 @@ class DependencyPolicy:
 class McpTransportPolicy:
     """Allowed MCP transport protocols."""
 
-    allow: List[str] = field(default_factory=list)  # stdio, sse, http, streamable-http
+    allow: Optional[Tuple[str, ...]] = None  # stdio, sse, http, streamable-http
 
 
 @dataclass(frozen=True)
 class McpPolicy:
     """Rules governing MCP server references."""
 
-    allow: List[str] = field(default_factory=list)
-    deny: List[str] = field(default_factory=list)
+    allow: Optional[Tuple[str, ...]] = None
+    deny: Tuple[str, ...] = ()
     transport: McpTransportPolicy = field(default_factory=McpTransportPolicy)
     self_defined: str = "warn"  # deny | warn | allow
     trust_transitive: bool = False
@@ -49,7 +57,7 @@ class McpPolicy:
 class CompilationTargetPolicy:
     """Allowed compilation targets."""
 
-    allow: List[str] = field(default_factory=list)  # vscode, claude, all
+    allow: Optional[Tuple[str, ...]] = None  # vscode, claude, all
     enforce: Optional[str] = None
 
 
@@ -73,7 +81,7 @@ class CompilationPolicy:
 class ManifestPolicy:
     """Rules governing apm-manifest.yml content."""
 
-    required_fields: List[str] = field(default_factory=list)
+    required_fields: Tuple[str, ...] = ()
     scripts: str = "allow"  # allow | deny
     content_types: Optional[Dict] = None  # {"allow": [...]}
 
@@ -83,7 +91,7 @@ class UnmanagedFilesPolicy:
     """Rules for files not tracked in apm.lock."""
 
     action: str = "ignore"  # ignore | warn | deny
-    directories: List[str] = field(default_factory=list)
+    directories: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

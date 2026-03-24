@@ -38,9 +38,9 @@ class TestDependencyPolicyDefaults(unittest.TestCase):
 
     def test_defaults(self):
         dep = DependencyPolicy()
-        self.assertEqual(dep.allow, [])
-        self.assertEqual(dep.deny, [])
-        self.assertEqual(dep.require, [])
+        self.assertIsNone(dep.allow)
+        self.assertEqual(dep.deny, ())
+        self.assertEqual(dep.require, ())
         self.assertEqual(dep.require_resolution, "project-wins")
         self.assertEqual(dep.max_depth, 50)
 
@@ -55,10 +55,10 @@ class TestMcpPolicyDefaults(unittest.TestCase):
 
     def test_defaults(self):
         mcp = McpPolicy()
-        self.assertEqual(mcp.allow, [])
-        self.assertEqual(mcp.deny, [])
+        self.assertIsNone(mcp.allow)
+        self.assertEqual(mcp.deny, ())
         self.assertIsInstance(mcp.transport, McpTransportPolicy)
-        self.assertEqual(mcp.transport.allow, [])
+        self.assertIsNone(mcp.transport.allow)
         self.assertEqual(mcp.self_defined, "warn")
         self.assertFalse(mcp.trust_transitive)
 
@@ -76,7 +76,7 @@ class TestCompilationPolicyDefaults(unittest.TestCase):
         self.assertIsInstance(comp.target, CompilationTargetPolicy)
         self.assertIsInstance(comp.strategy, CompilationStrategyPolicy)
         self.assertFalse(comp.source_attribution)
-        self.assertEqual(comp.target.allow, [])
+        self.assertIsNone(comp.target.allow)
         self.assertIsNone(comp.target.enforce)
         self.assertIsNone(comp.strategy.enforce)
 
@@ -86,7 +86,7 @@ class TestManifestPolicyDefaults(unittest.TestCase):
 
     def test_defaults(self):
         mp = ManifestPolicy()
-        self.assertEqual(mp.required_fields, [])
+        self.assertEqual(mp.required_fields, ())
         self.assertEqual(mp.scripts, "allow")
         self.assertIsNone(mp.content_types)
 
@@ -97,7 +97,7 @@ class TestUnmanagedFilesPolicyDefaults(unittest.TestCase):
     def test_defaults(self):
         uf = UnmanagedFilesPolicy()
         self.assertEqual(uf.action, "ignore")
-        self.assertEqual(uf.directories, [])
+        self.assertEqual(uf.directories, ())
 
 
 class TestApmPolicyDefaults(unittest.TestCase):
@@ -122,13 +122,13 @@ class TestApmPolicyDefaults(unittest.TestCase):
             version="1.0.0",
             extends="org",
             enforcement="block",
-            dependencies=DependencyPolicy(allow=["contoso/*"]),
+            dependencies=DependencyPolicy(allow=("contoso/*",)),
         )
         self.assertEqual(policy.name, "test-policy")
         self.assertEqual(policy.version, "1.0.0")
         self.assertEqual(policy.extends, "org")
         self.assertEqual(policy.enforcement, "block")
-        self.assertEqual(policy.dependencies.allow, ["contoso/*"])
+        self.assertEqual(policy.dependencies.allow, ("contoso/*",))
 
     def test_frozen(self):
         policy = ApmPolicy()

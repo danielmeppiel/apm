@@ -11,7 +11,7 @@ extends: values:
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .schema import (
     ApmPolicy,
@@ -106,9 +106,22 @@ def detect_cycle(visited: List[str], next_ref: str) -> bool:
 
 
 def _escalate(levels: Dict[str, int], parent_val: str, child_val: str) -> str:
-    """Return the stricter of two values on an escalation ladder."""
-    p = levels.get(parent_val, 0)
-    c = levels.get(child_val, 0)
+    """Return the stricter of two values on an escalation ladder.
+
+    Raises ``PolicyInheritanceError`` for unknown values -- validated
+    policies should never reach this, but failing loudly is safer than
+    silently downgrading enforcement.
+    """
+    if parent_val not in levels:
+        raise PolicyInheritanceError(
+            f"Unknown escalation value: {parent_val!r}"
+        )
+    if child_val not in levels:
+        raise PolicyInheritanceError(
+            f"Unknown escalation value: {child_val!r}"
+        )
+    p = levels[parent_val]
+    c = levels[child_val]
     target = max(p, c)
     for name, rank in levels.items():
         if rank == target:
@@ -171,14 +184,14 @@ def _merge_compilation(
 
 
 def _merge_manifest(parent: ManifestPolicy, child: ManifestPolicy) -> ManifestPolicy:
-    child_ct_allow = (child.content_types or {}).get("allow", [])
-    parent_ct_allow = (parent.content_types or {}).get("allow", [])
+    child_ct_allow = _extract_ct_allow(child.content_types)
+    parent_ct_allow = _extract_ct_allow(parent.content_types)
     merged_ct_allow = _intersect_allow(parent_ct_allow, child_ct_allow)
 
     # Preserve content_types structure only if at least one side defined it.
     merged_content_types: Optional[Dict] = None
     if parent.content_types is not None or child.content_types is not None:
-        merged_content_types = {"allow": merged_ct_allow}
+        merged_content_types = {"allow": list(merged_ct_allow) if merged_ct_allow is not None else []}
 
     return ManifestPolicy(
         required_fields=_union(parent.required_fields, child.required_fields),
@@ -201,7 +214,7 @@ def _merge_unmanaged_files(
 # ---------------------------------------------------------------------------
 
 
-def _union(a: List[str], b: List[str]) -> List[str]:
+def _union(a: Tuple[str, ...], b: Tuple[str, ...]) -> Tuple[str, ...]:
     """Deduplicated union preserving first-seen order."""
     seen: set[str] = set()
     result: List[str] = []
@@ -209,17 +222,39 @@ def _union(a: List[str], b: List[str]) -> List[str]:
         if item not in seen:
             seen.add(item)
             result.append(item)
-    return result
+    return tuple(result)
 
 
-def _intersect_allow(parent: List[str], child: List[str]) -> List[str]:
+def _intersect_allow(
+    parent: Optional[Tuple[str, ...]],
+    child: Optional[Tuple[str, ...]],
+) -> Optional[Tuple[str, ...]]:
     """Intersect two allow-lists (tighten-only).
 
-    * Both non-empty → intersection (order follows parent).
-    * Parent empty (deny-only) → child can introduce an allow-list.
-    * Child empty → empty (child narrows to nothing).
+    * ``None`` means "no opinion" (transparent in merge).
+    * ``()`` means "explicitly allow nothing".
+    * ``(...)`` means "allow only matching patterns".
+
+    Rules:
+    * Parent ``None`` -> child decides.
+    * Child ``None`` -> parent decides.
+    * Both non-None -> intersection (order follows parent).
     """
-    if not parent:
-        return list(child)
+    if parent is None:
+        return child
+    if child is None:
+        return parent
     child_set = set(child)
-    return [item for item in parent if item in child_set]
+    return tuple(item for item in parent if item in child_set)
+
+
+def _extract_ct_allow(content_types: Optional[Dict]) -> Optional[Tuple[str, ...]]:
+    """Extract allow list from a content_types dict, preserving None semantics."""
+    if content_types is None:
+        return None
+    allow_val = content_types.get("allow")
+    if allow_val is None:
+        return None
+    if isinstance(allow_val, (list, tuple)):
+        return tuple(allow_val)
+    return None

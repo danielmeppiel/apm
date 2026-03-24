@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import yaml
 
@@ -154,9 +154,9 @@ def _build_policy(data: dict) -> ApmPolicy:
 
     deps_data = data.get("dependencies") or {}
     dependencies = DependencyPolicy(
-        allow=deps_data.get("allow", []) or [],
-        deny=deps_data.get("deny", []) or [],
-        require=deps_data.get("require", []) or [],
+        allow=_parse_allow(deps_data.get("allow")),
+        deny=_parse_tuple(deps_data.get("deny")),
+        require=_parse_tuple(deps_data.get("require")),
         require_resolution=deps_data.get(
             "require_resolution", DependencyPolicy.require_resolution
         ),
@@ -166,10 +166,10 @@ def _build_policy(data: dict) -> ApmPolicy:
     mcp_data = data.get("mcp") or {}
     transport_data = mcp_data.get("transport") or {}
     mcp = McpPolicy(
-        allow=mcp_data.get("allow", []) or [],
-        deny=mcp_data.get("deny", []) or [],
+        allow=_parse_allow(mcp_data.get("allow")),
+        deny=_parse_tuple(mcp_data.get("deny")),
         transport=McpTransportPolicy(
-            allow=transport_data.get("allow", []) or [],
+            allow=_parse_allow(transport_data.get("allow")),
         ),
         self_defined=mcp_data.get("self_defined", McpPolicy.self_defined),
         trust_transitive=mcp_data.get(
@@ -182,7 +182,7 @@ def _build_policy(data: dict) -> ApmPolicy:
     strategy_data = comp_data.get("strategy") or {}
     compilation = CompilationPolicy(
         target=CompilationTargetPolicy(
-            allow=target_data.get("allow", []) or [],
+            allow=_parse_allow(target_data.get("allow")),
             enforce=target_data.get("enforce"),
         ),
         strategy=CompilationStrategyPolicy(
@@ -195,7 +195,7 @@ def _build_policy(data: dict) -> ApmPolicy:
 
     manifest_data = data.get("manifest") or {}
     manifest = ManifestPolicy(
-        required_fields=manifest_data.get("required_fields", []) or [],
+        required_fields=_parse_tuple(manifest_data.get("required_fields")),
         scripts=manifest_data.get("scripts", ManifestPolicy.scripts),
         content_types=manifest_data.get("content_types"),
     )
@@ -203,7 +203,7 @@ def _build_policy(data: dict) -> ApmPolicy:
     uf_data = data.get("unmanaged_files") or {}
     unmanaged_files = UnmanagedFilesPolicy(
         action=uf_data.get("action", UnmanagedFilesPolicy.action),
-        directories=uf_data.get("directories", []) or [],
+        directories=_parse_tuple(uf_data.get("directories")),
     )
 
     return ApmPolicy(
@@ -249,3 +249,23 @@ def load_policy(source: Union[str, Path]) -> ApmPolicy:
         raise PolicyValidationError(errors)
 
     return _build_policy(data)
+
+
+def _parse_allow(val: Any) -> Optional[Tuple[str, ...]]:
+    """Parse an allow-list field.
+
+    * Key absent (``val is None``) -> ``None`` ("no opinion").
+    * Key present with a list      -> ``tuple(...)`` (may be empty).
+    """
+    if val is None:
+        return None
+    if isinstance(val, list):
+        return tuple(val)
+    return None
+
+
+def _parse_tuple(val: Any) -> Tuple[str, ...]:
+    """Parse a deny/require/directories field into a tuple."""
+    if isinstance(val, list):
+        return tuple(val)
+    return ()

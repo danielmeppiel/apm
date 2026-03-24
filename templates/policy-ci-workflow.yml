@@ -1,4 +1,6 @@
-# APM Policy Compliance Check
+# APM Policy Compliance Check (Experimental)
+# Policy enforcement is an early preview feature for testing and feedback.
+# The policy schema and check behavior may change in upcoming releases.
 # Copy this workflow to .github/workflows/apm-policy.yml in your repo
 name: APM Policy Compliance
 

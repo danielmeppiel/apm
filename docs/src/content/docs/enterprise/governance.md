@@ -5,6 +5,10 @@ sidebar:
   order: 2
 ---
 
+:::caution[Experimental — Policy Engine]
+Sections on this page covering organization policy enforcement (`apm audit --ci --policy`, `apm-policy.yml`, inheritance chains) describe an early preview feature for testing and feedback. Lock-file based governance (`apm audit --ci` baseline checks) is stable. The policy engine layer on top may change based on community input.
+:::
+
 ## The governance challenge
 
 As AI agents become integral to software development, organizations face questions that traditional tooling was never designed to answer:

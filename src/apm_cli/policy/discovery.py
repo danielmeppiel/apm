@@ -71,7 +71,12 @@ def discover_policy(
         path = Path(policy_override)
         if path.exists() and path.is_file():
             return _load_from_file(path)
-        if policy_override.startswith(("http://", "https://")):
+        if policy_override.startswith("http://"):
+            return PolicyFetchResult(
+                error="Refusing plaintext http:// policy URL -- use https://",
+                source=f"url:{policy_override}",
+            )
+        if policy_override.startswith("https://"):
             return _fetch_from_url(policy_override, project_root, no_cache=no_cache)
         if policy_override != "org":
             # Try as owner/repo reference
@@ -317,10 +322,24 @@ def _fetch_github_contents(
         return None, f"Error fetching policy from {repo_ref}: {e}"
 
 
+def _is_github_host(host: str) -> bool:
+    """Return True if *host* is a known GitHub-family hostname."""
+    if host == "github.com":
+        return True
+    if host.endswith(".ghe.com"):
+        return True
+    gh_host = os.environ.get("GITHUB_HOST", "")
+    if gh_host and host == gh_host:
+        return True
+    return False
+
+
 def _get_token_for_host(host: str) -> Optional[str]:
     """Get authentication token for a given host.
 
-    Delegates to the existing token manager with git credential fallback.
+    Environment-variable tokens (GITHUB_TOKEN, GITHUB_APM_PAT, GH_TOKEN)
+    are only returned when *host* is a recognized GitHub-family hostname.
+    For other hosts the token manager + git credential helpers are used.
     """
     try:
         from ..core.token_manager import GitHubTokenManager
@@ -328,11 +347,13 @@ def _get_token_for_host(host: str) -> Optional[str]:
         manager = GitHubTokenManager()
         return manager.get_token_with_credential_fallback("modules", host)
     except Exception:
-        return (
-            os.environ.get("GITHUB_TOKEN")
-            or os.environ.get("GITHUB_APM_PAT")
-            or os.environ.get("GH_TOKEN")
-        )
+        if _is_github_host(host):
+            return (
+                os.environ.get("GITHUB_TOKEN")
+                or os.environ.get("GITHUB_APM_PAT")
+                or os.environ.get("GH_TOKEN")
+            )
+        return None
 
 
 # ── Cache ──────────────────────────────────────────────────────────

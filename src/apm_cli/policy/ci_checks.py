@@ -6,8 +6,8 @@ agent config" gate: if anything is out of sync, the check fails and the CI
 pipeline should block the merge.
 
 Exit-code contract (consumed by the ``apm audit --ci`` command):
-  * All checks pass → exit 0
-  * Any check fails  → exit 1
+  * All checks pass -> exit 0
+  * Any check fails  -> exit 1
 """
 
 from __future__ import annotations
@@ -15,6 +15,33 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+
+
+# Check name -> most relevant artifact for SARIF locations.
+_CHECK_ARTIFACT_MAP: Dict[str, str] = {
+    "lockfile-exists": "apm.lock.yaml",
+    "ref-consistency": "apm.lock.yaml",
+    "deployed-files-present": "apm.lock.yaml",
+    "no-orphans": "apm.lock.yaml",
+    "config-consistency": "apm.lock.yaml",
+    "content-integrity": "apm.lock.yaml",
+    "dependency-allowlist": "apm.yml",
+    "dependency-denylist": "apm.yml",
+    "required-packages": "apm.yml",
+    "required-packages-deployed": "apm.lock.yaml",
+    "required-package-version": "apm.lock.yaml",
+    "transitive-depth": "apm.lock.yaml",
+    "mcp-allowlist": "apm.yml",
+    "mcp-denylist": "apm.yml",
+    "mcp-transport": "apm.yml",
+    "mcp-self-defined": "apm.yml",
+    "compilation-target": "apm.yml",
+    "compilation-strategy": "apm.yml",
+    "source-attribution": "apm.yml",
+    "required-manifest-fields": "apm.yml",
+    "scripts-policy": "apm.yml",
+    "unmanaged-files": "apm.yml",
+}
 
 
 # ── Result data classes ───────────────────────────────────────────
@@ -66,9 +93,17 @@ class CIAuditResult:
 
     def to_sarif(self) -> dict:
         """Serialize to SARIF v2.1.0 format for GitHub Code Scanning."""
+        try:
+            from importlib.metadata import version as pkg_version
+
+            tool_version = pkg_version("apm-cli")
+        except Exception:
+            tool_version = "0.0.0"
+
         results = []
         for check in self.checks:
             if not check.passed:
+                artifact = _CHECK_ARTIFACT_MAP.get(check.name, "apm.lock.yaml")
                 for detail in check.details or [check.message]:
                     results.append(
                         {
@@ -79,7 +114,7 @@ class CIAuditResult:
                                 {
                                     "physicalLocation": {
                                         "artifactLocation": {
-                                            "uri": "apm.lock.yaml",
+                                            "uri": artifact,
                                         },
                                     },
                                 }
@@ -97,7 +132,7 @@ class CIAuditResult:
                     "tool": {
                         "driver": {
                             "name": "apm-audit",
-                            "version": "1.0.0",
+                            "version": tool_version,
                             "informationUri": "https://github.com/microsoft/apm",
                             "rules": [
                                 {
@@ -373,7 +408,7 @@ def _check_dependency_allowlist(
     """Check 1: every dependency matches policy allow list."""
     from .matcher import check_dependency_allowed
 
-    if not policy.allow:
+    if policy.allow is None:
         return CheckResult(
             name="dependency-allowlist",
             passed=True,
@@ -611,7 +646,7 @@ def _check_mcp_allowlist(
     """Check 7: MCP server names match allow list."""
     from .matcher import check_mcp_allowed
 
-    if not policy.allow:
+    if policy.allow is None:
         return CheckResult(
             name="mcp-allowlist",
             passed=True,
@@ -678,7 +713,7 @@ def _check_mcp_transport(
 ) -> CheckResult:
     """Check 9: MCP transport values match policy allow list."""
     allowed_transports = policy.transport.allow
-    if not allowed_transports:
+    if allowed_transports is None:
         return CheckResult(
             name="mcp-transport",
             passed=True,
@@ -752,7 +787,7 @@ def _check_compilation_target(
     enforce = policy.target.enforce
     allow = policy.target.allow
 
-    if not enforce and not allow:
+    if not enforce and allow is None:
         return CheckResult(
             name="compilation-target",
             passed=True,
@@ -775,7 +810,7 @@ def _check_compilation_target(
                 message=f"Target '{target}' does not match enforced '{enforce}'",
                 details=[f"target: {target}, enforced: {enforce}"],
             )
-    elif allow and target not in allow:
+    elif allow is not None and target not in allow:
         return CheckResult(
             name="compilation-target",
             passed=False,

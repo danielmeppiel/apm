@@ -24,6 +24,9 @@ from ..core.command_logger import CommandLogger
 from ..utils.console import (
     _get_console,
     _rich_echo,
+    _rich_error,
+    _rich_success,
+    _rich_warning,
     STATUS_SYMBOLS,
 )
 
@@ -382,7 +385,7 @@ def _render_ci_results(ci_result: "CIAuditResult") -> None:
             from rich.table import Table
 
             table = Table(
-                title=f"{STATUS_SYMBOLS['search']} CI Lockfile Consistency Checks",
+                title=f"{STATUS_SYMBOLS['search']} APM Policy Compliance",
                 show_header=True,
                 header_style="bold cyan",
             )
@@ -431,7 +434,7 @@ def _render_ci_results(ci_result: "CIAuditResult") -> None:
     # Fallback: plain text
     _rich_echo("")
     _rich_echo(
-        f"{STATUS_SYMBOLS['search']} CI Lockfile Consistency Checks",
+        f"{STATUS_SYMBOLS['search']} APM Policy Compliance",
         color="cyan",
         bold=True,
     )
@@ -508,7 +511,10 @@ def _render_ci_results(ci_result: "CIAuditResult") -> None:
     "--policy",
     "policy_source",
     default=None,
-    help="Policy source: 'org' (auto-discover), file path, or URL. Used with --ci for policy checks.",
+    help=(
+        "Policy source: 'org' (auto-discover), file path, or URL. "
+        "Used with --ci for policy checks. [experimental]"
+    ),
 )
 @click.option(
     "--no-cache",
@@ -547,11 +553,16 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         apm audit -o report.sarif      # Write SARIF to file
     """
     project_root = Path.cwd()
+    logger = CommandLogger("audit", verbose=verbose)
 
     # ── CI mode: lockfile consistency gate ─────────────────────────
     if ci:
+        if verbose:
+            logger.warning(
+                "--verbose has no effect in --ci mode (output is structured)"
+            )
         if strip or dry_run or file_path or package:
-            _rich_error(
+            logger.error(
                 "--ci cannot be combined with --strip, --dry-run, --file, or PACKAGE"
             )
             sys.exit(1)
@@ -572,7 +583,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
             )
 
             if fetch_result.error:
-                _rich_error(f"Policy fetch failed: {fetch_result.error}")
+                logger.error(f"Policy fetch failed: {fetch_result.error}")
                 sys.exit(1)
 
             if fetch_result.found:
@@ -600,7 +611,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
             if output_path:
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 Path(output_path).write_text(output, encoding="utf-8")
-                _rich_success(f"CI audit report written to {output_path}")
+                logger.success(f"CI audit report written to {output_path}")
             else:
                 click.echo(output)
         else:
@@ -610,8 +621,13 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
     # ── Content scan mode ──────────────────────────────────────────
 
+    if policy_source:
+        logger.warning(
+            "--policy requires --ci mode. "
+            "Use 'apm audit --ci --policy <source>' to run policy checks."
+        )
+
     # Resolve effective format (auto-detect from extension when needed)
-    logger = CommandLogger("audit", verbose=verbose)
 
     effective_format = output_format
     if output_path and effective_format == "text":

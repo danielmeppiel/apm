@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
-from typing import Tuple
+from typing import Optional, Tuple
 
 from .schema import DependencyPolicy, McpPolicy
 
@@ -43,21 +43,22 @@ def matches_pattern(canonical_ref: str, pattern: str) -> bool:
 
 def _check_allow_deny(
     ref: str,
-    allow: list[str],
-    deny: list[str],
+    allow: Optional[Tuple[str, ...]],
+    deny: Tuple[str, ...],
 ) -> Tuple[bool, str]:
     """Shared allow/deny logic.
 
-    1. If ref matches any deny pattern → denied.
-    2. If allow list is empty → allow (deny-only mode).
-    3. If ref matches any allow pattern → allowed.
-    4. Otherwise → not in allowed sources.
+    1. If ref matches any deny pattern -> denied.
+    2. If allow is ``None`` -> allow (no opinion / deny-only mode).
+    3. If allow is ``()`` -> block everything (explicit empty).
+    4. If ref matches any allow pattern -> allowed.
+    5. Otherwise -> not in allowed sources.
     """
     for pattern in deny:
         if matches_pattern(ref, pattern):
             return False, f"denied by pattern: {pattern}"
 
-    if not allow:
+    if allow is None:
         return True, ""
 
     for pattern in allow:

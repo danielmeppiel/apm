@@ -169,22 +169,22 @@ class TestLoadPolicyFromString(unittest.TestCase):
         self.assertEqual(policy.enforcement, "block")
         self.assertEqual(policy.extends, "org")
         self.assertEqual(policy.cache.ttl, 1800)
-        self.assertEqual(policy.dependencies.allow, ["contoso/*"])
-        self.assertEqual(policy.dependencies.deny, ["evil-corp/**"])
-        self.assertEqual(policy.dependencies.require, ["contoso/required-lib"])
+        self.assertEqual(policy.dependencies.allow, ("contoso/*",))
+        self.assertEqual(policy.dependencies.deny, ("evil-corp/**",))
+        self.assertEqual(policy.dependencies.require, ("contoso/required-lib",))
         self.assertEqual(policy.dependencies.require_resolution, "policy-wins")
         self.assertEqual(policy.dependencies.max_depth, 10)
-        self.assertEqual(policy.mcp.allow, ["trusted-mcp/*"])
-        self.assertEqual(policy.mcp.deny, ["bad-server"])
-        self.assertEqual(policy.mcp.transport.allow, ["stdio", "sse"])
+        self.assertEqual(policy.mcp.allow, ("trusted-mcp/*",))
+        self.assertEqual(policy.mcp.deny, ("bad-server",))
+        self.assertEqual(policy.mcp.transport.allow, ("stdio", "sse"))
         self.assertEqual(policy.mcp.self_defined, "deny")
         self.assertTrue(policy.mcp.trust_transitive)
-        self.assertEqual(policy.compilation.target.allow, ["vscode", "claude"])
+        self.assertEqual(policy.compilation.target.allow, ("vscode", "claude"))
         self.assertEqual(policy.compilation.target.enforce, "vscode")
         self.assertEqual(policy.compilation.strategy.enforce, "distributed")
         self.assertTrue(policy.compilation.source_attribution)
         self.assertEqual(
-            policy.manifest.required_fields, ["description", "version"]
+            policy.manifest.required_fields, ("description", "version")
         )
         self.assertEqual(policy.manifest.scripts, "deny")
         self.assertEqual(
@@ -192,7 +192,7 @@ class TestLoadPolicyFromString(unittest.TestCase):
         )
         self.assertEqual(policy.unmanaged_files.action, "warn")
         self.assertEqual(
-            policy.unmanaged_files.directories, [".github", "docs"]
+            policy.unmanaged_files.directories, (".github", "docs")
         )
 
     def test_minimal_policy(self):
@@ -203,7 +203,7 @@ class TestLoadPolicyFromString(unittest.TestCase):
         # Everything else should be defaults
         self.assertEqual(policy.enforcement, "warn")
         self.assertEqual(policy.cache.ttl, 3600)
-        self.assertEqual(policy.dependencies.allow, [])
+        self.assertIsNone(policy.dependencies.allow)
         self.assertEqual(policy.dependencies.max_depth, 50)
 
     def test_empty_yaml(self):
@@ -242,8 +242,8 @@ class TestLoadPolicyFromString(unittest.TestCase):
                 - "org/*"
         """)
         policy = load_policy(yaml_str)
-        self.assertEqual(policy.dependencies.allow, ["org/*"])
-        self.assertEqual(policy.dependencies.deny, [])
+        self.assertEqual(policy.dependencies.allow, ("org/*",))
+        self.assertEqual(policy.dependencies.deny, ())
         self.assertEqual(policy.dependencies.max_depth, 50)
         self.assertEqual(policy.mcp.self_defined, "warn")
 
