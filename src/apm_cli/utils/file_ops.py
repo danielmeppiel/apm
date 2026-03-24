@@ -135,7 +135,8 @@ def _retry_on_lock(
             time.sleep(delay)
             delay = min(delay * backoff_factor, max_delay)
 
-    # Unreachable, but keeps mypy/type-checkers happy
+    # Unreachable: the loop always returns or raises on the last attempt.
+    # This guard satisfies type-checkers that analyse control-flow.
     raise last_exc  # type: ignore[misc]
 
 

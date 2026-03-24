@@ -64,8 +64,8 @@ class TestIsTransientLockError:
         exc.winerror = 2
         assert _is_transient_lock_error(exc) is False
 
-    def test_non_oserror_not_handled(self):
-        """Non-OSError exceptions are not classified at all."""
+    def test_generic_oserror_not_transient(self):
+        """OSError with errno 0 (generic/unknown) is not classified as transient."""
         exc = OSError(0, "generic")
         assert _is_transient_lock_error(exc) is False
 
@@ -101,10 +101,12 @@ class TestRetryOnLock:
     def test_raises_after_max_retries(self):
         exc = OSError(errno.EBUSY, "busy")
 
+        def always_fail():
+            raise exc
+
         with patch("apm_cli.utils.file_ops.time.sleep"), \
              pytest.raises(OSError, match="busy"):
-            _retry_on_lock(lambda: (_ for _ in ()).throw(exc), "test op",
-                           max_retries=2)
+            _retry_on_lock(always_fail, "test op", max_retries=2)
 
     def test_non_transient_error_raises_immediately(self):
         call_count = 0

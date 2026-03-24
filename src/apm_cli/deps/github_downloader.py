@@ -1709,11 +1709,10 @@ author: {dep_ref.repo_url.split('/')[0]}
                     f"Artifactory ({host}/{prefix}/{owner}/{repo}#{ref})"
                 )
             target_path.mkdir(parents=True, exist_ok=True)
+            from ..utils.file_ops import robust_rmtree, robust_copytree, robust_copy2
             if target_path.exists() and any(target_path.iterdir()):
-                from ..utils.file_ops import robust_rmtree
                 robust_rmtree(target_path)
                 target_path.mkdir(parents=True, exist_ok=True)
-            from ..utils.file_ops import robust_copytree, robust_copy2
             for item in source_subdir.iterdir():
                 src = source_subdir / item.name
                 dst = target_path / item.name
