@@ -128,14 +128,17 @@ class DependencyReference:
     @staticmethod
     def is_local_path(dep_str: str) -> bool:
         """Check if a dependency string looks like a local filesystem path.
-        
-        Local paths start with './', '../', '/', or '~'.
+
+        Local paths start with './', '../', '/', or '~', or are Windows absolute paths.
         Protocol-relative URLs ('//...') are explicitly excluded.
         """
         s = dep_str.strip()
         # Reject protocol-relative URLs ('//...')
         if s.startswith('//'):
             return False
+        # Check for Windows absolute paths (e.g., C:\, D:/)
+        if len(s) >= 2 and s[1] == ':':
+            return True
         return s.startswith(('./','../', '/', '~/', '~\\', '.\\', '..\\'))
 
     def get_unique_key(self) -> str:

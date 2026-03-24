@@ -113,7 +113,7 @@ class GitHubTokenManager:
                 text=True,
                 timeout=GitHubTokenManager._get_credential_timeout(),
                 env={**os.environ, 'GIT_TERMINAL_PROMPT': '0',
-                     'GIT_ASKPASS': '' if sys.platform != 'win32' else 'echo'},
+                     'GIT_ASKPASS': ''},
             )
             if result.returncode != 0:
                 return None

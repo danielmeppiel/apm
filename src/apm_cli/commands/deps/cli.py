@@ -43,10 +43,16 @@ def list_packages():
         # Import Rich components with fallback
         from rich.table import Table
         from rich.console import Console
-        import shutil
         term_width = shutil.get_terminal_size((120, 24)).columns
-        console = Console(width=max(120, term_width))
-        has_rich = True
+        # Rich tables include unicode box drawing by default. Avoid rich output
+        # for non-interactive streams so subprocess capture stays ASCII-safe.
+        is_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
+        has_rich = is_tty
+        console = Console(
+            width=max(120, term_width),
+            force_terminal=False,
+            no_color=True,
+        ) if has_rich else None
     except ImportError:
         has_rich = False
         console = None
@@ -64,12 +70,20 @@ def list_packages():
         # Load project dependencies to check for orphaned packages
         # GitHub: owner/repo or owner/virtual-pkg-name (2 levels)
         # Azure DevOps: org/project/repo or org/project/virtual-pkg-name (3 levels)
-        declared_sources = {}  # dep_path -> 'github' | 'azure-devops'
+        # Local: _local/package-name
+        declared_sources = {}  # dep_path -> 'github' | 'azure-devops' | 'local'
         try:
             apm_yml_path = project_root / APM_YML_FILENAME
             if apm_yml_path.exists():
                 project_package = APMPackage.from_apm_yml(apm_yml_path)
                 for dep in project_package.get_apm_dependencies():
+                    # Handle local dependencies
+                    if dep.is_local and dep.local_path:
+                        # Local packages are installed as _local/<dirname>
+                        pkg_name = Path(dep.local_path).name
+                        declared_sources[f"_local/{pkg_name}"] = 'local'
+                        continue
+
                     # Build the expected installed package name
                     repo_parts = dep.repo_url.split('/')
                     source = 'azure-devops' if dep.is_azure_devops() else 'github'
@@ -234,7 +248,7 @@ def list_packages():
         sys.exit(1)
 
 
-@deps.command(help="Show dependency tree structure")  
+@deps.command(help="Show dependency tree structure")
 def tree():
     """Display dependencies in hierarchical tree format using lockfile."""
     logger = CommandLogger("deps-tree")
@@ -243,8 +257,11 @@ def tree():
         # Import Rich components with fallback
         from rich.tree import Tree
         from rich.console import Console
-        console = Console()
-        has_rich = True
+        # Tree rendering uses unicode branches. Use fallback text when output is
+        # captured/piped to keep bytes ASCII-safe for Windows cp1252 readers.
+        is_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
+        has_rich = is_tty
+        console = Console(force_terminal=False, no_color=True) if has_rich else None
     except ImportError:
         has_rich = False
         console = None
@@ -530,13 +547,17 @@ def info(package: str):
     try:
         # Load package information
         package_info = _get_detailed_package_info(package_path)
-        
+
         # Display with Rich panel if available
         try:
             from rich.panel import Panel
             from rich.console import Console
-            from rich.text import Text
-            console = Console()
+            # Rich panels use unicode borders. Keep captured output ASCII by
+            # using plain-text fallback when not writing to a terminal.
+            is_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
+            if not is_tty:
+                raise ImportError
+            console = Console(force_terminal=False, no_color=True)
             
             content_lines = []
             content_lines.append(f"[bold]Name:[/bold] {package_info['name']}")
