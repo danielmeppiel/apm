@@ -231,7 +231,7 @@ def _local_path_failure_reason(dep_ref):
 
 
 def _local_path_no_markers_hint(local_dir, verbose_log=None):
-    """Scan one level for sub-packages and print a hint if any are found."""
+    """Scan two levels for sub-packages and print a hint if any are found."""
     from apm_cli.utils.helpers import find_plugin_json
 
     markers = ("apm.yml", "SKILL.md")

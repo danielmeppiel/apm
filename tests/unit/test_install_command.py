@@ -494,12 +494,12 @@ class TestTransitiveDepParentChain:
 class TestLocalPathValidationMessages:
     """Tests for improved local path validation error messages."""
 
-    def test_local_path_failure_reason_nonexistent(self):
+    def test_local_path_failure_reason_nonexistent(self, tmp_path):
         """Non-existent path returns 'path does not exist'."""
         from apm_cli.commands.install import _local_path_failure_reason
         from apm_cli.models.apm_package import DependencyReference
 
-        dep_ref = DependencyReference.parse("/tmp/does-not-exist-xyz-9999")
+        dep_ref = DependencyReference.parse(str(tmp_path / "does-not-exist-xyz-9999"))
         reason = _local_path_failure_reason(dep_ref)
         assert reason == "path does not exist"
 
@@ -526,7 +526,12 @@ class TestLocalPathValidationMessages:
         assert reason == "no apm.yml, SKILL.md, or plugin.json found"
 
     def test_local_path_failure_reason_valid_apm_yml(self, tmp_path):
-        """Directory with apm.yml returns None (valid, no failure)."""
+        """Directory with apm.yml still returns 'no markers' message.
+
+        _local_path_failure_reason is only called when _validate_package_exists
+        already returned False, so it doesn't re-check markers. We verify it
+        returns a string (not None) and doesn't crash.
+        """
         from apm_cli.commands.install import _local_path_failure_reason
         from apm_cli.models.apm_package import DependencyReference
 
@@ -534,16 +539,8 @@ class TestLocalPathValidationMessages:
         pkg.mkdir()
         (pkg / "apm.yml").write_text("name: test\nversion: 1.0.0\n")
         dep_ref = DependencyReference.parse(str(pkg))
-        # _local_path_failure_reason returns None for valid packages
-        # (since _validate_package_exists returns True first)
-        # But it also returns None for remote refs
         reason = _local_path_failure_reason(dep_ref)
-        # For a local path that exists and is a dir but has markers,
-        # the function still returns the "no markers" message because
-        # it doesn't re-check markers. That's OK — this function is
-        # only called when _validate_package_exists already returned False.
-        # We just verify it doesn't crash and returns a string.
-        assert reason is not None or reason is None  # no crash
+        assert reason == "no apm.yml, SKILL.md, or plugin.json found"
 
     def test_local_path_failure_reason_remote_ref(self):
         """Remote refs return None (not a local path)."""
