@@ -9,9 +9,8 @@ import pytest
 import yaml
 
 from apm_cli.models.apm_package import clear_apm_yml_cache
-from apm_cli.policy.ci_checks import (
-    CIAuditResult,
-    CheckResult,
+from apm_cli.policy.models import CIAuditResult, CheckResult
+from apm_cli.policy.policy_checks import (
     _check_compilation_strategy,
     _check_compilation_target,
     _check_dependency_allowlist,
@@ -183,6 +182,14 @@ class TestRequiredPackages:
         result = _check_required_packages(deps, policy)
         assert not result.passed
         assert "org/required-pkg" in result.details[0]
+
+    def test_no_prefix_collision(self):
+        """Regression: 'org/package-v2' must NOT match requirement 'org/package'."""
+        deps = _make_dep_refs(["org/package-v2"])
+        policy = DependencyPolicy(require=["org/package"])
+        result = _check_required_packages(deps, policy)
+        assert not result.passed
+        assert "org/package" in result.details
 
 
 # ── Check 4: required-packages-deployed ────────────────────────────
@@ -641,6 +648,22 @@ class TestUnmanagedFiles:
         result = _check_unmanaged_files(tmp_path, None, policy)
         assert result.passed
 
+    def test_rglob_cap_skips_check(self, tmp_path, monkeypatch):
+        """When file count exceeds the safety cap, check passes with a warning."""
+        from apm_cli.policy import policy_checks
+
+        monkeypatch.setattr(policy_checks, "_MAX_UNMANAGED_SCAN_FILES", 3)
+        gov = tmp_path / ".github" / "agents"
+        gov.mkdir(parents=True)
+        for i in range(5):
+            (gov / f"file{i}.md").write_text("x", encoding="utf-8")
+        policy = UnmanagedFilesPolicy(
+            action="deny", directories=[".github/agents"]
+        )
+        result = _check_unmanaged_files(tmp_path, None, policy)
+        assert result.passed
+        assert "capped" in result.message.lower()
+
 
 # ── Integration: run_policy_checks ─────────────────────────────────
 
@@ -738,7 +761,7 @@ class TestRunPolicyChecks:
                 scripts="deny", required_fields=["license"]
             ),
         )
-        result = run_policy_checks(tmp_path, policy)
+        result = run_policy_checks(tmp_path, policy, fail_fast=False)
         failed_names = {c.name for c in result.checks if not c.passed}
         assert "dependency-denylist" in failed_names
         assert "scripts-policy" in failed_names

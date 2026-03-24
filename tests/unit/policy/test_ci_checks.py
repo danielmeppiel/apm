@@ -8,8 +8,6 @@ from pathlib import Path
 import pytest
 
 from apm_cli.policy.ci_checks import (
-    CIAuditResult,
-    CheckResult,
     _check_config_consistency,
     _check_content_integrity,
     _check_deployed_files_present,
@@ -18,6 +16,7 @@ from apm_cli.policy.ci_checks import (
     _check_ref_consistency,
     run_baseline_checks,
 )
+from apm_cli.policy.models import CIAuditResult, CheckResult
 from apm_cli.models.apm_package import clear_apm_yml_cache
 
 
@@ -412,6 +411,7 @@ class TestRunBaselineChecks:
 
     def test_mixed_pass_fail(self, tmp_path):
         # Ref mismatch (fail) + missing file (fail) + clean otherwise
+        # Use fail_fast=False to let all checks run
         _write_apm_yml(tmp_path, deps=["owner/repo#v2.0.0"])
         _write_lockfile(
             tmp_path,
@@ -425,7 +425,7 @@ class TestRunBaselineChecks:
                       - .github/prompts/gone.md
             """),
         )
-        result = run_baseline_checks(tmp_path)
+        result = run_baseline_checks(tmp_path, fail_fast=False)
         assert not result.passed
         assert len(result.failed_checks) >= 2
         failed_names = {c.name for c in result.failed_checks}
@@ -443,6 +443,46 @@ class TestRunBaselineChecks:
         assert not result.passed
         assert len(result.checks) == 1
         assert result.checks[0].name == "lockfile-exists"
+
+    def test_fail_fast_stops_after_first_failure(self, tmp_path):
+        """fail_fast=True (default) stops after the first failing check."""
+        _write_apm_yml(tmp_path, deps=["owner/repo#v2.0.0"])
+        _write_lockfile(
+            tmp_path,
+            textwrap.dedent("""\
+                lockfile_version: '1'
+                generated_at: '2025-01-01T00:00:00Z'
+                dependencies:
+                  - repo_url: owner/repo
+                    resolved_ref: v1.0.0
+                    deployed_files:
+                      - .github/prompts/gone.md
+            """),
+        )
+        result = run_baseline_checks(tmp_path, fail_fast=True)
+        assert not result.passed
+        # Should stop after ref-consistency (first failure), not run deployed-files
+        assert len(result.failed_checks) == 1
+        assert result.failed_checks[0].name == "ref-consistency"
+
+    def test_fail_fast_false_runs_all_checks(self, tmp_path):
+        """fail_fast=False runs all checks even after a failure."""
+        _write_apm_yml(tmp_path, deps=["owner/repo#v2.0.0"])
+        _write_lockfile(
+            tmp_path,
+            textwrap.dedent("""\
+                lockfile_version: '1'
+                generated_at: '2025-01-01T00:00:00Z'
+                dependencies:
+                  - repo_url: owner/repo
+                    resolved_ref: v1.0.0
+                    deployed_files:
+                      - .github/prompts/gone.md
+            """),
+        )
+        result = run_baseline_checks(tmp_path, fail_fast=False)
+        assert not result.passed
+        assert len(result.failed_checks) >= 2
 
 
 # ── Serialization ─────────────────────────────────────────────────

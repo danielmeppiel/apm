@@ -18,8 +18,8 @@ from typing import Dict, List, Optional, Tuple
 import click
 
 from ..deps.lockfile import LockFile, get_lockfile_path
-from ..integration.base_integrator import BaseIntegrator
 from ..security.content_scanner import ContentScanner, ScanFinding
+from ..security.file_scanner import scan_lockfile_packages
 from ..core.command_logger import CommandLogger
 from ..utils.console import (
     _get_console,
@@ -32,81 +32,6 @@ from ..utils.console import (
 
 
 # ── Helpers ────────────────────────────────────────────────────────
-
-
-def _is_safe_lockfile_path(rel_path: str, project_root: Path) -> bool:
-    """Return True if a relative path from the lockfile is safe to read.
-
-    Reuses the same logic as ``BaseIntegrator.validate_deploy_path``
-    (no ``..``, allowed prefix, resolves within root).
-    """
-    return BaseIntegrator.validate_deploy_path(rel_path, project_root)
-
-
-def _scan_files_in_dir(
-    dir_path: Path,
-    base_label: str,
-) -> Tuple[Dict[str, List[ScanFinding]], int]:
-    """Recursively scan all files under a directory via SecurityGate.
-
-    Returns (findings_by_file, files_scanned).
-    """
-    from ..security.gate import REPORT_POLICY, SecurityGate
-
-    verdict = SecurityGate.scan_files(dir_path, policy=REPORT_POLICY)
-    # Re-key findings with the base_label prefix for display
-    findings: Dict[str, List[ScanFinding]] = {}
-    for rel_path, file_findings in verdict.findings_by_file.items():
-        label = f"{base_label}/{rel_path}"
-        findings[label] = file_findings
-    return findings, verdict.files_scanned
-
-
-def _scan_lockfile_packages(
-    project_root: Path,
-    package_filter: Optional[str] = None,
-) -> Tuple[Dict[str, List[ScanFinding]], int]:
-    """Scan deployed files tracked in apm.lock.yaml.
-
-    Returns:
-        (findings_by_file, files_scanned) — findings grouped by file path
-        and total number of files scanned.
-    """
-    lockfile_path = get_lockfile_path(project_root)
-    lock = LockFile.read(lockfile_path)
-    if lock is None:
-        return {}, 0
-
-    all_findings: Dict[str, List[ScanFinding]] = {}
-    files_scanned = 0
-
-    for dep_key, dep in lock.dependencies.items():
-        # Filter to a specific package if requested
-        if package_filter and dep_key != package_filter:
-            continue
-
-        for rel_path in dep.deployed_files:
-            # Path safety: reject traversal attempts from crafted lockfiles
-            if not _is_safe_lockfile_path(rel_path.rstrip("/"), project_root):
-                continue
-
-            abs_path = project_root / rel_path
-            if not abs_path.exists():
-                continue
-
-            # Recurse into directories (e.g. skill folders)
-            if abs_path.is_dir():
-                dir_findings, dir_count = _scan_files_in_dir(abs_path, rel_path.rstrip("/"))
-                files_scanned += dir_count
-                all_findings.update(dir_findings)
-                continue
-
-            files_scanned += 1
-            findings = ContentScanner.scan_file(abs_path)
-            if findings:
-                all_findings[rel_path] = findings
-
-    return all_findings, files_scanned
 
 
 def _scan_single_file(file_path: Path, logger) -> Tuple[Dict[str, List[ScanFinding]], int]:
@@ -376,7 +301,7 @@ def _preview_strip(
 
 def _render_ci_results(ci_result: "CIAuditResult") -> None:
     """Render CI check results as a Rich table (text format)."""
-    from ..policy.ci_checks import CIAuditResult
+    from ..policy.models import CIAuditResult
 
     console = _get_console()
 
@@ -522,8 +447,14 @@ def _render_ci_results(ci_result: "CIAuditResult") -> None:
     is_flag=True,
     help="Force fresh policy fetch (skip cache).",
 )
+@click.option(
+    "--no-fail-fast",
+    "no_fail_fast",
+    is_flag=True,
+    help="Run all checks even after a failure (default: stop at first failure).",
+)
 @click.pass_context
-def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, output_path, ci, policy_source, no_cache):
+def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, output_path, ci, policy_source, no_cache, no_fail_fast):
     """Scan deployed prompt files for hidden Unicode characters.
 
     Detects invisible characters that could embed hidden instructions in
@@ -567,13 +498,16 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
             )
             sys.exit(1)
 
-        from ..policy.ci_checks import run_baseline_checks, run_policy_checks
+        from ..policy.ci_checks import run_baseline_checks
+        from ..policy.policy_checks import run_policy_checks
+
+        fail_fast = not no_fail_fast
 
         # Always run baseline checks
-        ci_result = run_baseline_checks(project_root)
+        ci_result = run_baseline_checks(project_root, fail_fast=fail_fast)
 
-        # Optionally run policy checks
-        if policy_source:
+        # Optionally run policy checks (skip if baseline already failed in fail-fast mode)
+        if policy_source and (not fail_fast or ci_result.passed):
             from ..policy.discovery import discover_policy
 
             fetch_result = discover_policy(
@@ -588,7 +522,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
             if fetch_result.found:
                 policy_result = run_policy_checks(
-                    project_root, fetch_result.policy
+                    project_root, fetch_result.policy, fail_fast=fail_fast
                 )
                 ci_result.checks.extend(policy_result.checks)
 
@@ -660,7 +594,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         else:
             logger.start("Scanning all installed packages...")
 
-        findings_by_file, files_scanned = _scan_lockfile_packages(
+        findings_by_file, files_scanned = scan_lockfile_packages(
             project_root, package_filter=package,
         )
 

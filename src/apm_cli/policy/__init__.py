@@ -16,7 +16,8 @@ from .parser import PolicyValidationError, load_policy, validate_policy
 from .matcher import check_dependency_allowed, check_mcp_allowed, matches_pattern
 from .inheritance import merge_policies, resolve_policy_chain, PolicyInheritanceError
 from .discovery import PolicyFetchResult, discover_policy
-from .ci_checks import run_policy_checks
+from .models import CIAuditResult, CheckResult
+from .policy_checks import run_policy_checks
 
 __all__ = [
     "ApmPolicy",
@@ -41,4 +42,6 @@ __all__ = [
     "resolve_policy_chain",
     "run_policy_checks",
     "validate_policy",
+    "CIAuditResult",
+    "CheckResult",
 ]

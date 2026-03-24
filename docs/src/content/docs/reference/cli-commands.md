@@ -361,6 +361,7 @@ apm audit [PACKAGE] [OPTIONS]
 - `--ci` - Run lockfile consistency checks for CI/CD gates. Exit 0 if clean, 1 if violations found.
 - `--policy SOURCE` - *(Experimental)* Policy source: `org` (auto-discover from org), file path, or URL. Used with `--ci` to run policy checks on top of baseline.
 - `--no-cache` - Force fresh policy fetch (skip cache). Only relevant with `--policy`.
+- `--no-fail-fast` - Run all checks even after a failure. By default, CI mode stops at the first failing check to save time.
 
 **Examples:**
 ```bash
@@ -405,6 +406,9 @@ apm audit --ci --policy ./apm-policy.yml
 
 # Force fresh policy fetch
 apm audit --ci --policy org --no-cache
+
+# Run all checks (no fail-fast) for full diagnostic report
+apm audit --ci --policy org --no-fail-fast
 ```
 
 **Exit codes (content scanning mode):**
