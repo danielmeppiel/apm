@@ -1,0 +1,43 @@
+# APM Policy Compliance Check (Experimental)
+# Policy enforcement is an early preview feature for testing and feedback.
+# The policy schema and check behavior may change in upcoming releases.
+# Copy this workflow to .github/workflows/apm-policy.yml in your repo
+name: APM Policy Compliance
+
+on:
+  pull_request:
+    paths:
+      - 'apm.yml'
+      - 'apm.lock.yaml'
+      - '.github/agents/**'
+      - '.github/instructions/**'
+      - '.github/hooks/**'
+      - '.cursor/**'
+      - '.claude/**'
+
+jobs:
+  apm-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install APM
+        run: curl -fsSL https://raw.githubusercontent.com/microsoft/apm/main/install.sh | bash
+
+      - name: Run baseline checks
+        run: apm audit --ci
+
+      - name: Run policy checks
+        run: apm audit --ci --policy org --no-cache -f sarif -o policy-report.sarif
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: policy-report.sarif
+          category: apm-policy
