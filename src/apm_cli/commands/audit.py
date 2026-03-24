@@ -1,4 +1,4 @@
-"""APM audit command — content integrity scanning for prompt files.
+"""APM audit command -- content integrity scanning for prompt files.
 
 Scans installed APM packages (or arbitrary files) for hidden Unicode
 characters that could embed invisible instructions.  This is the first
@@ -6,9 +6,9 @@ pillar of ``apm audit``; lock-file consistency (``--ci``) and drift
 detection (``--drift``) are planned as future modes.
 
 Exit codes:
-    0 — clean (no findings, or info-only)
-    1 — critical findings detected
-    2 — warnings only (no critical)
+    0 -- clean (no findings, or info-only)
+    1 -- critical findings detected
+    2 -- warnings only (no critical)
 """
 
 import sys
@@ -18,92 +18,20 @@ from typing import Dict, List, Optional, Tuple
 import click
 
 from ..deps.lockfile import LockFile, get_lockfile_path
-from ..integration.base_integrator import BaseIntegrator
 from ..security.content_scanner import ContentScanner, ScanFinding
+from ..security.file_scanner import scan_lockfile_packages
 from ..core.command_logger import CommandLogger
 from ..utils.console import (
     _get_console,
     _rich_echo,
+    _rich_error,
+    _rich_success,
+    _rich_warning,
     STATUS_SYMBOLS,
 )
 
 
-# ── Helpers ────────────────────────────────────────────────────────
-
-
-def _is_safe_lockfile_path(rel_path: str, project_root: Path) -> bool:
-    """Return True if a relative path from the lockfile is safe to read.
-
-    Reuses the same logic as ``BaseIntegrator.validate_deploy_path``
-    (no ``..``, allowed prefix, resolves within root).
-    """
-    return BaseIntegrator.validate_deploy_path(rel_path, project_root)
-
-
-def _scan_files_in_dir(
-    dir_path: Path,
-    base_label: str,
-) -> Tuple[Dict[str, List[ScanFinding]], int]:
-    """Recursively scan all files under a directory via SecurityGate.
-
-    Returns (findings_by_file, files_scanned).
-    """
-    from ..security.gate import REPORT_POLICY, SecurityGate
-
-    verdict = SecurityGate.scan_files(dir_path, policy=REPORT_POLICY)
-    # Re-key findings with the base_label prefix for display
-    findings: Dict[str, List[ScanFinding]] = {}
-    for rel_path, file_findings in verdict.findings_by_file.items():
-        label = f"{base_label}/{rel_path}"
-        findings[label] = file_findings
-    return findings, verdict.files_scanned
-
-
-def _scan_lockfile_packages(
-    project_root: Path,
-    package_filter: Optional[str] = None,
-) -> Tuple[Dict[str, List[ScanFinding]], int]:
-    """Scan deployed files tracked in apm.lock.yaml.
-
-    Returns:
-        (findings_by_file, files_scanned) — findings grouped by file path
-        and total number of files scanned.
-    """
-    lockfile_path = get_lockfile_path(project_root)
-    lock = LockFile.read(lockfile_path)
-    if lock is None:
-        return {}, 0
-
-    all_findings: Dict[str, List[ScanFinding]] = {}
-    files_scanned = 0
-
-    for dep_key, dep in lock.dependencies.items():
-        # Filter to a specific package if requested
-        if package_filter and dep_key != package_filter:
-            continue
-
-        for rel_path in dep.deployed_files:
-            # Path safety: reject traversal attempts from crafted lockfiles
-            if not _is_safe_lockfile_path(rel_path.rstrip("/"), project_root):
-                continue
-
-            abs_path = project_root / rel_path
-            if not abs_path.exists():
-                continue
-
-            # Recurse into directories (e.g. skill folders)
-            if abs_path.is_dir():
-                dir_findings, dir_count = _scan_files_in_dir(abs_path, rel_path.rstrip("/"))
-                files_scanned += dir_count
-                all_findings.update(dir_findings)
-                continue
-
-            files_scanned += 1
-            findings = ContentScanner.scan_file(abs_path)
-            if findings:
-                all_findings[rel_path] = findings
-
-    return all_findings, files_scanned
+# -- Helpers --------------------------------------------------------
 
 
 def _scan_single_file(file_path: Path, logger) -> Tuple[Dict[str, List[ScanFinding]], int]:
@@ -233,24 +161,24 @@ def _render_summary(
     if critical > 0:
         logger.error(
             f"{critical} critical finding(s) in "
-            f"{affected} file(s) — hidden characters detected"
+            f"{affected} file(s) -- hidden characters detected"
         )
         logger.progress("  These characters may embed invisible instructions")
         logger.progress("  Review file contents, then run 'apm audit --strip' to remove")
     elif warning > 0:
         logger.warning(
             f"{warning} warning(s) in "
-            f"{affected} file(s) — hidden characters detected"
+            f"{affected} file(s) -- hidden characters detected"
         )
         logger.progress("  Run 'apm audit --strip' to remove hidden characters")
     elif info > 0:
         logger.progress(
             f"{info} info-level finding(s) in "
-            f"{affected} file(s) — unusual characters (use --verbose to see)"
+            f"{affected} file(s) -- unusual characters (use --verbose to see)"
         )
     else:
         logger.success(
-            f"{files_scanned} file(s) scanned — no issues found"
+            f"{files_scanned} file(s) scanned -- no issues found"
         )
 
     if info > 0 and (critical > 0 or warning > 0):
@@ -317,11 +245,11 @@ def _preview_strip(
         affected += 1
 
     if affected == 0:
-        logger.progress("Nothing to clean — no strippable characters found")
+        logger.progress("Nothing to clean -- no strippable characters found")
         return 0
 
     _rich_echo("")
-    logger.progress("Dry run — the following would be removed by --strip:", symbol="search")
+    logger.progress("Dry run -- the following would be removed by --strip:", symbol="search")
     _rich_echo("")
 
     if console:
@@ -371,7 +299,92 @@ def _preview_strip(
     return affected
 
 
-# ── Command ────────────────────────────────────────────────────────
+def _render_ci_results(ci_result: "CIAuditResult") -> None:
+    """Render CI check results as a Rich table (text format)."""
+    from ..policy.models import CIAuditResult
+
+    console = _get_console()
+
+    if console:
+        try:
+            from rich.table import Table
+
+            table = Table(
+                title=f"{STATUS_SYMBOLS['search']} APM Policy Compliance",
+                show_header=True,
+                header_style="bold cyan",
+            )
+            table.add_column("Status", style="bold", width=8)
+            table.add_column("Check", style="white")
+            table.add_column("Message", style="white")
+
+            for check in ci_result.checks:
+                status = (
+                    f"[green]{STATUS_SYMBOLS['check']}[/green]"
+                    if check.passed
+                    else f"[red]{STATUS_SYMBOLS['cross']}[/red]"
+                )
+                table.add_row(status, check.name, check.message)
+
+            console.print()
+            console.print(table)
+
+            # Show details for failed checks
+            for check in ci_result.failed_checks:
+                if check.details:
+                    console.print()
+                    _rich_echo(
+                        f"  {check.name} details:",
+                        color="red",
+                        bold=True,
+                    )
+                    for detail in check.details:
+                        _rich_echo(f"    - {detail}", color="dim")
+
+            console.print()
+            summary = ci_result.to_json()["summary"]
+            if ci_result.passed:
+                _rich_success(
+                    f"{STATUS_SYMBOLS['success']} All {summary['total']} check(s) passed"
+                )
+            else:
+                _rich_error(
+                    f"{STATUS_SYMBOLS['error']} {summary['failed']} of "
+                    f"{summary['total']} check(s) failed"
+                )
+            return
+        except (ImportError, Exception):
+            pass
+
+    # Fallback: plain text
+    _rich_echo("")
+    _rich_echo(
+        f"{STATUS_SYMBOLS['search']} APM Policy Compliance",
+        color="cyan",
+        bold=True,
+    )
+    for check in ci_result.checks:
+        symbol = STATUS_SYMBOLS["check"] if check.passed else STATUS_SYMBOLS["cross"]
+        color = "green" if check.passed else "red"
+        _rich_echo(f"  {symbol} {check.name}: {check.message}", color=color)
+        if not check.passed and check.details:
+            for detail in check.details:
+                _rich_echo(f"      - {detail}", color="dim")
+
+    _rich_echo("")
+    summary = ci_result.to_json()["summary"]
+    if ci_result.passed:
+        _rich_success(
+            f"{STATUS_SYMBOLS['success']} All {summary['total']} check(s) passed"
+        )
+    else:
+        _rich_error(
+            f"{STATUS_SYMBOLS['error']} {summary['failed']} of "
+            f"{summary['total']} check(s) failed"
+        )
+
+
+# -- Command --------------------------------------------------------
 
 
 @click.command(help="Scan installed packages for hidden Unicode characters")
@@ -414,18 +427,48 @@ def _preview_strip(
     default=None,
     help="Write output to file (auto-detects format from extension: .sarif, .json, .md).",
 )
+@click.option(
+    "--ci",
+    is_flag=True,
+    help="Run lockfile consistency checks for CI/CD gates. Exit 0 if clean, 1 if violations found.",
+)
+@click.option(
+    "--policy",
+    "policy_source",
+    default=None,
+    help=(
+        "Policy source: 'org' (auto-discover), file path, or URL. "
+        "Used with --ci for policy checks. [experimental]"
+    ),
+)
+@click.option(
+    "--no-cache",
+    "no_cache",
+    is_flag=True,
+    help="Force fresh policy fetch (skip cache).",
+)
+@click.option(
+    "--no-fail-fast",
+    "no_fail_fast",
+    is_flag=True,
+    help="Run all checks even after a failure (default: stop at first failure).",
+)
 @click.pass_context
-def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, output_path):
+def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, output_path, ci, policy_source, no_cache, no_fail_fast):
     """Scan deployed prompt files for hidden Unicode characters.
 
     Detects invisible characters that could embed hidden instructions in
     prompt, instruction, and rules files. Dangerous and suspicious
     characters can be removed with --strip.
 
+    With --ci, runs lockfile consistency checks instead of content scanning.
+    This validates that the on-disk state matches what the lockfile declares,
+    suitable for CI/CD pipeline gates.
+
     \b
     Exit codes:
         0  Clean, info-only findings, or successful strip
-        1  Critical findings detected (hidden instructions)
+        1  Critical findings detected (or --ci with violations)
         2  Warning-only findings (suspicious but not critical)
 
     \b
@@ -434,13 +477,117 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         apm audit my-package           # Scan a specific package
         apm audit --file .cursorrules  # Scan any file
         apm audit --strip              # Remove dangerous/suspicious chars
-        apm audit -f sarif             # SARIF output to stdout
-        apm audit -f markdown          # Markdown to stdout
+        apm audit --ci                 # Lockfile consistency gate
+        apm audit --ci --policy org    # CI gate with org policy checks
+        apm audit --ci -f json         # JSON CI report
+        apm audit --ci -f sarif        # SARIF for GitHub Code Scanning
         apm audit -o report.sarif      # Write SARIF to file
-        apm audit -f json -o out.json  # JSON report to file
     """
-    # Resolve effective format (auto-detect from extension when needed)
+    project_root = Path.cwd()
     logger = CommandLogger("audit", verbose=verbose)
+
+    # -- CI mode: lockfile consistency gate -------------------------
+    if ci:
+        if verbose:
+            logger.warning(
+                "--verbose has no effect in --ci mode (output is structured)"
+            )
+        if strip or dry_run or file_path or package:
+            logger.error(
+                "--ci cannot be combined with --strip, --dry-run, --file, or PACKAGE"
+            )
+            sys.exit(1)
+
+        if output_format == "markdown":
+            logger.error(
+                "--ci does not support --format markdown. Use json or sarif."
+            )
+            sys.exit(1)
+
+        from ..policy.ci_checks import run_baseline_checks
+        from ..policy.policy_checks import run_policy_checks
+
+        fail_fast = not no_fail_fast
+
+        # Always run baseline checks
+        ci_result = run_baseline_checks(project_root, fail_fast=fail_fast)
+
+        # Optionally run policy checks (skip if baseline already failed in fail-fast mode)
+        if policy_source and (not fail_fast or ci_result.passed):
+            from ..policy.discovery import discover_policy
+
+            fetch_result = discover_policy(
+                project_root,
+                policy_override=policy_source,
+                no_cache=no_cache,
+            )
+
+            if fetch_result.error:
+                logger.error(f"Policy fetch failed: {fetch_result.error}")
+                sys.exit(1)
+
+            if fetch_result.found:
+                policy_obj = fetch_result.policy
+
+                # Respect enforcement level
+                if policy_obj.enforcement == "off":
+                    pass  # Policy checks disabled
+                else:
+                    from ..policy.models import CheckResult
+
+                    policy_result = run_policy_checks(
+                        project_root, policy_obj, fail_fast=fail_fast
+                    )
+                    if policy_obj.enforcement == "block":
+                        ci_result.checks.extend(policy_result.checks)
+                    else:
+                        # enforcement == "warn": include results but don't fail
+                        for check in policy_result.checks:
+                            ci_result.checks.append(
+                                CheckResult(
+                                    name=check.name,
+                                    passed=True,  # downgrade to pass
+                                    message=check.message + (" (enforcement: warn)" if not check.passed else ""),
+                                    details=check.details,
+                                )
+                            )
+
+        # Resolve effective format
+        effective_format = output_format
+        if output_path and effective_format == "text":
+            from ..security.audit_report import detect_format_from_extension
+
+            effective_format = detect_format_from_extension(Path(output_path))
+
+        if effective_format in ("json", "sarif"):
+            import json as _json
+
+            payload = (
+                ci_result.to_sarif()
+                if effective_format == "sarif"
+                else ci_result.to_json()
+            )
+            output = _json.dumps(payload, indent=2)
+            if output_path:
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_text(output, encoding="utf-8")
+                logger.success(f"CI audit report written to {output_path}")
+            else:
+                click.echo(output)
+        else:
+            _render_ci_results(ci_result)
+
+        sys.exit(0 if ci_result.passed else 1)
+
+    # -- Content scan mode ------------------------------------------
+
+    if policy_source:
+        logger.warning(
+            "--policy requires --ci mode. "
+            "Use 'apm audit --ci --policy <source>' to run policy checks."
+        )
+
+    # Resolve effective format (auto-detect from extension when needed)
 
     effective_format = output_format
     if output_path and effective_format == "text":
@@ -455,8 +602,6 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         )
         sys.exit(1)
 
-    project_root = Path.cwd()
-
     if file_path:
         # -- File mode: scan a single arbitrary file --
         findings_by_file, files_scanned = _scan_single_file(Path(file_path), logger)
@@ -465,7 +610,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         lockfile_path = get_lockfile_path(project_root)
         if not lockfile_path.exists():
             logger.progress(
-                "No apm.lock.yaml found — nothing to scan. "
+                "No apm.lock.yaml found -- nothing to scan. "
                 "Use --file to scan a specific file."
             )
             sys.exit(0)
@@ -475,7 +620,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         else:
             logger.start("Scanning all installed packages...")
 
-        findings_by_file, files_scanned = _scan_lockfile_packages(
+        findings_by_file, files_scanned = scan_lockfile_packages(
             project_root, package_filter=package,
         )
 
@@ -496,7 +641,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
     # -- Strip mode --
     if strip:
         if not findings_by_file:
-            logger.progress("Nothing to clean — no hidden characters found")
+            logger.progress("Nothing to clean -- no hidden characters found")
             sys.exit(0)
         if dry_run:
             _preview_strip(findings_by_file, logger)
@@ -505,7 +650,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         if modified > 0:
             logger.success(f"Cleaned {modified} file(s)")
         else:
-            logger.progress("Nothing to clean — no strippable characters found")
+            logger.progress("Nothing to clean -- no strippable characters found")
         sys.exit(0)
 
     # -- Display findings --

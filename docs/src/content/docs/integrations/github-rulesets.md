@@ -5,11 +5,7 @@ sidebar:
   order: 5
 ---
 
-GitHub Rulesets and branch protection rules can require status checks before merging. APM commands like `apm install`, `apm compile`, and `apm unpack` already block critical hidden-character findings automatically. `apm audit` adds structured reporting (SARIF, JSON, markdown) and exit codes (**0** = clean, **1** = critical, **2** = warnings) for CI integration.
-
-:::note[Planned]
-Lockfile consistency checking (`apm audit --ci`) is planned but not yet available. The workflows below use `apm audit` exit codes, which work today.
-:::
+GitHub Rulesets and branch protection rules can require status checks before merging. APM commands like `apm install`, `apm compile`, and `apm unpack` already block critical hidden-character findings automatically. `apm audit` adds structured reporting (SARIF, JSON, markdown) and exit codes (**0** = clean, **1** = critical, **2** = warnings) for CI integration. `apm audit --ci` verifies lockfile consistency, and `--policy org` enforces organizational rules.
 
 ## How It Works
 
