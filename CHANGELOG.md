@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Windows path hardening: `portable_relpath()` utility, ~23 `relative_to()` call-site migrations, CI lint guard (#411, #422)
-- Centralized YAML I/O with UTF-8 encoding via `yaml_io` helpers, preventing Windows cp1252 mojibake (#433) -- based on #388 by @alopezsanchez
+- Centralized YAML I/O with UTF-8 encoding via `yaml_io` helpers, preventing Windows cp1252 mojibake, based on prior work by @alopezsanchez (#433, #388)
 - SSL certificate verification in PyInstaller binary via `certifi` runtime hook (#429)
 - `apm pack --target claude` cross-target path mapping for skills/agents installed under `.github/` (#426)
 - `ARTIFACTORY_ONLY` enforcement for virtual package types (files, collections, subdirectories) (#418)
