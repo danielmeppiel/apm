@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from ..primitives.models import Instruction, Chatmode
+from ..utils.paths import portable_relpath
 
 
 @dataclass
@@ -45,12 +46,12 @@ def build_conditional_sections(instructions: List[Instruction]) -> str:
                 try:
                     # Try to get relative path for cleaner display
                     if instruction.file_path.is_absolute():
-                        relative_path = instruction.file_path.relative_to(Path.cwd())
+                        relative_path = portable_relpath(instruction.file_path, Path.cwd())
                     else:
-                        relative_path = instruction.file_path
+                        relative_path = str(instruction.file_path)
                 except (ValueError, OSError):
                     # Fall back to absolute or given path if relative fails
-                    relative_path = instruction.file_path
+                    relative_path = instruction.file_path.as_posix()
                 
                 sections.append(f"<!-- Source: {relative_path} -->")
                 sections.append(content)

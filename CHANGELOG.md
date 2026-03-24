@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Systematic Windows path compatibility hardening: added `portable_relpath()` utility, migrated ~23 `relative_to()` call sites to use `.resolve()` on both sides with `.as_posix()` output, and added CI lint guard to block raw `str(path.relative_to())` regressions (#419, #422)
 - Cross-platform YAML encoding: all `apm.yml` read/write operations now use explicit UTF-8 encoding via centralized `yaml_io` helpers, preventing silent mojibake on Windows cp1252 terminals; non-ASCII characters (e.g. accented author names) are preserved as real UTF-8 instead of `\xNN` escape sequences (#387, #433) -- based on #388 by @alopezsanchez
 - SSL certificate verification failures in PyInstaller binary on systems without python.org Python installed; bundled `certifi` CA bundle is now auto-configured via runtime hook (#429)
 - Virtual package types (files, collections, subdirectories) now respect `ARTIFACTORY_ONLY=1`, matching the primary zip-archive proxy-only behavior (#418)

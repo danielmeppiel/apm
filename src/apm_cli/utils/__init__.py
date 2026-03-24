@@ -21,6 +21,8 @@ from .diagnostics import (
     CATEGORY_ERROR,
 )
 
+from .paths import portable_relpath
+
 __all__ = [
     '_rich_success',
     '_rich_error',
@@ -37,4 +39,5 @@ __all__ = [
     'CATEGORY_OVERWRITE',
     'CATEGORY_WARNING',
     'CATEGORY_ERROR',
+    'portable_relpath',
 ]
