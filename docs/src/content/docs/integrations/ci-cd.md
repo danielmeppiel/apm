@@ -101,47 +101,9 @@ apm install
 
 ## Governance with `apm audit`
 
-`apm install` automatically scans all source files for hidden Unicode characters before deployment — critical findings block the package from being deployed. Run `apm audit` in CI to generate machine-readable reports (SARIF, JSON) for GitHub Code Scanning integration. Exit codes: **0** = clean, **1** = critical findings, **2** = warnings only.
+`apm audit --ci` verifies lockfile consistency in CI (6 baseline checks, no configuration). Add `--policy org` to enforce organizational rules (16 additional checks). For full setup including SARIF integration and GitHub Code Scanning, see the [CI Policy Enforcement guide](../../guides/ci-policy-setup/).
 
-### Lockfile consistency checking
-
-`apm audit --ci` verifies that the manifest, lock file, and deployed files are in sync — 6 baseline checks with no configuration. Add `--policy org` to enforce organizational rules (16 additional checks). See the [CI Policy Enforcement guide](../../guides/ci-policy-setup/) for setup.
-
-```bash
-# Baseline lockfile consistency
-apm audit --ci
-
-# Full policy enforcement
-apm audit --ci --policy org --no-cache -f sarif -o policy.sarif
-```
-
-### Content scanning in CI
-
-Use the `audit-report` input to generate a SARIF report and upload it to GitHub Code Scanning. Findings appear inline on PR diffs and in the Security tab:
-
-```yaml
-# .github/workflows/apm-audit.yml
-name: APM Audit
-on: [pull_request]
-jobs:
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: microsoft/apm-action@v1
-        id: apm
-        with:
-          audit-report: true
-        env:
-          GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always() && steps.apm.outputs.audit-report-path
-        with:
-          sarif_file: ${{ steps.apm.outputs.audit-report-path }}
-          category: apm-audit
-```
-
-Configure this workflow as a **required status check** in your branch protection rules (or [GitHub Rulesets](../github-rulesets/)) to block PRs that introduce content issues. See the [Governance & Compliance](../../enterprise/governance/) page for policy details.
+For content scanning and hidden Unicode detection, `apm install` automatically blocks critical findings. Run `apm audit` for on-demand reporting. See [Governance & Compliance](../../enterprise/governance/) for the full governance model.
 
 ## Pack & Distribute
 

@@ -104,34 +104,9 @@ No additional tooling is required. The lock file turns git into an agent configu
 
 ---
 
-## Content scanning with `apm audit`
+## Content scanning
 
-APM uses a two-layer security model for hidden Unicode threats. **Layer 1 is automatic:** `apm install`, `apm compile`, and `apm unpack` all scan for hidden characters and block critical findings before deployment — zero configuration required. **Layer 2 is explicit:** `apm audit` provides reporting (SARIF/JSON/markdown for CI artifacts), remediation (`--strip`), and standalone scanning (`--file`) independent of the install flow. For the threat model, severity levels, and gate behavior, see [Content scanning](../security/#content-scanning) in the security model.
-
-### Usage
-
-```bash
-apm audit                              # Scan all installed packages
-apm audit <package>                    # Scan a specific package
-apm audit --file .cursorrules          # Scan any file (even non-APM-managed)
-apm audit --strip                      # Remove hidden characters (preserves emoji)
-apm audit --strip --dry-run            # Preview what --strip would remove
-apm audit -f sarif                     # SARIF output (for GitHub Code Scanning)
-apm audit -o report.sarif              # Write SARIF report to file
-apm audit -f json -o results.json      # JSON report to file
-```
-
-### Exit codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Clean — no findings, info-only, or successful strip |
-| 1 | Critical findings — tag characters, bidi overrides, or variation selectors 17–256 |
-| 2 | Warnings only — zero-width characters, bidi marks, or other suspicious content |
-
-### The `--file` escape hatch
-
-`apm audit --file .cursorrules` scans any file, not just APM-managed ones. This is useful for inspecting files obtained outside the APM workflow — downloaded rules files, copy-pasted instructions, or files from PRs.
+APM scans deployed files for hidden Unicode threats. `apm install` blocks critical findings automatically; `apm audit` provides reporting and remediation. See [Content scanning](../security/#content-scanning) in the security model for the threat model, severity levels, and usage details.
 
 ---
 
@@ -139,78 +114,18 @@ apm audit -f json -o results.json      # JSON report to file
 
 `apm install` is the CI gate — it blocks deployment of packages with critical content findings, exiting with code 1. No additional configuration is needed.
 
-`apm audit` adds reporting on top. Run it after install to generate SARIF reports for GitHub Code Scanning, JSON for tooling, or markdown for step summaries.
+`apm audit --ci` adds lockfile consistency checking (6 baseline checks, no configuration). Add `--policy org` to enforce organizational rules (16 additional policy checks).
 
-### Lockfile consistency checking
+### Two-tier enforcement
 
-`apm audit --ci` verifies that the manifest, lock file, and deployed files are in sync. It runs 6 baseline checks with no configuration:
+| Tier | Command | Checks | Requires policy |
+|------|---------|--------|-----------------|
+| Baseline | `apm audit --ci` | 6 lockfile consistency checks | No |
+| Policy | `apm audit --ci --policy org` | 6 baseline + 16 policy checks | Yes |
 
-| Check | Validates |
-|-------|-----------|
-| `lockfile-exists` | `apm.lock.yaml` is present when `apm.yml` declares dependencies |
-| `ref-consistency` | Every dependency's manifest ref matches the lockfile's resolved ref |
-| `deployed-files-present` | All files listed in lockfile `deployed_files` exist on disk |
-| `no-orphaned-packages` | No lockfile packages are absent from the manifest |
-| `config-consistency` | MCP server configs match lockfile baseline |
-| `content-integrity` | Deployed files contain no critical hidden Unicode characters |
+Baseline catches configuration drift. Policy enforces organizational standards.
 
-```bash
-# Run baseline checks
-apm audit --ci
-
-# JSON output for tooling
-apm audit --ci -f json
-
-# SARIF output for GitHub Code Scanning
-apm audit --ci -f sarif -o audit.sarif
-```
-
-Exit codes: **0** = all checks passed, **1** = one or more checks failed.
-
-### Recommended workflow
-
-Use `microsoft/apm-action@v1` to install packages and optionally generate an audit report in one step:
-
-```yaml
-name: APM
-on:
-  pull_request:
-    paths:
-      - 'apm.yml'
-      - 'apm.lock.yaml'
-      - '.github/agents/**'
-      - '.github/skills/**'
-      - '.copilot/agents/**'
-
-jobs:
-  install:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: microsoft/apm-action@v1
-        id: apm
-        with:
-          audit-report: true
-        env:
-          GITHUB_APM_PAT: ${{ secrets.APM_PAT }}
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always() && steps.apm.outputs.audit-report-path
-        with:
-          sarif_file: ${{ steps.apm.outputs.audit-report-path }}
-          category: apm-audit
-```
-
-### Configuring as a required check
-
-Once the workflow runs on PRs, configure it as a required status check:
-
-1. Navigate to your repository settings.
-2. Under **Rules** (or **Branches** for legacy branch protection), select the target branch.
-3. Add the `APM` workflow job as a required status check.
-4. PRs that introduce packages with critical findings or lockfile inconsistencies cannot be merged.
+For step-by-step setup including SARIF integration and GitHub Code Scanning, see the [CI Policy Enforcement guide](../../guides/ci-policy-setup/).
 
 ---
 
@@ -224,108 +139,15 @@ Once the workflow runs on PRs, configure it as a required status check:
 2. **Auto-discover** — `--policy org` fetches the policy via GitHub API from `<org>/.github/apm-policy.yml`.
 3. **Enforce** — `apm audit --ci --policy org` runs all 22 checks (6 baseline + 16 policy).
 
-### Policy schema
-
-The policy file controls dependencies (allow/deny/require), MCP governance, compilation rules, manifest requirements, and unmanaged file detection:
-
-```yaml
-name: "Contoso Engineering"
-version: "1.0.0"
-enforcement: block
-
-dependencies:
-  allow: ["contoso/**"]
-  deny: ["untrusted-org/**"]
-  require: ["contoso/agent-standards"]
-  max_depth: 5
-
-mcp:
-  self_defined: warn
-  transport:
-    allow: [stdio, streamable-http]
-
-unmanaged_files:
-  action: warn
-```
-
-For the complete schema, all check names, and pattern matching rules, see the [Policy Reference](../policy-reference/).
-
-### Two-tier enforcement
-
-| Tier | Command | Checks | Requires policy |
-|------|---------|--------|-----------------|
-| Baseline | `apm audit --ci` | 6 lockfile consistency checks | No |
-| Policy | `apm audit --ci --policy org` | 6 baseline + 16 policy checks | Yes |
-
-Baseline catches configuration drift. Policy enforces organizational standards.
-
-### Inheritance
-
-Policies support a three-level inheritance chain using `extends`:
-
-```
-Enterprise hub → Org policy → Repo override
-```
-
-Child policies can only tighten constraints — deny lists grow (union), allow lists shrink (intersection), scalar values escalate to the stricter option. See [Inheritance](../policy-reference/#inheritance) for merge rules.
-
-### CI integration
-
-```bash
-# Baseline only (no policy needed)
-apm audit --ci
-
-# Full policy enforcement (auto-discover from org)
-apm audit --ci --policy org --no-cache
-
-# SARIF output for GitHub Code Scanning
-apm audit --ci --policy org --no-cache -f sarif -o policy.sarif
-```
-
-`--no-cache` forces a fresh policy fetch — recommended for CI. The policy is cached locally with a configurable TTL (default: 1 hour) to avoid repeated API calls during development.
-
-For step-by-step CI setup, see the [CI Policy Enforcement guide](../../guides/ci-policy-setup/).
+Policies support a three-level inheritance chain (`Enterprise hub -> Org policy -> Repo override`) where child policies can only tighten constraints. For the complete schema, all check names, pattern matching rules, and inheritance semantics, see the [Policy Reference](../policy-reference/). For step-by-step CI setup, see the [CI Policy Enforcement guide](../../guides/ci-policy-setup/).
 
 ---
 
 ## Drift detection
 
 :::note[Planned Feature]
-`apm audit --drift` is not yet available. The following describes planned behavior and is provided to illustrate the intended workflow.
+`apm audit --drift` is not yet available. Currently, use `apm audit --ci --policy` with the `unmanaged_files` policy section to detect files in governance directories not tracked by APM. See the [Policy Reference](../policy-reference/#unmanaged_files) for configuration.
 :::
-
-For unmanaged file detection (files in governance directories not tracked by APM), use `apm audit --ci --policy` with the `unmanaged_files` policy section. See the [Policy Reference](../policy-reference/#unmanaged_files) for configuration.
-
-Drift occurs when the on-disk state of agent configuration diverges from what the lock file declares. The `apm audit --drift` command detects this divergence.
-
-### What drift detection catches
-
-- **Manual plugin additions.** Files added to agent directories that are not tracked by APM.
-- **Hand-edited instruction files.** Modifications to APM-managed files outside the `apm install` workflow.
-- **Removed dependencies.** Files deleted from disk that the lock file expects to be present.
-- **Stale files.** Files from previously uninstalled packages that were not cleaned up.
-
-### Usage
-
-```bash
-# Planned command syntax once drift detection ships:
-# apm audit --drift
-
-# Planned CI syntax once drift detection ships:
-# apm audit --drift --ci
-
-# Planned .pre-commit-config.yaml entry (NOT YET AVAILABLE)
-# repos:
-#   - repo: local
-#     hooks:
-#       - id: apm-drift
-#         name: APM drift check
-#         entry: apm audit --drift
-#         language: system
-#         pass_filenames: false
-```
-
-Drift detection complements lock file verification. The audit checks that the lock file matches the manifest; drift detection checks that the file system matches the lock file.
 
 ---
 
@@ -335,15 +157,7 @@ Beyond CI gates, APM provides mechanisms to enforce organizational policies on a
 
 ### Approved sources
 
-Use the `dependencies.allow` and `dependencies.deny` fields in `apm-policy.yml` to restrict which packages repositories can depend on. For manual enforcement without a policy file, combine with GitHub's CODEOWNERS:
-
-```
-# CODEOWNERS
-apm.yml    @contoso/platform-engineering
-apm.lock.yaml   @contoso/platform-engineering
-```
-
-See the [Policy Reference](../policy-reference/#dependencies) for pattern syntax.
+Use the `dependencies.allow` and `dependencies.deny` fields in `apm-policy.yml` to restrict which packages repositories can depend on. See the [Policy Reference](../policy-reference/#dependencies) for pattern syntax.
 
 ### Version pinning policy
 
@@ -405,20 +219,7 @@ This ensures that organizational rules are consistently applied across all teams
 
 ## Integration with GitHub Rulesets
 
-GitHub Rulesets provide a scalable way to enforce APM governance across multiple repositories.
-
-### Level 1: Required status check
-
-Configure the APM workflow as a required status check through Rulesets (see [CI enforcement](#ci-enforcement) above):
-
-1. Create a new Ruleset at the organization or repository level.
-2. Target the branches you want to protect (e.g., `main`, `release/*`).
-3. Add a **Require status checks to pass** rule.
-4. Select the `APM` workflow job as a required check.
-
-This blocks any PR that introduces packages with critical content findings from merging into protected branches.
-
-For detailed setup instructions, see the [CI/CD integration guide](../../integrations/ci-cd/).
+GitHub Rulesets enforce APM governance at scale by configuring the APM workflow as a required status check across multiple repositories. For setup instructions, see the [GitHub Rulesets integration guide](../../integrations/github-rulesets/).
 
 ---
 
