@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
+from apm_cli.utils.paths import portable_relpath
 
 
 class InstructionIntegrator(BaseIntegrator):
@@ -78,7 +79,7 @@ class InstructionIntegrator(BaseIntegrator):
 
         for source_file in instruction_files:
             target_path = instructions_dir / source_file.name
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
 
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
@@ -227,7 +228,7 @@ class InstructionIntegrator(BaseIntegrator):
             mdc_name = f"{stem}.mdc"
 
             target_path = rules_dir / mdc_name
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
 
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1

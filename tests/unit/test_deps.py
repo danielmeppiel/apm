@@ -59,8 +59,8 @@ class TestDependenciesAggregator(unittest.TestCase):
         self.assertEqual(mock_frontmatter_load.call_count, 2)
 
     @patch("apm_cli.deps.aggregator.scan_workflows_for_dependencies")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("yaml.dump")
+    @patch("apm_cli.utils.yaml_io.open", new_callable=mock_open)
+    @patch("apm_cli.utils.yaml_io.yaml.safe_dump")
     def test_sync_workflow_dependencies(self, mock_yaml_dump, mock_file, mock_scan):
         """Test syncing workflow dependencies to apm.yml."""
         # Mock scan_workflows_for_dependencies to return a set of servers

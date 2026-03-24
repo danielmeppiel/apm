@@ -6,6 +6,7 @@ from pathlib import Path
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
 from ...core.command_logger import CommandLogger
 from ...utils.path_security import PathTraversalError, safe_rmtree
+from ...utils.paths import portable_relpath
 
 from ...deps.lockfile import LockFile
 from ...models.apm_package import APMPackage, DependencyReference
@@ -132,7 +133,7 @@ def _remove_packages_from_disk(packages_to_remove, apm_modules_dir, logger):
             try:
                 safe_rmtree(package_path, apm_modules_dir)
                 logger.progress(f"Removed {package} from apm_modules/")
-                logger.verbose_detail(f"    Path: {package_path.relative_to(apm_modules_dir)}")
+                logger.verbose_detail(f"    Path: {portable_relpath(package_path, apm_modules_dir)}")
                 removed += 1
                 deleted_pkg_paths.append(package_path)
             except Exception as e:
@@ -147,7 +148,6 @@ def _remove_packages_from_disk(packages_to_remove, apm_modules_dir, logger):
 
 def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, apm_yml_path, logger):
     """Remove orphaned transitive deps and return (removed_count, actual_orphan_keys)."""
-    import yaml
 
     if not lockfile or not apm_modules_dir.exists():
         return 0, builtins.set()
@@ -179,8 +179,8 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
     # Determine remaining deps to avoid removing still-needed packages
     remaining_deps = builtins.set()
     try:
-        with open(apm_yml_path, "r") as f:
-            updated_data = yaml.safe_load(f) or {}
+        from ...utils.yaml_io import load_yaml
+        updated_data = load_yaml(apm_yml_path) or {}
         for dep_str in updated_data.get("dependencies", {}).get("apm", []) or []:
             try:
                 ref = _parse_dependency_entry(dep_str)
@@ -213,7 +213,7 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
             try:
                 safe_rmtree(orphan_path, apm_modules_dir)
                 logger.progress(f"Removed transitive dependency {orphan_key} from apm_modules/")
-                logger.verbose_detail(f"    Path: {orphan_path.relative_to(apm_modules_dir)}")
+                logger.verbose_detail(f"    Path: {portable_relpath(orphan_path, apm_modules_dir)}")
                 removed += 1
                 deleted_orphan_paths.append(orphan_path)
             except Exception as e:

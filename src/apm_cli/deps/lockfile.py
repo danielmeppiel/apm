@@ -181,9 +181,8 @@ class LockFile:
             data["mcp_servers"] = sorted(self.mcp_servers)
         if self.mcp_configs:
             data["mcp_configs"] = dict(sorted(self.mcp_configs.items()))
-        return yaml.dump(
-            data, default_flow_style=False, sort_keys=False, allow_unicode=True
-        )
+        from ..utils.yaml_io import yaml_to_str
+        return yaml_to_str(data)
 
     @classmethod
     def from_yaml(cls, yaml_str: str) -> "LockFile":

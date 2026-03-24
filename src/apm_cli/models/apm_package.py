@@ -99,8 +99,8 @@ class APMPackage:
             return cached
         
         try:
-            with open(apm_yml_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
+            from ..utils.yaml_io import load_yaml
+            data = load_yaml(apm_yml_path)
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML format in {apm_yml_path}: {e}")
         

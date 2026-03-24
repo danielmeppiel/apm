@@ -54,12 +54,11 @@ def uninstall(ctx, packages, dry_run, verbose):
         logger.start(f"Uninstalling {len(packages)} package(s)...")
 
         # Read current apm.yml
-        import yaml
+        from ...utils.yaml_io import load_yaml, dump_yaml
 
         apm_yml_path = Path(APM_YML_FILENAME)
         try:
-            with open(apm_yml_path, "r") as f:
-                data = yaml.safe_load(f) or {}
+            data = load_yaml(apm_yml_path) or {}
         except Exception as e:
             logger.error(f"Failed to read {APM_YML_FILENAME}: {e}")
             sys.exit(1)
@@ -88,8 +87,7 @@ def uninstall(ctx, packages, dry_run, verbose):
             logger.progress(f"Removed {package} from apm.yml")
         data["dependencies"]["apm"] = current_deps
         try:
-            with open(apm_yml_path, "w") as f:
-                yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+            dump_yaml(data, apm_yml_path)
             logger.success(f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))")
         except Exception as e:
             logger.error(f"Failed to write {APM_YML_FILENAME}: {e}")
