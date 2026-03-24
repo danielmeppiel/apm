@@ -561,7 +561,9 @@ class TestLocalPathValidationMessages:
 
         _local_path_no_markers_hint(tmp_path)
         captured = capsys.readouterr()
-        assert "my-skill" in captured.out
+        # Rich may wrap long paths across lines; collapse before asserting
+        flat = captured.out.replace("\n", "")
+        assert "my-skill" in flat
 
     def test_hint_finds_nested_skill(self, tmp_path, capsys):
         """Hint discovers SKILL.md two levels deep (skills/<name>/)."""
@@ -573,7 +575,8 @@ class TestLocalPathValidationMessages:
 
         _local_path_no_markers_hint(tmp_path)
         captured = capsys.readouterr()
-        assert "deep-skill" in captured.out
+        flat = captured.out.replace("\n", "")
+        assert "deep-skill" in flat
 
     def test_hint_silent_when_no_packages(self, tmp_path, capsys):
         """Hint produces no output when no sub-packages found."""
