@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows antivirus file-lock errors (`WinError 32`) during `apm install`: new `file_ops` retry utility with exponential backoff for `rmtree`/`copytree`/`copy2` operations (#453)
+
 ## [0.8.5] - 2026-03-24
 
 ### Added

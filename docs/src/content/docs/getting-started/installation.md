@@ -153,6 +153,17 @@ If `apm install` fails with authentication errors for private repositories, ensu
 curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user
 ```
 
+### File access errors on Windows (antivirus / endpoint protection)
+
+If `apm install` fails with `The process cannot access the file because it is being used by another process`, your antivirus or endpoint protection software is likely scanning temp files during installation.
+
+APM retries file operations automatically with exponential backoff to handle transient locks. If the issue persists, set `APM_DEBUG=1` to see retry diagnostics:
+
+```powershell
+$env:APM_DEBUG = "1"
+apm install <package>
+```
+
 ## Next steps
 
 See the [Quick Start](../quick-start/) to set up your first project.

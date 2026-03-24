@@ -85,27 +85,11 @@ def _close_repo(repo) -> None:
 def _rmtree(path) -> None:
     """Remove a directory tree, handling read-only files and brief Windows locks.
 
-    Git pack/index files are often read-only, and on Windows git processes may
-    hold brief locks even after the Repo object is closed.  This wrapper uses
-    an onerror callback for read-only files and a single retry for lock races.
+    Delegates to :func:`robust_rmtree` which retries with exponential backoff
+    on transient lock errors (e.g. antivirus scanning on Windows).
     """
-    def _on_readonly(func, fpath, _exc_info):
-        """onerror callback: make read-only files writable and retry."""
-        try:
-            os.chmod(fpath, stat.S_IWRITE)
-            func(fpath)
-        except OSError:
-            pass
-
-    try:
-        shutil.rmtree(path, onerror=_on_readonly)
-    except PermissionError:
-        if sys.platform == 'win32':
-            # Single retry after a brief wait for lingering git handles
-            time.sleep(0.5)
-            shutil.rmtree(path, ignore_errors=True)
-        # On all platforms: don't raise from cleanup — just leave the
-        # temp dir behind (the OS will clean it up eventually).
+    from ..utils.file_ops import robust_rmtree
+    robust_rmtree(path, ignore_errors=True)
 
 
 class GitProgressReporter(RemoteProgress):
@@ -1626,14 +1610,16 @@ author: {dep_ref.repo_url.split('/')[0]}
                 _rmtree(target_path)
                 target_path.mkdir(parents=True, exist_ok=True)
 
-            # Copy subdirectory contents to target
+            # Copy subdirectory contents to target (retry on transient
+            # file-lock errors caused by antivirus scanning on Windows).
+            from ..utils.file_ops import robust_copytree, robust_copy2
             for item in source_subdir.iterdir():
                 src = source_subdir / item.name
                 dst = target_path / item.name
                 if src.is_dir():
-                    shutil.copytree(src, dst)
+                    robust_copytree(src, dst)
                 else:
-                    shutil.copy2(src, dst)
+                    robust_copy2(src, dst)
 
             # Capture commit SHA; close the Repo object immediately so its file
             # handles are released before _rmtree() runs in the finally block.
@@ -1724,15 +1710,17 @@ author: {dep_ref.repo_url.split('/')[0]}
                 )
             target_path.mkdir(parents=True, exist_ok=True)
             if target_path.exists() and any(target_path.iterdir()):
-                shutil.rmtree(target_path)
+                from ..utils.file_ops import robust_rmtree
+                robust_rmtree(target_path)
                 target_path.mkdir(parents=True, exist_ok=True)
+            from ..utils.file_ops import robust_copytree, robust_copy2
             for item in source_subdir.iterdir():
                 src = source_subdir / item.name
                 dst = target_path / item.name
                 if src.is_dir():
-                    shutil.copytree(src, dst)
+                    robust_copytree(src, dst)
                 else:
-                    shutil.copy2(src, dst)
+                    robust_copy2(src, dst)
 
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=80, total=100)
@@ -1771,7 +1759,8 @@ author: {dep_ref.repo_url.split('/')[0]}
 
         _debug(f"Downloading from Artifactory: {host}/{prefix}/{owner}/{repo}#{ref}")
         if target_path.exists() and any(target_path.iterdir()):
-            shutil.rmtree(target_path)
+            from ..utils.file_ops import robust_rmtree
+            robust_rmtree(target_path)
         target_path.mkdir(parents=True, exist_ok=True)
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, total=100, completed=10)
