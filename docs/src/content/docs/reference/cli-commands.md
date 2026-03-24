@@ -429,7 +429,7 @@ apm pack
 apm pack --archive
 
 # Pack only VS Code / Copilot files
-apm pack --target vscode
+apm pack --target copilot
 
 # Export as a standalone plugin directory
 apm pack --format plugin
@@ -452,7 +452,8 @@ apm pack -o dist/
 
 | Target | Includes paths starting with |
 |--------|------------------------------|
-| `vscode` | `.github/` |
+| `copilot` | `.github/` |
+| `vscode` | Deprecated alias for `copilot` |
 | `claude` | `.claude/` |
 | `cursor` | `.cursor/` |
 | `opencode` | `.opencode/` |
@@ -462,7 +463,7 @@ apm pack -o dist/
 ```yaml
 pack:
   format: apm
-  target: vscode
+  target: copilot
   packed_at: '2026-03-09T12:00:00+00:00'
 lockfile_version: '1'
 generated_at: ...
@@ -509,6 +510,7 @@ apm unpack bundle.tar.gz --force
 **Behavior:**
 - **Additive-only**: only writes files listed in the bundle's `apm.lock.yaml`; never deletes existing files
 - If a local file has the same path as a bundle file, the bundle file wins (overwrite)
+- **Bundle metadata**: displays the bundle target, dependency count, and file count on unpack; warns if the bundle target differs from the project's detected target (informational only -- files still extract)
 - **Security scanning**: Bundle contents are scanned before deployment. Critical findings block deployment unless `--force` is used (exit code 1)
 - Verification checks that all `deployed_files` from the bundle lockfile are present in the bundle
 - The bundle's `apm.lock.yaml` is metadata only — it is **not** copied to the output directory
@@ -879,7 +881,7 @@ apm compile [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output file path (for single-file mode)
-- `-t, --target [vscode|agents|claude|opencode|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
+- `-t, --target [copilot|vscode|agents|claude|cursor|opencode|all]` - Target agent format. `vscode` and `agents` are deprecated aliases for `copilot`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Preview compilation without writing files (shows placement decisions)
 - `--no-links` - Skip markdown link resolution
@@ -897,24 +899,26 @@ When `--target` is not specified, APM auto-detects based on existing project str
 
 | Condition | Target | Output |
 |-----------|--------|--------|
-| `.github/` exists only | `vscode` | AGENTS.md + .github/ |
+| `.github/` exists only | `copilot` | AGENTS.md + .github/ |
 | `.claude/` exists only | `claude` | CLAUDE.md + .claude/ |
-| Both folders exist | `all` | All outputs |
-| Neither folder exists | `minimal` | AGENTS.md only |
+| `.cursor/` exists only | `cursor` | AGENTS.md + .cursor/ |
+| Multiple folders exist | `all` | All applicable outputs |
+| No recognized folder | `minimal` | AGENTS.md only |
 
 You can also set a persistent target in `apm.yml`:
 ```yaml
 name: my-project
 version: 1.0.0
-target: vscode  # or claude, opencode, or all
+target: copilot  # or claude, cursor, opencode, or all
 ```
 
 **Target Formats (explicit):**
 
 | Target | Output Files | Best For |
 |--------|--------------|----------|
-| `vscode` | AGENTS.md, .github/prompts/, .github/agents/, .github/skills/ | GitHub Copilot, Cursor, Codex, Gemini |
+| `copilot` | AGENTS.md, .github/prompts/, .github/agents/, .github/skills/ | GitHub Copilot, Cursor, Codex, Gemini |
 | `claude` | CLAUDE.md, .claude/commands/, SKILL.md | Claude Code, Claude Desktop |
+| `cursor` | AGENTS.md, .cursor/rules/, .cursor/agents/, .cursor/skills/ | Cursor IDE |
 | `opencode` | AGENTS.md, .opencode/agents/, .opencode/commands/, .opencode/skills/ | OpenCode |
 | `all` | All of the above | Universal compatibility |
 
@@ -942,8 +946,9 @@ apm compile --watch
 apm compile --watch --dry-run
 
 # Target specific agent formats
-apm compile --target vscode    # AGENTS.md + .github/ only
+apm compile --target copilot   # AGENTS.md + .github/ only
 apm compile --target claude    # CLAUDE.md + .claude/ only
+apm compile --target cursor    # AGENTS.md + .cursor/ only
 apm compile --target opencode  # AGENTS.md + .opencode/ only
 apm compile --target all       # All formats (default)
 

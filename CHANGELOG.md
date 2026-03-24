@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Virtual package types (files, collections, subdirectories) now respect `ARTIFACTORY_ONLY=1`, matching the primary zip-archive proxy-only behavior (#418)
-- `apm pack --target claude` no longer produces an empty bundle when skills/agents are installed under `.github/` -- cross-target path mapping remaps `skills/` and `agents/` to the pack target prefix (#420)
+- `apm pack --target claude` no longer produces an empty bundle when skills/agents are installed under `.github/` -- cross-target path mapping remaps `skills/` and `agents/` to the pack target prefix (#426)
 
 ### Added
 
+- `apm unpack` now shows bundle target, dependency count, and file count; warns when the bundle target differs from the project's detected target (#426)
+- Cursor target support: `apm pack --target cursor`, `apm compile --target cursor`, and auto-detection from `.cursor/` folder in `detect_target()` (#426)
 - `ci-runtime.yml` workflow for nightly + manual runtime inference tests, decoupled from release pipeline (#371)
 - `APM_RUN_INFERENCE_TESTS` env var to gate live inference (`apm run`) in test scripts (#371)
 - PR traceability `::notice` annotation in `ci-integration.yml` smoke-test job (#371)

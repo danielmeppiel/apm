@@ -22,20 +22,22 @@ When you run `apm compile` without specifying a target, APM automatically detect
 |-------------------|--------|---------------------|
 | `.github/` folder only | `copilot` | AGENTS.md (instructions only) |
 | `.claude/` folder only | `claude` | CLAUDE.md (instructions only) |
-| Both folders exist | `all` | Both AGENTS.md and CLAUDE.md |
-| Neither folder exists | `minimal` | AGENTS.md only (universal format) |
+| `.cursor/` folder only | `cursor` | AGENTS.md (instructions only) |
+| Multiple folders exist | `all` | All applicable output files |
+| No recognized folder | `minimal` | AGENTS.md only (universal format) |
 
 ```bash
 apm compile                    # Auto-detects target from project structure
 apm compile --target copilot   # Force GitHub Copilot, Cursor, Codex, Gemini
 apm compile --target claude    # Force Claude Code, Claude Desktop
+apm compile --target cursor    # Force Cursor IDE
 ```
 
 You can set a persistent target in `apm.yml`:
 ```yaml
 name: my-project
 version: 1.0.0
-target: copilot  # or vscode, claude, or all
+target: copilot  # or claude, cursor, or all
 ```
 
 ### Output Files
