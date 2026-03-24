@@ -129,7 +129,7 @@ class DependencyReference:
     def is_local_path(dep_str: str) -> bool:
         """Check if a dependency string looks like a local filesystem path.
         
-        Local paths start with './', '../', '/', '~', or a Windows drive
+        Local paths start with './', '../', '/', '~/', '~\\', or a Windows drive
         letter (e.g. 'C:\\' or 'C:/').
         Protocol-relative URLs ('//...') are explicitly excluded.
         """
