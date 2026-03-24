@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 
@@ -20,8 +19,6 @@ from .schema import (
     PolicyCache,
     UnmanagedFilesPolicy,
 )
-
-logger = logging.getLogger(__name__)
 
 # Valid enum values for schema fields
 _VALID_ENFORCEMENT = {"warn", "block", "off"}
@@ -55,21 +52,22 @@ class PolicyValidationError(Exception):
         super().__init__(f"Policy validation failed: {'; '.join(errors)}")
 
 
-def validate_policy(data: dict) -> List[str]:
+def validate_policy(data: dict) -> Tuple[List[str], List[str]]:
     """Validate a raw dict against the policy schema.
 
-    Returns list of validation error strings (empty = valid).
+    Returns (errors, warnings) where each is a list of strings.
     """
     errors: List[str] = []
+    warnings: List[str] = []
 
     if not isinstance(data, dict):
         errors.append("Policy must be a YAML mapping")
-        return errors
+        return errors, warnings
 
     # Unknown top-level keys (warn, don't fail)
     unknown = set(data.keys()) - _KNOWN_TOP_LEVEL_KEYS
     for key in sorted(unknown):
-        logger.warning("Unknown top-level policy key: %s", key)
+        warnings.append(f"Unknown top-level policy key: '{key}'")
 
     # enforcement (coerce YAML booleans: off → "off")
     enforcement = data.get("enforcement")
@@ -139,7 +137,7 @@ def validate_policy(data: dict) -> List[str]:
                 f"{sorted(_VALID_UNMANAGED_ACTION)}, got '{action}'"
             )
 
-    return errors
+    return errors, warnings
 
 
 def _build_policy(data: dict) -> ApmPolicy:
@@ -220,10 +218,10 @@ def _build_policy(data: dict) -> ApmPolicy:
     )
 
 
-def load_policy(source: Union[str, Path]) -> ApmPolicy:
+def load_policy(source: Union[str, Path]) -> Tuple[ApmPolicy, List[str]]:
     """Load and validate an apm-policy.yml from a file path or YAML string.
 
-    Raises PolicyValidationError on invalid input.
+    Returns (policy, warnings). Raises PolicyValidationError on invalid input.
     """
     path = Path(source) if not isinstance(source, Path) else source
 
@@ -244,11 +242,11 @@ def load_policy(source: Union[str, Path]) -> ApmPolicy:
     if not isinstance(data, dict):
         raise PolicyValidationError(["Policy must be a YAML mapping"])
 
-    errors = validate_policy(data)
+    errors, warnings = validate_policy(data)
     if errors:
         raise PolicyValidationError(errors)
 
-    return _build_policy(data)
+    return _build_policy(data), warnings
 
 
 def _parse_allow(val: Any) -> Optional[Tuple[str, ...]]:

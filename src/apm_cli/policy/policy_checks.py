@@ -618,12 +618,18 @@ def _check_unmanaged_files(
 
     dirs = policy.directories if policy.directories else _DEFAULT_GOVERNANCE_DIRS
 
-    # Build set of deployed files from lockfile
+    # Build set of deployed files AND directory prefixes from lockfile
     deployed: set = set()
+    deployed_dir_prefixes: list = []
     if lock:
         for _key, dep in lock.dependencies.items():
             for f in dep.deployed_files:
-                deployed.add(f.rstrip("/"))
+                cleaned = f.rstrip("/")
+                deployed.add(cleaned)
+                if f.endswith("/"):
+                    deployed_dir_prefixes.append(cleaned + "/")
+
+    dir_prefix_tuple = tuple(deployed_dir_prefixes)
 
     unmanaged: List[str] = []
     files_scanned = 0
@@ -639,7 +645,9 @@ def _check_unmanaged_files(
                     cap_hit = True
                     break
                 rel = file_path.relative_to(project_root).as_posix()
-                if rel not in deployed:
+                if rel not in deployed and not (
+                    dir_prefix_tuple and rel.startswith(dir_prefix_tuple)
+                ):
                     unmanaged.append(rel)
         if cap_hit:
             break

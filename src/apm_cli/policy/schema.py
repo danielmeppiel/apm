@@ -79,7 +79,7 @@ class CompilationPolicy:
 
 @dataclass(frozen=True)
 class ManifestPolicy:
-    """Rules governing apm-manifest.yml content."""
+    """Rules governing apm.yml manifest content."""
 
     required_fields: Tuple[str, ...] = ()
     scripts: str = "allow"  # allow | deny

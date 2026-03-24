@@ -134,8 +134,8 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
         from apm_cli.policy.inheritance import merge_policies
         from apm_cli.policy.parser import load_policy
 
-        org_policy = load_policy(FIXTURES_DIR / "org-policy.yml")
-        repo_policy = load_policy(FIXTURES_DIR / "repo-override-policy.yml")
+        org_policy, _ = load_policy(FIXTURES_DIR / "org-policy.yml")
+        repo_policy, _ = load_policy(FIXTURES_DIR / "repo-override-policy.yml")
 
         merged = merge_policies(org_policy, repo_policy)
 
@@ -150,8 +150,8 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
         from apm_cli.policy.inheritance import resolve_policy_chain
         from apm_cli.policy.parser import load_policy
 
-        enterprise = load_policy(FIXTURES_DIR / "enterprise-hub-policy.yml")
-        org = load_policy(FIXTURES_DIR / "org-policy.yml")
+        enterprise, _ = load_policy(FIXTURES_DIR / "enterprise-hub-policy.yml")
+        org, _ = load_policy(FIXTURES_DIR / "org-policy.yml")
 
         merged = resolve_policy_chain([enterprise, org])
 
@@ -276,7 +276,7 @@ class TestPolicyDiscoveryLiveAPI(unittest.TestCase):
             ".github/apm-policy.yml",
         )
         self.assertIsNone(error)
-        repo_policy = load_policy(content)
+        repo_policy, _ = load_policy(content)
 
         # Merge: repo overrides org (tighten-only)
         merged = merge_policies(org_result.policy, repo_policy)

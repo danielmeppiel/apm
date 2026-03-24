@@ -8,7 +8,6 @@ Discovery flow:
 
 Supports:
 - GitHub.com and GitHub Enterprise (*.ghe.com)
-- Azure DevOps (dev.azure.com)
 - Manual override via --policy <path|url>
 - Cache with TTL (default 1 hour), --no-cache bypass
 """
@@ -91,7 +90,7 @@ def discover_policy(
 def _load_from_file(path: Path) -> PolicyFetchResult:
     """Load policy from a local file."""
     try:
-        policy = load_policy(path)
+        policy, _warnings = load_policy(path)
         return PolicyFetchResult(policy=policy, source=f"file:{path}")
     except PolicyValidationError as e:
         return PolicyFetchResult(error=f"Invalid policy file {path}: {e}")
@@ -128,7 +127,6 @@ def _extract_org_from_git_remote(
     Handles:
     - https://github.com/contoso/my-project.git → ("contoso", "github.com")
     - git@github.com:contoso/my-project.git → ("contoso", "github.com")
-    - https://dev.azure.com/contoso/project/_git/repo → ("contoso", "dev.azure.com")
     - https://github.example.com/contoso/my-project.git → ("contoso", "github.example.com")
     """
     try:
@@ -216,7 +214,7 @@ def _fetch_from_url(
         return PolicyFetchResult(error=f"Error fetching {url}: {e}", source=f"url:{url}")
 
     try:
-        policy = load_policy(content)
+        policy, _warnings = load_policy(content)
         result = PolicyFetchResult(policy=policy, source=f"url:{url}")
         _write_cache(url, content, project_root)
         return result
@@ -253,7 +251,7 @@ def _fetch_from_repo(
         return PolicyFetchResult(source=f"org:{repo_ref}")
 
     try:
-        policy = load_policy(content)
+        policy, _warnings = load_policy(content)
         result = PolicyFetchResult(policy=policy, source=f"org:{repo_ref}")
         _write_cache(repo_ref, content, project_root)
         return result
@@ -392,10 +390,15 @@ def _read_cache(
         if time.time() - cached_at > ttl:
             return None  # expired
 
-        policy = load_policy(policy_file)
+        policy, _warnings = load_policy(policy_file)
+        # Determine source label: use "url:" for HTTP(S) URLs, "org:" otherwise
+        if repo_ref.startswith("http://") or repo_ref.startswith("https://"):
+            source = f"url:{repo_ref}"
+        else:
+            source = f"org:{repo_ref}"
         return PolicyFetchResult(
             policy=policy,
-            source=f"org:{repo_ref}",
+            source=source,
             cached=True,
         )
     except Exception:

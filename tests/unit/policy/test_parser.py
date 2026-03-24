@@ -13,19 +13,22 @@ class TestValidatePolicy(unittest.TestCase):
     """Test validate_policy on raw dicts."""
 
     def test_empty_dict_valid(self):
-        self.assertEqual(validate_policy({}), [])
+        errors, warnings = validate_policy({})
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
 
     def test_valid_enforcement_values(self):
         for val in ("warn", "block", "off"):
-            self.assertEqual(validate_policy({"enforcement": val}), [])
+            errors, warnings = validate_policy({"enforcement": val})
+            self.assertEqual(errors, [])
 
     def test_invalid_enforcement(self):
-        errors = validate_policy({"enforcement": "strict"})
+        errors, warnings = validate_policy({"enforcement": "strict"})
         self.assertEqual(len(errors), 1)
         self.assertIn("enforcement", errors[0])
 
     def test_invalid_require_resolution(self):
-        errors = validate_policy(
+        errors, warnings = validate_policy(
             {"dependencies": {"require_resolution": "merge"}}
         )
         self.assertEqual(len(errors), 1)
@@ -33,71 +36,72 @@ class TestValidatePolicy(unittest.TestCase):
 
     def test_valid_require_resolution(self):
         for val in ("project-wins", "policy-wins", "block"):
-            errors = validate_policy(
+            errors, warnings = validate_policy(
                 {"dependencies": {"require_resolution": val}}
             )
             self.assertEqual(errors, [])
 
     def test_invalid_self_defined(self):
-        errors = validate_policy({"mcp": {"self_defined": "ignore"}})
+        errors, warnings = validate_policy({"mcp": {"self_defined": "ignore"}})
         self.assertEqual(len(errors), 1)
         self.assertIn("self_defined", errors[0])
 
     def test_valid_self_defined(self):
         for val in ("deny", "warn", "allow"):
-            self.assertEqual(
-                validate_policy({"mcp": {"self_defined": val}}), []
-            )
+            errors, warnings = validate_policy({"mcp": {"self_defined": val}})
+            self.assertEqual(errors, [])
 
     def test_invalid_scripts(self):
-        errors = validate_policy({"manifest": {"scripts": "warn"}})
+        errors, warnings = validate_policy({"manifest": {"scripts": "warn"}})
         self.assertEqual(len(errors), 1)
         self.assertIn("scripts", errors[0])
 
     def test_invalid_unmanaged_action(self):
-        errors = validate_policy({"unmanaged_files": {"action": "block"}})
+        errors, warnings = validate_policy({"unmanaged_files": {"action": "block"}})
         self.assertEqual(len(errors), 1)
         self.assertIn("unmanaged_files.action", errors[0])
 
     def test_negative_cache_ttl(self):
-        errors = validate_policy({"cache": {"ttl": -1}})
+        errors, warnings = validate_policy({"cache": {"ttl": -1}})
         self.assertEqual(len(errors), 1)
         self.assertIn("cache.ttl", errors[0])
 
     def test_zero_cache_ttl(self):
-        errors = validate_policy({"cache": {"ttl": 0}})
+        errors, warnings = validate_policy({"cache": {"ttl": 0}})
         self.assertEqual(len(errors), 1)
 
     def test_string_cache_ttl(self):
-        errors = validate_policy({"cache": {"ttl": "fast"}})
+        errors, warnings = validate_policy({"cache": {"ttl": "fast"}})
         self.assertEqual(len(errors), 1)
         self.assertIn("cache.ttl", errors[0])
 
     def test_bool_cache_ttl(self):
-        errors = validate_policy({"cache": {"ttl": True}})
+        errors, warnings = validate_policy({"cache": {"ttl": True}})
         self.assertEqual(len(errors), 1)
 
     def test_negative_max_depth(self):
-        errors = validate_policy({"dependencies": {"max_depth": -5}})
+        errors, warnings = validate_policy({"dependencies": {"max_depth": -5}})
         self.assertEqual(len(errors), 1)
         self.assertIn("max_depth", errors[0])
 
     def test_string_max_depth(self):
-        errors = validate_policy({"dependencies": {"max_depth": "deep"}})
+        errors, warnings = validate_policy({"dependencies": {"max_depth": "deep"}})
         self.assertEqual(len(errors), 1)
 
     def test_unknown_top_level_keys_no_error(self):
-        """Unknown keys log warnings but are not errors."""
-        errors = validate_policy({"custom_field": True, "name": "test"})
+        """Unknown keys produce warnings but are not errors."""
+        errors, warnings = validate_policy({"custom_field": True, "name": "test"})
         self.assertEqual(errors, [])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("custom_field", warnings[0])
 
     def test_non_dict_input(self):
-        errors = validate_policy("not a dict")  # type: ignore[arg-type]
+        errors, warnings = validate_policy("not a dict")  # type: ignore[arg-type]
         self.assertEqual(len(errors), 1)
         self.assertIn("mapping", errors[0])
 
     def test_multiple_errors(self):
-        errors = validate_policy(
+        errors, warnings = validate_policy(
             {
                 "enforcement": "bad",
                 "cache": {"ttl": -1},
@@ -162,8 +166,9 @@ class TestLoadPolicyFromString(unittest.TestCase):
                 - .github
                 - docs
         """)
-        policy = load_policy(yaml_str)
+        policy, warnings = load_policy(yaml_str)
 
+        self.assertEqual(warnings, [])
         self.assertEqual(policy.name, "acme-policy")
         self.assertEqual(policy.version, "1.0")
         self.assertEqual(policy.enforcement, "block")
@@ -197,7 +202,8 @@ class TestLoadPolicyFromString(unittest.TestCase):
 
     def test_minimal_policy(self):
         yaml_str = "name: minimal\nversion: '0.1'"
-        policy = load_policy(yaml_str)
+        policy, warnings = load_policy(yaml_str)
+        self.assertEqual(warnings, [])
         self.assertEqual(policy.name, "minimal")
         self.assertEqual(policy.version, "0.1")
         # Everything else should be defaults
@@ -207,7 +213,7 @@ class TestLoadPolicyFromString(unittest.TestCase):
         self.assertEqual(policy.dependencies.max_depth, 50)
 
     def test_empty_yaml(self):
-        policy = load_policy("")
+        policy, warnings = load_policy("")
         self.assertIsInstance(policy, ApmPolicy)
         self.assertEqual(policy.name, "")
 
@@ -241,22 +247,22 @@ class TestLoadPolicyFromString(unittest.TestCase):
               allow:
                 - "org/*"
         """)
-        policy = load_policy(yaml_str)
+        policy, warnings = load_policy(yaml_str)
         self.assertEqual(policy.dependencies.allow, ("org/*",))
         self.assertEqual(policy.dependencies.deny, ())
         self.assertEqual(policy.dependencies.max_depth, 50)
         self.assertEqual(policy.mcp.self_defined, "warn")
 
     def test_extends_org(self):
-        policy = load_policy("extends: org")
+        policy, warnings = load_policy("extends: org")
         self.assertEqual(policy.extends, "org")
 
     def test_extends_owner_repo(self):
-        policy = load_policy("extends: acme/policies")
+        policy, warnings = load_policy("extends: acme/policies")
         self.assertEqual(policy.extends, "acme/policies")
 
     def test_extends_url(self):
-        policy = load_policy("extends: https://example.com/policy.yml")
+        policy, warnings = load_policy("extends: https://example.com/policy.yml")
         self.assertEqual(policy.extends, "https://example.com/policy.yml")
 
     def test_malformed_yaml_raises(self):
@@ -271,7 +277,7 @@ class TestLoadPolicyFromString(unittest.TestCase):
             load_policy("- item1\n- item2")
 
     def test_version_coerced_to_string(self):
-        policy = load_policy("version: '2.0'")
+        policy, warnings = load_policy("version: '2.0'")
         self.assertEqual(policy.version, "2.0")
 
 
@@ -292,7 +298,7 @@ class TestLoadPolicyFromFile(unittest.TestCase):
             path = f.name
 
         try:
-            policy = load_policy(path)
+            policy, warnings = load_policy(path)
             self.assertEqual(policy.name, "file-policy")
             self.assertEqual(policy.enforcement, "off")
         finally:
@@ -310,7 +316,7 @@ class TestLoadPolicyFromFile(unittest.TestCase):
             path = Path(f.name)
 
         try:
-            policy = load_policy(path)
+            policy, warnings = load_policy(path)
             self.assertEqual(policy.name, "pathlib-test")
         finally:
             os.unlink(str(path))

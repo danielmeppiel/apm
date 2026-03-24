@@ -648,6 +648,26 @@ class TestUnmanagedFiles:
         result = _check_unmanaged_files(tmp_path, None, policy)
         assert result.passed
 
+    def test_pass_files_under_deployed_directory(self, tmp_path):
+        """Files under a deployed directory (trailing /) are treated as managed."""
+        skill_dir = tmp_path / ".github" / "skills" / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("skill", encoding="utf-8")
+        (skill_dir / "prompt.md").write_text("prompt", encoding="utf-8")
+        lock = _make_lockfile(
+            [
+                {
+                    "repo_url": "org/pkg",
+                    "deployed_files": [".github/skills/my-skill/"],
+                }
+            ]
+        )
+        policy = UnmanagedFilesPolicy(
+            action="deny", directories=[".github/skills"]
+        )
+        result = _check_unmanaged_files(tmp_path, lock, policy)
+        assert result.passed
+
     def test_rglob_cap_skips_check(self, tmp_path, monkeypatch):
         """When file count exceeds the safety cap, check passes with a warning."""
         from apm_cli.policy import policy_checks

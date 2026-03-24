@@ -498,6 +498,12 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
             )
             sys.exit(1)
 
+        if output_format == "markdown":
+            logger.error(
+                "--ci does not support --format markdown. Use json or sarif."
+            )
+            sys.exit(1)
+
         from ..policy.ci_checks import run_baseline_checks
         from ..policy.policy_checks import run_policy_checks
 
@@ -521,10 +527,30 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
                 sys.exit(1)
 
             if fetch_result.found:
-                policy_result = run_policy_checks(
-                    project_root, fetch_result.policy, fail_fast=fail_fast
-                )
-                ci_result.checks.extend(policy_result.checks)
+                policy_obj = fetch_result.policy
+
+                # Respect enforcement level
+                if policy_obj.enforcement == "off":
+                    pass  # Policy checks disabled
+                else:
+                    from ..policy.models import CheckResult
+
+                    policy_result = run_policy_checks(
+                        project_root, policy_obj, fail_fast=fail_fast
+                    )
+                    if policy_obj.enforcement == "block":
+                        ci_result.checks.extend(policy_result.checks)
+                    else:
+                        # enforcement == "warn": include results but don't fail
+                        for check in policy_result.checks:
+                            ci_result.checks.append(
+                                CheckResult(
+                                    name=check.name,
+                                    passed=True,  # downgrade to pass
+                                    message=check.message + (" (enforcement: warn)" if not check.passed else ""),
+                                    details=check.details,
+                                )
+                            )
 
         # Resolve effective format
         effective_format = output_format
