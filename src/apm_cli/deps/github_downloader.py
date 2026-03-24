@@ -1678,12 +1678,10 @@ author: {dep_ref.repo_url.split('/')[0]}
             package.version = short_sha
             apm_yml_path = target_path / "apm.yml"
             if apm_yml_path.exists():
-                import yaml as _yaml
-                with open(apm_yml_path, "r", encoding="utf-8") as _f:
-                    _data = _yaml.safe_load(_f) or {}
+                from ..utils.yaml_io import load_yaml, dump_yaml
+                _data = load_yaml(apm_yml_path) or {}
                 _data["version"] = short_sha
-                with open(apm_yml_path, "w", encoding="utf-8") as _f:
-                    _yaml.dump(_data, _f, default_flow_style=False, sort_keys=False)
+                dump_yaml(_data, apm_yml_path)
         
         # Update progress - complete
         if progress_obj and progress_task_id is not None:
@@ -1986,12 +1984,10 @@ author: {dep_ref.repo_url.split('/')[0]}
             # Keep the synthesized apm.yml in sync
             apm_yml_path = target_path / "apm.yml"
             if apm_yml_path.exists():
-                import yaml as _yaml
-                with open(apm_yml_path, "r", encoding="utf-8") as _f:
-                    _data = _yaml.safe_load(_f) or {}
+                from ..utils.yaml_io import load_yaml, dump_yaml
+                _data = load_yaml(apm_yml_path) or {}
                 _data["version"] = short_sha
-                with open(apm_yml_path, "w", encoding="utf-8") as _f:
-                    _yaml.dump(_data, _f, default_flow_style=False, sort_keys=False)
+                dump_yaml(_data, apm_yml_path)
         
         # Create and return PackageInfo
         return PackageInfo(

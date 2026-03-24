@@ -1,0 +1,18 @@
+name: contoso-enterprise-policy
+version: "1.0.0"
+enforcement: block
+
+dependencies:
+  allow:
+    - "contoso-*/*"
+    - "microsoft/*"
+    - "github/*"
+  deny:
+    - "untrusted-vendor/*"
+  require:
+    - "contoso-governance/coding-standards"
+    - "contoso-governance/security-hooks#v2.0.0"
+  require_resolution: policy-wins
+
+unmanaged_files:
+  action: deny

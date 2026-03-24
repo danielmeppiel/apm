@@ -9,6 +9,7 @@ from typing import List, Dict
 import frontmatter
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
+from apm_cli.utils.paths import portable_relpath
 
 # Re-export for backward compat (tests import CommandIntegrationResult)
 CommandIntegrationResult = IntegrationResult
@@ -136,7 +137,7 @@ class CommandIntegrator(BaseIntegrator):
                 base_name = prompt_file.stem
             
             target_path = commands_dir / f"{base_name}.md"
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
             
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
@@ -224,7 +225,7 @@ class CommandIntegrator(BaseIntegrator):
                 base_name = prompt_file.stem
 
             target_path = commands_dir / f"{base_name}.md"
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
 
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1

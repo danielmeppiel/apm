@@ -19,6 +19,7 @@ from .template_builder import (
     find_chatmode_by_name
 )
 from .link_resolver import resolve_markdown_links, validate_link_targets
+from ..utils.paths import portable_relpath
 
 
 @dataclass
@@ -70,11 +71,10 @@ class CompilationConfig:
         # Try to load from apm.yml
         try:
             from pathlib import Path
-            import yaml
             
             if Path('apm.yml').exists():
-                with open('apm.yml', 'r') as f:
-                    apm_config = yaml.safe_load(f) or {}
+                from ..utils.yaml_io import load_yaml
+                apm_config = load_yaml('apm.yml') or {}
                 
                 # Look for compilation section
                 compilation_config = apm_config.get('compilation', {})
@@ -439,10 +439,7 @@ class AgentsCompiler:
                 f"CLAUDE.md Preview: Would generate {len(claude_result.placements)} files"
             ]
             for claude_path in claude_result.content_map.keys():
-                try:
-                    rel_path = claude_path.relative_to(self.base_dir)
-                except ValueError:
-                    rel_path = claude_path
+                rel_path = portable_relpath(claude_path, self.base_dir)
                 preview_lines.append(f"  {rel_path}")
             
             return CompilationResult(
@@ -535,10 +532,7 @@ class AgentsCompiler:
             f"Generated {files_written} CLAUDE.md files:"
         ]
         for placement in claude_result.placements:
-            try:
-                rel_path = placement.claude_path.relative_to(self.base_dir)
-            except ValueError:
-                rel_path = placement.claude_path
+            rel_path = portable_relpath(placement.claude_path, self.base_dir)
             summary_lines.append(f"- {rel_path} ({len(placement.instructions)} instructions)")
         
         return CompilationResult(
@@ -629,12 +623,7 @@ class AgentsCompiler:
         for primitive in primitives.all_primitives():
             primitive_errors = primitive.validate()
             if primitive_errors:
-                try:
-                    # Try to get relative path, but fall back to absolute if it fails
-                    file_path = str(primitive.file_path.relative_to(self.base_dir))
-                except ValueError:
-                    # File is outside base_dir, use absolute path
-                    file_path = str(primitive.file_path)
+                file_path = portable_relpath(primitive.file_path, self.base_dir)
                 
                 for error in primitive_errors:
                     # Treat validation errors as warnings instead of hard errors
@@ -646,10 +635,7 @@ class AgentsCompiler:
                 primitive_dir = primitive.file_path.parent
                 link_errors = validate_link_targets(primitive.content, primitive_dir)
                 if link_errors:
-                    try:
-                        file_path = str(primitive.file_path.relative_to(self.base_dir))
-                    except ValueError:
-                        file_path = str(primitive.file_path)
+                    file_path = portable_relpath(primitive.file_path, self.base_dir)
                     
                     for link_error in link_errors:
                         self.warnings.append(f"{file_path}: {link_error}")
@@ -785,11 +771,7 @@ class AgentsCompiler:
         self._log("progress", "")
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = placement.agents_path.relative_to(self.base_dir.resolve())
-            except ValueError:
-                # Fallback for path resolution issues
-                rel_path = placement.agents_path
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             self._log("verbose_detail", f"{rel_path}")
             self._log("verbose_detail", f"   Instructions: {len(placement.instructions)}")
             self._log("verbose_detail", f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
@@ -809,18 +791,12 @@ class AgentsCompiler:
         self._log("progress", "")
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = placement.agents_path.relative_to(self.base_dir.resolve())
-            except ValueError:
-                rel_path = placement.agents_path
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             self._log("verbose_detail", f"{rel_path}")
             
             for instruction in placement.instructions:
                 source = getattr(instruction, 'source', 'local')
-                try:
-                    inst_path = instruction.file_path.relative_to(self.base_dir.resolve())
-                except ValueError:
-                    inst_path = instruction.file_path
+                inst_path = portable_relpath(instruction.file_path, self.base_dir)
                 
                 self._log("verbose_detail", f"   * {instruction.apply_to or 'no pattern'} <- {source} {inst_path}")
             self._log("verbose_detail", "")
@@ -837,10 +813,7 @@ class AgentsCompiler:
         lines = ["Distributed AGENTS.md Placement Summary:", ""]
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = placement.agents_path.resolve().relative_to(self.base_dir.resolve()).as_posix()
-            except ValueError:
-                rel_path = str(placement.agents_path)
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             lines.append(f"{rel_path}")
             lines.append(f"   Instructions: {len(placement.instructions)}")
             lines.append(f"   Patterns: {', '.join(sorted(placement.coverage_patterns))}")
@@ -867,10 +840,7 @@ class AgentsCompiler:
         ]
         
         for placement in distributed_result.placements:
-            try:
-                rel_path = placement.agents_path.resolve().relative_to(self.base_dir.resolve()).as_posix()
-            except ValueError:
-                rel_path = str(placement.agents_path)
+            rel_path = portable_relpath(placement.agents_path, self.base_dir)
             lines.append(f"- {rel_path} ({len(placement.instructions)} instructions)")
         
         lines.extend([

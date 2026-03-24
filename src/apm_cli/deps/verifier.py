@@ -21,8 +21,8 @@ def load_apm_config(config_file="apm.yml"):
             print(f"Configuration file {config_file} not found.")
             return None
             
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
+        from ..utils.yaml_io import load_yaml
+        config = load_yaml(config_path)
         
         return config
     except Exception as e:
