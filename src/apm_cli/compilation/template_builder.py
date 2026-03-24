@@ -51,7 +51,7 @@ def build_conditional_sections(instructions: List[Instruction]) -> str:
                         relative_path = str(instruction.file_path)
                 except (ValueError, OSError):
                     # Fall back to absolute or given path if relative fails
-                    relative_path = instruction.file_path
+                    relative_path = instruction.file_path.as_posix()
                 
                 sections.append(f"<!-- Source: {relative_path} -->")
                 sections.append(content)

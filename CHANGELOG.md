@@ -10,14 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Systematic Windows path compatibility hardening: added `portable_relpath()` utility and migrated ~23 `relative_to()` call sites to use `.resolve()` on both sides + `.as_posix()` output, preventing `ValueError` on Windows 8.3 short names and backslash-contaminated path strings (#419)
+- Systematic Windows path compatibility hardening: added `portable_relpath()` utility, migrated ~23 `relative_to()` call sites to use `.resolve()` on both sides with `.as_posix()` output, and added CI lint guard to block raw `str(path.relative_to())` regressions (#419, #422)
 - Virtual package types (files, collections, subdirectories) now respect `ARTIFACTORY_ONLY=1`, matching the primary zip-archive proxy-only behavior (#418)
 - `apm pack --target claude` no longer produces an empty bundle when skills/agents are installed under `.github/` -- cross-target path mapping remaps `skills/` and `agents/` to the pack target prefix (#420)
 
 ### Added
 
-- `portable_relpath()` helper in `apm_cli.utils.paths` centralises the resolve-relativise-posixify pattern for cross-platform path safety (#419)
-- CI lint guard (`grep`-based) blocks raw `str(path.relative_to())` regressions (#419)
 - `ci-runtime.yml` workflow for nightly + manual runtime inference tests, decoupled from release pipeline (#371)
 - `APM_RUN_INFERENCE_TESTS` env var to gate live inference (`apm run`) in test scripts (#371)
 - PR traceability `::notice` annotation in `ci-integration.yml` smoke-test job (#371)

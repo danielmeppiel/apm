@@ -3,11 +3,9 @@
 Covers:
 - Basic relative path computation with forward slashes
 - .resolve() on both sides (handles Windows 8.3 short-name mismatches)
-- Fallback to str(path) when path is not under base
+- Fallback to POSIX path when path is not under base
 - Edge cases: same directory, deeply nested, trailing slashes
 """
-
-from pathlib import Path
 
 import pytest
 
@@ -46,14 +44,15 @@ class TestPortableRelpath:
         assert result == "README.md"
 
     def test_fallback_when_not_under_base(self, tmp_path):
-        """Returns str(path) when path is not under base."""
+        """Returns POSIX-style resolved path when path is not under base."""
         other = tmp_path / "other"
         other.mkdir()
         base = tmp_path / "base"
         base.mkdir()
         result = portable_relpath(other, base)
-        # Should fall back to str(path) — resolved absolute path
-        assert result == str(other.resolve())
+        # Should fall back to resolved absolute POSIX path
+        assert result == other.resolve().as_posix()
+        assert "\\" not in result
 
     def test_result_never_contains_backslash(self, tmp_path):
         """Returned string never contains backslashes (Windows safety)."""

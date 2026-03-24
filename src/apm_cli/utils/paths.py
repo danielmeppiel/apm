@@ -15,9 +15,13 @@ def portable_relpath(path: Path, base: Path) -> str:
     Handles Windows 8.3 short names (e.g. ``RUNNER~1`` vs ``runneradmin``)
     and ensures consistent POSIX output on every platform.
 
-    Falls back to ``str(path)`` when *path* is not under *base*.
+    When *path* is not under *base* (or resolution fails), falls back to
+    a resolved absolute POSIX path.
     """
     try:
         return path.resolve().relative_to(base.resolve()).as_posix()
-    except ValueError:
-        return str(path)
+    except (ValueError, OSError, RuntimeError):
+        try:
+            return path.resolve().as_posix()
+        except (OSError, RuntimeError):
+            return path.as_posix()
