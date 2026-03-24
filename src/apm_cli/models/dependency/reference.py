@@ -100,9 +100,9 @@ class DependencyReference:
         - Is a directory path (likely containing SKILL.md or apm.yml)
 
         Examples:
-            - ComposioHQ/awesome-claude-skills/brand-guidelines → True
-            - owner/repo/prompts/file.prompt.md → False (is_virtual_file)
-            - owner/repo/collections/name → False (is_virtual_collection)
+            - ComposioHQ/awesome-claude-skills/brand-guidelines -> True
+            - owner/repo/prompts/file.prompt.md -> False (is_virtual_file)
+            - owner/repo/collections/name -> False (is_virtual_collection)
         """
         return self.virtual_type == VirtualPackageType.SUBDIRECTORY
 
@@ -110,9 +110,9 @@ class DependencyReference:
         """Generate a package name for this virtual package.
 
         For virtual packages, we create a sanitized name from the path:
-        - owner/repo/prompts/code-review.prompt.md → repo-code-review
-        - owner/repo/collections/project-planning → repo-project-planning
-        - owner/repo/collections/project-planning.collection.yml → repo-project-planning
+        - owner/repo/prompts/code-review.prompt.md -> repo-code-review
+        - owner/repo/collections/project-planning -> repo-project-planning
+        - owner/repo/collections/project-planning.collection.yml -> repo-project-planning
         """
         if not self.is_virtual or not self.virtual_path:
             return self.repo_url.split("/")[-1]  # Return repo name as fallback
@@ -125,8 +125,8 @@ class DependencyReference:
         path_parts = self.virtual_path.split("/")
         if self.is_virtual_collection():
             # For collections: use the collection name without extension
-            # collections/project-planning → project-planning
-            # collections/project-planning.collection.yml → project-planning
+            # collections/project-planning -> project-planning
+            # collections/project-planning.collection.yml -> project-planning
             collection_name = path_parts[-1]
             # Strip .collection.yml/.collection.yaml extension if present
             for ext in (".collection.yml", ".collection.yaml"):
@@ -136,7 +136,7 @@ class DependencyReference:
             return f"{repo_name}-{collection_name}"
         else:
             # For individual files: use the filename without extension
-            # prompts/code-review.prompt.md → code-review
+            # prompts/code-review.prompt.md -> code-review
             filename = path_parts[-1]
             for ext in self.VIRTUAL_FILE_EXTENSIONS:
                 if filename.endswith(ext):
@@ -256,7 +256,7 @@ class DependencyReference:
     def get_canonical_dependency_string(self) -> str:
         """Get the host-blind canonical string for filesystem and orphan-detection matching.
 
-        This returns repo_url (+ virtual_path) without host prefix — it matches
+        This returns repo_url (+ virtual_path) without host prefix -- it matches
         the filesystem layout in apm_modules/ which is also host-blind.
 
         For identity-based matching that includes non-default hosts, use get_identity().
@@ -375,8 +375,8 @@ class DependencyReference:
         """Normalize ssh:// protocol URLs to git@ format for consistent parsing.
 
         Converts:
-        - ssh://git@gitlab.com/owner/repo.git → git@gitlab.com:owner/repo.git
-        - ssh://git@host:port/owner/repo.git → git@host:owner/repo.git
+        - ssh://git@gitlab.com/owner/repo.git -> git@gitlab.com:owner/repo.git
+        - ssh://git@host:port/owner/repo.git -> git@host:owner/repo.git
 
         Non-SSH URLs are returned unchanged.
         """
@@ -925,6 +925,12 @@ class DependencyReference:
                     f"Invalid Azure DevOps repository format: {repo_url}. Expected 'org/project/repo'"
                 )
             ado_parts = repo_url.split("/")
+            for part in ado_parts:
+                if part in (".", ".."):
+                    raise PathTraversalError(
+                        f"Path traversal segment '{part}' is not allowed in "
+                        f"Azure DevOps repository path: {repo_url}"
+                    )
             ado_organization = ado_parts[0]
             ado_project = ado_parts[1]
             ado_repo = ado_parts[2]
@@ -939,6 +945,11 @@ class DependencyReference:
                     f"Invalid repository format: {repo_url}. Contains invalid characters"
                 )
             for seg in segments:
+                if seg in (".", ".."):
+                    raise ValueError(
+                        f"Invalid repository format: {repo_url}. "
+                        f"Contains '.' or '..' path segments"
+                    )
                 if any(seg.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
                     raise ValueError(
                         f"Invalid repository format: '{repo_url}' contains a virtual file extension. "

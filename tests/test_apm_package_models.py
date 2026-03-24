@@ -56,12 +56,12 @@ class TestDependencyReference:
         assert dep.alias is None
 
     def test_parse_with_alias_shorthand_removed(self):
-        """Shorthand @alias syntax is no longer supported — @ in shorthand is rejected."""
+        """Shorthand @alias syntax is no longer supported -- @ in shorthand is rejected."""
         with pytest.raises(ValueError):
             DependencyReference.parse("user/repo@myalias")
 
     def test_parse_with_reference_and_alias_shorthand_not_parsed(self):
-        """Shorthand #ref@alias — @ is no longer parsed as alias separator."""
+        """Shorthand #ref@alias -- @ is no longer parsed as alias separator."""
         dep = DependencyReference.parse("user/repo#main@myalias")
         assert dep.repo_url == "user/repo"
         assert dep.reference == "main@myalias"  # @ treated as part of ref
@@ -117,7 +117,7 @@ class TestDependencyReference:
 
         With nested group support on generic hosts, path segments that happen
         to look like hostnames (e.g., 'github.com/user/repo') are treated as
-        repo path segments — not injection. The host is correctly identified.
+        repo path segments -- not injection. The host is correctly identified.
         """
         # Attack vectors that should still be REJECTED
         rejected_formats = [
@@ -149,7 +149,7 @@ class TestDependencyReference:
             assert dep.is_virtual is False
 
         # With generic git host support, valid FQDNs are accepted as hosts.
-        # These are not injection attacks — they are legitimate host references.
+        # These are not injection attacks -- they are legitimate host references.
         accepted_as_generic_hosts = [
             "evil-github.com/user/repo",
             "malicious-github.com/user/repo",
@@ -1434,7 +1434,7 @@ type: null
 class TestGenericHostSubdirectoryRoundTrip:
     """Regression tests for issue #382: subdirectory packages on generic git hosts.
 
-    The str() → parse() round-trip must preserve virtual_path for all hosts,
+    The str() -> parse() round-trip must preserve virtual_path for all hosts,
     not just GitHub and ADO.
     """
 
@@ -1522,7 +1522,7 @@ class TestGenericHostSubdirectoryRoundTrip:
 
         assert not parse_called, (
             "DependencyReference.parse() was called when passing a structured "
-            "DependencyReference — the lossy round-trip was NOT avoided"
+            "DependencyReference -- the lossy round-trip was NOT avoided"
         )
 
     def test_github_round_trip_works(self):
