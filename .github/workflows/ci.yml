@@ -39,6 +39,21 @@ jobs:
     - name: Install dependencies
       run: uv sync --extra dev --extra build
 
+    - name: Check YAML encoding safety
+      run: |
+        # Ensure YAML file I/O goes through yaml_io helpers.
+        # Catches yaml.dump/safe_dump writing to a file handle outside yaml_io.py.
+        VIOLATIONS=$(grep -rn --include='*.py' -P \
+          'yaml\.(safe_)?dump\(.+,\s*[a-zA-Z_]\w*\b' src/apm_cli/ \
+          | grep -v 'utils/yaml_io.py' \
+          | grep -v '# yaml-io-exempt' \
+          || true)
+        if [ -n "$VIOLATIONS" ]; then
+          echo "::error::Direct yaml.dump() to file handle detected. Use yaml_io.dump_yaml() instead:"
+          echo "$VIOLATIONS"
+          exit 1
+        fi
+
     - name: Run tests
       run: uv run pytest tests/unit tests/test_console.py -n auto --dist worksteal
 

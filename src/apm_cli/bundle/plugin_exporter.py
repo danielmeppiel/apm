@@ -285,7 +285,8 @@ def _get_dev_dependency_urls(apm_yml_path: Path) -> Set[Tuple[str, str]]:
     ``github/awesome-copilot``).
     """
     try:
-        data = yaml.safe_load(apm_yml_path.read_text(encoding="utf-8"))
+        from ..utils.yaml_io import load_yaml
+        data = load_yaml(apm_yml_path)
     except (yaml.YAMLError, OSError, ValueError):
         return set()
     if not isinstance(data, dict):

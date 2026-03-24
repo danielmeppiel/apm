@@ -71,11 +71,10 @@ class CompilationConfig:
         # Try to load from apm.yml
         try:
             from pathlib import Path
-            import yaml
             
             if Path('apm.yml').exists():
-                with open('apm.yml', 'r') as f:
-                    apm_config = yaml.safe_load(f) or {}
+                from ..utils.yaml_io import load_yaml
+                apm_config = load_yaml('apm.yml') or {}
                 
                 # Look for compilation section
                 compilation_config = apm_config.get('compilation', {})
