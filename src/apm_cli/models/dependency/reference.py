@@ -129,14 +129,26 @@ class DependencyReference:
     def is_local_path(dep_str: str) -> bool:
         """Check if a dependency string looks like a local filesystem path.
         
-        Local paths start with './', '../', '/', or '~'.
+        Local paths start with './', '../', '/', '~/', '~\\', or a Windows drive
+        letter (e.g. 'C:\\' or 'C:/').
         Protocol-relative URLs ('//...') are explicitly excluded.
         """
         s = dep_str.strip()
         # Reject protocol-relative URLs ('//...')
         if s.startswith('//'):
             return False
-        return s.startswith(('./','../', '/', '~/', '~\\', '.\\', '..\\'))
+        if s.startswith(('./','../', '/', '~/', '~\\', '.\\', '..\\')):
+            return True
+        # Windows absolute paths: drive letter + colon + separator (C:\ or C:/).
+        # Only ASCII letters A-Z/a-z are valid drive letters.
+        if (
+            len(s) >= 3
+            and (('A' <= s[0] <= 'Z') or ('a' <= s[0] <= 'z'))
+            and s[1] == ':'
+            and s[2] in ('\\', '/')
+        ):
+            return True
+        return False
 
     def get_unique_key(self) -> str:
         """Get a unique key for this dependency for deduplication.
