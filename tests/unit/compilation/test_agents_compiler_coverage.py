@@ -256,8 +256,9 @@ class TestValidatePrimitivesErrors(unittest.TestCase):
             compiler.validate_primitives(primitives)
 
             self.assertEqual(len(compiler.warnings), 1)
-            # Should use absolute path (contains tmp2 path, not relative).
-            self.assertIn(str(tmp2), compiler.warnings[0])
+            # portable_relpath resolves and returns POSIX paths
+            resolved_tmp2 = Path(tmp2).resolve().as_posix()
+            self.assertIn(resolved_tmp2, compiler.warnings[0])
         finally:
             import shutil
 
@@ -448,7 +449,9 @@ class TestGenerateSummaries(unittest.TestCase):
             result = self._make_distributed_result([(outside_path, 2)])
 
             summary = compiler._generate_placement_summary(result)
-            self.assertIn(outside_path, summary)
+            # portable_relpath resolves and returns POSIX paths
+            resolved_path = (Path(other_tmp) / "AGENTS.md").resolve().as_posix()
+            self.assertIn(resolved_path, summary)
         finally:
             import shutil
 
@@ -477,7 +480,9 @@ class TestGenerateSummaries(unittest.TestCase):
             summary = compiler._generate_distributed_summary(
                 result, CompilationConfig()
             )
-            self.assertIn(outside_path, summary)
+            # portable_relpath resolves and returns POSIX paths
+            resolved_path = (Path(other_tmp) / "AGENTS.md").resolve().as_posix()
+            self.assertIn(resolved_path, summary)
         finally:
             import shutil
 

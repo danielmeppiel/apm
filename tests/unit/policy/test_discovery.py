@@ -133,34 +133,24 @@ class TestLoadFromFile(unittest.TestCase):
     """Test _load_from_file with real filesystem."""
 
     def test_valid_policy_file(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yml", delete=False
-        ) as f:
-            f.write(VALID_POLICY_YAML)
-            f.flush()
-            try:
-                result = _load_from_file(Path(f.name))
-                self.assertTrue(result.found)
-                self.assertIsInstance(result.policy, ApmPolicy)
-                self.assertEqual(result.policy.name, "test-policy")
-                self.assertIn("file:", result.source)
-                self.assertIsNone(result.error)
-            finally:
-                os.unlink(f.name)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "policy.yml"
+            p.write_text(VALID_POLICY_YAML, encoding="utf-8")
+            result = _load_from_file(p)
+            self.assertTrue(result.found)
+            self.assertIsInstance(result.policy, ApmPolicy)
+            self.assertEqual(result.policy.name, "test-policy")
+            self.assertIn("file:", result.source)
+            self.assertIsNone(result.error)
 
     def test_invalid_yaml(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yml", delete=False
-        ) as f:
-            f.write("enforcement: invalid-value\n")
-            f.flush()
-            try:
-                result = _load_from_file(Path(f.name))
-                self.assertFalse(result.found)
-                self.assertIsNotNone(result.error)
-                self.assertIn("Invalid policy file", result.error)
-            finally:
-                os.unlink(f.name)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "bad-policy.yml"
+            p.write_text("enforcement: invalid-value\n", encoding="utf-8")
+            result = _load_from_file(p)
+            self.assertFalse(result.found)
+            self.assertIsNotNone(result.error)
+            self.assertIn("Invalid policy file", result.error)
 
     def test_unreadable_file(self):
         result = _load_from_file(Path("/nonexistent/file.yml"))
@@ -494,19 +484,14 @@ class TestDiscoverPolicy(unittest.TestCase):
     """Integration-level tests for discover_policy."""
 
     def test_override_local_file(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yml", delete=False
-        ) as f:
-            f.write(VALID_POLICY_YAML)
-            f.flush()
-            try:
-                result = discover_policy(
-                    Path("/fake"), policy_override=f.name
-                )
-                self.assertTrue(result.found)
-                self.assertIn("file:", result.source)
-            finally:
-                os.unlink(f.name)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "override-policy.yml"
+            p.write_text(VALID_POLICY_YAML, encoding="utf-8")
+            result = discover_policy(
+                Path("/fake"), policy_override=str(p)
+            )
+            self.assertTrue(result.found)
+            self.assertIn("file:", result.source)
 
     @patch("apm_cli.policy.discovery.requests")
     def test_override_url(self, mock_requests):
