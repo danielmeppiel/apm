@@ -122,6 +122,7 @@ hiddenimports = [
     'pathlib',
     'frontmatter',
     'requests',
+    'certifi',  # CA certificate bundle for SSL verification in frozen binary
     # Rich modules (lazily imported, must be explicitly included)
     'rich',
     'rich.console',
@@ -199,7 +200,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(repo_root / 'build' / 'hooks' / 'runtime_hook_ssl_certs.py')],
     excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
