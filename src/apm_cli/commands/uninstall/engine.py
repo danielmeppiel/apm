@@ -147,7 +147,6 @@ def _remove_packages_from_disk(packages_to_remove, apm_modules_dir, logger):
 
 def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, apm_yml_path, logger):
     """Remove orphaned transitive deps and return (removed_count, actual_orphan_keys)."""
-    import yaml
 
     if not lockfile or not apm_modules_dir.exists():
         return 0, builtins.set()

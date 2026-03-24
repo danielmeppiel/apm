@@ -70,7 +70,6 @@ class CompilationConfig:
         # Try to load from apm.yml
         try:
             from pathlib import Path
-            import yaml
             
             if Path('apm.yml').exists():
                 from ..utils.yaml_io import load_yaml

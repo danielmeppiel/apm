@@ -439,8 +439,6 @@ def _create_minimal_apm_yml(config, plugin=False):
         config: dict with name, version, description, author keys.
         plugin: if True, include a devDependencies section.
     """
-    yaml = _lazy_yaml()
-
     # Create minimal apm.yml structure
     apm_yml_data = {
         "name": config["name"],

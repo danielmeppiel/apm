@@ -76,8 +76,6 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     import tempfile
     from pathlib import Path
 
-    import yaml
-
     apm_yml_path = Path(APM_YML_FILENAME)
 
     # Read current apm.yml

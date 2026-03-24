@@ -43,8 +43,8 @@ jobs:
       run: |
         # Ensure YAML file I/O goes through yaml_io helpers.
         # Catches yaml.dump/safe_dump writing to a file handle outside yaml_io.py.
-        VIOLATIONS=$(grep -rn --include='*.py' \
-          -E 'yaml\.(safe_)?dump\(.+,\s*[a-zA-Z_]+\b' src/apm_cli/ \
+        VIOLATIONS=$(grep -rn --include='*.py' -P \
+          'yaml\.(safe_)?dump\(.+,\s*[a-zA-Z_]\w*\b' src/apm_cli/ \
           | grep -v 'utils/yaml_io.py' \
           | grep -v '# yaml-io-exempt' \
           || true)

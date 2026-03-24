@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Cross-platform YAML encoding: all `apm.yml` read/write operations now use explicit UTF-8 encoding via centralized `yaml_io` helpers, preventing silent mojibake on Windows cp1252 terminals; non-ASCII characters (e.g. accented author names) are preserved as real UTF-8 instead of `\xNN` escape sequences (#387, based on #388 by @alopezsanchez)
+- Cross-platform YAML encoding: all `apm.yml` read/write operations now use explicit UTF-8 encoding via centralized `yaml_io` helpers, preventing silent mojibake on Windows cp1252 terminals; non-ASCII characters (e.g. accented author names) are preserved as real UTF-8 instead of `\xNN` escape sequences (#387, #433) -- based on #388 by @alopezsanchez
 - Virtual package types (files, collections, subdirectories) now respect `ARTIFACTORY_ONLY=1`, matching the primary zip-archive proxy-only behavior (#418)
 - `apm pack --target claude` no longer produces an empty bundle when skills/agents are installed under `.github/` -- cross-target path mapping remaps `skills/` and `agents/` to the pack target prefix (#420)
 
