@@ -497,7 +497,8 @@ def _generate_apm_yml(manifest: Dict[str, Any]) -> str:
     # field.  Default to hybrid so the standard pipeline handles all components.
     apm_package['type'] = 'hybrid'
 
-    return yaml.dump(apm_package, default_flow_style=False, sort_keys=False)
+    from ..utils.yaml_io import yaml_to_str
+    return yaml_to_str(apm_package)
 
 
 def synthesize_plugin_json_from_apm_yml(apm_yml_path: Path) -> dict:
@@ -521,7 +522,8 @@ def synthesize_plugin_json_from_apm_yml(apm_yml_path: Path) -> dict:
         raise FileNotFoundError(f"apm.yml not found: {apm_yml_path}")
 
     try:
-        data = yaml.safe_load(apm_yml_path.read_text(encoding="utf-8"))
+        from ..utils.yaml_io import load_yaml
+        data = load_yaml(apm_yml_path)
     except yaml.YAMLError as exc:
         raise ValueError(f"Invalid YAML in {apm_yml_path}: {exc}") from exc
 

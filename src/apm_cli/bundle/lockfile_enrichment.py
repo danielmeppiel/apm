@@ -146,13 +146,9 @@ def enrich_lockfile_for_pack(
                     break
         pack_meta["mapped_from"] = sorted(used_src_prefixes)
 
-    pack_section = yaml.dump(
-        {"pack": pack_meta},
-        default_flow_style=False,
-        sort_keys=False,
-    )
+    from ..utils.yaml_io import yaml_to_str
 
-    lockfile_yaml = yaml.dump(
-        data, default_flow_style=False, sort_keys=False, allow_unicode=True
-    )
+    pack_section = yaml_to_str({"pack": pack_meta})
+
+    lockfile_yaml = yaml_to_str(data)
     return pack_section + lockfile_yaml

@@ -229,8 +229,8 @@ class ScriptRunner:
         if not config_path.exists():
             return None
 
-        with open(config_path, "r") as f:
-            return yaml.safe_load(f)
+        from ..utils.yaml_io import load_yaml
+        return load_yaml(config_path)
 
     def _auto_compile_prompts(
         self, command: str, params: Dict[str, str]
@@ -808,8 +808,8 @@ class ScriptRunner:
             return
 
         # Load current config
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f) or {}
+        from ..utils.yaml_io import load_yaml, dump_yaml
+        config = load_yaml(config_path) or {}
 
         # Ensure dependencies.apm section exists
         if "dependencies" not in config:
@@ -822,8 +822,7 @@ class ScriptRunner:
             config["dependencies"]["apm"].append(package_ref)
 
             # Write back to file
-            with open(config_path, "w") as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            dump_yaml(config, config_path)
 
             print(f"  [i]  Added {package_ref} to apm.yml dependencies")
 
@@ -838,8 +837,8 @@ class ScriptRunner:
             "description": "Auto-generated for zero-config virtual package execution",
         }
 
-        with open("apm.yml", "w") as f:
-            yaml.dump(minimal_config, f, default_flow_style=False, sort_keys=False)
+        from ..utils.yaml_io import dump_yaml
+        dump_yaml(minimal_config, "apm.yml")
 
         print(f"  [i]  Created minimal apm.yml for zero-config execution")
 

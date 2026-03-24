@@ -59,8 +59,8 @@ def sync_workflow_dependencies(output_file="apm.yml"):
     
     try:
         # Create the file
-        with open(output_file, 'w', encoding='utf-8') as f:
-            yaml.dump(apm_config, f, default_flow_style=False)
+        from ..utils.yaml_io import dump_yaml
+        dump_yaml(apm_config, output_file)
         return True, apm_config['servers']
     except Exception as e:
         print(f"Error writing to {output_file}: {e}")
