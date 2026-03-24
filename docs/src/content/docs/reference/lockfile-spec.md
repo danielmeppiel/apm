@@ -254,8 +254,8 @@ git show v4.2.1:apm.lock.yaml
 git log -1 --format='%an <%ae> %ai' -- apm.lock.yaml
 ```
 
-In CI pipelines, `apm audit` scans for content issues and exits with non-zero
-status on findings. Lockfile consistency checking (`apm audit --ci`) is planned.
+In CI pipelines, `apm audit --ci` verifies lockfile consistency (exit 0 = pass,
+1 = fail). Add `--policy org` for organizational policy enforcement.
 
 ## 10. Example: Complete Lock File
 
