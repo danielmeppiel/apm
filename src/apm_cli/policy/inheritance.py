@@ -1,12 +1,12 @@
 """Policy inheritance: resolve and merge policy chains.
 
-Supports three-level chains: enterprise hub → org → repo.
+Supports three-level chains: enterprise hub -> org -> repo.
 Each level can tighten but never relax the parent.
 
 extends: values:
-- "org"              → same org's .github repo (repo-level override)
-- "<owner>/<repo>"   → cross-org reference (enterprise policy hub)
-- "https://..."      → direct URL
+- "org"              -> same org's .github repo (repo-level override)
+- "<owner>/<repo>"   -> cross-org reference (enterprise policy hub)
+- "https://..."      -> direct URL
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from .schema import (
 
 MAX_CHAIN_DEPTH = 5
 
-# Escalation ladders — index = severity, higher is stricter.
+# Escalation ladders -- index = severity, higher is stricter.
 _ENFORCEMENT_LEVELS = {"off": 0, "warn": 1, "block": 2}
 _RESOLUTION_LEVELS = {"project-wins": 0, "policy-wins": 1, "block": 2}
 _SELF_DEFINED_LEVELS = {"allow": 0, "warn": 1, "deny": 2}
@@ -70,7 +70,7 @@ def merge_policies(parent: ApmPolicy, child: ApmPolicy) -> ApmPolicy:
 
 
 def resolve_policy_chain(policies: List[ApmPolicy]) -> ApmPolicy:
-    """Merge an ordered policy list [root, …, leaf] left-to-right.
+    """Merge an ordered policy list [root, ..., leaf] left-to-right.
 
     Raises ``PolicyInheritanceError`` if the chain exceeds
     ``MAX_CHAIN_DEPTH``.
@@ -126,7 +126,7 @@ def _escalate(levels: Dict[str, int], parent_val: str, child_val: str) -> str:
     for name, rank in levels.items():
         if rank == target:
             return name
-    return parent_val  # pragma: no cover — defensive fallback
+    return parent_val  # pragma: no cover -- defensive fallback
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ from apm_cli.policy.models import CIAuditResult, CheckResult
 from apm_cli.models.apm_package import clear_apm_yml_cache
 
 
-# ── Helpers ────────────────────────────────────────────────────────
+# -- Helpers --------------------------------------------------------
 
 
 def _write_apm_yml(project: Path, *, deps: list[str] | None = None, mcp: list | None = None) -> None:
@@ -59,7 +59,7 @@ def _make_deployed_file(project: Path, rel_path: str, content: str = "clean\n") 
     p.write_text(content, encoding="utf-8")
 
 
-# ── Fixtures ───────────────────────────────────────────────────────
+# -- Fixtures -------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +70,7 @@ def _clear_cache():
     clear_apm_yml_cache()
 
 
-# ── Lockfile exists ────────────────────────────────────────────────
+# -- Lockfile exists ------------------------------------------------
 
 
 class TestLockfileExists:
@@ -108,7 +108,7 @@ class TestLockfileExists:
         assert result.passed
 
 
-# ── Ref consistency ────────────────────────────────────────────────
+# -- Ref consistency ------------------------------------------------
 
 
 class TestRefConsistency:
@@ -175,7 +175,7 @@ class TestRefConsistency:
         assert any("not found" in d for d in result.details)
 
 
-# ── Deployed files present ─────────────────────────────────────────
+# -- Deployed files present -----------------------------------------
 
 
 class TestDeployedFilesPresent:
@@ -218,7 +218,7 @@ class TestDeployedFilesPresent:
         assert ".github/prompts/missing.md" in result.details
 
 
-# ── No orphaned packages ──────────────────────────────────────────
+# -- No orphaned packages ------------------------------------------
 
 
 class TestNoOrphans:
@@ -266,7 +266,7 @@ class TestNoOrphans:
         assert "extra/orphan" in result.details
 
 
-# ── Config consistency ─────────────────────────────────────────────
+# -- Config consistency ---------------------------------------------
 
 
 class TestConfigConsistency:
@@ -338,7 +338,7 @@ class TestConfigConsistency:
         assert any("my-server" in d and "differs" in d for d in result.details)
 
 
-# ── Content integrity ──────────────────────────────────────────────
+# -- Content integrity ----------------------------------------------
 
 
 class TestContentIntegrity:
@@ -386,7 +386,7 @@ class TestContentIntegrity:
         assert any("evil.md" in d for d in result.details)
 
 
-# ── Aggregate runner ──────────────────────────────────────────────
+# -- Aggregate runner ----------------------------------------------
 
 
 class TestRunBaselineChecks:
@@ -485,7 +485,7 @@ class TestRunBaselineChecks:
         assert len(result.failed_checks) >= 2
 
 
-# ── Serialization ─────────────────────────────────────────────────
+# -- Serialization -------------------------------------------------
 
 
 class TestSerialization:

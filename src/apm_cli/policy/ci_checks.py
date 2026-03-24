@@ -1,6 +1,6 @@
 """Baseline CI checks for lockfile consistency.
 
-These checks run without any policy file — they validate that the on-disk
+These checks run without any policy file -- they validate that the on-disk
 state matches what the lockfile declares.  This is the "Terraform plan for
 agent config" gate: if anything is out of sync, the check fails and the CI
 pipeline should block the merge.
@@ -18,7 +18,7 @@ from typing import List
 from .models import CIAuditResult, CheckResult
 
 
-# ── Individual checks ─────────────────────────────────────────────
+# -- Individual checks ---------------------------------------------
 
 
 def _check_lockfile_exists(project_root: Path) -> CheckResult:
@@ -30,7 +30,7 @@ def _check_lockfile_exists(project_root: Path) -> CheckResult:
         return CheckResult(
             name="lockfile-exists",
             passed=True,
-            message="No apm.yml found — nothing to check",
+            message="No apm.yml found -- nothing to check",
         )
 
     from ..models.apm_package import APMPackage
@@ -41,7 +41,7 @@ def _check_lockfile_exists(project_root: Path) -> CheckResult:
         return CheckResult(
             name="lockfile-exists",
             passed=True,
-            message="Could not parse apm.yml — skipping lockfile check",
+            message="Could not parse apm.yml -- skipping lockfile check",
         )
 
     has_deps = manifest.has_apm_dependencies() or bool(manifest.get_mcp_dependencies())
@@ -49,7 +49,7 @@ def _check_lockfile_exists(project_root: Path) -> CheckResult:
         return CheckResult(
             name="lockfile-exists",
             passed=True,
-            message="No dependencies declared — lockfile not required",
+            message="No dependencies declared -- lockfile not required",
         )
 
     lockfile_path = get_lockfile_path(project_root)
@@ -63,7 +63,7 @@ def _check_lockfile_exists(project_root: Path) -> CheckResult:
     return CheckResult(
         name="lockfile-exists",
         passed=False,
-        message="Lockfile missing — run 'apm install' to generate apm.lock.yaml",
+        message="Lockfile missing -- run 'apm install' to generate apm.lock.yaml",
         details=["apm.yml declares dependencies but apm.lock.yaml is absent"],
     )
 
@@ -98,7 +98,7 @@ def _check_ref_consistency(
     return CheckResult(
         name="ref-consistency",
         passed=False,
-        message=f"{len(mismatches)} ref mismatch(es) — run 'apm install' to update lockfile",
+        message=f"{len(mismatches)} ref mismatch(es) -- run 'apm install' to update lockfile",
         details=mismatches,
     )
 
@@ -130,7 +130,7 @@ def _check_deployed_files_present(
         name="deployed-files-present",
         passed=False,
         message=(
-            f"{len(missing)} deployed file(s) missing — "
+            f"{len(missing)} deployed file(s) missing -- "
             "run 'apm install' to restore"
         ),
         details=missing,
@@ -158,7 +158,7 @@ def _check_no_orphans(
         name="no-orphaned-packages",
         passed=False,
         message=(
-            f"{len(orphaned)} orphaned package(s) in lockfile — "
+            f"{len(orphaned)} orphaned package(s) in lockfile -- "
             "run 'apm install' to clean up"
         ),
         details=orphaned,
@@ -177,7 +177,7 @@ def _check_config_consistency(
     current_configs = MCPIntegrator.get_server_configs(mcp_deps)
     stored_configs = lock.mcp_configs or {}
 
-    # No MCP deps at all — nothing to check
+    # No MCP deps at all -- nothing to check
     if not current_configs and not stored_configs:
         return CheckResult(
             name="config-consistency",
@@ -212,7 +212,7 @@ def _check_config_consistency(
         name="config-consistency",
         passed=False,
         message=(
-            f"{len(details)} MCP config inconsistenc(ies) — "
+            f"{len(details)} MCP config inconsistenc(ies) -- "
             "run 'apm install' to reconcile"
         ),
         details=details,
@@ -244,14 +244,14 @@ def _check_content_integrity(
         name="content-integrity",
         passed=False,
         message=(
-            f"{len(critical_files)} file(s) contain critical hidden Unicode — "
+            f"{len(critical_files)} file(s) contain critical hidden Unicode -- "
             "run 'apm audit --strip' to clean"
         ),
         details=critical_files,
     )
 
 
-# ── Aggregate runner ──────────────────────────────────────────────
+# -- Aggregate runner ----------------------------------------------
 
 
 def run_baseline_checks(

@@ -16,7 +16,7 @@ from apm_cli.policy.discovery import PolicyFetchResult
 from apm_cli.policy.schema import ApmPolicy
 
 
-# ── Fixtures ───────────────────────────────────────────────────────
+# -- Fixtures -------------------------------------------------------
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def _write_policy_file(project: Path, **overrides) -> Path:
     return policy_path
 
 
-# ── Tests ──────────────────────────────────────────────────────────
+# -- Tests ----------------------------------------------------------
 
 
 class TestCiWithPolicyFlag:
@@ -101,11 +101,11 @@ class TestCiWithPolicyFlag:
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
-        # Baseline: up to 6 checks, Policy: 16 checks → total > 6
+        # Baseline: up to 6 checks, Policy: 16 checks -> total > 6
         assert data["summary"]["total"] > 6
 
     def test_ci_with_policy_deny_fails(self, runner, tmp_path, monkeypatch):
-        """Policy deny list causing failure → exit 1."""
+        """Policy deny list causing failure -> exit 1."""
         monkeypatch.chdir(tmp_path)
         _setup_clean_project(tmp_path)
 

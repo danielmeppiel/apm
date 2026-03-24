@@ -13,7 +13,7 @@ from typing import List, Optional
 from .models import CIAuditResult, CheckResult
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------
 
 
 def _load_raw_apm_yml(project_root: Path) -> Optional[dict]:
@@ -31,7 +31,7 @@ def _load_raw_apm_yml(project_root: Path) -> Optional[dict]:
         return None
 
 
-# ── Individual policy checks ──────────────────────────────────────
+# -- Individual policy checks --------------------------------------
 
 
 def _check_dependency_allowlist(
@@ -407,7 +407,7 @@ def _check_mcp_self_defined(
             message=f"{len(self_defined)} self-defined MCP server(s) denied by policy",
             details=details,
         )
-    # warn — pass but with details
+    # warn -- pass but with details
     return CheckResult(
         name="mcp-self-defined",
         passed=True,
@@ -690,7 +690,7 @@ def _check_unmanaged_files(
     )
 
 
-# ── Aggregate runner ──────────────────────────────────────────────
+# -- Aggregate runner ----------------------------------------------
 
 
 def run_policy_checks(
@@ -701,7 +701,7 @@ def run_policy_checks(
 ) -> CIAuditResult:
     """Run policy checks against a project.
 
-    These checks are ADDED to baseline checks — caller runs both.
+    These checks are ADDED to baseline checks -- caller runs both.
     When *fail_fast* is ``True`` (default), stops after the first
     failing check.
     Returns :class:`CIAuditResult` with individual check results.
@@ -722,7 +722,7 @@ def run_policy_checks(
     except (ValueError, FileNotFoundError):
         return result
 
-    # Load lockfile (optional — some checks work without it)
+    # Load lockfile (optional -- some checks work without it)
     lockfile_path = get_lockfile_path(project_root)
     lock = LockFile.read(lockfile_path) if lockfile_path.exists() else None
 

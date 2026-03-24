@@ -1,4 +1,4 @@
-"""APM audit command — content integrity scanning for prompt files.
+"""APM audit command -- content integrity scanning for prompt files.
 
 Scans installed APM packages (or arbitrary files) for hidden Unicode
 characters that could embed invisible instructions.  This is the first
@@ -6,9 +6,9 @@ pillar of ``apm audit``; lock-file consistency (``--ci``) and drift
 detection (``--drift``) are planned as future modes.
 
 Exit codes:
-    0 — clean (no findings, or info-only)
-    1 — critical findings detected
-    2 — warnings only (no critical)
+    0 -- clean (no findings, or info-only)
+    1 -- critical findings detected
+    2 -- warnings only (no critical)
 """
 
 import sys
@@ -31,7 +31,7 @@ from ..utils.console import (
 )
 
 
-# ── Helpers ────────────────────────────────────────────────────────
+# -- Helpers --------------------------------------------------------
 
 
 def _scan_single_file(file_path: Path, logger) -> Tuple[Dict[str, List[ScanFinding]], int]:
@@ -161,24 +161,24 @@ def _render_summary(
     if critical > 0:
         logger.error(
             f"{critical} critical finding(s) in "
-            f"{affected} file(s) — hidden characters detected"
+            f"{affected} file(s) -- hidden characters detected"
         )
         logger.progress("  These characters may embed invisible instructions")
         logger.progress("  Review file contents, then run 'apm audit --strip' to remove")
     elif warning > 0:
         logger.warning(
             f"{warning} warning(s) in "
-            f"{affected} file(s) — hidden characters detected"
+            f"{affected} file(s) -- hidden characters detected"
         )
         logger.progress("  Run 'apm audit --strip' to remove hidden characters")
     elif info > 0:
         logger.progress(
             f"{info} info-level finding(s) in "
-            f"{affected} file(s) — unusual characters (use --verbose to see)"
+            f"{affected} file(s) -- unusual characters (use --verbose to see)"
         )
     else:
         logger.success(
-            f"{files_scanned} file(s) scanned — no issues found"
+            f"{files_scanned} file(s) scanned -- no issues found"
         )
 
     if info > 0 and (critical > 0 or warning > 0):
@@ -245,11 +245,11 @@ def _preview_strip(
         affected += 1
 
     if affected == 0:
-        logger.progress("Nothing to clean — no strippable characters found")
+        logger.progress("Nothing to clean -- no strippable characters found")
         return 0
 
     _rich_echo("")
-    logger.progress("Dry run — the following would be removed by --strip:", symbol="search")
+    logger.progress("Dry run -- the following would be removed by --strip:", symbol="search")
     _rich_echo("")
 
     if console:
@@ -384,7 +384,7 @@ def _render_ci_results(ci_result: "CIAuditResult") -> None:
         )
 
 
-# ── Command ────────────────────────────────────────────────────────
+# -- Command --------------------------------------------------------
 
 
 @click.command(help="Scan installed packages for hidden Unicode characters")
@@ -486,7 +486,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
     project_root = Path.cwd()
     logger = CommandLogger("audit", verbose=verbose)
 
-    # ── CI mode: lockfile consistency gate ─────────────────────────
+    # -- CI mode: lockfile consistency gate -------------------------
     if ci:
         if verbose:
             logger.warning(
@@ -579,7 +579,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
 
         sys.exit(0 if ci_result.passed else 1)
 
-    # ── Content scan mode ──────────────────────────────────────────
+    # -- Content scan mode ------------------------------------------
 
     if policy_source:
         logger.warning(
@@ -610,7 +610,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         lockfile_path = get_lockfile_path(project_root)
         if not lockfile_path.exists():
             logger.progress(
-                "No apm.lock.yaml found — nothing to scan. "
+                "No apm.lock.yaml found -- nothing to scan. "
                 "Use --file to scan a specific file."
             )
             sys.exit(0)
@@ -641,7 +641,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
     # -- Strip mode --
     if strip:
         if not findings_by_file:
-            logger.progress("Nothing to clean — no hidden characters found")
+            logger.progress("Nothing to clean -- no hidden characters found")
             sys.exit(0)
         if dry_run:
             _preview_strip(findings_by_file, logger)
@@ -650,7 +650,7 @@ def audit(ctx, package, file_path, strip, verbose, dry_run, output_format, outpu
         if modified > 0:
             logger.success(f"Cleaned {modified} file(s)")
         else:
-            logger.progress("Nothing to clean — no strippable characters found")
+            logger.progress("Nothing to clean -- no strippable characters found")
         sys.exit(0)
 
     # -- Display findings --

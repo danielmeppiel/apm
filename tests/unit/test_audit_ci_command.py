@@ -14,7 +14,7 @@ from apm_cli.commands.audit import audit
 from apm_cli.models.apm_package import clear_apm_yml_cache
 
 
-# ── Fixtures ───────────────────────────────────────────────────────
+# -- Fixtures -------------------------------------------------------
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ def _setup_failing_project(project: Path) -> None:
     (prompts_dir / "test.md").write_text("content\n", encoding="utf-8")
 
 
-# ── Tests ──────────────────────────────────────────────────────────
+# -- Tests ----------------------------------------------------------
 
 
 class TestCIFlagExists:

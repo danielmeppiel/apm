@@ -1,7 +1,7 @@
 """Auto-discover and fetch org-level apm-policy.yml files.
 
 Discovery flow:
-1. Extract org from git remote (github.com/contoso/my-project → "contoso")
+1. Extract org from git remote (github.com/contoso/my-project -> "contoso")
 2. Fetch <org>/.github/apm-policy.yml via GitHub API (Contents API)
 3. Cache locally with configurable TTL
 4. Parse and return ApmPolicy
@@ -61,10 +61,10 @@ def discover_policy(
     """Discover and load the applicable policy for a project.
 
     Resolution order:
-    1. If policy_override is a local file path → load from file
-    2. If policy_override is a URL → fetch from URL
-    3. If policy_override is "org" → auto-discover from org
-    4. If policy_override is None → auto-discover from org
+    1. If policy_override is a local file path -> load from file
+    2. If policy_override is a URL -> fetch from URL
+    3. If policy_override is "org" -> auto-discover from org
+    4. If policy_override is None -> auto-discover from org
     """
     if policy_override:
         path = Path(policy_override)
@@ -125,9 +125,9 @@ def _extract_org_from_git_remote(
     """Extract (org, host) from git remote origin URL.
 
     Handles:
-    - https://github.com/contoso/my-project.git → ("contoso", "github.com")
-    - git@github.com:contoso/my-project.git → ("contoso", "github.com")
-    - https://github.example.com/contoso/my-project.git → ("contoso", "github.example.com")
+    - https://github.com/contoso/my-project.git -> ("contoso", "github.com")
+    - git@github.com:contoso/my-project.git -> ("contoso", "github.com")
+    - https://github.example.com/contoso/my-project.git -> ("contoso", "github.example.com")
     """
     try:
         result = subprocess.run(
@@ -354,7 +354,7 @@ def _get_token_for_host(host: str) -> Optional[str]:
         return None
 
 
-# ── Cache ──────────────────────────────────────────────────────────
+# -- Cache ----------------------------------------------------------
 
 
 def _get_cache_dir(project_root: Path) -> Path:

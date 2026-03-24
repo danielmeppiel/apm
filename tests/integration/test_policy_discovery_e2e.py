@@ -1,7 +1,7 @@
 """End-to-end tests for policy discovery.
 
 These tests verify the full policy discovery pipeline:
-- Git remote parsing → org extraction → API fetch → cache → parse
+- Git remote parsing -> org extraction -> API fetch -> cache -> parse
 
 Gated by: APM_POLICY_E2E_TESTS=1
 
@@ -34,7 +34,7 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    # ── Local file discovery ───────────────────────────────────────
+    # -- Local file discovery ---------------------------------------
 
     def test_discover_from_local_file(self):
         """Policy loaded from a local file path."""
@@ -83,7 +83,7 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
         self.assertFalse(result.found)
         self.assertIsNotNone(result.error)
 
-    # ── Cache behaviour ────────────────────────────────────────────
+    # -- Cache behaviour --------------------------------------------
 
     def test_cache_write_and_read(self):
         """Policy is cached after fetch and served from cache on next call."""
@@ -127,7 +127,7 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
         self.assertTrue(result.found)
         self.assertEqual(result.policy.name, "devexpgbb-test-policy")
 
-    # ── Policy merging / inheritance ───────────────────────────────
+    # -- Policy merging / inheritance -------------------------------
 
     def test_policy_merge_with_repo_override(self):
         """Repo override merges with org policy via inheritance."""
@@ -142,11 +142,11 @@ class TestPolicyDiscoveryE2E(unittest.TestCase):
         # Repo adds to deny list (union)
         self.assertIn("experimental/*", merged.dependencies.deny)
         self.assertIn("test-blocked/*", merged.dependencies.deny)
-        # Allow list is intersected (tighten-only): child has no allows → empty
-        self.assertEqual(merged.dependencies.allow, [])
+        # Allow list: child omits allow (None = transparent), so parent allow list preserved
+        self.assertEqual(merged.dependencies.allow, org_policy.dependencies.allow)
 
     def test_enterprise_to_org_merge(self):
-        """Enterprise hub → org policy merge chain."""
+        """Enterprise hub -> org policy merge chain."""
         from apm_cli.policy.inheritance import resolve_policy_chain
         from apm_cli.policy.parser import load_policy
 
