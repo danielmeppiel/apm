@@ -7,9 +7,9 @@
 # (e.g. /Library/Frameworks/Python.framework/...).  On end-user machines
 # that path rarely exists, causing SSL verification failures.
 #
-# Solution: Point both ``SSL_CERT_FILE`` and ``SSL_CERT_DIR`` at the
-# certifi CA bundle shipped inside the frozen binary.  ``requests``,
-# ``urllib3``, and the stdlib ``ssl`` module all honour these variables.
+# Solution: Point ``SSL_CERT_FILE`` at the certifi CA bundle shipped
+# inside the frozen binary.  ``requests``, ``urllib3``, and the stdlib
+# ``ssl`` module all honour this variable.
 #
 # This hook executes before any application code so the variables are
 # visible to every subsequent import.
