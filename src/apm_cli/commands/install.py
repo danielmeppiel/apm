@@ -82,8 +82,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
     # Read current apm.yml
     try:
-        with open(apm_yml_path, "r") as f:
-            data = yaml.safe_load(f) or {}
+        from ..utils.yaml_io import load_yaml
+        data = load_yaml(apm_yml_path) or {}
     except Exception as e:
         if logger:
             logger.error(f"Failed to read {APM_YML_FILENAME}: {e}")
@@ -200,8 +200,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
     # Write back to apm.yml
     try:
-        with open(apm_yml_path, "w") as f:
-            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+        from ..utils.yaml_io import dump_yaml
+        dump_yaml(data, apm_yml_path)
         if logger:
             logger.success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
     except Exception as e:

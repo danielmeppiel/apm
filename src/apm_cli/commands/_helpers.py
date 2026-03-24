@@ -331,9 +331,8 @@ def _update_gitignore_for_apm_modules(logger=None):
 def _load_apm_config():
     """Load configuration from apm.yml."""
     if Path(APM_YML_FILENAME).exists():
-        with open(APM_YML_FILENAME, "r") as f:
-            yaml = _lazy_yaml()
-            return yaml.safe_load(f)
+        from ..utils.yaml_io import load_yaml
+        return load_yaml(APM_YML_FILENAME)
     return None
 
 
@@ -457,5 +456,5 @@ def _create_minimal_apm_yml(config, plugin=False):
     apm_yml_data["scripts"] = {}
 
     # Write apm.yml
-    with open(APM_YML_FILENAME, "w") as f:
-        yaml.safe_dump(apm_yml_data, f, default_flow_style=False, sort_keys=False)
+    from ..utils.yaml_io import dump_yaml
+    dump_yaml(apm_yml_data, APM_YML_FILENAME)

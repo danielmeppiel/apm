@@ -179,8 +179,8 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
     # Determine remaining deps to avoid removing still-needed packages
     remaining_deps = builtins.set()
     try:
-        with open(apm_yml_path, "r") as f:
-            updated_data = yaml.safe_load(f) or {}
+        from ...utils.yaml_io import load_yaml
+        updated_data = load_yaml(apm_yml_path) or {}
         for dep_str in updated_data.get("dependencies", {}).get("apm", []) or []:
             try:
                 ref = _parse_dependency_entry(dep_str)
