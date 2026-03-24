@@ -139,8 +139,14 @@ class DependencyReference:
             return False
         if s.startswith(('./','../', '/', '~/', '~\\', '.\\', '..\\')):
             return True
-        # Windows absolute paths: drive letter + colon + separator (C:\ or C:/)
-        if len(s) >= 3 and s[0].isalpha() and s[1] == ':' and s[2] in ('\\', '/'):
+        # Windows absolute paths: drive letter + colon + separator (C:\ or C:/).
+        # Only ASCII letters A-Z/a-z are valid drive letters.
+        if (
+            len(s) >= 3
+            and (('A' <= s[0] <= 'Z') or ('a' <= s[0] <= 'z'))
+            and s[1] == ':'
+            and s[2] in ('\\', '/')
+        ):
             return True
         return False
 
