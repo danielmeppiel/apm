@@ -377,7 +377,6 @@ class TestIntegratePackagePrimitivesTargetGating:
     def _make_mock_integrators(self):
         """Return a dict of MagicMock integrators for _integrate_package_primitives."""
         from unittest.mock import MagicMock
-        from apm_cli.models.results import IntegrationResult
 
         def _empty_result(*args, **kwargs):
             r = MagicMock()
