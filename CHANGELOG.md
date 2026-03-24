@@ -8,34 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Systematic Windows path compatibility hardening: added `portable_relpath()` utility, migrated ~23 `relative_to()` call sites to use `.resolve()` on both sides with `.as_posix()` output, and added CI lint guard to block raw `str(path.relative_to())` regressions (#419, #422)
-- Cross-platform YAML encoding: all `apm.yml` read/write operations now use explicit UTF-8 encoding via centralized `yaml_io` helpers, preventing silent mojibake on Windows cp1252 terminals; non-ASCII characters (e.g. accented author names) are preserved as real UTF-8 instead of `\xNN` escape sequences (#387, #433) -- based on #388 by @alopezsanchez
-- SSL certificate verification failures in PyInstaller binary on systems without python.org Python installed; bundled `certifi` CA bundle is now auto-configured via runtime hook (#429)
-- Virtual package types (files, collections, subdirectories) now respect `ARTIFACTORY_ONLY=1`, matching the primary zip-archive proxy-only behavior (#418)
-- `apm pack --target claude` no longer produces an empty bundle when skills/agents are installed under `.github/` -- cross-target path mapping remaps `skills/` and `agents/` to the pack target prefix (#420)
+## [0.8.5] - 2026-03-24
 
 ### Added
 
-- `ci-runtime.yml` workflow for nightly + manual runtime inference tests, decoupled from release pipeline (#371)
-- `APM_RUN_INFERENCE_TESTS` env var to gate live inference (`apm run`) in test scripts (#371)
-- PR traceability `::notice` annotation in `ci-integration.yml` smoke-test job (#371)
+- `apm audit --ci` org-level policy engine -- experimental Phase 1 for enterprise governance over agents in the SDLC; GitHub / GitHub Enterprise only (#365)
+- `-v` shorthand for `--verbose`, `show_default` on boolean options, `deps clean --dry-run`/`--yes` flags (#303)
+- `--verbose` on `apm install` now shows auth source diagnostics for virtual package validation failures (#414)
+- Nightly runtime inference tests decoupled from release pipeline via `ci-runtime.yml` (#407)
 
 ### Changed
 
-- Merged `test` + `build` into single `build-and-test` job across `ci.yml` and `build-release.yml` — eliminates ~1.5m runner re-provisioning per platform (#371)
-- macOS consolidated jobs are now root nodes (no `needs: [test]`) — run own unit tests for full independence (#371)
-- Removed `setup-node@v4` from unit test and build jobs that don't need Node.js (#371)
-- Enabled native `setup-uv` caching (`enable-cache: true`), removed manual `actions/cache@v3` blocks (#371)
-- Decoupled live inference tests (`apm run`) from release pipeline — reduces 14.9% false-negative rate and `GH_MODELS_PAT` secret exposure (#371)
-- `ci-integration.yml` report-status now detects CI circular dependency (upstream failure) and reports `pending` instead of blocking (#371)
-- `gh-aw-compat` is now informational (`continue-on-error: true`) — non-deterministic external dependencies should not block releases (#371)
-- Copilot encoding instructions: `encoding.instructions.md` (`applyTo: "**"`) bans non-ASCII characters in source and CLI output; updated `copilot-instructions.md` and `cli.instructions.md` to use ASCII bracket notation (`[+]`/`[!]`/`[x]`/`[i]`/`[*]`/`[>]`) instead of emoji STATUS_SYMBOLS (#282)
+- CI pipeline optimization: merged test+build jobs, macOS as root nodes, native `setup-uv` caching, removed unnecessary `setup-node` steps (#407)
+- Encoding instructions enforce ASCII-only source and CLI output with bracket status symbols (#282)
 
 ### Fixed
 
-- Resolved Windows 8.3 short-name path mismatch: call `.resolve()` on both sides of `relative_to()` in `_generate_placement_summary` and `_generate_distributed_summary` so paths display correctly on Windows CI runners (#411)
+- Windows path hardening: `portable_relpath()` utility, ~23 `relative_to()` call-site migrations, CI lint guard (#411, #422)
+- Centralized YAML I/O with UTF-8 encoding via `yaml_io` helpers, preventing Windows cp1252 mojibake (#433) -- based on #388 by @alopezsanchez
+- SSL certificate verification in PyInstaller binary via `certifi` runtime hook (#429)
+- `apm pack --target claude` cross-target path mapping for skills/agents installed under `.github/` (#426)
+- `ARTIFACTORY_ONLY` enforcement for virtual package types (files, collections, subdirectories) (#418)
+- Local path install: descriptive failure messages and Windows drive-letter path recognition (#431, #435)
+- Windows test fixes in config command and agents compiler (#410)
+- Removed stale WIP folder from tracking, strengthened `.gitignore` (#420)
 
 ## [0.8.4] - 2026-03-22
 
