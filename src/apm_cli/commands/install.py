@@ -273,20 +273,33 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
         if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
             from apm_cli.utils.github_host import is_github_hostname, is_azure_devops_hostname
 
+            # Determine host type before building the URL so we know whether to
+            # embed a token.  Generic (non-GitHub, non-ADO) hosts are excluded
+            # from APM-managed auth; they rely on git credential helpers via the
+            # relaxed validate_env below.
+            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
+
+            # For GHES / ADO: resolve per-dependency auth up front so the URL
+            # carries an embedded token and avoids triggering OS credential
+            # helper popups during git ls-remote validation.
+            _url_token = None
+            if not is_generic:
+                _dep_ctx = auth_resolver.resolve_for_dep(dep_ref)
+                _url_token = _dep_ctx.token
+
             ado_downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
             # Set the host
             if dep_ref.host:
                 ado_downloader.github_host = dep_ref.host
 
-            # Build authenticated URL using downloader's auth
+            # Build authenticated URL using the resolved per-dep token.
             package_url = ado_downloader._build_repo_url(
-                dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref
+                dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref, token=_url_token
             )
 
             # For generic hosts (not GitHub, not ADO), relax the env so native
             # credential helpers (SSH keys, macOS Keychain, etc.) can work.
             # This mirrors _clone_with_fallback() which does the same relaxation.
-            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
             if is_generic:
                 validate_env = {k: v for k, v in ado_downloader.git_env.items()
                                 if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
