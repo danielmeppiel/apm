@@ -298,8 +298,7 @@ class TestGlobalManifestPlacement:
         user_lockfile = fake_home / ".apm" / "apm.lock.yaml"
         if user_lockfile.exists():
             # Sanity: should be parseable YAML
-            import yaml as _yaml
-            data = _yaml.safe_load(user_lockfile.read_text())
+            data = yaml.safe_load(user_lockfile.read_text())
             assert isinstance(data, dict)
 
 
@@ -325,7 +324,7 @@ class TestCrossPlatformPaths:
 
         with patch.object(Path, "home", return_value=fake_home):
             for fn in [get_apm_dir, get_deploy_root, get_lockfile_dir,
-                        get_manifest_path, get_modules_dir]:
+                       get_manifest_path, get_modules_dir]:
                 result = fn(InstallScope.USER)
                 assert result.is_absolute(), (
                     f"{fn.__name__}(USER) returned non-absolute path: {result}"
