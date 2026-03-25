@@ -207,7 +207,6 @@ class GitHubPackageDownloader:
         # this eagerly (host-only key) and later resolve per-dependency (host+org),
         # users can see duplicate auth prompts. Keep constructor token state env-only
         # and resolve lazily per dependency during clone/validate flows.
-        self._default_github_ctx = None
         self.github_token = self.token_manager.get_token_for_purpose('modules', env)
         self.has_github_token = self.github_token is not None
         self._github_token_from_credential_fill = False
