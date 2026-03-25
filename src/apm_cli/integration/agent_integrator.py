@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
+from apm_cli.utils.paths import portable_relpath
 
 
 class AgentIntegrator(BaseIntegrator):
@@ -161,7 +162,7 @@ class AgentIntegrator(BaseIntegrator):
         for source_file in agent_files:
             target_filename = self.get_target_filename(source_file, package_info.package.name)
             target_path = agents_dir / target_filename
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
             
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
@@ -176,7 +177,7 @@ class AgentIntegrator(BaseIntegrator):
             if claude_agents_dir:
                 claude_filename = self.get_target_filename_claude(source_file, package_info.package.name)
                 claude_target = claude_agents_dir / claude_filename
-                claude_rel = str(claude_target.relative_to(project_root))
+                claude_rel = portable_relpath(claude_target, project_root)
                 if not self.check_collision(claude_target, claude_rel, managed_files, force, diagnostics=diagnostics):
                     self.copy_agent(source_file, claude_target)
                     target_paths.append(claude_target)
@@ -185,7 +186,7 @@ class AgentIntegrator(BaseIntegrator):
             if cursor_agents_dir:
                 cursor_filename = self.get_target_filename_cursor(source_file, package_info.package.name)
                 cursor_target = cursor_agents_dir / cursor_filename
-                cursor_rel = str(cursor_target.relative_to(project_root))
+                cursor_rel = portable_relpath(cursor_target, project_root)
                 if not self.check_collision(cursor_target, cursor_rel, managed_files, force, diagnostics=diagnostics):
                     self.copy_agent(source_file, cursor_target)
                     target_paths.append(cursor_target)
@@ -263,7 +264,7 @@ class AgentIntegrator(BaseIntegrator):
         for source_file in agent_files:
             target_filename = self.get_target_filename_claude(source_file, package_info.package.name)
             target_path = agents_dir / target_filename
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
             
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
@@ -382,7 +383,7 @@ class AgentIntegrator(BaseIntegrator):
         for source_file in agent_files:
             target_filename = self.get_target_filename_cursor(source_file, package_info.package.name)
             target_path = agents_dir / target_filename
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
             
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1
@@ -452,7 +453,7 @@ class AgentIntegrator(BaseIntegrator):
                 source_file, package_info.package.name
             )
             target_path = agents_dir / target_filename
-            rel_path = str(target_path.relative_to(project_root))
+            rel_path = portable_relpath(target_path, project_root)
 
             if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
                 files_skipped += 1

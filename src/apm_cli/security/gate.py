@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
 from .content_scanner import ContentScanner, ScanFinding
+from ..utils.paths import portable_relpath
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +103,7 @@ class SecurityGate:
                 except OSError:
                     continue
                 if file_findings:
-                    rel = str(fpath.relative_to(root))
+                    rel = portable_relpath(fpath, root)
                     findings_by_file[rel] = file_findings
 
         return SecurityGate._build_verdict(

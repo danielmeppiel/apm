@@ -21,6 +21,7 @@ from ..output.models import (
     CompilationResults, ProjectAnalysis, OptimizationDecision, OptimizationStats,
     PlacementStrategy, PlacementSummary
 )
+from ..utils.paths import portable_relpath
 
 # CRITICAL: Shadow Click commands to prevent namespace collision
 # When this module is imported during 'apm compile', Click's active context
@@ -349,7 +350,7 @@ class ContextOptimizer:
             instruction_patterns_detected=len(self._optimization_decisions),
             max_depth=max((a.depth for a in self._directory_cache.values()), default=0),
             constitution_detected=constitution_detected,
-            constitution_path=str(constitution_path.relative_to(self.base_dir)) if constitution_detected else None
+            constitution_path=portable_relpath(constitution_path, self.base_dir) if constitution_detected else None
         )
         
         # Create placement summaries
@@ -421,7 +422,7 @@ class ContextOptimizer:
             
             # Calculate depth for analysis
             try:
-                relative_path = current_path.relative_to(self.base_dir)
+                relative_path = current_path.resolve().relative_to(self.base_dir.resolve())
                 depth = len(relative_path.parts)
             except ValueError:
                 depth = 0
@@ -512,7 +513,7 @@ class ContextOptimizer:
         except (OSError, FileNotFoundError):
             resolved = path.absolute()
         try:
-            rel_path = resolved.relative_to(self.base_dir)
+            rel_path = resolved.relative_to(self.base_dir.resolve())
         except ValueError:
             # Path is not relative to base_dir, don't exclude
             return False
@@ -655,8 +656,8 @@ class ContextOptimizer:
             if intended_dir:
                 # Place in the intended directory (e.g., docs/ for docs/**/*.md)
                 placement = intended_dir
-                reasoning = f"No matching files found, placed in intended directory '{intended_dir.relative_to(self.base_dir)}'"
-                self._warnings.append(f"Pattern '{pattern}' matches no files - placing in intended directory '{intended_dir.relative_to(self.base_dir)}'")
+                reasoning = f"No matching files found, placed in intended directory '{portable_relpath(intended_dir, self.base_dir)}'"
+                self._warnings.append(f"Pattern '{pattern}' matches no files - placing in intended directory '{portable_relpath(intended_dir, self.base_dir)}'")
             else:
                 # Fallback to root for global patterns
                 placement = self.base_dir
@@ -796,7 +797,7 @@ class ContextOptimizer:
                 try:
                     # Resolve both paths to handle symlinks and path inconsistencies
                     resolved_file = file_path.resolve()
-                    rel_path = resolved_file.relative_to(self.base_dir)
+                    rel_path = resolved_file.relative_to(self.base_dir.resolve())
                     
                     # Use cached glob results instead of repeated glob calls
                     matches = self._cached_glob(expanded_pattern)
@@ -810,10 +811,8 @@ class ContextOptimizer:
             else:
                 # For non-recursive patterns, use fnmatch as before
                 try:
-                    # Resolve both paths to handle symlinks and path inconsistencies
-                    resolved_file = file_path.resolve()
-                    rel_path = resolved_file.relative_to(self.base_dir)
-                    if fnmatch.fnmatch(str(rel_path), expanded_pattern):
+                    rel_str = portable_relpath(file_path, self.base_dir)
+                    if fnmatch.fnmatch(rel_str, expanded_pattern):
                         return True
                 except ValueError:
                     pass
@@ -1112,7 +1111,7 @@ class ContextOptimizer:
             return None
             
         # Convert to relative paths for easier analysis
-        relative_dirs = [d.relative_to(self.base_dir) for d in matching_directories]
+        relative_dirs = [d.resolve().relative_to(self.base_dir.resolve()) for d in matching_directories]
         
         # Find the lowest common ancestor that covers all directories
         if len(relative_dirs) == 1:
@@ -1166,7 +1165,7 @@ class ContextOptimizer:
         """
         try:
             # Check if target is the same as placement or is a subdirectory of placement
-            target_dir.relative_to(placement_dir)
+            target_dir.resolve().relative_to(placement_dir.resolve())
             return True
         except ValueError:
             # target_dir is not under placement_dir
@@ -1286,8 +1285,8 @@ class ContextOptimizer:
             bool: True if child is subdirectory of parent.
         """
         try:
-            child.relative_to(parent)
-            return child != parent
+            child.resolve().relative_to(parent.resolve())
+            return child.resolve() != parent.resolve()
         except ValueError:
             return False
     

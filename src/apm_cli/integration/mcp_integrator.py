@@ -891,12 +891,10 @@ class MCPIntegrator:
             if apm_config is None:
                 # Lazy load  -- only when the caller doesn't provide it
                 try:
-                    import yaml
-
                     apm_yml = Path("apm.yml")
                     if apm_yml.exists():
-                        with open(apm_yml, "r", encoding="utf-8") as f:
-                            apm_config = yaml.safe_load(f)
+                        from apm_cli.utils.yaml_io import load_yaml
+                        apm_config = load_yaml(apm_yml)
                 except Exception:
                     apm_config = None
 

@@ -83,14 +83,12 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     import tempfile
     from pathlib import Path
 
-    import yaml
-
     apm_yml_path = Path(APM_YML_FILENAME)
 
     # Read current apm.yml
     try:
-        with open(apm_yml_path, "r") as f:
-            data = yaml.safe_load(f) or {}
+        from ..utils.yaml_io import load_yaml
+        data = load_yaml(apm_yml_path) or {}
     except Exception as e:
         if logger:
             logger.error(f"Failed to read {APM_YML_FILENAME}: {e}")
@@ -164,9 +162,11 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
         else:
-            reason = "not accessible or doesn't exist"
-            if not verbose:
-                reason += " -- run with --verbose for auth details"
+            reason = _local_path_failure_reason(dep_ref)
+            if not reason:
+                reason = "not accessible or doesn't exist"
+                if not verbose:
+                    reason += " -- run with --verbose for auth details"
             invalid_outcomes.append((package, reason))
             if logger:
                 logger.validation_fail(package, reason)
@@ -207,8 +207,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
     # Write back to apm.yml
     try:
-        with open(apm_yml_path, "w") as f:
-            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+        from ..utils.yaml_io import dump_yaml
+        dump_yaml(data, apm_yml_path)
         if logger:
             logger.success(f"Updated {APM_YML_FILENAME} with {len(validated_packages)} new package(s)")
     except Exception as e:
@@ -219,6 +219,50 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         sys.exit(1)
 
     return validated_packages, outcome
+
+
+def _local_path_failure_reason(dep_ref):
+    """Return a specific failure reason for local path deps, or None for remote."""
+    if not (dep_ref.is_local and dep_ref.local_path):
+        return None
+    local = Path(dep_ref.local_path).expanduser()
+    if not local.is_absolute():
+        local = Path.cwd() / local
+    local = local.resolve()
+    if not local.exists():
+        return "path does not exist"
+    if not local.is_dir():
+        return "path is not a directory"
+    # Directory exists but has no package markers
+    return "no apm.yml, SKILL.md, or plugin.json found"
+
+
+def _local_path_no_markers_hint(local_dir, verbose_log=None):
+    """Scan two levels for sub-packages and print a hint if any are found."""
+    from apm_cli.utils.helpers import find_plugin_json
+
+    markers = ("apm.yml", "SKILL.md")
+    found = []
+    for child in sorted(local_dir.iterdir()):
+        if not child.is_dir():
+            continue
+        if any((child / m).exists() for m in markers) or find_plugin_json(child) is not None:
+            found.append(child)
+        # Also check one more level (e.g. skills/<name>/)
+        for grandchild in sorted(child.iterdir()) if child.is_dir() else []:
+            if not grandchild.is_dir():
+                continue
+            if any((grandchild / m).exists() for m in markers) or find_plugin_json(grandchild) is not None:
+                found.append(grandchild)
+
+    if not found:
+        return
+
+    _rich_info("  [i] Found installable package(s) inside this directory:")
+    for p in found[:5]:
+        _rich_echo(f"      apm install {p}", color="dim")
+    if len(found) > 5:
+        _rich_echo(f"      ... and {len(found) - 5} more", color="dim")
 
 
 def _validate_package_exists(package, verbose=False, auth_resolver=None):
@@ -252,7 +296,11 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
             if (local / "apm.yml").exists() or (local / "SKILL.md").exists():
                 return True
             from apm_cli.utils.helpers import find_plugin_json
-            return find_plugin_json(local) is not None
+            if find_plugin_json(local) is not None:
+                return True
+            # Directory exists but lacks package markers -- surface a hint
+            _local_path_no_markers_hint(local, verbose_log)
+            return False
 
         # For virtual packages, use the downloader's validation method
         if dep_ref.is_virtual:
