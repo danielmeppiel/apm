@@ -56,7 +56,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -68,6 +68,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         dry_run: If True, only show what would be added.
         dev: If True, write to devDependencies instead of dependencies.
         logger: InstallLogger for structured output.
+        manifest_path: Explicit path to apm.yml (defaults to cwd/apm.yml).
 
     Returns:
         Tuple of (validated_packages list, _ValidationOutcome).
@@ -76,7 +77,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     import tempfile
     from pathlib import Path
 
-    apm_yml_path = Path(APM_YML_FILENAME)
+    apm_yml_path = manifest_path or Path(APM_YML_FILENAME)
 
     # Read current apm.yml
     try:
@@ -513,8 +514,14 @@ def _validate_package_exists(package, verbose=False):
     default=False,
     help="Install as development dependency (devDependencies)",
 )
+@click.option(
+    "--global", "-g", "global_",
+    is_flag=True,
+    default=False,
+    help="Install to user scope (~/.apm/) instead of the current project",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, global_):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -533,26 +540,41 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm install --only=mcp                  # Install only MCP dependencies
         apm install --update                    # Update dependencies to latest Git refs
         apm install --dry-run                   # Show what would be installed
+        apm install -g org/pkg1                 # Install to user scope (~/.apm/)
     """
     try:
+        # Resolve scope
+        from ..core.scope import InstallScope, get_deploy_root, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs
+        scope = InstallScope.USER if global_ else InstallScope.PROJECT
+
+        if scope is InstallScope.USER:
+            ensure_user_dirs()
+            _rich_info("[i] Installing to user scope (~/.apm/)")
+
+        # Scope-aware paths
+        manifest_path = get_manifest_path(scope)
+        apm_dir = get_apm_dir(scope)
+        # Display name for messages (short for project scope, full for user scope)
+        manifest_display = str(manifest_path) if scope is InstallScope.USER else APM_YML_FILENAME
+
         # Create structured logger for install output
         is_partial = bool(packages)
         logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
 
         # Check if apm.yml exists
-        apm_yml_exists = Path(APM_YML_FILENAME).exists()
+        apm_yml_exists = manifest_path.exists()
 
         # Auto-bootstrap: create minimal apm.yml when packages specified but no apm.yml
         if not apm_yml_exists and packages:
             # Get current directory name as project name
-            project_name = Path.cwd().name
+            project_name = Path.cwd().name if scope is InstallScope.PROJECT else "user"
             config = _get_default_config(project_name)
-            _create_minimal_apm_yml(config)
-            logger.success(f"Created {APM_YML_FILENAME}")
+            _create_minimal_apm_yml(config, target_path=manifest_path)
+            logger.success(f"Created {manifest_display}")
 
         # Error when NO apm.yml AND NO packages
         if not apm_yml_exists and not packages:
-            logger.error(f"No {APM_YML_FILENAME} found")
+            logger.error(f"No {manifest_display} found")
             logger.progress("Run 'apm init' to create one, or:")
             logger.progress("  apm install <org/repo> to auto-create + install")
             sys.exit(1)
@@ -561,6 +583,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         if packages:
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
                 packages, dry_run, dev=dev, logger=logger,
+                manifest_path=manifest_path,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -575,9 +598,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Parse apm.yml to get both APM and MCP dependencies
         try:
-            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
+            apm_package = APMPackage.from_apm_yml(manifest_path)
         except Exception as e:
-            logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to parse {manifest_display}: {e}")
             sys.exit(1)
 
         logger.verbose_detail(
@@ -632,7 +655,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         agent_count = 0
 
         # Migrate legacy apm.lock → apm.lock.yaml if needed (one-time, transparent)
-        migrate_lockfile_if_needed(Path.cwd())
+        migrate_lockfile_if_needed(apm_dir)
 
         # Capture old MCP servers and configs from lockfile BEFORE
         # _install_apm_dependencies regenerates it (which drops the fields).
@@ -640,7 +663,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # field after the lockfile is regenerated by the APM install step.
         old_mcp_servers: builtins.set = builtins.set()
         old_mcp_configs: builtins.dict = {}
-        _lock_path = get_lockfile_path(Path.cwd())
+        _lock_path = get_lockfile_path(apm_dir)
         _existing_lock = LockFile.read(_lock_path)
         if _existing_lock:
             old_mcp_servers = builtins.set(_existing_lock.mcp_servers)
@@ -661,6 +684,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    scope=scope,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -681,9 +705,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             clear_apm_yml_cache()
 
         # Collect transitive MCP dependencies from resolved APM packages
-        apm_modules_path = Path.cwd() / APM_MODULES_DIR
+        apm_modules_path = get_modules_dir(scope)
         if should_install_mcp and apm_modules_path.exists():
-            lock_path = get_lockfile_path(Path.cwd())
+            lock_path = get_lockfile_path(apm_dir)
             transitive_mcp = MCPIntegrator.collect_transitive(
                 apm_modules_path, lock_path, trust_transitive_mcp,
                 diagnostics=apm_diagnostics,
@@ -1071,6 +1095,7 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    scope=None,
 ):
     """Install APM package dependencies.
 
@@ -1082,9 +1107,14 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        scope: InstallScope controlling project vs user deployment
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
+
+    from apm_cli.core.scope import InstallScope, get_deploy_root, get_apm_dir, get_modules_dir
+    if scope is None:
+        scope = InstallScope.PROJECT
 
     apm_deps = apm_package.get_apm_dependencies()
     dev_apm_deps = apm_package.get_dev_apm_dependencies()
@@ -1092,11 +1122,12 @@ def _install_apm_dependencies(
     if not all_apm_deps:
         return InstallResult()
 
-    project_root = Path.cwd()
+    project_root = get_deploy_root(scope)
+    apm_dir = get_apm_dir(scope)
 
     # T5: Check for existing lockfile - use locked versions for reproducible installs
     from apm_cli.deps.lockfile import LockFile, get_lockfile_path
-    lockfile_path = get_lockfile_path(project_root)
+    lockfile_path = get_lockfile_path(apm_dir)
     existing_lockfile = None
     lockfile_count = 0
     if lockfile_path.exists() and not update_refs:
@@ -1111,8 +1142,8 @@ def _install_apm_dependencies(
                         _ref = locked_dep.resolved_ref if hasattr(locked_dep, 'resolved_ref') and locked_dep.resolved_ref else ""
                         logger.lockfile_entry(locked_dep.get_unique_key(), ref=_ref, sha=_sha)
 
-    apm_modules_dir = project_root / APM_MODULES_DIR
-    apm_modules_dir.mkdir(exist_ok=True)
+    apm_modules_dir = get_modules_dir(scope)
+    apm_modules_dir.mkdir(parents=True, exist_ok=True)
 
     # Create downloader early so it can be used for transitive dependency resolution
     downloader = GitHubPackageDownloader()
@@ -1364,7 +1395,7 @@ def _install_apm_dependencies(
 
         # Build managed_files from existing lockfile for collision detection
         managed_files = builtins.set()
-        existing_lockfile = LockFile.read(get_lockfile_path(project_root)) if project_root else None
+        existing_lockfile = LockFile.read(get_lockfile_path(apm_dir)) if apm_dir else None
         if existing_lockfile:
             for dep in existing_lockfile.dependencies.values():
                 managed_files.update(dep.deployed_files)
@@ -2097,7 +2128,7 @@ def _install_apm_dependencies(
                             # else: orphan — package was in lockfile but is no longer in
                             # the manifest (full install only). Don't preserve so the
                             # lockfile stays in sync with what apm.yml declares.
-                lockfile_path = get_lockfile_path(project_root)
+                lockfile_path = get_lockfile_path(apm_dir)
 
                 # When installing a subset of packages (apm install <pkg>),
                 # merge new entries into the existing lockfile instead of
