@@ -5,9 +5,8 @@ import os
 import shutil
 import stat
 import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
 import pytest
 
@@ -261,11 +260,11 @@ class TestRobustRmtree:
             # Should not raise
             robust_rmtree(tmp_path / "nonexistent", ignore_errors=True)
 
-    def test_raises_without_ignore_errors(self):
+    def test_raises_without_ignore_errors(self, tmp_path):
         exc = OSError(errno.ENOENT, "not found")
         with patch("shutil.rmtree", side_effect=exc), \
              pytest.raises(OSError):
-            robust_rmtree("/tmp/nonexistent-dir-for-test")
+            robust_rmtree(tmp_path / "nonexistent-dir-for-test")
 
     def test_retries_on_transient_error(self, tmp_path):
         d = tmp_path / "locked_dir"
@@ -289,11 +288,11 @@ class TestRobustRmtree:
 
         assert rmtree_calls == 2
 
-    def test_nonexistent_directory_onerror_handles_silently(self):
+    def test_nonexistent_directory_onerror_handles_silently(self, tmp_path):
         """rmtree with onerror callback handles missing dir silently."""
         # shutil.rmtree with an onerror callback suppresses ENOENT,
         # so robust_rmtree also does not raise for non-existent paths.
-        robust_rmtree(Path("/tmp/definitely-does-not-exist-apm-test"))
+        robust_rmtree(tmp_path / "definitely-does-not-exist-apm-test")
 
 
 # ---------------------------------------------------------------------------
@@ -476,11 +475,11 @@ class TestRmtreeIntegration:
         _rmtree(d)
         assert not d.exists()
 
-    def test_rmtree_silent_on_failure(self):
+    def test_rmtree_silent_on_failure(self, tmp_path):
         """_rmtree should not raise (ignore_errors=True)."""
         from apm_cli.deps.github_downloader import _rmtree
 
         with patch("apm_cli.utils.file_ops.shutil.rmtree",
                     side_effect=PermissionError("denied")):
             # Should not raise
-            _rmtree("/tmp/nonexistent-apm-test-dir")
+            _rmtree(str(tmp_path / "nonexistent-apm-test-dir"))

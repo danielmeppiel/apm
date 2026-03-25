@@ -6,7 +6,7 @@ pass through one of these guards before touching the disk.
 
 Design
 ------
-* ``ensure_path_within`` is the single predicate — resolves both paths and
+* ``ensure_path_within`` is the single predicate -- resolves both paths and
   asserts containment via ``Path.is_relative_to``.
 * ``safe_rmtree`` wraps ``robust_rmtree`` with an ``ensure_path_within``
   check so callers get a drop-in replacement.

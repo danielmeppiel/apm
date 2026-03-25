@@ -186,7 +186,7 @@ def robust_rmtree(
     path:
         Directory to remove.
     ignore_errors:
-        If True, suppress the final error after retries are exhausted
+        If True, suppress any ``OSError`` after retries are exhausted
         (matches the existing ``_rmtree`` behaviour in github_downloader).
     max_retries:
         Maximum retry attempts for transient lock errors.
