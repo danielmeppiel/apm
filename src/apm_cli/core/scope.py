@@ -105,6 +105,11 @@ def ensure_user_dirs() -> Path:
 
 # ---------------------------------------------------------------------------
 # Per-target user-level support information
+#
+# Registry used by downstream tooling (e.g. ``apm config``, diagnostics)
+# to report which targets support user-scope deployment and where files
+# will land.  Not consumed directly by ``install`` / ``uninstall`` today,
+# but keeps target metadata co-located with scope logic.
 # ---------------------------------------------------------------------------
 
 USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {

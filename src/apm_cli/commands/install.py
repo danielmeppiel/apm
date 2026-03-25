@@ -567,7 +567,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # Auto-bootstrap: create minimal apm.yml when packages specified but no apm.yml
         if not apm_yml_exists and packages:
             # Get current directory name as project name
-            project_name = Path.cwd().name if scope is InstallScope.PROJECT else "user"
+            project_name = Path.cwd().name if scope is InstallScope.PROJECT else Path.home().name
             config = _get_default_config(project_name)
             _create_minimal_apm_yml(config, target_path=manifest_path)
             logger.success(f"Created {manifest_display}")

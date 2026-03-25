@@ -19,7 +19,7 @@ apm install microsoft/apm-sample-package
 - Lockfile: `./apm.lock.yaml`
 - Deployed primitives: `./.github/`, `./.claude/`, `./.cursor/`, `./.opencode/`
 
-This is the standard behavior -- every collaborator who clones the repo gets the same setup.
+This is the standard behavior. Every collaborator who clones the repo gets the same setup.
 
 ## User scope (`--global`)
 

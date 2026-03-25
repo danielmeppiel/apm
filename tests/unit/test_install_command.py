@@ -640,7 +640,7 @@ class TestInstallGlobalFlag:
                 os.chdir(self.original_dir)
 
     def test_global_short_flag_g(self):
-        """-g short flag should work the same as --global."""
+        """-g short flag creates user dirs and shows scope info like --global."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             try:
                 os.chdir(tmp_dir)
@@ -648,6 +648,9 @@ class TestInstallGlobalFlag:
                 fake_home.mkdir()
                 with patch.object(Path, "home", return_value=fake_home):
                     result = self.runner.invoke(cli, ["install", "-g"])
+                # Should create ~/.apm/ directory
+                assert (fake_home / ".apm").is_dir()
+                assert (fake_home / ".apm" / "apm_modules").is_dir()
                 assert "user scope" in result.output.lower() or "~/.apm/" in result.output
             finally:
                 os.chdir(self.original_dir)
