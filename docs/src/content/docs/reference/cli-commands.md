@@ -87,6 +87,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
 - `--exclude TEXT` - Exclude specific runtime from installation
 - `--only [apm|mcp]` - Install only specific dependency type
+- `--target [copilot|claude|cursor|opencode|all]` - Force deployment to a specific target (overrides auto-detection)
 - `--update` - Update dependencies to latest Git references  
 - `--force` - Overwrite locally-authored files on collision; bypass security scan blocks
 - `--dry-run` - Show what would be installed without installing
