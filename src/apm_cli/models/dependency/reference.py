@@ -623,6 +623,15 @@ class DependencyReference:
             repo_part = repo_part[:-4]
 
         repo_url = repo_part.strip()
+
+        # Reject path traversal sequences in SSH URLs
+        for segment in repo_url.split('/'):
+            if not segment or segment in ('.', '..'):
+                raise PathTraversalError(
+                    f"Invalid SSH repository path '{repo_url}': "
+                    f"path segments must not be '.' or '..'"
+                )
+
         return host, repo_url, reference, alias
 
     @classmethod
