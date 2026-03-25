@@ -663,7 +663,9 @@ class GitHubPackageDownloader:
                 f"If this package lives on a different server (e.g., github.com), "
                 f"use the full hostname in apm.yml: {suggested}"
             )
-        elif not self.has_github_token:
+        elif not has_token:
+            # No auth was resolved (neither env var nor credential helper).
+            # Guide the user through setting up authentication.
             host = dep_host or default_host()
             org = dep_ref.repo_url.split('/')[0] if dep_ref and dep_ref.repo_url else None
             error_msg += self.auth_resolver.build_error_context(host, "clone", org=org)
