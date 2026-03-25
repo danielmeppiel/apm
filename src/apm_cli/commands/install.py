@@ -2118,9 +2118,16 @@ def _install_apm_dependencies(
                             existing.add_dependency(dep)
                         lockfile = existing
 
-                lockfile.save(lockfile_path)
-                if logger:
-                    logger.verbose_detail(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
+                # Only write when the semantic content has actually changed
+                # (avoids generated_at churn in version control).
+                existing_lockfile = LockFile.read(lockfile_path) if lockfile_path.exists() else None
+                if existing_lockfile and lockfile.is_semantically_equivalent(existing_lockfile):
+                    if logger:
+                        logger.verbose_detail("apm.lock.yaml unchanged -- skipping write")
+                else:
+                    lockfile.save(lockfile_path)
+                    if logger:
+                        logger.verbose_detail(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
                 _lock_msg = f"Could not generate apm.lock.yaml: {e}"
                 diagnostics.error(_lock_msg)

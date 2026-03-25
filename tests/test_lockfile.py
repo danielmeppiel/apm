@@ -217,3 +217,71 @@ class TestMigrateLockfileIfNeeded:
         loaded = LockFile.read(tmp_path / "apm.lock.yaml")
         assert loaded is not None
         assert loaded.has_dependency("owner/repo")
+
+
+class TestLockFileSemanticEquivalence:
+    """Tests for LockFile.is_semantically_equivalent()."""
+
+    def _make_lock(self, **overrides):
+        lock = LockFile(
+            lockfile_version="1",
+            generated_at="2025-01-01T00:00:00+00:00",
+            apm_version="0.8.5",
+        )
+        lock.add_dependency(LockedDependency(
+            repo_url="owner/repo", resolved_commit="abc123", depth=0,
+        ))
+        for k, v in overrides.items():
+            setattr(lock, k, v)
+        return lock
+
+    def test_identical_is_equivalent(self):
+        a = self._make_lock()
+        b = self._make_lock()
+        assert a.is_semantically_equivalent(b)
+
+    def test_different_generated_at_still_equivalent(self):
+        a = self._make_lock(generated_at="2025-01-01T00:00:00+00:00")
+        b = self._make_lock(generated_at="2025-06-15T12:00:00+00:00")
+        assert a.is_semantically_equivalent(b)
+
+    def test_different_apm_version_still_equivalent(self):
+        a = self._make_lock(apm_version="0.8.5")
+        b = self._make_lock(apm_version="0.9.0")
+        assert a.is_semantically_equivalent(b)
+
+    def test_added_dependency_not_equivalent(self):
+        a = self._make_lock()
+        b = self._make_lock()
+        b.add_dependency(LockedDependency(repo_url="other/pkg", depth=1))
+        assert not a.is_semantically_equivalent(b)
+
+    def test_removed_dependency_not_equivalent(self):
+        a = self._make_lock()
+        b = LockFile()
+        assert not a.is_semantically_equivalent(b)
+
+    def test_changed_mcp_servers_not_equivalent(self):
+        a = self._make_lock(mcp_servers=["server-a"])
+        b = self._make_lock(mcp_servers=["server-b"])
+        assert not a.is_semantically_equivalent(b)
+
+    def test_mcp_server_order_irrelevant(self):
+        a = self._make_lock(mcp_servers=["b", "a"])
+        b = self._make_lock(mcp_servers=["a", "b"])
+        assert a.is_semantically_equivalent(b)
+
+    def test_changed_mcp_configs_not_equivalent(self):
+        a = self._make_lock(mcp_configs={"s": {"cmd": "a"}})
+        b = self._make_lock(mcp_configs={"s": {"cmd": "b"}})
+        assert not a.is_semantically_equivalent(b)
+
+    def test_changed_lockfile_version_not_equivalent(self):
+        a = self._make_lock(lockfile_version="1")
+        b = self._make_lock(lockfile_version="2")
+        assert not a.is_semantically_equivalent(b)
+
+    def test_new_lockfile_vs_empty(self):
+        a = self._make_lock()
+        b = LockFile()
+        assert not a.is_semantically_equivalent(b)
