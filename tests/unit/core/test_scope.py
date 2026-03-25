@@ -16,6 +16,8 @@ from apm_cli.core.scope import (
     get_lockfile_dir,
     get_manifest_path,
     get_modules_dir,
+    get_unsupported_targets,
+    warn_unsupported_user_scope,
 )
 
 
@@ -164,9 +166,56 @@ class TestUserScopeTargets:
             assert "supported" in info, f"{name} missing 'supported'"
             assert "user_root" in info, f"{name} missing 'user_root'"
             assert "description" in info, f"{name} missing 'description'"
+            assert "primitives" in info, f"{name} missing 'primitives'"
+            assert "reference" in info, f"{name} missing 'reference'"
 
     def test_user_roots_start_with_tilde(self):
         for name, info in USER_SCOPE_TARGETS.items():
             assert info["user_root"].startswith("~/"), (
                 f"{name} user_root should start with '~/'"
             )
+
+    def test_claude_is_supported(self):
+        assert USER_SCOPE_TARGETS["claude"]["supported"] is True
+
+    def test_copilot_is_not_supported(self):
+        assert USER_SCOPE_TARGETS["copilot"]["supported"] is False
+
+    def test_cursor_is_not_supported(self):
+        assert USER_SCOPE_TARGETS["cursor"]["supported"] is False
+
+    def test_opencode_is_not_supported(self):
+        assert USER_SCOPE_TARGETS["opencode"]["supported"] is False
+
+    def test_claude_has_primitives(self):
+        assert len(USER_SCOPE_TARGETS["claude"]["primitives"]) > 0
+
+    def test_unsupported_targets_have_no_primitives(self):
+        for name, info in USER_SCOPE_TARGETS.items():
+            if not info["supported"]:
+                assert info["primitives"] == [], (
+                    f"{name} is unsupported but lists primitives"
+                )
+
+
+# ---------------------------------------------------------------------------
+# get_unsupported_targets / warn_unsupported_user_scope
+# ---------------------------------------------------------------------------
+
+
+class TestScopeWarnings:
+    """Tests for unsupported-target warnings."""
+
+    def test_get_unsupported_targets(self):
+        unsupported = get_unsupported_targets()
+        assert "copilot" in unsupported
+        assert "cursor" in unsupported
+        assert "opencode" in unsupported
+        assert "claude" not in unsupported
+
+    def test_warn_message_includes_unsupported_names(self):
+        msg = warn_unsupported_user_scope()
+        assert msg  # non-empty
+        assert "copilot" in msg
+        assert "cursor" in msg
+        assert "Claude Code" in msg

@@ -544,12 +544,16 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
     """
     try:
         # Resolve scope
-        from ..core.scope import InstallScope, get_deploy_root, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs
+        from ..core.scope import InstallScope, get_deploy_root, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs, warn_unsupported_user_scope
         scope = InstallScope.USER if global_ else InstallScope.PROJECT
 
         if scope is InstallScope.USER:
             ensure_user_dirs()
             _rich_info("[i] Installing to user scope (~/.apm/)")
+            _scope_warn = warn_unsupported_user_scope()
+            if _scope_warn:
+                from ..utils.console import _rich_warning
+                _rich_warning(_scope_warn)
 
         # Scope-aware paths
         manifest_path = get_manifest_path(scope)

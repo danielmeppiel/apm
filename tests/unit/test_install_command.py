@@ -626,7 +626,7 @@ class TestInstallGlobalFlag:
             os.chdir(str(repo_root))
 
     def test_global_flag_shows_scope_info(self):
-        """--global flag should display user scope info message."""
+        """--global flag should display user scope info message and unsupported target warning."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             try:
                 os.chdir(tmp_dir)
@@ -636,6 +636,8 @@ class TestInstallGlobalFlag:
                 with patch.object(Path, "home", return_value=fake_home):
                     result = self.runner.invoke(cli, ["install", "--global"])
                 assert "user scope" in result.output.lower() or "~/.apm/" in result.output
+                # Should warn about unsupported targets
+                assert "copilot" in result.output.lower()
             finally:
                 os.chdir(self.original_dir)
 
@@ -652,6 +654,8 @@ class TestInstallGlobalFlag:
                 assert (fake_home / ".apm").is_dir()
                 assert (fake_home / ".apm" / "apm_modules").is_dir()
                 assert "user scope" in result.output.lower() or "~/.apm/" in result.output
+                # Should warn about unsupported targets
+                assert "copilot" in result.output.lower()
             finally:
                 os.chdir(self.original_dir)
 

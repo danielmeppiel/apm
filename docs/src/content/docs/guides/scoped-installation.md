@@ -32,16 +32,19 @@ apm install -g microsoft/apm-sample-package
 - Manifest: `~/.apm/apm.yml`
 - Modules: `~/.apm/apm_modules/`
 - Lockfile: `~/.apm/apm.lock.yaml`
-- Deployed primitives: `~/.github/`, `~/.claude/`, `~/.cursor/`, `~/.opencode/`
 
-### Where user-scope primitives land
+### Per-target support
 
-| Target | User-level directory | What tools read from it |
-|--------|---------------------|------------------------|
-| Copilot | `~/.github/` | VS Code user-level instructions |
-| Claude | `~/.claude/` | Claude Code global commands and instructions |
-| Cursor | `~/.cursor/` | Cursor user-level rules and agents |
-| OpenCode | `~/.opencode/` | OpenCode user-level agents and commands |
+Not all AI tools read primitives from user-level directories. APM warns during `--global` installs about targets that lack native support.
+
+| Target | User-level directory | Status | Primitives at user scope | Reference |
+|--------|---------------------|--------|--------------------------|-----------|
+| Claude Code | `~/.claude/` | Supported | commands, agents, skills, hooks | [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
+| Copilot | `~/.github/` | Not supported | None (VS Code reads `.github/` from workspace only; user config is via VS Code settings) | [VS Code custom instructions](https://code.visualstudio.com/docs/copilot/customization/custom-instructions) |
+| Cursor | `~/.cursor/` | Not supported | None (user rules are managed via Cursor Settings UI) | [Cursor rules docs](https://cursor.com/docs/rules) |
+| OpenCode | `~/.opencode/` | Unverified | None confirmed | No official docs available |
+
+When you run `apm install -g`, APM deploys primitives to all detected targets but shows a warning for those that do not natively read from user-level directories.
 
 ### Uninstalling user-scope packages
 
@@ -54,6 +57,6 @@ apm uninstall -g microsoft/apm-sample-package
 | Use case | Scope |
 |----------|-------|
 | Team-shared instructions and prompts | Project (`apm install`) |
-| Personal productivity packages | User (`apm install -g`) |
+| Personal Claude Code commands and agents | User (`apm install -g`) |
 | CI/CD reproducible setup | Project |
-| Cross-project coding standards | User |
+| Cross-project coding standards (Claude Code) | User |
