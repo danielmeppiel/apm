@@ -1440,13 +1440,9 @@ def _install_apm_dependencies(
         _pre_downloaded_keys = builtins.set(_pre_download_results.keys())
 
         # Create progress display for sequential integration
-        _auth_resolver = None
-        if verbose:
-            try:
-                from apm_cli.core.auth import AuthResolver
-                _auth_resolver = AuthResolver()
-            except Exception:
-                pass
+        # Reuse the shared auth_resolver (already created in this invocation) so
+        # verbose auth logging does not trigger a duplicate credential-helper popup.
+        _auth_resolver = auth_resolver
 
         with Progress(
             SpinnerColumn(),
