@@ -629,7 +629,7 @@ class DependencyReference:
             if not segment or segment in ('.', '..'):
                 raise PathTraversalError(
                     f"Invalid SSH repository path '{repo_url}': "
-                    f"path segments must not be '.' or '..'"
+                    f"path segments must not be empty or be '.' or '..'"
                 )
 
         return host, repo_url, reference, alias

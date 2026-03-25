@@ -210,6 +210,14 @@ class TestDependencyParseTraversalRejection:
         with pytest.raises(PathTraversalError):
             DependencyReference.parse("git@github.com:owner/../../etc#main")
 
+    def test_ssh_parse_rejects_double_slash(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner//repo")
+
+    def test_ssh_parse_rejects_trailing_slash(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/repo/")
+
 
 # ---------------------------------------------------------------------------
 # DependencyReference.get_install_path containment
