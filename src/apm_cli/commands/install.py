@@ -35,6 +35,10 @@ set = builtins.set
 list = builtins.list
 dict = builtins.dict
 
+# AuthResolver has no optional deps (stdlib + internal utils only), so it must
+# be imported unconditionally here -- NOT inside the APM_DEPS_AVAILABLE guard.
+# If it were gated, a missing optional dep (e.g. GitPython) would cause a
+# NameError in install() before the graceful APM_DEPS_AVAILABLE check fires.
 from ..core.auth import AuthResolver
 
 # APM Dependencies (conditional import for graceful degradation)
