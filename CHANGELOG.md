@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` now falls back to pip when binary fails in devcontainers with older glibc (#456)
 - Skills now deploy to all active targets (`.opencode/`, `.cursor/`) instead of only `.github/` (#456)
 - `apm install` no longer rewrites `apm.lock.yaml` when dependencies are unchanged, eliminating `generated_at` churn in version control (#456)
+- `.github/` is no longer auto-created when other target dirs (`.claude/`, `.cursor/`, `.opencode/`) already exist; copilot is only the fallback for greenfield projects (#456)
+
+### Added
+
+- `apm install --target` flag to force deployment to a specific target (copilot, claude, cursor, opencode, all) (#456)
 
 ## [0.8.5] - 2026-03-24
 

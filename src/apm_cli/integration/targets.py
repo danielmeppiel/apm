@@ -44,13 +44,11 @@ class TargetProfile:
     """
 
     auto_create: bool = True
-    """Create *root_dir* if it does not exist."""
+    """Create *root_dir* if it does not exist (used during fallback or
+    explicit ``--target`` selection)."""
 
     detect_by_dir: bool = True
-    """If ``True``, only deploy when *root_dir* already exists.
-
-    Copilot sets this to ``False`` (always deploy).
-    """
+    """If ``True``, only deploy when *root_dir* already exists."""
 
     @property
     def prefix(self) -> str:
@@ -91,7 +89,7 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
             ),
         },
         auto_create=True,
-        detect_by_dir=False,
+        detect_by_dir=True,
     ),
     "claude": TargetProfile(
         name="claude",
@@ -163,18 +161,47 @@ def get_integration_prefixes() -> tuple:
     return tuple(t.prefix for t in KNOWN_TARGETS.values())
 
 
-def active_targets(project_root) -> list:
+def active_targets(project_root, explicit_target: "Optional[str]" = None) -> list:
     """Return the list of ``TargetProfile`` instances that should be
-    deployed into *project_root* (based on ``detect_by_dir``).
+    deployed into *project_root*.
+
+    Resolution order:
+
+    1. **Explicit target** (``--target`` flag or ``apm.yml target:``):
+       returns only the matching profile(s).  ``"all"`` returns every
+       known target.
+    2. **Directory detection**: profiles whose ``root_dir`` already
+       exists under *project_root*.
+    3. **Fallback**: when nothing is detected, returns ``[copilot]``
+       so greenfield projects get a default skills root.
 
     Args:
         project_root: The workspace root ``Path``.
+        explicit_target: Canonical target name (``"copilot"``, ``"claude"``,
+            ``"cursor"``, ``"opencode"``, ``"all"``).  ``None`` means
+            auto-detect.
     """
     from pathlib import Path
 
     root = Path(project_root)
-    result = []
-    for profile in KNOWN_TARGETS.values():
-        if not profile.detect_by_dir or (root / profile.root_dir).exists():
-            result.append(profile)
-    return result
+
+    # --- explicit target ---
+    if explicit_target:
+        canonical = explicit_target
+        if canonical in ("copilot", "vscode", "agents"):
+            canonical = "copilot"
+        if canonical == "all":
+            return list(KNOWN_TARGETS.values())
+        profile = KNOWN_TARGETS.get(canonical)
+        return [profile] if profile else []
+
+    # --- auto-detect by directory presence ---
+    detected = [
+        p for p in KNOWN_TARGETS.values()
+        if (root / p.root_dir).exists()
+    ]
+    if detected:
+        return detected
+
+    # --- fallback: copilot is the universal default ---
+    return [KNOWN_TARGETS["copilot"]]
