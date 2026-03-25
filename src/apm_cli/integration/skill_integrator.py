@@ -747,11 +747,7 @@ class SkillIntegrator(BaseIntegrator):
             )
             all_target_paths.extend(sub_deployed)
 
-        sub_skills_count = sum(
-            1 for p in all_target_paths
-            if p.parent.parent.name == "skills" and p.name != skill_name
-        ) // max(len(targets), 1)
-        # Approximate: count unique sub-skills from primary target only
+        # Count unique sub-skills from primary target only
         primary_root = project_root / ".github" / "skills"
         sub_skills_count = sum(
             1 for p in all_target_paths

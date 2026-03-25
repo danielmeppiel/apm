@@ -10,10 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `install.sh` now falls back to pip when binary fails in devcontainers with older glibc (#451)
-- Skills now deploy to all active targets (`.opencode/`, `.cursor/`) instead of only `.github/` (#453, #447)
-- `.github/` no longer force-created when only `.opencode/` or `.cursor/` exists (#453)
-- `apm install` no longer rewrites `apm.lock.yaml` when dependencies are unchanged, eliminating `generated_at` churn in version control (#450)
+- `install.sh` now falls back to pip when binary fails in devcontainers with older glibc (#456)
+- Skills now deploy to all active targets (`.opencode/`, `.cursor/`) instead of only `.github/` (#456)
+- `apm install` no longer rewrites `apm.lock.yaml` when dependencies are unchanged, eliminating `generated_at` churn in version control (#456)
 
 ## [0.8.5] - 2026-03-24
 

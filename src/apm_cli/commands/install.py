@@ -875,11 +875,12 @@ def _integrate_package_primitives(
             diagnostics=diagnostics, managed_files=managed_files, force=force,
         )
         # Build human-readable list of target dirs from deployed paths
-        _skill_targets = sorted({
-            tp.relative_to(project_root).parts[0]
-            for tp in skill_result.target_paths
-            if tp.relative_to(project_root).parts
-        })
+        _skill_target_dirs: set[str] = set()
+        for tp in skill_result.target_paths:
+            rel = tp.relative_to(project_root)
+            if rel.parts:
+                _skill_target_dirs.add(rel.parts[0])
+        _skill_targets = sorted(_skill_target_dirs)
         _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
         if skill_result.skill_created:
             result["skills"] += 1
@@ -1310,7 +1311,7 @@ def _install_apm_dependencies(
         config_target = apm_package.target
 
         # Ensure auto_create targets exist.
-        # Copilot (.github) has auto_create=True — it is always created so
+        # Copilot (.github) has auto_create=True -- it is always created so
         # there is a guaranteed skills root even for greenfield projects.
         from apm_cli.integration.targets import active_targets as _active_targets
 
