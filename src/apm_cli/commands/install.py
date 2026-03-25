@@ -874,12 +874,19 @@ def _integrate_package_primitives(
             package_info, project_root,
             diagnostics=diagnostics, managed_files=managed_files, force=force,
         )
+        # Build human-readable list of target dirs from deployed paths
+        _skill_targets = sorted({
+            tp.relative_to(project_root).parts[0]
+            for tp in skill_result.target_paths
+            if tp.relative_to(project_root).parts
+        })
+        _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
         if skill_result.skill_created:
             result["skills"] += 1
-            _log_integration(f"  └─ Skill integrated -> .github/skills/")
+            _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
         if skill_result.sub_skills_promoted > 0:
             result["sub_skills"] += skill_result.sub_skills_promoted
-            _log_integration(f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated -> .github/skills/")
+            _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
         for tp in skill_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
 
@@ -1302,19 +1309,21 @@ def _install_apm_dependencies(
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
-        # Auto-create .github/ if neither .github/ nor .claude/ exists.
-        # Per skill-strategy Decision 1, .github/skills/ is the standard skills location;
-        # creating .github/ here ensures a consistent skills root and also enables
-        # VSCode/Copilot integration by default (quick path to value), even for
-        # projects that don't yet use .claude/.
-        github_dir = project_root / GITHUB_DIR
-        claude_dir = project_root / CLAUDE_DIR
-        if not github_dir.exists() and not claude_dir.exists():
-            github_dir.mkdir(parents=True, exist_ok=True)
-            if logger:
-                logger.verbose_detail(
-                    "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
-                )
+        # Ensure auto_create targets exist.
+        # Copilot (.github) has auto_create=True — it is always created so
+        # there is a guaranteed skills root even for greenfield projects.
+        from apm_cli.integration.targets import active_targets as _active_targets
+
+        _targets = _active_targets(project_root)
+        for _t in _targets:
+            if _t.auto_create:
+                _target_dir = project_root / _t.root_dir
+                if not _target_dir.exists():
+                    _target_dir.mkdir(parents=True, exist_ok=True)
+                    if logger:
+                        logger.verbose_detail(
+                            f"Created {_t.root_dir}/ ({_t.name} target)"
+                        )
 
         detected_target, detection_reason = detect_target(
             project_root=project_root,
