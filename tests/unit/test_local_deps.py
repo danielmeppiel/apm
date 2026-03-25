@@ -37,6 +37,18 @@ class TestIsLocalPath:
     def test_windows_home(self):
         assert DependencyReference.is_local_path("~\\repos\\my-pkg") is True
 
+    def test_windows_absolute_backslash(self):
+        assert DependencyReference.is_local_path("C:\\Users\\runner\\my-pkg") is True
+
+    def test_windows_absolute_forward_slash(self):
+        assert DependencyReference.is_local_path("D:/repos/my-pkg") is True
+
+    def test_windows_absolute_uppercase(self):
+        assert DependencyReference.is_local_path("Z:\\some\\path") is True
+
+    def test_windows_absolute_lowercase(self):
+        assert DependencyReference.is_local_path("c:\\users\\me\\pkg") is True
+
     def test_remote_shorthand_not_local(self):
         assert DependencyReference.is_local_path("owner/repo") is False
 
