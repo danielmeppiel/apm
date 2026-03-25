@@ -529,16 +529,13 @@ def compile(
                     else:
                         _display_next_steps(output)
 
-        # Common error handling for both compilation modes
-        # Note: Warnings are handled by professional formatters for distributed mode
-        if config.strategy != "distributed" or single_agents:
-            # Only show warnings for single-file mode (backward compatibility)
-            if result.warnings:
-                logger.warning(
-                    f"Compilation completed with {len(result.warnings)} warnings:"
-                )
-                for warning in result.warnings:
-                    logger.warning(f"  {warning}")
+        # Display warnings for all compilation modes
+        if result.warnings:
+            logger.warning(
+                f"Compilation completed with {len(result.warnings)} warning(s):"
+            )
+            for warning in result.warnings:
+                logger.warning(f"  {warning}")
 
         if result.errors:
             logger.error(f"Compilation failed with {len(result.errors)} errors:")
