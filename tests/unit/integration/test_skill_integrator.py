@@ -2997,3 +2997,336 @@ class TestCursorSkillIntegration:
         ).read_text()
         assert "# Version 2" in cursor_content
         assert "# Version 1" not in cursor_content
+
+
+# =============================================================================
+# OpenCode Skill Integration Tests
+# =============================================================================
+
+class TestOpenCodeSkillIntegration:
+    """Tests for OpenCode skill integration (.opencode/skills/).
+
+    When .opencode/ exists in the project root, skills should be deployed to
+    .opencode/skills/ in addition to .github/skills/.
+    The .opencode/ directory is opt-in: if it doesn't exist and
+    integrate_opencode is False, no OpenCode deployment happens.
+    """
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        """Clean up after tests."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        version: str = "1.0.0",
+        commit: str = "abc123",
+        install_path: Path = None,
+        source: str = None,
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        """Helper to create PackageInfo objects for tests."""
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=source or f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit=commit,
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref,
+            package_type=package_type
+        )
+
+    def test_skill_copies_to_opencode_when_dir_exists(self):
+        """Skill copies to .opencode/skills/ when .opencode/ exists."""
+        (self.project_root / ".opencode").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".opencode" / "skills" / "my-skill" / "SKILL.md").exists()
+
+    def test_no_opencode_deploy_without_dir_or_flag(self):
+        """Skill does NOT deploy to .opencode/ when dir missing and flag False."""
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    def test_integrate_opencode_flag_creates_dir(self):
+        """integrate_opencode=True creates .opencode/skills/ even without .opencode/."""
+        assert not (self.project_root / ".opencode").exists()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root, integrate_opencode=True
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".opencode" / "skills" / "my-skill" / "SKILL.md").exists()
+
+    def test_opencode_skill_content_matches_github(self):
+        """Content in .opencode/skills/ matches .github/skills/."""
+        (self.project_root / ".opencode").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "compare-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: compare-skill\n---\n# Content")
+        (skill_source / "references").mkdir()
+        (skill_source / "references" / "guide.md").write_text("# Guide")
+
+        package_info = self._create_package_info(
+            name="compare-skill", install_path=skill_source
+        )
+        self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        github_dir = self.project_root / ".github" / "skills" / "compare-skill"
+        opencode_dir = self.project_root / ".opencode" / "skills" / "compare-skill"
+
+        github_files = set(f.relative_to(github_dir) for f in github_dir.rglob('*') if f.is_file())
+        opencode_files = set(f.relative_to(opencode_dir) for f in opencode_dir.rglob('*') if f.is_file())
+        assert github_files == opencode_files
+
+    def test_opencode_skill_target_paths_tracked(self):
+        """Deployed .opencode/skills/ paths appear in result.target_paths."""
+        (self.project_root / ".opencode").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root
+        )
+
+        opencode_skill_dir = self.project_root / ".opencode" / "skills" / "my-skill"
+        assert opencode_skill_dir in result.target_paths
+
+
+# =============================================================================
+# Target Flag Skill Integration Tests
+# =============================================================================
+
+class TestIntegrateTargetFlags:
+    """Tests for integrate_claude and integrate_opencode flags on skill integration.
+
+    When the install target is 'all' or 'claude'/'opencode', the skill
+    integrator should deploy to the corresponding target directories even
+    if they do not yet exist.
+    """
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        """Clean up after tests."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(
+        self,
+        name: str = "test-pkg",
+        version: str = "1.0.0",
+        commit: str = "abc123",
+        install_path: Path = None,
+        source: str = None,
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL
+    ) -> PackageInfo:
+        """Helper to create PackageInfo objects for tests."""
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=source or f"github.com/test/{name}"
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit=commit,
+            ref_name="main"
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref,
+            package_type=package_type
+        )
+
+    def test_integrate_claude_flag_creates_claude_skills(self):
+        """integrate_claude=True creates .claude/skills/ without pre-existing .claude/ dir."""
+        assert not (self.project_root / ".claude").exists()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root, integrate_claude=True
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md").exists()
+
+    def test_integrate_both_flags(self):
+        """Both flags create .claude/skills/ and .opencode/skills/ without pre-existing dirs."""
+        assert not (self.project_root / ".claude").exists()
+        assert not (self.project_root / ".opencode").exists()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root,
+            integrate_claude=True, integrate_opencode=True,
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".opencode" / "skills" / "my-skill" / "SKILL.md").exists()
+
+    def test_default_flags_preserve_existing_behavior(self):
+        """Without flags, .claude/ and .opencode/ are NOT created."""
+        assert not (self.project_root / ".claude").exists()
+        assert not (self.project_root / ".opencode").exists()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        self.integrator.integrate_package_skill(
+            package_info, self.project_root
+        )
+
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert not (self.project_root / ".claude").exists()
+        assert not (self.project_root / ".opencode").exists()
+
+    def test_integrate_claude_flag_with_existing_dir(self):
+        """integrate_claude=True still works when .claude/ already exists."""
+        (self.project_root / ".claude").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root, integrate_claude=True
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md").exists()
+
+    def test_target_paths_include_all_targets(self):
+        """All deployed target directories appear in result.target_paths."""
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root,
+            integrate_claude=True, integrate_opencode=True,
+        )
+
+        target_strs = [str(p) for p in result.target_paths]
+        assert any(".github/skills/my-skill" in s for s in target_strs)
+        assert any(".claude/skills/my-skill" in s for s in target_strs)
+        assert any(".opencode/skills/my-skill" in s for s in target_strs)
+
+    def test_sub_skills_promoted_with_flags(self):
+        """Sub-skills are promoted to .claude/skills/ and .opencode/skills/ when flags set."""
+        assert not (self.project_root / ".claude").exists()
+        assert not (self.project_root / ".opencode").exists()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# Parent Skill")
+
+        sub_skills_dir = skill_source / ".apm" / "skills" / "child-skill"
+        sub_skills_dir.mkdir(parents=True)
+        (sub_skills_dir / "SKILL.md").write_text("---\nname: child-skill\n---\n# Child")
+
+        package_info = self._create_package_info(
+            name="my-skill", install_path=skill_source
+        )
+        result = self.integrator.integrate_package_skill(
+            package_info, self.project_root,
+            integrate_claude=True, integrate_opencode=True,
+        )
+
+        assert (self.project_root / ".github" / "skills" / "child-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".claude" / "skills" / "child-skill" / "SKILL.md").exists()
+        assert (self.project_root / ".opencode" / "skills" / "child-skill" / "SKILL.md").exists()

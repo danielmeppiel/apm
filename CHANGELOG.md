@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Skills from third-party and transitive dependencies now deploy to `.claude/skills/` and `.opencode/skills/` when the install target includes those platforms (`target: all`, `target: claude`, `target: opencode`)
+
 ## [0.8.5] - 2026-03-24
 
 ### Added

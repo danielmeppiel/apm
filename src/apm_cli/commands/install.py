@@ -873,6 +873,8 @@ def _integrate_package_primitives(
         skill_result = skill_integrator.integrate_package_skill(
             package_info, project_root,
             diagnostics=diagnostics, managed_files=managed_files, force=force,
+            integrate_claude=integrate_claude,
+            integrate_opencode=integrate_opencode,
         )
         if skill_result.skill_created:
             result["skills"] += 1

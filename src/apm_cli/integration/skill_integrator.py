@@ -581,6 +581,7 @@ class SkillIntegrator(BaseIntegrator):
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path, diagnostics=None,
         managed_files=None, force: bool = False, logger=None,
+        integrate_claude: bool = False, integrate_opencode: bool = False,
     ) -> tuple[int, list[Path]]:
         """Promote sub-skills from a package that is NOT itself a skill.
 
@@ -592,6 +593,10 @@ class SkillIntegrator(BaseIntegrator):
         Args:
             package_info: PackageInfo object with package metadata.
             project_root: Root directory of the project.
+            integrate_claude: When True, deploy to .claude/skills/ even if
+                .claude/ does not yet exist.
+            integrate_opencode: When True, deploy to .opencode/skills/ even if
+                .opencode/ does not yet exist.
 
         Returns:
             tuple[int, list[Path]]: (count of promoted sub-skills, list of deployed dirs)
@@ -610,9 +615,9 @@ class SkillIntegrator(BaseIntegrator):
         )
         all_deployed = list(deployed)
 
-        # Also promote into .claude/skills/ when .claude/ exists
+        # Also promote into .claude/skills/ when .claude/ exists or target requests it
         claude_dir = project_root / ".claude"
-        if claude_dir.exists() and claude_dir.is_dir():
+        if integrate_claude or (claude_dir.exists() and claude_dir.is_dir()):
             claude_skills_root = claude_dir / "skills"
             _, claude_deployed = self._promote_sub_skills(
                 sub_skills_dir, claude_skills_root, parent_name, warn=False, project_root=project_root
@@ -628,9 +633,9 @@ class SkillIntegrator(BaseIntegrator):
             )
             all_deployed.extend(cursor_deployed)
 
-        # Also promote into .opencode/skills/ when .opencode/ exists
+        # Also promote into .opencode/skills/ when .opencode/ exists or target requests it
         opencode_dir = project_root / ".opencode"
-        if opencode_dir.exists() and opencode_dir.is_dir():
+        if integrate_opencode or (opencode_dir.exists() and opencode_dir.is_dir()):
             opencode_skills_root = opencode_dir / "skills"
             _, opencode_deployed = self._promote_sub_skills(
                 sub_skills_dir, opencode_skills_root, parent_name, warn=False, project_root=project_root
@@ -643,6 +648,7 @@ class SkillIntegrator(BaseIntegrator):
         self, package_info, project_root: Path, source_skill_md: Path,
         diagnostics=None, managed_files=None, force: bool = False,
         logger=None,
+        integrate_claude: bool = False, integrate_opencode: bool = False,
     ) -> SkillIntegrationResult:
         """Copy a native Skill (with existing SKILL.md) to .github/skills/ and optionally .claude/skills/ and .cursor/skills/.
         
@@ -657,9 +663,11 @@ class SkillIntegrator(BaseIntegrator):
         detection uses apm.lock via directory name matching instead.
         
         T7 Enhancement: Also copies to .claude/skills/ when .claude/ folder exists
-        and to .cursor/skills/ when .cursor/ folder exists.
-        This ensures Claude Code and Cursor users get skills while not polluting
-        projects that don't use those tools.
+        or integrate_claude is True, and to .cursor/skills/ when .cursor/ folder
+        exists, and to .opencode/skills/ when .opencode/ folder exists or
+        integrate_opencode is True.
+        This ensures Claude Code, Cursor, and OpenCode users get skills while not
+        polluting projects that don't use those tools.
         
         Copies:
         - SKILL.md (required)
@@ -672,6 +680,10 @@ class SkillIntegrator(BaseIntegrator):
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
             source_skill_md: Path to the source SKILL.md file
+            integrate_claude: When True, deploy to .claude/skills/ even if
+                .claude/ does not yet exist.
+            integrate_opencode: When True, deploy to .opencode/skills/ even if
+                .opencode/ does not yet exist.
             
         Returns:
             SkillIntegrationResult: Results of the integration operation
@@ -743,7 +755,7 @@ class SkillIntegrator(BaseIntegrator):
         
         # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
         claude_dir = project_root / ".claude"
-        if claude_dir.exists() and claude_dir.is_dir():
+        if integrate_claude or (claude_dir.exists() and claude_dir.is_dir()):
             claude_skill_dir = claude_dir / "skills" / skill_name
             
             if claude_skill_dir.exists():
@@ -777,6 +789,24 @@ class SkillIntegrator(BaseIntegrator):
             _, cursor_sub_deployed = self._promote_sub_skills(sub_skills_dir, cursor_skills_root, skill_name, warn=False, project_root=project_root)
             all_target_paths.extend(cursor_sub_deployed)
         
+        # === Copy to .opencode/skills/ (compatibility) ===
+        opencode_dir = project_root / ".opencode"
+        if integrate_opencode or (opencode_dir.exists() and opencode_dir.is_dir()):
+            opencode_skill_dir = opencode_dir / "skills" / skill_name
+            
+            if opencode_skill_dir.exists():
+                shutil.rmtree(opencode_skill_dir)
+            
+            opencode_skill_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(package_path, opencode_skill_dir,
+                            ignore=shutil.ignore_patterns('.apm'))
+            all_target_paths.append(opencode_skill_dir)
+            
+            # Promote sub-skills for OpenCode too
+            opencode_skills_root = opencode_dir / "skills"
+            _, opencode_sub_deployed = self._promote_sub_skills(sub_skills_dir, opencode_skills_root, skill_name, warn=False, project_root=project_root)
+            all_target_paths.extend(opencode_sub_deployed)
+        
         return SkillIntegrationResult(
             skill_created=skill_created,
             skill_updated=skill_updated,
@@ -788,11 +818,12 @@ class SkillIntegrator(BaseIntegrator):
             target_paths=all_target_paths
         )
 
-    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None, managed_files=None, force: bool = False, logger=None) -> SkillIntegrationResult:
+    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None, managed_files=None, force: bool = False, logger=None, integrate_claude: bool = False, integrate_opencode: bool = False) -> SkillIntegrationResult:
         """Integrate a package's skill into .github/skills/ directory.
         
         Copies native skills (packages with SKILL.md at root) to .github/skills/
-        and optionally .claude/skills/ and .cursor/skills/. Also promotes any sub-skills from .apm/skills/.
+        and optionally .claude/skills/, .cursor/skills/, and .opencode/skills/.
+        Also promotes any sub-skills from .apm/skills/.
         
         Packages without SKILL.md at root are not installed as skills  -- only their
         sub-skills (if any) are promoted.
@@ -800,6 +831,10 @@ class SkillIntegrator(BaseIntegrator):
         Args:
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
+            integrate_claude: When True, deploy to .claude/skills/ even if
+                .claude/ does not yet exist.
+            integrate_opencode: When True, deploy to .opencode/skills/ even if
+                .opencode/ does not yet exist.
             
         Returns:
             SkillIntegrationResult: Results of the integration operation
@@ -811,7 +846,8 @@ class SkillIntegrator(BaseIntegrator):
             # Even non-skill packages may ship sub-skills under .apm/skills/.
             # Promote them so Copilot can discover them independently.
             sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-                package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger
+                package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger,
+                integrate_claude=integrate_claude, integrate_opencode=integrate_opencode,
             )
             return SkillIntegrationResult(
                 skill_created=False,
@@ -844,12 +880,17 @@ class SkillIntegrator(BaseIntegrator):
         # Check if this is a native Skill (already has SKILL.md at root)
         source_skill_md = package_path / "SKILL.md"
         if source_skill_md.exists():
-            return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger)
+            return self._integrate_native_skill(
+                package_info, project_root, source_skill_md,
+                diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger,
+                integrate_claude=integrate_claude, integrate_opencode=integrate_opencode,
+            )
         
         # No SKILL.md at root  -- not a skill package.
         # Still promote any sub-skills shipped under .apm/skills/.
         sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-            package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger
+            package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger,
+            integrate_claude=integrate_claude, integrate_opencode=integrate_opencode,
         )
         return SkillIntegrationResult(
             skill_created=False,
