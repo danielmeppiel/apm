@@ -186,8 +186,12 @@ class AuthResolver:
             if cached is not None:
                 return cached
 
-            # Keep cache fill inside the lock to avoid concurrent duplicate
-            # credential-helper lookups for the same host/org.
+            # Hold lock during entire credential resolution to prevent duplicate
+            # credential-helper popups when parallel downloads resolve the same
+            # (host, org) concurrently.  The first caller fills the cache; all
+            # subsequent callers for the same key become O(1) cache hits.
+            # Bounded by APM_GIT_CREDENTIAL_TIMEOUT (default 60s). No deadlock
+            # risk: single lock, never nested.
             host_info = self.classify_host(host)
             token, source = self._resolve_token(host_info, org)
             token_type = self.detect_token_type(token) if token else "unknown"
