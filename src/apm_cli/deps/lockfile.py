@@ -302,6 +302,26 @@ class LockFile:
         """Save lock file to disk (alias for write)."""
         self.write(path)
 
+    def is_semantically_equivalent(self, other: "LockFile") -> bool:
+        """Return True if *other* has the same deps, MCP servers, and configs.
+
+        Ignores ``generated_at`` and ``apm_version`` so that a no-change
+        install does not dirty the lockfile.
+        """
+        if self.lockfile_version != other.lockfile_version:
+            return False
+        if set(self.dependencies.keys()) != set(other.dependencies.keys()):
+            return False
+        for key, dep in self.dependencies.items():
+            other_dep = other.dependencies[key]
+            if dep.to_dict() != other_dep.to_dict():
+                return False
+        if sorted(self.mcp_servers) != sorted(other.mcp_servers):
+            return False
+        if self.mcp_configs != other.mcp_configs:
+            return False
+        return True
+
     @classmethod
     def installed_paths_for_project(cls, project_root: Path) -> List[str]:
         """Load apm.lock.yaml from project_root and return installed paths.
