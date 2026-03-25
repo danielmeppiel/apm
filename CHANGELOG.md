@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `apm install --global` / `-g` flag for user-scope package installation; deploys primitives to `~/.github/`, `~/.claude/`, etc. and tracks metadata under `~/.apm/`
+- `apm uninstall --global` / `-g` flag for removing user-scope packages
+- `InstallScope` enum and scope resolution module (`core/scope.py`) defining project vs user deployment paths
+
 ## [0.8.5] - 2026-03-24
 
 ### Added
