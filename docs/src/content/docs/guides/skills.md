@@ -42,19 +42,20 @@ When you run `apm install`, APM handles skill integration automatically:
 APM downloads packages to `apm_modules/owner/repo/` (or `apm_modules/owner/repo/skill-name/` for subdirectory packages).
 
 ### Step 2: Skill Integration
-APM copies skills directly to `.github/skills/` (primary), `.claude/skills/`, and `.cursor/skills/` when those directories exist:
+APM copies skills to all active target directories. Copilot (`.github/skills/`) is
+always active; other targets deploy only when their root directory already exists:
 
 | Package Type | Behavior |
 |--------------|----------|
-| **Has existing SKILL.md** | Entire skill folder copied to `.github/skills/{skill-name}/` |
-| **Has sub-skills in `.apm/skills/`** | Each `.apm/skills/*/SKILL.md` also promoted to `.github/skills/{sub-skill-name}/` |
+| **Has existing SKILL.md** | Entire skill folder copied to each active target's `skills/{skill-name}/` |
+| **Has sub-skills in `.apm/skills/`** | Each `.apm/skills/*/SKILL.md` also promoted to `skills/{sub-skill-name}/` in each active target |
 | **No SKILL.md and no primitives** | No skill folder created |
 
 **Target Directories:**
-- **Primary**: `.github/skills/{skill-name}/` — Works with Copilot, Codex, Gemini
-- **Compatibility**: `.claude/skills/{skill-name}/` — Only if `.claude/` folder already exists
-- **Compatibility**: `.cursor/skills/{skill-name}/` — Only if `.cursor/` folder already exists
-- **Compatibility**: `.opencode/skills/{skill-name}/` — Only if `.opencode/` folder already exists
+- **Copilot (always)**: `.github/skills/{skill-name}/` — Created automatically; works with Copilot, Codex, Gemini
+- **Claude (if `.claude/` exists)**: `.claude/skills/{skill-name}/`
+- **Cursor (if `.cursor/` exists)**: `.cursor/skills/{skill-name}/`
+- **OpenCode (if `.opencode/` exists)**: `.opencode/skills/{skill-name}/`
 
 ### Skill Folder Naming
 
@@ -287,15 +288,14 @@ APM automatically detects package types:
 
 ## Target Detection
 
-APM decides where to output skills based on project structure:
+APM decides where to output skills based on which target directories are present:
 
 | Condition | Skill Output |
 |-----------|---------------|
-| `.github/` exists | `.github/skills/{skill-name}/SKILL.md` |
-| `.claude/` also exists | Also copies to `.claude/skills/{skill-name}/SKILL.md` |
-| `.cursor/` also exists | Also copies to `.cursor/skills/{skill-name}/SKILL.md` |
-| `.opencode/` also exists | Also copies to `.opencode/skills/{skill-name}/SKILL.md` |
-| Neither exists | Creates `.github/skills/` |
+| Always | `.github/skills/{skill-name}/SKILL.md` (Copilot, created if absent) |
+| `.claude/` exists | Also copies to `.claude/skills/{skill-name}/SKILL.md` |
+| `.cursor/` exists | Also copies to `.cursor/skills/{skill-name}/SKILL.md` |
+| `.opencode/` exists | Also copies to `.opencode/skills/{skill-name}/SKILL.md` |
 
 Override with:
 ```bash

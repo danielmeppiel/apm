@@ -145,6 +145,23 @@ mkdir -p ~/bin
 # then install the binary to ~/bin/apm and add ~/bin to PATH
 ```
 
+### Binary install fails on older Linux (devcontainers, Debian Bookworm)
+
+On systems with glibc older than 2.39 (e.g., Debian Bookworm with glibc 2.36), the
+pre-built binary may fail to run. The installer automatically detects this and falls
+back to `pip install`:
+
+```
+[!] Binary failed (glibc mismatch). Falling back to pip install...
+[+] apm installed via pip
+```
+
+No manual action is required. If you prefer to install via pip directly:
+
+```bash
+pip install apm-cli
+```
+
 ### Authentication errors when installing packages
 
 If `apm install` fails with authentication errors for private repositories, ensure you have a valid GitHub token configured:
