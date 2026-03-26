@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skills now deploy to all active targets (`.opencode/`, `.cursor/`) instead of only `.github/` (#456)
 - `apm install` no longer rewrites `apm.lock.yaml` when dependencies are unchanged, eliminating `generated_at` churn in version control (#456)
 - `.github/` is no longer auto-created when other target dirs (`.claude/`, `.cursor/`, `.opencode/`) already exist; copilot is only the fallback for greenfield projects (#456)
+- Linux binary no longer bundles `libssl.so.3`/`libcrypto.so.3`, preventing OpenSSL ABI conflicts on distros where system `libcurl` requires a newer OpenSSL than the build machine (e.g. Fedora 43) (#462)
 
 ### Added
 
