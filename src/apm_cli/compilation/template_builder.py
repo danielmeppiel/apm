@@ -39,7 +39,7 @@ def build_conditional_sections(instructions: List[Instruction]) -> str:
         sections.append("")
 
         # Combine content from all instructions for this pattern
-        for instruction in sorted(pattern_instructions, key=lambda i: str(i.file_path)):
+        for instruction in sorted(pattern_instructions, key=lambda i: portable_relpath(i.file_path, Path.cwd())):
             content = instruction.content.strip()
             if content:
                 # Add source file comment before the content
