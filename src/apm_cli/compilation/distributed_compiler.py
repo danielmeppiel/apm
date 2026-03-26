@@ -536,7 +536,7 @@ class DistributedAgentsCompiler:
             sections.append(f"## Files matching `{pattern}`")
             sections.append("")
             
-            for instruction in pattern_instructions:
+            for instruction in sorted(pattern_instructions, key=lambda i: str(i.file_path)):
                 content = instruction.content.strip()
                 if content:
                     # Add source attribution for individual instructions
