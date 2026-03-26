@@ -35,15 +35,15 @@ apm install -g microsoft/apm-sample-package
 
 ### Per-target support
 
-Currently, only **Claude Code** fully supports user-scope primitives. APM deploys primitives relative to the home directory, but most AI tools either read from a different user-level path than what APM produces, or only support workspace-level configuration.
+Currently, only **Claude Code** fully supports user-scope primitives. **Copilot CLI** and **VS Code** are partially supported -- the tools read from user-level directories, but APM's current integrators have limitations. APM deploys primitives relative to the home directory, but some AI tools either read from a different user-level path than what APM produces, or only support workspace-level configuration.
 
 APM warns during `--global` installs about targets that lack native user-level support.
 
 | Target | User-level directory | Status | Why | Reference |
 |--------|---------------------|--------|-----|-----------|
 | Claude Code | `~/.claude/` | Supported | APM deploys to `~/.claude/` which Claude reads for user-level commands, agents, skills, hooks | [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
-| Copilot (CLI) | `~/.copilot/` | Not supported | APM deploys Copilot primitives to `~/.github/` (via the `.github/` integrator), but Copilot CLI reads from `~/.copilot/` | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
-| VS Code | User `mcp.json` | Not supported | APM's MCP integrator writes to workspace `.vscode/mcp.json` only; user `mcp.json` is not written | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
+| Copilot (CLI) | `~/.copilot/` | Partially supported | Copilot CLI reads agents, skills, instructions from `~/.copilot/`; prompts are not supported at user scope | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
+| VS Code | User `mcp.json` | Partially supported | VS Code reads user-level MCP servers from user `mcp.json`; APM currently only writes to workspace `.vscode/mcp.json` | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
 | Cursor | `~/.cursor/` | Not supported | User rules are managed via Cursor Settings UI, not the filesystem | [Cursor rules docs](https://cursor.com/docs/rules) |
 | OpenCode | `~/.opencode/` | Not supported | No official documentation for user-level config | No official docs available |
 

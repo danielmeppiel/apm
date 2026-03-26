@@ -178,11 +178,11 @@ class TestUserScopeTargets:
     def test_claude_is_supported(self):
         assert USER_SCOPE_TARGETS["claude"]["supported"] is True
 
-    def test_copilot_cli_is_not_supported(self):
-        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] is False
+    def test_copilot_cli_is_partially_supported(self):
+        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] == "partial"
 
-    def test_vscode_is_not_supported(self):
-        assert USER_SCOPE_TARGETS["vscode"]["supported"] is False
+    def test_vscode_is_partially_supported(self):
+        assert USER_SCOPE_TARGETS["vscode"]["supported"] == "partial"
 
     def test_cursor_is_not_supported(self):
         assert USER_SCOPE_TARGETS["cursor"]["supported"] is False
@@ -192,6 +192,15 @@ class TestUserScopeTargets:
 
     def test_claude_has_primitives(self):
         assert len(USER_SCOPE_TARGETS["claude"]["primitives"]) > 0
+
+    def test_copilot_cli_has_primitives(self):
+        assert len(USER_SCOPE_TARGETS["copilot_cli"]["primitives"]) > 0
+
+    def test_copilot_cli_has_unsupported_primitives(self):
+        assert "prompts" in USER_SCOPE_TARGETS["copilot_cli"]["unsupported_primitives"]
+
+    def test_vscode_has_primitives(self):
+        assert len(USER_SCOPE_TARGETS["vscode"]["primitives"]) > 0
 
     def test_unsupported_targets_have_no_primitives(self):
         for name, info in USER_SCOPE_TARGETS.items():
@@ -213,8 +222,9 @@ class TestScopeWarnings:
         unsupported = get_unsupported_targets()
         assert "cursor" in unsupported
         assert "opencode" in unsupported
-        assert "copilot_cli" in unsupported
-        assert "vscode" in unsupported
+        # Partially supported targets should NOT appear in unsupported
+        assert "copilot_cli" not in unsupported
+        assert "vscode" not in unsupported
         assert "claude" not in unsupported
 
     def test_warn_message_includes_unsupported_names(self):
@@ -222,13 +232,15 @@ class TestScopeWarnings:
         assert msg  # non-empty
         assert "cursor" in msg
         assert "opencode" in msg
-        assert "copilot_cli" in msg
-        assert "vscode" in msg
         # Claude is fully supported and should be listed as such
         assert "claude" in msg
         assert "fully supported" in msg.lower()
+        # Partially supported targets should be listed
+        assert "copilot_cli" in msg
+        assert "vscode" in msg
+        assert "partially supported" in msg.lower()
 
-    def test_warn_message_is_single_line(self):
+    def test_warn_message_includes_unsupported_primitives(self):
         msg = warn_unsupported_user_scope()
-        lines = msg.split("\n")
-        assert len(lines) == 1, "Warning should be a single line now"
+        assert "prompts" in msg.lower()
+        assert "copilot_cli" in msg
