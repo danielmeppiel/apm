@@ -184,6 +184,16 @@ class TestUserScopeTargets:
     def test_copilot_cli_supports_agents(self):
         assert "agents" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
 
+    def test_copilot_cli_supports_skills(self):
+        assert "skills" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
+
+    def test_copilot_cli_supports_instructions(self):
+        assert "instructions" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
+
+    def test_copilot_cli_does_not_support_prompts(self):
+        unsup = USER_SCOPE_TARGETS["copilot_cli"].get("unsupported_primitives", [])
+        assert "prompts" in unsup
+
     def test_vscode_is_supported(self):
         assert USER_SCOPE_TARGETS["vscode"]["supported"] is True
 
@@ -228,7 +238,14 @@ class TestScopeWarnings:
         assert msg  # non-empty
         assert "cursor" in msg
         assert "opencode" in msg
-        # Supported targets should appear as supported, not unsupported
-        unsupported_part = msg.split("without native user-level support:")[-1]
+        # The first line lists unsupported targets; supported ones should
+        # NOT appear in that part.
+        first_line = msg.split("\n")[0]
+        unsupported_part = first_line.split("without native user-level support:")[-1]
         assert "claude" not in unsupported_part.lower()
         assert "copilot_cli" not in unsupported_part
+
+    def test_warn_message_includes_unsupported_primitives(self):
+        msg = warn_unsupported_user_scope()
+        assert "prompts" in msg
+        assert "copilot_cli" in msg
