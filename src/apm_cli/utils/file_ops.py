@@ -248,7 +248,10 @@ def robust_copytree(
 
     def _cleanup_partial() -> None:
         if not dirs_exist_ok and os.path.isdir(dst_s):
-            shutil.rmtree(dst_s, ignore_errors=True)
+            try:
+                shutil.rmtree(dst_s, onerror=_on_readonly_retry)
+            except OSError:
+                pass
 
     result = _retry_on_lock(
         _do_copytree,

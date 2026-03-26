@@ -17,7 +17,6 @@ from apm_cli.utils.file_ops import (
     robust_rmtree,
     robust_copytree,
     robust_copy2,
-    _DEFAULT_MAX_RETRIES,
 )
 
 
