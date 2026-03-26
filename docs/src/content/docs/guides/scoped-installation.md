@@ -17,7 +17,7 @@ apm install microsoft/apm-sample-package
 - Manifest: `./apm.yml`
 - Modules: `./apm_modules/`
 - Lockfile: `./apm.lock.yaml`
-- Deployed primitives: `./.github/`, `./.claude/`, `./.cursor/`, `./.opencode/`
+- Deployed primitives: `./.github/` (Copilot, VS Code MCP), `./.claude/`, `./.cursor/`, `./.opencode/`
 
 This is the standard behavior. Every collaborator who clones the repo gets the same setup.
 
@@ -41,7 +41,7 @@ Not all AI tools read primitives from user-level directories. APM warns during `
 |--------|---------------------|--------|--------------------------|-----------|
 | Claude Code | `~/.claude/` | Supported | commands, agents, skills, hooks | [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
 | Copilot (CLI) | `~/.copilot/` | Partially supported | agents, skills, instructions (prompts not supported) | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
-| VS Code | User settings.json | Partial | MCP servers only (via VS Code user settings) | [VS Code settings](https://code.visualstudio.com/docs/configure/settings) |
+| VS Code | User `mcp.json` | Partial | MCP servers only (via user `mcp.json`) | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
 | Cursor | `~/.cursor/` | Not supported | None (user rules are managed via Cursor Settings UI) | [Cursor rules docs](https://cursor.com/docs/rules) |
 | OpenCode | `~/.opencode/` | Unverified | None confirmed | No official docs available |
 

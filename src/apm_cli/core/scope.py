@@ -19,8 +19,8 @@ User-scope support varies by target:
   Ref (skills): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills
   Ref (instructions): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
 - **VS Code** (partial): supports user-level MCP servers via
-  VS Code user ``settings.json``; ``.github/`` is workspace-only.
-  Ref: https://code.visualstudio.com/docs/configure/settings
+  user ``mcp.json``; ``.github/`` is workspace-only.
+  Ref: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
 - **Cursor** (not supported): user-level rules are managed via the
   Cursor Settings UI, not the filesystem.
   Ref: https://cursor.com/docs/rules
@@ -138,8 +138,8 @@ def ensure_user_dirs() -> Path:
 #   Ref (instructions): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
 #
 # * VS Code -- supports user-level MCP server configuration through
-#   VS Code user settings.json.  ``.github/`` is workspace-scoped only.
-#   Ref: https://code.visualstudio.com/docs/configure/settings
+#   user mcp.json.  ``.github/`` is workspace-scoped only.
+#   Ref: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
 #
 # * Cursor -- user-level rules are configured via the Cursor Settings
 #   UI (Settings > Rules for AI).  The ``.cursor/rules/`` directory is
@@ -170,8 +170,8 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
         "supported": "partial",
         "user_root": "~/.vscode",
         "primitives": ["mcp_servers"],
-        "description": "MCP servers only (via VS Code user settings.json)",
-        "reference": "https://code.visualstudio.com/docs/configure/settings",
+        "description": "MCP servers only (via user mcp.json)",
+        "reference": "https://code.visualstudio.com/docs/copilot/customization/mcp-servers",
     },
     "cursor": {
         "supported": False,
