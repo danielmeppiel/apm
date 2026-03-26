@@ -178,8 +178,8 @@ class TestUserScopeTargets:
     def test_claude_is_supported(self):
         assert USER_SCOPE_TARGETS["claude"]["supported"] is True
 
-    def test_copilot_cli_is_supported(self):
-        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] is True
+    def test_copilot_cli_is_partially_supported(self):
+        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] == "partial"
 
     def test_copilot_cli_supports_agents(self):
         assert "agents" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
@@ -194,8 +194,8 @@ class TestUserScopeTargets:
         unsupported_primitives = USER_SCOPE_TARGETS["copilot_cli"].get("unsupported_primitives", [])
         assert "prompts" in unsupported_primitives
 
-    def test_vscode_is_supported(self):
-        assert USER_SCOPE_TARGETS["vscode"]["supported"] is True
+    def test_vscode_is_partially_supported(self):
+        assert USER_SCOPE_TARGETS["vscode"]["supported"] == "partial"
 
     def test_vscode_supports_mcp_servers(self):
         assert "mcp_servers" in USER_SCOPE_TARGETS["vscode"]["primitives"]
@@ -211,7 +211,7 @@ class TestUserScopeTargets:
 
     def test_unsupported_targets_have_no_primitives(self):
         for name, info in USER_SCOPE_TARGETS.items():
-            if not info["supported"]:
+            if info["supported"] is False:
                 assert info["primitives"] == [], (
                     f"{name} is unsupported but lists primitives"
                 )
@@ -230,6 +230,7 @@ class TestScopeWarnings:
         assert "cursor" in unsupported
         assert "opencode" in unsupported
         assert "claude" not in unsupported
+        # Partially supported targets are NOT in the unsupported list
         assert "copilot_cli" not in unsupported
         assert "vscode" not in unsupported
 
@@ -238,12 +239,16 @@ class TestScopeWarnings:
         assert msg  # non-empty
         assert "cursor" in msg
         assert "opencode" in msg
-        # The first line lists unsupported targets; supported ones should
-        # NOT appear in that part.
+        # The first line should list partially supported targets separately
         first_line = msg.split("\n")[0]
+        assert "Partially supported:" in first_line
+        assert "copilot_cli" in first_line
+        assert "vscode" in first_line
+        # Fully supported should NOT appear in the unsupported part
         unsupported_part = first_line.split("without native user-level support:")[-1]
         assert "claude" not in unsupported_part.lower()
         assert "copilot_cli" not in unsupported_part
+        assert "vscode" not in unsupported_part
 
     def test_warn_message_includes_unsupported_primitives(self):
         msg = warn_unsupported_user_scope()

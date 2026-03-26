@@ -12,9 +12,9 @@ User-scope support varies by target:
 - **Claude Code** (fully supported): reads ``~/.claude/`` for global
   commands, agents, skills, and ``CLAUDE.md``.
   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
-- **Copilot CLI** (supported): reads ``~/.copilot/`` for user-level
-  agents, skills, and instructions.  Prompts are NOT supported at
-  user scope.
+- **Copilot CLI** (partially supported): reads ``~/.copilot/`` for
+  user-level agents, skills, and instructions.  Prompts are NOT
+  supported at user scope.
   Ref (agents): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
   Ref (skills): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills
   Ref (instructions): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
@@ -159,7 +159,7 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
         "reference": "https://docs.anthropic.com/en/docs/claude-code/settings",
     },
     "copilot_cli": {
-        "supported": True,
+        "supported": "partial",
         "user_root": "~/.copilot",
         "primitives": ["agents", "skills", "instructions"],
         "unsupported_primitives": ["prompts"],
@@ -167,7 +167,7 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
         "reference": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
     },
     "vscode": {
-        "supported": True,
+        "supported": "partial",
         "user_root": "~/.vscode",
         "primitives": ["mcp_servers"],
         "description": "MCP servers only (via VS Code user settings.json)",
@@ -191,25 +191,34 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
 
 
 def get_unsupported_targets() -> List[str]:
-    """Return target names that do not support user-scope deployment."""
+    """Return target names that do not support user-scope deployment.
+
+    Targets with ``"partial"`` support are *not* included here -- they
+    do work at user scope, just not for every primitive.
+    """
     return [
         name for name, info in USER_SCOPE_TARGETS.items()
-        if not info["supported"]
+        if info["supported"] is False
     ]
 
 
 def warn_unsupported_user_scope() -> str:
     """Return a warning message listing targets that lack user-scope support.
 
-    Also warns about primitives that are not supported at user scope for
-    otherwise-supported targets (e.g. prompts for Copilot CLI).
+    Also warns about partially-supported targets and primitives that are
+    not supported at user scope for those targets (e.g. prompts for
+    Copilot CLI).
 
     Returns an empty string when all targets are fully supported.
     """
     unsupported = get_unsupported_targets()
-    supported = [
+    fully_supported = [
         name for name, info in USER_SCOPE_TARGETS.items()
-        if info["supported"]
+        if info["supported"] is True
+    ]
+    partially_supported = [
+        name for name, info in USER_SCOPE_TARGETS.items()
+        if info["supported"] == "partial"
     ]
 
     # Collect per-target unsupported primitives
@@ -221,13 +230,16 @@ def warn_unsupported_user_scope() -> str:
             partial_warnings.append(f"{name} ({prims})")
 
     parts: list[str] = []
-    if unsupported:
-        names = ", ".join(unsupported)
-        supported_names = ", ".join(supported)
-        parts.append(
-            f"[!] User-scope primitives are supported by {supported_names}. "
-            f"Targets without native user-level support: {names}"
-        )
+    if unsupported or partially_supported:
+        supported_names = ", ".join(fully_supported)
+        line = f"[!] User-scope primitives are fully supported by {supported_names}."
+        if partially_supported:
+            partial_names = ", ".join(partially_supported)
+            line += f" Partially supported: {partial_names}."
+        if unsupported:
+            names = ", ".join(unsupported)
+            line += f" Targets without native user-level support: {names}"
+        parts.append(line)
     if partial_warnings:
         parts.append(
             "[!] Some primitives are not supported at user scope: "
