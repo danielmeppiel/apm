@@ -43,7 +43,7 @@ Not all AI tools read primitives from user-level directories. APM warns during `
 | Copilot (CLI) | `~/.copilot/` | Partially supported | agents, skills, instructions (prompts not supported) | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
 | VS Code | User `mcp.json` | Partial | MCP servers only (via user `mcp.json`) | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
 | Cursor | `~/.cursor/` | Not supported | None (user rules are managed via Cursor Settings UI) | [Cursor rules docs](https://cursor.com/docs/rules) |
-| OpenCode | `~/.opencode/` | Unverified | None confirmed | No official docs available |
+| OpenCode | `~/.opencode/` | Not supported | None (user-level directory not supported) | No official docs available |
 
 When you run `apm install -g`, APM deploys primitives to all detected targets but shows a warning for those that do not natively read from user-level directories.
 
