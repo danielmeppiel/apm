@@ -13,8 +13,8 @@ User-scope support varies by target:
   commands, agents, skills, and ``CLAUDE.md``.
   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
 - **Copilot CLI** (partially supported): Copilot CLI reads user-level
-  agents, skills, and instructions from ``~/.copilot/``.  Prompts are not
-  supported at user scope.
+  agents, skills, and instructions from ``~/.copilot/``.  Copilot CLI
+  does not support prompts.
   Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
 - **VS Code** (partially supported): VS Code supports user-level MCP
   servers via user ``mcp.json``, but APM's MCP integrator currently
@@ -129,8 +129,8 @@ def ensure_user_dirs() -> Path:
 #   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
 #
 # * Copilot CLI -- ``~/.copilot/`` is the documented user-level
-#   directory for custom agents, skills, and instructions.  Prompts
-#   are not supported at user scope (project-level only).
+#   directory for custom agents, skills, and instructions.  Copilot CLI
+#   does not support prompts.
 #   Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
 #   Ref (skills): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills
 #   Ref (instructions): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
@@ -162,7 +162,7 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
         "user_root": "~/.copilot",
         "primitives": ["agents", "skills", "instructions"],
         "unsupported_primitives": ["prompts"],
-        "description": "Partially supported -- agents, skills, instructions deploy to ~/.copilot/; prompts are not supported at user scope",
+        "description": "Partially supported -- agents, skills, instructions deploy to ~/.copilot/; Copilot CLI does not support prompts",
         "reference": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
         "reference_links": {
             "agents": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
@@ -252,7 +252,7 @@ def warn_unsupported_user_scope() -> str:
             unsupported_prims.append(f"{name} ({', '.join(prims)})")
     if unsupported_prims:
         parts.append(
-            "[!] Some primitives are not supported at user scope: "
+            "[!] Some primitives are not supported: "
             + "; ".join(unsupported_prims)
         )
 
