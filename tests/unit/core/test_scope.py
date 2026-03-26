@@ -243,4 +243,4 @@ class TestScopeWarnings:
     def test_warn_message_includes_unsupported_primitives(self):
         msg = warn_unsupported_user_scope()
         assert "prompts" in msg.lower()
-        assert "copilot_cli" in msg
+        assert "copilot_cli (prompts)" in msg
