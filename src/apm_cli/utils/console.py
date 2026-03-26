@@ -1,16 +1,17 @@
 """Console utility functions for formatting and output."""
 
-import click
 import sys
-from typing import Optional, Any
 from contextlib import contextmanager
+from typing import Any, Optional
+
+import click
 
 # Rich library imports with fallbacks
 try:
+    from rich import print as rich_print
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
-    from rich import print as rich_print
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False

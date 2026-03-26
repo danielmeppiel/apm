@@ -45,9 +45,9 @@ Script path handling:
 import json
 import re
 import shutil
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.utils.paths import portable_relpath

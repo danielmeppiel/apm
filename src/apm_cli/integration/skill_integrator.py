@@ -1,13 +1,13 @@
 """Skill integration functionality for APM packages (Claude Code & Cursor support)."""
 
-from pathlib import Path
-from typing import List, Dict
-from dataclasses import dataclass
-from datetime import datetime
 import filecmp
 import hashlib
-import shutil
 import re
+import shutil
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List
 
 import frontmatter
 
@@ -171,7 +171,7 @@ def get_effective_type(package_info) -> "PackageContentType":
         PackageContentType: The effective type
     """
     from apm_cli.models.apm_package import PackageContentType, PackageType
-    
+
     # Check if package has SKILL.md (via package_type field)
     # PackageType.CLAUDE_SKILL = has SKILL.md only
     # PackageType.HYBRID = has both apm.yml AND SKILL.md

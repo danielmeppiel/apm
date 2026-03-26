@@ -7,16 +7,16 @@ Tests that:
 4. Compilation finds and processes ADO dependency primitives
 """
 
-import pytest
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from apm_cli.models.apm_package import DependencyReference
 from apm_cli.primitives.discovery import (
     discover_primitives_with_dependencies,
-    get_dependency_declaration_order
+    get_dependency_declaration_order,
 )
-
 
 
 class TestADOPathStructure:
@@ -246,8 +246,11 @@ description: "Test instruction"
 
     def test_compile_generates_agents_md_from_ado_deps(self, temp_project):
         """Test that compile generates AGENTS.md with content from ADO dependencies."""
-        from apm_cli.compilation.agents_compiler import AgentsCompiler, CompilationConfig
-        
+        from apm_cli.compilation.agents_compiler import (
+            AgentsCompiler,
+            CompilationConfig,
+        )
+
         # Create apm.yml with ADO dependency
         self._create_apm_yml(temp_project, ["dev.azure.com/myorg/myproj/_git/compliance"])
         
@@ -275,8 +278,11 @@ description: "Test instruction"
 
     def test_compile_with_both_github_and_ado_deps(self, temp_project):
         """Test compilation with both GitHub and ADO dependencies."""
-        from apm_cli.compilation.agents_compiler import AgentsCompiler, CompilationConfig
-        
+        from apm_cli.compilation.agents_compiler import (
+            AgentsCompiler,
+            CompilationConfig,
+        )
+
         # Create apm.yml with both
         self._create_apm_yml(temp_project, [
             "owner/github-pkg",

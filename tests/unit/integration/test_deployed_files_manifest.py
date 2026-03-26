@@ -13,24 +13,25 @@ Covers:
 """
 
 import json
-import pytest
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from apm_cli.deps.lockfile import LockedDependency, LockFile
-from apm_cli.integration.base_integrator import BaseIntegrator
-from apm_cli.integration.prompt_integrator import PromptIntegrator
 from apm_cli.integration.agent_integrator import AgentIntegrator
+from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
 from apm_cli.integration.hook_integrator import HookIntegrator
+from apm_cli.integration.prompt_integrator import PromptIntegrator
 from apm_cli.integration.skill_integrator import SkillIntegrator
 from apm_cli.models.apm_package import (
     APMPackage,
+    GitReferenceType,
     PackageInfo,
     ResolvedReference,
-    GitReferenceType,
 )
-from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_COLLISION
+from apm_cli.utils.diagnostics import CATEGORY_COLLISION, DiagnosticCollector
 
 
 def _make_package_info(tmp_path: Path, name: str = "test-pkg",

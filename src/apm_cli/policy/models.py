@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-
 # Check name -> most relevant artifact for SARIF locations.
 _CHECK_ARTIFACT_MAP: Dict[str, str] = {
     "lockfile-exists": "apm.lock.yaml",

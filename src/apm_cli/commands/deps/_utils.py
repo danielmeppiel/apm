@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
-from ...models.apm_package import APMPackage
 from ...deps.github_downloader import GitHubPackageDownloader
+from ...models.apm_package import APMPackage
 
 
 def _scan_installed_packages(apm_modules_dir: Path) -> list:

@@ -1,7 +1,7 @@
 """Prompt integration functionality for APM packages."""
 
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.utils.paths import portable_relpath

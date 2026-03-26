@@ -1,12 +1,13 @@
 """Tests for install command output formatting: resolved refs and pinning hints."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from apm_cli.models.dependency import (
     DependencyReference,
-    ResolvedReference,
     GitReferenceType,
+    ResolvedReference,
 )
 
 

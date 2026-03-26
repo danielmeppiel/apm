@@ -11,8 +11,8 @@ from pathlib import Path
 import yaml
 
 from apm_cli.deps.lockfile import (
-    LockFile,
     LockedDependency,
+    LockFile,
 )
 from apm_cli.primitives.discovery import get_dependency_declaration_order
 

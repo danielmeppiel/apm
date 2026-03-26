@@ -8,9 +8,10 @@ https://code.visualstudio.com/docs/copilot/chat/mcp-servers
 import json
 import os
 from pathlib import Path
-from .base import MCPClientAdapter, _INPUT_VAR_RE
+
 from ...registry.client import SimpleRegistryClient
 from ...registry.integration import RegistryIntegration
+from .base import _INPUT_VAR_RE, MCPClientAdapter
 
 
 class VSCodeClientAdapter(MCPClientAdapter):

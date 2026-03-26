@@ -13,7 +13,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 # CRITICAL: Shadow Click commands to prevent namespace collision

@@ -1,7 +1,9 @@
 """Tests for installing multiple virtual packages from the same repository."""
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from src.apm_cli.deps.apm_resolver import APMDependencyResolver
 from src.apm_cli.models.apm_package import DependencyReference
 
@@ -116,7 +118,7 @@ dependencies:
         """Test that dependency tree nodes use unique keys as IDs."""
         from src.apm_cli.deps.dependency_graph import DependencyNode
         from src.apm_cli.models.apm_package import APMPackage
-        
+
         # Create two virtual packages from same repo
         dep_ref1 = DependencyReference.parse("owner/test-repo/prompts/file1.prompt.md")
         dep_ref2 = DependencyReference.parse("owner/test-repo/prompts/file2.prompt.md")
@@ -137,7 +139,7 @@ dependencies:
     def test_flat_dependency_map_uses_unique_keys(self):
         """Test that FlatDependencyMap properly uses unique keys for storage."""
         from src.apm_cli.deps.dependency_graph import FlatDependencyMap
-        
+
         # Create multiple virtual packages from same repo
         dep_ref1 = DependencyReference.parse("owner/test-repo/prompts/file1.prompt.md")
         dep_ref2 = DependencyReference.parse("owner/test-repo/prompts/file2.prompt.md")
@@ -179,7 +181,7 @@ dependencies:
     def test_actual_conflict_detection_still_works(self):
         """Ensure real conflicts (same unique key) are still detected."""
         from src.apm_cli.deps.dependency_graph import FlatDependencyMap
-        
+
         # Same package, different references (this is a real conflict)
         dep_ref1 = DependencyReference.parse("github/design-guidelines#main")
         dep_ref2 = DependencyReference.parse("github/design-guidelines#v1.0.0")

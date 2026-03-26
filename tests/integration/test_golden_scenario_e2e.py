@@ -24,16 +24,16 @@ To run these tests, you need:
 - Network access to download runtimes and make API calls
 """
 
+import json
 import os
+import shutil
 import subprocess
 import tempfile
-import shutil
-import pytest
-import json
 from pathlib import Path
 from unittest import mock
-import toml
 
+import pytest
+import toml
 
 # Skip all tests in this module if not in E2E mode
 E2E_MODE = os.environ.get('APM_E2E_TESTS', '').lower() in ('1', 'true', 'yes')

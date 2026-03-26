@@ -1,14 +1,14 @@
 """Professional CLI output formatters for APM script execution."""
 
-from typing import Dict, List, Optional
 from pathlib import Path
+from typing import Dict, List, Optional
 
 try:
-    from rich.console import Console
-    from rich.text import Text
-    from rich.panel import Panel
-    from rich.tree import Tree
     from rich import box
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.tree import Tree
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False

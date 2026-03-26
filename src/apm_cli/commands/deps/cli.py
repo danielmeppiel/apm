@@ -1,30 +1,30 @@
 """APM dependency management CLI commands."""
 
-import sys
 import shutil
-import click
+import sys
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
+import click
 
 # Import existing APM components
 from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
-from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package
 from ...core.command_logger import CommandLogger
+from ...deps.apm_resolver import APMDependencyResolver
 
 # Import APM dependency system components (with fallback)
 from ...deps.github_downloader import GitHubPackageDownloader
-from ...deps.apm_resolver import APMDependencyResolver
-
+from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package
 from ._utils import (
-    _is_nested_under_package,
-    _count_primitives,
     _count_package_files,
+    _count_primitives,
     _count_workflows,
     _get_detailed_context_counts,
-    _get_package_display_info,
     _get_detailed_package_info,
-    _update_single_package,
+    _get_package_display_info,
+    _is_nested_under_package,
     _update_all_packages,
+    _update_single_package,
 )
 
 
@@ -41,9 +41,10 @@ def list_packages():
 
     try:
         # Import Rich components with fallback
-        from rich.table import Table
-        from rich.console import Console
         import shutil
+
+        from rich.console import Console
+        from rich.table import Table
         term_width = shutil.get_terminal_size((120, 24)).columns
         console = Console(width=max(120, term_width))
         has_rich = True
@@ -241,8 +242,8 @@ def tree():
 
     try:
         # Import Rich components with fallback
-        from rich.tree import Tree
         from rich.console import Console
+        from rich.tree import Tree
         console = Console()
         has_rich = True
     except ImportError:
@@ -533,8 +534,8 @@ def info(package: str):
         
         # Display with Rich panel if available
         try:
-            from rich.panel import Panel
             from rich.console import Console
+            from rich.panel import Panel
             from rich.text import Text
             console = Console()
             

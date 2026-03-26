@@ -1,10 +1,11 @@
 """Integration test for multi-runtime architecture."""
 
-import tempfile
 import os
-from unittest.mock import patch, Mock
-from apm_cli.workflow.runner import run_workflow
+import tempfile
+from unittest.mock import Mock, patch
+
 from apm_cli.runtime.factory import RuntimeFactory
+from apm_cli.workflow.runner import run_workflow
 
 
 def test_runtime_type_selection():

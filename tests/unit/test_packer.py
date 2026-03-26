@@ -8,8 +8,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from apm_cli.bundle.packer import pack_bundle, PackResult, _filter_files_by_target
-from apm_cli.deps.lockfile import LockFile, LockedDependency
+from apm_cli.bundle.packer import PackResult, _filter_files_by_target, pack_bundle
+from apm_cli.deps.lockfile import LockedDependency, LockFile
 
 
 def _setup_project(tmp_path: Path, deployed_files: list[str], *, target: str | None = None) -> Path:

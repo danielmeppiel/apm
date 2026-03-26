@@ -1,6 +1,6 @@
 """APM compile command."""
 
-from .cli import compile, _display_validation_errors, _get_validation_suggestion
+from .cli import _display_validation_errors, _get_validation_suggestion, compile
 from .watcher import _watch_mode
 
 __all__ = [

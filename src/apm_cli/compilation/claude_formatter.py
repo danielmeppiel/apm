@@ -16,9 +16,9 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import frontmatter
 
-from ..primitives.models import Instruction, PrimitiveCollection, Chatmode
-from ..version import get_version
+from ..primitives.models import Chatmode, Instruction, PrimitiveCollection
 from ..utils.paths import portable_relpath
+from ..version import get_version
 from .constants import BUILD_ID_PLACEHOLDER
 from .constitution import read_constitution
 

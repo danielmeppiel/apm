@@ -2,8 +2,8 @@
 
 import time
 
-from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_YML_FILENAME
 from ...compilation import AgentsCompiler, CompilationConfig
+from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_YML_FILENAME
 from ...core.command_logger import CommandLogger
 
 

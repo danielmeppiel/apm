@@ -1,7 +1,8 @@
 """Unit tests for the default MCP package manager."""
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from apm_cli.adapters.package_manager.default_manager import DefaultMCPPackageManager
 
 

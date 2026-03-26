@@ -9,12 +9,12 @@ Covers:
 - only_packages filter in _install_apm_dependencies
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from apm_cli.models.apm_package import DependencyReference
-
 
 # ── to_canonical() ──────────────────────────────────────────────────────────
 

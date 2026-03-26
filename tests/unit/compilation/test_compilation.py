@@ -3,22 +3,23 @@
 import os
 import tempfile
 import unittest
-import yaml
 from pathlib import Path
 from unittest.mock import patch
 
-from apm_cli.compilation.template_builder import (
-    build_conditional_sections,
+import yaml
+
+from apm_cli.compilation.agents_compiler import (
+    AgentsCompiler,
+    CompilationConfig,
+    compile_agents_md,
 )
 from apm_cli.compilation.link_resolver import (
     validate_link_targets,
 )
-from apm_cli.compilation.agents_compiler import (
-    AgentsCompiler,
-    CompilationConfig,
-    compile_agents_md
+from apm_cli.compilation.template_builder import (
+    build_conditional_sections,
 )
-from apm_cli.primitives.models import Instruction, Chatmode, PrimitiveCollection
+from apm_cli.primitives.models import Chatmode, Instruction, PrimitiveCollection
 
 
 class TestTemplateBuilder(unittest.TestCase):
@@ -313,8 +314,11 @@ class TestCLIIntegration(unittest.TestCase):
     
     def test_validate_mode_with_valid_primitives(self):
         """Test validation mode with valid primitives."""
-        from apm_cli.commands.compile import _display_validation_errors, _get_validation_suggestion
-        
+        from apm_cli.commands.compile import (
+            _display_validation_errors,
+            _get_validation_suggestion,
+        )
+
         # Test validation suggestion function
         suggestion = _get_validation_suggestion("Missing 'description' in frontmatter")
         self.assertIn("Add 'description:", suggestion)
@@ -327,8 +331,11 @@ class TestCLIIntegration(unittest.TestCase):
     
     def test_validation_error_display(self):
         """Test validation error display functionality."""
-        from apm_cli.commands.compile import _display_validation_errors, _get_validation_suggestion
-        
+        from apm_cli.commands.compile import (
+            _display_validation_errors,
+            _get_validation_suggestion,
+        )
+
         # Test with mock errors
         errors = [
             "test.md: Missing 'description' in frontmatter",
@@ -343,9 +350,10 @@ class TestCLIIntegration(unittest.TestCase):
     
     def test_compilation_config_from_apm_yml(self):
         """Test CompilationConfig loading from apm.yml."""
-        from apm_cli.compilation.agents_compiler import CompilationConfig
         import yaml
-        
+
+        from apm_cli.compilation.agents_compiler import CompilationConfig
+
         # Create test apm.yml
         test_config = {
             'compilation': {

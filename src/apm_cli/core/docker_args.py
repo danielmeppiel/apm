@@ -1,6 +1,6 @@
 """Docker arguments processing utilities for MCP configuration."""
 
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
 
 
 class DockerArgsProcessor:

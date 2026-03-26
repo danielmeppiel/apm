@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
-    from apm_cli.deps.lockfile import LockFile, LockedDependency
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
     from apm_cli.models.apm_package import DependencyReference
 
 

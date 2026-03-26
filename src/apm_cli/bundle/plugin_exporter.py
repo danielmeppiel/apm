@@ -7,6 +7,7 @@ plugin hosts can consume directly.  The output contains no APM-specific files
 
 import json
 import os
+import re
 import shutil
 import tarfile
 from pathlib import Path
@@ -14,11 +15,9 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import yaml
 
-import re
-
 from ..deps.lockfile import (
-    LockFile,
     LockedDependency,
+    LockFile,
     get_lockfile_path,
     migrate_lockfile_if_needed,
 )

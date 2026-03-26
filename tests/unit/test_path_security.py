@@ -11,13 +11,12 @@ from pathlib import Path
 
 import pytest
 
+from apm_cli.models.dependency import DependencyReference
 from apm_cli.utils.path_security import (
     PathTraversalError,
     ensure_path_within,
     safe_rmtree,
 )
-from apm_cli.models.dependency import DependencyReference
-
 
 # ---------------------------------------------------------------------------
 # ensure_path_within

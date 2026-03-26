@@ -2,8 +2,10 @@
 
 import os
 from pathlib import Path
+
 import yaml
-from ..factory import PackageManagerFactory, ClientFactory
+
+from ..factory import ClientFactory, PackageManagerFactory
 
 
 def load_apm_config(config_file="apm.yml"):

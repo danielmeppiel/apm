@@ -2,10 +2,12 @@
 
 import os
 import re
+
 from colorama import Fore, Style
-from .parser import WorkflowDefinition
-from .discovery import discover_workflows
+
 from ..runtime.factory import RuntimeFactory
+from .discovery import discover_workflows
+from .parser import WorkflowDefinition
 
 # Color constants (matching cli.py)
 WARNING = f"{Fore.YELLOW}"

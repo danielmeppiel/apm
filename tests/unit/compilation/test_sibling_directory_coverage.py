@@ -12,8 +12,9 @@ src/components/ContactForm.tsx cannot inherit from it.
 """
 
 import tempfile
-import pytest
 from pathlib import Path
+
+import pytest
 
 from apm_cli.compilation.context_optimizer import ContextOptimizer
 from apm_cli.primitives.models import Instruction

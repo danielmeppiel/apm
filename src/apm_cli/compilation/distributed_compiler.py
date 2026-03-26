@@ -7,20 +7,20 @@ for nested agent context files.
 
 import builtins
 import os
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-from collections import defaultdict
 
+from ..output.formatters import CompilationFormatter
+from ..output.models import CompilationResults
 from ..primitives.models import Instruction, PrimitiveCollection
+from ..utils.paths import portable_relpath
 from ..version import get_version
-from .template_builder import TemplateData, find_chatmode_by_name
 from .constants import BUILD_ID_PLACEHOLDER
 from .context_optimizer import ContextOptimizer
 from .link_resolver import UnifiedLinkResolver
-from ..output.formatters import CompilationFormatter
-from ..output.models import CompilationResults
-from ..utils.paths import portable_relpath
+from .template_builder import TemplateData, find_chatmode_by_name
 
 # CRITICAL: Shadow Click commands to prevent namespace collision
 set = builtins.set

@@ -1,12 +1,18 @@
 """Integration tests for link resolution during installation."""
 
-import pytest
+from datetime import datetime
 from textwrap import dedent
 
-from apm_cli.integration.prompt_integrator import PromptIntegrator
+import pytest
+
 from apm_cli.integration.agent_integrator import AgentIntegrator
-from apm_cli.models.apm_package import APMPackage, PackageInfo, ResolvedReference, GitReferenceType
-from datetime import datetime
+from apm_cli.integration.prompt_integrator import PromptIntegrator
+from apm_cli.models.apm_package import (
+    APMPackage,
+    GitReferenceType,
+    PackageInfo,
+    ResolvedReference,
+)
 
 
 @pytest.fixture

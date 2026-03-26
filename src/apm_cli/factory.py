@@ -1,10 +1,10 @@
 """Factory classes for creating adapters."""
 
-from .adapters.client.vscode import VSCodeClientAdapter
 from .adapters.client.codex import CodexClientAdapter
 from .adapters.client.copilot import CopilotClientAdapter
 from .adapters.client.cursor import CursorClientAdapter
 from .adapters.client.opencode import OpenCodeClientAdapter
+from .adapters.client.vscode import VSCodeClientAdapter
 from .adapters.package_manager.default_manager import DefaultMCPPackageManager
 
 

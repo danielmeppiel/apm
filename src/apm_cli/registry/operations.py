@@ -2,8 +2,8 @@
 
 import logging
 import os
-from typing import List, Dict, Set, Optional, Tuple
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 import requests
 

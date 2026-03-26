@@ -6,14 +6,15 @@ threshold-based filtering approach with constraint satisfaction optimization.
 
 import os
 import tempfile
-import pytest
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from apm_cli.compilation.context_optimizer import (
     ContextOptimizer,
     DirectoryAnalysis,
-    PlacementCandidate
+    PlacementCandidate,
 )
 from apm_cli.primitives.models import Instruction
 

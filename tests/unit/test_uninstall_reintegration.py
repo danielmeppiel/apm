@@ -4,20 +4,21 @@ When a package is uninstalled, all -apm suffixed integrated files are nuked,
 then remaining packages are re-integrated from apm_modules/.
 """
 
-import pytest
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from apm_cli.integration import PromptIntegrator, AgentIntegrator
-from apm_cli.integration.skill_integrator import SkillIntegrator
+import pytest
+
+from apm_cli.integration import AgentIntegrator, PromptIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
+from apm_cli.integration.skill_integrator import SkillIntegrator
 from apm_cli.models.apm_package import (
-    PackageInfo,
     APMPackage,
-    ResolvedReference,
     GitReferenceType,
-    PackageType,
     PackageContentType,
+    PackageInfo,
+    PackageType,
+    ResolvedReference,
 )
 
 

@@ -1,7 +1,9 @@
 """Test Codex runtime adapter."""
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from apm_cli.runtime.codex_runtime import CodexRuntime
 
 

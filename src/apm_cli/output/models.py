@@ -1,9 +1,9 @@
 """Data models for compilation output and results."""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Set
-from enum import Enum
 
 from ..primitives.models import Instruction
 

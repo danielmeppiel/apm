@@ -8,10 +8,11 @@ This test verifies that the adapter:
 4. Maintains consistent behavior for environment variable handling
 """
 
-import pytest
-from unittest.mock import Mock, patch
-import sys
 import os
+import sys
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Add the source directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))

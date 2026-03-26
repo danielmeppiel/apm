@@ -8,19 +8,18 @@ Usage: uv run python tests/benchmarks/run_baseline.py
 """
 
 import importlib
+import statistics
 import sys
 import time
-import statistics
 from pathlib import Path
 
 # Ensure the project is importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from apm_cli.primitives.models import PrimitiveCollection, Instruction
-from apm_cli.deps.dependency_graph import DependencyTree, DependencyNode
 from apm_cli.deps.apm_resolver import APMDependencyResolver
+from apm_cli.deps.dependency_graph import DependencyNode, DependencyTree
 from apm_cli.models.apm_package import APMPackage, DependencyReference
-
+from apm_cli.primitives.models import Instruction, PrimitiveCollection
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -199,8 +198,8 @@ def main():
             print(f"  {key:45s}  median={med:8.2f}ms  min={lo:8.2f}ms  max={hi:8.2f}ms")
 
     # 6. Phase 4: Parallel execution overhead (ThreadPoolExecutor vs sequential)
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     import time as _time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def _simulated_work(ms: float):
         """Simulate I/O-bound work by sleeping."""

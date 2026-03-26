@@ -1,8 +1,9 @@
 """Integration tests for version update notification in CLI."""
 
-import unittest
 import os
+import unittest
 from unittest.mock import patch
+
 from click.testing import CliRunner
 
 

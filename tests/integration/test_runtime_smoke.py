@@ -6,12 +6,14 @@ runtimes can be detected and used by APM, without making actual API calls.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
-import shutil
-import pytest
 from pathlib import Path
+
+import pytest
+
 
 # Test fixtures and utilities
 @pytest.fixture(scope="module")
@@ -166,7 +168,7 @@ class TestRuntimeSmoke:
         """Test that APM can detect installed runtimes."""
         # Import APM modules
         from apm_cli.runtime.factory import RuntimeFactory
-        
+
         # Update PATH to include our test runtime directory
         runtime_dir = Path(temp_apm_home) / ".apm" / "runtimes"
         if runtime_dir.exists():
@@ -188,7 +190,7 @@ class TestRuntimeSmoke:
     def test_apm_workflow_compilation(self, temp_apm_home):
         """Test that APM can compile workflows without executing them."""
         from apm_cli.workflow.runner import preview_workflow
-        
+
         # Create a test workflow
         with tempfile.TemporaryDirectory() as temp_dir:
             workflow_content = """---
@@ -266,7 +268,7 @@ class TestGoldenScenarioSetup:
             
             # Manually copy template files (simulating what init does)
             import shutil
-            
+
             # Copy template files
             for template_file in ["apm.yml", "hello-world.prompt.md", "README.md"]:
                 src = template_dir / template_file

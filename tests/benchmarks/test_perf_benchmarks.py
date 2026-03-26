@@ -15,15 +15,18 @@ from pathlib import Path
 
 import pytest
 
-from apm_cli.primitives.models import (
-    PrimitiveCollection,
-    Instruction,
-)
-from apm_cli.deps.dependency_graph import DependencyTree, DependencyNode
+from apm_cli.compilation.constitution import clear_constitution_cache, read_constitution
 from apm_cli.deps.apm_resolver import APMDependencyResolver
-from apm_cli.models.apm_package import APMPackage, DependencyReference, clear_apm_yml_cache
-from apm_cli.compilation.constitution import read_constitution, clear_constitution_cache
-
+from apm_cli.deps.dependency_graph import DependencyNode, DependencyTree
+from apm_cli.models.apm_package import (
+    APMPackage,
+    DependencyReference,
+    clear_apm_yml_cache,
+)
+from apm_cli.primitives.models import (
+    Instruction,
+    PrimitiveCollection,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers to build synthetic data

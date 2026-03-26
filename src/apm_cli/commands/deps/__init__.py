@@ -1,17 +1,17 @@
 """APM dependency management commands."""
 
-from .cli import deps, list_packages, tree, clean, update, info
 from ._utils import (
-    _is_nested_under_package,
-    _count_primitives,
     _count_package_files,
+    _count_primitives,
     _count_workflows,
     _get_detailed_context_counts,
-    _get_package_display_info,
     _get_detailed_package_info,
-    _update_single_package,
+    _get_package_display_info,
+    _is_nested_under_package,
     _update_all_packages,
+    _update_single_package,
 )
+from .cli import clean, deps, info, list_packages, tree, update
 
 __all__ = [
     # CLI commands

@@ -1,13 +1,14 @@
 """Tests for the apm init command."""
 
 import json
-import pytest
-import tempfile
 import os
-import yaml
+import tempfile
 from pathlib import Path
-from click.testing import CliRunner
 from unittest.mock import patch
+
+import pytest
+import yaml
+from click.testing import CliRunner
 
 from apm_cli.cli import cli
 

@@ -1,16 +1,17 @@
 """Integration tests for APM."""
 
-import os
-import json
-import tempfile
-import unittest
-import time
-import shutil
 import gc
+import json
+import os
+import shutil
 import sys
-from unittest.mock import patch, MagicMock
-from apm_cli.factory import ClientFactory, PackageManagerFactory
+import tempfile
+import time
+import unittest
+from unittest.mock import MagicMock, patch
+
 from apm_cli.core.operations import install_package
+from apm_cli.factory import ClientFactory, PackageManagerFactory
 
 
 def safe_rmdir(path):

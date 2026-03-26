@@ -29,7 +29,6 @@ from apm_cli.models.apm_package import (
 )
 from apm_cli.utils.helpers import find_plugin_json
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

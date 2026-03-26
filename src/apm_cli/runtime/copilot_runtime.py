@@ -1,11 +1,12 @@
 """GitHub Copilot CLI runtime adapter for APM."""
 
-import subprocess
-import shutil
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from .base import RuntimeAdapter
 
 

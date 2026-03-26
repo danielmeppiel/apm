@@ -1,17 +1,17 @@
 """Tests for the apm install command auto-bootstrap feature."""
 
 import contextlib
-import pytest
-import tempfile
 import os
-import yaml
+import tempfile
 from pathlib import Path
-from click.testing import CliRunner
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from apm_cli.models.results import InstallResult
+import pytest
+import yaml
+from click.testing import CliRunner
 
 from apm_cli.cli import cli
+from apm_cli.models.results import InstallResult
 
 
 class TestInstallCommandAutoBootstrap:

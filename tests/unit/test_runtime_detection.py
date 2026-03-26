@@ -3,7 +3,7 @@
 import shutil
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from apm_cli.integration.mcp_integrator import MCPIntegrator
 

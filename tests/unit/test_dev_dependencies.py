@@ -15,7 +15,6 @@ from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.models.apm_package import APMPackage, DependencyReference
 from apm_cli.models.results import InstallResult
 
-
 # ---------------------------------------------------------------------------
 # Part 3d: LockedDependency.is_dev field
 # ---------------------------------------------------------------------------

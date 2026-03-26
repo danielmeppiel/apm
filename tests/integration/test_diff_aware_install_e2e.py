@@ -14,11 +14,10 @@ Uses real packages from GitHub:
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
-from pathlib import Path
-
 
 # Skip all tests if no GitHub token is available
 pytestmark = pytest.mark.skipif(

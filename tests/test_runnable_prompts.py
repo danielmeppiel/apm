@@ -1,11 +1,12 @@
 """Unit tests for runnable prompts feature."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-import tempfile
-import shutil
 import os
+import shutil
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from apm_cli.core.script_runner import ScriptRunner
 

@@ -1,7 +1,9 @@
 """Test Copilot Runtime."""
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
+
 from apm_cli.runtime.copilot_runtime import CopilotRuntime
 
 

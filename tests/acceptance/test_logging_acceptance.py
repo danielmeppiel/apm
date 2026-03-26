@@ -22,7 +22,6 @@ from apm_cli.cli import cli
 from apm_cli.models.results import InstallResult
 from apm_cli.utils.console import STATUS_SYMBOLS
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

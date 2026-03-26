@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
-from ..deps.lockfile import LockFile, LOCKFILE_NAME, LEGACY_LOCKFILE_NAME
+from ..deps.lockfile import LEGACY_LOCKFILE_NAME, LOCKFILE_NAME, LockFile
 
 
 @dataclass

@@ -10,15 +10,14 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 from urllib.parse import urlparse
 
 import pytest
 from git.exc import GitCommandError
 
 from apm_cli.deps.github_downloader import GitHubPackageDownloader
-from apm_cli.models.apm_package import DependencyReference, APMPackage
-
+from apm_cli.models.apm_package import APMPackage, DependencyReference
 
 # ---------------------------------------------------------------------------
 # Helpers

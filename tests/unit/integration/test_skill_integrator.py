@@ -1,13 +1,28 @@
 """Tests for skill integration functionality (Claude Code SKILL.md support)."""
 
-import tempfile
 import shutil
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
-from datetime import datetime
 
-from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case, validate_skill_name, normalize_skill_name, copy_skill_to_target
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference, PackageType, PackageContentType
+from apm_cli.integration.skill_integrator import (
+    SkillIntegrationResult,
+    SkillIntegrator,
+    copy_skill_to_target,
+    normalize_skill_name,
+    to_hyphen_case,
+    validate_skill_name,
+)
+from apm_cli.models.apm_package import (
+    APMPackage,
+    DependencyReference,
+    GitReferenceType,
+    PackageContentType,
+    PackageInfo,
+    PackageType,
+    ResolvedReference,
+)
 
 
 class TestToHyphenCase:
@@ -2544,7 +2559,7 @@ class TestSubSkillContentSkipAndCollisionProtection:
         # Managed files includes this skill → it's APM-managed
         managed_files = {".github/skills/shared-skill"}
 
-        from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_OVERWRITE
+        from apm_cli.utils.diagnostics import CATEGORY_OVERWRITE, DiagnosticCollector
         diag = DiagnosticCollector()
 
         with patch("apm_cli.utils.console._rich_warning") as mock_warning:

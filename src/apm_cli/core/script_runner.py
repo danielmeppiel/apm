@@ -6,12 +6,13 @@ import shutil
 import subprocess
 import sys
 import time
-import yaml
 from pathlib import Path
 from typing import Dict, Optional
 
-from .token_manager import setup_runtime_environment
+import yaml
+
 from ..output.script_formatters import ScriptExecutionFormatter
+from .token_manager import setup_runtime_environment
 
 
 class ScriptRunner:
@@ -742,8 +743,8 @@ class ScriptRunner:
             True if installation succeeded, False otherwise
         """
         try:
-            from ..models.apm_package import DependencyReference
             from ..deps.github_downloader import GitHubPackageDownloader
+            from ..models.apm_package import DependencyReference
 
             # Parse the reference as-is  -- no extension guessing
             dep_ref = DependencyReference.parse(package_ref)
@@ -808,7 +809,7 @@ class ScriptRunner:
             return
 
         # Load current config
-        from ..utils.yaml_io import load_yaml, dump_yaml
+        from ..utils.yaml_io import dump_yaml, load_yaml
         config = load_yaml(config_path) or {}
 
         # Ensure dependencies.apm section exists

@@ -1,13 +1,15 @@
 """Tests for Windows platform support in RuntimeManager and ScriptRunner."""
 
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
+
+from apm_cli.core.script_runner import ScriptRunner
 
 # Import modules at module level BEFORE any sys.platform patching,
 # to avoid triggering Windows-only import paths (msvcrt, CREATE_NO_WINDOW) on Unix.
 from apm_cli.runtime.manager import RuntimeManager
-from apm_cli.core.script_runner import ScriptRunner
 
 
 def _make_manager(platform: str) -> RuntimeManager:

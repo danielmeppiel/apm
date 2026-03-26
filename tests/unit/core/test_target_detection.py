@@ -2,13 +2,13 @@
 
 from apm_cli.core.target_detection import (
     detect_target,
-    should_integrate_vscode,
+    get_target_description,
+    should_compile_agents_md,
+    should_compile_claude_md,
     should_integrate_claude,
     should_integrate_cursor,
     should_integrate_opencode,
-    should_compile_agents_md,
-    should_compile_claude_md,
-    get_target_description,
+    should_integrate_vscode,
 )
 
 

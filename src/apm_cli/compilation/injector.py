@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Literal, Optional
 
-from .constitution import read_constitution
-from .constitution_block import render_block, find_existing_block
 from .constants import CONSTITUTION_MARKER_BEGIN, CONSTITUTION_MARKER_END
+from .constitution import read_constitution
+from .constitution_block import find_existing_block, render_block
 
 InjectionStatus = Literal["CREATED", "UPDATED", "UNCHANGED", "SKIPPED", "MISSING"]
 

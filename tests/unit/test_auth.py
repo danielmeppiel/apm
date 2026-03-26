@@ -5,9 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from apm_cli.core.auth import AuthResolver, HostInfo, AuthContext
+from apm_cli.core.auth import AuthContext, AuthResolver, HostInfo
 from apm_cli.core.token_manager import GitHubTokenManager
-
 
 # ---------------------------------------------------------------------------
 # TestClassifyHost

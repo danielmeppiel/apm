@@ -8,17 +8,15 @@ import click
 
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
 from ...core.command_logger import CommandLogger
-
 from ...models.apm_package import APMPackage
-
 from .engine import (
-    _parse_dependency_entry,
-    _validate_uninstall_packages,
-    _dry_run_uninstall,
-    _remove_packages_from_disk,
-    _cleanup_transitive_orphans,
-    _sync_integrations_after_uninstall,
     _cleanup_stale_mcp,
+    _cleanup_transitive_orphans,
+    _dry_run_uninstall,
+    _parse_dependency_entry,
+    _remove_packages_from_disk,
+    _sync_integrations_after_uninstall,
+    _validate_uninstall_packages,
 )
 
 
@@ -54,7 +52,7 @@ def uninstall(ctx, packages, dry_run, verbose):
         logger.start(f"Uninstalling {len(packages)} package(s)...")
 
         # Read current apm.yml
-        from ...utils.yaml_io import load_yaml, dump_yaml
+        from ...utils.yaml_io import dump_yaml, load_yaml
 
         apm_yml_path = Path(APM_YML_FILENAME)
         try:

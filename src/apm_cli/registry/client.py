@@ -1,8 +1,9 @@
 """Simple MCP Registry client for server discovery."""
 
 import os
+from typing import Any, Dict, List, Optional, Tuple
+
 import requests
-from typing import Dict, List, Optional, Any, Tuple
 
 
 class SimpleRegistryClient:

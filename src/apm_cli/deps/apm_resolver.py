@@ -1,14 +1,19 @@
 """APM dependency resolution engine with recursive resolution and conflict detection."""
 
-from pathlib import Path
-from typing import List, Set, Optional, Protocol, Tuple, runtime_checkable
 from collections import deque
+from pathlib import Path
+from typing import List, Optional, Protocol, Set, Tuple, runtime_checkable
 
 from ..models.apm_package import APMPackage, DependencyReference
 from .dependency_graph import (
-    DependencyGraph, DependencyTree, DependencyNode, FlatDependencyMap,
-    CircularRef, ConflictInfo
+    CircularRef,
+    ConflictInfo,
+    DependencyGraph,
+    DependencyNode,
+    DependencyTree,
+    FlatDependencyMap,
 )
+
 
 # Type alias for the download callback.
 # Takes (dep_ref, apm_modules_dir, parent_chain) and returns the install path

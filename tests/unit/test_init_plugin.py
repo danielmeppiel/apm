@@ -16,7 +16,6 @@ from click.testing import CliRunner
 from apm_cli.cli import cli
 from apm_cli.commands._helpers import _validate_plugin_name
 
-
 # ---------------------------------------------------------------------------
 # CLI integration tests
 # ---------------------------------------------------------------------------

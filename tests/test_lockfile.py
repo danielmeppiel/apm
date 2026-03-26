@@ -1,11 +1,17 @@
 """Tests for the APM lock file module."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import Mock
+
+import pytest
 import yaml
 
-from apm_cli.deps.lockfile import LockedDependency, LockFile, get_lockfile_path, migrate_lockfile_if_needed
+from apm_cli.deps.lockfile import (
+    LockedDependency,
+    LockFile,
+    get_lockfile_path,
+    migrate_lockfile_if_needed,
+)
 from apm_cli.models.apm_package import DependencyReference
 
 

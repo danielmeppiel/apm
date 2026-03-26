@@ -11,14 +11,14 @@ from ..constants import (
     APM_LOCK_FILENAME,
     APM_MODULES_DIR,
     APM_YML_FILENAME,
-    GITHUB_DIR,
     CLAUDE_DIR,
+    GITHUB_DIR,
     SKILL_MD_FILENAME,
     InstallMode,
 )
+from ..core.command_logger import InstallLogger, _ValidationOutcome
 from ..drift import build_download_ref, detect_orphans, detect_ref_change
 from ..models.results import InstallResult
-from ..core.command_logger import InstallLogger, _ValidationOutcome
 from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
@@ -263,6 +263,7 @@ def _validate_package_exists(package, verbose=False):
     import os
     import subprocess
     import tempfile
+
     from apm_cli.core.auth import AuthResolver
 
     verbose_log = (lambda msg: _rich_echo(f"  {msg}", color="dim")) if verbose else None
@@ -270,8 +271,8 @@ def _validate_package_exists(package, verbose=False):
 
     try:
         # Parse the package to check if it's a virtual package or ADO
-        from apm_cli.models.apm_package import DependencyReference
         from apm_cli.deps.github_downloader import GitHubPackageDownloader
+        from apm_cli.models.apm_package import DependencyReference
 
         dep_ref = DependencyReference.parse(package)
 
@@ -314,7 +315,10 @@ def _validate_package_exists(package, verbose=False):
         # For Azure DevOps or GitHub Enterprise (non-github.com hosts),
         # use the downloader which handles authentication properly
         if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
-            from apm_cli.utils.github_host import is_github_hostname, is_azure_devops_hostname
+            from apm_cli.utils.github_host import (
+                is_azure_devops_hostname,
+                is_github_hostname,
+            )
 
             downloader = GitHubPackageDownloader()
             # Set the host
@@ -374,8 +378,8 @@ def _validate_package_exists(package, verbose=False):
 
         def _check_repo(token, git_env):
             """Check repo accessibility via GitHub API (or git ls-remote for non-GitHub)."""
-            import urllib.request
             import urllib.error
+            import urllib.request
 
             api_base = host_info.api_base
             api_url = f"{api_base}/repos/{dep_ref.repo_url}"
@@ -428,8 +432,8 @@ def _validate_package_exists(package, verbose=False):
         repo_path = package  # owner/repo format
 
         def _check_repo_fallback(token, git_env):
-            import urllib.request
             import urllib.error
+            import urllib.request
 
             host_info = auth_resolver.classify_host(host)
             api_url = f"{host_info.api_base}/repos/{repo_path}"
@@ -1301,10 +1305,10 @@ def _install_apm_dependencies(
         # Auto-detect target for integration (same logic as compile)
         from apm_cli.core.target_detection import (
             detect_target,
-            should_integrate_vscode,
+            get_target_description,
             should_integrate_claude,
             should_integrate_opencode,
-            get_target_description,
+            should_integrate_vscode,
         )
 
         # Get config target from apm.yml if available
@@ -1340,10 +1344,13 @@ def _install_apm_dependencies(
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
         agent_integrator = AgentIntegrator()
-        from apm_cli.integration.skill_integrator import SkillIntegrator, should_install_skill
         from apm_cli.integration.command_integrator import CommandIntegrator
         from apm_cli.integration.hook_integrator import HookIntegrator
         from apm_cli.integration.instruction_integrator import InstructionIntegrator
+        from apm_cli.integration.skill_integrator import (
+            SkillIntegrator,
+            should_install_skill,
+        )
 
         skill_integrator = SkillIntegrator()
         command_integrator = CommandIntegrator()
@@ -1365,7 +1372,8 @@ def _install_apm_dependencies(
         total_links_resolved = 0
 
         # Collect installed packages for lockfile generation
-        from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+        from apm_cli.deps.lockfile import LockedDependency, LockFile, get_lockfile_path
+
         from ..utils.content_hash import compute_package_hash as _compute_hash
         installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev)
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
@@ -1392,11 +1400,11 @@ def _install_apm_dependencies(
 
         # Install each dependency with Rich progress display
         from rich.progress import (
+            BarColumn,
             Progress,
             SpinnerColumn,
-            TextColumn,
-            BarColumn,
             TaskProgressColumn,
+            TextColumn,
         )
 
         # downloader already created above for transitive resolution
@@ -1406,7 +1414,8 @@ def _install_apm_dependencies(
         # Phase 4 (#171): Parallel package downloads using ThreadPoolExecutor
         # Pre-download all non-cached packages in parallel for wall-clock speedup.
         # Results are stored and consumed by the sequential integration loop below.
-        from concurrent.futures import ThreadPoolExecutor, as_completed as _futures_completed
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import as_completed as _futures_completed
 
         _pre_download_results = {}   # dep_key -> PackageInfo
         _need_download = []
@@ -1525,14 +1534,15 @@ def _install_apm_dependencies(
                         logger.download_complete(dep_ref.local_path, ref_suffix="local")
 
                     # Build minimal PackageInfo for integration
+                    from datetime import datetime
+
                     from apm_cli.models.apm_package import (
                         APMPackage,
+                        GitReferenceType,
                         PackageInfo,
                         PackageType,
                         ResolvedReference,
-                        GitReferenceType,
                     )
-                    from datetime import datetime
 
                     local_apm_yml = install_path / "apm.yml"
                     if local_apm_yml.exists():
@@ -1568,7 +1578,9 @@ def _install_apm_dependencies(
                     if pkg_type == PackageType.MARKETPLACE_PLUGIN:
                         # Normalize: synthesize .apm/ from plugin.json so
                         # integration can discover and deploy primitives
-                        from apm_cli.deps.plugin_parser import normalize_plugin_directory
+                        from apm_cli.deps.plugin_parser import (
+                            normalize_plugin_directory,
+                        )
                         normalize_plugin_directory(install_path, plugin_json_path)
 
                     # Record for lockfile
@@ -1726,14 +1738,15 @@ def _install_apm_dependencies(
                     # Integrate prompts for cached packages (zero-config behavior)
                     try:
                         # Create PackageInfo from cached package
+                        from datetime import datetime
+
                         from apm_cli.models.apm_package import (
                             APMPackage,
+                            GitReferenceType,
                             PackageInfo,
                             PackageType,
                             ResolvedReference,
-                            GitReferenceType,
                         )
-                        from datetime import datetime
 
                         # Load package from apm.yml in install path
                         apm_yml_path = install_path / APM_YML_FILENAME

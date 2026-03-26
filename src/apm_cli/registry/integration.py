@@ -1,7 +1,9 @@
 """Integration module for connecting registry client with package manager."""
 
+from typing import Any, Dict, List, Optional
+
 import requests
-from typing import Dict, List, Any, Optional
+
 from .client import SimpleRegistryClient
 
 

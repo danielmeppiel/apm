@@ -8,12 +8,13 @@ architecture specification.
 import json
 import os
 from pathlib import Path
-from .base import MCPClientAdapter
-from ...registry.client import SimpleRegistryClient
-from ...registry.integration import RegistryIntegration
+
 from ...core.docker_args import DockerArgsProcessor
 from ...core.token_manager import GitHubTokenManager
+from ...registry.client import SimpleRegistryClient
+from ...registry.integration import RegistryIntegration
 from ...utils.github_host import is_github_hostname
+from .base import MCPClientAdapter
 
 
 class CopilotClientAdapter(MCPClientAdapter):
@@ -327,6 +328,7 @@ class CopilotClientAdapter(MCPClientAdapter):
         """
         import os
         import sys
+
         from rich.prompt import Prompt
         
         resolved = {}
@@ -406,6 +408,7 @@ class CopilotClientAdapter(MCPClientAdapter):
         import os
         import re
         import sys
+
         from rich.prompt import Prompt
         
         env_overrides = env_overrides or {}
@@ -684,7 +687,7 @@ class CopilotClientAdapter(MCPClientAdapter):
             bool: True if this is a legitimate GitHub MCP server, False otherwise.
         """
         from urllib.parse import urlparse
-        
+
         # Check server name against an allowlist of known GitHub MCP servers
         github_server_names = [
             "github-mcp-server",

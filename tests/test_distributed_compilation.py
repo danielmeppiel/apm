@@ -1,13 +1,17 @@
 """Tests for distributed compilation system (Task 7)."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from apm_cli.compilation.distributed_compiler import DistributedAgentsCompiler, DirectoryMap
-from apm_cli.compilation.agents_compiler import CompilationConfig, AgentsCompiler
+import pytest
+
+from apm_cli.compilation.agents_compiler import AgentsCompiler, CompilationConfig
+from apm_cli.compilation.distributed_compiler import (
+    DirectoryMap,
+    DistributedAgentsCompiler,
+)
 from apm_cli.primitives.models import Instruction, PrimitiveCollection
 
 

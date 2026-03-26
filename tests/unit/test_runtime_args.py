@@ -2,6 +2,7 @@
 
 import unittest
 from unittest import mock
+
 from apm_cli.adapters.client.vscode import VSCodeClientAdapter
 
 

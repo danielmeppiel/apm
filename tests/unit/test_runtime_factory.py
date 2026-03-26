@@ -1,7 +1,9 @@
 """Test Runtime Factory."""
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
+
 from apm_cli.runtime.factory import RuntimeFactory
 
 

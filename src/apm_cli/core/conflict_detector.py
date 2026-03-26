@@ -1,6 +1,7 @@
 """MCP server conflict detection and resolution."""
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 from ..adapters.client.base import MCPClientAdapter
 
 

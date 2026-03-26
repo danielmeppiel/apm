@@ -17,9 +17,9 @@ This validates that:
 import os
 import subprocess
 import tempfile
-import pytest
 from pathlib import Path
 
+import pytest
 
 # Skip all tests in this module if not in E2E mode
 E2E_MODE = os.environ.get('APM_E2E_TESTS', '').lower() in ('1', 'true', 'yes')

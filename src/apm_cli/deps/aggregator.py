@@ -1,10 +1,11 @@
 """Workflow dependency aggregator for APM."""
 
-import os
 import glob
+import os
 from pathlib import Path
-import yaml
+
 import frontmatter
+import yaml
 
 
 def scan_workflows_for_dependencies():

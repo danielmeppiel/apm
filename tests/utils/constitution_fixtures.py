@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Callable
-import contextlib
-import tempfile
 
 
 @contextlib.contextmanager

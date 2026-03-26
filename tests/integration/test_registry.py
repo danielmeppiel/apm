@@ -1,16 +1,18 @@
 """Integration tests for MCP registry client."""
 
-import os
+import gc
 import json
-import pytest
+import os
+import shutil
+import sys
 import tempfile
 import time
-import shutil
-import gc
-import sys
 from pathlib import Path
-from apm_cli.registry.client import SimpleRegistryClient
+
+import pytest
+
 from apm_cli.adapters.client.vscode import VSCodeClientAdapter
+from apm_cli.registry.client import SimpleRegistryClient
 
 
 def safe_rmdir(path):

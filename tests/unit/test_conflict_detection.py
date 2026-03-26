@@ -2,8 +2,9 @@
 
 import unittest
 from unittest.mock import Mock, patch
-from apm_cli.core.conflict_detector import MCPConflictDetector
+
 from apm_cli.adapters.client.base import MCPClientAdapter
+from apm_cli.core.conflict_detector import MCPConflictDetector
 
 
 class TestMCPConflictDetection(unittest.TestCase):

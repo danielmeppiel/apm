@@ -2,7 +2,9 @@
 
 import unittest
 from unittest import mock
+
 import requests
+
 from apm_cli.registry.integration import RegistryIntegration
 from apm_cli.utils import github_host
 

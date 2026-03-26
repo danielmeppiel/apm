@@ -6,8 +6,8 @@ from typing import Union
 
 import pytest
 
-from apm_cli.bundle.unpacker import unpack_bundle, UnpackResult
-from apm_cli.deps.lockfile import LockFile, LockedDependency
+from apm_cli.bundle.unpacker import UnpackResult, unpack_bundle
+from apm_cli.deps.lockfile import LockedDependency, LockFile
 
 
 def _build_bundle_dir(tmp_path: Path, deployed_files: dict[str, Union[str, bytes]]) -> Path:

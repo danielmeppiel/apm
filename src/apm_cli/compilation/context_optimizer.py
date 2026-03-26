@@ -7,20 +7,24 @@ following the Minimal Context Principle.
 
 import builtins
 import fnmatch
+import glob
 import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-from functools import lru_cache
-import glob
 
-from ..primitives.models import Instruction
 from ..output.models import (
-    CompilationResults, ProjectAnalysis, OptimizationDecision, OptimizationStats,
-    PlacementStrategy, PlacementSummary
+    CompilationResults,
+    OptimizationDecision,
+    OptimizationStats,
+    PlacementStrategy,
+    PlacementSummary,
+    ProjectAnalysis,
 )
+from ..primitives.models import Instruction
 from ..utils.paths import portable_relpath
 
 # CRITICAL: Shadow Click commands to prevent namespace collision
@@ -763,7 +767,7 @@ class ContextOptimizer:
                        or ['**/*.test.ts', '**/*.test.js', '**/*.spec.ts', '**/*.spec.js']
         """
         import re
-        
+
         # Handle brace expansion like {css,scss}
         brace_match = re.search(r'\{([^}]+)\}', pattern)
         if brace_match:

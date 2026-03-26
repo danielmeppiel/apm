@@ -7,10 +7,11 @@ This test verifies that the Docker args processing in the Codex adapter:
 3. Handles both Docker and npm packages correctly
 """
 
-import pytest
-from unittest.mock import Mock, patch
-import sys
 import os
+import sys
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Add the source directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))

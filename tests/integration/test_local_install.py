@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -358,7 +357,8 @@ class TestLocalPackMixed:
         }))
 
         # Create a valid lockfile via the LockFile API
-        from apm_cli.deps.lockfile import LockFile as _LF, LockedDependency as _LD
+        from apm_cli.deps.lockfile import LockedDependency as _LD
+        from apm_cli.deps.lockfile import LockFile as _LF
         _lock = _LF()
         _lock.add_dependency(_LD(
             repo_url="_local/local-skills",

@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ..core.target_detection import detect_target
 from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 from ..models.apm_package import APMPackage
-from ..core.target_detection import detect_target
-from .lockfile_enrichment import enrich_lockfile_for_pack, _filter_files_by_target
+from .lockfile_enrichment import _filter_files_by_target, enrich_lockfile_for_pack
 
 
 @dataclass

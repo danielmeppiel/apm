@@ -7,9 +7,10 @@ The package identity system ensures consistency between:
 3. Agent/prompt metadata for orphan detection
 """
 
-import pytest
 from pathlib import Path
 from urllib.parse import urlparse
+
+import pytest
 
 from src.apm_cli.models.apm_package import DependencyReference
 

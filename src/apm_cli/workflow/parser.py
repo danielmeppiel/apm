@@ -1,6 +1,7 @@
 """Parser for workflow definition files."""
 
 import os
+
 import frontmatter
 
 

@@ -20,7 +20,6 @@ from click.testing import CliRunner
 
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

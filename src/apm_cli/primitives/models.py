@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Union, Dict
+from typing import Dict, List, Optional, Union
 
 
 @dataclass

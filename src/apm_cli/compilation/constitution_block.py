@@ -12,7 +12,6 @@ from .constants import (
     CONSTITUTION_RELATIVE_PATH,
 )
 
-
 HASH_PREFIX = "hash:"
 
 

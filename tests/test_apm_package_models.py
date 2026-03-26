@@ -1,26 +1,27 @@
 """Unit tests for APM package data models and validation."""
 
 import json
-import pytest
 import tempfile
-import yaml
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
 
+import pytest
+import yaml
+
+from apm_cli.utils import github_host
 from src.apm_cli.models.apm_package import (
     APMPackage,
-    DependencyReference, 
-    ValidationResult,
-    ValidationError,
-    ResolvedReference,
-    PackageInfo,
+    DependencyReference,
     GitReferenceType,
     PackageContentType,
+    PackageInfo,
     PackageType,
-    validate_apm_package,
+    ResolvedReference,
+    ValidationError,
+    ValidationResult,
     parse_git_reference,
+    validate_apm_package,
 )
-from apm_cli.utils import github_host
 
 
 class TestDependencyReference:
@@ -1426,8 +1427,9 @@ class TestGenericHostSubdirectoryRoundTrip:
     def test_build_download_ref_preserves_virtual_path(self):
         """build_download_ref returns a DependencyReference that preserves
         virtual_path for generic hosts (not a lossy flat string)."""
-        from apm_cli.drift import build_download_ref
         from unittest.mock import Mock
+
+        from apm_cli.drift import build_download_ref
 
         dep = DependencyReference(
             repo_url="org/my-skills",

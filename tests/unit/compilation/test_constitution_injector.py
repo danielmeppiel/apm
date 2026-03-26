@@ -7,6 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
+from apm_cli.compilation.constants import (
+    CONSTITUTION_MARKER_BEGIN,
+    CONSTITUTION_MARKER_END,
+    CONSTITUTION_RELATIVE_PATH,
+)
 from apm_cli.compilation.constitution import clear_constitution_cache
 from apm_cli.compilation.constitution_block import (
     ExistingBlock,
@@ -14,11 +19,6 @@ from apm_cli.compilation.constitution_block import (
     find_existing_block,
     inject_or_update,
     render_block,
-)
-from apm_cli.compilation.constants import (
-    CONSTITUTION_MARKER_BEGIN,
-    CONSTITUTION_MARKER_END,
-    CONSTITUTION_RELATIVE_PATH,
 )
 from apm_cli.compilation.injector import ConstitutionInjector
 

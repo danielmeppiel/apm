@@ -147,7 +147,7 @@ def get(key):
         apm config get auto-integrate
         apm config get
     """
-    from ..config import get_config, get_auto_integrate
+    from ..config import get_auto_integrate, get_config
 
     logger = CommandLogger("config get")
     if key:

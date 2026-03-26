@@ -1,8 +1,10 @@
 """Integration tests for the MCP registry client with GitHub MCP Registry."""
 
-import unittest
 import os
+import unittest
+
 import requests
+
 from apm_cli.registry.client import SimpleRegistryClient
 
 

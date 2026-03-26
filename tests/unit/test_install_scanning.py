@@ -258,7 +258,10 @@ class TestCompileExitOnCriticalSecurity:
         assert r.has_critical_security is True
 
     def test_merge_results_propagates_critical(self):
-        from apm_cli.compilation.agents_compiler import AgentsCompiler, CompilationResult
+        from apm_cli.compilation.agents_compiler import (
+            AgentsCompiler,
+            CompilationResult,
+        )
         clean = CompilationResult(
             success=True, output_path="a.md", content="clean",
             warnings=[], errors=[], stats={},
@@ -273,7 +276,10 @@ class TestCompileExitOnCriticalSecurity:
         assert merged.has_critical_security is True
 
     def test_merge_results_clean_stays_clean(self):
-        from apm_cli.compilation.agents_compiler import AgentsCompiler, CompilationResult
+        from apm_cli.compilation.agents_compiler import (
+            AgentsCompiler,
+            CompilationResult,
+        )
         r1 = CompilationResult(
             success=True, output_path="a.md", content="ok",
             warnings=[], errors=[], stats={},

@@ -12,10 +12,10 @@ Usage:
 """
 
 import os
+import shutil
+import sys
 import tempfile
 import time
-import sys
-import shutil
 from pathlib import Path
 
 # ---------------------------------------------------------------------------

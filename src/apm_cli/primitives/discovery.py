@@ -1,15 +1,14 @@
 """Discovery functionality for primitive files."""
 
-import os
 import glob
+import os
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
 
+from ..deps.lockfile import LockFile
+from ..models.apm_package import APMPackage
 from .models import PrimitiveCollection
 from .parser import parse_primitive_file, parse_skill_file
-from ..models.apm_package import APMPackage
-from ..deps.lockfile import LockFile
-
 
 # Common primitive patterns for local discovery (with recursive search)
 LOCAL_PRIMITIVE_PATTERNS: Dict[str, List[str]] = {

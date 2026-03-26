@@ -7,14 +7,14 @@ Tests cover:
 - Removal of all APM command files
 """
 
-import tempfile
 import shutil
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
-from dataclasses import dataclass
 
-import pytest
 import frontmatter
+import pytest
 
 from apm_cli.integration.command_integrator import CommandIntegrator
 

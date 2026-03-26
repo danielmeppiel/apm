@@ -1,9 +1,10 @@
 """Tests for Docker arguments processing and safe installation."""
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from apm_cli.core.docker_args import DockerArgsProcessor
-from apm_cli.core.safe_installer import SafeMCPInstaller, InstallationSummary
+from apm_cli.core.safe_installer import InstallationSummary, SafeMCPInstaller
 
 
 class TestDockerArgsProcessor(unittest.TestCase):

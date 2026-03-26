@@ -1,15 +1,14 @@
 """Test module for console commands."""
 
 import os
-import tempfile
 import shutil
+import tempfile
 from unittest import TestCase
 
 import pytest
 from click.testing import CliRunner
 
 from apm_cli.cli import cli as app
-
 
 runner = CliRunner()
 

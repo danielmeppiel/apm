@@ -2,7 +2,8 @@
 
 import unittest
 from unittest.mock import Mock, patch
-from apm_cli.core.safe_installer import SafeMCPInstaller, InstallationSummary
+
+from apm_cli.core.safe_installer import InstallationSummary, SafeMCPInstaller
 
 
 class TestSafeMCPInstaller(unittest.TestCase):

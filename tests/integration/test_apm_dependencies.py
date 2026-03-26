@@ -17,17 +17,18 @@ These tests validate:
 """
 
 import os
-import pytest
-import tempfile
 import shutil
 import subprocess
-import yaml
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, Mock
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+from unittest.mock import Mock, patch
 
-from apm_cli.deps.github_downloader import GitHubPackageDownloader
+import pytest
+import yaml
+
 from apm_cli.deps.apm_resolver import APMDependencyResolver
+from apm_cli.deps.github_downloader import GitHubPackageDownloader
 from apm_cli.models.apm_package import APMPackage, DependencyReference
 
 
@@ -316,8 +317,11 @@ This local instruction should override any dependency instruction.
         downloader.download_package(str(dep_ref), package_dir)
         
         # Import and test CLI commands
-        from apm_cli.commands.deps import _count_package_files, _get_package_display_info
-        
+        from apm_cli.commands.deps import (
+            _count_package_files,
+            _get_package_display_info,
+        )
+
         # Test file counting
         context_count, workflow_count = _count_package_files(package_dir)
         assert context_count >= 0  # May have context files in .apm structure
@@ -423,7 +427,7 @@ class TestAPMDependenciesCI:
     def test_authentication_token_handling(self):
         """Test GitHub authentication token handling according to our token management architecture."""
         from apm_cli.deps.github_downloader import GitHubPackageDownloader
-        
+
         # Test with environment tokens (new token architecture)
         github_apm_pat = os.getenv('GITHUB_APM_PAT')
         github_token = os.getenv('GITHUB_TOKEN')

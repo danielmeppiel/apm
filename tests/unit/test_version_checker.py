@@ -1,18 +1,18 @@
 """Tests for version checker utility."""
 
-import unittest
-from unittest.mock import patch, Mock
-from pathlib import Path
 import tempfile
 import time
+import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 from apm_cli.utils.version_checker import (
-    get_latest_version_from_github,
-    parse_version,
-    is_newer_version,
-    should_check_for_updates,
-    save_version_check_timestamp,
     check_for_updates,
+    get_latest_version_from_github,
+    is_newer_version,
+    parse_version,
+    save_version_check_timestamp,
+    should_check_for_updates,
 )
 
 

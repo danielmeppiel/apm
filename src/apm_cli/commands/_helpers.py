@@ -21,8 +21,8 @@ from ..constants import (
     GITIGNORE_FILENAME,
 )
 from ..utils.console import _rich_echo, _rich_info, _rich_warning
-from ..version import get_build_sha, get_version
 from ..utils.version_checker import check_for_updates
+from ..version import get_build_sha, get_version
 
 # CRITICAL: Shadow Click commands at module level to prevent namespace collision
 # When Click commands like 'config set' are defined, calling set() can invoke the command
@@ -192,8 +192,8 @@ def _check_orphaned_packages():
             return []
 
         try:
-            from ..models.apm_package import APMPackage
             from ..deps.lockfile import LockFile, get_lockfile_path
+            from ..models.apm_package import APMPackage
 
             apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             declared_deps = apm_package.get_apm_dependencies()

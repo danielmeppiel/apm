@@ -1,14 +1,16 @@
 """APM compilation module for generating AGENTS.md files."""
 
-from .agents_compiler import AgentsCompiler, compile_agents_md, CompilationConfig, CompilationResult
-from .template_builder import (
-    build_conditional_sections,
-    TemplateData,
-    find_chatmode_by_name
+from .agents_compiler import (
+    AgentsCompiler,
+    CompilationConfig,
+    CompilationResult,
+    compile_agents_md,
 )
-from .link_resolver import (
-    resolve_markdown_links,
-    validate_link_targets
+from .link_resolver import resolve_markdown_links, validate_link_targets
+from .template_builder import (
+    TemplateData,
+    build_conditional_sections,
+    find_chatmode_by_name,
 )
 
 __all__ = [

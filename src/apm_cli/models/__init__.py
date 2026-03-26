@@ -8,6 +8,7 @@ from .dependency import (
     ResolvedReference,
     parse_git_reference,
 )
+from .results import InstallResult, PrimitiveCounts
 from .validation import (
     InvalidVirtualPackageExtensionError,
     PackageContentType,
@@ -17,7 +18,6 @@ from .validation import (
     detect_package_type,
     validate_apm_package,
 )
-from .results import InstallResult, PrimitiveCounts
 
 __all__ = [
     # Core

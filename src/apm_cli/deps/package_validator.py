@@ -1,14 +1,11 @@
 """APM package structure validation."""
 
+import os
 from pathlib import Path
 from typing import List, Optional
-import os
 
-from ..models.apm_package import (
-    ValidationResult,
-    APMPackage,
-    validate_apm_package as base_validate_apm_package
-)
+from ..models.apm_package import APMPackage, ValidationResult
+from ..models.apm_package import validate_apm_package as base_validate_apm_package
 
 
 class PackageValidator:

@@ -3,8 +3,9 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
-from ..primitives.models import Instruction, Chatmode
+from typing import Dict, List, Optional, Tuple
+
+from ..primitives.models import Chatmode, Instruction
 from ..utils.paths import portable_relpath
 
 

@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import List, Optional
 
 try:
-    from rich.console import Console
-    from rich.table import Table
-    from rich.tree import Tree
-    from rich.text import Text
-    from rich.panel import Panel
-    from rich import box
     from io import StringIO
+
+    from rich import box
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    from rich.tree import Tree
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False

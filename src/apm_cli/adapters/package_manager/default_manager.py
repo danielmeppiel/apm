@@ -1,8 +1,8 @@
 """Implementation of the default MCP package manager."""
 
-from .base import MCPPackageManagerAdapter
 from ...config import get_default_client
 from ...registry.integration import RegistryIntegration
+from .base import MCPPackageManagerAdapter
 
 
 class DefaultMCPPackageManager(MCPPackageManagerAdapter):
@@ -81,7 +81,7 @@ class DefaultMCPPackageManager(MCPPackageManagerAdapter):
         try:
             # Import here to avoid circular import
             from ...factory import ClientFactory
-            
+
             # Get client type from configuration (default is vscode)
             client_type = get_default_client()
             

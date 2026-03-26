@@ -7,16 +7,16 @@ remaining package still needs them.
 
 import os
 import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 import yaml
 from click.testing import CliRunner
-from pathlib import Path
 
 from apm_cli.cli import cli
-from apm_cli.deps.lockfile import LockFile, LockedDependency
+from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.models.apm_package import APMPackage
 from apm_cli.models.dependency import DependencyReference
 

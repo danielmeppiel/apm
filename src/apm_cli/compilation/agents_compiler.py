@@ -7,19 +7,20 @@ primitives & constitution are unchanged.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Dict, Any
-from ..primitives.models import PrimitiveCollection
+from typing import Any, Dict, List, Optional
+
 from ..primitives.discovery import discover_primitives
+from ..primitives.models import PrimitiveCollection
+from ..utils.paths import portable_relpath
 from ..version import get_version
 from .claude_formatter import ClaudeFormatter
-from .template_builder import (
-    build_conditional_sections,
-    generate_agents_md_template,
-    TemplateData,
-    find_chatmode_by_name
-)
 from .link_resolver import resolve_markdown_links, validate_link_targets
-from ..utils.paths import portable_relpath
+from .template_builder import (
+    TemplateData,
+    build_conditional_sections,
+    find_chatmode_by_name,
+    generate_agents_md_template,
+)
 
 
 @dataclass
@@ -190,7 +191,9 @@ class AgentsCompiler:
                     primitives = discover_primitives(str(self.base_dir))
                 else:
                     # Use enhanced discovery with dependencies (Task 4 integration)
-                    from ..primitives.discovery import discover_primitives_with_dependencies
+                    from ..primitives.discovery import (
+                        discover_primitives_with_dependencies,
+                    )
                     primitives = discover_primitives_with_dependencies(str(self.base_dir))
             
             # Route to targets based on config.target
@@ -246,7 +249,7 @@ class AgentsCompiler:
             CompilationResult: Result of distributed compilation.
         """
         from .distributed_compiler import DistributedAgentsCompiler
-        
+
         # Create distributed compiler with exclude patterns
         distributed_compiler = DistributedAgentsCompiler(
             str(self.base_dir),

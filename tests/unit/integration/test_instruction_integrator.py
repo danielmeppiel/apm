@@ -1,15 +1,21 @@
 """Tests for instruction integration functionality."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
-from datetime import datetime
 
-from apm_cli.integration.instruction_integrator import InstructionIntegrator
+import pytest
+
 from apm_cli.integration.base_integrator import IntegrationResult
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType
+from apm_cli.integration.instruction_integrator import InstructionIntegrator
+from apm_cli.models.apm_package import (
+    APMPackage,
+    GitReferenceType,
+    PackageInfo,
+    ResolvedReference,
+)
 
 
 def _make_package_info(package_dir, name="test-pkg"):

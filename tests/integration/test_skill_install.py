@@ -9,9 +9,9 @@ These tests require network access to GitHub.
 import os
 import shutil
 import subprocess
-import pytest
 from pathlib import Path
 
+import pytest
 
 # Skip all tests if GITHUB_APM_PAT is not set
 pytestmark = pytest.mark.skipif(

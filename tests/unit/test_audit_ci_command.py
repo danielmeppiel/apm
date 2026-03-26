@@ -13,7 +13,6 @@ from click.testing import CliRunner
 from apm_cli.commands.audit import audit
 from apm_cli.models.apm_package import clear_apm_yml_cache
 
-
 # -- Fixtures -------------------------------------------------------
 
 

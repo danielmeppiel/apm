@@ -2,7 +2,8 @@
 
 import os
 import tempfile
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
+
 import pytest
 
 from src.apm_cli.runtime.manager import RuntimeManager

@@ -1,7 +1,8 @@
 """Discovery functionality for workflow files."""
 
-import os
 import glob
+import os
+
 from .parser import parse_workflow_file
 
 

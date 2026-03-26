@@ -1,11 +1,15 @@
 """Integration tests for collection virtual package installation."""
 
-import pytest
-from pathlib import Path
-import tempfile
 import shutil
+import tempfile
+from pathlib import Path
 
-from apm_cli.deps.github_downloader import GitHubPackageDownloader, normalize_collection_path
+import pytest
+
+from apm_cli.deps.github_downloader import (
+    GitHubPackageDownloader,
+    normalize_collection_path,
+)
 from apm_cli.models.apm_package import DependencyReference
 
 
@@ -121,7 +125,7 @@ display:
     def test_collection_manifest_validation_missing_fields(self):
         """Test that collection manifest validation catches missing fields."""
         from apm_cli.deps.collection_parser import parse_collection_yml
-        
+
         # Missing required field 'description'
         invalid_yaml = b"""
 id: test
@@ -137,7 +141,7 @@ items:
     def test_collection_manifest_validation_empty_items(self):
         """Test that collection manifest validation catches empty items."""
         from apm_cli.deps.collection_parser import parse_collection_yml
-        
+
         # Empty items array
         invalid_yaml = b"""
 id: test
@@ -152,7 +156,7 @@ items: []
     def test_collection_manifest_validation_invalid_item(self):
         """Test that collection manifest validation catches invalid items."""
         from apm_cli.deps.collection_parser import parse_collection_yml
-        
+
         # Item missing 'kind' field
         invalid_yaml = b"""
 id: test

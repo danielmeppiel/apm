@@ -8,12 +8,12 @@ import click
 
 from ..constants import APM_LOCK_FILENAME, APM_MODULES_DIR, APM_YML_FILENAME
 from ..core.command_logger import CommandLogger
-from ..utils.path_security import PathTraversalError, safe_rmtree
-from ._helpers import _build_expected_install_paths, _scan_installed_packages
 
 # APM Dependencies
 from ..deps.lockfile import LockFile, get_lockfile_path
 from ..models.apm_package import APMPackage
+from ..utils.path_security import PathTraversalError, safe_rmtree
+from ._helpers import _build_expected_install_paths, _scan_installed_packages
 
 
 @click.command(help="Remove APM packages not listed in apm.yml")

@@ -10,8 +10,10 @@ Also tests Azure DevOps (ADO) packages which use a 3-level directory structure
 
 import tempfile
 from pathlib import Path
+
 import pytest
 import yaml
+
 from apm_cli.models.apm_package import APMPackage
 from apm_cli.primitives.discovery import get_dependency_declaration_order
 

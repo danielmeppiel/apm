@@ -1,13 +1,13 @@
 """Unit tests for local filesystem path dependency support."""
 
-import pytest
-import yaml
 from pathlib import Path
 from unittest.mock import Mock
 
-from apm_cli.models.apm_package import DependencyReference, APMPackage
-from apm_cli.deps.lockfile import LockedDependency, LockFile
+import pytest
+import yaml
 
+from apm_cli.deps.lockfile import LockedDependency, LockFile
+from apm_cli.models.apm_package import APMPackage, DependencyReference
 
 # ===========================================================================
 # DependencyReference.is_local_path()

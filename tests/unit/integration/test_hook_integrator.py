@@ -10,14 +10,14 @@ Tests cover:
 """
 
 import json
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from apm_cli.integration.hook_integrator import HookIntegrator, HookIntegrationResult
+from apm_cli.integration.hook_integrator import HookIntegrationResult, HookIntegrator
 from apm_cli.models.apm_package import APMPackage, PackageInfo
 
 

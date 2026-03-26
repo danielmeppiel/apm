@@ -2,8 +2,8 @@
 
 import re
 import sys
-from typing import Optional, Tuple
 from pathlib import Path
+from typing import Optional, Tuple
 
 
 def get_latest_version_from_github(

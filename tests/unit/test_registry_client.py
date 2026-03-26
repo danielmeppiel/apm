@@ -1,9 +1,11 @@
 """Unit tests for the MCP registry client."""
 
-import unittest
 import os
+import unittest
 from unittest import mock
+
 import requests
+
 from apm_cli.registry.client import SimpleRegistryClient
 from apm_cli.utils import github_host
 

@@ -1,10 +1,11 @@
 """Safe MCP server installation with conflict detection."""
 
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
 from ..factory import ClientFactory
+from ..utils.console import _rich_error, _rich_success, _rich_warning
 from .conflict_detector import MCPConflictDetector
-from ..utils.console import _rich_warning, _rich_success, _rich_error
 
 
 @dataclass

@@ -1,24 +1,24 @@
 """Tests for GitHub package downloader."""
 
 import os
-import pytest
+import shutil
 import stat
 import tempfile
-import shutil
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 from urllib.parse import urlparse
 
+import pytest
 import requests as requests_lib
+
 from apm_cli.deps.github_downloader import GitHubPackageDownloader
 from apm_cli.models.apm_package import (
-    DependencyReference, 
-    ResolvedReference,
+    APMPackage,
+    DependencyReference,
     GitReferenceType,
+    ResolvedReference,
     ValidationResult,
-    APMPackage
 )
-
 
 _CRED_FILL_PATCH = patch(
     'apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git',
@@ -102,7 +102,7 @@ class TestGitHubPackageDownloader:
         mock_mkdtemp.return_value = mock_temp_dir
         
         from git.exc import GitCommandError
-        
+
         # First call (shallow clone) fails, second call (full clone) succeeds
         mock_repo = Mock()
         mock_commit = Mock()
@@ -718,9 +718,9 @@ class TestAzureDevOpsSupport:
     def test_build_ado_urls_with_spaces_in_project(self):
         """Test that URL builders properly encode spaces in ADO project names."""
         from apm_cli.utils.github_host import (
+            build_ado_api_url,
             build_ado_https_clone_url,
             build_ado_ssh_url,
-            build_ado_api_url,
         )
 
         # HTTPS clone URL with token
@@ -1149,6 +1149,7 @@ class TestWindowsCleanupHelpers:
 
     def test_close_repo_none_is_safe(self):
         from apm_cli.deps.github_downloader import _close_repo
+
         # Must not raise when passed None
         _close_repo(None)
 

@@ -5,7 +5,6 @@ from typing import Dict, List, Tuple
 
 from ..deps.lockfile import LockFile
 
-
 # Authoritative mapping of target names to deployed-file path prefixes.
 _TARGET_PREFIXES = {
     "copilot": [".github/"],

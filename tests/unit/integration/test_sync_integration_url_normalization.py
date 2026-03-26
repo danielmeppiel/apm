@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock
 
-from apm_cli.integration import PromptIntegrator, AgentIntegrator
+from apm_cli.integration import AgentIntegrator, PromptIntegrator
 
 
 class TestSyncIntegrationURLNormalization:

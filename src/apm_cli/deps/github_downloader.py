@@ -1,6 +1,8 @@
 """GitHub package downloader for APM dependencies."""
 
 import os
+import random
+import re
 import shutil
 import stat
 import sys
@@ -8,38 +10,35 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
-import random
-import re
-from typing import Union
-import requests
+from typing import Any, Callable, Dict, Optional, Union
 
 import git
-from git import Repo, RemoteProgress
+import requests
+from git import RemoteProgress, Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from ..core.auth import AuthResolver
 from ..models.apm_package import (
-    DependencyReference, 
-    PackageInfo, 
-    ResolvedReference, 
+    APMPackage,
+    DependencyReference,
     GitReferenceType,
+    PackageInfo,
     PackageType,
+    ResolvedReference,
     validate_apm_package,
-    APMPackage
 )
 from ..utils.github_host import (
-    build_https_clone_url,
-    build_ssh_url,
+    build_ado_api_url,
     build_ado_https_clone_url,
     build_ado_ssh_url,
-    build_ado_api_url,
-    build_raw_content_url,
     build_artifactory_archive_url,
-    sanitize_token_url_in_message,
+    build_https_clone_url,
+    build_raw_content_url,
+    build_ssh_url,
     default_host,
     is_azure_devops_hostname,
-    is_github_hostname
+    is_github_hostname,
+    sanitize_token_url_in_message,
 )
 
 
@@ -150,7 +149,7 @@ class GitProgressReporter(RemoteProgress):
     def _get_op_name(self, op_code):
         """Convert git operation code to human-readable name."""
         from git import RemoteProgress
-        
+
         # Extract operation type from op_code
         if op_code & RemoteProgress.COUNTING:
             return "Counting objects"
@@ -469,7 +468,7 @@ class GitHubPackageDownloader:
             str: Sanitized error message with sensitive data removed
         """
         import re
-        
+
         # Remove any tokens that might appear in URLs for github hosts (format: https://token@host)
         # Sanitize for default host and common enterprise hosts via helper
         sanitized = sanitize_token_url_in_message(error_message, host=default_host())
@@ -861,7 +860,7 @@ class GitHubPackageDownloader:
             bytes: File content
         """
         import base64
-        
+
         # Validate required ADO fields before proceeding
         if not all([dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo]):
             raise ValueError(
@@ -1678,7 +1677,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             package.version = short_sha
             apm_yml_path = target_path / "apm.yml"
             if apm_yml_path.exists():
-                from ..utils.yaml_io import load_yaml, dump_yaml
+                from ..utils.yaml_io import dump_yaml, load_yaml
                 _data = load_yaml(apm_yml_path) or {}
                 _data["version"] = short_sha
                 dump_yaml(_data, apm_yml_path)
@@ -1984,7 +1983,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             # Keep the synthesized apm.yml in sync
             apm_yml_path = target_path / "apm.yml"
             if apm_yml_path.exists():
-                from ..utils.yaml_io import load_yaml, dump_yaml
+                from ..utils.yaml_io import dump_yaml, load_yaml
                 _data = load_yaml(apm_yml_path) or {}
                 _data["version"] = short_sha
                 dump_yaml(_data, apm_yml_path)

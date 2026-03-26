@@ -1,14 +1,20 @@
 """Integration tests for auto-integration feature."""
 
-import pytest
-import tempfile
 import os
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from apm_cli.integration import PromptIntegrator
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType
-from datetime import datetime
+from apm_cli.models.apm_package import (
+    APMPackage,
+    GitReferenceType,
+    PackageInfo,
+    ResolvedReference,
+)
 
 
 @pytest.mark.integration

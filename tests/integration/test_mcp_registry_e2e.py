@@ -12,15 +12,16 @@ They complement the golden scenario tests by focusing specifically on
 the MCP registry functionality we've implemented.
 """
 
+import json
 import os
+import shutil
 import subprocess
 import tempfile
-import shutil
-import pytest
-import json
-import toml
 from pathlib import Path
 from unittest import mock
+
+import pytest
+import toml
 
 
 def _is_registry_healthy() -> bool:

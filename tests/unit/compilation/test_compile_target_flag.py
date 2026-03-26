@@ -10,9 +10,9 @@ Tests cover:
 - _merge_results() correctly combines results
 """
 
-import tempfile
-import shutil
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import pytest

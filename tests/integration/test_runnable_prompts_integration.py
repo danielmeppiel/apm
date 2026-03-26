@@ -1,10 +1,11 @@
 """Integration tests for runnable prompts feature."""
 
-import pytest
-from pathlib import Path
+import os
 import subprocess
 import tempfile
-import os
+from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -53,8 +54,9 @@ Say hello to ${input:name}!
         os.chdir(tmp_path)
         
         # Import here to ensure we're in the right directory
-        from apm_cli.core.script_runner import ScriptRunner
         from unittest.mock import patch
+
+        from apm_cli.core.script_runner import ScriptRunner
         
         runner = ScriptRunner()
         
@@ -97,8 +99,9 @@ Analyze this code.
         
         os.chdir(tmp_path)
         
-        from apm_cli.core.script_runner import ScriptRunner
         from unittest.mock import patch
+
+        from apm_cli.core.script_runner import ScriptRunner
         
         runner = ScriptRunner()
         
@@ -156,8 +159,9 @@ scripts:
         
         os.chdir(tmp_path)
         
-        from apm_cli.core.script_runner import ScriptRunner
         from unittest.mock import patch
+
+        from apm_cli.core.script_runner import ScriptRunner
         
         runner = ScriptRunner()
         
@@ -181,8 +185,9 @@ scripts:
         
         os.chdir(tmp_path)
         
-        from apm_cli.core.script_runner import ScriptRunner
         from unittest.mock import patch
+
+        from apm_cli.core.script_runner import ScriptRunner
         
         runner = ScriptRunner()
         
@@ -232,8 +237,9 @@ scripts:
         
         os.chdir(tmp_path)
         
-        from apm_cli.core.script_runner import ScriptRunner
         from unittest.mock import patch
+
+        from apm_cli.core.script_runner import ScriptRunner
         
         runner = ScriptRunner()
         
@@ -272,8 +278,9 @@ Create a comprehensive architecture blueprint for this project.
         
         os.chdir(tmp_path)
         
-        from apm_cli.core.script_runner import ScriptRunner
         from unittest.mock import patch
+
+        from apm_cli.core.script_runner import ScriptRunner
         
         runner = ScriptRunner()
         

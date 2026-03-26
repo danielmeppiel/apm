@@ -452,6 +452,7 @@ class TestVerboseFlagAcceptance:
 
     def test_uninstall_accepts_verbose_flag(self):
         from click.testing import CliRunner
+
         from apm_cli.commands.uninstall.cli import uninstall
 
         runner = CliRunner()

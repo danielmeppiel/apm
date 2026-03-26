@@ -25,9 +25,8 @@ from apm_cli.bundle.plugin_exporter import (
     _validate_output_rel,
     export_plugin_bundle,
 )
-from apm_cli.deps.lockfile import LockFile, LockedDependency
+from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.deps.plugin_parser import synthesize_plugin_json_from_apm_yml
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,6 +1,6 @@
 """Tests for CLI entry point encoding configuration."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from apm_cli.cli import _configure_encoding
 

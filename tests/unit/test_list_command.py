@@ -1,7 +1,8 @@
 """Tests for the apm list command."""
 
-from click.testing import CliRunner
 from unittest.mock import patch
+
+from click.testing import CliRunner
 
 from apm_cli.commands.list_cmd import list as list_command
 

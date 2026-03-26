@@ -1,6 +1,7 @@
 """Tests for Docker arguments deduplication."""
 
 import unittest
+
 from apm_cli.core.docker_args import DockerArgsProcessor
 
 

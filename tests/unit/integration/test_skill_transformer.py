@@ -6,8 +6,8 @@ to .agent.md files - they go directly to .github/skills/ as native skills.
 See skill-strategy.md for architectural rationale (T5).
 """
 
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 
 from apm_cli.integration.skill_transformer import SkillTransformer, to_hyphen_case

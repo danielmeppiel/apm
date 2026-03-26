@@ -3,7 +3,8 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 from ..models.apm_package import APMPackage, DependencyReference
 
 

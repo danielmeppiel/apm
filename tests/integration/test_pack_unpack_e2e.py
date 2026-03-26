@@ -8,10 +8,9 @@ Requires network access and GITHUB_TOKEN/GITHUB_APM_PAT for GitHub API.
 import os
 import shutil
 import subprocess
-
-import pytest
 from pathlib import Path
 
+import pytest
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("GITHUB_APM_PAT") and not os.environ.get("GITHUB_TOKEN"),

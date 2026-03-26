@@ -8,16 +8,16 @@ as part of the automated test suite. Run it manually when needed.
 """
 
 import os
+import subprocess
 import sys
 import tempfile
-import subprocess
 
 # Add the src directory to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from apm_cli.workflow.discovery import create_workflow_template
-from apm_cli.workflow.discovery import discover_workflows
+from apm_cli.workflow.discovery import create_workflow_template, discover_workflows
 from apm_cli.workflow.runner import run_workflow
+
 
 def manual_test_workflow_commands():
     """Test the workflow commands."""

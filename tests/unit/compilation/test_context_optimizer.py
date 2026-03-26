@@ -4,18 +4,19 @@ Tests the Context Optimization Engine that minimizes irrelevant context
 loaded by agents working in specific directories.
 """
 
+import fnmatch
 import os
 import tempfile
-import pytest
-import fnmatch
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from apm_cli.compilation.context_optimizer import (
     ContextOptimizer,
     DirectoryAnalysis,
     InheritanceAnalysis,
-    PlacementCandidate
+    PlacementCandidate,
 )
 from apm_cli.primitives.models import Instruction
 

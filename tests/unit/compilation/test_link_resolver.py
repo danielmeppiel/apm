@@ -3,20 +3,15 @@
 Following TDD approach - tests written before implementation.
 """
 
-import pytest
+import re
 from pathlib import Path
 from textwrap import dedent
-import re
 from urllib.parse import urlparse
 
-from apm_cli.compilation.link_resolver import (
-    UnifiedLinkResolver,
-    LinkResolutionContext
-)
-from apm_cli.primitives.models import (
-    PrimitiveCollection,
-    Context
-)
+import pytest
+
+from apm_cli.compilation.link_resolver import LinkResolutionContext, UnifiedLinkResolver
+from apm_cli.primitives.models import Context, PrimitiveCollection
 
 
 @pytest.fixture

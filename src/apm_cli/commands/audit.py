@@ -17,19 +17,18 @@ from typing import Dict, List, Optional, Tuple
 
 import click
 
+from ..core.command_logger import CommandLogger
 from ..deps.lockfile import LockFile, get_lockfile_path
 from ..security.content_scanner import ContentScanner, ScanFinding
 from ..security.file_scanner import scan_lockfile_packages
-from ..core.command_logger import CommandLogger
 from ..utils.console import (
+    STATUS_SYMBOLS,
     _get_console,
     _rich_echo,
     _rich_error,
     _rich_success,
     _rich_warning,
-    STATUS_SYMBOLS,
 )
-
 
 # -- Helpers --------------------------------------------------------
 
@@ -89,6 +88,7 @@ def _render_findings_table(
     if console:
         try:
             from rich.table import Table
+
             from ..security.audit_report import relative_path_for_report
 
             table = Table(

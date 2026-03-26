@@ -1,22 +1,22 @@
 """Unit tests for ClaudeFormatter - CLAUDE.md generation and commands."""
 
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
 
 from apm_cli.compilation.claude_formatter import (
+    CLAUDE_HEADER,
+    ClaudeCompilationResult,
     ClaudeFormatter,
     ClaudePlacement,
-    ClaudeCompilationResult,
     CommandGenerationResult,
     format_claude_md,
     generate_claude_commands,
-    CLAUDE_HEADER,
 )
 from apm_cli.compilation.constants import BUILD_ID_PLACEHOLDER
-from apm_cli.primitives.models import Instruction, Chatmode, PrimitiveCollection
+from apm_cli.primitives.models import Chatmode, Instruction, PrimitiveCollection
 from apm_cli.version import get_version
 
 

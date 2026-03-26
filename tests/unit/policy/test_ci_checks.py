@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from apm_cli.models.apm_package import clear_apm_yml_cache
 from apm_cli.policy.ci_checks import (
     _check_config_consistency,
     _check_content_integrity,
@@ -16,9 +17,7 @@ from apm_cli.policy.ci_checks import (
     _check_ref_consistency,
     run_baseline_checks,
 )
-from apm_cli.policy.models import CIAuditResult, CheckResult
-from apm_cli.models.apm_package import clear_apm_yml_cache
-
+from apm_cli.policy.models import CheckResult, CIAuditResult
 
 # -- Helpers --------------------------------------------------------
 
@@ -125,8 +124,8 @@ class TestRefConsistency:
                     deployed_files: []
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
@@ -146,8 +145,8 @@ class TestRefConsistency:
                     deployed_files: []
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
@@ -165,8 +164,8 @@ class TestRefConsistency:
                 dependencies: []
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
@@ -234,8 +233,8 @@ class TestNoOrphans:
                     deployed_files: []
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
@@ -256,8 +255,8 @@ class TestNoOrphans:
                     deployed_files: []
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
@@ -282,8 +281,8 @@ class TestConfigConsistency:
                     deployed_files: []
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
@@ -303,8 +302,8 @@ class TestConfigConsistency:
                     name: my-server
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
@@ -328,8 +327,8 @@ class TestConfigConsistency:
                     name: my-server
             """),
         )
-        from apm_cli.models.apm_package import APMPackage
         from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
 
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))

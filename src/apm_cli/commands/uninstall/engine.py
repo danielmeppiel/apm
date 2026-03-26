@@ -5,12 +5,11 @@ from pathlib import Path
 
 from ...constants import APM_MODULES_DIR, APM_YML_FILENAME
 from ...core.command_logger import CommandLogger
+from ...deps.lockfile import LockFile
+from ...integration.mcp_integrator import MCPIntegrator
+from ...models.apm_package import APMPackage, DependencyReference
 from ...utils.path_security import PathTraversalError, safe_rmtree
 from ...utils.paths import portable_relpath
-
-from ...deps.lockfile import LockFile
-from ...models.apm_package import APMPackage, DependencyReference
-from ...integration.mcp_integrator import MCPIntegrator
 
 
 def _parse_dependency_entry(dep_entry):
@@ -226,14 +225,14 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
 
 def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger):
     """Remove deployed files and re-integrate from remaining packages."""
-    from ...integration.base_integrator import BaseIntegrator
-    from ...models.apm_package import PackageInfo, validate_apm_package
-    from ...integration.prompt_integrator import PromptIntegrator
     from ...integration.agent_integrator import AgentIntegrator
-    from ...integration.skill_integrator import SkillIntegrator
+    from ...integration.base_integrator import BaseIntegrator
     from ...integration.command_integrator import CommandIntegrator
     from ...integration.hook_integrator import HookIntegrator
     from ...integration.instruction_integrator import InstructionIntegrator
+    from ...integration.prompt_integrator import PromptIntegrator
+    from ...integration.skill_integrator import SkillIntegrator
+    from ...models.apm_package import PackageInfo, validate_apm_package
 
     sync_managed = all_deployed_files if all_deployed_files else None
     if sync_managed is not None:

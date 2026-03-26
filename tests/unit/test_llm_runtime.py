@@ -1,7 +1,9 @@
 """Test LLM runtime integration."""
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
+
 from apm_cli.runtime.llm_runtime import LLMRuntime
 
 

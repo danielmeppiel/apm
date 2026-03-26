@@ -1,11 +1,12 @@
 """Tests for MCP overlay functionality: MCPDependency model, self-defined server
 info building, overlay application, and install flow integration."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from apm_cli.models.apm_package import MCPDependency
+import pytest
+
 from apm_cli.integration.mcp_integrator import MCPIntegrator
+from apm_cli.models.apm_package import MCPDependency
 
 
 # ---------------------------------------------------------------------------

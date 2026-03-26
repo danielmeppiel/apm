@@ -271,8 +271,9 @@ def _validate_claude_skill(package_path: Path, skill_md_path: Path, result: Vali
     Returns:
         ValidationResult: Updated validation result
     """
-    from .apm_package import APMPackage
     import frontmatter
+
+    from .apm_package import APMPackage
     
     try:
         # Parse SKILL.md to extract metadata
@@ -316,8 +317,8 @@ def _validate_marketplace_plugin(package_path: Path, plugin_json_path: Optional[
     Returns:
         ValidationResult: Updated validation result with MARKETPLACE_PLUGIN type
     """
-    from .apm_package import APMPackage
     from ..deps.plugin_parser import normalize_plugin_directory
+    from .apm_package import APMPackage
 
     try:
         # Normalize the plugin directory; plugin.json is optional metadata

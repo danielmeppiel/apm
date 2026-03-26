@@ -12,9 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
-from .content_scanner import ContentScanner, ScanFinding
 from ..utils.paths import portable_relpath
-
+from .content_scanner import ContentScanner, ScanFinding
 
 # ---------------------------------------------------------------------------
 # Policy & Verdict

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import click
 
-from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME
 from ...compilation import AgentsCompiler, CompilationConfig
+from ...constants import AGENTS_MD_FILENAME, APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME
 from ...core.command_logger import CommandLogger
 from ...primitives.discovery import discover_primitives
 from ...utils.console import (
@@ -35,6 +35,7 @@ def _display_single_file_summary(stats, c_status, c_hash, output_path, dry_run):
             return
 
         import os
+
         from rich.table import Table
 
         table = Table(

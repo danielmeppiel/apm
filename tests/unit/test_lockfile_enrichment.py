@@ -3,7 +3,7 @@
 import yaml
 
 from apm_cli.bundle.lockfile_enrichment import enrich_lockfile_for_pack
-from apm_cli.deps.lockfile import LockFile, LockedDependency
+from apm_cli.deps.lockfile import LockedDependency, LockFile
 
 
 def _make_lockfile() -> LockFile:

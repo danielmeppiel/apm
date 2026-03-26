@@ -1,6 +1,6 @@
 import pytest
 
-from apm_cli.utils.github_host import is_valid_fqdn, build_raw_content_url
+from apm_cli.utils.github_host import build_raw_content_url, is_valid_fqdn
 
 
 def test_build_raw_content_url():

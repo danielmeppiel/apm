@@ -1,27 +1,34 @@
 """Comprehensive tests for enhanced primitive discovery with dependencies."""
 
 import os
+
+# Test imports - using absolute imports since we may not have proper package setup
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-# Test imports - using absolute imports since we may not have proper package setup
-import sys
 import yaml
 
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 try:
-    from apm_cli.primitives.models import Chatmode, Instruction, Context, PrimitiveCollection, PrimitiveConflict
-    from apm_cli.primitives.discovery import (
-        discover_primitives_with_dependencies, 
-        scan_local_primitives, 
-        scan_dependency_primitives,
-        get_dependency_declaration_order,
-        scan_directory_with_source
-    )
     from apm_cli.models.apm_package import APMPackage, DependencyReference
+    from apm_cli.primitives.discovery import (
+        discover_primitives_with_dependencies,
+        get_dependency_declaration_order,
+        scan_dependency_primitives,
+        scan_directory_with_source,
+        scan_local_primitives,
+    )
+    from apm_cli.primitives.models import (
+        Chatmode,
+        Context,
+        Instruction,
+        PrimitiveCollection,
+        PrimitiveConflict,
+    )
 except ImportError as e:
     print(f"Import error: {e}")
     print("Skipping enhanced discovery tests due to missing dependencies")
@@ -414,7 +421,7 @@ description: Test {primitive_type} for {name}
 
     def test_dependency_order_includes_transitive_from_lockfile(self):
         """Test that transitive dependencies from apm.lock are included in declaration order."""
-        from apm_cli.deps.lockfile import LockFile, LockedDependency
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
 
         # Create apm.yml with only one direct dependency
         dependencies = {"apm": ["rieraj/team-cot-agent-instructions"]}
@@ -459,7 +466,7 @@ description: Test {primitive_type} for {name}
 
     def test_dependency_order_lockfile_no_duplicates(self):
         """Test that direct deps already in apm.yml are not duplicated from lockfile."""
-        from apm_cli.deps.lockfile import LockFile, LockedDependency
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
 
         # Create apm.yml with all deps listed directly
         dependencies = {"apm": [
@@ -483,7 +490,7 @@ description: Test {primitive_type} for {name}
 
     def test_scan_dependency_primitives_with_transitive(self):
         """Test that scan_dependency_primitives finds transitive dep primitives."""
-        from apm_cli.deps.lockfile import LockFile, LockedDependency
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
 
         # Create apm.yml with only one direct dependency
         dependencies = {"apm": ["owner/direct-dep"]}

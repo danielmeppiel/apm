@@ -1,14 +1,20 @@
 """Tests for prompt integration functionality."""
 
-import pytest
-import tempfile
 import os
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
-from datetime import datetime
+
+import pytest
 
 from apm_cli.integration import PromptIntegrator
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType
+from apm_cli.models.apm_package import (
+    APMPackage,
+    GitReferenceType,
+    PackageInfo,
+    ResolvedReference,
+)
 
 
 class TestPromptIntegrator:

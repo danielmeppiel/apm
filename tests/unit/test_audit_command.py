@@ -6,10 +6,14 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from apm_cli.commands.audit import audit, _scan_single_file, _apply_strip, _preview_strip
+from apm_cli.commands.audit import (
+    _apply_strip,
+    _preview_strip,
+    _scan_single_file,
+    audit,
+)
 from apm_cli.core.command_logger import CommandLogger
 from apm_cli.security.content_scanner import ContentScanner
-
 
 # ── Fixtures ────────────────────────────────────────────────────────
 

@@ -5,7 +5,8 @@ mirroring how PromptIntegrator handles .github/prompts/.
 """
 
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
+
 import frontmatter
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult

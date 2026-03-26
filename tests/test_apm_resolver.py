@@ -7,8 +7,12 @@ from unittest.mock import Mock, patch
 
 from src.apm_cli.deps.apm_resolver import APMDependencyResolver
 from src.apm_cli.deps.dependency_graph import (
-    DependencyGraph, DependencyTree, DependencyNode, FlatDependencyMap,
-    CircularRef, ConflictInfo
+    CircularRef,
+    ConflictInfo,
+    DependencyGraph,
+    DependencyNode,
+    DependencyTree,
+    FlatDependencyMap,
 )
 from src.apm_cli.models.apm_package import APMPackage, DependencyReference
 

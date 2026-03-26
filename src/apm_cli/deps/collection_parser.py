@@ -1,8 +1,9 @@
 """Parser for APM collection manifest files (.collection.yml)."""
 
-import yaml
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 
 @dataclass

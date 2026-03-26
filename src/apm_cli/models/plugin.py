@@ -1,9 +1,9 @@
 """Plugin management data models."""
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Dict, Any
-import json
+from typing import Any, Dict, List, Optional
 
 
 @dataclass

@@ -1,8 +1,9 @@
 """Codex runtime adapter for APM."""
 
-import subprocess
 import shutil
-from typing import Dict, Any, Optional
+import subprocess
+from typing import Any, Dict, Optional
+
 from .base import RuntimeAdapter
 
 
@@ -30,8 +31,8 @@ class CodexRuntime(RuntimeAdapter):
         Returns:
             str: The response text from Codex
         """
-        import sys
         import os
+        import sys
         
         try:
             # Use codex exec to execute the prompt with real-time streaming

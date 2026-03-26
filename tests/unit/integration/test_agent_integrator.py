@@ -1,12 +1,17 @@
 """Tests for agent integration functionality."""
 
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
-from datetime import datetime
 
 from apm_cli.integration import AgentIntegrator
-from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType
+from apm_cli.models.apm_package import (
+    APMPackage,
+    GitReferenceType,
+    PackageInfo,
+    ResolvedReference,
+)
 
 
 class TestAgentIntegrator:

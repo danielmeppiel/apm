@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from apm_cli.models.apm_package import clear_apm_yml_cache
-from apm_cli.policy.models import CIAuditResult, CheckResult
+from apm_cli.policy.models import CheckResult, CIAuditResult
 from apm_cli.policy.policy_checks import (
     _check_compilation_strategy,
     _check_compilation_target,
@@ -40,7 +40,6 @@ from apm_cli.policy.schema import (
     McpTransportPolicy,
     UnmanagedFilesPolicy,
 )
-
 
 # ── Helpers ────────────────────────────────────────────────────────
 
@@ -81,7 +80,7 @@ def _make_mcp_deps(mcp_list: list):
 
 def _make_lockfile(deps_data: list[dict]):
     """Create a LockFile from a list of dependency dicts."""
-    from apm_cli.deps.lockfile import LockFile, LockedDependency
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
 
     lock = LockFile()
     for d in deps_data:

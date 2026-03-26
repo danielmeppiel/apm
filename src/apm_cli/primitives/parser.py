@@ -2,10 +2,11 @@
 
 import os
 from pathlib import Path
-from typing import Union, List
+from typing import List, Union
+
 import frontmatter
 
-from .models import Chatmode, Instruction, Context, Skill, Primitive
+from .models import Chatmode, Context, Instruction, Primitive, Skill
 
 
 def parse_skill_file(file_path: Union[str, Path], source: str = None) -> Skill:

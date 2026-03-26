@@ -6,11 +6,13 @@ architecture specification.
 """
 
 import os
-import toml
 from pathlib import Path
-from .base import MCPClientAdapter
+
+import toml
+
 from ...registry.client import SimpleRegistryClient
 from ...registry.integration import RegistryIntegration
+from .base import MCPClientAdapter
 
 
 class CodexClientAdapter(MCPClientAdapter):
@@ -331,6 +333,7 @@ class CodexClientAdapter(MCPClientAdapter):
         """
         import os
         import sys
+
         from rich.prompt import Prompt
         
         resolved = {}

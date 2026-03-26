@@ -13,9 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from apm_cli.integration.mcp_integrator import MCPIntegrator
 from apm_cli.deps.lockfile import LockedDependency, LockFile
-
+from apm_cli.integration.mcp_integrator import MCPIntegrator
 
 # ---------------------------------------------------------------------------
 # Helpers — mirror the per-file convention used across the test suite.

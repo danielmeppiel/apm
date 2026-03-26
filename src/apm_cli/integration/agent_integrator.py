@@ -6,7 +6,7 @@ See skill-strategy.md for the full architectural rationale (T5).
 """
 
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.utils.paths import portable_relpath

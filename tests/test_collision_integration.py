@@ -1,8 +1,9 @@
 """Integration tests for prompt collision handling."""
 
-import pytest
-from pathlib import Path
 import os
+from pathlib import Path
+
+import pytest
 
 from apm_cli.core.script_runner import ScriptRunner
 

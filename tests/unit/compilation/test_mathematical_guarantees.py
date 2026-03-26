@@ -1,9 +1,10 @@
 """Tests for mathematical guarantees and coverage constraints."""
 
-import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 from apm_cli.compilation.context_optimizer import ContextOptimizer
 from apm_cli.primitives.models import Instruction

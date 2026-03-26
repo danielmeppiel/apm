@@ -1,15 +1,15 @@
 """Unit tests for MCP client factory and adapters."""
 
-import unittest
-import tempfile
 import json
 import os
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from apm_cli.factory import ClientFactory
-from apm_cli.adapters.client.vscode import VSCodeClientAdapter
 from apm_cli.adapters.client.codex import CodexClientAdapter
+from apm_cli.adapters.client.vscode import VSCodeClientAdapter
+from apm_cli.factory import ClientFactory
 
 
 class TestMCPClientFactory(unittest.TestCase):

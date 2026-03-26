@@ -7,7 +7,6 @@ import pytest
 
 from apm_cli.utils.content_hash import compute_package_hash, verify_package_hash
 
-
 # ---------------------------------------------------------------------------
 # compute_package_hash
 # ---------------------------------------------------------------------------
@@ -218,7 +217,7 @@ class TestLockfileContentHash:
 
     def test_content_hash_roundtrip_yaml(self, tmp_path):
         """content_hash survives a full write/read YAML cycle."""
-        from apm_cli.deps.lockfile import LockFile, LockedDependency
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
         lockfile = LockFile(apm_version="test")
         dep = LockedDependency(
             repo_url="owner/repo",

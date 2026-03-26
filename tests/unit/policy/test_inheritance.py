@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import unittest
 
+from apm_cli.policy.inheritance import (
+    MAX_CHAIN_DEPTH,
+    PolicyInheritanceError,
+    detect_cycle,
+    merge_policies,
+    resolve_policy_chain,
+    validate_chain_depth,
+)
 from apm_cli.policy.schema import (
     ApmPolicy,
     CompilationPolicy,
@@ -15,14 +23,6 @@ from apm_cli.policy.schema import (
     McpTransportPolicy,
     PolicyCache,
     UnmanagedFilesPolicy,
-)
-from apm_cli.policy.inheritance import (
-    MAX_CHAIN_DEPTH,
-    PolicyInheritanceError,
-    detect_cycle,
-    merge_policies,
-    resolve_policy_chain,
-    validate_chain_depth,
 )
 
 

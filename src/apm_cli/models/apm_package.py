@@ -6,10 +6,11 @@ Dependency and validation types have been extracted to sibling modules
 compatibility.
 """
 
-import yaml
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Dict, Union
+from typing import Dict, List, Optional, Union
+
+import yaml
 
 from .dependency import (
     DependencyReference,

@@ -9,9 +9,10 @@ This test verifies the complete plugin workflow:
 
 import json
 import shutil
-from pathlib import Path
-import pytest
 from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 from apm_cli.integration.agent_integrator import AgentIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator

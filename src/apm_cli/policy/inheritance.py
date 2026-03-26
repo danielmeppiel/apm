@@ -26,7 +26,6 @@ from .schema import (
     UnmanagedFilesPolicy,
 )
 
-
 MAX_CHAIN_DEPTH = 5
 
 # Escalation ladders -- index = severity, higher is stricter.

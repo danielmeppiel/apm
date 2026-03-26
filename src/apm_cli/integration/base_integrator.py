@@ -1,10 +1,9 @@
 """Base integrator with shared collision detection and sync logic."""
 
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
-
-from dataclasses import dataclass, field
 
 from apm_cli.compilation.link_resolver import UnifiedLinkResolver
 from apm_cli.primitives.discovery import discover_primitives
