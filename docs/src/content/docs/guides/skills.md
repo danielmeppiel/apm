@@ -51,9 +51,9 @@ APM copies skills to every detected target directory:
 | **No SKILL.md and no primitives** | No skill folder created |
 
 **Target Detection:**
-- APM deploys to every target directory that already exists (`.github/`, `.claude/`, `.cursor/`, `.opencode/`)
-- If **no** target directory exists, `.github/` is created as the default
-- Use `--target` to force a specific target regardless of what directories exist
+- Recognized directories: `.github/`, `.claude/`, `.cursor/`, `.opencode/`
+- If none exist, `.github/` is created as the fallback
+- Override with `--target`
 
 ### Skill Folder Naming
 
@@ -286,16 +286,7 @@ APM automatically detects package types:
 
 ## Target Detection
 
-APM decides where to deploy skills based on project structure:
-
-| Condition | Skill Output |
-|-----------|---------------|
-| `.github/` exists | `.github/skills/{skill-name}/SKILL.md` |
-| `.claude/` exists | `.claude/skills/{skill-name}/SKILL.md` |
-| `.cursor/` exists | `.cursor/skills/{skill-name}/SKILL.md` |
-| `.opencode/` exists | `.opencode/skills/{skill-name}/SKILL.md` |
-| Multiple dirs exist | Deploys to all of them |
-| None exist | Creates `.github/skills/` as fallback |
+APM deploys skills to every target directory that already exists: `.github/`, `.claude/`, `.cursor/`, `.opencode/`. If none exist, `.github/` is created as the fallback.
 
 Override with:
 ```bash
