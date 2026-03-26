@@ -228,3 +228,7 @@ class TestScopeWarnings:
         assert msg  # non-empty
         assert "cursor" in msg
         assert "opencode" in msg
+        # Supported targets should appear as supported, not unsupported
+        unsupported_part = msg.split("without native user-level support:")[-1]
+        assert "claude" not in unsupported_part.lower()
+        assert "copilot_cli" not in unsupported_part

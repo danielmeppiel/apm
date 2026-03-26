@@ -161,7 +161,7 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
     },
     "vscode": {
         "supported": True,
-        "user_root": "~/settings.json",
+        "user_root": "~/.vscode",
         "primitives": ["mcp_servers"],
         "description": "MCP servers only (via VS Code user settings.json)",
         "reference": "https://code.visualstudio.com/docs/configure/settings",
@@ -200,7 +200,12 @@ def warn_unsupported_user_scope() -> str:
     if not unsupported:
         return ""
     names = ", ".join(unsupported)
+    supported = [
+        name for name, info in USER_SCOPE_TARGETS.items()
+        if info["supported"]
+    ]
+    supported_names = ", ".join(supported)
     return (
-        f"[!] Some targets do not support user-scope primitives. "
+        f"[!] User-scope primitives are supported by {supported_names}. "
         f"Targets without native user-level support: {names}"
     )
