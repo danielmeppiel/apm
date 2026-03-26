@@ -191,8 +191,8 @@ class TestUserScopeTargets:
         assert "instructions" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
 
     def test_copilot_cli_does_not_support_prompts(self):
-        unsup = USER_SCOPE_TARGETS["copilot_cli"].get("unsupported_primitives", [])
-        assert "prompts" in unsup
+        unsupported_primitives = USER_SCOPE_TARGETS["copilot_cli"].get("unsupported_primitives", [])
+        assert "prompts" in unsupported_primitives
 
     def test_vscode_is_supported(self):
         assert USER_SCOPE_TARGETS["vscode"]["supported"] is True
@@ -247,5 +247,8 @@ class TestScopeWarnings:
 
     def test_warn_message_includes_unsupported_primitives(self):
         msg = warn_unsupported_user_scope()
-        assert "prompts" in msg
-        assert "copilot_cli" in msg
+        lines = msg.split("\n")
+        assert len(lines) >= 2, "Expected multi-line warning with unsupported primitives"
+        primitives_line = lines[1]
+        assert "prompts" in primitives_line
+        assert "copilot_cli" in primitives_line
