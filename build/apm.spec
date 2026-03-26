@@ -216,9 +216,10 @@ a = Analysis(
 # On distros where system libcurl requires a newer OpenSSL ABI than the
 # build machine provides (e.g. Fedora 43 with OPENSSL_3.2.0), this causes
 # "symbol lookup error" and git clone failures. Excluding these libs lets
-# the system OpenSSL be used instead -- which is always available on Linux.
-# Python's _ssl module still works because it finds system libssl via the
-# standard dynamic linker search path. See: github.com/microsoft/apm/issues/462
+# the system OpenSSL be used instead, which is expected to be available on
+# supported Linux targets. Python's _ssl module still works because it finds
+# system libssl via the standard dynamic linker search path. See:
+# github.com/microsoft/apm/issues/462
 if sys.platform == 'linux':
     _openssl_libs = {'libssl.so.3', 'libcrypto.so.3'}
     a.binaries = [(name, path, typ) for name, path, typ in a.binaries
