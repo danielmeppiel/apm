@@ -147,11 +147,7 @@ mkdir -p ~/bin
 
 ### Authentication errors when installing packages
 
-If `apm install` fails with authentication errors for private repositories, ensure you have a valid GitHub token configured:
-
-```bash
-curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user
-```
+See [Authentication -- Troubleshooting](../authentication/#troubleshooting) for token setup, SSO authorization, and diagnosing auth failures.
 
 ### File access errors on Windows (antivirus / endpoint protection)
 
