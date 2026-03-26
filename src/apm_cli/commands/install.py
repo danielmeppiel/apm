@@ -518,7 +518,7 @@ def _validate_package_exists(package, verbose=False):
     "-t",
     "target",
     type=click.Choice(
-        ["copilot", "claude", "cursor", "opencode", "all"],
+        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
         case_sensitive=False,
     ),
     default=None,
@@ -672,6 +672,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    target=target,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -1090,6 +1091,7 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    target: str = None,
 ):
     """Install APM package dependencies.
 
@@ -1101,6 +1103,7 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        target: Explicit target override from --target CLI flag
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")

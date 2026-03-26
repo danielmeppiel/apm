@@ -198,7 +198,7 @@ def active_targets(project_root, explicit_target: "Optional[str]" = None) -> lis
     # --- auto-detect by directory presence ---
     detected = [
         p for p in KNOWN_TARGETS.values()
-        if (root / p.root_dir).exists()
+        if (root / p.root_dir).is_dir()
     ]
     if detected:
         return detected
