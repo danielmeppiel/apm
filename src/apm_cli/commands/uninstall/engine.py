@@ -276,7 +276,11 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                                                       managed_files=_buckets["agents_opencode"] if _buckets else None)
         counts["agents"] += result.get("files_removed", 0)
 
-    if (project_root / ".github/skills").exists() or (project_root / ".claude/skills").exists() or (project_root / ".cursor/skills").exists() or (project_root / ".opencode/skills").exists():
+    has_skills = any(
+        (project_root / d / "skills").exists()
+        for d in (".github", ".claude", ".cursor", ".opencode")
+    )
+    if has_skills:
         integrator = SkillIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["skills"] if _buckets else None)

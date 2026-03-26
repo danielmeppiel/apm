@@ -192,11 +192,7 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
 
 
 def get_unsupported_targets() -> List[str]:
-    """Return target names that do not support user-scope deployment.
-
-    Targets with ``"partial"`` support are *not* included here -- they
-    do work at user scope, just not for every primitive.
-    """
+    """Return target names that do not support user-scope deployment."""
     return [
         name for name, info in USER_SCOPE_TARGETS.items()
         if info["supported"] is False
