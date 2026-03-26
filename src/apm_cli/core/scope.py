@@ -147,7 +147,7 @@ def ensure_user_dirs() -> Path:
 #   Ref: https://cursor.com/docs/rules
 #
 # * OpenCode -- no official documentation confirms user-level reading
-#   from ``~/.opencode/``.  Marked as unverified.
+#   from ``~/.opencode/``.  Marked as not supported.
 # ---------------------------------------------------------------------------
 
 USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
@@ -184,7 +184,7 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
         "supported": False,
         "user_root": "~/.opencode",
         "primitives": [],
-        "description": "Unverified -- no official documentation for user-level config",
+        "description": "Not supported -- no official documentation for user-level config",
         "reference": "",
     },
 }
