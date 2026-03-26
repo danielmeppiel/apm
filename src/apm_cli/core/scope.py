@@ -12,9 +12,12 @@ User-scope support varies by target:
 - **Claude Code** (fully supported): reads ``~/.claude/`` for global
   commands, agents, skills, and ``CLAUDE.md``.
   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
-- **Copilot** (not supported): VS Code reads ``.github/`` only from the
-  workspace root; user-level configuration lives in VS Code settings.
-  Ref: https://code.visualstudio.com/docs/copilot/customization/custom-instructions
+- **Copilot CLI** (supported): reads ``~/.copilot/agents/`` for
+  user-level custom agents.
+  Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
+- **VS Code** (partial): supports user-level MCP servers via
+  VS Code user ``settings.json``; ``.github/`` is workspace-only.
+  Ref: https://code.visualstudio.com/docs/configure/settings
 - **Cursor** (not supported): user-level rules are managed via the
   Cursor Settings UI, not the filesystem.
   Ref: https://cursor.com/docs/rules
@@ -123,10 +126,14 @@ def ensure_user_dirs() -> Path:
 #   from it and merges them with project-level ``.claude/``.
 #   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
 #
-# * Copilot -- VS Code reads ``.github/`` only from the current
-#   workspace root.  User-level instructions are configured via
-#   VS Code settings (``settings.json``), not a home-directory file.
-#   Ref: https://code.visualstudio.com/docs/copilot/customization/custom-instructions
+# * Copilot CLI -- ``~/.copilot/agents/`` is the documented user-level
+#   directory for custom agents.  Agents placed here are available
+#   across all repositories.
+#   Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
+#
+# * VS Code -- supports user-level MCP server configuration through
+#   VS Code user settings.json.  ``.github/`` is workspace-scoped only.
+#   Ref: https://code.visualstudio.com/docs/configure/settings
 #
 # * Cursor -- user-level rules are configured via the Cursor Settings
 #   UI (Settings > Rules for AI).  The ``.cursor/rules/`` directory is
@@ -145,12 +152,19 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
         "description": "User-level Claude commands, agents, and settings",
         "reference": "https://docs.anthropic.com/en/docs/claude-code/settings",
     },
-    "copilot": {
-        "supported": False,
-        "user_root": "~/.github",
-        "primitives": [],
-        "description": "Not supported -- VS Code reads .github/ from workspace only",
-        "reference": "https://code.visualstudio.com/docs/copilot/customization/custom-instructions",
+    "copilot_cli": {
+        "supported": True,
+        "user_root": "~/.copilot",
+        "primitives": ["agents"],
+        "description": "User-level custom agents for Copilot CLI",
+        "reference": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
+    },
+    "vscode": {
+        "supported": True,
+        "user_root": "~/settings.json",
+        "primitives": ["mcp_servers"],
+        "description": "MCP servers only (via VS Code user settings.json)",
+        "reference": "https://code.visualstudio.com/docs/configure/settings",
     },
     "cursor": {
         "supported": False,
@@ -187,6 +201,6 @@ def warn_unsupported_user_scope() -> str:
         return ""
     names = ", ".join(unsupported)
     return (
-        f"[!] User-scope primitives are only read by Claude Code. "
+        f"[!] Some targets do not support user-scope primitives. "
         f"Targets without native user-level support: {names}"
     )

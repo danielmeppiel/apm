@@ -638,7 +638,7 @@ class TestInstallGlobalFlag:
                 assert result.exit_code == 1
                 assert "user scope" in result.output.lower() or "~/.apm/" in result.output
                 # Should warn about unsupported targets
-                assert "copilot" in result.output.lower()
+                assert "cursor" in result.output.lower()
             finally:
                 os.chdir(self.original_dir)
 
@@ -656,7 +656,7 @@ class TestInstallGlobalFlag:
                 assert (fake_home / ".apm" / "apm_modules").is_dir()
                 assert "user scope" in result.output.lower() or "~/.apm/" in result.output
                 # Should warn about unsupported targets
-                assert "copilot" in result.output.lower()
+                assert "cursor" in result.output.lower()
             finally:
                 os.chdir(self.original_dir)
 

@@ -158,7 +158,7 @@ class TestUserScopeTargets:
     """Validate the target support registry."""
 
     def test_all_known_targets_present(self):
-        expected = {"copilot", "claude", "cursor", "opencode"}
+        expected = {"copilot_cli", "vscode", "claude", "cursor", "opencode"}
         assert set(USER_SCOPE_TARGETS.keys()) == expected
 
     def test_each_target_has_required_keys(self):
@@ -178,8 +178,17 @@ class TestUserScopeTargets:
     def test_claude_is_supported(self):
         assert USER_SCOPE_TARGETS["claude"]["supported"] is True
 
-    def test_copilot_is_not_supported(self):
-        assert USER_SCOPE_TARGETS["copilot"]["supported"] is False
+    def test_copilot_cli_is_supported(self):
+        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] is True
+
+    def test_copilot_cli_supports_agents(self):
+        assert "agents" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
+
+    def test_vscode_is_supported(self):
+        assert USER_SCOPE_TARGETS["vscode"]["supported"] is True
+
+    def test_vscode_supports_mcp_servers(self):
+        assert "mcp_servers" in USER_SCOPE_TARGETS["vscode"]["primitives"]
 
     def test_cursor_is_not_supported(self):
         assert USER_SCOPE_TARGETS["cursor"]["supported"] is False
@@ -208,14 +217,14 @@ class TestScopeWarnings:
 
     def test_get_unsupported_targets(self):
         unsupported = get_unsupported_targets()
-        assert "copilot" in unsupported
         assert "cursor" in unsupported
         assert "opencode" in unsupported
         assert "claude" not in unsupported
+        assert "copilot_cli" not in unsupported
+        assert "vscode" not in unsupported
 
     def test_warn_message_includes_unsupported_names(self):
         msg = warn_unsupported_user_scope()
         assert msg  # non-empty
-        assert "copilot" in msg
         assert "cursor" in msg
-        assert "Claude Code" in msg
+        assert "opencode" in msg

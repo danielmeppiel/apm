@@ -161,8 +161,8 @@ class TestGlobalScopeOutput:
         """Install --global should warn about targets that lack user-scope support."""
         result = _run_apm(apm_command, ["install", "--global"], fake_home, fake_home)
         combined = result.stdout + result.stderr
-        assert "copilot" in combined.lower(), (
-            f"Missing copilot warning in output: {combined}"
+        assert "cursor" in combined.lower(), (
+            f"Missing cursor warning in output: {combined}"
         )
 
     def test_uninstall_global_shows_scope_info(self, apm_command, fake_home):
