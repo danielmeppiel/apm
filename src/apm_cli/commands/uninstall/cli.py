@@ -58,7 +58,13 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
     try:
         # Check if apm.yml exists
         if not manifest_path.exists():
-            logger.error(f"No {manifest_path} found. Run 'apm init' first.")
+            if scope is InstallScope.USER:
+                logger.error(
+                    "No user manifest found at ~/.apm/apm.yml. Install a package globally "
+                    "first with 'apm install -g <package>' or create the file manually."
+                )
+            else:
+                logger.error(f"No {manifest_path} found. Run 'apm init' in this project first.")
             sys.exit(1)
 
         if not packages:
