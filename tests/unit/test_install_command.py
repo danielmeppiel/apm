@@ -691,6 +691,7 @@ class TestInstallGlobalFlag:
                         cli, ["install", "--global", "test/pkg"]
                     )
 
+                assert result.exit_code == 0
                 user_manifest = fake_home / ".apm" / "apm.yml"
                 assert user_manifest.exists(), f"Expected {user_manifest} to exist"
                 assert (fake_home / ".apm" / "apm_modules").is_dir()
