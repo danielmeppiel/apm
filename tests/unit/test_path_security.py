@@ -15,6 +15,7 @@ from apm_cli.utils.path_security import (
     PathTraversalError,
     ensure_path_within,
     safe_rmtree,
+    validate_path_segments,
 )
 from apm_cli.models.dependency import DependencyReference
 
@@ -119,6 +120,84 @@ class TestSafeRmtree:
 
 
 # ---------------------------------------------------------------------------
+# validate_path_segments
+# ---------------------------------------------------------------------------
+
+
+class TestValidatePathSegments:
+    """Unit tests for the validate_path_segments utility."""
+
+    def test_accepts_clean_path(self):
+        validate_path_segments("owner/repo")
+
+    def test_accepts_single_segment(self):
+        validate_path_segments("repo")
+
+    def test_accepts_deep_path(self):
+        validate_path_segments("org/project/repo/sub/dir")
+
+    def test_rejects_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner/../evil")
+
+    def test_rejects_single_dot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner/./repo")
+
+    def test_rejects_leading_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("../escape")
+
+    def test_rejects_nested_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("a/b/../../c")
+
+    def test_rejects_backslash_dotdot(self):
+        """Backslashes are normalised to forward slashes before checking."""
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner\\..\\evil")
+
+    def test_rejects_mixed_separators(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("sub\\..\\..\\esc")
+
+    def test_empty_segments_allowed_by_default(self):
+        # Double-slash produces empty segments; allowed unless reject_empty
+        validate_path_segments("owner//repo")
+
+    def test_reject_empty_catches_double_slash(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner//repo", reject_empty=True)
+
+    def test_reject_empty_catches_trailing_slash(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner/repo/", reject_empty=True)
+
+    def test_reject_empty_catches_leading_slash(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("/owner/repo", reject_empty=True)
+
+    def test_reject_empty_passes_clean_path(self):
+        validate_path_segments("owner/repo", reject_empty=True)
+
+    def test_context_appears_in_message(self):
+        with pytest.raises(PathTraversalError, match="repo_url"):
+            validate_path_segments("a/../b", context="repo_url")
+
+    def test_bare_dot_rejected(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments(".")
+
+    def test_bare_dotdot_rejected(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("..")
+
+    def test_empty_string_with_reject_empty(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("", reject_empty=True)
+
+
+# ---------------------------------------------------------------------------
 # DependencyReference parse-time traversal rejection
 # ---------------------------------------------------------------------------
 
@@ -176,6 +255,47 @@ class TestDependencyParseTraversalRejection:
     def test_parse_accepts_normal_virtual_package(self):
         dep = DependencyReference.parse("owner/repo/prompts/my-file.prompt.md")
         assert dep.is_virtual is True
+
+    # --- SSH URL traversal rejection ---
+
+    def test_ssh_parse_rejects_dotdot_in_repo(self):
+        """SSH URLs with '..' traversal in the repo path must be rejected."""
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/../evil")
+
+    def test_ssh_parse_rejects_nested_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:org/../../etc/passwd")
+
+    def test_ssh_parse_rejects_single_dot(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/./repo")
+
+    def test_ssh_parse_accepts_normal_url(self):
+        dep = DependencyReference.parse("git@github.com:owner/repo#main")
+        assert dep.repo_url == "owner/repo"
+        assert dep.reference == "main"
+
+    def test_ssh_parse_accepts_url_with_git_suffix(self):
+        dep = DependencyReference.parse("git@gitlab.com:team/project.git#v1.0")
+        assert dep.repo_url == "team/project"
+        assert dep.reference == "v1.0"
+
+    def test_ssh_parse_rejects_dotdot_with_alias(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/../evil@my-alias")
+
+    def test_ssh_parse_rejects_dotdot_with_reference(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/../../etc#main")
+
+    def test_ssh_parse_rejects_double_slash(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner//repo")
+
+    def test_ssh_parse_rejects_trailing_slash(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/repo/")
 
 
 # ---------------------------------------------------------------------------

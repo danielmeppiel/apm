@@ -15,7 +15,11 @@ from ...utils.github_host import (
     parse_artifactory_path,
     unsupported_host_error,
 )
-from ...utils.path_security import PathTraversalError, ensure_path_within
+from ...utils.path_security import (
+    PathTraversalError,
+    ensure_path_within,
+    validate_path_segments,
+)
 from ..validation import InvalidVirtualPackageExtensionError
 from .types import VirtualPackageType
 
@@ -309,11 +313,11 @@ class DependencyReference:
         """
         if self.is_local and self.local_path:
             pkg_dir_name = Path(self.local_path).name
-            if pkg_dir_name in ("", ".", ".."):
-                raise PathTraversalError(
-                    f"Invalid local package path '{self.local_path}': "
-                    f"basename must not be empty, '.', or '..'"
-                )
+            validate_path_segments(
+                pkg_dir_name,
+                context="local package path",
+                reject_empty=True,
+            )
             result = apm_modules_dir / "_local" / pkg_dir_name
             ensure_path_within(result, apm_modules_dir)
             return result
@@ -321,21 +325,11 @@ class DependencyReference:
         repo_parts = self.repo_url.split("/")
 
         # Security: reject traversal in repo_url segments (catches lockfile injection)
-        if any(seg in (".", "..") for seg in repo_parts):
-            raise PathTraversalError(
-                f"Invalid repo_url '{self.repo_url}': "
-                f"path segments must not be '.' or '..'"
-            )
+        validate_path_segments(self.repo_url, context="repo_url")
 
         # Security: reject traversal in virtual_path (catches lockfile injection)
-        if self.virtual_path and any(
-            seg in (".", "..")
-            for seg in self.virtual_path.replace("\\", "/").split("/")
-        ):
-            raise PathTraversalError(
-                f"Invalid virtual_path '{self.virtual_path}': "
-                f"path segments must not be '.' or '..'"
-            )
+        if self.virtual_path:
+            validate_path_segments(self.virtual_path, context="virtual_path")
         result: Path | None = None
 
         if self.is_virtual:
@@ -485,10 +479,7 @@ class DependencyReference:
             # Normalize backslashes to forward slashes for cross-platform safety
             sub_path = sub_path.replace("\\", "/").strip().strip("/")
             # Security: reject path traversal
-            if any(seg in (".", "..") for seg in sub_path.split("/")):
-                raise PathTraversalError(
-                    f"Invalid path '{sub_path}': path segments must not be '.' or '..'"
-                )
+            validate_path_segments(sub_path, context="path")
 
         # Parse the git URL using the standard parser
         dep = cls.parse(git_url)
@@ -603,11 +594,7 @@ class DependencyReference:
             virtual_path = "/".join(path_segments[min_base_segments:])
 
             # Security: reject path traversal in virtual path
-            vp_check = virtual_path.replace("\\", "/")
-            if any(seg in (".", "..") for seg in vp_check.split("/")):
-                raise PathTraversalError(
-                    f"Invalid virtual path '{virtual_path}': path segments must not be '.' or '..'"
-                )
+            validate_path_segments(virtual_path, context="virtual path")
 
             if "/collections/" in check_str or virtual_path.startswith("collections/"):
                 pass
@@ -655,6 +642,12 @@ class DependencyReference:
             repo_part = repo_part[:-4]
 
         repo_url = repo_part.strip()
+
+        # Security: reject traversal sequences in SSH repo paths
+        validate_path_segments(
+            repo_url, context="SSH repository path", reject_empty=True
+        )
+
         return host, repo_url, reference, alias
 
     @classmethod
@@ -781,11 +774,10 @@ class DependencyReference:
             allowed_pattern = (
                 r"^[a-zA-Z0-9._\- ]+$" if is_ado_host else r"^[a-zA-Z0-9._-]+$"
             )
+            validate_path_segments(
+                "/".join(uparts), context="repository path"
+            )
             for part in uparts:
-                if part in (".", ".."):
-                    raise PathTraversalError(
-                        f"Invalid repository path component: '{part}' is a traversal sequence"
-                    )
                 if not re.match(allowed_pattern, part.rstrip(".git")):
                     raise ValueError(f"Invalid repository path component: {part}")
 
@@ -831,11 +823,12 @@ class DependencyReference:
         allowed_pattern = (
             r"^[a-zA-Z0-9._\- ]+$" if is_ado_host else r"^[a-zA-Z0-9._-]+$"
         )
-        for i, part in enumerate(path_parts):
-            if not part:
-                raise ValueError(
-                    f"Invalid repository format: path component {i+1} cannot be empty"
-                )
+        validate_path_segments(
+            "/".join(path_parts),
+            context="repository URL path",
+            reject_empty=True,
+        )
+        for part in path_parts:
             if not re.match(allowed_pattern, part):
                 raise ValueError(f"Invalid repository path component: {part}")
 
@@ -937,12 +930,9 @@ class DependencyReference:
                     f"Invalid Azure DevOps repository format: {repo_url}. Expected 'org/project/repo'"
                 )
             ado_parts = repo_url.split("/")
-            for part in ado_parts:
-                if part in (".", ".."):
-                    raise PathTraversalError(
-                        f"Path traversal segment '{part}' is not allowed in "
-                        f"Azure DevOps repository path: {repo_url}"
-                    )
+            validate_path_segments(
+                repo_url, context="Azure DevOps repository path"
+            )
             ado_organization = ado_parts[0]
             ado_project = ado_parts[1]
             ado_repo = ado_parts[2]
@@ -956,12 +946,8 @@ class DependencyReference:
                 raise ValueError(
                     f"Invalid repository format: {repo_url}. Contains invalid characters"
                 )
+            validate_path_segments(repo_url, context="repository path")
             for seg in segments:
-                if seg in (".", ".."):
-                    raise ValueError(
-                        f"Invalid repository format: {repo_url}. "
-                        f"Contains '.' or '..' path segments"
-                    )
                 if any(seg.endswith(ext) for ext in cls.VIRTUAL_FILE_EXTENSIONS):
                     raise ValueError(
                         f"Invalid repository format: '{repo_url}' contains a virtual file extension. "
