@@ -12,14 +12,16 @@ User-scope support varies by target:
 - **Claude Code** (fully supported): reads ``~/.claude/`` for global
   commands, agents, skills, and ``CLAUDE.md``.
   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
-- **Copilot CLI** (partially supported): reads ``~/.copilot/`` for
-  user-level agents, skills, and instructions.  Prompts are NOT
-  supported at user scope.
-  Ref (agents): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
-  Ref (skills): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills
-  Ref (instructions): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
-- **VS Code** (partial): supports user-level MCP servers via
-  user ``mcp.json``; ``.github/`` is workspace-only.
+- **Copilot CLI** (not supported): Copilot CLI reads user-level agents,
+  skills, and instructions from ``~/.copilot/``, but APM deploys Copilot
+  primitives under ``.github/`` which resolves to ``~/.github/`` at user
+  scope -- the wrong location.  A dedicated copilot_cli integrator is
+  needed to support user-scope deployment.
+  Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
+- **VS Code** (not supported): VS Code supports user-level MCP servers via
+  user ``mcp.json``, but APM's MCP integrator only writes to workspace
+  ``.vscode/mcp.json``.  A scope-aware MCP integrator is needed to
+  support user-scope deployment.
   Ref: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
 - **Cursor** (not supported): user-level rules are managed via the
   Cursor Settings UI, not the filesystem.
@@ -130,15 +132,15 @@ def ensure_user_dirs() -> Path:
 #   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
 #
 # * Copilot CLI -- ``~/.copilot/`` is the documented user-level
-#   directory for custom agents, skills, and instructions.  These are
-#   available across all repositories.  Prompts are NOT supported at
-#   user scope.
-#   Ref (agents): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
-#   Ref (skills): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills
-#   Ref (instructions): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
+#   directory for custom agents, skills, and instructions.  However,
+#   APM deploys Copilot primitives under ``.github/`` which resolves
+#   to ``~/.github/`` at user scope -- the wrong location.  A
+#   dedicated copilot_cli integrator is needed.
+#   Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
 #
-# * VS Code -- supports user-level MCP server configuration through
-#   user mcp.json.  ``.github/`` is workspace-scoped only.
+# * VS Code -- supports user-level MCP servers via user mcp.json,
+#   but APM's MCP integrator only writes to workspace
+#   ``.vscode/mcp.json``.  A scope-aware MCP integrator is needed.
 #   Ref: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
 #
 # * Cursor -- user-level rules are configured via the Cursor Settings
@@ -159,18 +161,17 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
         "reference": "https://docs.anthropic.com/en/docs/claude-code/settings",
     },
     "copilot_cli": {
-        "supported": "partial",
+        "supported": False,
         "user_root": "~/.copilot",
-        "primitives": ["agents", "skills", "instructions"],
-        "unsupported_primitives": ["prompts"],
-        "description": "User-level agents, skills, and instructions for Copilot CLI (prompts not supported)",
+        "primitives": [],
+        "description": "Not supported -- APM deploys to .github/ (resolves to ~/.github/ at user scope, not ~/.copilot/)",
         "reference": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
     },
     "vscode": {
-        "supported": "partial",
-        "user_root": "<VS Code user settings>",
-        "primitives": ["mcp_servers"],
-        "description": "MCP servers only (via user mcp.json; path is platform-specific)",
+        "supported": False,
+        "user_root": "~/.vscode",
+        "primitives": [],
+        "description": "Not supported -- MCP integrator writes to workspace .vscode/mcp.json only, not user mcp.json",
         "reference": "https://code.visualstudio.com/docs/copilot/customization/mcp-servers",
     },
     "cursor": {
@@ -205,10 +206,6 @@ def get_unsupported_targets() -> List[str]:
 def warn_unsupported_user_scope() -> str:
     """Return a warning message listing targets that lack user-scope support.
 
-    Also warns about partially-supported targets and primitives that are
-    not supported at user scope for those targets (e.g. prompts for
-    Copilot CLI).
-
     Returns an empty string when all targets are fully supported.
     """
     unsupported = get_unsupported_targets()
@@ -216,33 +213,13 @@ def warn_unsupported_user_scope() -> str:
         name for name, info in USER_SCOPE_TARGETS.items()
         if info["supported"] is True
     ]
-    partially_supported = [
-        name for name, info in USER_SCOPE_TARGETS.items()
-        if info["supported"] == "partial"
-    ]
 
-    # Collect per-target unsupported primitives
-    partial_warnings: list[str] = []
-    for name, info in USER_SCOPE_TARGETS.items():
-        unsup_prims = info.get("unsupported_primitives", [])
-        if unsup_prims and info["supported"]:
-            prims = ", ".join(unsup_prims)
-            partial_warnings.append(f"{name} ({prims})")
+    if not unsupported:
+        return ""
 
-    parts: list[str] = []
-    if unsupported or partially_supported:
-        supported_names = ", ".join(fully_supported)
-        line = f"[!] User-scope primitives are fully supported by {supported_names}."
-        if partially_supported:
-            partial_names = ", ".join(partially_supported)
-            line += f" Partially supported: {partial_names}."
-        if unsupported:
-            names = ", ".join(unsupported)
-            line += f" Targets without native user-level support: {names}"
-        parts.append(line)
-    if partial_warnings:
-        parts.append(
-            "[!] Some primitives are not supported at user scope: "
-            + "; ".join(partial_warnings)
-        )
-    return "\n".join(parts)
+    supported_names = ", ".join(fully_supported)
+    names = ", ".join(unsupported)
+    return (
+        f"[!] User-scope primitives are fully supported by {supported_names}."
+        f" Targets without native user-level support: {names}"
+    )

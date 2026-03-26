@@ -244,49 +244,51 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     counts = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
 
     # Phase 1: Remove all APM-deployed files
-    if Path(".github/prompts").exists():
+    # Use project_root-relative paths so user-scope (deploy_root=~)
+    # deployments are correctly detected and cleaned.
+    if (project_root / ".github/prompts").exists():
         integrator = PromptIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["prompts"] if _buckets else None)
         counts["prompts"] = result.get("files_removed", 0)
 
-    if Path(".github/agents").exists():
+    if (project_root / ".github/agents").exists():
         integrator = AgentIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["agents_github"] if _buckets else None)
         counts["agents"] = result.get("files_removed", 0)
 
-    if Path(".claude/agents").exists():
+    if (project_root / ".claude/agents").exists():
         integrator = AgentIntegrator()
         result = integrator.sync_integration_claude(apm_package, project_root,
                                                     managed_files=_buckets["agents_claude"] if _buckets else None)
         counts["agents"] += result.get("files_removed", 0)
 
-    if Path(".cursor/agents").exists():
+    if (project_root / ".cursor/agents").exists():
         integrator = AgentIntegrator()
         result = integrator.sync_integration_cursor(apm_package, project_root,
                                                     managed_files=_buckets["agents_cursor"] if _buckets else None)
         counts["agents"] += result.get("files_removed", 0)
 
-    if Path(".opencode/agents").exists():
+    if (project_root / ".opencode/agents").exists():
         integrator = AgentIntegrator()
         result = integrator.sync_integration_opencode(apm_package, project_root,
                                                       managed_files=_buckets["agents_opencode"] if _buckets else None)
         counts["agents"] += result.get("files_removed", 0)
 
-    if Path(".github/skills").exists() or Path(".claude/skills").exists() or Path(".cursor/skills").exists() or Path(".opencode/skills").exists():
+    if (project_root / ".github/skills").exists() or (project_root / ".claude/skills").exists() or (project_root / ".cursor/skills").exists() or (project_root / ".opencode/skills").exists():
         integrator = SkillIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["skills"] if _buckets else None)
         counts["skills"] = result.get("files_removed", 0)
 
-    if Path(".claude/commands").exists():
+    if (project_root / ".claude/commands").exists():
         integrator = CommandIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["commands"] if _buckets else None)
         counts["commands"] = result.get("files_removed", 0)
 
-    if Path(".opencode/commands").exists():
+    if (project_root / ".opencode/commands").exists():
         integrator = CommandIntegrator()
         result = integrator.sync_integration_opencode(apm_package, project_root,
                                                       managed_files=_buckets["commands_opencode"] if _buckets else None)
@@ -297,14 +299,14 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                                                       managed_files=_buckets["hooks"] if _buckets else None)
     counts["hooks"] = result.get("files_removed", 0)
 
-    if Path(".github/instructions").exists():
+    if (project_root / ".github/instructions").exists():
         integrator = InstructionIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["instructions"] if _buckets else None)
         counts["instructions"] = result.get("files_removed", 0)
 
     # Clean Cursor rules (.cursor/rules/)
-    if Path(".cursor/rules").exists():
+    if (project_root / ".cursor/rules").exists():
         integrator = InstructionIntegrator()
         result = integrator.sync_integration_cursor(apm_package, project_root,
                                                     managed_files=_buckets["rules_cursor"] if _buckets else None)
@@ -367,11 +369,11 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     return counts
 
 
-def _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, old_mcp_servers):
+def _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, old_mcp_servers, modules_dir=None):
     """Remove MCP servers that are no longer needed after uninstall."""
     if not old_mcp_servers:
         return
-    apm_modules_path = Path.cwd() / APM_MODULES_DIR
+    apm_modules_path = modules_dir if modules_dir is not None else Path.cwd() / APM_MODULES_DIR
     remaining_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lockfile_path, trust_private=True)
     try:
         remaining_root_mcp = apm_package.get_mcp_dependencies()

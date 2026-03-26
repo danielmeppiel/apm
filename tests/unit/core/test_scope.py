@@ -171,41 +171,18 @@ class TestUserScopeTargets:
 
     def test_user_roots_start_with_tilde(self):
         for name, info in USER_SCOPE_TARGETS.items():
-            user_root = info["user_root"]
-            # VS Code user settings path is platform-specific, not a tilde path
-            if name == "vscode":
-                assert user_root == "<VS Code user settings>", (
-                    f"{name} user_root should be the placeholder for platform-specific path"
-                )
-            else:
-                assert user_root.startswith("~/"), (
-                    f"{name} user_root should start with '~/'"
-                )
+            assert info["user_root"].startswith("~/"), (
+                f"{name} user_root should start with '~/'"
+            )
 
     def test_claude_is_supported(self):
         assert USER_SCOPE_TARGETS["claude"]["supported"] is True
 
-    def test_copilot_cli_is_partially_supported(self):
-        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] == "partial"
+    def test_copilot_cli_is_not_supported(self):
+        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] is False
 
-    def test_copilot_cli_supports_agents(self):
-        assert "agents" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
-
-    def test_copilot_cli_supports_skills(self):
-        assert "skills" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
-
-    def test_copilot_cli_supports_instructions(self):
-        assert "instructions" in USER_SCOPE_TARGETS["copilot_cli"]["primitives"]
-
-    def test_copilot_cli_does_not_support_prompts(self):
-        unsupported_primitives = USER_SCOPE_TARGETS["copilot_cli"].get("unsupported_primitives", [])
-        assert "prompts" in unsupported_primitives
-
-    def test_vscode_is_partially_supported(self):
-        assert USER_SCOPE_TARGETS["vscode"]["supported"] == "partial"
-
-    def test_vscode_supports_mcp_servers(self):
-        assert "mcp_servers" in USER_SCOPE_TARGETS["vscode"]["primitives"]
+    def test_vscode_is_not_supported(self):
+        assert USER_SCOPE_TARGETS["vscode"]["supported"] is False
 
     def test_cursor_is_not_supported(self):
         assert USER_SCOPE_TARGETS["cursor"]["supported"] is False
@@ -236,31 +213,22 @@ class TestScopeWarnings:
         unsupported = get_unsupported_targets()
         assert "cursor" in unsupported
         assert "opencode" in unsupported
+        assert "copilot_cli" in unsupported
+        assert "vscode" in unsupported
         assert "claude" not in unsupported
-        # Partially supported targets are NOT in the unsupported list
-        assert "copilot_cli" not in unsupported
-        assert "vscode" not in unsupported
 
     def test_warn_message_includes_unsupported_names(self):
         msg = warn_unsupported_user_scope()
         assert msg  # non-empty
         assert "cursor" in msg
         assert "opencode" in msg
-        # The first line should list partially supported targets separately
-        first_line = msg.split("\n")[0]
-        assert "Partially supported:" in first_line
-        assert "copilot_cli" in first_line
-        assert "vscode" in first_line
-        # Fully supported should NOT appear in the unsupported part
-        unsupported_part = first_line.split("without native user-level support:")[-1]
-        assert "claude" not in unsupported_part.lower()
-        assert "copilot_cli" not in unsupported_part
-        assert "vscode" not in unsupported_part
+        assert "copilot_cli" in msg
+        assert "vscode" in msg
+        # Claude is fully supported and should be listed as such
+        assert "claude" in msg
+        assert "fully supported" in msg.lower()
 
-    def test_warn_message_includes_unsupported_primitives(self):
+    def test_warn_message_is_single_line(self):
         msg = warn_unsupported_user_scope()
         lines = msg.split("\n")
-        assert len(lines) >= 2, "Expected multi-line warning with unsupported primitives"
-        primitives_line = lines[1]
-        assert "prompts" in primitives_line
-        assert "copilot_cli" in primitives_line
+        assert len(lines) == 1, "Warning should be a single line now"

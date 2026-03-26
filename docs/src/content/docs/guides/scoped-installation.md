@@ -17,7 +17,7 @@ apm install microsoft/apm-sample-package
 - Manifest: `./apm.yml`
 - Modules: `./apm_modules/`
 - Lockfile: `./apm.lock.yaml`
-- Deployed primitives: `./.github/` (Copilot, VS Code MCP), `./.claude/`, `./.cursor/`, `./.opencode/`
+- Deployed primitives: `./.github/`, `./.claude/`, `./.cursor/`, `./.opencode/`
 
 This is the standard behavior. Every collaborator who clones the repo gets the same setup.
 
@@ -35,17 +35,17 @@ apm install -g microsoft/apm-sample-package
 
 ### Per-target support
 
-Not all AI tools read primitives from user-level directories, and some only support workspace-level configuration. APM warns during `--global` installs about targets that lack native user-level support.
+Currently, only **Claude Code** fully supports user-scope primitives. APM deploys primitives relative to the home directory, but most AI tools either read from a different user-level path than what APM produces, or only support workspace-level configuration.
 
-| Target | User-level directory | Status | Primitives at user scope | Reference |
-|--------|---------------------|--------|--------------------------|-----------|
-| Claude Code | `~/.claude/` | Supported | commands, agents, skills, hooks | [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
-| Copilot (CLI) | `~/.copilot/` | Partially supported | agents, skills, instructions (prompts not supported) | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
-| VS Code | User `mcp.json` | Partial (workspace only) | MCP servers (user `mcp.json` is not written by APM; workspace `.vscode/mcp.json` only) | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
-| Cursor | `~/.cursor/` | Not supported | None (user rules are managed via Cursor Settings UI) | [Cursor rules docs](https://cursor.com/docs/rules) |
-| OpenCode | `~/.opencode/` | Not supported | None (user-level directory not supported) | No official docs available |
+APM warns during `--global` installs about targets that lack native user-level support.
 
-When you run `apm install -g`, APM deploys primitives to all detected targets but shows a warning for those that do not natively read from user-level directories.
+| Target | User-level directory | Status | Why | Reference |
+|--------|---------------------|--------|-----|-----------|
+| Claude Code | `~/.claude/` | Supported | APM deploys to `~/.claude/` which Claude reads for user-level commands, agents, skills, hooks | [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
+| Copilot (CLI) | `~/.copilot/` | Not supported | APM deploys Copilot primitives to `~/.github/` (via the `.github/` integrator), but Copilot CLI reads from `~/.copilot/` | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
+| VS Code | User `mcp.json` | Not supported | APM's MCP integrator writes to workspace `.vscode/mcp.json` only; user `mcp.json` is not written | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
+| Cursor | `~/.cursor/` | Not supported | User rules are managed via Cursor Settings UI, not the filesystem | [Cursor rules docs](https://cursor.com/docs/rules) |
+| OpenCode | `~/.opencode/` | Not supported | No official documentation for user-level config | No official docs available |
 
 ### Uninstalling user-scope packages
 
@@ -59,6 +59,5 @@ apm uninstall -g microsoft/apm-sample-package
 |----------|-------|
 | Team-shared instructions and prompts | Project (`apm install`) |
 | Personal Claude Code commands and agents | User (`apm install -g`) |
-| Personal Copilot CLI agents | User (`apm install -g`) |
 | CI/CD reproducible setup | Project |
-| Cross-project coding standards (Claude Code, Copilot CLI) | User |
+| Cross-project coding standards (Claude Code) | User |
