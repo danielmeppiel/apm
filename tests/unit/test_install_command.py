@@ -635,6 +635,7 @@ class TestInstallGlobalFlag:
                 fake_home.mkdir()
                 with patch.object(Path, "home", return_value=fake_home):
                     result = self.runner.invoke(cli, ["install", "--global"])
+                assert result.exit_code == 1
                 assert "user scope" in result.output.lower() or "~/.apm/" in result.output
                 # Should warn about unsupported targets
                 assert "copilot" in result.output.lower()

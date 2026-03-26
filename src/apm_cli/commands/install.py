@@ -543,6 +543,12 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm install -g org/pkg1                 # Install to user scope (~/.apm/)
     """
     try:
+        # Create structured logger for install output early so exception
+        # handlers can always reference it (avoids UnboundLocalError if
+        # scope initialisation below throws).
+        is_partial = bool(packages)
+        logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
+
         # Resolve scope
         from ..core.scope import InstallScope, get_deploy_root, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs, warn_unsupported_user_scope
         scope = InstallScope.USER if global_ else InstallScope.PROJECT
@@ -560,10 +566,6 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm_dir = get_apm_dir(scope)
         # Display name for messages (short for project scope, full for user scope)
         manifest_display = str(manifest_path) if scope is InstallScope.USER else APM_YML_FILENAME
-
-        # Create structured logger for install output
-        is_partial = bool(packages)
-        logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
 
         # Check if apm.yml exists
         apm_yml_exists = manifest_path.exists()
