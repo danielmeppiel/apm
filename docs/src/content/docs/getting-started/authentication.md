@@ -131,11 +131,17 @@ export ADO_APM_PAT=your_ado_pat
 apm install dev.azure.com/myorg/myproject/myrepo
 ```
 
-ADO is always auth-required. Uses 3-segment paths (`org/project/repo`). No `ADO_HOST` equivalent — always use FQDN syntax:
+ADO is always auth-required. Uses 3-segment paths (`org/project/repo`). No `ADO_HOST` equivalent - always use FQDN syntax:
 
 ```bash
 apm install dev.azure.com/myorg/myproject/myrepo#main
 apm install mycompany.visualstudio.com/org/project/repo  # legacy URL
+```
+
+If your ADO project or repository name contains spaces, URL-encode them as `%20`:
+
+```bash
+apm install dev.azure.com/myorg/My%20Project/_git/My%20Repo%20Name
 ```
 
 Create the PAT at `https://dev.azure.com/{org}/_usersSettings/tokens` with **Code (Read)** permission.
