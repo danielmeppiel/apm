@@ -6,9 +6,9 @@ pass through one of these guards before touching the disk.
 
 Design
 ------
-* ``ensure_path_within`` is the single predicate — resolves both paths and
+* ``ensure_path_within`` is the single predicate -- resolves both paths and
   asserts containment via ``Path.is_relative_to``.
-* ``safe_rmtree`` wraps ``shutil.rmtree`` with an ``ensure_path_within``
+* ``safe_rmtree`` wraps ``robust_rmtree`` with an ``ensure_path_within``
   check so callers get a drop-in replacement.
 * ``PathTraversalError`` is a ``ValueError`` subclass for clear error
   semantics and easy ``except`` targeting.
@@ -16,8 +16,9 @@ Design
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
+
+from .file_ops import robust_rmtree
 
 
 class PathTraversalError(ValueError):
@@ -52,7 +53,8 @@ def safe_rmtree(path: Path, base_dir: Path) -> None:
     """Remove *path* only if it resolves within *base_dir*.
 
     Drop-in replacement for ``shutil.rmtree(path)`` at sites where the
-    target is derived from user-controlled input.
+    target is derived from user-controlled input.  Uses retry logic for
+    transient file-lock errors (e.g. antivirus scanning on Windows).
     """
     ensure_path_within(path, base_dir)
-    shutil.rmtree(path)
+    robust_rmtree(path)
