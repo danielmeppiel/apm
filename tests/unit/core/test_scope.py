@@ -174,7 +174,9 @@ class TestUserScopeTargets:
             user_root = info["user_root"]
             # VS Code user settings path is platform-specific, not a tilde path
             if name == "vscode":
-                assert user_root, f"{name} user_root should not be empty"
+                assert user_root == "<VS Code user settings>", (
+                    f"{name} user_root should be the placeholder for platform-specific path"
+                )
             else:
                 assert user_root.startswith("~/"), (
                     f"{name} user_root should start with '~/'"
