@@ -373,9 +373,15 @@ fi
 chmod +x "$TMP_DIR/$EXTRACTED_DIR/$BINARY_NAME"
 
 # Test the binary
+# Use if/else to capture exit code without triggering set -e.
+# When glibc is too old the binary exits 255 immediately;
+# we must survive that so the pip-fallback path below is reachable.
 echo -e "${YELLOW}Testing binary...${NC}"
-BINARY_TEST_OUTPUT=$("$TMP_DIR/$EXTRACTED_DIR/$BINARY_NAME" --version 2>&1)
-BINARY_TEST_EXIT_CODE=$?
+if BINARY_TEST_OUTPUT=$("$TMP_DIR/$EXTRACTED_DIR/$BINARY_NAME" --version 2>&1); then
+    BINARY_TEST_EXIT_CODE=0
+else
+    BINARY_TEST_EXIT_CODE=$?
+fi
 
 if [ $BINARY_TEST_EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}✓ Binary test successful${NC}"
