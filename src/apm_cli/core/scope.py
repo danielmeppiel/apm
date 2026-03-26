@@ -24,7 +24,7 @@ User-scope support varies by target:
 - **Cursor** (not supported): user-level rules are managed via the
   Cursor Settings UI, not the filesystem.
   Ref: https://cursor.com/docs/rules
-- **OpenCode** (unverified): no official documentation confirms whether
+- **OpenCode** (not supported): no official documentation confirms whether
   ``~/.opencode/`` is read at user level.
 """
 
@@ -168,9 +168,9 @@ USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
     },
     "vscode": {
         "supported": "partial",
-        "user_root": "~/.vscode",
+        "user_root": "<VS Code user settings>",
         "primitives": ["mcp_servers"],
-        "description": "MCP servers only (via user mcp.json)",
+        "description": "MCP servers only (via user mcp.json; path is platform-specific)",
         "reference": "https://code.visualstudio.com/docs/copilot/customization/mcp-servers",
     },
     "cursor": {

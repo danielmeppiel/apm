@@ -35,13 +35,13 @@ apm install -g microsoft/apm-sample-package
 
 ### Per-target support
 
-Not all AI tools read primitives from user-level directories. APM warns during `--global` installs about targets that lack native support.
+Not all AI tools read primitives from user-level directories, and some only support workspace-level configuration. APM warns during `--global` installs about targets that lack native user-level support.
 
 | Target | User-level directory | Status | Primitives at user scope | Reference |
 |--------|---------------------|--------|--------------------------|-----------|
 | Claude Code | `~/.claude/` | Supported | commands, agents, skills, hooks | [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
 | Copilot (CLI) | `~/.copilot/` | Partially supported | agents, skills, instructions (prompts not supported) | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
-| VS Code | User `mcp.json` | Partial | MCP servers only (via user `mcp.json`) | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
+| VS Code | User `mcp.json` | Partial (workspace only) | MCP servers (user `mcp.json` is not written by APM; workspace `.vscode/mcp.json` only) | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
 | Cursor | `~/.cursor/` | Not supported | None (user rules are managed via Cursor Settings UI) | [Cursor rules docs](https://cursor.com/docs/rules) |
 | OpenCode | `~/.opencode/` | Not supported | None (user-level directory not supported) | No official docs available |
 

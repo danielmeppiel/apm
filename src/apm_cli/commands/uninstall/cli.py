@@ -60,7 +60,7 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
         if not manifest_path.exists():
             if scope is InstallScope.USER:
                 logger.error(
-                    "No user manifest found at ~/.apm/apm.yml. Install a package globally "
+                    f"No user manifest found at {manifest_path}. Install a package globally "
                     "first with 'apm install -g <package>' or create the file manually."
                 )
             else:

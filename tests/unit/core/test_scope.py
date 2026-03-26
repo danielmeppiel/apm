@@ -171,9 +171,14 @@ class TestUserScopeTargets:
 
     def test_user_roots_start_with_tilde(self):
         for name, info in USER_SCOPE_TARGETS.items():
-            assert info["user_root"].startswith("~/"), (
-                f"{name} user_root should start with '~/'"
-            )
+            user_root = info["user_root"]
+            # VS Code user settings path is platform-specific, not a tilde path
+            if name == "vscode":
+                assert user_root, f"{name} user_root should not be empty"
+            else:
+                assert user_root.startswith("~/"), (
+                    f"{name} user_root should start with '~/'"
+                )
 
     def test_claude_is_supported(self):
         assert USER_SCOPE_TARGETS["claude"]["supported"] is True

@@ -581,8 +581,11 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # Error when NO apm.yml AND NO packages
         if not apm_yml_exists and not packages:
             logger.error(f"No {manifest_display} found")
-            logger.progress("Run 'apm init' to create one, or:")
-            logger.progress("  apm install <org/repo> to auto-create + install")
+            if scope is InstallScope.USER:
+                logger.progress("Run 'apm install -g <org/repo>' to auto-create + install")
+            else:
+                logger.progress("Run 'apm init' to create one, or:")
+                logger.progress("  apm install <org/repo> to auto-create + install")
             sys.exit(1)
 
         # If packages are specified, validate and add them to apm.yml first
