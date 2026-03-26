@@ -177,6 +177,47 @@ class TestDependencyParseTraversalRejection:
         dep = DependencyReference.parse("owner/repo/prompts/my-file.prompt.md")
         assert dep.is_virtual is True
 
+    # --- SSH URL traversal rejection ---
+
+    def test_ssh_parse_rejects_dotdot_in_repo(self):
+        """SSH URLs with '..' traversal in the repo path must be rejected."""
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/../evil")
+
+    def test_ssh_parse_rejects_nested_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:org/../../etc/passwd")
+
+    def test_ssh_parse_rejects_single_dot(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/./repo")
+
+    def test_ssh_parse_accepts_normal_url(self):
+        dep = DependencyReference.parse("git@github.com:owner/repo#main")
+        assert dep.repo_url == "owner/repo"
+        assert dep.reference == "main"
+
+    def test_ssh_parse_accepts_url_with_git_suffix(self):
+        dep = DependencyReference.parse("git@gitlab.com:team/project.git#v1.0")
+        assert dep.repo_url == "team/project"
+        assert dep.reference == "v1.0"
+
+    def test_ssh_parse_rejects_dotdot_with_alias(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/../evil@my-alias")
+
+    def test_ssh_parse_rejects_dotdot_with_reference(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/../../etc#main")
+
+    def test_ssh_parse_rejects_double_slash(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner//repo")
+
+    def test_ssh_parse_rejects_trailing_slash(self):
+        with pytest.raises(PathTraversalError):
+            DependencyReference.parse("git@github.com:owner/repo/")
+
 
 # ---------------------------------------------------------------------------
 # DependencyReference.get_install_path containment
