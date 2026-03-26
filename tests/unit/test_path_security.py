@@ -15,6 +15,7 @@ from apm_cli.utils.path_security import (
     PathTraversalError,
     ensure_path_within,
     safe_rmtree,
+    validate_path_segments,
 )
 from apm_cli.models.dependency import DependencyReference
 
@@ -116,6 +117,84 @@ class TestSafeRmtree:
             safe_rmtree(evil_path, base)
 
         assert victim.exists()
+
+
+# ---------------------------------------------------------------------------
+# validate_path_segments
+# ---------------------------------------------------------------------------
+
+
+class TestValidatePathSegments:
+    """Unit tests for the validate_path_segments utility."""
+
+    def test_accepts_clean_path(self):
+        validate_path_segments("owner/repo")
+
+    def test_accepts_single_segment(self):
+        validate_path_segments("repo")
+
+    def test_accepts_deep_path(self):
+        validate_path_segments("org/project/repo/sub/dir")
+
+    def test_rejects_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner/../evil")
+
+    def test_rejects_single_dot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner/./repo")
+
+    def test_rejects_leading_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("../escape")
+
+    def test_rejects_nested_dotdot(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("a/b/../../c")
+
+    def test_rejects_backslash_dotdot(self):
+        """Backslashes are normalised to forward slashes before checking."""
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner\\..\\evil")
+
+    def test_rejects_mixed_separators(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("sub\\..\\..\\esc")
+
+    def test_empty_segments_allowed_by_default(self):
+        # Double-slash produces empty segments; allowed unless reject_empty
+        validate_path_segments("owner//repo")
+
+    def test_reject_empty_catches_double_slash(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner//repo", reject_empty=True)
+
+    def test_reject_empty_catches_trailing_slash(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("owner/repo/", reject_empty=True)
+
+    def test_reject_empty_catches_leading_slash(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("/owner/repo", reject_empty=True)
+
+    def test_reject_empty_passes_clean_path(self):
+        validate_path_segments("owner/repo", reject_empty=True)
+
+    def test_context_appears_in_message(self):
+        with pytest.raises(PathTraversalError, match="repo_url"):
+            validate_path_segments("a/../b", context="repo_url")
+
+    def test_bare_dot_rejected(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments(".")
+
+    def test_bare_dotdot_rejected(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("..")
+
+    def test_empty_string_with_reject_empty(self):
+        with pytest.raises(PathTraversalError):
+            validate_path_segments("", reject_empty=True)
 
 
 # ---------------------------------------------------------------------------
