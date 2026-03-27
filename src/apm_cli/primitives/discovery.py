@@ -1,9 +1,10 @@
 """Discovery functionality for primitive files."""
 
+import fnmatch
 import os
 import glob
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from .models import PrimitiveCollection
 from .parser import parse_primitive_file, parse_skill_file
@@ -52,55 +53,60 @@ DEPENDENCY_PRIMITIVE_PATTERNS: Dict[str, List[str]] = {
 }
 
 
-def discover_primitives(base_dir: str = ".") -> PrimitiveCollection:
+def discover_primitives(base_dir: str = ".", exclude_patterns: Optional[List[str]] = None) -> PrimitiveCollection:
     """Find all APM primitive files in the project.
-    
+
     Searches for .chatmode.md, .instructions.md, .context.md, .memory.md files
     in both .apm/ and .github/ directory structures, plus SKILL.md at root.
-    
+
     Args:
         base_dir (str): Base directory to search in. Defaults to current directory.
-    
+        exclude_patterns: Glob patterns for paths to exclude from discovery.
+
     Returns:
         PrimitiveCollection: Collection of discovered and parsed primitives.
     """
     collection = PrimitiveCollection()
-    
+    base_path = Path(base_dir)
+
     # Find and parse files for each primitive type
     for primitive_type, patterns in LOCAL_PRIMITIVE_PATTERNS.items():
         files = find_primitive_files(base_dir, patterns)
-        
+
         for file_path in files:
+            if _matches_exclude_patterns(file_path, base_path, exclude_patterns):
+                continue
             try:
                 primitive = parse_primitive_file(file_path, source="local")
                 collection.add_primitive(primitive)
             except Exception as e:
                 print(f"Warning: Failed to parse {file_path}: {e}")
-    
+
     # Discover SKILL.md at project root
     _discover_local_skill(base_dir, collection)
-    
+
     return collection
 
 
-def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveCollection:
+def discover_primitives_with_dependencies(base_dir: str = ".", exclude_patterns: Optional[List[str]] = None) -> PrimitiveCollection:
     """Enhanced primitive discovery including dependency sources.
-    
+
     Priority Order:
     1. Local .apm/ (highest priority - always wins)
     2. Dependencies in declaration order (first declared wins)
     3. Plugins (lowest priority)
-    
+
     Args:
         base_dir (str): Base directory to search in. Defaults to current directory.
-    
+        exclude_patterns: Glob patterns for paths to exclude from discovery.
+
     Returns:
         PrimitiveCollection: Collection of discovered and parsed primitives with source tracking.
     """
     collection = PrimitiveCollection()
 
     # Phase 1: Local primitives (highest priority)
-    scan_local_primitives(base_dir, collection)
+    scan_local_primitives(base_dir, collection, exclude_patterns=exclude_patterns)
 
     # Phase 1b: Local SKILL.md
     _discover_local_skill(base_dir, collection)
@@ -113,27 +119,30 @@ def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveColle
     return collection
 
 
-def scan_local_primitives(base_dir: str, collection: PrimitiveCollection) -> None:
+def scan_local_primitives(base_dir: str, collection: PrimitiveCollection, exclude_patterns: Optional[List[str]] = None) -> None:
     """Scan local .apm/ directory for primitives.
-    
+
     Args:
         base_dir (str): Base directory to search in.
         collection (PrimitiveCollection): Collection to add primitives to.
+        exclude_patterns: Glob patterns for paths to exclude from discovery.
     """
     # Find and parse files for each primitive type
     for primitive_type, patterns in LOCAL_PRIMITIVE_PATTERNS.items():
         files = find_primitive_files(base_dir, patterns)
-        
+
         # Filter out files from apm_modules to avoid conflicts with dependency scanning
         local_files = []
         base_path = Path(base_dir)
         apm_modules_path = base_path / "apm_modules"
-        
+
         for file_path in files:
-            # Only include files that are NOT in apm_modules directory
-            if not _is_under_directory(file_path, apm_modules_path):
-                local_files.append(file_path)
-        
+            if _is_under_directory(file_path, apm_modules_path):
+                continue
+            if _matches_exclude_patterns(file_path, base_path, exclude_patterns):
+                continue
+            local_files.append(file_path)
+
         for file_path in local_files:
             try:
                 primitive = parse_primitive_file(file_path, source="local")
@@ -144,11 +153,11 @@ def scan_local_primitives(base_dir: str, collection: PrimitiveCollection) -> Non
 
 def _is_under_directory(file_path: Path, directory: Path) -> bool:
     """Check if a file path is under a specific directory.
-    
+
     Args:
         file_path (Path): Path to check.
         directory (Path): Directory to check against.
-    
+
     Returns:
         bool: True if file_path is under directory, False otherwise.
     """
@@ -156,6 +165,105 @@ def _is_under_directory(file_path: Path, directory: Path) -> bool:
         file_path.resolve().relative_to(directory.resolve())
         return True
     except ValueError:
+        return False
+
+
+def _matches_exclude_patterns(file_path: Path, base_dir: Path, exclude_patterns: Optional[List[str]] = None) -> bool:
+    """Check if a file path matches any exclusion pattern.
+
+    Args:
+        file_path: Absolute path to check.
+        base_dir: Base directory for computing relative paths.
+        exclude_patterns: Glob patterns to match against.
+
+    Returns:
+        True if file should be excluded, False otherwise.
+    """
+    if not exclude_patterns:
+        return False
+
+    try:
+        rel_path_str = str(file_path.resolve().relative_to(base_dir.resolve())).replace(os.sep, '/')
+    except ValueError:
+        return False
+
+    for pattern in exclude_patterns:
+        normalized = pattern.replace('\\', '/').replace(os.sep, '/')
+        if _matches_pattern(rel_path_str, normalized):
+            return True
+
+    return False
+
+
+def _matches_pattern(rel_path_str: str, pattern: str) -> bool:
+    """Check if a relative path matches an exclusion pattern.
+
+    Mirrors ContextOptimizer._matches_pattern semantics so that
+    discovery and optimization exclude behavior stays consistent.
+
+    Args:
+        rel_path_str: Forward-slash-normalized path relative to base_dir.
+        pattern: Forward-slash-normalized exclusion pattern (glob syntax).
+
+    Returns:
+        True if path matches pattern, False otherwise.
+    """
+    # Handle ** patterns with recursive matching
+    if '**' in pattern:
+        path_parts = rel_path_str.split('/')
+        pattern_parts = pattern.split('/')
+        # Check the full path and each parent directory, since the optimizer
+        # matches directories (which get pruned) while we match file paths
+        for i in range(len(path_parts), 0, -1):
+            if _match_glob_recursive(path_parts[:i], pattern_parts):
+                return True
+        return False
+
+    # Simple fnmatch for patterns without **
+    if fnmatch.fnmatch(rel_path_str, pattern):
+        return True
+
+    # Directory-prefix matching (e.g. "tmp/" or "tmp" matching "tmp/foo/bar")
+    if pattern.endswith('/'):
+        if rel_path_str.startswith(pattern) or rel_path_str == pattern.rstrip('/'):
+            return True
+    else:
+        if rel_path_str.startswith(pattern + '/') or rel_path_str == pattern:
+            return True
+
+    return False
+
+
+def _match_glob_recursive(path_parts: list, pattern_parts: list) -> bool:
+    """Recursively match path parts against pattern parts with ** support.
+
+    Mirrors ContextOptimizer._match_glob_recursive.
+
+    Args:
+        path_parts: List of path components.
+        pattern_parts: List of pattern components.
+
+    Returns:
+        True if path matches pattern, False otherwise.
+    """
+    if not pattern_parts:
+        return not path_parts
+
+    if not path_parts:
+        return all(p == '**' or p == '' for p in pattern_parts)
+
+    pattern_part = pattern_parts[0]
+
+    if pattern_part == '**':
+        # ** matches zero or more directories
+        if _match_glob_recursive(path_parts, pattern_parts[1:]):
+            return True
+        if _match_glob_recursive(path_parts[1:], pattern_parts):
+            return True
+        return False
+    else:
+        if fnmatch.fnmatch(path_parts[0], pattern_part):
+            return _match_glob_recursive(path_parts[1:], pattern_parts[1:])
         return False
 
 

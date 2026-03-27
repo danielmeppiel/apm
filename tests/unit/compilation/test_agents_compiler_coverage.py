@@ -205,7 +205,7 @@ class TestAgentsCompilerCompileException(unittest.TestCase):
         ) as mock_disc:
             result = compiler.compile(config)  # no primitives passed → discovers
 
-        mock_disc.assert_called_once_with(str(compiler.base_dir))
+        mock_disc.assert_called_once_with(str(compiler.base_dir), exclude_patterns=config.exclude)
 
 
 # ---------------------------------------------------------------------------

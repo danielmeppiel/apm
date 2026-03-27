@@ -187,11 +187,11 @@ class AgentsCompiler:
             if primitives is None:
                 if config.local_only:
                     # Use basic discovery for local-only mode
-                    primitives = discover_primitives(str(self.base_dir))
+                    primitives = discover_primitives(str(self.base_dir), exclude_patterns=config.exclude)
                 else:
                     # Use enhanced discovery with dependencies (Task 4 integration)
                     from ..primitives.discovery import discover_primitives_with_dependencies
-                    primitives = discover_primitives_with_dependencies(str(self.base_dir))
+                    primitives = discover_primitives_with_dependencies(str(self.base_dir), exclude_patterns=config.exclude)
             
             # Route to targets based on config.target
             results: List[CompilationResult] = []
