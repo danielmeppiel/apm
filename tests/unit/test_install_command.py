@@ -525,31 +525,22 @@ class TestDownloadCallbackErrorMessages:
         assert "Failed to download dependency" in errors[0].message
         assert "transitive" not in errors[0].message.lower()
 
-    def test_transitive_dep_failure_says_transitive(self, tmp_path):
-        """Transitive dependency failure still uses 'Failed to resolve transitive dep'."""
-        from apm_cli.deps.dependency_graph import DependencyNode
-        from apm_cli.models.apm_package import APMPackage, DependencyReference
+    def test_transitive_dep_key_not_in_direct_dep_keys(self):
+        """Transitive dep keys are correctly absent from direct_dep_keys set.
 
-        # Simulate the download_callback logic directly for a transitive dep
-        direct_dep_keys = {"acme/root-pkg"}  # Only root is direct
+        The download_callback uses this check to select the right error label.
+        End-to-end transitive error flow is covered by
+        TestTransitiveDepParentChain.test_download_callback_includes_chain_in_error.
+        """
+        from apm_cli.models.apm_package import DependencyReference
 
-        # A transitive dep that is NOT in direct_dep_keys
-        dep_ref = DependencyReference.parse("other-org/leaf-pkg")
-        dep_key = dep_ref.get_unique_key()
-        parent_chain = "acme/root-pkg > other-org/leaf-pkg"
+        direct_dep_keys = {"acme/root-pkg"}
+        transitive_ref = DependencyReference.parse("other-org/leaf-pkg")
 
-        is_direct = dep_key in direct_dep_keys
-        assert not is_direct
-
-        # Verify the branch logic produces the right message
-        if is_direct:
-            fail_msg = f"Failed to download dependency {dep_ref.repo_url}: auth failed"
-        else:
-            chain_hint = f" (via {parent_chain})" if parent_chain else ""
-            fail_msg = f"Failed to resolve transitive dep {dep_ref.repo_url}{chain_hint}: auth failed"
-
-        assert "transitive dep" in fail_msg
-        assert "(via acme/root-pkg > other-org/leaf-pkg)" in fail_msg
+        # Transitive deps must NOT be in the direct set
+        assert transitive_ref.get_unique_key() not in direct_dep_keys
+        # Direct deps must be in the direct set
+        assert "acme/root-pkg" in direct_dep_keys
 
 
 class TestCallbackFailureDeduplication:
