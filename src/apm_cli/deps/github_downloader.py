@@ -1459,8 +1459,23 @@ author: {dep_ref.repo_url.split('/')[0]}
         import subprocess
         try:
             temp_clone_path.mkdir(parents=True, exist_ok=True)
+
+            # Resolve per-dependency token via AuthResolver (matches _clone_with_fallback).
+            dep_token = None
+            dep_host = dep_ref.host if dep_ref else None
+            is_ado = dep_ref and dep_ref.is_azure_devops()
+            if dep_host:
+                is_github = is_github_hostname(dep_host)
+            else:
+                is_github = True
+            is_generic = not is_ado and not is_github
+
+            if not is_generic:
+                dep_ctx = self.auth_resolver.resolve_for_dep(dep_ref)
+                dep_token = dep_ctx.token
+
             env = {**os.environ, **(self.git_env or {})}
-            auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref, token=dep_token)
 
             cmds = [
                 ['git', 'init'],

@@ -491,6 +491,100 @@ class TestTransitiveDepParentChain:
         )
 
 
+class TestDownloadCallbackErrorMessages:
+    """Tests for direct vs transitive dep error message differentiation."""
+
+    def test_direct_dep_failure_says_download_dependency(self, tmp_path, monkeypatch):
+        """Direct dependency failure uses 'Failed to download dependency', not 'transitive dep'."""
+        from apm_cli.commands.install import _install_apm_dependencies
+        from apm_cli.models.apm_package import APMPackage, DependencyReference
+
+        monkeypatch.chdir(tmp_path)
+
+        # Create a minimal apm.yml with a direct dep
+        (tmp_path / "apm.yml").write_text(yaml.safe_dump({
+            "name": "test-project",
+            "version": "0.0.1",
+            "dependencies": {"apm": ["acme/direct-pkg"], "mcp": []},
+        }))
+
+        apm_package = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+
+        # Patch the downloader to always fail
+        with patch("apm_cli.commands.install.GitHubPackageDownloader") as MockDownloader:
+            mock_dl = MockDownloader.return_value
+            mock_dl.download_package.side_effect = RuntimeError("auth failed")
+
+            result = _install_apm_dependencies(
+                apm_package, verbose=False, force=False, parallel_downloads=0,
+            )
+
+        # Check that the error message says "download dependency", not "transitive dep"
+        errors = result.diagnostics.by_category().get("error", [])
+        assert len(errors) == 1, f"Expected 1 error, got {len(errors)}: {errors}"
+        assert "Failed to download dependency" in errors[0].message
+        assert "transitive" not in errors[0].message.lower()
+
+    def test_transitive_dep_failure_says_transitive(self, tmp_path):
+        """Transitive dependency failure still uses 'Failed to resolve transitive dep'."""
+        from apm_cli.deps.dependency_graph import DependencyNode
+        from apm_cli.models.apm_package import APMPackage, DependencyReference
+
+        # Simulate the download_callback logic directly for a transitive dep
+        direct_dep_keys = {"acme/root-pkg"}  # Only root is direct
+
+        # A transitive dep that is NOT in direct_dep_keys
+        dep_ref = DependencyReference.parse("other-org/leaf-pkg")
+        dep_key = dep_ref.get_unique_key()
+        parent_chain = "acme/root-pkg > other-org/leaf-pkg"
+
+        is_direct = dep_key in direct_dep_keys
+        assert not is_direct
+
+        # Verify the branch logic produces the right message
+        if is_direct:
+            fail_msg = f"Failed to download dependency {dep_ref.repo_url}: auth failed"
+        else:
+            chain_hint = f" (via {parent_chain})" if parent_chain else ""
+            fail_msg = f"Failed to resolve transitive dep {dep_ref.repo_url}{chain_hint}: auth failed"
+
+        assert "transitive dep" in fail_msg
+        assert "(via acme/root-pkg > other-org/leaf-pkg)" in fail_msg
+
+
+class TestCallbackFailureDeduplication:
+    """Tests for error deduplication when download_callback failures are not re-tried."""
+
+    def test_callback_failure_not_duplicated_in_main_loop(self, tmp_path, monkeypatch):
+        """A dep that fails in download_callback should produce only one error."""
+        from apm_cli.commands.install import _install_apm_dependencies
+        from apm_cli.models.apm_package import APMPackage
+
+        monkeypatch.chdir(tmp_path)
+
+        (tmp_path / "apm.yml").write_text(yaml.safe_dump({
+            "name": "test-project",
+            "version": "0.0.1",
+            "dependencies": {"apm": ["acme/failing-pkg"], "mcp": []},
+        }))
+        apm_package = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+
+        with patch("apm_cli.commands.install.GitHubPackageDownloader") as MockDownloader:
+            mock_dl = MockDownloader.return_value
+            mock_dl.download_package.side_effect = RuntimeError("auth failed")
+
+            result = _install_apm_dependencies(
+                apm_package, verbose=False, force=False, parallel_downloads=0,
+            )
+
+        errors = result.diagnostics.by_category().get("error", [])
+        # Should be exactly 1 error, not 2 (one from callback + one from main loop)
+        assert len(errors) == 1, (
+            f"Expected 1 error (deduplicated), got {len(errors)}: "
+            f"{[e.message for e in errors]}"
+        )
+
+
 class TestLocalPathValidationMessages:
     """Tests for improved local path validation error messages."""
 

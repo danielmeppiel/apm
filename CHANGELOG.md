@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Misleading "transitive dep" error message for direct dependency download failures (#470)
+- Sparse checkout using global token instead of per-org token from `GITHUB_APM_PAT_<ORG>` (#470)
+- Duplicate error count when a dependency fails during both resolution and install phases (#470)
+
 ## [0.8.6] - 2026-03-27
 
 ### Added
