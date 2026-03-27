@@ -291,7 +291,10 @@ class ClaudeFormatter:
                 sections.append(f"## Files matching `{pattern}`")
                 sections.append("")
                 
-                for instruction in pattern_instructions:
+                for instruction in sorted(
+                    pattern_instructions,
+                    key=lambda i: portable_relpath(i.file_path, self.base_dir),
+                ):
                     content = instruction.content.strip()
                     if content:
                         # Add source attribution comment

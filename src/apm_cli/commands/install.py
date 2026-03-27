@@ -517,8 +517,19 @@ def _validate_package_exists(package, verbose=False):
     default=False,
     help="Install as development dependency (devDependencies)",
 )
+@click.option(
+    "--target",
+    "-t",
+    "target",
+    type=click.Choice(
+        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        case_sensitive=False,
+    ),
+    default=None,
+    help="Force deployment to a specific target (overrides auto-detection)",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -665,6 +676,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    target=target,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -963,19 +975,20 @@ def _integrate_package_primitives(
         deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- commands (.claude) ---
-    command_result = command_integrator.integrate_package_commands(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if command_result.files_integrated > 0:
-        result["commands"] += command_result.files_integrated
-        _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
-    if command_result.files_updated > 0:
-        _log_integration(f"  └─ {command_result.files_updated} commands updated")
-    result["links_resolved"] += command_result.links_resolved
-    for tp in command_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
+    if integrate_claude:
+        command_result = command_integrator.integrate_package_commands(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if command_result.files_integrated > 0:
+            result["commands"] += command_result.files_integrated
+            _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
+        if command_result.files_updated > 0:
+            _log_integration(f"  └─ {command_result.files_updated} commands updated")
+        result["links_resolved"] += command_result.links_resolved
+        for tp in command_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- OpenCode commands (.opencode) ---
     opencode_command_result = command_integrator.integrate_package_commands_opencode(
@@ -1083,6 +1096,7 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    target: str = None,
 ):
     """Install APM package dependencies.
 
@@ -1094,6 +1108,7 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        target: Explicit target override from --target CLI flag
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -1314,25 +1329,27 @@ def _install_apm_dependencies(
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
-        # Ensure auto_create targets exist.
-        # Copilot (.github) has auto_create=True -- it is always created so
-        # there is a guaranteed skills root even for greenfield projects.
+        # Resolve effective explicit target: CLI --target wins, then apm.yml
+        _explicit = target or config_target or None
+
+        # Determine active targets.  When --target or apm.yml target is set
+        # the user's choice wins.  Otherwise auto-detect from existing dirs,
+        # falling back to copilot when nothing is found.
         from apm_cli.integration.targets import active_targets as _active_targets
 
-        _targets = _active_targets(project_root)
+        _targets = _active_targets(project_root, explicit_target=_explicit)
         for _t in _targets:
-            if _t.auto_create:
-                _target_dir = project_root / _t.root_dir
-                if not _target_dir.exists():
-                    _target_dir.mkdir(parents=True, exist_ok=True)
-                    if logger:
-                        logger.verbose_detail(
-                            f"Created {_t.root_dir}/ ({_t.name} target)"
-                        )
+            _target_dir = project_root / _t.root_dir
+            if not _target_dir.exists():
+                _target_dir.mkdir(parents=True, exist_ok=True)
+                if logger:
+                    logger.verbose_detail(
+                        f"Created {_t.root_dir}/ ({_t.name} target)"
+                    )
 
         detected_target, detection_reason = detect_target(
             project_root=project_root,
-            explicit_target=None,  # No explicit flag for install
+            explicit_target=_explicit,
             config_target=config_target,
         )
 

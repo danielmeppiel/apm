@@ -1611,11 +1611,38 @@ class TestClaudeSkillsCompatibilityCopy:
         # Should NOT create .claude/skills/
         assert not (self.project_root / ".claude" / "skills").exists()
     
-    # ========== Test: Skill copies to BOTH when .claude/ exists ==========
+    # ========== Test: Only .claude/ exists -> skills go to .claude/ only ==========
+    
+    def test_skill_copies_to_claude_only_when_only_claude_exists(self):
+        """When only .claude/ exists, skills go there -- .github/ is NOT created."""
+        (self.project_root / ".claude").mkdir()
+        assert not (self.project_root / ".github").exists()
+        
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+        
+        package_info = self._create_package_info(
+            name="my-skill",
+            install_path=skill_source
+        )
+        
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+        
+        # Should create in .claude/skills/ (the only active target)
+        assert result.skill_created is True
+        claude_skill = self.project_root / ".claude" / "skills" / "my-skill" / "SKILL.md"
+        assert claude_skill.exists()
+        
+        # .github/ should NOT be created
+        assert not (self.project_root / ".github").exists()
+    
+    # ========== Test: Skill copies to BOTH when both dirs exist ==========
     
     def test_skill_copies_to_both_when_claude_exists(self):
-        """Test skill copies to BOTH .github/skills/ and .claude/skills/ when .claude/ exists."""
-        # Create .claude/ directory (simulating a Claude Code project)
+        """Test skill copies to BOTH .github/skills/ and .claude/skills/ when both dirs exist."""
+        # Create BOTH directories (simulating a project using both tools)
+        (self.project_root / ".github").mkdir()
         (self.project_root / ".claude").mkdir()
         
         # Create a native skill package
@@ -1649,7 +1676,8 @@ class TestClaudeSkillsCompatibilityCopy:
     
     def test_copies_are_identical(self):
         """Test that .github/skills/ and .claude/skills/ copies are identical."""
-        # Create .claude/ directory
+        # Create both directories
+        (self.project_root / ".github").mkdir()
         (self.project_root / ".claude").mkdir()
         
         # Create a native skill package with multiple files
@@ -1711,7 +1739,8 @@ Detailed instructions here.
     
     def test_updates_affect_both_locations(self):
         """Test that skill updates affect both .github/skills/ and .claude/skills/."""
-        # Create .claude/ directory
+        # Create both directories
+        (self.project_root / ".github").mkdir()
         (self.project_root / ".claude").mkdir()
         
         # Create initial skill
@@ -1789,8 +1818,9 @@ Detailed instructions here.
     # ========== Test: copy_skill_to_target returns both paths ==========
     
     def test_copy_skill_to_target_returns_both_paths_when_claude_exists(self):
-        """Test that copy_skill_to_target returns both paths when .claude/ exists."""
-        # Create .claude/ directory
+        """Test that copy_skill_to_target returns both paths when both dirs exist."""
+        # Create both directories
+        (self.project_root / ".github").mkdir()
         (self.project_root / ".claude").mkdir()
         
         skill_source = self.apm_modules / "owner" / "my-skill"
@@ -1902,7 +1932,8 @@ Detailed instructions here.
     
     def test_native_skill_copied_verbatim_to_both_locations(self):
         """Test that native SKILL.md is copied verbatim (no metadata injection) to both locations."""
-        # Create .claude/ directory
+        # Create both directories
+        (self.project_root / ".github").mkdir()
         (self.project_root / ".claude").mkdir()
         
         skill_source = self.apm_modules / "owner" / "my-skill"
@@ -2023,7 +2054,8 @@ invalid yaml: [this is broken
     
     def test_sync_aggregates_stats_from_both_locations(self):
         """Test that sync correctly aggregates removal stats from both locations."""
-        # Create .claude/ directory
+        # Create both target directories
+        (self.project_root / ".github").mkdir(exist_ok=True)
         (self.project_root / ".claude").mkdir()
         
         # Create orphan in .github/skills/
@@ -2174,7 +2206,8 @@ class TestSubSkillPromotion:
         assert "Old content" not in content
 
     def test_sub_skill_promoted_to_claude_skills(self):
-        """Sub-skills should also be promoted under .claude/skills/ when .claude/ exists."""
+        """Sub-skills should also be promoted under .claude/skills/ when both dirs exist."""
+        (self.project_root / ".github").mkdir(exist_ok=True)
         (self.project_root / ".claude").mkdir()
         package_dir = self._create_package_with_sub_skills(
             "modernisation", sub_skills=["azure-naming"]
@@ -2345,7 +2378,8 @@ class TestSubSkillPromotionForNonSkillPackages:
         assert not (self.project_root / ".github" / "skills").exists()
 
     def test_sub_skills_promoted_to_claude_when_claude_exists(self):
-        """Sub-skills from INSTRUCTIONS packages should also go to .claude/skills/ if .claude/ exists."""
+        """Sub-skills from INSTRUCTIONS packages should also go to .claude/skills/ if both dirs exist."""
+        (self.project_root / ".github").mkdir(exist_ok=True)
         (self.project_root / ".claude").mkdir()
         package_dir = self._create_instructions_package(
             "sample-package", sub_skills=["style-checker"]
@@ -2782,7 +2816,8 @@ class TestCursorSkillIntegration:
     # ========== Test: Sub-skill promotion to .cursor/skills/ ==========
 
     def test_sub_skills_promoted_to_cursor_when_cursor_exists(self):
-        """Sub-skills should be promoted to .cursor/skills/ when .cursor/ exists."""
+        """Sub-skills should be promoted to .cursor/skills/ when both dirs exist."""
+        (self.project_root / ".github").mkdir(exist_ok=True)
         (self.project_root / ".cursor").mkdir()
 
         package_dir = self._create_package_with_sub_skills(
@@ -2791,7 +2826,7 @@ class TestCursorSkillIntegration:
         pkg_info = self._create_package_info(name="modernisation", install_path=package_dir)
         self.integrator.integrate_package_skill(pkg_info, self.project_root)
 
-        # Sub-skills promoted in all three targets
+        # Sub-skills promoted in both targets
         for sub in ["azure-naming", "cloud-patterns"]:
             assert (self.project_root / ".github" / "skills" / sub / "SKILL.md").exists()
             assert (self.project_root / ".cursor" / "skills" / sub / "SKILL.md").exists()
@@ -2816,6 +2851,7 @@ class TestCursorSkillIntegration:
 
     def test_multi_target_deploy_all_three_dirs(self):
         """A single integrate deploys to .github/, .claude/, and .cursor/ when all exist."""
+        (self.project_root / ".github").mkdir(exist_ok=True)
         (self.project_root / ".claude").mkdir()
         (self.project_root / ".cursor").mkdir()
 
@@ -2835,6 +2871,7 @@ class TestCursorSkillIntegration:
 
     def test_multi_target_target_paths_includes_cursor(self):
         """result.target_paths should include .cursor/skills/ path for manifest tracking."""
+        (self.project_root / ".github").mkdir(exist_ok=True)
         (self.project_root / ".claude").mkdir()
         (self.project_root / ".cursor").mkdir()
 
@@ -2960,6 +2997,7 @@ class TestCursorSkillIntegration:
 
     def test_cursor_and_github_copies_identical(self):
         """Content in .cursor/skills/ and .github/skills/ should be identical."""
+        (self.project_root / ".github").mkdir(exist_ok=True)
         (self.project_root / ".cursor").mkdir()
 
         skill_source = self.apm_modules / "owner" / "compare-skill"

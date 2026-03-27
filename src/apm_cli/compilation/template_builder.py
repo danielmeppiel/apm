@@ -35,12 +35,12 @@ def build_conditional_sections(instructions: List[Instruction]) -> str:
     
     sections = []
     
-    for pattern, pattern_instructions in pattern_groups.items():
+    for pattern, pattern_instructions in sorted(pattern_groups.items()):
         sections.append(f"## Files matching `{pattern}`")
         sections.append("")
-        
+
         # Combine content from all instructions for this pattern
-        for instruction in pattern_instructions:
+        for instruction in sorted(pattern_instructions, key=lambda i: portable_relpath(i.file_path, Path.cwd())):
             content = instruction.content.strip()
             if content:
                 # Add source file comment before the content

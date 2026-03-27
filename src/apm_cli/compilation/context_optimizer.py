@@ -176,8 +176,9 @@ class ContextOptimizer:
             self._file_list_cache = []
             for root, dirs, files in os.walk(self.base_dir):
                 # Skip hidden and excluded directories for performance
-                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in DEFAULT_EXCLUDED_DIRNAMES]
-                for file in files:
+                # Sort to guarantee deterministic traversal order across filesystems
+                dirs[:] = sorted(d for d in dirs if not d.startswith('.') and d not in DEFAULT_EXCLUDED_DIRNAMES)
+                for file in sorted(files):
                     if not file.startswith('.'):
                         self._file_list_cache.append(Path(root) / file)
         return self._file_list_cache

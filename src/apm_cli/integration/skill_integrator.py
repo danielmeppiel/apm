@@ -248,17 +248,17 @@ def copy_skill_to_target(
     source_path: Path,
     target_base: Path,
 ) -> list[Path]:
-    """Copy skill directory to .github/skills/ and optionally .claude/skills/ and .cursor/skills/.
+    """Copy skill directory to all active target skills/ directories.
     
     This is a standalone function for direct skill copy operations.
     It handles:
     - Package type routing via should_install_skill()
     - Skill name validation/normalization
     - Directory structure preservation
-    - Compatibility copy to .claude/skills/ when .claude/ exists (T7)
-    - Compatibility copy to .cursor/skills/ when .cursor/ exists
+    - Deployment to every active target that supports skills
+      (driven by ``active_targets()`` from ``targets.py``)
     
-    Source SKILL.md is copied verbatim  -- no metadata injection.
+    Source SKILL.md is copied verbatim -- no metadata injection.
     
     Copies:
     - SKILL.md (required)
@@ -296,27 +296,14 @@ def copy_skill_to_target(
     
     deployed: list[Path] = []
 
-    # === Primary target: .github/skills/ ===
-    github_skill_dir = target_base / ".github" / "skills" / skill_name
-    
-    # Create .github/skills/ if it doesn't exist
-    github_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-    
-    # If skill already exists, remove it for update
-    if github_skill_dir.exists():
-        shutil.rmtree(github_skill_dir)
-    
-    # Copy the entire skill folder preserving structure
-    # This copies SKILL.md, scripts/, references/, assets/, etc.
-    shutil.copytree(source_path, github_skill_dir)
-    deployed.append(github_skill_dir)
-    
-    # === Opt-in targets: only deploy when target root already exists ===
-    for target_root in (".claude", ".cursor", ".opencode"):
-        target_dir = target_base / target_root
-        if not (target_dir.exists() and target_dir.is_dir()):
+    # Deploy to all active targets that support skills.
+    from apm_cli.integration.targets import active_targets
+
+    targets = active_targets(target_base)
+    for target in targets:
+        if not target.supports("skills"):
             continue
-        skill_dir = target_dir / "skills" / skill_name
+        skill_dir = target_base / target.root_dir / "skills" / skill_name
         skill_dir.parent.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists():
             shutil.rmtree(skill_dir)
@@ -609,11 +596,11 @@ class SkillIntegrator(BaseIntegrator):
         count = 0
         all_deployed: list[Path] = []
 
-        for target in targets:
+        for idx, target in enumerate(targets):
             if not target.supports("skills"):
                 continue
 
-            is_primary = not target.detect_by_dir
+            is_primary = (idx == 0)  # first active target owns diagnostics
             target_skills_root = project_root / target.root_dir / "skills"
             target_skills_root.mkdir(parents=True, exist_ok=True)
 
@@ -696,8 +683,8 @@ class SkillIntegrator(BaseIntegrator):
                     pass  # CLI not available in tests
         
         # Deploy to all active targets that support skills.
-        # Copilot (.github) is always active (detect_by_dir=False).
-        # Others (.claude, .cursor, .opencode) are active when their dir exists.
+        # Targets are selected by directory presence, with copilot (.github)
+        # as the fallback when no target dirs exist.
         from apm_cli.integration.targets import active_targets
 
         targets = active_targets(project_root)
@@ -710,11 +697,11 @@ class SkillIntegrator(BaseIntegrator):
         owned_by = self._build_skill_ownership_map(project_root)
         sub_skills_dir = package_path / ".apm" / "skills"
 
-        for target in targets:
+        for idx, target in enumerate(targets):
             if not target.supports("skills"):
                 continue
 
-            is_primary = not target.detect_by_dir  # copilot = primary
+            is_primary = (idx == 0)  # first active target owns diagnostics
             target_skill_dir = project_root / target.root_dir / "skills" / skill_name
 
             if is_primary:
