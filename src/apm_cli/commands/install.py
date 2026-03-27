@@ -998,19 +998,20 @@ def _integrate_package_primitives(
         deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- commands (.claude) ---
-    command_result = command_integrator.integrate_package_commands(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if command_result.files_integrated > 0:
-        result["commands"] += command_result.files_integrated
-        _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
-    if command_result.files_updated > 0:
-        _log_integration(f"  └─ {command_result.files_updated} commands updated")
-    result["links_resolved"] += command_result.links_resolved
-    for tp in command_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
+    if integrate_claude:
+        command_result = command_integrator.integrate_package_commands(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if command_result.files_integrated > 0:
+            result["commands"] += command_result.files_integrated
+            _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
+        if command_result.files_updated > 0:
+            _log_integration(f"  └─ {command_result.files_updated} commands updated")
+        result["links_resolved"] += command_result.links_resolved
+        for tp in command_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- OpenCode commands (.opencode) ---
     opencode_command_result = command_integrator.integrate_package_commands_opencode(
