@@ -513,8 +513,19 @@ def _validate_package_exists(package, verbose=False):
     default=False,
     help="Install as development dependency (devDependencies)",
 )
+@click.option(
+    "--target",
+    "-t",
+    "target",
+    type=click.Choice(
+        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        case_sensitive=False,
+    ),
+    default=None,
+    help="Force deployment to a specific target (overrides auto-detection)",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -661,6 +672,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    target=target,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -874,12 +886,20 @@ def _integrate_package_primitives(
             package_info, project_root,
             diagnostics=diagnostics, managed_files=managed_files, force=force,
         )
+        # Build human-readable list of target dirs from deployed paths
+        _skill_target_dirs: set[str] = set()
+        for tp in skill_result.target_paths:
+            rel = tp.relative_to(project_root)
+            if rel.parts:
+                _skill_target_dirs.add(rel.parts[0])
+        _skill_targets = sorted(_skill_target_dirs)
+        _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
         if skill_result.skill_created:
             result["skills"] += 1
-            _log_integration(f"  └─ Skill integrated -> .github/skills/")
+            _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
         if skill_result.sub_skills_promoted > 0:
             result["sub_skills"] += skill_result.sub_skills_promoted
-            _log_integration(f"  └─ {skill_result.sub_skills_promoted} skill(s) integrated -> .github/skills/")
+            _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
         for tp in skill_result.target_paths:
             deployed.append(tp.relative_to(project_root).as_posix())
 
@@ -951,19 +971,20 @@ def _integrate_package_primitives(
         deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- commands (.claude) ---
-    command_result = command_integrator.integrate_package_commands(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if command_result.files_integrated > 0:
-        result["commands"] += command_result.files_integrated
-        _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
-    if command_result.files_updated > 0:
-        _log_integration(f"  └─ {command_result.files_updated} commands updated")
-    result["links_resolved"] += command_result.links_resolved
-    for tp in command_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
+    if integrate_claude:
+        command_result = command_integrator.integrate_package_commands(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if command_result.files_integrated > 0:
+            result["commands"] += command_result.files_integrated
+            _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
+        if command_result.files_updated > 0:
+            _log_integration(f"  └─ {command_result.files_updated} commands updated")
+        result["links_resolved"] += command_result.links_resolved
+        for tp in command_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- OpenCode commands (.opencode) ---
     opencode_command_result = command_integrator.integrate_package_commands_opencode(
@@ -1071,6 +1092,7 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    target: str = None,
 ):
     """Install APM package dependencies.
 
@@ -1082,6 +1104,7 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        target: Explicit target override from --target CLI flag
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -1302,23 +1325,27 @@ def _install_apm_dependencies(
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
-        # Auto-create .github/ if neither .github/ nor .claude/ exists.
-        # Per skill-strategy Decision 1, .github/skills/ is the standard skills location;
-        # creating .github/ here ensures a consistent skills root and also enables
-        # VSCode/Copilot integration by default (quick path to value), even for
-        # projects that don't yet use .claude/.
-        github_dir = project_root / GITHUB_DIR
-        claude_dir = project_root / CLAUDE_DIR
-        if not github_dir.exists() and not claude_dir.exists():
-            github_dir.mkdir(parents=True, exist_ok=True)
-            if logger:
-                logger.verbose_detail(
-                    "Created .github/ as standard skills root (.github/skills/) and to enable VSCode/Copilot integration"
-                )
+        # Resolve effective explicit target: CLI --target wins, then apm.yml
+        _explicit = target or config_target or None
+
+        # Determine active targets.  When --target or apm.yml target is set
+        # the user's choice wins.  Otherwise auto-detect from existing dirs,
+        # falling back to copilot when nothing is found.
+        from apm_cli.integration.targets import active_targets as _active_targets
+
+        _targets = _active_targets(project_root, explicit_target=_explicit)
+        for _t in _targets:
+            _target_dir = project_root / _t.root_dir
+            if not _target_dir.exists():
+                _target_dir.mkdir(parents=True, exist_ok=True)
+                if logger:
+                    logger.verbose_detail(
+                        f"Created {_t.root_dir}/ ({_t.name} target)"
+                    )
 
         detected_target, detection_reason = detect_target(
             project_root=project_root,
-            explicit_target=None,  # No explicit flag for install
+            explicit_target=_explicit,
             config_target=config_target,
         )
 
@@ -2109,9 +2136,16 @@ def _install_apm_dependencies(
                             existing.add_dependency(dep)
                         lockfile = existing
 
-                lockfile.save(lockfile_path)
-                if logger:
-                    logger.verbose_detail(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
+                # Only write when the semantic content has actually changed
+                # (avoids generated_at churn in version control).
+                existing_lockfile = LockFile.read(lockfile_path) if lockfile_path.exists() else None
+                if existing_lockfile and lockfile.is_semantically_equivalent(existing_lockfile):
+                    if logger:
+                        logger.verbose_detail("apm.lock.yaml unchanged -- skipping write")
+                else:
+                    lockfile.save(lockfile_path)
+                    if logger:
+                        logger.verbose_detail(f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies")
             except Exception as e:
                 _lock_msg = f"Could not generate apm.lock.yaml: {e}"
                 diagnostics.error(_lock_msg)
