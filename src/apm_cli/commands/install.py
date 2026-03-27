@@ -1576,6 +1576,8 @@ def _install_apm_dependencies(
                 # to avoid a duplicate error entry in diagnostics.
                 dep_key = dep_ref.get_unique_key()
                 if dep_key in callback_failures:
+                    if logger:
+                        logger.verbose_detail(f"  Skipping {dep_key} (already failed during resolution)")
                     continue
 
                 # --- Local package: copy from filesystem (no git download) ---
