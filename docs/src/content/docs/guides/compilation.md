@@ -353,10 +353,16 @@ self._glob_cache: Dict[str, List[str]] = {}
 ### Deterministic Output
 
 Compilation is completely reproducible:
-- Sorted iteration order prevents randomness
+- Sorted iteration order prevents filesystem-native ordering differences (APFS on macOS, ext4 on Linux)
 - Stable optimization algorithm
-- Consistent Build IDs across machines
+- Consistent Build IDs across machines and platforms
 - Cache-friendly for CI/CD systems
+- Safe to use in pre-commit hooks -- the same inputs always produce the same Build ID
+
+```bash
+# Example: pre-commit hook to keep AGENTS.md in sync
+apm compile --dry-run   # verify no drift before committing
+```
 
 ### Constitution Injection
 

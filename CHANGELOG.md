@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Instruction discovery order is now sorted alphabetically in `_get_all_files()` and all three compilation paths (`template_builder`, `distributed_compiler`, `claude_formatter`), making Build IDs deterministic across platforms (macOS APFS vs Linux ext4 had different `os.walk()` ordering); `apm compile` is now safe to use in pre-commit hooks (#468)
 - Windows antivirus file-lock errors (`WinError 32`) during `apm install`: new `file_ops` retry utility with exponential backoff for `rmtree`/`copytree`/`copy2` operations (#453)
 - `install.sh` now falls back to pip when binary fails in devcontainers with older glibc (#456)
 - Skills now deploy to all active targets (`.opencode/`, `.cursor/`) instead of only `.github/` (#456)
