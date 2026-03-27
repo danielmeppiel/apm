@@ -52,7 +52,7 @@ always active; other targets deploy only when their root directory already exist
 | **No SKILL.md and no primitives** | No skill folder created |
 
 **Target Directories:**
-- **Copilot (always)**: `.github/skills/{skill-name}/` — Created automatically; works with Copilot, Codex, Gemini
+- **Copilot (always)**: `.github/skills/{skill-name}/` - Created automatically; works with Copilot, Codex, Gemini
 - **Claude (if `.claude/` exists)**: `.claude/skills/{skill-name}/`
 - **Cursor (if `.cursor/` exists)**: `.cursor/skills/{skill-name}/`
 - **OpenCode (if `.opencode/` exists)**: `.opencode/skills/{skill-name}/`

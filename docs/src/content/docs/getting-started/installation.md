@@ -149,17 +149,13 @@ mkdir -p ~/bin
 
 On systems with glibc older than 2.39 (e.g., Debian Bookworm with glibc 2.36), the
 pre-built binary may fail to run. The installer automatically detects this and falls
-back to `pip install`:
+back to installing APM via `pip install --user apm-cli`.
 
-```
-[!] Binary failed (glibc mismatch). Falling back to pip install...
-[+] apm installed via pip
-```
+This installs the `apm` command into your user `bin` directory (commonly `~/.local/bin`).
+If `apm` is not found after installation, ensure that this directory is on your `PATH`.
 
-No manual action is required. If you prefer to install via pip directly:
+If you prefer to install via pip directly:
 
-```bash
-pip install apm-cli
 ```
 
 ### Authentication errors when installing packages
