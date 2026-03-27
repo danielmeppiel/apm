@@ -749,9 +749,9 @@ jobs:
               }
             }
 
-  # Update WinGet manifest (only stable releases from public repo)
+  # Update WinGet package at microsoft/winget-pkgs (only stable releases from public repo)
   update-winget:
-    name: Update WinGet Manifest
+    name: Update WinGet Package
     runs-on: ubuntu-latest
     needs: [build-and-test, build-and-validate-macos-intel, build-and-validate-macos-arm, integration-tests, release-validation, create-release, publish-pypi]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
@@ -759,30 +759,9 @@ jobs:
       contents: read
 
     steps:
-      - name: Extract Windows checksum from GitHub release
-        id: checksums
-        run: |
-          RELEASE_TAG="${{ github.ref_name }}"
-          curl -L -o apm-windows-x86_64.zip.sha256 \
-            "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/apm-windows-x86_64.zip.sha256"
-          WINDOWS_X86_64_SHA=$(cat apm-windows-x86_64.zip.sha256 | cut -d' ' -f1)
-          echo "windows-x86_64-sha=$WINDOWS_X86_64_SHA" >> $GITHUB_OUTPUT
-          echo "Windows x86_64 SHA: $WINDOWS_X86_64_SHA"
-
-      - name: Trigger WinGet manifest repository update
-        uses: peter-evans/repository-dispatch@v3
+      - name: Publish to WinGet
+        uses: vedantmgoyal9/winget-releaser@v2
         with:
-          token: ${{ secrets.GH_PKG_PAT }}
-          repository: microsoft/winget-apm
-          event-type: manifest-update
-          client-payload: |
-            {
-              "release": {
-                "version": "${{ github.ref_name }}",
-                "tag": "${{ github.ref_name }}",
-                "repository": "${{ github.repository }}"
-              },
-              "checksums": {
-                "windows_x86_64": "${{ steps.checksums.outputs.windows-x86_64-sha }}"
-              }
-            }
+          identifier: Microsoft.APM
+          installers-regex: '\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}
