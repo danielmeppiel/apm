@@ -750,18 +750,26 @@ jobs:
             }
 
   # Update WinGet package at microsoft/winget-pkgs (only stable releases from public repo)
+  # Uses Microsoft's official wingetcreate tool (https://github.com/microsoft/winget-create)
+  # to generate updated manifests and open a PR to microsoft/winget-pkgs.
+  # Requires WINGET_TOKEN secret: classic PAT with public_repo scope.
   update-winget:
     name: Update WinGet Package
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs: [build-and-test, build-and-validate-macos-intel, build-and-validate-macos-arm, integration-tests, release-validation, create-release, publish-pypi]
     if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     permissions:
       contents: read
 
     steps:
-      - name: Publish to WinGet
-        uses: vedantmgoyal9/winget-releaser@v2
-        with:
-          identifier: Microsoft.APM
-          installers-regex: '\.zip$'
-          token: ${{ secrets.WINGET_TOKEN }}
+      - name: Update WinGet manifest
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/apm-windows-x86_64.zip"
+          Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest" -OutFile wingetcreate.exe
+          .\wingetcreate.exe update Microsoft.APM `
+            --version $version `
+            --urls $url `
+            --submit `
+            --token ${{ secrets.WINGET_TOKEN }}
+        shell: pwsh
