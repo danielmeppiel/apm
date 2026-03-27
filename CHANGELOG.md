@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `apm install --target` flag to force deployment to a specific target (copilot, claude, cursor, opencode, all) (#456)
+- WinGet installation method for Windows: `winget install Microsoft.APM` (#88)
 
 ## [0.8.5] - 2026-03-24
 

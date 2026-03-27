@@ -749,13 +749,12 @@ jobs:
               }
             }
 
-  # Update Scoop bucket (only stable releases from public repo)
-  update-scoop:
-    name: Update Scoop Bucket
+  # Update WinGet manifest (only stable releases from public repo)
+  update-winget:
+    name: Update WinGet Manifest
     runs-on: ubuntu-latest
     needs: [build-and-test, build-and-validate-macos-intel, build-and-validate-macos-arm, integration-tests, release-validation, create-release, publish-pypi]
-    # TODO: Enable once downstream repository and secrets are configured (see #88)
-    if: false && github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
+    if: github.ref_type == 'tag' && needs.create-release.outputs.is_private_repo != 'true' && needs.create-release.outputs.is_prerelease != 'true'
     permissions:
       contents: read
 
@@ -770,12 +769,12 @@ jobs:
           echo "windows-x86_64-sha=$WINDOWS_X86_64_SHA" >> $GITHUB_OUTPUT
           echo "Windows x86_64 SHA: $WINDOWS_X86_64_SHA"
 
-      - name: Trigger Scoop bucket repository update
+      - name: Trigger WinGet manifest repository update
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.GH_PKG_PAT }}
-          repository: microsoft/scoop-apm
-          event-type: bucket-update
+          repository: microsoft/winget-apm
+          event-type: manifest-update
           client-payload: |
             {
               "release": {
