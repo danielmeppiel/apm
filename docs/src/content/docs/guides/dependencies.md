@@ -30,7 +30,7 @@ APM supports multiple dependency types:
 | **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
 | **Virtual Subdirectory Package** | Folder path in repo | `github/awesome-copilot/skills/review-and-refactor` |
 | **Local Path Package** | Path starts with `./`, `../`, or `/` | `./packages/my-shared-skills` |
-| **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` or `dev.azure.com/org/My%20Project/_git/My%20Repo` |
+| **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` or `dev.azure.com/org/My%20Project/_git/My%20Repo` (spaces and `%20`-encoding both accepted) |
 
 **Virtual Subdirectory Packages** are skill folders from monorepos - they download an entire folder and may contain a SKILL.md plus resources.
 

@@ -165,13 +165,20 @@ APM deploys files only to controlled subdirectories within the project root.
 
 ### Path traversal prevention
 
-All deploy paths are validated before any file operation:
+APM validates paths at two layers: repository URL parsing and file deployment.
+
+**Repository URL validation** — traversal sequences are rejected before any network operation:
+
+- Dependency strings (shorthand, HTTPS, SSH-style `git@host:owner/repo.git`) are parsed and each path segment is checked for `.` and `..` sequences.
+- An SSH-style URL like `git@github.com:owner/../../../etc/passwd.git` is rejected at parse time, before any clone or fetch is attempted.
+
+**Deploy path validation** — all target paths are validated before any file operation:
 
 1. **No `..` segments.** Any path containing `..` is rejected outright.
 2. **Allowed prefixes only.** Paths must start with an allowed prefix (`.github/`, `.claude/`, `.cursor/`, or `.opencode/`).
 3. **Resolution containment.** The fully resolved path must remain within the project root directory.
 
-A path must pass all three checks. Failure on any check prevents the file from being written.
+A deploy path must pass all three checks. Failure on any check prevents the file from being written.
 
 ### Symlink handling
 
