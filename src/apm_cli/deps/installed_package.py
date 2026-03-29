@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
+    from apm_cli.deps.registry_proxy import RegistryConfig
     from apm_cli.models.dependency.reference import DependencyReference
 
 
@@ -38,6 +39,11 @@ class InstalledPackage:
         for direct dependencies.
     is_dev:
         ``True`` when the package is a dev-only dependency.
+    registry_config:
+        The :class:`~apm_cli.deps.registry_proxy.RegistryConfig` that was active
+        when this package was downloaded, or ``None`` for direct VCS installs.
+        When present, the lockfile stores the proxy host (FQDN) and prefix so
+        that subsequent installs replay through the same proxy.
     """
 
     dep_ref: "DependencyReference"
@@ -45,3 +51,4 @@ class InstalledPackage:
     depth: int
     resolved_by: Optional[str]
     is_dev: bool = False
+    registry_config: "Optional[RegistryConfig]" = None

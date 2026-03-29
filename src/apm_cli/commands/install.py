@@ -1417,11 +1417,15 @@ def _install_apm_dependencies(
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
         from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.registry_proxy import RegistryConfig
         from ..utils.content_hash import compute_package_hash as _compute_hash
         installed_packages: List[InstalledPackage] = []
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
         _package_hashes: builtins.dict = {}  # dep_key → sha256 hash (captured at download/verify time)
+
+        # Resolve registry proxy configuration once for this install session.
+        registry_config = RegistryConfig.from_env()
 
         # Build managed_files from existing lockfile for collision detection
         managed_files = builtins.set()
@@ -1429,6 +1433,30 @@ def _install_apm_dependencies(
         if existing_lockfile:
             for dep in existing_lockfile.dependencies.values():
                 managed_files.update(dep.deployed_files)
+
+            # Conflict: registry-only mode requires all locked deps to route
+            # through the configured proxy. Deps locked to direct VCS sources
+            # (github.com, GHE Cloud, GHES) are incompatible.
+            if registry_config and registry_config.enforce_only:
+                conflicts = registry_config.validate_lockfile_deps(
+                    list(existing_lockfile.dependencies.values())
+                )
+                if conflicts:
+                    _rich_error(
+                        "APM_REGISTRY_ONLY is set but the lockfile contains "
+                        "dependencies locked to direct VCS sources:"
+                    )
+                    for dep in conflicts[:10]:
+                        host = dep.host or "github.com"
+                        name = dep.repo_url
+                        if dep.virtual_path:
+                            name = f"{name}/{dep.virtual_path}"
+                        _rich_error(f"  - {name} (host: {host})")
+                    _rich_error(
+                        "Re-run with 'apm install --update' to re-resolve "
+                        "through the registry, or unset APM_REGISTRY_ONLY."
+                    )
+                    sys.exit(1)
         # Normalize path separators once for O(1) lookups in check_collision
         from apm_cli.integration.base_integrator import BaseIntegrator
         managed_files = BaseIntegrator.normalize_managed_files(managed_files)
@@ -1626,6 +1654,7 @@ def _install_apm_dependencies(
                     installed_packages.append(InstalledPackage(
                         dep_ref=dep_ref, resolved_commit=None,
                         depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                        registry_config=None,  # local deps never go through registry
                     ))
                     dep_key = dep_ref.get_unique_key()
                     if install_path.is_dir() and not dep_ref.is_local:
@@ -1754,6 +1783,20 @@ def _install_apm_dependencies(
                         safe_rmtree(install_path, apm_modules_dir)
                         skip_download = False
 
+                # When registry-only mode is active, bypass cache if the
+                # cached artifact was NOT previously downloaded via the
+                # registry (no registry_prefix in lockfile). This handles
+                # the transition from direct-VCS installs to proxy installs
+                # for packages not yet in the lockfile.
+                if (
+                    skip_download
+                    and registry_config
+                    and registry_config.enforce_only
+                    and not dep_ref.is_local
+                ):
+                    if not _dep_locked_chk or _dep_locked_chk.registry_prefix is None:
+                        skip_download = False
+
                 if skip_download:
                     display_name = (
                         str(dep_ref) if dep_ref.is_virtual else dep_ref.repo_url
@@ -1837,9 +1880,18 @@ def _install_apm_dependencies(
                                 cached_commit = locked_dep.resolved_commit
                         if not cached_commit:
                             cached_commit = dep_ref.reference
+                        # Determine if the cached package came from the registry:
+                        # prefer the lockfile record, then the current registry config.
+                        _cached_registry = None
+                        if _dep_locked_chk and _dep_locked_chk.registry_prefix:
+                            # Reconstruct RegistryConfig from lockfile to preserve original source
+                            _cached_registry = registry_config
+                        elif registry_config and not dep_ref.is_local:
+                            _cached_registry = registry_config
                         installed_packages.append(InstalledPackage(
                             dep_ref=dep_ref, resolved_commit=cached_commit,
                             depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                            registry_config=_cached_registry,
                         ))
                         if install_path.is_dir():
                             _package_hashes[dep_key] = _compute_hash(install_path)
@@ -1991,6 +2043,7 @@ def _install_apm_dependencies(
                     installed_packages.append(InstalledPackage(
                         dep_ref=dep_ref, resolved_commit=resolved_commit,
                         depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                        registry_config=registry_config if not dep_ref.is_local else None,
                     ))
                     if install_path.is_dir():
                         _package_hashes[dep_ref.get_unique_key()] = _compute_hash(install_path)

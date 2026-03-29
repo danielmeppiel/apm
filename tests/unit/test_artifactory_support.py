@@ -842,3 +842,282 @@ class TestArtifactoryOnlyMode:
             # Should not raise - explicit Artifactory FQDN bypasses the guard
             with patch.object(dl, 'download_collection_package', return_value=MagicMock()):
                 dl.download_package(dep, Path("/tmp/test-pkg"))
+
+    def test_apm_registry_only_raises_same_as_artifactory_only(self):
+        """APM_REGISTRY_ONLY=1 is the canonical name and also raises for non-proxy deps."""
+        with patch.dict(os.environ, {"APM_REGISTRY_ONLY": "1"}, clear=True):
+            dl = GitHubPackageDownloader()
+            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+                dl.download_package("microsoft/some-package", Path("/tmp/test-pkg"))
+
+
+# ── RegistryConfig: FQDN / prefix split and generic registry ──
+
+
+class TestRegistryConfig:
+    """Test RegistryConfig construction and field separation."""
+
+    def test_fqdn_and_prefix_are_split(self):
+        """APM_REGISTRY_URL is split into pure FQDN host and path prefix."""
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+        assert cfg is not None
+        assert cfg.host == "art.example.com"
+        assert cfg.prefix == "artifactory/github"
+        assert "/" not in cfg.host  # host must be a pure FQDN
+
+    def test_compound_string_never_stored_as_host(self):
+        """The compound 'host/prefix' string must not be stored as LockedDependency.host."""
+        from apm_cli.deps.lockfile import LockedDependency
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        dep = DependencyReference.parse("owner/repo")
+        locked = LockedDependency.from_dependency_ref(
+            dep_ref=dep, resolved_commit="abc123", depth=1, resolved_by=None,
+            registry_config=cfg,
+        )
+        assert locked.host == "art.example.com"
+        assert locked.registry_prefix == "artifactory/github"
+        assert "/" not in locked.host
+
+    def test_generic_registry_nexus(self):
+        """Non-Artifactory registry (Nexus) works identically via APM_REGISTRY_URL."""
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"APM_REGISTRY_URL": "https://nexus.corp.example/repository/apm"},
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+        assert cfg is not None
+        assert cfg.host == "nexus.corp.example"
+        assert cfg.prefix == "repository/apm"
+
+    def test_deprecated_artifactory_base_url_alias(self):
+        """ARTIFACTORY_BASE_URL still works and emits DeprecationWarning."""
+        import warnings
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"ARTIFACTORY_BASE_URL": "https://art.example.com/artifactory/github"},
+            clear=True,
+        ):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                cfg = RegistryConfig.from_env()
+        assert cfg is not None
+        assert cfg.host == "art.example.com"
+        assert any("ARTIFACTORY_BASE_URL" in str(warning.message) for warning in w)
+        assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
+
+    def test_registry_config_lockfile_round_trip(self):
+        """host and registry_prefix survive YAML write → read round trip."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        dep = DependencyReference.parse("owner/repo")
+        locked = LockedDependency.from_dependency_ref(
+            dep_ref=dep, resolved_commit="abc123", depth=1, resolved_by=None,
+            registry_config=cfg,
+        )
+        lock = LockFile()
+        lock.add_dependency(locked)
+        yaml_str = lock.to_yaml()
+        lock2 = LockFile.from_yaml(yaml_str)
+        dep2 = lock2.get_dependency("owner/repo")
+        assert dep2.host == "art.example.com"
+        assert dep2.registry_prefix == "artifactory/github"
+
+
+# ── drift.py: build_download_ref with registry_prefix ──
+
+
+class TestBuildDownloadRefRegistryPrefix:
+    """Test build_download_ref correctly restores host and artifactory_prefix."""
+
+    def test_registry_prefix_sets_artifactory_prefix_on_dep_ref(self):
+        """When lockfile has registry_prefix, the download ref gets artifactory_prefix set."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("owner/repo")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com",
+            registry_prefix="artifactory/github",
+            resolved_commit="abc123def456",
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.host == "art.example.com"
+        assert ref.artifactory_prefix == "artifactory/github"
+        assert ref.is_artifactory()  # downloader will take the proxy code-path
+
+    def test_registry_prefix_preserves_locked_ref_when_no_commit(self):
+        """For proxy deps without resolved_commit, locked resolved_ref is preserved."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("owner/repo")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com",
+            registry_prefix="artifactory/apm",
+            resolved_commit=None,
+            resolved_ref="v1.2.0",
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.host == "art.example.com"
+        assert ref.artifactory_prefix == "artifactory/apm"
+        assert ref.reference == "v1.2.0"
+
+    def test_no_registry_prefix_no_artifactory_prefix_override(self):
+        """Without registry_prefix in lockfile, artifactory_prefix is not injected."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("owner/repo")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="github.com",
+            registry_prefix=None,
+            resolved_commit="abc123",
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=False, ref_changed=False)
+        assert ref.artifactory_prefix is None
+        assert not ref.is_artifactory()
+
+    def test_update_refs_bypasses_lockfile_host(self):
+        """--update mode ignores lockfile host and returns original dep_ref."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.drift import build_download_ref
+
+        dep = DependencyReference.parse("owner/repo")
+        lock = LockFile()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com",
+            registry_prefix="artifactory/github",
+            resolved_commit="abc123",
+        )
+        lock.add_dependency(locked)
+
+        ref = build_download_ref(dep, lock, update_refs=True, ref_changed=False)
+        assert ref is dep  # --update returns original dep_ref unchanged
+
+
+# ── RegistryConfig.validate_lockfile_deps: conflict detection ──
+
+
+class TestRegistryOnlyConflictDetection:
+    """Test validate_lockfile_deps uses classify_host for accurate conflict detection."""
+
+    def test_github_com_dep_is_a_conflict(self):
+        """github.com host is a direct VCS source → conflict when enforce_only=True."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {
+                "APM_REGISTRY_URL": "https://art.example.com/artifactory/github",
+                "APM_REGISTRY_ONLY": "1",
+            },
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        locked_direct = LockedDependency(repo_url="owner/repo", host="github.com")
+        conflicts = cfg.validate_lockfile_deps([locked_direct])
+        assert len(conflicts) == 1
+        assert conflicts[0].repo_url == "owner/repo"
+
+    def test_registry_dep_is_not_a_conflict(self):
+        """A dep with a registry host is not a conflict."""
+        from apm_cli.deps.lockfile import LockedDependency
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {
+                "APM_REGISTRY_URL": "https://art.example.com/artifactory/github",
+                "APM_REGISTRY_ONLY": "1",
+            },
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        locked_proxy = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com",
+            registry_prefix="artifactory/github",
+        )
+        conflicts = cfg.validate_lockfile_deps([locked_proxy])
+        assert len(conflicts) == 0
+
+    def test_local_dep_is_never_a_conflict(self):
+        """Local deps are excluded from conflict detection regardless."""
+        from apm_cli.deps.lockfile import LockedDependency
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {
+                "APM_REGISTRY_URL": "https://art.example.com/artifactory/github",
+                "APM_REGISTRY_ONLY": "1",
+            },
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        locked_local = LockedDependency(
+            repo_url="owner/repo", host="github.com", source="local"
+        )
+        conflicts = cfg.validate_lockfile_deps([locked_local])
+        assert len(conflicts) == 0
+
+    def test_enforce_only_false_returns_no_conflicts(self):
+        """When enforce_only=False, validate_lockfile_deps always returns empty list."""
+        from apm_cli.deps.lockfile import LockedDependency
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        assert not cfg.enforce_only
+        locked = LockedDependency(repo_url="owner/repo", host="github.com")
+        assert cfg.validate_lockfile_deps([locked]) == []

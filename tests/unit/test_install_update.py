@@ -126,6 +126,7 @@ class TestDownloadRefLockfileOverride:
         lockfile = Mock()
         locked_dep = Mock()
         locked_dep.resolved_commit = resolved_commit
+        locked_dep.registry_prefix = None
         lockfile.get_dependency = Mock(return_value=locked_dep)
         return lockfile
 
@@ -248,6 +249,7 @@ class TestPreDownloadRefLockfileOverride:
         lockfile = Mock()
         locked_dep = Mock()
         locked_dep.resolved_commit = resolved_commit
+        locked_dep.registry_prefix = None
         lockfile.get_dependency = Mock(return_value=locked_dep)
         return lockfile
 
