@@ -347,7 +347,7 @@ class GitHubPackageDownloader:
     def _is_artifactory_only() -> bool:
         """Return True when registry-only mode is active.
 
-        Checks the canonical ``APM_REGISTRY_ONLY`` env var, falling back to the
+        Checks the canonical ``PROXY_REGISTRY_ONLY`` env var, falling back to the
         deprecated ``ARTIFACTORY_ONLY`` alias.
         """
         from .registry_proxy import is_enforce_only
@@ -1859,15 +1859,16 @@ author: {dep_ref.repo_url.split('/')[0]}
             art_proxy = self._parse_artifactory_base_url()
             if self._is_artifactory_only() and not dep_ref.is_artifactory() and not art_proxy:
                 raise RuntimeError(
-                    f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
-                    "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                    f"PROXY_REGISTRY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                    "Set PROXY_REGISTRY_URL or use explicit Artifactory FQDN syntax."
                 )
             if dep_ref.is_virtual_file():
                 return self.download_virtual_file_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_collection():
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_subdirectory():
-                # When ARTIFACTORY_ONLY is set, download full archive and extract subdir
+                # When PROXY_REGISTRY_ONLY is set, download full archive and extract subdir
+                art_proxy = self._parse_artifactory_base_url()
                 if self._is_artifactory_only() and art_proxy:
                     return self._download_subdirectory_from_artifactory(
                         dep_ref, target_path, art_proxy, progress_task_id, progress_obj
@@ -1889,11 +1890,11 @@ author: {dep_ref.repo_url.split('/')[0]}
                 dep_ref, target_path, art_proxy, progress_task_id, progress_obj
             )
 
-        # When ARTIFACTORY_ONLY is set but no Artifactory proxy matched, block direct git
+        # When PROXY_REGISTRY_ONLY is set but no Artifactory proxy matched, block direct git
         if self._is_artifactory_only():
             raise RuntimeError(
-                f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{dep_ref}'. "
-                "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                f"PROXY_REGISTRY_ONLY is set but no Artifactory proxy is configured for '{dep_ref}'. "
+                "Set PROXY_REGISTRY_URL or use explicit Artifactory FQDN syntax."
             )
 
         # Regular package download (existing logic)

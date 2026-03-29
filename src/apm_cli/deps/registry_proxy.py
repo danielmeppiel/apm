@@ -6,17 +6,17 @@ air-gapped and enterprise-proxy installs.
 
 Environment variables (canonical)::
 
-    APM_REGISTRY_URL      – Full proxy base URL, e.g.
+    PROXY_REGISTRY_URL      – Full proxy base URL, e.g.
                             ``https://art.example.com/artifactory/github``
-    APM_REGISTRY_TOKEN    – Bearer token for the proxy.
-    APM_REGISTRY_ONLY     – Set to ``1``/``true``/``yes`` to block all
+    PROXY_REGISTRY_TOKEN    – Bearer token for the proxy.
+    PROXY_REGISTRY_ONLY     – Set to ``1``/``true``/``yes`` to block all
                             direct VCS downloads.
 
 Deprecated aliases (still functional, emit ``DeprecationWarning``)::
 
-    ARTIFACTORY_BASE_URL  → APM_REGISTRY_URL
-    ARTIFACTORY_APM_TOKEN → APM_REGISTRY_TOKEN
-    ARTIFACTORY_ONLY      → APM_REGISTRY_ONLY
+    ARTIFACTORY_BASE_URL  → PROXY_REGISTRY_URL
+    ARTIFACTORY_APM_TOKEN → PROXY_REGISTRY_TOKEN
+    ARTIFACTORY_ONLY      → PROXY_REGISTRY_ONLY
 """
 
 from __future__ import annotations
@@ -77,18 +77,18 @@ class RegistryConfig:
     def from_env(cls) -> Optional["RegistryConfig"]:
         """Build a :class:`RegistryConfig` from the current environment.
 
-        Reads the canonical ``APM_REGISTRY_*`` variables first; falls
+        Reads the canonical ``PROXY_REGISTRY_*`` variables first; falls
         back to the deprecated ``ARTIFACTORY_*`` aliases (with a
         ``DeprecationWarning`` for each one that is used).
 
         Returns ``None`` when no registry URL is configured.
         """
-        url = os.environ.get("APM_REGISTRY_URL", "").strip().rstrip("/")
+        url = os.environ.get("PROXY_REGISTRY_URL", "").strip().rstrip("/")
         if not url:
             art_url = os.environ.get("ARTIFACTORY_BASE_URL", "").strip().rstrip("/")
             if art_url:
                 warnings.warn(
-                    "ARTIFACTORY_BASE_URL is deprecated; use APM_REGISTRY_URL instead.",
+                    "ARTIFACTORY_BASE_URL is deprecated; use PROXY_REGISTRY_URL instead.",
                     DeprecationWarning,
                     stacklevel=2,
                 )
@@ -105,9 +105,9 @@ class RegistryConfig:
         if not host or not prefix:
             return None
 
-        token = os.environ.get("APM_REGISTRY_TOKEN") or _read_deprecated_token()
+        token = os.environ.get("PROXY_REGISTRY_TOKEN") or _read_deprecated_token()
 
-        enforce_str = os.environ.get("APM_REGISTRY_ONLY", "")
+        enforce_str = os.environ.get("PROXY_REGISTRY_ONLY", "")
         if not enforce_str:
             enforce_str = _read_deprecated_enforce_only()
         enforce_only = enforce_str.strip().lower() in ("1", "true", "yes")
@@ -175,13 +175,13 @@ class RegistryConfig:
 def is_enforce_only() -> bool:
     """Return ``True`` when registry-only mode is active.
 
-    Checks ``APM_REGISTRY_ONLY`` first; falls back to the deprecated
+    Checks ``PROXY_REGISTRY_ONLY`` first; falls back to the deprecated
     ``ARTIFACTORY_ONLY``.  Does **not** require a full :class:`RegistryConfig`
     to be available — callers that only need the flag (e.g.
     :class:`~apm_cli.deps.github_downloader.GitHubPackageDownloader`) can
     use this without constructing the full config.
     """
-    val = os.environ.get("APM_REGISTRY_ONLY", "").strip()
+    val = os.environ.get("PROXY_REGISTRY_ONLY", "").strip()
     if not val:
         val = os.environ.get("ARTIFACTORY_ONLY", "").strip()
     return val.lower() in ("1", "true", "yes")
@@ -196,7 +196,7 @@ def _read_deprecated_token() -> Optional[str]:
     token = os.environ.get("ARTIFACTORY_APM_TOKEN")
     if token:
         warnings.warn(
-            "ARTIFACTORY_APM_TOKEN is deprecated; use APM_REGISTRY_TOKEN instead.",
+            "ARTIFACTORY_APM_TOKEN is deprecated; use PROXY_REGISTRY_TOKEN instead.",
             DeprecationWarning,
             stacklevel=3,
         )
@@ -207,7 +207,7 @@ def _read_deprecated_enforce_only() -> str:
     val = os.environ.get("ARTIFACTORY_ONLY", "")
     if val:
         warnings.warn(
-            "ARTIFACTORY_ONLY is deprecated; use APM_REGISTRY_ONLY instead.",
+            "ARTIFACTORY_ONLY is deprecated; use PROXY_REGISTRY_ONLY instead.",
             DeprecationWarning,
             stacklevel=3,
         )

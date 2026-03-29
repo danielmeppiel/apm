@@ -10,21 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `RegistryConfig` dataclass in `apm_cli.deps.registry_proxy` — registry-agnostic abstraction over VCS proxies; reads canonical `APM_REGISTRY_URL` / `APM_REGISTRY_TOKEN` / `APM_REGISTRY_ONLY` env vars with deprecated fallback to `ARTIFACTORY_*` aliases
+- `RegistryConfig` dataclass in `apm_cli.deps.registry_proxy` — registry-agnostic abstraction over VCS proxies; reads canonical `PROXY_REGISTRY_URL` / `PROXY_REGISTRY_TOKEN` / `PROXY_REGISTRY_ONLY` env vars with deprecated fallback to `ARTIFACTORY_*` aliases
 - `InstalledPackage` dataclass in `apm_cli.deps.installed_package` — replaces the ad hoc positional tuple used to accumulate install results before lockfile generation; `LockFile.from_installed_packages()` accepts both the new dataclass and legacy tuples
 - `LockedDependency.registry_prefix` field in `apm.lock.yaml` — stores the URL path prefix (e.g. `artifactory/github`) separately from the pure FQDN `host`; enables correct auth token routing and air-gapped re-installs through the same proxy
-- `APM_REGISTRY_ONLY` / `APM_REGISTRY_URL` / `APM_REGISTRY_TOKEN` — canonical generic registry env vars replacing the deprecated `ARTIFACTORY_*` equivalents (deprecated aliases still work with a `DeprecationWarning`)
+- `PROXY_REGISTRY_ONLY` / `PROXY_REGISTRY_URL` / `PROXY_REGISTRY_TOKEN` — canonical generic registry env vars replacing the deprecated `ARTIFACTORY_*` equivalents (deprecated aliases still work with a `DeprecationWarning`)
 
 ### Fixed
 
-- Lockfile recorded compound `host` strings (e.g. `art.example.com/artifactory/github`) that `AuthResolver.classify_host()` could not parse, causing GitHub PAT to be used instead of `APM_REGISTRY_TOKEN` for proxy re-installs; `host` is now stored as a pure FQDN and `registry_prefix` carries the path prefix
+- Lockfile recorded compound `host` strings (e.g. `art.example.com/artifactory/github`) that `AuthResolver.classify_host()` could not parse, causing GitHub PAT to be used instead of `PROXY_REGISTRY_TOKEN` for proxy re-installs; `host` is now stored as a pure FQDN and `registry_prefix` carries the path prefix
 - Re-installs in air-gapped environments no longer fall back to GitHub when the lockfile entry has a `registry_prefix`; `build_download_ref()` sets `artifactory_prefix` on the download ref so the downloader uses the proxy code path
 
 ### Changed
 
-- `GitHubPackageDownloader._is_artifactory_only()` now delegates to `registry_proxy.is_enforce_only()` which checks `APM_REGISTRY_ONLY` before the deprecated `ARTIFACTORY_ONLY`; no behavior change when using `ARTIFACTORY_ONLY`
+- `GitHubPackageDownloader._is_artifactory_only()` now delegates to `registry_proxy.is_enforce_only()` which checks `PROXY_REGISTRY_ONLY` before the deprecated `ARTIFACTORY_ONLY`; no behavior change when using `ARTIFACTORY_ONLY`
 - `build_download_ref()` in `drift.py` is now the single authoritative host-patching point; duplicate host-override logic removed from `install.py`
-- `apm install` with `APM_REGISTRY_ONLY=1` now validates the existing lockfile at startup and exits with a clear error if any entry is locked to a direct VCS source (non-proxy host)
+- `apm install` with `PROXY_REGISTRY_ONLY=1` now validates the existing lockfile at startup and exits with a clear error if any entry is locked to a direct VCS source (non-proxy host)
 
 ## [0.8.6] - 2026-03-27
 

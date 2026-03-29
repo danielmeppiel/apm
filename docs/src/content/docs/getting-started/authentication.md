@@ -32,7 +32,7 @@ All token-bearing requests use HTTPS. Tokens are never sent over unencrypted con
 
 For Azure DevOps, the only token source is `ADO_APM_PAT`.
 
-For Artifactory registry proxies, use `APM_REGISTRY_TOKEN`. See [Registry proxy (Artifactory)](#registry-proxy-artifactory) below.
+For Artifactory registry proxies, use `PROXY_REGISTRY_TOKEN`. See [Registry proxy (Artifactory)](#registry-proxy-artifactory) below.
 
 For runtime features (`GITHUB_COPILOT_PAT`), see [Agent Workflows](../../guides/agent-workflows/).
 
@@ -155,7 +155,7 @@ Create the PAT at `https://dev.azure.com/{org}/_usersSettings/tokens` with **Cod
 | `contoso.ghe.com/org/repo` | *.ghe.com | Global env vars → credential fill | Auth-only (no public repos) |
 | GHES via `GITHUB_HOST` | ghes.company.com | Global env vars → credential fill | Unauth for public repos |
 | `dev.azure.com/org/proj/repo` | ADO | `ADO_APM_PAT` only | Auth-only |
-| Artifactory registry proxy | custom FQDN | `APM_REGISTRY_TOKEN` | Error if `APM_REGISTRY_ONLY=1` |
+| Artifactory registry proxy | custom FQDN | `PROXY_REGISTRY_TOKEN` | Error if `PROXY_REGISTRY_ONLY=1` |
 
 ## Registry proxy (Artifactory)
 
@@ -163,19 +163,19 @@ Air-gapped environments route all VCS traffic through a JFrog Artifactory proxy.
 
 | Variable | Purpose |
 |----------|---------|
-| `APM_REGISTRY_URL` | Full proxy base URL, e.g. `https://art.example.com/artifactory/github` |
-| `APM_REGISTRY_TOKEN` | Bearer token for the proxy |
-| `APM_REGISTRY_ONLY` | Set to `1` to block all direct VCS access — only proxy downloads allowed |
+| `PROXY_REGISTRY_URL` | Full proxy base URL, e.g. `https://art.example.com/artifactory/github` |
+| `PROXY_REGISTRY_TOKEN` | Bearer token for the proxy |
+| `PROXY_REGISTRY_ONLY` | Set to `1` to block all direct VCS access — only proxy downloads allowed |
 
 ```bash
-export APM_REGISTRY_URL=https://art.example.com/artifactory/github
-export APM_REGISTRY_TOKEN=your_bearer_token
-export APM_REGISTRY_ONLY=1    # optional — enforces proxy-only mode
+export PROXY_REGISTRY_URL=https://art.example.com/artifactory/github
+export PROXY_REGISTRY_TOKEN=your_bearer_token
+export PROXY_REGISTRY_ONLY=1    # optional — enforces proxy-only mode
 
 apm install
 ```
 
-When `APM_REGISTRY_URL` is set, APM rewrites download URLs to go through the proxy and sends `APM_REGISTRY_TOKEN` as the `Authorization: Bearer` header instead of the GitHub PAT.
+When `PROXY_REGISTRY_URL` is set, APM rewrites download URLs to go through the proxy and sends `PROXY_REGISTRY_TOKEN` as the `Authorization: Bearer` header instead of the GitHub PAT.
 
 ### Lockfile and reproducibility
 
@@ -189,11 +189,11 @@ dependencies:
     resolved_commit: abc123def456
 ```
 
-Subsequent `apm install` runs (without `--update`) read these fields to reconstruct the proxy URL and route auth to `APM_REGISTRY_TOKEN`, ensuring byte-for-byte reproducibility without needing the original env vars to be set identically.
+Subsequent `apm install` runs (without `--update`) read these fields to reconstruct the proxy URL and route auth to `PROXY_REGISTRY_TOKEN`, ensuring byte-for-byte reproducibility without needing the original env vars to be set identically.
 
 ### Proxy-only enforcement
 
-With `APM_REGISTRY_ONLY=1`, APM will:
+With `PROXY_REGISTRY_ONLY=1`, APM will:
 
 1. Validate the existing `apm.lock.yaml` at startup and exit with an error if any entry is locked to a direct VCS source (no `registry_prefix`)
 2. Skip the download cache for entries that have no `registry_prefix` (forcing a fresh proxy download)
@@ -201,13 +201,13 @@ With `APM_REGISTRY_ONLY=1`, APM will:
 
 ### Deprecated Artifactory env vars
 
-The following env vars still work but emit a `DeprecationWarning`. Migrate to the `APM_REGISTRY_*` equivalents:
+The following env vars still work but emit a `DeprecationWarning`. Migrate to the `PROXY_REGISTRY_*` equivalents:
 
 | Deprecated | Replacement |
 |------------|-------------|
-| `ARTIFACTORY_BASE_URL` | `APM_REGISTRY_URL` |
-| `ARTIFACTORY_APM_TOKEN` | `APM_REGISTRY_TOKEN` |
-| `ARTIFACTORY_ONLY` | `APM_REGISTRY_ONLY` |
+| `ARTIFACTORY_BASE_URL` | `PROXY_REGISTRY_URL` |
+| `ARTIFACTORY_APM_TOKEN` | `PROXY_REGISTRY_TOKEN` |
+| `ARTIFACTORY_ONLY` | `PROXY_REGISTRY_ONLY` |
 
 ## Troubleshooting
 

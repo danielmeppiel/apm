@@ -1443,7 +1443,7 @@ def _install_apm_dependencies(
                 )
                 if conflicts:
                     _rich_error(
-                        "APM_REGISTRY_ONLY is set but the lockfile contains "
+                        "PROXY_REGISTRY_ONLY is set but the lockfile contains "
                         "dependencies locked to direct VCS sources:"
                     )
                     for dep in conflicts[:10]:
@@ -1454,7 +1454,7 @@ def _install_apm_dependencies(
                         _rich_error(f"  - {name} (host: {host})")
                     _rich_error(
                         "Re-run with 'apm install --update' to re-resolve "
-                        "through the registry, or unset APM_REGISTRY_ONLY."
+                        "through the registry, or unset PROXY_REGISTRY_ONLY."
                     )
                     sys.exit(1)
         # Normalize path separators once for O(1) lookups in check_collision

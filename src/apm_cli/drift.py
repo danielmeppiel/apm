@@ -208,7 +208,7 @@ def build_download_ref(
             # source (proxy host preserved) — fixes air-gapped reproducibility.
             # When registry_prefix is set, also restore the artifactory_prefix
             # field on dep_ref so the downloader takes the proxy code-path and
-            # uses APM_REGISTRY_TOKEN for auth instead of the GitHub PAT.
+            # uses PROXY_REGISTRY_TOKEN for auth instead of the GitHub PAT.
             if locked_dep.registry_prefix and locked_dep.host:
                 overrides["host"] = locked_dep.host
                 overrides["artifactory_prefix"] = locked_dep.registry_prefix

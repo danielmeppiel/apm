@@ -787,14 +787,14 @@ class TestArtifactoryOnlyMode:
         """ARTIFACTORY_ONLY without ARTIFACTORY_BASE_URL raises for non-Artifactory deps."""
         with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
             dl = GitHubPackageDownloader()
-            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+            with pytest.raises(RuntimeError, match="PROXY_REGISTRY_ONLY is set"):
                 dl.download_package("microsoft/some-package", Path("/tmp/test-pkg"))
 
     def test_virtual_file_errors_without_base_url(self):
         """ARTIFACTORY_ONLY without ARTIFACTORY_BASE_URL raises for virtual file packages."""
         with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
             dl = GitHubPackageDownloader()
-            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+            with pytest.raises(RuntimeError, match="PROXY_REGISTRY_ONLY is set"):
                 dl.download_package(
                     "owner/repo/prompts/deploy.prompt.md", Path("/tmp/test-pkg")
                 )
@@ -803,7 +803,7 @@ class TestArtifactoryOnlyMode:
         """ARTIFACTORY_ONLY without ARTIFACTORY_BASE_URL raises for virtual collection packages."""
         with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
             dl = GitHubPackageDownloader()
-            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+            with pytest.raises(RuntimeError, match="PROXY_REGISTRY_ONLY is set"):
                 dl.download_package(
                     "owner/repo/collections/my-collection", Path("/tmp/test-pkg")
                 )
@@ -812,7 +812,7 @@ class TestArtifactoryOnlyMode:
         """ARTIFACTORY_ONLY without ARTIFACTORY_BASE_URL raises for virtual subdirectory packages."""
         with patch.dict(os.environ, {"ARTIFACTORY_ONLY": "1"}, clear=True):
             dl = GitHubPackageDownloader()
-            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+            with pytest.raises(RuntimeError, match="PROXY_REGISTRY_ONLY is set"):
                 dl.download_package(
                     "owner/repo/skills/my-skill", Path("/tmp/test-pkg")
                 )
@@ -843,11 +843,11 @@ class TestArtifactoryOnlyMode:
             with patch.object(dl, 'download_collection_package', return_value=MagicMock()):
                 dl.download_package(dep, Path("/tmp/test-pkg"))
 
-    def test_apm_registry_only_raises_same_as_artifactory_only(self):
-        """APM_REGISTRY_ONLY=1 is the canonical name and also raises for non-proxy deps."""
-        with patch.dict(os.environ, {"APM_REGISTRY_ONLY": "1"}, clear=True):
+    def test_proxy_registry_only_raises_same_as_artifactory_only(self):
+        """PROXY_REGISTRY_ONLY=1 is the canonical name and also raises for non-proxy deps."""
+        with patch.dict(os.environ, {"PROXY_REGISTRY_ONLY": "1"}, clear=True):
             dl = GitHubPackageDownloader()
-            with pytest.raises(RuntimeError, match="ARTIFACTORY_ONLY is set"):
+            with pytest.raises(RuntimeError, match="PROXY_REGISTRY_ONLY is set"):
                 dl.download_package("microsoft/some-package", Path("/tmp/test-pkg"))
 
 
@@ -858,12 +858,12 @@ class TestRegistryConfig:
     """Test RegistryConfig construction and field separation."""
 
     def test_fqdn_and_prefix_are_split(self):
-        """APM_REGISTRY_URL is split into pure FQDN host and path prefix."""
+        """PROXY_REGISTRY_URL is split into pure FQDN host and path prefix."""
         from apm_cli.deps.registry_proxy import RegistryConfig
 
         with patch.dict(
             os.environ,
-            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            {"PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github"},
             clear=True,
         ):
             cfg = RegistryConfig.from_env()
@@ -879,7 +879,7 @@ class TestRegistryConfig:
 
         with patch.dict(
             os.environ,
-            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            {"PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github"},
             clear=True,
         ):
             cfg = RegistryConfig.from_env()
@@ -894,12 +894,12 @@ class TestRegistryConfig:
         assert "/" not in locked.host
 
     def test_generic_registry_nexus(self):
-        """Non-Artifactory registry (Nexus) works identically via APM_REGISTRY_URL."""
+        """Non-Artifactory registry (Nexus) works identically via PROXY_REGISTRY_URL."""
         from apm_cli.deps.registry_proxy import RegistryConfig
 
         with patch.dict(
             os.environ,
-            {"APM_REGISTRY_URL": "https://nexus.corp.example/repository/apm"},
+            {"PROXY_REGISTRY_URL": "https://nexus.corp.example/repository/apm"},
             clear=True,
         ):
             cfg = RegistryConfig.from_env()
@@ -932,7 +932,7 @@ class TestRegistryConfig:
 
         with patch.dict(
             os.environ,
-            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            {"PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github"},
             clear=True,
         ):
             cfg = RegistryConfig.from_env()
@@ -1050,8 +1050,8 @@ class TestRegistryOnlyConflictDetection:
         with patch.dict(
             os.environ,
             {
-                "APM_REGISTRY_URL": "https://art.example.com/artifactory/github",
-                "APM_REGISTRY_ONLY": "1",
+                "PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github",
+                "PROXY_REGISTRY_ONLY": "1",
             },
             clear=True,
         ):
@@ -1070,8 +1070,8 @@ class TestRegistryOnlyConflictDetection:
         with patch.dict(
             os.environ,
             {
-                "APM_REGISTRY_URL": "https://art.example.com/artifactory/github",
-                "APM_REGISTRY_ONLY": "1",
+                "PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github",
+                "PROXY_REGISTRY_ONLY": "1",
             },
             clear=True,
         ):
@@ -1093,8 +1093,8 @@ class TestRegistryOnlyConflictDetection:
         with patch.dict(
             os.environ,
             {
-                "APM_REGISTRY_URL": "https://art.example.com/artifactory/github",
-                "APM_REGISTRY_ONLY": "1",
+                "PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github",
+                "PROXY_REGISTRY_ONLY": "1",
             },
             clear=True,
         ):
@@ -1113,7 +1113,7 @@ class TestRegistryOnlyConflictDetection:
 
         with patch.dict(
             os.environ,
-            {"APM_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            {"PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github"},
             clear=True,
         ):
             cfg = RegistryConfig.from_env()
