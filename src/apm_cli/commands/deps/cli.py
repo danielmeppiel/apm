@@ -11,10 +11,6 @@ from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FI
 from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package
 from ...core.command_logger import CommandLogger
 
-# Import APM dependency system components (with fallback)
-from ...deps.github_downloader import GitHubPackageDownloader
-from ...deps.apm_resolver import APMDependencyResolver
-
 from ._utils import (
     _is_nested_under_package,
     _count_primitives,
@@ -23,8 +19,6 @@ from ._utils import (
     _get_detailed_context_counts,
     _get_package_display_info,
     _get_detailed_package_info,
-    _update_single_package,
-    _update_all_packages,
 )
 
 
@@ -444,42 +438,35 @@ def clean(dry_run: bool, yes: bool):
 
 
 @deps.command(help="Update APM dependencies")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed update information")
+@click.option("--force", is_flag=True, help="Overwrite locally-authored files on collision")
 @click.argument('package', required=False)
-def update(package: Optional[str]):
-    """Update specific package or all if no package specified."""
-    logger = CommandLogger("deps-update")
+@click.pass_context
+def update(ctx, package: Optional[str], verbose: bool, force: bool):
+    """Update specific package or all if no package specified.
 
-    project_root = Path(".")
-    apm_modules_path = project_root / APM_MODULES_DIR
-    
-    if not apm_modules_path.exists():
-        logger.progress("No apm_modules/ directory found - no packages to update")
-        return
-    
-    # Get project dependencies to validate updates
-    try:
-        apm_yml_path = project_root / APM_YML_FILENAME
-        if not apm_yml_path.exists():
-            logger.error(f"No {APM_YML_FILENAME} found in current directory")
-            return
-            
-        project_package = APMPackage.from_apm_yml(apm_yml_path)
-        project_deps = project_package.get_apm_dependencies()
-        
-        if not project_deps:
-            logger.progress("No APM dependencies defined in apm.yml")
-            return
-            
-    except Exception as e:
-        logger.error(f"Error reading {APM_YML_FILENAME}: {e}")
-        return
-    
-    if package:
-        # Update specific package
-        _update_single_package(package, project_deps, apm_modules_path, logger=logger)
-    else:
-        # Update all packages
-        _update_all_packages(project_deps, apm_modules_path, logger=logger)
+    Delegates to the install engine with --update to ensure the lockfile,
+    deployed files, and integration state are all refreshed correctly.
+    """
+    from ..install import install as install_cmd
+
+    # Build the install invocation: --update --only=apm (skip MCP)
+    invoke_kwargs = {
+        "packages": (package,) if package else (),
+        "runtime": None,
+        "exclude": None,
+        "only": "apm",
+        "update": True,
+        "dry_run": False,
+        "force": force,
+        "verbose": verbose,
+        "trust_transitive_mcp": False,
+        "parallel_downloads": 4,
+        "dev": False,
+        "target": None,
+    }
+
+    ctx.invoke(install_cmd, **invoke_kwargs)
 
 
 @deps.command(help="Show detailed package information")

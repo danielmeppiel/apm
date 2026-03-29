@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `apm deps update` was a no-op -- rewrote to delegate to the install engine (`apm install --update --only=apm`) so the lockfile, deployed files, and integration state are all refreshed correctly
+
 ## [0.8.6] - 2026-03-27
 
 ### Added
