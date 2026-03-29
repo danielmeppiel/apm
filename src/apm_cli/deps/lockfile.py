@@ -225,32 +225,43 @@ class LockFile:
     @classmethod
     def from_installed_packages(
         cls,
-        installed_packages: List[tuple],
+        installed_packages,
         dependency_graph,
     ) -> "LockFile":
         """Create a lock file from installed packages.
-        
+
         Args:
-            installed_packages: List of (dep_ref, resolved_commit, depth, resolved_by)
-                or (dep_ref, resolved_commit, depth, resolved_by, is_dev) tuples.
-                The 5th element is optional for backward compatibility.
-            dependency_graph: The resolved DependencyGraph for additional metadata
+            installed_packages: List of
+                :class:`~apm_cli.deps.installed_package.InstalledPackage`
+                objects **or** legacy tuples of the form
+                ``(dep_ref, resolved_commit, depth, resolved_by[, is_dev])``.
+                The 5th tuple element is optional for backward compatibility.
+            dependency_graph: The resolved DependencyGraph for additional metadata.
         """
+        from .installed_package import InstalledPackage
+
         # Get APM version
         try:
             from importlib.metadata import version
             apm_version = version("apm-cli")
         except Exception:
             apm_version = "unknown"
-        
+
         lock = cls(apm_version=apm_version)
-        
+
         for entry in installed_packages:
-            if len(entry) >= 5:
+            if isinstance(entry, InstalledPackage):
+                dep_ref = entry.dep_ref
+                resolved_commit = entry.resolved_commit
+                depth = entry.depth
+                resolved_by = entry.resolved_by
+                is_dev = entry.is_dev
+            elif len(entry) >= 5:
                 dep_ref, resolved_commit, depth, resolved_by, is_dev = entry[:5]
             else:
                 dep_ref, resolved_commit, depth, resolved_by = entry[:4]
                 is_dev = False
+
             locked_dep = LockedDependency.from_dependency_ref(
                 dep_ref=dep_ref,
                 resolved_commit=resolved_commit,
@@ -259,7 +270,7 @@ class LockFile:
                 is_dev=is_dev,
             )
             lock.add_dependency(locked_dep)
-        
+
         return lock
 
     def get_installed_paths(self, apm_modules_dir: Path) -> List[str]:

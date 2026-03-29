@@ -1416,8 +1416,9 @@ def _install_apm_dependencies(
 
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+        from apm_cli.deps.installed_package import InstalledPackage
         from ..utils.content_hash import compute_package_hash as _compute_hash
-        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev)
+        installed_packages: List[InstalledPackage] = []
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
         _package_hashes: builtins.dict = {}  # dep_key → sha256 hash (captured at download/verify time)
@@ -1622,7 +1623,10 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev))
+                    installed_packages.append(InstalledPackage(
+                        dep_ref=dep_ref, resolved_commit=None,
+                        depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                    ))
                     dep_key = dep_ref.get_unique_key()
                     if install_path.is_dir() and not dep_ref.is_local:
                         _package_hashes[dep_key] = _compute_hash(install_path)
@@ -1833,7 +1837,10 @@ def _install_apm_dependencies(
                                 cached_commit = locked_dep.resolved_commit
                         if not cached_commit:
                             cached_commit = dep_ref.reference
-                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by, _is_dev))
+                        installed_packages.append(InstalledPackage(
+                            dep_ref=dep_ref, resolved_commit=cached_commit,
+                            depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                        ))
                         if install_path.is_dir():
                             _package_hashes[dep_key] = _compute_hash(install_path)
                         # Track package type for lockfile
@@ -1981,7 +1988,10 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by, _is_dev))
+                    installed_packages.append(InstalledPackage(
+                        dep_ref=dep_ref, resolved_commit=resolved_commit,
+                        depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                    ))
                     if install_path.is_dir():
                         _package_hashes[dep_ref.get_unique_key()] = _compute_hash(install_path)
 

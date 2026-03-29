@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `RegistryConfig` dataclass in `apm_cli.deps.registry_proxy` — registry-agnostic abstraction over VCS proxies; reads canonical `APM_REGISTRY_URL` / `APM_REGISTRY_TOKEN` / `APM_REGISTRY_ONLY` env vars with deprecated fallback to `ARTIFACTORY_*` aliases
+- `InstalledPackage` dataclass in `apm_cli.deps.installed_package` — replaces the ad hoc positional tuple used to accumulate install results before lockfile generation; `LockFile.from_installed_packages()` accepts both the new dataclass and legacy tuples
+
+### Changed
+
+- `GitHubPackageDownloader._is_artifactory_only()` now delegates to `registry_proxy.is_enforce_only()` which checks `APM_REGISTRY_ONLY` before the deprecated `ARTIFACTORY_ONLY`; no behavior change when using `ARTIFACTORY_ONLY`
+
 ## [0.8.6] - 2026-03-27
 
 ### Added

@@ -1,0 +1,214 @@
+"""Registry-agnostic proxy configuration for APM.
+
+Provides a ``RegistryConfig`` abstraction over VCS proxies (Artifactory,
+Nexus, Gitea, etc.) that sit in front of GitHub/GitLab to enable
+air-gapped and enterprise-proxy installs.
+
+Environment variables (canonical)::
+
+    APM_REGISTRY_URL      – Full proxy base URL, e.g.
+                            ``https://art.example.com/artifactory/github``
+    APM_REGISTRY_TOKEN    – Bearer token for the proxy.
+    APM_REGISTRY_ONLY     – Set to ``1``/``true``/``yes`` to block all
+                            direct VCS downloads.
+
+Deprecated aliases (still functional, emit ``DeprecationWarning``)::
+
+    ARTIFACTORY_BASE_URL  → APM_REGISTRY_URL
+    ARTIFACTORY_APM_TOKEN → APM_REGISTRY_TOKEN
+    ARTIFACTORY_ONLY      → APM_REGISTRY_ONLY
+"""
+
+from __future__ import annotations
+
+import os
+import warnings
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, List, Optional
+from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from apm_cli.deps.lockfile import LockedDependency
+
+
+# ---------------------------------------------------------------------------
+# RegistryConfig
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RegistryConfig:
+    """Immutable registry proxy configuration parsed from environment variables.
+
+    Use :meth:`from_env` to construct; do not instantiate directly.
+
+    Attributes
+    ----------
+    url:
+        Full proxy base URL including the path prefix,
+        e.g. ``"https://art.example.com/artifactory/github"``.
+    host:
+        Pure FQDN extracted from *url*,
+        e.g. ``"art.example.com"``.
+        Suitable for :func:`~apm_cli.core.auth.AuthResolver.classify_host`.
+    prefix:
+        URL path prefix extracted from *url*,
+        e.g. ``"artifactory/github"``.
+        Used when constructing download URLs.
+    scheme:
+        ``"https"`` or ``"http"``.
+    token:
+        Optional Bearer token for authenticating against the proxy.
+    enforce_only:
+        When ``True``, direct VCS downloads are blocked — only the proxy
+        may serve packages.
+    """
+
+    url: str
+    host: str
+    prefix: str
+    scheme: str
+    token: Optional[str]
+    enforce_only: bool
+
+    # -- factory ------------------------------------------------------------
+
+    @classmethod
+    def from_env(cls) -> Optional["RegistryConfig"]:
+        """Build a :class:`RegistryConfig` from the current environment.
+
+        Reads the canonical ``APM_REGISTRY_*`` variables first; falls
+        back to the deprecated ``ARTIFACTORY_*`` aliases (with a
+        ``DeprecationWarning`` for each one that is used).
+
+        Returns ``None`` when no registry URL is configured.
+        """
+        url = os.environ.get("APM_REGISTRY_URL", "").strip().rstrip("/")
+        if not url:
+            art_url = os.environ.get("ARTIFACTORY_BASE_URL", "").strip().rstrip("/")
+            if art_url:
+                warnings.warn(
+                    "ARTIFACTORY_BASE_URL is deprecated; use APM_REGISTRY_URL instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                url = art_url
+
+        if not url:
+            return None
+
+        parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http"):
+            return None
+        host = parsed.hostname
+        prefix = parsed.path.strip("/")
+        if not host or not prefix:
+            return None
+
+        token = os.environ.get("APM_REGISTRY_TOKEN") or _read_deprecated_token()
+
+        enforce_str = os.environ.get("APM_REGISTRY_ONLY", "")
+        if not enforce_str:
+            enforce_str = _read_deprecated_enforce_only()
+        enforce_only = enforce_str.strip().lower() in ("1", "true", "yes")
+
+        return cls(
+            url=url,
+            host=host,
+            prefix=prefix,
+            scheme=parsed.scheme,
+            token=token,
+            enforce_only=enforce_only,
+        )
+
+    # -- helpers ------------------------------------------------------------
+
+    def get_headers(self) -> dict:
+        """Return HTTP headers for authenticating against this registry."""
+        if self.token:
+            return {"Authorization": f"Bearer {self.token}"}
+        return {}
+
+    def validate_lockfile_deps(
+        self, locked_deps: "List[LockedDependency]"
+    ) -> "List[LockedDependency]":
+        """Return locked dependencies that conflict with registry-only mode.
+
+        A *conflict* is a non-local dependency whose host is a direct VCS
+        source (``github.com``, GHE Cloud ``*.ghe.com``, or a GHES host
+        configured via ``GITHUB_HOST``) while :attr:`enforce_only` is
+        ``True``.
+
+        Uses :meth:`~apm_cli.core.auth.AuthResolver.classify_host` rather
+        than ad hoc string matching so that GHE Cloud, GHES, and ADO hosts
+        are handled correctly.
+
+        Args:
+            locked_deps: The list of :class:`LockedDependency` objects from
+                an existing lockfile.
+
+        Returns:
+            List of :class:`LockedDependency` objects that conflict.  Empty
+            when ``enforce_only`` is ``False`` or no conflicts exist.
+        """
+        if not self.enforce_only:
+            return []
+
+        from apm_cli.core.auth import AuthResolver
+
+        conflicts: List[LockedDependency] = []
+        for dep in locked_deps:
+            if dep.source == "local":
+                continue
+            host = dep.host or "github.com"
+            host_info = AuthResolver.classify_host(host)
+            if host_info.kind in ("github", "ghe_cloud", "ghes"):
+                conflicts.append(dep)
+        return conflicts
+
+
+# ---------------------------------------------------------------------------
+# Convenience helper: read enforce-only flag (canonical or deprecated)
+# ---------------------------------------------------------------------------
+
+
+def is_enforce_only() -> bool:
+    """Return ``True`` when registry-only mode is active.
+
+    Checks ``APM_REGISTRY_ONLY`` first; falls back to the deprecated
+    ``ARTIFACTORY_ONLY``.  Does **not** require a full :class:`RegistryConfig`
+    to be available — callers that only need the flag (e.g.
+    :class:`~apm_cli.deps.github_downloader.GitHubPackageDownloader`) can
+    use this without constructing the full config.
+    """
+    val = os.environ.get("APM_REGISTRY_ONLY", "").strip()
+    if not val:
+        val = os.environ.get("ARTIFACTORY_ONLY", "").strip()
+    return val.lower() in ("1", "true", "yes")
+
+
+# ---------------------------------------------------------------------------
+# Private helpers for deprecated env var reading
+# ---------------------------------------------------------------------------
+
+
+def _read_deprecated_token() -> Optional[str]:
+    token = os.environ.get("ARTIFACTORY_APM_TOKEN")
+    if token:
+        warnings.warn(
+            "ARTIFACTORY_APM_TOKEN is deprecated; use APM_REGISTRY_TOKEN instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+    return token
+
+
+def _read_deprecated_enforce_only() -> str:
+    val = os.environ.get("ARTIFACTORY_ONLY", "")
+    if val:
+        warnings.warn(
+            "ARTIFACTORY_ONLY is deprecated; use APM_REGISTRY_ONLY instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+    return val
