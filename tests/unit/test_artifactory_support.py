@@ -1121,3 +1121,73 @@ class TestRegistryOnlyConflictDetection:
         assert not cfg.enforce_only
         locked = LockedDependency(repo_url="owner/repo", host="github.com")
         assert cfg.validate_lockfile_deps([locked]) == []
+
+
+# ── RegistryConfig.find_missing_hashes: supply chain integrity ──
+
+
+class TestFindMissingHashes:
+    """Test find_missing_hashes detects registry entries without content_hash."""
+
+    def _make_config(self, enforce_only=True):
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        env = {"PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github"}
+        if enforce_only:
+            env["PROXY_REGISTRY_ONLY"] = "1"
+        with patch.dict(os.environ, env, clear=True):
+            return RegistryConfig.from_env()
+
+    def test_registry_entry_without_hash_is_flagged(self):
+        """A proxy entry with registry_prefix but no content_hash is flagged."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        cfg = self._make_config()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com",
+            registry_prefix="artifactory/github",
+            content_hash=None,
+        )
+        result = cfg.find_missing_hashes([locked])
+        assert len(result) == 1
+        assert result[0].repo_url == "owner/repo"
+
+    def test_registry_entry_with_hash_is_not_flagged(self):
+        """A proxy entry WITH content_hash is fine."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        cfg = self._make_config()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com",
+            registry_prefix="artifactory/github",
+            content_hash="sha256:abc123",
+        )
+        assert cfg.find_missing_hashes([locked]) == []
+
+    def test_direct_vcs_entry_without_hash_not_flagged(self):
+        """A direct VCS entry (no registry_prefix) is not flagged even without a hash."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        cfg = self._make_config()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="github.com",
+            content_hash=None,
+        )
+        assert cfg.find_missing_hashes([locked]) == []
+
+    def test_local_dep_never_flagged(self):
+        """Local deps are excluded even if they somehow have registry_prefix."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        cfg = self._make_config()
+        locked = LockedDependency(
+            repo_url="owner/repo",
+            host="art.example.com",
+            registry_prefix="artifactory/github",
+            source="local",
+            content_hash=None,
+        )
+        assert cfg.find_missing_hashes([locked]) == []

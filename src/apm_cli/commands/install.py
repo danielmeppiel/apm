@@ -1457,6 +1457,29 @@ def _install_apm_dependencies(
                         "through the registry, or unset PROXY_REGISTRY_ONLY."
                     )
                     sys.exit(1)
+
+            # Supply chain warning: registry-proxy entries without a
+            # content_hash cannot be verified on re-install.
+            if registry_config and registry_config.enforce_only:
+                missing = registry_config.find_missing_hashes(
+                    list(existing_lockfile.dependencies.values())
+                )
+                if missing:
+                    diagnostics.warn(
+                        "The following registry-proxy dependencies have no "
+                        "content_hash in the lockfile. Run 'apm install "
+                        "--update' to populate hashes for tamper detection.",
+                        package="lockfile",
+                    )
+                    for dep in missing[:10]:
+                        name = dep.repo_url
+                        if dep.virtual_path:
+                            name = f"{name}/{dep.virtual_path}"
+                        diagnostics.warn(
+                            f"  - {name} (host: {dep.host})",
+                            package="lockfile",
+                        )
+
         # Normalize path separators once for O(1) lookups in check_collision
         from apm_cli.integration.base_integrator import BaseIntegrator
         managed_files = BaseIntegrator.normalize_managed_files(managed_files)
@@ -2047,6 +2070,32 @@ def _install_apm_dependencies(
                     ))
                     if install_path.is_dir():
                         _package_hashes[dep_ref.get_unique_key()] = _compute_hash(install_path)
+
+                    # Supply chain protection: verify content hash on fresh
+                    # downloads when the lockfile already records a hash.
+                    # A mismatch means the downloaded content differs from
+                    # what was previously locked — possible tampering.
+                    if (
+                        not update_refs
+                        and _dep_locked_chk
+                        and _dep_locked_chk.content_hash
+                        and dep_ref.get_unique_key() in _package_hashes
+                    ):
+                        _fresh_hash = _package_hashes[dep_ref.get_unique_key()]
+                        if _fresh_hash != _dep_locked_chk.content_hash:
+                            safe_rmtree(install_path, apm_modules_dir)
+                            _rich_error(
+                                f"Content hash mismatch for "
+                                f"{dep_ref.get_unique_key()}: "
+                                f"expected {_dep_locked_chk.content_hash}, "
+                                f"got {_fresh_hash}. "
+                                "The downloaded content differs from the "
+                                "lockfile record. This may indicate a "
+                                "supply-chain attack. Use 'apm install "
+                                "--update' to accept new content and "
+                                "update the lockfile."
+                            )
+                            sys.exit(1)
 
                     # Track package type for lockfile
                     if hasattr(package_info, 'package_type') and package_info.package_type:

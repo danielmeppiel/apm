@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `InstalledPackage` dataclass in `apm_cli.deps.installed_package` — replaces the ad hoc positional tuple used to accumulate install results before lockfile generation; `LockFile.from_installed_packages()` accepts both the new dataclass and legacy tuples
 - `LockedDependency.registry_prefix` field in `apm.lock.yaml` — stores the URL path prefix (e.g. `artifactory/github`) separately from the pure FQDN `host`; enables correct auth token routing and air-gapped re-installs through the same proxy
 - `PROXY_REGISTRY_ONLY` / `PROXY_REGISTRY_URL` / `PROXY_REGISTRY_TOKEN` — canonical generic registry env vars replacing the deprecated `ARTIFACTORY_*` equivalents (deprecated aliases still work with a `DeprecationWarning`)
+- Post-download `content_hash` verification: fresh downloads are now verified against the lockfile's recorded SHA-256 hash; a mismatch aborts the install with a supply-chain warning instead of silently accepting different content
+- `RegistryConfig.find_missing_hashes()` warns at startup when registry-proxy lockfile entries lack a `content_hash`, prompting `--update` to populate them for tamper detection
 
 ### Fixed
 

@@ -166,6 +166,23 @@ class RegistryConfig:
                 conflicts.append(dep)
         return conflicts
 
+    def find_missing_hashes(
+        self, locked_deps: "List[LockedDependency]"
+    ) -> "List[LockedDependency]":
+        """Return registry-proxy entries that lack a ``content_hash``.
+
+        A missing hash on a proxy entry means a tampered lockfile
+        could redirect downloads without detection.  Callers should
+        warn or error when this list is non-empty.
+        """
+        missing: List[LockedDependency] = []
+        for dep in locked_deps:
+            if dep.source == "local":
+                continue
+            if dep.registry_prefix and not dep.content_hash:
+                missing.append(dep)
+        return missing
+
 
 # ---------------------------------------------------------------------------
 # Convenience helper: read enforce-only flag (canonical or deprecated)
