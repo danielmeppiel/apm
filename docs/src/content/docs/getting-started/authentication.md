@@ -32,7 +32,7 @@ All token-bearing requests use HTTPS. Tokens are never sent over unencrypted con
 
 For Azure DevOps, the only token source is `ADO_APM_PAT`.
 
-For registry proxies (Artifactory, Nexus, etc.), use `APM_REGISTRY_TOKEN`. See [Registry proxy (Artifactory / Nexus)](#registry-proxy-artifactory--nexus) below.
+For Artifactory registry proxies, use `APM_REGISTRY_TOKEN`. See [Registry proxy (Artifactory)](#registry-proxy-artifactory) below.
 
 For runtime features (`GITHUB_COPILOT_PAT`), see [Agent Workflows](../../guides/agent-workflows/).
 
@@ -155,11 +155,11 @@ Create the PAT at `https://dev.azure.com/{org}/_usersSettings/tokens` with **Cod
 | `contoso.ghe.com/org/repo` | *.ghe.com | Global env vars → credential fill | Auth-only (no public repos) |
 | GHES via `GITHUB_HOST` | ghes.company.com | Global env vars → credential fill | Unauth for public repos |
 | `dev.azure.com/org/proj/repo` | ADO | `ADO_APM_PAT` only | Auth-only |
-| Registry proxy (Artifactory/Nexus) | custom FQDN | `APM_REGISTRY_TOKEN` | Error if `APM_REGISTRY_ONLY=1` |
+| Artifactory registry proxy | custom FQDN | `APM_REGISTRY_TOKEN` | Error if `APM_REGISTRY_ONLY=1` |
 
-## Registry proxy (Artifactory / Nexus)
+## Registry proxy (Artifactory)
 
-Air-gapped environments route all VCS traffic through a registry proxy such as JFrog Artifactory or Sonatype Nexus. APM supports this via three env vars:
+Air-gapped environments route all VCS traffic through a JFrog Artifactory proxy. APM supports this via three env vars:
 
 | Variable | Purpose |
 |----------|---------|
