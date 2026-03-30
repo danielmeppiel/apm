@@ -8,13 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-03-30
+
 ### Fixed
 
+- `--target opencode` no longer writes prompts/agents to `.github/`; dispatch loop now only fires primitives declared by the selected target (#488, #494)
+- `--target cursor` now correctly deploys skills to `.cursor/skills/` instead of `.github/skills/` -- `SkillIntegrator` respects the explicit target list end-to-end (#482, #494)
 - Misleading "transitive dep" error message for direct dependency download failures (#478)
 - Sparse checkout using global token instead of per-org token from `GITHUB_APM_PAT_<ORG>` (#478)
 - Duplicate error count when a dependency fails during both resolution and install phases (#478)
-- Windows Defender false-positive (`Trojan:Win32/Bearfoos.B!ml`) mitigation: embed PE version info in Windows binary and disable UPX compression on Windows builds (#487)
+- Windows Defender false-positive (`Trojan:Win32/Bearfoos.B!ml`) mitigation: embed PE version info in Windows binary and disable UPX compression on Windows builds -- by @sergio-sisternes-epam (#490)
 - `apm deps update` was a no-op -- rewrote to delegate to the install engine so lockfile, deployed files, and integration state are all refreshed correctly -- by @webmaxru (#493)
+
+### Changed
+
+- Integration dispatch is now data-driven: `KNOWN_TARGETS` defines each target's primitives and directory layout; adding a target requires zero code changes (#494)
+- `partition_managed_files()` uses O(1) component-based path routing instead of linear prefix scan (#494)
+- Uninstall sync uses pre-partitioned buckets via `partition_bucket_key()` instead of re-scanning the full managed-files set (#494)
+
+### Security
+
+- Bump `pygments` from 2.19.2 to 2.20.0 (#495)
 
 ## [0.8.6] - 2026-03-27
 
