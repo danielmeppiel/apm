@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Gate `.github/prompts/`, `.github/agents/`, `.cursor/`, and `.opencode/` deployment behind target flags so `--target opencode` no longer creates `.github/` (#470)
+
 ## [0.8.6] - 2026-03-27
 
 ### Added

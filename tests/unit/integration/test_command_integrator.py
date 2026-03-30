@@ -484,3 +484,167 @@ class TestIntegratePackagePrimitivesTargetGating:
             integrators["command_integrator"].integrate_package_commands.assert_called_once()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_opencode_only_does_not_call_github_prompts_or_agents(self):
+        """When only integrate_opencode=True, .github/ prompts and agents must not run.
+
+        Regression test for: prompts and .github/agents were called unconditionally,
+        creating .github/ even when --target opencode was set.
+        """
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".opencode").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                integrate_vscode=False,
+                integrate_claude=False,
+                integrate_opencode=True,
+                integrate_cursor=False,
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            integrators["prompt_integrator"].integrate_package_prompts.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents.assert_not_called()
+            integrators["instruction_integrator"].integrate_package_instructions.assert_not_called()
+            integrators["hook_integrator"].integrate_package_hooks.assert_not_called()
+            assert not (project_root / ".github").exists()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_opencode_only_calls_opencode_agents_and_commands(self):
+        """When only integrate_opencode=True, OpenCode agents and commands must run."""
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".opencode").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                integrate_vscode=False,
+                integrate_claude=False,
+                integrate_opencode=True,
+                integrate_cursor=False,
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            integrators["agent_integrator"].integrate_package_agents_opencode.assert_called_once()
+            integrators["command_integrator"].integrate_package_commands_opencode.assert_called_once()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_cursor_only_does_not_call_github_or_claude_or_opencode(self):
+        """When only integrate_cursor=True, only cursor-specific integrations run."""
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".cursor").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                integrate_vscode=False,
+                integrate_claude=False,
+                integrate_opencode=False,
+                integrate_cursor=True,
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            # .github/ integrations must NOT run
+            integrators["prompt_integrator"].integrate_package_prompts.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents.assert_not_called()
+            integrators["instruction_integrator"].integrate_package_instructions.assert_not_called()
+            integrators["hook_integrator"].integrate_package_hooks.assert_not_called()
+            # Claude must NOT run
+            integrators["command_integrator"].integrate_package_commands.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents_claude.assert_not_called()
+            integrators["hook_integrator"].integrate_package_hooks_claude.assert_not_called()
+            # OpenCode must NOT run
+            integrators["agent_integrator"].integrate_package_agents_opencode.assert_not_called()
+            integrators["command_integrator"].integrate_package_commands_opencode.assert_not_called()
+            # Cursor MUST run
+            integrators["instruction_integrator"].integrate_package_instructions_cursor.assert_called_once()
+            integrators["agent_integrator"].integrate_package_agents_cursor.assert_called_once()
+            integrators["hook_integrator"].integrate_package_hooks_cursor.assert_called_once()
+            assert not (project_root / ".github").exists()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_vscode_only_does_not_call_opencode_or_cursor(self):
+        """When only integrate_vscode=True, OpenCode and Cursor integrations must not run."""
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".github").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                integrate_vscode=True,
+                integrate_claude=False,
+                integrate_opencode=False,
+                integrate_cursor=False,
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            # .github/ integrations MUST run
+            integrators["prompt_integrator"].integrate_package_prompts.assert_called_once()
+            integrators["agent_integrator"].integrate_package_agents.assert_called_once()
+            integrators["instruction_integrator"].integrate_package_instructions.assert_called_once()
+            integrators["hook_integrator"].integrate_package_hooks.assert_called_once()
+            # OpenCode must NOT run
+            integrators["agent_integrator"].integrate_package_agents_opencode.assert_not_called()
+            integrators["command_integrator"].integrate_package_commands_opencode.assert_not_called()
+            # Cursor must NOT run
+            integrators["instruction_integrator"].integrate_package_instructions_cursor.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents_cursor.assert_not_called()
+            integrators["hook_integrator"].integrate_package_hooks_cursor.assert_not_called()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
