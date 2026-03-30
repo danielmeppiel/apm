@@ -738,8 +738,8 @@ apm deps update [PACKAGES...] [OPTIONS]
 # Update all APM dependencies to latest refs
 apm deps update
 
-# Update a specific package
-apm deps update compliance-rules
+# Update a specific package (short name or full owner/repo)
+apm deps update owner/compliance-rules
 
 # Update multiple packages
 apm deps update org/pkg-a org/pkg-b

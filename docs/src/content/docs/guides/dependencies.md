@@ -557,8 +557,8 @@ dependencies:
 # Update all dependencies to latest refs
 apm deps update
 
-# Update specific dependency  
-apm deps update apm-sample-package
+# Update specific dependency (use the owner/repo form from apm.yml)
+apm deps update owner/apm-sample-package
 
 # Update with verbose output
 apm deps update --verbose

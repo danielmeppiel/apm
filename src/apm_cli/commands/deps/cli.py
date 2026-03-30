@@ -508,39 +508,50 @@ def update(packages, verbose, force, target, parallel_downloads):
         logger.progress("No APM dependencies defined in apm.yml")
         return
 
-    # Validate requested packages exist in manifest
+    # Validate and normalize requested packages to canonical dependency keys.
+    # The install engine matches only_packages by DependencyReference identity
+    # (e.g. "owner/repo"), so short names like "compliance-rules" must be
+    # mapped to their canonical form before calling the engine.
     only_pkgs = None
     if packages:
-        only_pkgs = list(packages)
-        known_keys = set()
+        token_to_canonical: Dict[str, str] = {}
         for dep in all_deps:
-            known_keys.add(dep.get_unique_key())
-            known_keys.add(dep.get_display_name())
-            known_keys.add(dep.repo_url)
+            canonical_key = dep.get_unique_key() or dep.repo_url or dep.get_display_name()
+            tokens = {canonical_key, dep.get_display_name(), dep.repo_url}
             if hasattr(dep, "alias") and dep.alias:
-                known_keys.add(dep.alias)
+                tokens.add(dep.alias)
             parts = dep.repo_url.split("/")
             if len(parts) >= 2:
-                known_keys.add(parts[-1])
+                tokens.add(parts[-1])
+            for token in tokens:
+                if token and token not in token_to_canonical:
+                    token_to_canonical[token] = canonical_key
 
-        for pkg in only_pkgs:
-            if pkg not in known_keys:
+        only_pkgs = []
+        seen: Dict[str, bool] = {}
+        for pkg in packages:
+            canonical = token_to_canonical.get(pkg)
+            if not canonical:
                 available = ", ".join(dep.get_display_name() for dep in all_deps)
                 logger.error(f"Package '{pkg}' not found in {APM_YML_FILENAME}")
                 logger.progress(f"Available: {available}")
                 sys.exit(1)
+            if canonical not in seen:
+                seen[canonical] = True
+                only_pkgs.append(canonical)
 
-    # Snapshot old lockfile SHAs for before/after diff
+    # Migrate legacy lockfile first, then snapshot SHAs for before/after diff
     from ...deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
 
     lockfile_path = get_lockfile_path(project_root)
+    migrate_lockfile_if_needed(project_root)
+
     old_lockfile = LockFile.read(lockfile_path)
+    had_baseline = old_lockfile is not None
     old_shas: dict = {}
     if old_lockfile:
         for key, dep in old_lockfile.dependencies.items():
             old_shas[key] = dep.resolved_commit
-
-    migrate_lockfile_if_needed(project_root)
 
     auth_resolver = AuthResolver()
 
@@ -604,6 +615,8 @@ def update(packages, verbose, force, target, parallel_downloads):
             click.echo(f"  {key}{ref_str}: {old_sha} -> {new_sha}")
     elif error_count > 0:
         logger.error(f"Update failed with {error_count} error(s).")
+    elif not had_baseline:
+        logger.success("Update complete.")
     else:
         logger.success("All packages already at latest refs.")
 

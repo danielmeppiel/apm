@@ -218,6 +218,35 @@ class TestDepsUpdateCommand:
     @patch(_PATCH_LOCKFILE)
     @patch(_PATCH_ENGINE)
     @patch(_PATCH_APM_PACKAGE)
+    def test_short_name_normalized_to_canonical_key(
+        self, mock_pkg_cls, mock_engine, mock_lockfile_cls,
+        mock_get_path, mock_migrate, mock_auth,
+    ):
+        """Short repo basename is normalized to canonical owner/repo key."""
+        with self._chdir_tmp() as tmp:
+            (tmp / "apm.yml").write_text(_minimal_apm_yml(deps=["owner/compliance-rules"]))
+            mock_pkg = MagicMock()
+            dep = _mock_dep("owner/compliance-rules")
+            mock_pkg.get_apm_dependencies.return_value = [dep]
+            mock_pkg.get_dev_apm_dependencies.return_value = []
+            mock_pkg_cls.from_apm_yml.return_value = mock_pkg
+
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+            mock_lockfile_cls.read.return_value = None
+            mock_engine.return_value = InstallResult()
+
+            result = self.runner.invoke(cli, ["deps", "update", "compliance-rules"])
+            assert result.exit_code == 0
+            _, kwargs = mock_engine.call_args
+            assert kwargs["only_packages"] == ["owner/compliance-rules"]
+            assert kwargs["update_refs"] is True
+
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_LOCKFILE)
+    @patch(_PATCH_ENGINE)
+    @patch(_PATCH_APM_PACKAGE)
     def test_force_flag_propagates(
         self, mock_pkg_cls, mock_engine, mock_lockfile_cls,
         mock_get_path, mock_migrate, mock_auth,
@@ -481,7 +510,7 @@ class TestDeadCodeRemoval:
 
     def test_not_in_package_exports(self):
         """Dead functions not exported from __init__.py."""
-        from apm_cli.commands.deps import __init__ as init_mod
-        all_names = getattr(init_mod, "__all__", [])
+        import apm_cli.commands.deps as deps_mod
+        all_names = getattr(deps_mod, "__all__", [])
         assert "_update_single_package" not in all_names
         assert "_update_all_packages" not in all_names
