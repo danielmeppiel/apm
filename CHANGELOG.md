@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Refactored integration dispatch to data-driven architecture: integrators consume `TargetProfile` directly instead of per-target methods, replacing the ~200-line if-chain in `install.py` with a target x primitive dispatch loop (#470)
+- `partition_managed_files()` now generates buckets dynamically from `KNOWN_TARGETS` instead of hardcoded prefixes
+- Uninstall sync uses target-driven loop instead of per-integrator calls
+
+### Added
+
+- `integrate_*_for_target(target, ...)` and `sync_for_target(target, ...)` methods on all file integrators (Command, Agent, Instruction, Prompt)
+- `integrate_hooks_for_target()` thin wrapper on `HookIntegrator` for uniform dispatch
+- Target-gating regression tests, exhaustiveness checks, and synthetic target tests
+
 ## [0.8.6] - 2026-03-27
 
 ### Added
