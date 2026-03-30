@@ -910,7 +910,7 @@ def _integrate_package_primitives(
                     else:
                         _hook_dir = f"{_target.root_dir}/{_mapping.subdir}/"
                     _log_integration(
-                        f"  \u2514\u2500 {hook_result.hooks_integrated} hook(s) integrated -> {_hook_dir}"
+                        f"  |-- {hook_result.hooks_integrated} hook(s) integrated -> {_hook_dir}"
                     )
                 for tp in hook_result.target_paths:
                     deployed.append(tp.relative_to(project_root).as_posix())
@@ -936,7 +936,7 @@ def _integrate_package_primitives(
                 else:
                     _label = _prim_name
                 _log_integration(
-                    f"  \u2514\u2500 {_int_result.files_integrated} {_label} integrated -> {_deploy_dir}"
+                    f"  |-- {_int_result.files_integrated} {_label} integrated -> {_deploy_dir}"
                 )
             result["links_resolved"] += _int_result.links_resolved
             for tp in _int_result.target_paths:
@@ -946,6 +946,7 @@ def _integrate_package_primitives(
     skill_result = skill_integrator.integrate_package_skill(
         package_info, project_root,
         diagnostics=diagnostics, managed_files=managed_files, force=force,
+        targets=targets,
     )
     _skill_target_dirs: set[str] = builtins.set()
     for tp in skill_result.target_paths:

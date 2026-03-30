@@ -153,7 +153,7 @@ class CommandIntegrator(BaseIntegrator):
             else:
                 base_name = prompt_file.stem
 
-            target_path = commands_dir / f"{base_name}.md"
+            target_path = commands_dir / f"{base_name}{mapping.extension}"
             rel_path = portable_relpath(target_path, project_root)
 
             if self.check_collision(

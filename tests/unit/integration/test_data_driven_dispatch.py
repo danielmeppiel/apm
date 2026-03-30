@@ -395,3 +395,65 @@ class TestSyntheticTargetProfile:
         assert not (cmds_dir / "goodbye.md").exists()
         # The .claude file should still exist (different prefix)
         assert (claude_dir / "other.md").exists()
+
+
+# ===================================================================
+# 4. TestSkillTargetGating  (Issue #482 regression)
+# ===================================================================
+
+class TestSkillTargetGating:
+    """Verify that the skill integrator respects the targets parameter
+    passed from the dispatch loop, preventing cross-target skill writes."""
+
+    def test_skill_integrator_receives_targets_from_dispatch(self):
+        """_integrate_package_primitives passes its targets list to
+        skill_integrator.integrate_package_skill (Issue #482)."""
+        cursor_only = [KNOWN_TARGETS["cursor"]]
+        _result, mocks = _dispatch(targets=cursor_only)
+
+        # Verify skill integrator was called with targets= kwarg
+        call_kwargs = mocks["skill_integrator"].integrate_package_skill.call_args
+        assert call_kwargs is not None, "skill integrator was not called"
+        assert "targets" in call_kwargs.kwargs, (
+            "targets= not passed to skill integrator"
+        )
+        passed_targets = call_kwargs.kwargs["targets"]
+        assert len(passed_targets) == 1
+        assert passed_targets[0].name == "cursor"
+
+    def test_opencode_target_does_not_pass_copilot_to_skills(self):
+        """With targets=[opencode], skill integrator only gets opencode."""
+        opencode_only = [KNOWN_TARGETS["opencode"]]
+        _result, mocks = _dispatch(targets=opencode_only)
+
+        call_kwargs = mocks["skill_integrator"].integrate_package_skill.call_args
+        passed_targets = call_kwargs.kwargs["targets"]
+        assert all(t.name == "opencode" for t in passed_targets)
+
+    def test_empty_targets_skips_skill_integrator(self):
+        """With targets=[], skill integrator is not called at all."""
+        _result, mocks = _dispatch(targets=[])
+        mocks["skill_integrator"].integrate_package_skill.assert_not_called()
+
+
+# ===================================================================
+# 5. TestPartitionBucketKey
+# ===================================================================
+
+class TestPartitionBucketKey:
+    """Verify that partition_bucket_key produces the correct aliased keys."""
+
+    def test_copilot_prompts_alias(self):
+        assert BaseIntegrator.partition_bucket_key("prompts", "copilot") == "prompts"
+
+    def test_copilot_agents_alias(self):
+        assert BaseIntegrator.partition_bucket_key("agents", "copilot") == "agents_github"
+
+    def test_claude_commands_alias(self):
+        assert BaseIntegrator.partition_bucket_key("commands", "claude") == "commands"
+
+    def test_cursor_instructions_alias(self):
+        assert BaseIntegrator.partition_bucket_key("instructions", "cursor") == "rules_cursor"
+
+    def test_unaliased_key_passthrough(self):
+        assert BaseIntegrator.partition_bucket_key("agents", "cursor") == "agents_cursor"

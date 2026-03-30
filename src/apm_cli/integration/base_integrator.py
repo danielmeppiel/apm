@@ -130,6 +130,29 @@ class BaseIntegrator:
             return False
         return True
 
+    # Backward-compat aliases mapping raw ``{prim}_{target}`` keys to
+    # the bucket names that existing callers expect.  Shared between
+    # ``partition_managed_files`` and ``partition_bucket_key`` so the
+    # mapping is defined exactly once.
+    _BUCKET_ALIASES: dict = {
+        "prompts_copilot": "prompts",
+        "agents_copilot": "agents_github",
+        "commands_claude": "commands",
+        "commands_opencode": "commands_opencode",
+        "instructions_copilot": "instructions",
+        "instructions_cursor": "rules_cursor",
+    }
+
+    @staticmethod
+    def partition_bucket_key(prim_name: str, target_name: str) -> str:
+        """Return the canonical bucket key for a (primitive, target) pair.
+
+        Applies backward-compat aliases so callers stay in sync with
+        ``partition_managed_files`` bucket naming.
+        """
+        raw = f"{prim_name}_{target_name}"
+        return BaseIntegrator._BUCKET_ALIASES.get(raw, raw)
+
     @staticmethod
     def partition_managed_files(
         managed_files: Set[str],
@@ -143,16 +166,21 @@ class BaseIntegrator:
         Cross-target buckets (``skills``, ``hooks``) group all targets
         together because ``SkillIntegrator`` and ``HookIntegrator``
         handle multi-target sync internally.
+
+        Path routing uses an O(1) dict keyed by ``(root_dir, subdir)``
+        parsed from the first two path segments, avoiding a linear scan
+        over all known prefixes.
         """
         from apm_cli.integration.targets import KNOWN_TARGETS
 
-        # Build (prefix, bucket_key) pairs from KNOWN_TARGETS
-        prefix_map: list = []
         buckets: dict = {}
 
         # Skills and hooks are cross-target (single bucket each)
         skill_prefixes: list = []
         hook_prefixes: list = []
+
+        # O(1) lookup: (root_dir, subdir) -> bucket_key
+        component_map: dict = {}
 
         for target in KNOWN_TARGETS.values():
             for prim_name, mapping in target.primitives.items():
@@ -162,10 +190,15 @@ class BaseIntegrator:
                 elif prim_name == "hooks":
                     hook_prefixes.append(prefix)
                 else:
-                    bucket_key = f"{prim_name}_{target.name}"
+                    raw_key = f"{prim_name}_{target.name}"
+                    bucket_key = BaseIntegrator._BUCKET_ALIASES.get(
+                        raw_key, raw_key
+                    )
                     if bucket_key not in buckets:
                         buckets[bucket_key] = set()
-                    prefix_map.append((prefix, bucket_key))
+                    component_map[
+                        (target.root_dir, mapping.subdir)
+                    ] = bucket_key
 
         buckets["skills"] = set()
         buckets["hooks"] = set()
@@ -173,30 +206,22 @@ class BaseIntegrator:
         skill_tuple = tuple(skill_prefixes)
         hook_tuple = tuple(hook_prefixes)
 
-        # Backward-compat aliases used by existing callers
-        ALIASES = {
-            "prompts_copilot": "prompts",
-            "agents_copilot": "agents_github",
-            "commands_claude": "commands",
-            "commands_opencode": "commands_opencode",
-            "instructions_copilot": "instructions",
-            "instructions_cursor": "rules_cursor",
-        }
-        for new_key, old_key in ALIASES.items():
-            if new_key in buckets:
-                buckets[old_key] = buckets.pop(new_key)
-
-        # Single O(M) pass
+        # Single O(M) pass -- each path is routed in O(1)
         for p in managed_files:
             if p.startswith(skill_tuple):
                 buckets["skills"].add(p)
             elif p.startswith(hook_tuple):
                 buckets["hooks"].add(p)
             else:
-                for pfx, bkey in prefix_map:
-                    if p.startswith(pfx):
-                        buckets[bkey].add(p)
-                        break
+                slash1 = p.find("/")
+                if slash1 > 0:
+                    slash2 = p.find("/", slash1 + 1)
+                    if slash2 > 0:
+                        bkey = component_map.get(
+                            (p[:slash1], p[slash1 + 1 : slash2])
+                        )
+                        if bkey:
+                            buckets[bkey].add(p)
 
         return buckets
 

@@ -272,9 +272,10 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                 continue
             _managed_subset = None
             if _buckets is not None:
-                _managed_subset = {
-                    p for p in sync_managed if p.startswith(_prefix)
-                } if sync_managed else set()
+                _bucket_key = BaseIntegrator.partition_bucket_key(
+                    _prim_name, _target.name
+                )
+                _managed_subset = _buckets.get(_bucket_key, set())
             result = _integrator.sync_for_target(
                 _target, apm_package, project_root,
                 managed_files=_managed_subset,
