@@ -417,7 +417,7 @@ def integrate_package_for_targets(
                 diagnostics=diagnostics, managed_files=managed_files,
                 force=force,
             )
-            _skill_target_dirs: set = set()
+            _skill_target_dirs: set[str] = set()
             for tp in skill_result.target_paths:
                 rel = tp.relative_to(project_root)
                 if rel.parts:

@@ -667,10 +667,18 @@ class TestIntegratePackagePrimitivesTargetGating:
             assert result["agents"] == 0
             assert result["deployed_files"] == []
             # No integrator should have been called
-            for m in integrators.values():
-                for method_name in dir(m):
-                    method = getattr(m, method_name)
-                    if hasattr(method, "assert_not_called"):
-                        method.assert_not_called()
+            integrators["prompt_integrator"].integrate_package_prompts.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents_claude.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents_cursor.assert_not_called()
+            integrators["agent_integrator"].integrate_package_agents_opencode.assert_not_called()
+            integrators["skill_integrator"].integrate_package_skill.assert_not_called()
+            integrators["instruction_integrator"].integrate_package_instructions.assert_not_called()
+            integrators["instruction_integrator"].integrate_package_instructions_cursor.assert_not_called()
+            integrators["command_integrator"].integrate_package_commands.assert_not_called()
+            integrators["command_integrator"].integrate_package_commands_opencode.assert_not_called()
+            integrators["hook_integrator"].integrate_package_hooks.assert_not_called()
+            integrators["hook_integrator"].integrate_package_hooks_claude.assert_not_called()
+            integrators["hook_integrator"].integrate_package_hooks_cursor.assert_not_called()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
