@@ -97,3 +97,148 @@ class TestActiveTargets:
     def test_explicit_unknown_returns_empty(self):
         targets = active_targets(self.root, explicit_target="nonexistent")
         assert targets == []
+
+
+class TestIntegrationDispatchRegistry:
+    """Verify INTEGRATION_DISPATCH covers every non-skill primitive."""
+
+    def test_every_target_primitive_has_dispatch_entry(self):
+        """Each (target, primitive) pair in KNOWN_TARGETS that is not 'skills'
+        must have a matching entry in INTEGRATION_DISPATCH."""
+        from apm_cli.integration.targets import INTEGRATION_DISPATCH
+
+        missing = []
+        for name, profile in KNOWN_TARGETS.items():
+            for primitive in profile.primitives:
+                if primitive == "skills":
+                    continue
+                key = (name, primitive)
+                if key not in INTEGRATION_DISPATCH:
+                    missing.append(key)
+
+        assert missing == [], f"Missing dispatch entries: {missing}"
+
+    def test_dispatch_entries_reference_valid_methods(self):
+        """All integrator_key/method_name pairs in INTEGRATION_DISPATCH
+        must exist on the actual integrator classes."""
+        from apm_cli.integration.targets import INTEGRATION_DISPATCH
+        from apm_cli.integration.prompt_integrator import PromptIntegrator
+        from apm_cli.integration.agent_integrator import AgentIntegrator
+        from apm_cli.integration.instruction_integrator import InstructionIntegrator
+        from apm_cli.integration.command_integrator import CommandIntegrator
+        from apm_cli.integration.hook_integrator import HookIntegrator
+
+        class_map = {
+            "prompt_integrator": PromptIntegrator,
+            "agent_integrator": AgentIntegrator,
+            "instruction_integrator": InstructionIntegrator,
+            "command_integrator": CommandIntegrator,
+            "hook_integrator": HookIntegrator,
+        }
+
+        for (target, primitive), (ikey, method, _) in INTEGRATION_DISPATCH.items():
+            cls = class_map.get(ikey)
+            assert cls is not None, f"Unknown integrator key: {ikey}"
+            assert hasattr(cls, method), (
+                f"({target}, {primitive}): {cls.__name__} has no method {method}"
+            )
+
+
+class TestIntegratePackageForTargets:
+    """Tests for integrate_package_for_targets() dispatcher."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.root = Path(self.temp_dir)
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_mock_integrators(self):
+        from unittest.mock import MagicMock
+
+        def _empty_result(*args, **kwargs):
+            r = MagicMock()
+            r.files_integrated = 0
+            r.files_updated = 0
+            r.links_resolved = 0
+            r.target_paths = []
+            r.skill_created = False
+            r.sub_skills_promoted = 0
+            r.hooks_integrated = 0
+            return r
+
+        integrators = {}
+        for name in (
+            "prompt_integrator",
+            "agent_integrator",
+            "skill_integrator",
+            "instruction_integrator",
+            "command_integrator",
+            "hook_integrator",
+        ):
+            m = MagicMock()
+            for method in (
+                "integrate_package_prompts",
+                "integrate_package_agents",
+                "integrate_package_agents_claude",
+                "integrate_package_agents_cursor",
+                "integrate_package_agents_opencode",
+                "integrate_package_skill",
+                "integrate_package_instructions",
+                "integrate_package_instructions_cursor",
+                "integrate_package_commands",
+                "integrate_package_commands_opencode",
+                "integrate_package_hooks",
+                "integrate_package_hooks_claude",
+                "integrate_package_hooks_cursor",
+            ):
+                getattr(m, method).side_effect = _empty_result
+            integrators[name] = m
+        return integrators
+
+    def test_opencode_target_skips_github(self):
+        """Only opencode primitives should fire for opencode target."""
+        from unittest.mock import MagicMock
+        from apm_cli.integration.targets import integrate_package_for_targets
+
+        pkg = MagicMock()
+        integrators = self._make_mock_integrators()
+
+        result = integrate_package_for_targets(
+            [KNOWN_TARGETS["opencode"]],
+            pkg, self.root, integrators,
+        )
+
+        integrators["prompt_integrator"].integrate_package_prompts.assert_not_called()
+        integrators["agent_integrator"].integrate_package_agents.assert_not_called()
+        integrators["agent_integrator"].integrate_package_agents_opencode.assert_called_once()
+        integrators["command_integrator"].integrate_package_commands_opencode.assert_called_once()
+        assert result["deployed_files"] == []
+
+    def test_all_targets_calls_every_dispatch_entry(self):
+        """With all 4 targets, every dispatch entry should fire once."""
+        from unittest.mock import MagicMock
+        from apm_cli.integration.targets import (
+            integrate_package_for_targets,
+            INTEGRATION_DISPATCH,
+        )
+
+        for d in (".github", ".claude", ".cursor", ".opencode"):
+            (self.root / d).mkdir()
+
+        pkg = MagicMock()
+        integrators = self._make_mock_integrators()
+
+        integrate_package_for_targets(
+            list(KNOWN_TARGETS.values()),
+            pkg, self.root, integrators,
+        )
+
+        for (target, primitive), (ikey, method, _) in INTEGRATION_DISPATCH.items():
+            m = integrators[ikey]
+            fn = getattr(m, method)
+            assert fn.call_count == 1, (
+                f"({target}, {primitive}) -> {ikey}.{method} "
+                f"expected 1 call, got {fn.call_count}"
+            )

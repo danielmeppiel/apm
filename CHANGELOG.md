@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `--target opencode` no longer creates `.github/` directory -- target-driven dispatch via `INTEGRATION_DISPATCH` registry replaces per-target boolean flags (#470)
+
+### Changed
+
+- Refactored `_integrate_package_primitives()` to use declarative `INTEGRATION_DISPATCH` registry in `targets.py` instead of monolithic if-chains (#470)
+
 ## [0.8.6] - 2026-03-27
 
 ### Added

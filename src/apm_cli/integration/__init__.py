@@ -21,8 +21,10 @@ from .targets import (
     TargetProfile,
     PrimitiveMapping,
     KNOWN_TARGETS,
+    INTEGRATION_DISPATCH,
     get_integration_prefixes,
     active_targets,
+    integrate_package_for_targets,
 )
 
 __all__ = [
@@ -38,8 +40,10 @@ __all__ = [
     'TargetProfile',
     'PrimitiveMapping',
     'KNOWN_TARGETS',
+    'INTEGRATION_DISPATCH',
     'get_integration_prefixes',
     'active_targets',
+    'integrate_package_for_targets',
     'validate_skill_name',
     'normalize_skill_name',
     'to_hyphen_case',
