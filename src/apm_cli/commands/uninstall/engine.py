@@ -234,6 +234,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     from ...integration.command_integrator import CommandIntegrator
     from ...integration.hook_integrator import HookIntegrator
     from ...integration.instruction_integrator import InstructionIntegrator
+    from ...integration.targets import KNOWN_TARGETS, active_targets
 
     sync_managed = all_deployed_files if all_deployed_files else None
     if sync_managed is not None:
@@ -244,79 +245,64 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     counts = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
 
     # Phase 1: Remove all APM-deployed files
-    if Path(".github/prompts").exists():
-        integrator = PromptIntegrator()
-        result = integrator.sync_integration(apm_package, project_root,
-                                             managed_files=_buckets["prompts"] if _buckets else None)
-        counts["prompts"] = result.get("files_removed", 0)
+    # Use target-driven sync for prompts, agents, commands, instructions
+    _prompt_int = PromptIntegrator()
+    _agent_int = AgentIntegrator()
+    _cmd_int = CommandIntegrator()
+    _instr_int = InstructionIntegrator()
 
-    if Path(".github/agents").exists():
-        integrator = AgentIntegrator()
-        result = integrator.sync_integration(apm_package, project_root,
-                                             managed_files=_buckets["agents_github"] if _buckets else None)
-        counts["agents"] = result.get("files_removed", 0)
+    _SYNC_DISPATCH = {
+        "prompts": (_prompt_int, "prompts"),
+        "agents": (_agent_int, "agents"),
+        "commands": (_cmd_int, "commands"),
+        "instructions": (_instr_int, "instructions"),
+    }
 
-    if Path(".claude/agents").exists():
-        integrator = AgentIntegrator()
-        result = integrator.sync_integration_claude(apm_package, project_root,
-                                                    managed_files=_buckets["agents_claude"] if _buckets else None)
-        counts["agents"] += result.get("files_removed", 0)
+    for _target in KNOWN_TARGETS.values():
+        for _prim_name, _mapping in _target.primitives.items():
+            if _prim_name in ("skills", "hooks"):
+                continue
+            _entry = _SYNC_DISPATCH.get(_prim_name)
+            if not _entry:
+                continue
+            _integrator, _counter_key = _entry
+            _prefix = f"{_target.root_dir}/{_mapping.subdir}/"
+            _deploy_dir = project_root / _target.root_dir / _mapping.subdir
+            if not _deploy_dir.exists():
+                continue
+            _managed_subset = None
+            if _buckets is not None:
+                _bucket_key = BaseIntegrator.partition_bucket_key(
+                    _prim_name, _target.name
+                )
+                _managed_subset = _buckets.get(_bucket_key, set())
+            result = _integrator.sync_for_target(
+                _target, apm_package, project_root,
+                managed_files=_managed_subset,
+            )
+            counts[_counter_key] += result.get("files_removed", 0)
 
-    if Path(".cursor/agents").exists():
-        integrator = AgentIntegrator()
-        result = integrator.sync_integration_cursor(apm_package, project_root,
-                                                    managed_files=_buckets["agents_cursor"] if _buckets else None)
-        counts["agents"] += result.get("files_removed", 0)
-
-    if Path(".opencode/agents").exists():
-        integrator = AgentIntegrator()
-        result = integrator.sync_integration_opencode(apm_package, project_root,
-                                                      managed_files=_buckets["agents_opencode"] if _buckets else None)
-        counts["agents"] += result.get("files_removed", 0)
-
-    if Path(".github/skills").exists() or Path(".claude/skills").exists() or Path(".cursor/skills").exists() or Path(".opencode/skills").exists():
+    # Skills (multi-target, handled by SkillIntegrator)
+    if any(
+        (project_root / t.root_dir / "skills").exists()
+        for t in KNOWN_TARGETS.values()
+        if t.supports("skills")
+    ):
         integrator = SkillIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["skills"] if _buckets else None)
         counts["skills"] = result.get("files_removed", 0)
 
-    if Path(".claude/commands").exists():
-        integrator = CommandIntegrator()
-        result = integrator.sync_integration(apm_package, project_root,
-                                             managed_files=_buckets["commands"] if _buckets else None)
-        counts["commands"] = result.get("files_removed", 0)
-
-    if Path(".opencode/commands").exists():
-        integrator = CommandIntegrator()
-        result = integrator.sync_integration_opencode(apm_package, project_root,
-                                                      managed_files=_buckets["commands_opencode"] if _buckets else None)
-        counts["commands"] += result.get("files_removed", 0)
-
+    # Hooks (multi-target, sync_integration handles all targets)
     hook_integrator_cleanup = HookIntegrator()
     result = hook_integrator_cleanup.sync_integration(apm_package, project_root,
                                                       managed_files=_buckets["hooks"] if _buckets else None)
     counts["hooks"] = result.get("files_removed", 0)
 
-    if Path(".github/instructions").exists():
-        integrator = InstructionIntegrator()
-        result = integrator.sync_integration(apm_package, project_root,
-                                             managed_files=_buckets["instructions"] if _buckets else None)
-        counts["instructions"] = result.get("files_removed", 0)
-
-    # Clean Cursor rules (.cursor/rules/)
-    if Path(".cursor/rules").exists():
-        integrator = InstructionIntegrator()
-        result = integrator.sync_integration_cursor(apm_package, project_root,
-                                                    managed_files=_buckets["rules_cursor"] if _buckets else None)
-        counts["instructions"] += result.get("files_removed", 0)
-
     # Phase 2: Re-integrate from remaining installed packages
-    from ...core.target_detection import detect_target, should_integrate_claude
     config_target = apm_package.target
-    detected_target, _ = detect_target(
-        project_root=project_root, explicit_target=None, config_target=config_target,
-    )
-    integrate_claude = should_integrate_claude(detected_target)
+    _explicit = config_target or None
+    _targets = active_targets(project_root, explicit_target=_explicit)
 
     prompt_integrator = PromptIntegrator()
     agent_integrator = AgentIntegrator()
@@ -324,6 +310,13 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     command_integrator = CommandIntegrator()
     hook_integrator_reint = HookIntegrator()
     instruction_integrator_reint = InstructionIntegrator()
+
+    _REINT_DISPATCH = {
+        "prompts": (prompt_integrator, "integrate_prompts_for_target"),
+        "agents": (agent_integrator, "integrate_agents_for_target"),
+        "commands": (command_integrator, "integrate_commands_for_target"),
+        "instructions": (instruction_integrator_reint, "integrate_instructions_for_target"),
+    }
 
     for dep in apm_package.get_apm_dependencies():
         dep_ref = dep if hasattr(dep, 'repo_url') else None
@@ -344,22 +337,22 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
         )
 
         try:
-            if prompt_integrator.should_integrate(project_root):
-                prompt_integrator.integrate_package_prompts(pkg_info, project_root)
-            if agent_integrator.should_integrate(project_root):
-                agent_integrator.integrate_package_agents(pkg_info, project_root)
-                if integrate_claude:
-                    agent_integrator.integrate_package_agents_claude(pkg_info, project_root)
-                agent_integrator.integrate_package_agents_cursor(pkg_info, project_root)
+            for _target in _targets:
+                for _prim_name in _target.primitives:
+                    if _prim_name == "skills":
+                        continue
+                    if _prim_name == "hooks":
+                        hook_integrator_reint.integrate_hooks_for_target(
+                            _target, pkg_info, project_root,
+                        )
+                        continue
+                    _entry = _REINT_DISPATCH.get(_prim_name)
+                    if _entry:
+                        _integrator, _method = _entry
+                        getattr(_integrator, _method)(
+                            _target, pkg_info, project_root,
+                        )
             skill_integrator.integrate_package_skill(pkg_info, project_root)
-            if integrate_claude:
-                command_integrator.integrate_package_commands(pkg_info, project_root)
-            hook_integrator_reint.integrate_package_hooks(pkg_info, project_root)
-            if integrate_claude:
-                hook_integrator_reint.integrate_package_hooks_claude(pkg_info, project_root)
-            hook_integrator_reint.integrate_package_hooks_cursor(pkg_info, project_root)
-            instruction_integrator_reint.integrate_package_instructions(pkg_info, project_root)
-            instruction_integrator_reint.integrate_package_instructions_cursor(pkg_info, project_root)
         except Exception:
             pkg_id = dep_ref.get_identity() if hasattr(dep_ref, "get_identity") else str(dep_ref)
             logger.warning(f"Best-effort re-integration skipped for {pkg_id}")

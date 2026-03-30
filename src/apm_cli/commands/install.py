@@ -837,9 +837,7 @@ def _integrate_package_primitives(
     package_info,
     project_root,
     *,
-    integrate_vscode,
-    integrate_claude,
-    integrate_opencode=False,
+    targets,
     prompt_integrator,
     agent_integrator,
     skill_integrator,
@@ -853,6 +851,11 @@ def _integrate_package_primitives(
     logger=None,
 ):
     """Run the full integration pipeline for a single package.
+
+    Iterates over *targets* (``TargetProfile`` list) and dispatches each
+    primitive to the appropriate integrator via the target-driven API.
+    Skills are handled separately because ``SkillIntegrator`` already
+    routes across all targets internally.
 
     Returns a dict with integration counters and the list of deployed file paths.
     """
@@ -870,196 +873,95 @@ def _integrate_package_primitives(
 
     deployed = result["deployed_files"]
 
-    if not (integrate_vscode or integrate_claude or integrate_opencode):
+    if not targets:
         return result
 
     def _log_integration(msg):
         if logger:
             logger.tree_item(msg)
 
-    # --- prompts ---
-    prompt_result = prompt_integrator.integrate_package_prompts(
+    # Primitive -> (integrator, method_name, result counter key)
+    _PRIMITIVE_INTEGRATORS = {
+        "prompts": (prompt_integrator, "integrate_prompts_for_target", "prompts"),
+        "agents": (agent_integrator, "integrate_agents_for_target", "agents"),
+        "commands": (command_integrator, "integrate_commands_for_target", "commands"),
+        "instructions": (instruction_integrator, "integrate_instructions_for_target", "instructions"),
+    }
+
+    # --- target x primitive dispatch loop ---
+    for _target in targets:
+        for _prim_name, _mapping in _target.primitives.items():
+            if _prim_name == "skills":
+                continue  # handled separately below
+
+            # --- hooks (different return type) ---
+            if _prim_name == "hooks":
+                hook_result = hook_integrator.integrate_hooks_for_target(
+                    _target, package_info, project_root,
+                    force=force, managed_files=managed_files,
+                    diagnostics=diagnostics,
+                )
+                if hook_result.hooks_integrated > 0:
+                    result["hooks"] += hook_result.hooks_integrated
+                    if _target.name == "claude":
+                        _hook_dir = ".claude/settings.json"
+                    elif _target.name == "cursor":
+                        _hook_dir = ".cursor/hooks.json"
+                    else:
+                        _hook_dir = f"{_target.root_dir}/{_mapping.subdir}/"
+                    _log_integration(
+                        f"  |-- {hook_result.hooks_integrated} hook(s) integrated -> {_hook_dir}"
+                    )
+                for tp in hook_result.target_paths:
+                    deployed.append(tp.relative_to(project_root).as_posix())
+                continue
+
+            _entry = _PRIMITIVE_INTEGRATORS.get(_prim_name)
+            if not _entry:
+                continue
+
+            _integrator, _method_name, _counter_key = _entry
+            _int_result = getattr(_integrator, _method_name)(
+                _target, package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+            if _int_result.files_integrated > 0:
+                result[_counter_key] += _int_result.files_integrated
+                _deploy_dir = f"{_target.root_dir}/{_mapping.subdir}/"
+                if _prim_name == "instructions" and _mapping.format_id == "cursor_rules":
+                    _label = "rule(s)"
+                elif _prim_name == "instructions":
+                    _label = "instruction(s)"
+                else:
+                    _label = _prim_name
+                _log_integration(
+                    f"  |-- {_int_result.files_integrated} {_label} integrated -> {_deploy_dir}"
+                )
+            result["links_resolved"] += _int_result.links_resolved
+            for tp in _int_result.target_paths:
+                deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- skills (multi-target, handled by SkillIntegrator internally) ---
+    skill_result = skill_integrator.integrate_package_skill(
         package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
+        diagnostics=diagnostics, managed_files=managed_files, force=force,
+        targets=targets,
     )
-    if prompt_result.files_integrated > 0:
-        result["prompts"] += prompt_result.files_integrated
-        _log_integration(f"  └─ {prompt_result.files_integrated} prompts integrated -> .github/prompts/")
-    if prompt_result.files_updated > 0:
-        _log_integration(f"  └─ {prompt_result.files_updated} prompts updated")
-    result["links_resolved"] += prompt_result.links_resolved
-    for tp in prompt_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- agents (.github) ---
-    agent_result = agent_integrator.integrate_package_agents(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if agent_result.files_integrated > 0:
-        result["agents"] += agent_result.files_integrated
-        _log_integration(f"  └─ {agent_result.files_integrated} agents integrated -> .github/agents/")
-    if agent_result.files_updated > 0:
-        _log_integration(f"  └─ {agent_result.files_updated} agents updated")
-    result["links_resolved"] += agent_result.links_resolved
-    for tp in agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- skills ---
-    if integrate_vscode or integrate_claude or integrate_opencode:
-        skill_result = skill_integrator.integrate_package_skill(
-            package_info, project_root,
-            diagnostics=diagnostics, managed_files=managed_files, force=force,
-        )
-        # Build human-readable list of target dirs from deployed paths
-        _skill_target_dirs: set[str] = set()
-        for tp in skill_result.target_paths:
-            rel = tp.relative_to(project_root)
-            if rel.parts:
-                _skill_target_dirs.add(rel.parts[0])
-        _skill_targets = sorted(_skill_target_dirs)
-        _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
-        if skill_result.skill_created:
-            result["skills"] += 1
-            _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
-        if skill_result.sub_skills_promoted > 0:
-            result["sub_skills"] += skill_result.sub_skills_promoted
-            _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
-        for tp in skill_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- instructions (.github) ---
-    if integrate_vscode:
-        instruction_result = instruction_integrator.integrate_package_instructions(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if instruction_result.files_integrated > 0:
-            result["instructions"] += instruction_result.files_integrated
-            _log_integration(f"  └─ {instruction_result.files_integrated} instruction(s) integrated -> .github/instructions/")
-        result["links_resolved"] += instruction_result.links_resolved
-        for tp in instruction_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Cursor rules (.cursor/rules/) ---
-    cursor_rules_result = instruction_integrator.integrate_package_instructions_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if cursor_rules_result.files_integrated > 0:
-        result["instructions"] += cursor_rules_result.files_integrated
-        _log_integration(f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated -> .cursor/rules/")
-    result["links_resolved"] += cursor_rules_result.links_resolved
-    for tp in cursor_rules_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Claude agents (.claude) ---
-    if integrate_claude:
-        claude_agent_result = agent_integrator.integrate_package_agents_claude(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if claude_agent_result.files_integrated > 0:
-            result["agents"] += claude_agent_result.files_integrated
-            _log_integration(f"  └─ {claude_agent_result.files_integrated} agents integrated -> .claude/agents/")
-        result["links_resolved"] += claude_agent_result.links_resolved
-        for tp in claude_agent_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Cursor agents (.cursor) ---
-    cursor_agent_result = agent_integrator.integrate_package_agents_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if cursor_agent_result.files_integrated > 0:
-        result["agents"] += cursor_agent_result.files_integrated
-        _log_integration(f"  └─ {cursor_agent_result.files_integrated} agents integrated -> .cursor/agents/")
-    result["links_resolved"] += cursor_agent_result.links_resolved
-    for tp in cursor_agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- OpenCode agents (.opencode) ---
-    opencode_agent_result = agent_integrator.integrate_package_agents_opencode(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if opencode_agent_result.files_integrated > 0:
-        result["agents"] += opencode_agent_result.files_integrated
-        _log_integration(f"  └─ {opencode_agent_result.files_integrated} agents integrated -> .opencode/agents/")
-    result["links_resolved"] += opencode_agent_result.links_resolved
-    for tp in opencode_agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- commands (.claude) ---
-    if integrate_claude:
-        command_result = command_integrator.integrate_package_commands(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if command_result.files_integrated > 0:
-            result["commands"] += command_result.files_integrated
-            _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
-        if command_result.files_updated > 0:
-            _log_integration(f"  └─ {command_result.files_updated} commands updated")
-        result["links_resolved"] += command_result.links_resolved
-        for tp in command_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- OpenCode commands (.opencode) ---
-    opencode_command_result = command_integrator.integrate_package_commands_opencode(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if opencode_command_result.files_integrated > 0:
-        result["commands"] += opencode_command_result.files_integrated
-        _log_integration(f"  └─ {opencode_command_result.files_integrated} commands integrated -> .opencode/commands/")
-    result["links_resolved"] += opencode_command_result.links_resolved
-    for tp in opencode_command_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- hooks ---
-    if integrate_vscode:
-        hook_result = hook_integrator.integrate_package_hooks(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if hook_result.hooks_integrated > 0:
-            result["hooks"] += hook_result.hooks_integrated
-            _log_integration(f"  └─ {hook_result.hooks_integrated} hook(s) integrated -> .github/hooks/")
-        for tp in hook_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-    if integrate_claude:
-        hook_result_claude = hook_integrator.integrate_package_hooks_claude(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if hook_result_claude.hooks_integrated > 0:
-            result["hooks"] += hook_result_claude.hooks_integrated
-            _log_integration(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated -> .claude/settings.json")
-        for tp in hook_result_claude.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # Cursor hooks (.cursor/hooks.json) — method self-guards on .cursor/ existence
-    hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if hook_result_cursor.hooks_integrated > 0:
-        result["hooks"] += hook_result_cursor.hooks_integrated
-        _log_integration(f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated -> .cursor/hooks.json")
-    for tp in hook_result_cursor.target_paths:
+    _skill_target_dirs: set[str] = builtins.set()
+    for tp in skill_result.target_paths:
+        rel = tp.relative_to(project_root)
+        if rel.parts:
+            _skill_target_dirs.add(rel.parts[0])
+    _skill_targets = sorted(_skill_target_dirs)
+    _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
+    if skill_result.skill_created:
+        result["skills"] += 1
+        _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
+    if skill_result.sub_skills_promoted > 0:
+        result["sub_skills"] += skill_result.sub_skills_promoted
+        _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
+    for tp in skill_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
 
     return result
@@ -1365,9 +1267,6 @@ def _install_apm_dependencies(
         # Auto-detect target for integration (same logic as compile)
         from apm_cli.core.target_detection import (
             detect_target,
-            should_integrate_vscode,
-            should_integrate_claude,
-            should_integrate_opencode,
             get_target_description,
         )
 
@@ -1397,11 +1296,6 @@ def _install_apm_dependencies(
             explicit_target=_explicit,
             config_target=config_target,
         )
-
-        # Determine which integrations to run based on detected target
-        integrate_vscode = should_integrate_vscode(detected_target)
-        integrate_claude = should_integrate_claude(detected_target)
-        integrate_opencode = should_integrate_opencode(detected_target)
 
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
@@ -1671,9 +1565,7 @@ def _install_apm_dependencies(
 
                         int_result = _integrate_package_primitives(
                             package_info, project_root,
-                            integrate_vscode=integrate_vscode,
-                            integrate_claude=integrate_claude,
-                            integrate_opencode=integrate_opencode,
+                            targets=_targets,
                             prompt_integrator=prompt_integrator,
                             agent_integrator=agent_integrator,
                             skill_integrator=skill_integrator,
@@ -1790,7 +1682,7 @@ def _install_apm_dependencies(
                         unpinned_count += 1
 
                     # Skip integration if not needed
-                    if not (integrate_vscode or integrate_claude or integrate_opencode):
+                    if not _targets:
                         continue
 
                     # Integrate prompts for cached packages (zero-config behavior)
@@ -1875,9 +1767,7 @@ def _install_apm_dependencies(
 
                         int_result = _integrate_package_primitives(
                             cached_package_info, project_root,
-                            integrate_vscode=integrate_vscode,
-                            integrate_claude=integrate_claude,
-                            integrate_opencode=integrate_opencode,
+                            targets=_targets,
                             prompt_integrator=prompt_integrator,
                             agent_integrator=agent_integrator,
                             skill_integrator=skill_integrator,
@@ -2037,13 +1927,11 @@ def _install_apm_dependencies(
                         package_deployed_files[dep_ref.get_unique_key()] = []
                         continue
 
-                    if integrate_vscode or integrate_claude or integrate_opencode:
+                    if _targets:
                         try:
                             int_result = _integrate_package_primitives(
                                 package_info, project_root,
-                                integrate_vscode=integrate_vscode,
-                                integrate_claude=integrate_claude,
-                                integrate_opencode=integrate_opencode,
+                                targets=_targets,
                                 prompt_integrator=prompt_integrator,
                                 agent_integrator=agent_integrator,
                                 skill_integrator=skill_integrator,
