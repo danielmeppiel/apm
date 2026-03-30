@@ -1,15 +1,20 @@
-"""Claude command integration functionality for APM packages.
+"""Command integration functionality for APM packages.
 
-Integrates .prompt.md files as .claude/commands/ during install,
-mirroring how PromptIntegrator handles .github/prompts/.
+Integrates .prompt.md files as commands for any target that supports the
+``commands`` primitive (e.g. ``.claude/commands/``, ``.opencode/commands/``).
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import List, Dict
+from typing import TYPE_CHECKING, Dict, List
 import frontmatter
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.utils.paths import portable_relpath
+
+if TYPE_CHECKING:
+    from apm_cli.integration.targets import TargetProfile
 
 # Re-export for backward compat (tests import CommandIntegrationResult)
 CommandIntegrationResult = IntegrationResult
@@ -101,120 +106,44 @@ class CommandIntegrator(BaseIntegrator):
         
         return links_resolved
     
-    def integrate_package_commands(self, package_info, project_root: Path,
-                                    force: bool = False,
-                                    managed_files: set = None,
-                                    diagnostics=None) -> IntegrationResult:
-        """Integrate all prompt files from a package as Claude commands.
-        
-        Deploys with clean filenames. Skips user-authored files unless force=True.
+    # ------------------------------------------------------------------
+    # Target-driven API (data-driven dispatch)
+    # ------------------------------------------------------------------
+
+    def integrate_commands_for_target(
+        self,
+        target: "TargetProfile",
+        package_info,
+        project_root: Path,
+        *,
+        force: bool = False,
+        managed_files: set = None,
+        diagnostics=None,
+    ) -> IntegrationResult:
+        """Integrate prompt files as commands for a single *target*.
+
+        Reads deployment paths from *target*'s ``commands`` primitive
+        mapping, applying the opt-in guard when ``auto_create`` is
+        ``False``.
         """
-        commands_dir = project_root / ".claude" / "commands"
+        mapping = target.primitives.get("commands")
+        if not mapping:
+            return IntegrationResult(0, 0, 0, [], 0)
+
+        target_root = project_root / target.root_dir
+        if not target.auto_create and not target_root.is_dir():
+            return IntegrationResult(0, 0, 0, [], 0)
+
         prompt_files = self.find_prompt_files(package_info.install_path)
-        
         if not prompt_files:
-            return IntegrationResult(
-                files_integrated=0,
-                files_updated=0,
-                files_skipped=0,
-                target_paths=[],
-                links_resolved=0
-            )
-        
-        self.init_link_resolver(package_info, project_root)
-        
-        files_integrated = 0
-        files_skipped = 0
-        target_paths = []
-        total_links_resolved = 0
-        
-        for prompt_file in prompt_files:
-            # Generate clean command name (no suffix)
-            filename = prompt_file.name
-            if filename.endswith('.prompt.md'):
-                base_name = filename[:-len('.prompt.md')]
-            else:
-                base_name = prompt_file.stem
-            
-            target_path = commands_dir / f"{base_name}.md"
-            rel_path = portable_relpath(target_path, project_root)
-            
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
-                files_skipped += 1
-                continue
-            
-            links_resolved = self.integrate_command(
-                prompt_file, target_path, package_info, prompt_file
-            )
-            files_integrated += 1
-            total_links_resolved += links_resolved
-            target_paths.append(target_path)
-        
-        return IntegrationResult(
-            files_integrated=files_integrated,
-            files_updated=0,
-            files_skipped=files_skipped,
-            target_paths=target_paths,
-            links_resolved=total_links_resolved
-        )
-    
-    def sync_integration(self, apm_package, project_root: Path,
-                          managed_files: set = None) -> Dict:
-        """Remove APM-managed command files from .claude/commands/."""
-        commands_dir = project_root / ".claude" / "commands"
-        return self.sync_remove_files(
-            project_root,
-            managed_files,
-            prefix=".claude/commands/",
-            legacy_glob_dir=commands_dir,
-            legacy_glob_pattern="*-apm.md",
-        )
-    
-    def remove_package_commands(self, package_name: str, project_root: Path,
-                                managed_files: set = None) -> int:
-        """Remove APM-managed command files.
-        
-        Uses *managed_files* when available; falls back to legacy glob.
-        """
-        stats = self.sync_remove_files(
-            project_root,
-            managed_files,
-            prefix=".claude/commands/",
-            legacy_glob_dir=project_root / ".claude" / "commands",
-            legacy_glob_pattern="*-apm.md",
-        )
-        return stats["files_removed"]
-
-    def integrate_package_commands_opencode(self, package_info, project_root: Path,
-                                            force: bool = False,
-                                            managed_files: set = None,
-                                            diagnostics=None) -> IntegrationResult:
-        """Integrate all prompt files from a package as OpenCode commands.
-
-        Deploys .prompt.md → .opencode/commands/<name>.md.
-        Only deploys if .opencode/ directory already exists (opt-in).
-        """
-        opencode_dir = project_root / ".opencode"
-        if not opencode_dir.exists() or not opencode_dir.is_dir():
-            return IntegrationResult(
-                files_integrated=0, files_updated=0,
-                files_skipped=0, target_paths=[], links_resolved=0,
-            )
-
-        commands_dir = opencode_dir / "commands"
-        prompt_files = self.find_prompt_files(package_info.install_path)
-
-        if not prompt_files:
-            return IntegrationResult(
-                files_integrated=0, files_updated=0,
-                files_skipped=0, target_paths=[], links_resolved=0,
-            )
+            return IntegrationResult(0, 0, 0, [], 0)
 
         self.init_link_resolver(package_info, project_root)
 
+        commands_dir = target_root / mapping.subdir
         files_integrated = 0
         files_skipped = 0
-        target_paths = []
+        target_paths: List[Path] = []
         total_links_resolved = 0
 
         for prompt_file in prompt_files:
@@ -227,12 +156,15 @@ class CommandIntegrator(BaseIntegrator):
             target_path = commands_dir / f"{base_name}.md"
             rel_path = portable_relpath(target_path, project_root)
 
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+            if self.check_collision(
+                target_path, rel_path, managed_files, force,
+                diagnostics=diagnostics,
+            ):
                 files_skipped += 1
                 continue
 
             links_resolved = self.integrate_command(
-                prompt_file, target_path, package_info, prompt_file
+                prompt_file, target_path, package_info, prompt_file,
             )
             files_integrated += 1
             total_links_resolved += links_resolved
@@ -246,14 +178,81 @@ class CommandIntegrator(BaseIntegrator):
             links_resolved=total_links_resolved,
         )
 
-    def sync_integration_opencode(self, apm_package, project_root: Path,
-                                  managed_files: set = None) -> Dict:
-        """Remove APM-managed command files from .opencode/commands/."""
-        commands_dir = project_root / ".opencode" / "commands"
+    def sync_for_target(
+        self,
+        target: "TargetProfile",
+        apm_package,
+        project_root: Path,
+        managed_files: set = None,
+    ) -> Dict:
+        """Remove APM-managed command files for a single *target*."""
+        mapping = target.primitives.get("commands")
+        if not mapping:
+            return {"files_removed": 0, "errors": 0}
+        prefix = f"{target.root_dir}/{mapping.subdir}/"
+        legacy_dir = project_root / target.root_dir / mapping.subdir
         return self.sync_remove_files(
             project_root,
             managed_files,
-            prefix=".opencode/commands/",
-            legacy_glob_dir=commands_dir,
+            prefix=prefix,
+            legacy_glob_dir=legacy_dir,
             legacy_glob_pattern="*-apm.md",
+        )
+
+    # ------------------------------------------------------------------
+    # Legacy per-target API (delegates to target-driven methods)
+    # ------------------------------------------------------------------
+
+    def integrate_package_commands(self, package_info, project_root: Path,
+                                    force: bool = False,
+                                    managed_files: set = None,
+                                    diagnostics=None) -> IntegrationResult:
+        """Integrate prompt files as Claude commands (.claude/commands/).
+
+        Legacy compat: ensures ``.claude/`` exists so the target-driven
+        method does not skip.
+        """
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        (project_root / ".claude").mkdir(parents=True, exist_ok=True)
+        return self.integrate_commands_for_target(
+            KNOWN_TARGETS["claude"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
+    def sync_integration(self, apm_package, project_root: Path,
+                          managed_files: set = None) -> Dict:
+        """Remove APM-managed command files from .claude/commands/."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.sync_for_target(
+            KNOWN_TARGETS["claude"], apm_package, project_root,
+            managed_files=managed_files,
+        )
+
+    def remove_package_commands(self, package_name: str, project_root: Path,
+                                managed_files: set = None) -> int:
+        """Remove APM-managed command files."""
+        stats = self.sync_integration(None, project_root,
+                                       managed_files=managed_files)
+        return stats["files_removed"]
+
+    def integrate_package_commands_opencode(self, package_info, project_root: Path,
+                                            force: bool = False,
+                                            managed_files: set = None,
+                                            diagnostics=None) -> IntegrationResult:
+        """Integrate prompt files as OpenCode commands (.opencode/commands/)."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.integrate_commands_for_target(
+            KNOWN_TARGETS["opencode"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
+    def sync_integration_opencode(self, apm_package, project_root: Path,
+                                  managed_files: set = None) -> Dict:
+        """Remove APM-managed command files from .opencode/commands/."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.sync_for_target(
+            KNOWN_TARGETS["opencode"], apm_package, project_root,
+            managed_files=managed_files,
         )

@@ -545,6 +545,46 @@ class HookIntegrator(BaseIntegrator):
             target_paths=target_paths,
         )
 
+    # ------------------------------------------------------------------
+    # Target-driven API (thin wrappers — HookIntegrator keeps genuine
+    # algorithmic diversity per-target, so we dispatch by target.name)
+    # ------------------------------------------------------------------
+
+    def integrate_hooks_for_target(
+        self,
+        target,
+        package_info,
+        project_root: Path,
+        *,
+        force: bool = False,
+        managed_files: set = None,
+        diagnostics=None,
+    ) -> "HookIntegrationResult":
+        """Integrate hooks for a single *target*.
+
+        Dispatches to the existing per-target methods by ``target.name``
+        because each hook format has genuine algorithmic diversity.
+        """
+        if target.name == "copilot":
+            return self.integrate_package_hooks(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+        if target.name == "claude":
+            return self.integrate_package_hooks_claude(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+        if target.name == "cursor":
+            return self.integrate_package_hooks_cursor(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+        return HookIntegrationResult(hooks_integrated=0, scripts_copied=0)
+
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict:
         """Remove APM-managed hook files.
