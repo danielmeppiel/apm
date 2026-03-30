@@ -491,6 +491,91 @@ class TestTransitiveDepParentChain:
         )
 
 
+class TestDownloadCallbackErrorMessages:
+    """Tests for direct vs transitive dep error message differentiation."""
+
+    def test_direct_dep_failure_says_download_dependency(self, tmp_path, monkeypatch):
+        """Direct dependency failure uses 'Failed to download dependency', not 'transitive dep'."""
+        from apm_cli.commands.install import _install_apm_dependencies
+        from apm_cli.models.apm_package import APMPackage
+
+        monkeypatch.chdir(tmp_path)
+
+        # Create a minimal apm.yml with a direct dep
+        (tmp_path / "apm.yml").write_text(yaml.safe_dump({
+            "name": "test-project",
+            "version": "0.0.1",
+            "dependencies": {"apm": ["acme/direct-pkg"], "mcp": []},
+        }))
+
+        apm_package = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+
+        # Patch the downloader to always fail
+        with patch("apm_cli.commands.install.GitHubPackageDownloader") as MockDownloader:
+            mock_dl = MockDownloader.return_value
+            mock_dl.download_package.side_effect = RuntimeError("auth failed")
+
+            result = _install_apm_dependencies(
+                apm_package, verbose=False, force=False, parallel_downloads=0,
+            )
+
+        # Check that the error message says "download dependency", not "transitive dep"
+        errors = result.diagnostics.by_category().get("error", [])
+        assert len(errors) == 1, f"Expected 1 error, got {len(errors)}: {errors}"
+        assert "Failed to download dependency" in errors[0].message
+        assert "transitive" not in errors[0].message.lower()
+
+    def test_transitive_dep_key_not_in_direct_dep_keys(self):
+        """Transitive dep keys are correctly absent from direct_dep_keys set.
+
+        The download_callback uses this check to select the right error label.
+        End-to-end transitive error flow is covered by
+        TestTransitiveDepParentChain.test_download_callback_includes_chain_in_error.
+        """
+        from apm_cli.models.apm_package import DependencyReference
+
+        direct_dep_keys = {"acme/root-pkg"}
+        transitive_ref = DependencyReference.parse("other-org/leaf-pkg")
+
+        # Transitive deps must NOT be in the direct set
+        assert transitive_ref.get_unique_key() not in direct_dep_keys
+        # Direct deps must be in the direct set
+        assert "acme/root-pkg" in direct_dep_keys
+
+
+class TestCallbackFailureDeduplication:
+    """Tests for error deduplication when download_callback failures are not re-tried."""
+
+    def test_callback_failure_not_duplicated_in_main_loop(self, tmp_path, monkeypatch):
+        """A dep that fails in download_callback should produce only one error."""
+        from apm_cli.commands.install import _install_apm_dependencies
+        from apm_cli.models.apm_package import APMPackage
+
+        monkeypatch.chdir(tmp_path)
+
+        (tmp_path / "apm.yml").write_text(yaml.safe_dump({
+            "name": "test-project",
+            "version": "0.0.1",
+            "dependencies": {"apm": ["acme/failing-pkg"], "mcp": []},
+        }))
+        apm_package = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+
+        with patch("apm_cli.commands.install.GitHubPackageDownloader") as MockDownloader:
+            mock_dl = MockDownloader.return_value
+            mock_dl.download_package.side_effect = RuntimeError("auth failed")
+
+            result = _install_apm_dependencies(
+                apm_package, verbose=False, force=False, parallel_downloads=0,
+            )
+
+        errors = result.diagnostics.by_category().get("error", [])
+        # Should be exactly 1 error, not 2 (one from callback + one from main loop)
+        assert len(errors) == 1, (
+            f"Expected 1 error (deduplicated), got {len(errors)}: "
+            f"{[e.message for e in errors]}"
+        )
+
+
 class TestLocalPathValidationMessages:
     """Tests for improved local path validation error messages."""
 

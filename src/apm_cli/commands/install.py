@@ -1174,7 +1174,7 @@ def _install_apm_dependencies(
     downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
 
     # Track direct dependency keys so the download callback can distinguish them from transitive
-    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in apm_deps)
+    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in all_apm_deps)
 
     # Track paths already downloaded by the resolver callback to avoid re-downloading
     # Maps dep_key -> resolved_commit (SHA or None) so the cached path can use it
@@ -1183,6 +1183,10 @@ def _install_apm_dependencies(
     # Collect transitive dep failures during resolution — they'll be routed to
     # diagnostics after the DiagnosticCollector is created (later in the flow).
     transitive_failures: list[tuple[str, str]] = []  # (dep_display, message)
+
+    # Track dep keys that failed in download_callback so the main install loop
+    # skips them instead of re-trying and producing a duplicate error entry.
+    callback_failures: builtins.set = builtins.set()
 
     # Create a download callback for transitive dependency resolution
     # This allows the resolver to fetch packages on-demand during tree building
@@ -1231,19 +1235,31 @@ def _install_apm_dependencies(
             callback_downloaded[dep_ref.get_unique_key()] = resolved_sha
             return install_path
         except Exception as e:
-            # Build contextual message including the dependency chain breadcrumb
-            chain_hint = f" (via {parent_chain})" if parent_chain else ""
             dep_display = dep_ref.get_display_name()
-            fail_msg = (
-                f"Failed to resolve transitive dep "
-                f"{dep_ref.repo_url}{chain_hint}: {e}"
-            )
+            dep_key = dep_ref.get_unique_key()
+            is_direct = dep_key in direct_dep_keys
+
+            # Distinguish direct vs transitive failure messages so users
+            # don't see a misleading "transitive dep" label for top-level deps.
+            if is_direct:
+                fail_msg = (
+                    f"Failed to download dependency "
+                    f"{dep_ref.repo_url}: {e}"
+                )
+            else:
+                chain_hint = f" (via {parent_chain})" if parent_chain else ""
+                fail_msg = (
+                    f"Failed to resolve transitive dep "
+                    f"{dep_ref.repo_url}{chain_hint}: {e}"
+                )
+
             # Verbose: inline detail
             if logger:
                 logger.verbose_detail(f"  {fail_msg}")
             elif verbose:
                 _rich_error(f"  └─ {fail_msg}")
             # Collect for deferred diagnostics summary (always, even non-verbose)
+            callback_failures.add(dep_key)
             transitive_failures.append((dep_display, fail_msg))
             return None
 
@@ -1555,6 +1571,14 @@ def _install_apm_dependencies(
                 else:
                     # Use the canonical install path from DependencyReference
                     install_path = dep_ref.get_install_path(apm_modules_dir)
+
+                # Skip deps that already failed during BFS resolution callback
+                # to avoid a duplicate error entry in diagnostics.
+                dep_key = dep_ref.get_unique_key()
+                if dep_key in callback_failures:
+                    if logger:
+                        logger.verbose_detail(f"  Skipping {dep_key} (already failed during resolution)")
+                    continue
 
                 # --- Local package: copy from filesystem (no git download) ---
                 if dep_ref.is_local and dep_ref.local_path:

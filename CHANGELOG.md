@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Misleading "transitive dep" error message for direct dependency download failures (#478)
+- Sparse checkout using global token instead of per-org token from `GITHUB_APM_PAT_<ORG>` (#478)
+- Duplicate error count when a dependency fails during both resolution and install phases (#478)
 - Windows Defender false-positive (`Trojan:Win32/Bearfoos.B!ml`) mitigation: embed PE version info in Windows binary and disable UPX compression on Windows builds (#487)
 - `apm deps update` was a no-op -- rewrote to delegate to the install engine so lockfile, deployed files, and integration state are all refreshed correctly -- by @webmaxru (#493)
 
