@@ -168,10 +168,17 @@ pip install --user apm-cli
 
 ### Authentication errors when installing packages
 
-If `apm install` fails with authentication errors for private repositories, ensure you have a valid GitHub token configured:
+See [Authentication -- Troubleshooting](../authentication/#troubleshooting) for token setup, SSO authorization, and diagnosing auth failures.
 
-```bash
-curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user
+### File access errors on Windows (antivirus / endpoint protection)
+
+If `apm install` fails with `The process cannot access the file because it is being used by another process`, your antivirus or endpoint protection software is likely scanning temp files during installation.
+
+APM retries file operations automatically with exponential backoff to handle transient locks. If the issue persists, set `APM_DEBUG=1` to see retry diagnostics:
+
+```powershell
+$env:APM_DEBUG = "1"
+apm install <package>
 ```
 
 ## Next steps

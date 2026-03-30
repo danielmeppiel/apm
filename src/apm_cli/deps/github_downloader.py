@@ -85,27 +85,11 @@ def _close_repo(repo) -> None:
 def _rmtree(path) -> None:
     """Remove a directory tree, handling read-only files and brief Windows locks.
 
-    Git pack/index files are often read-only, and on Windows git processes may
-    hold brief locks even after the Repo object is closed.  This wrapper uses
-    an onerror callback for read-only files and a single retry for lock races.
+    Delegates to :func:`robust_rmtree` which retries with exponential backoff
+    on transient lock errors (e.g. antivirus scanning on Windows).
     """
-    def _on_readonly(func, fpath, _exc_info):
-        """onerror callback: make read-only files writable and retry."""
-        try:
-            os.chmod(fpath, stat.S_IWRITE)
-            func(fpath)
-        except OSError:
-            pass
-
-    try:
-        shutil.rmtree(path, onerror=_on_readonly)
-    except PermissionError:
-        if sys.platform == 'win32':
-            # Single retry after a brief wait for lingering git handles
-            time.sleep(0.5)
-            shutil.rmtree(path, ignore_errors=True)
-        # On all platforms: don't raise from cleanup — just leave the
-        # temp dir behind (the OS will clean it up eventually).
+    from ..utils.file_ops import robust_rmtree
+    robust_rmtree(path, ignore_errors=True)
 
 
 class GitProgressReporter(RemoteProgress):
@@ -202,20 +186,18 @@ class GitHubPackageDownloader:
         else:
             env['GIT_CONFIG_GLOBAL'] = '/dev/null'
 
-        # Resolve default host tokens via AuthResolver (backward compat properties)
-        default_ctx = self.auth_resolver.resolve(default_host())
-        self._default_github_ctx = default_ctx
-        self.github_token = default_ctx.token
-        self.has_github_token = default_ctx.token is not None
-        self._github_token_from_credential_fill = (
-            self.has_github_token
-            and self.token_manager.get_token_for_purpose('modules', env) is None
-        )
+        # IMPORTANT: Do not resolve credentials via helpers at construction time.
+        # AuthResolver.resolve(...) can trigger OS credential helper UI. If we do
+        # this eagerly (host-only key) and later resolve per-dependency (host+org),
+        # users can see duplicate auth prompts. Keep constructor token state env-only
+        # and resolve lazily per dependency during clone/validate flows.
+        self.github_token = self.token_manager.get_token_for_purpose('modules', env)
+        self.has_github_token = self.github_token is not None
+        self._github_token_from_credential_fill = False
 
-        # Azure DevOps
-        ado_ctx = self.auth_resolver.resolve("dev.azure.com")
-        self.ado_token = ado_ctx.token
-        self.has_ado_token = ado_ctx.token is not None
+        # Azure DevOps (env-only at init; lazy auth resolution happens per dep)
+        self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
+        self.has_ado_token = self.ado_token is not None
 
         # JFrog Artifactory (not host-based, uses dedicated env var)
         self.artifactory_token = self.token_manager.get_token_for_purpose('artifactory_modules', env)
@@ -664,7 +646,9 @@ class GitHubPackageDownloader:
                 f"If this package lives on a different server (e.g., github.com), "
                 f"use the full hostname in apm.yml: {suggested}"
             )
-        elif not self.has_github_token:
+        elif not has_token:
+            # No auth was resolved (neither env var nor credential helper).
+            # Guide the user through setting up authentication.
             host = dep_host or default_host()
             org = dep_ref.repo_url.split('/')[0] if dep_ref and dep_ref.repo_url else None
             error_msg += self.auth_resolver.build_error_context(host, "clone", org=org)
@@ -1626,14 +1610,16 @@ author: {dep_ref.repo_url.split('/')[0]}
                 _rmtree(target_path)
                 target_path.mkdir(parents=True, exist_ok=True)
 
-            # Copy subdirectory contents to target
+            # Copy subdirectory contents to target (retry on transient
+            # file-lock errors caused by antivirus scanning on Windows).
+            from ..utils.file_ops import robust_copytree, robust_copy2
             for item in source_subdir.iterdir():
                 src = source_subdir / item.name
                 dst = target_path / item.name
                 if src.is_dir():
-                    shutil.copytree(src, dst)
+                    robust_copytree(src, dst)
                 else:
-                    shutil.copy2(src, dst)
+                    robust_copy2(src, dst)
 
             # Capture commit SHA; close the Repo object immediately so its file
             # handles are released before _rmtree() runs in the finally block.
@@ -1723,16 +1709,17 @@ author: {dep_ref.repo_url.split('/')[0]}
                     f"Artifactory ({host}/{prefix}/{owner}/{repo}#{ref})"
                 )
             target_path.mkdir(parents=True, exist_ok=True)
+            from ..utils.file_ops import robust_rmtree, robust_copytree, robust_copy2
             if target_path.exists() and any(target_path.iterdir()):
-                shutil.rmtree(target_path)
+                robust_rmtree(target_path)
                 target_path.mkdir(parents=True, exist_ok=True)
             for item in source_subdir.iterdir():
                 src = source_subdir / item.name
                 dst = target_path / item.name
                 if src.is_dir():
-                    shutil.copytree(src, dst)
+                    robust_copytree(src, dst)
                 else:
-                    shutil.copy2(src, dst)
+                    robust_copy2(src, dst)
 
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=80, total=100)
@@ -1771,7 +1758,8 @@ author: {dep_ref.repo_url.split('/')[0]}
 
         _debug(f"Downloading from Artifactory: {host}/{prefix}/{owner}/{repo}#{ref}")
         if target_path.exists() and any(target_path.iterdir()):
-            shutil.rmtree(target_path)
+            from ..utils.file_ops import robust_rmtree
+            robust_rmtree(target_path)
         target_path.mkdir(parents=True, exist_ok=True)
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, total=100, completed=10)

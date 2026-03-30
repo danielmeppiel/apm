@@ -365,3 +365,122 @@ class TestOpenCodeCommandIntegration:
         integrator = CommandIntegrator()
         result = integrator.sync_integration_opencode(None, temp_project_no_opencode)
         assert result["files_removed"] == 0
+
+
+class TestIntegratePackagePrimitivesTargetGating:
+    """Tests that _integrate_package_primitives respects the integrate_claude flag.
+
+    Regression test for: CommandIntegrator was called unconditionally, causing
+    .claude/commands/ to be created even when target=copilot (integrate_claude=False).
+    """
+
+    def _make_mock_integrators(self):
+        """Return a dict of MagicMock integrators for _integrate_package_primitives."""
+        from unittest.mock import MagicMock
+
+        def _empty_result(*args, **kwargs):
+            r = MagicMock()
+            r.files_integrated = 0
+            r.files_updated = 0
+            r.links_resolved = 0
+            r.target_paths = []
+            r.skill_created = False
+            r.sub_skills_promoted = 0
+            r.hooks_integrated = 0
+            return r
+
+        integrators = {}
+        for name in (
+            "prompt_integrator",
+            "agent_integrator",
+            "skill_integrator",
+            "instruction_integrator",
+            "command_integrator",
+            "hook_integrator",
+        ):
+            m = MagicMock()
+            for method in (
+                "integrate_package_prompts",
+                "integrate_package_agents",
+                "integrate_package_agents_claude",
+                "integrate_package_agents_cursor",
+                "integrate_package_agents_opencode",
+                "integrate_package_skill",
+                "integrate_package_instructions",
+                "integrate_package_instructions_cursor",
+                "integrate_package_commands",
+                "integrate_package_commands_opencode",
+                "integrate_package_hooks",
+                "integrate_package_hooks_claude",
+                "integrate_package_hooks_cursor",
+            ):
+                getattr(m, method).side_effect = _empty_result
+            integrators[name] = m
+        return integrators
+
+    def test_integrate_claude_false_does_not_call_integrate_package_commands(self):
+        """When integrate_claude=False, integrate_package_commands must not be called.
+
+        This is the regression test for the bug where .claude/commands/ was created
+        even when target=copilot (vscode) set integrate_claude=False.
+        """
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".github").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                integrate_vscode=True,
+                integrate_claude=False,
+                integrate_opencode=False,
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            integrators["command_integrator"].integrate_package_commands.assert_not_called()
+            assert not (project_root / ".claude" / "commands").exists()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_integrate_claude_true_calls_integrate_package_commands(self):
+        """When integrate_claude=True, integrate_package_commands must be called."""
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".claude").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                integrate_vscode=False,
+                integrate_claude=True,
+                integrate_opencode=False,
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            integrators["command_integrator"].integrate_package_commands.assert_called_once()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)

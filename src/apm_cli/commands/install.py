@@ -35,6 +35,12 @@ set = builtins.set
 list = builtins.list
 dict = builtins.dict
 
+# AuthResolver has no optional deps (stdlib + internal utils only), so it must
+# be imported unconditionally here -- NOT inside the APM_DEPS_AVAILABLE guard.
+# If it were gated, a missing optional dep (e.g. GitPython) would cause a
+# NameError in install() before the graceful APM_DEPS_AVAILABLE check fires.
+from ..core.auth import AuthResolver
+
 # APM Dependencies (conditional import for graceful degradation)
 APM_DEPS_AVAILABLE = False
 _APM_IMPORT_ERROR = None
@@ -56,7 +62,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, auth_resolver=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -68,6 +74,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         dry_run: If True, only show what would be added.
         dev: If True, write to devDependencies instead of dependencies.
         logger: InstallLogger for structured output.
+        auth_resolver: Shared auth resolver for caching credentials.
 
     Returns:
         Tuple of (validated_packages list, _ValidationOutcome).
@@ -146,7 +153,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
         # Validate package exists and is accessible
         verbose = bool(logger and logger.verbose)
-        if _validate_package_exists(package, verbose=verbose):
+        if _validate_package_exists(package, verbose=verbose, auth_resolver=auth_resolver):
             valid_outcomes.append((canonical, already_in_deps))
             if logger:
                 logger.validation_pass(canonical, already_present=already_in_deps)
@@ -258,7 +265,7 @@ def _local_path_no_markers_hint(local_dir, verbose_log=None):
         _rich_echo(f"      ... and {len(found) - 5} more", color="dim")
 
 
-def _validate_package_exists(package, verbose=False):
+def _validate_package_exists(package, verbose=False, auth_resolver=None):
     """Validate that a package exists and is accessible on GitHub, Azure DevOps, or locally."""
     import os
     import subprocess
@@ -266,7 +273,9 @@ def _validate_package_exists(package, verbose=False):
     from apm_cli.core.auth import AuthResolver
 
     verbose_log = (lambda msg: _rich_echo(f"  {msg}", color="dim")) if verbose else None
-    auth_resolver = AuthResolver()
+    # Use provided resolver or create new one if not in a CLI session context
+    if auth_resolver is None:
+        auth_resolver = AuthResolver()
 
     try:
         # Parse the package to check if it's a virtual package or ADO
@@ -300,8 +309,8 @@ def _validate_package_exists(package, verbose=False):
             org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
             if verbose_log:
                 verbose_log(f"Auth resolved: host={host}, org={org}, source={ctx.source}, type={ctx.token_type}")
-            downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
-            result = downloader.validate_virtual_package_exists(dep_ref)
+            virtual_downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
+            result = virtual_downloader.validate_virtual_package_exists(dep_ref)
             if not result and verbose_log:
                 try:
                     err_ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
@@ -316,26 +325,39 @@ def _validate_package_exists(package, verbose=False):
         if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
             from apm_cli.utils.github_host import is_github_hostname, is_azure_devops_hostname
 
-            downloader = GitHubPackageDownloader()
+            # Determine host type before building the URL so we know whether to
+            # embed a token.  Generic (non-GitHub, non-ADO) hosts are excluded
+            # from APM-managed auth; they rely on git credential helpers via the
+            # relaxed validate_env below.
+            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
+
+            # For GHES / ADO: resolve per-dependency auth up front so the URL
+            # carries an embedded token and avoids triggering OS credential
+            # helper popups during git ls-remote validation.
+            _url_token = None
+            if not is_generic:
+                _dep_ctx = auth_resolver.resolve_for_dep(dep_ref)
+                _url_token = _dep_ctx.token
+
+            ado_downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
             # Set the host
             if dep_ref.host:
-                downloader.github_host = dep_ref.host
+                ado_downloader.github_host = dep_ref.host
 
-            # Build authenticated URL using downloader's auth
-            package_url = downloader._build_repo_url(
-                dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref
+            # Build authenticated URL using the resolved per-dep token.
+            package_url = ado_downloader._build_repo_url(
+                dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref, token=_url_token
             )
 
             # For generic hosts (not GitHub, not ADO), relax the env so native
             # credential helpers (SSH keys, macOS Keychain, etc.) can work.
             # This mirrors _clone_with_fallback() which does the same relaxation.
-            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
             if is_generic:
-                validate_env = {k: v for k, v in downloader.git_env.items()
+                validate_env = {k: v for k, v in ado_downloader.git_env.items()
                                 if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
                 validate_env['GIT_TERMINAL_PROMPT'] = '0'
             else:
-                validate_env = {**os.environ, **downloader.git_env}
+                validate_env = {**os.environ, **ado_downloader.git_env}
 
             if verbose_log:
                 verbose_log(f"Trying git ls-remote for {dep_ref.host}")
@@ -513,8 +535,19 @@ def _validate_package_exists(package, verbose=False):
     default=False,
     help="Install as development dependency (devDependencies)",
 )
+@click.option(
+    "--target",
+    "-t",
+    "target",
+    type=click.Choice(
+        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        case_sensitive=False,
+    ),
+    default=None,
+    help="Force deployment to a specific target (overrides auto-detection)",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -539,6 +572,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         is_partial = bool(packages)
         logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
 
+        # Create shared auth resolver for all downloads in this CLI invocation
+        # to ensure credentials are cached and reused (prevents duplicate auth popups)
+        auth_resolver = AuthResolver()
+
         # Check if apm.yml exists
         apm_yml_exists = Path(APM_YML_FILENAME).exists()
 
@@ -560,7 +597,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # If packages are specified, validate and add them to apm.yml first
         if packages:
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
-                packages, dry_run, dev=dev, logger=logger,
+                packages, dry_run, dev=dev, logger=logger, auth_resolver=auth_resolver,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -661,6 +698,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    auth_resolver=auth_resolver,
+                    target=target,
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -959,19 +998,20 @@ def _integrate_package_primitives(
         deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- commands (.claude) ---
-    command_result = command_integrator.integrate_package_commands(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if command_result.files_integrated > 0:
-        result["commands"] += command_result.files_integrated
-        _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
-    if command_result.files_updated > 0:
-        _log_integration(f"  └─ {command_result.files_updated} commands updated")
-    result["links_resolved"] += command_result.links_resolved
-    for tp in command_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
+    if integrate_claude:
+        command_result = command_integrator.integrate_package_commands(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+        if command_result.files_integrated > 0:
+            result["commands"] += command_result.files_integrated
+            _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
+        if command_result.files_updated > 0:
+            _log_integration(f"  └─ {command_result.files_updated} commands updated")
+        result["links_resolved"] += command_result.links_resolved
+        for tp in command_result.target_paths:
+            deployed.append(tp.relative_to(project_root).as_posix())
 
     # --- OpenCode commands (.opencode) ---
     opencode_command_result = command_integrator.integrate_package_commands_opencode(
@@ -1079,6 +1119,8 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    auth_resolver: "AuthResolver" = None,
+    target: str = None,
 ):
     """Install APM package dependencies.
 
@@ -1090,6 +1132,8 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        auth_resolver: Shared auth resolver for caching credentials
+        target: Explicit target override from --target CLI flag
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
@@ -1122,8 +1166,12 @@ def _install_apm_dependencies(
     apm_modules_dir = project_root / APM_MODULES_DIR
     apm_modules_dir.mkdir(exist_ok=True)
 
+    # Use provided resolver or create new one if not in a CLI session context
+    if auth_resolver is None:
+        auth_resolver = AuthResolver()
+
     # Create downloader early so it can be used for transitive dependency resolution
-    downloader = GitHubPackageDownloader()
+    downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
 
     # Track direct dependency keys so the download callback can distinguish them from transitive
     direct_dep_keys = builtins.set(dep.get_unique_key() for dep in apm_deps)
@@ -1310,25 +1358,27 @@ def _install_apm_dependencies(
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
-        # Ensure auto_create targets exist.
-        # Copilot (.github) has auto_create=True -- it is always created so
-        # there is a guaranteed skills root even for greenfield projects.
+        # Resolve effective explicit target: CLI --target wins, then apm.yml
+        _explicit = target or config_target or None
+
+        # Determine active targets.  When --target or apm.yml target is set
+        # the user's choice wins.  Otherwise auto-detect from existing dirs,
+        # falling back to copilot when nothing is found.
         from apm_cli.integration.targets import active_targets as _active_targets
 
-        _targets = _active_targets(project_root)
+        _targets = _active_targets(project_root, explicit_target=_explicit)
         for _t in _targets:
-            if _t.auto_create:
-                _target_dir = project_root / _t.root_dir
-                if not _target_dir.exists():
-                    _target_dir.mkdir(parents=True, exist_ok=True)
-                    if logger:
-                        logger.verbose_detail(
-                            f"Created {_t.root_dir}/ ({_t.name} target)"
-                        )
+            _target_dir = project_root / _t.root_dir
+            if not _target_dir.exists():
+                _target_dir.mkdir(parents=True, exist_ok=True)
+                if logger:
+                    logger.verbose_detail(
+                        f"Created {_t.root_dir}/ ({_t.name} target)"
+                    )
 
         detected_target, detection_reason = detect_target(
             project_root=project_root,
-            explicit_target=None,  # No explicit flag for install
+            explicit_target=_explicit,
             config_target=config_target,
         )
 
@@ -1482,13 +1532,9 @@ def _install_apm_dependencies(
         _pre_downloaded_keys = builtins.set(_pre_download_results.keys())
 
         # Create progress display for sequential integration
-        _auth_resolver = None
-        if verbose:
-            try:
-                from apm_cli.core.auth import AuthResolver
-                _auth_resolver = AuthResolver()
-            except Exception:
-                pass
+        # Reuse the shared auth_resolver (already created in this invocation) so
+        # verbose auth logging does not trigger a duplicate credential-helper popup.
+        _auth_resolver = auth_resolver
 
         with Progress(
             SpinnerColumn(),

@@ -8,11 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-03-27
+
+### Added
+
+- `apm install --target` flag to force deployment to a specific target (copilot, claude, cursor, opencode, all) (#456)
+
 ### Fixed
 
-- `install.sh` now falls back to pip when binary fails in devcontainers with older glibc (#456)
-- Skills now deploy to all active targets (`.opencode/`, `.cursor/`) instead of only `.github/` (#456)
-- `apm install` no longer rewrites `apm.lock.yaml` when dependencies are unchanged, eliminating `generated_at` churn in version control (#456)
+- Windows antivirus file-lock errors (`WinError 32`) during `apm install` with `file_ops` retry utility (#440)
+- Installer fallback to pip in devcontainers, target registry, and lockfile idempotency fixes (#456)
+- Reject path traversal sequences in SSH-style Git URLs — by @thakoreh (#458)
+- Exclude bundled OpenSSL libs from Linux binary to prevent ABI conflicts (#466)
+- Allow spaces in ADO repository names when parsing URLs (#437)
+- Gate `.claude/commands/` deployment behind `integrate_claude` flag (#443)
+- Sort instruction discovery order for deterministic Build IDs across platforms (#468)
+- Share `AuthResolver` across install to prevent duplicate auth popups (#424)
+
+### Changed
+
+- Consolidated path-segment traversal checks into `validate_path_segments()` in `path_security.py` (#458)
 
 ## [0.8.5] - 2026-03-24
 

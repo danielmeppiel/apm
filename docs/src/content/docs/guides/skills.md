@@ -42,20 +42,18 @@ When you run `apm install`, APM handles skill integration automatically:
 APM downloads packages to `apm_modules/owner/repo/` (or `apm_modules/owner/repo/skill-name/` for subdirectory packages).
 
 ### Step 2: Skill Integration
-APM copies skills to all active target directories. Copilot (`.github/skills/`) is
-always active; other targets deploy only when their root directory already exists:
+APM copies skills to every detected target directory:
 
 | Package Type | Behavior |
 |--------------|----------|
-| **Has existing SKILL.md** | Entire skill folder copied to each active target's `skills/{skill-name}/` |
-| **Has sub-skills in `.apm/skills/`** | Each `.apm/skills/*/SKILL.md` also promoted to `skills/{sub-skill-name}/` in each active target |
+| **Has existing SKILL.md** | Entire skill folder copied to `{target}/skills/{skill-name}/` |
+| **Has sub-skills in `.apm/skills/`** | Each `.apm/skills/*/SKILL.md` also promoted to `{target}/skills/{sub-skill-name}/` |
 | **No SKILL.md and no primitives** | No skill folder created |
 
-**Target Directories:**
-- **Copilot (always)**: `.github/skills/{skill-name}/` - Created automatically; works with Copilot, Codex, Gemini
-- **Claude (if `.claude/` exists)**: `.claude/skills/{skill-name}/`
-- **Cursor (if `.cursor/` exists)**: `.cursor/skills/{skill-name}/`
-- **OpenCode (if `.opencode/` exists)**: `.opencode/skills/{skill-name}/`
+**Target Detection:**
+- Recognized directories: `.github/`, `.claude/`, `.cursor/`, `.opencode/`
+- If none exist, `.github/` is created as the fallback
+- Override with `--target`
 
 ### Skill Folder Naming
 
@@ -288,18 +286,11 @@ APM automatically detects package types:
 
 ## Target Detection
 
-APM decides where to output skills based on which target directories are present:
-
-| Condition | Skill Output |
-|-----------|---------------|
-| Always | `.github/skills/{skill-name}/SKILL.md` (Copilot, created if absent) |
-| `.claude/` exists | Also copies to `.claude/skills/{skill-name}/SKILL.md` |
-| `.cursor/` exists | Also copies to `.cursor/skills/{skill-name}/SKILL.md` |
-| `.opencode/` exists | Also copies to `.opencode/skills/{skill-name}/SKILL.md` |
+APM deploys skills to every target directory that already exists: `.github/`, `.claude/`, `.cursor/`, `.opencode/`. If none exist, `.github/` is created as the fallback.
 
 Override with:
 ```bash
-apm install skill-name --target vscode
+apm install skill-name --target claude
 apm compile --target claude
 ```
 
