@@ -1,11 +1,10 @@
 """Utility helpers for APM dependency commands."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
+from ...constants import APM_DIR, APM_YML_FILENAME, SKILL_MD_FILENAME
 from ...models.apm_package import APMPackage
-from ...deps.github_downloader import GitHubPackageDownloader
 
 
 def _scan_installed_packages(apm_modules_dir: Path) -> list:
@@ -221,106 +220,3 @@ def _get_detailed_package_info(package_path: Path) -> Dict[str, Any]:
             'workflows': 0,
             'hooks': 0
         }
-
-
-def _update_single_package(package_name: str, project_deps: List, apm_modules_path: Path, logger=None):
-    """Update a specific package."""
-    if logger is None:
-        from ...core.command_logger import CommandLogger
-        logger = CommandLogger("deps-update")
-
-    # Find the dependency reference for this package
-    target_dep = None
-    for dep in project_deps:
-        if dep.get_display_name() == package_name or dep.repo_url.split('/')[-1] == package_name:
-            target_dep = dep
-            break
-    
-    if not target_dep:
-        logger.error(f"Package '{package_name}' not found in apm.yml dependencies")
-        return
-    
-    # Find the installed package directory using namespaced structure
-    # GitHub: owner/repo (2 parts)
-    # Azure DevOps: org/project/repo (3 parts)
-    package_dir = None
-    if target_dep.alias:
-        package_dir = apm_modules_path / target_dep.alias
-    else:
-        # Parse path from repo_url
-        repo_parts = target_dep.repo_url.split('/')
-        if target_dep.is_azure_devops() and len(repo_parts) >= 3:
-            # ADO structure: apm_modules/org/project/repo
-            package_dir = apm_modules_path / repo_parts[0] / repo_parts[1] / repo_parts[2]
-        elif len(repo_parts) >= 2:
-            package_dir = apm_modules_path / repo_parts[0] / repo_parts[1]
-        else:
-            # Fallback to simple name matching
-            package_dir = apm_modules_path / package_name
-        
-    if not package_dir.exists():
-        logger.error(f"Package '{package_name}' not installed in apm_modules/")
-        logger.progress(f"Run 'apm install' to install it first")
-        return
-    
-    try:
-        downloader = GitHubPackageDownloader()
-        logger.progress(f"Updating {target_dep.repo_url}...")
-        
-        # Download latest version
-        package_info = downloader.download_package(target_dep, package_dir)
-        
-        logger.success(f"Updated {target_dep.repo_url}")
-        
-    except Exception as e:
-        logger.error(f"Failed to update {package_name}: {e}")
-
-
-def _update_all_packages(project_deps: List, apm_modules_path: Path, logger=None):
-    """Update all packages."""
-    if logger is None:
-        from ...core.command_logger import CommandLogger
-        logger = CommandLogger("deps-update")
-
-    if not project_deps:
-        logger.progress("No APM dependencies to update")
-        return
-        
-    logger.start(f"Updating {len(project_deps)} APM dependencies...")
-    
-    downloader = GitHubPackageDownloader()
-    updated_count = 0
-    
-    for dep in project_deps:
-        # Determine package directory using namespaced structure
-        # GitHub: apm_modules/owner/repo (2 parts)
-        # Azure DevOps: apm_modules/org/project/repo (3 parts)
-        if dep.alias:
-            package_dir = apm_modules_path / dep.alias
-        else:
-            # Parse path from repo_url
-            repo_parts = dep.repo_url.split('/')
-            if dep.is_azure_devops() and len(repo_parts) >= 3:
-                # ADO structure
-                package_dir = apm_modules_path / repo_parts[0] / repo_parts[1] / repo_parts[2]
-            elif len(repo_parts) >= 2:
-                package_dir = apm_modules_path / repo_parts[0] / repo_parts[1]
-            else:
-                # Fallback to simple repo name (shouldn't happen)
-                package_dir = apm_modules_path / dep.repo_url
-            
-        if not package_dir.exists():
-            logger.warning(f"{dep.repo_url} not installed - skipping")
-            continue
-            
-        try:
-            logger.verbose_detail(f"  Updating {dep.repo_url}...")
-            package_info = downloader.download_package(dep, package_dir)
-            updated_count += 1
-            logger.success(f"  {dep.repo_url}")
-            
-        except Exception as e:
-            logger.error(f"  Failed to update {dep.repo_url}: {e}")
-            continue
-    
-    logger.success(f"Updated {updated_count} of {len(project_deps)} packages")
