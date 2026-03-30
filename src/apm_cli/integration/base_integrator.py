@@ -136,50 +136,68 @@ class BaseIntegrator:
     ) -> dict:
         """Partition *managed_files* by integration prefix in a single pass.
 
-        Returns a dict with keys ``"prompts"``, ``"agents_github"``,
-        ``"agents_claude"``, ``"agents_cursor"``, ``"agents_opencode"``,
-        ``"commands"``, ``"commands_opencode"``, ``"skills"``, ``"hooks"``,
-        ``"instructions"``, ``"rules_cursor"`` mapping to the subset of
-        paths for each integration type.
+        Bucket keys are generated dynamically from ``KNOWN_TARGETS`` so
+        adding a new target or primitive automatically creates the
+        corresponding bucket.
+
+        Cross-target buckets (``skills``, ``hooks``) group all targets
+        together because ``SkillIntegrator`` and ``HookIntegrator``
+        handle multi-target sync internally.
         """
-        buckets: dict = {
-            "prompts": set(),
-            "agents_github": set(),
-            "agents_claude": set(),
-            "agents_cursor": set(),
-            "agents_opencode": set(),
-            "commands": set(),
-            "commands_opencode": set(),
-            "skills": set(),
-            "hooks": set(),
-            "instructions": set(),
-            "rules_cursor": set(),
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        # Build (prefix, bucket_key) pairs from KNOWN_TARGETS
+        _prefix_map: list = []
+        buckets: dict = {}
+
+        # Skills and hooks are cross-target (single bucket each)
+        _skill_prefixes: list = []
+        _hook_prefixes: list = []
+
+        for _target in KNOWN_TARGETS.values():
+            for _prim_name, _mapping in _target.primitives.items():
+                _prefix = f"{_target.root_dir}/{_mapping.subdir}/"
+                if _prim_name == "skills":
+                    _skill_prefixes.append(_prefix)
+                elif _prim_name == "hooks":
+                    _hook_prefixes.append(_prefix)
+                else:
+                    _bucket_key = f"{_prim_name}_{_target.name}"
+                    if _bucket_key not in buckets:
+                        buckets[_bucket_key] = set()
+                    _prefix_map.append((_prefix, _bucket_key))
+
+        buckets["skills"] = set()
+        buckets["hooks"] = set()
+
+        _skill_tuple = tuple(_skill_prefixes)
+        _hook_tuple = tuple(_hook_prefixes)
+
+        # Backward-compat aliases used by existing callers
+        _ALIASES = {
+            "prompts_copilot": "prompts",
+            "agents_copilot": "agents_github",
+            "commands_claude": "commands",
+            "commands_opencode": "commands_opencode",
+            "instructions_copilot": "instructions",
+            "instructions_cursor": "rules_cursor",
         }
+        for _new, _old in _ALIASES.items():
+            if _new in buckets:
+                buckets[_old] = buckets.pop(_new)
+
+        # Single O(M) pass
         for p in managed_files:
-            if p.startswith(".github/prompts/"):
-                buckets["prompts"].add(p)
-            elif p.startswith(".github/agents/"):
-                buckets["agents_github"].add(p)
-            elif p.startswith(".claude/agents/"):
-                buckets["agents_claude"].add(p)
-            elif p.startswith(".cursor/agents/"):
-                buckets["agents_cursor"].add(p)
-            elif p.startswith(".opencode/agents/"):
-                buckets["agents_opencode"].add(p)
-            elif p.startswith(".claude/commands/"):
-                buckets["commands"].add(p)
-            elif p.startswith(".opencode/commands/"):
-                buckets["commands_opencode"].add(p)
-            elif p.startswith((".github/skills/", ".claude/skills/", ".cursor/skills/", ".opencode/skills/")):
+            if p.startswith(_skill_tuple):
                 buckets["skills"].add(p)
-            elif p.startswith(
-                (".github/hooks/", ".claude/hooks/", ".cursor/hooks/", ".opencode/hooks/")
-            ):
+            elif p.startswith(_hook_tuple):
                 buckets["hooks"].add(p)
-            elif p.startswith(".github/instructions/"):
-                buckets["instructions"].add(p)
-            elif p.startswith(".cursor/rules/"):
-                buckets["rules_cursor"].add(p)
+            else:
+                for _prefix, _bkey in _prefix_map:
+                    if p.startswith(_prefix):
+                        buckets[_bkey].add(p)
+                        break
+
         return buckets
 
     @staticmethod
