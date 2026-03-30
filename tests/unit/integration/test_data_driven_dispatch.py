@@ -306,8 +306,8 @@ class TestSyntheticTargetProfile:
             detect_by_dir=False,
         )
 
-        # Set up a package with a prompt file in .apm/prompts/ (where
-        # find_prompt_files looks via find_files_by_glob)
+        # CommandIntegrator.find_prompt_files() discovers .prompt.md files
+        # in .apm/prompts/ and transforms them to command format.
         pkg_dir = self.root / "packages" / "test-pkg"
         prompts_dir = pkg_dir / ".apm" / "prompts"
         prompts_dir.mkdir(parents=True)

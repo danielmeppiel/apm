@@ -147,34 +147,34 @@ class BaseIntegrator:
         from apm_cli.integration.targets import KNOWN_TARGETS
 
         # Build (prefix, bucket_key) pairs from KNOWN_TARGETS
-        _prefix_map: list = []
+        prefix_map: list = []
         buckets: dict = {}
 
         # Skills and hooks are cross-target (single bucket each)
-        _skill_prefixes: list = []
-        _hook_prefixes: list = []
+        skill_prefixes: list = []
+        hook_prefixes: list = []
 
-        for _target in KNOWN_TARGETS.values():
-            for _prim_name, _mapping in _target.primitives.items():
-                _prefix = f"{_target.root_dir}/{_mapping.subdir}/"
-                if _prim_name == "skills":
-                    _skill_prefixes.append(_prefix)
-                elif _prim_name == "hooks":
-                    _hook_prefixes.append(_prefix)
+        for target in KNOWN_TARGETS.values():
+            for prim_name, mapping in target.primitives.items():
+                prefix = f"{target.root_dir}/{mapping.subdir}/"
+                if prim_name == "skills":
+                    skill_prefixes.append(prefix)
+                elif prim_name == "hooks":
+                    hook_prefixes.append(prefix)
                 else:
-                    _bucket_key = f"{_prim_name}_{_target.name}"
-                    if _bucket_key not in buckets:
-                        buckets[_bucket_key] = set()
-                    _prefix_map.append((_prefix, _bucket_key))
+                    bucket_key = f"{prim_name}_{target.name}"
+                    if bucket_key not in buckets:
+                        buckets[bucket_key] = set()
+                    prefix_map.append((prefix, bucket_key))
 
         buckets["skills"] = set()
         buckets["hooks"] = set()
 
-        _skill_tuple = tuple(_skill_prefixes)
-        _hook_tuple = tuple(_hook_prefixes)
+        skill_tuple = tuple(skill_prefixes)
+        hook_tuple = tuple(hook_prefixes)
 
         # Backward-compat aliases used by existing callers
-        _ALIASES = {
+        ALIASES = {
             "prompts_copilot": "prompts",
             "agents_copilot": "agents_github",
             "commands_claude": "commands",
@@ -182,20 +182,20 @@ class BaseIntegrator:
             "instructions_copilot": "instructions",
             "instructions_cursor": "rules_cursor",
         }
-        for _new, _old in _ALIASES.items():
-            if _new in buckets:
-                buckets[_old] = buckets.pop(_new)
+        for new_key, old_key in ALIASES.items():
+            if new_key in buckets:
+                buckets[old_key] = buckets.pop(new_key)
 
         # Single O(M) pass
         for p in managed_files:
-            if p.startswith(_skill_tuple):
+            if p.startswith(skill_tuple):
                 buckets["skills"].add(p)
-            elif p.startswith(_hook_tuple):
+            elif p.startswith(hook_tuple):
                 buckets["hooks"].add(p)
             else:
-                for _prefix, _bkey in _prefix_map:
-                    if p.startswith(_prefix):
-                        buckets[_bkey].add(p)
+                for pfx, bkey in prefix_map:
+                    if p.startswith(pfx):
+                        buckets[bkey].add(p)
                         break
 
         return buckets
