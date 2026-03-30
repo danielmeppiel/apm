@@ -1174,7 +1174,7 @@ def _install_apm_dependencies(
     downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
 
     # Track direct dependency keys so the download callback can distinguish them from transitive
-    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in apm_deps)
+    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in all_apm_deps)
 
     # Track paths already downloaded by the resolver callback to avoid re-downloading
     # Maps dep_key -> resolved_commit (SHA or None) so the cached path can use it

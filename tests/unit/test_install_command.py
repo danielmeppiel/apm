@@ -497,7 +497,7 @@ class TestDownloadCallbackErrorMessages:
     def test_direct_dep_failure_says_download_dependency(self, tmp_path, monkeypatch):
         """Direct dependency failure uses 'Failed to download dependency', not 'transitive dep'."""
         from apm_cli.commands.install import _install_apm_dependencies
-        from apm_cli.models.apm_package import APMPackage, DependencyReference
+        from apm_cli.models.apm_package import APMPackage
 
         monkeypatch.chdir(tmp_path)
 

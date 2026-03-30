@@ -599,7 +599,7 @@ class TestIsGitHubClassification:
 
 
 # ===========================================================================
-# _try_sparse_checkout – per-dep token resolution
+# _try_sparse_checkout -- per-dep token resolution
 # ===========================================================================
 
 class TestSparseCheckoutTokenResolution:
