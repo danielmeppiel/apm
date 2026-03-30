@@ -11,10 +11,6 @@ from ...constants import APM_DIR, APM_MODULES_DIR, APM_YML_FILENAME, SKILL_MD_FI
 from ...models.apm_package import APMPackage, ValidationResult, validate_apm_package
 from ...core.command_logger import CommandLogger
 
-# Import APM dependency system components (with fallback)
-from ...deps.github_downloader import GitHubPackageDownloader
-from ...deps.apm_resolver import APMDependencyResolver
-
 from ._utils import (
     _is_nested_under_package,
     _count_primitives,
@@ -23,8 +19,6 @@ from ._utils import (
     _get_detailed_context_counts,
     _get_package_display_info,
     _get_detailed_package_info,
-    _update_single_package,
-    _update_all_packages,
 )
 
 
@@ -443,43 +437,175 @@ def clean(dry_run: bool, yes: bool):
         sys.exit(1)
 
 
-@deps.command(help="Update APM dependencies")
-@click.argument('package', required=False)
-def update(package: Optional[str]):
-    """Update specific package or all if no package specified."""
-    logger = CommandLogger("deps-update")
+@deps.command(help="Update APM dependencies to latest refs")
+@click.argument("packages", nargs=-1)
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed update information")
+@click.option(
+    "--force", is_flag=True,
+    help="Overwrite locally-authored files on collision",
+)
+@click.option(
+    "--target", "-t",
+    type=click.Choice(
+        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        case_sensitive=False,
+    ),
+    default=None,
+    help="Force deployment to a specific target (overrides auto-detection)",
+)
+@click.option(
+    "--parallel-downloads",
+    type=int,
+    default=4,
+    show_default=True,
+    help="Max concurrent package downloads (0 to disable parallelism)",
+)
+def update(packages, verbose, force, target, parallel_downloads):
+    """Update APM dependencies to latest git refs.
 
-    project_root = Path(".")
-    apm_modules_path = project_root / APM_MODULES_DIR
-    
-    if not apm_modules_path.exists():
-        logger.progress("No apm_modules/ directory found - no packages to update")
-        return
-    
-    # Get project dependencies to validate updates
+    Re-resolves git references (branches/tags) to their current SHAs,
+    downloads updated content, re-integrates primitives, and regenerates
+    the lockfile.
+
+    \b
+    Examples:
+        apm deps update                    # Update all packages
+        apm deps update org/repo           # Update one package
+        apm deps update org/a org/b        # Update specific packages
+        apm deps update --verbose          # Show detailed progress
+    """
+    from ..install import (
+        _install_apm_dependencies,
+        APM_DEPS_AVAILABLE,
+        _APM_IMPORT_ERROR,
+    )
+    from ...core.command_logger import InstallLogger
+    from ...core.auth import AuthResolver
+
+    logger = InstallLogger(verbose=verbose, partial=bool(packages))
+
+    if not APM_DEPS_AVAILABLE:
+        logger.error("APM dependency system not available")
+        if _APM_IMPORT_ERROR:
+            logger.progress(f"Import error: {_APM_IMPORT_ERROR}")
+        sys.exit(1)
+
+    project_root = Path.cwd()
+    apm_yml_path = project_root / APM_YML_FILENAME
+
+    if not apm_yml_path.exists():
+        logger.error(f"No {APM_YML_FILENAME} found in current directory")
+        sys.exit(1)
+
     try:
-        apm_yml_path = project_root / APM_YML_FILENAME
-        if not apm_yml_path.exists():
-            logger.error(f"No {APM_YML_FILENAME} found in current directory")
-            return
-            
-        project_package = APMPackage.from_apm_yml(apm_yml_path)
-        project_deps = project_package.get_apm_dependencies()
-        
-        if not project_deps:
-            logger.progress("No APM dependencies defined in apm.yml")
-            return
-            
+        apm_package = APMPackage.from_apm_yml(apm_yml_path)
     except Exception as e:
-        logger.error(f"Error reading {APM_YML_FILENAME}: {e}")
+        logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
+        sys.exit(1)
+
+    all_deps = apm_package.get_apm_dependencies() + apm_package.get_dev_apm_dependencies()
+    if not all_deps:
+        logger.progress("No APM dependencies defined in apm.yml")
         return
-    
-    if package:
-        # Update specific package
-        _update_single_package(package, project_deps, apm_modules_path, logger=logger)
+
+    # Validate requested packages exist in manifest
+    only_pkgs = None
+    if packages:
+        only_pkgs = list(packages)
+        known_keys = set()
+        for dep in all_deps:
+            known_keys.add(dep.get_unique_key())
+            known_keys.add(dep.get_display_name())
+            known_keys.add(dep.repo_url)
+            if hasattr(dep, "alias") and dep.alias:
+                known_keys.add(dep.alias)
+            parts = dep.repo_url.split("/")
+            if len(parts) >= 2:
+                known_keys.add(parts[-1])
+
+        for pkg in only_pkgs:
+            if pkg not in known_keys:
+                available = ", ".join(dep.get_display_name() for dep in all_deps)
+                logger.error(f"Package '{pkg}' not found in {APM_YML_FILENAME}")
+                logger.progress(f"Available: {available}")
+                sys.exit(1)
+
+    # Snapshot old lockfile SHAs for before/after diff
+    from ...deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
+
+    lockfile_path = get_lockfile_path(project_root)
+    old_lockfile = LockFile.read(lockfile_path)
+    old_shas: dict = {}
+    if old_lockfile:
+        for key, dep in old_lockfile.dependencies.items():
+            old_shas[key] = dep.resolved_commit
+
+    migrate_lockfile_if_needed(project_root)
+
+    auth_resolver = AuthResolver()
+
+    if packages:
+        noun = f"{len(packages)} package(s)"
     else:
-        # Update all packages
-        _update_all_packages(project_deps, apm_modules_path, logger=logger)
+        noun = f"all {len(all_deps)} dependencies"
+    logger.start(f"Updating {noun}...")
+
+    try:
+        install_result = _install_apm_dependencies(
+            apm_package,
+            update_refs=True,
+            verbose=verbose,
+            only_packages=only_pkgs,
+            force=force,
+            parallel_downloads=parallel_downloads,
+            logger=logger,
+            auth_resolver=auth_resolver,
+            target=target,
+        )
+    except Exception as e:
+        logger.error(f"Update failed: {e}")
+        if not verbose:
+            logger.progress("Run with --verbose for detailed diagnostics")
+        sys.exit(1)
+
+    # Show diagnostics if any
+    if install_result.diagnostics and install_result.diagnostics.has_diagnostics:
+        install_result.diagnostics.render_summary()
+
+    # Compare old vs new lockfile SHAs to show what changed
+    new_lockfile = LockFile.read(lockfile_path)
+    changed: list = []
+    if new_lockfile:
+        for key, dep in new_lockfile.dependencies.items():
+            old_sha = old_shas.get(key)
+            new_sha = dep.resolved_commit
+            if old_sha and new_sha and old_sha != new_sha:
+                changed.append(
+                    (key, old_sha[:8], new_sha[:8], dep.resolved_ref or "")
+                )
+
+    error_count = 0
+    if install_result.diagnostics:
+        try:
+            error_count = int(install_result.diagnostics.error_count)
+        except (TypeError, ValueError):
+            error_count = 0
+
+    if changed:
+        pkg_noun = "package" if len(changed) == 1 else "packages"
+        if error_count > 0:
+            logger.warning(
+                f"Updated {len(changed)} {pkg_noun} with {error_count} error(s)."
+            )
+        else:
+            logger.success(f"Updated {len(changed)} {pkg_noun}:")
+        for key, old_sha, new_sha, ref in changed:
+            ref_str = f" ({ref})" if ref else ""
+            click.echo(f"  {key}{ref_str}: {old_sha} -> {new_sha}")
+    elif error_count > 0:
+        logger.error(f"Update failed with {error_count} error(s).")
+    else:
+        logger.success("All packages already at latest refs.")
 
 
 @deps.command(help="Show detailed package information")

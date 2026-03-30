@@ -717,22 +717,38 @@ apm deps clean --yes
 
 #### `apm deps update` - Update APM dependencies
 
-Update installed APM dependencies to their latest versions.
+Re-resolve git references to their latest commits, download updated content,
+re-integrate primitives, and regenerate the lockfile.
 
 ```bash
-apm deps update [PACKAGE]
+apm deps update [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGE` - Optional. Update specific package only
+- `PACKAGES` - Optional. One or more packages to update. Omit to update all.
+
+**Options:**
+- `--verbose, -v` - Show detailed update information
+- `--force` - Overwrite locally-authored files on collision
+- `--target, -t` - Force deployment to a specific target (copilot, claude, cursor, opencode, vscode, agents, all)
+- `--parallel-downloads` - Max concurrent downloads (default: 4)
 
 **Examples:**
 ```bash
-# Update all APM dependencies to latest versions
+# Update all APM dependencies to latest refs
 apm deps update
 
-# Update specific package to latest version
+# Update a specific package
 apm deps update compliance-rules
+
+# Update multiple packages
+apm deps update org/pkg-a org/pkg-b
+
+# Update with verbose output
+apm deps update --verbose
+
+# Force overwrite local files on collision
+apm deps update --force
 ```
 
 ### `apm mcp` - Browse MCP server registry
