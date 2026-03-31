@@ -51,7 +51,8 @@ APM copies skills to every detected target directory:
 | **No SKILL.md and no primitives** | No skill folder created |
 
 **Target Detection:**
-- Recognized directories: `.github/`, `.claude/`, `.cursor/`, `.opencode/`
+- Recognized directories: `.github/`, `.claude/`, `.cursor/`, `.opencode/`, `.codex/`
+- Codex skills deploy to `.agents/skills/` (agent skills standard directory), not `.codex/skills/`
 - If none exist, `.github/` is created as the fallback
 - Override with `--target`
 
@@ -293,7 +294,7 @@ APM automatically detects package types:
 
 ## Target Detection
 
-APM deploys skills to every target directory that already exists: `.github/`, `.claude/`, `.cursor/`, `.opencode/`. If none exist, `.github/` is created as the fallback.
+APM deploys skills to every target directory that already exists: `.github/`, `.claude/`, `.cursor/`, `.opencode/`. For Codex (`.codex/`), skills deploy to `.agents/skills/` instead. If no target directories exist, `.github/` is created as the fallback.
 
 Override with:
 ```bash

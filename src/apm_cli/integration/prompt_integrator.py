@@ -90,8 +90,7 @@ class PromptIntegrator(BaseIntegrator):
         if not mapping:
             return IntegrationResult(0, 0, 0, [])
 
-        target_root = project_root / target.root_dir
-        if not target.auto_create and not target_root.is_dir():
+        if not target.auto_create and not (project_root / target.root_dir).is_dir():
             return IntegrationResult(0, 0, 0, [])
 
         return self.integrate_package_prompts(
@@ -111,8 +110,9 @@ class PromptIntegrator(BaseIntegrator):
         mapping = target.primitives.get("prompts")
         if not mapping:
             return {"files_removed": 0, "errors": 0}
-        prefix = f"{target.root_dir}/{mapping.subdir}/"
-        legacy_dir = project_root / target.root_dir / mapping.subdir
+        effective_root = mapping.deploy_root or target.root_dir
+        prefix = f"{effective_root}/{mapping.subdir}/"
+        legacy_dir = project_root / effective_root / mapping.subdir
         return self.sync_remove_files(
             project_root,
             managed_files,

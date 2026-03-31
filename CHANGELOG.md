@@ -8,9 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-03-31
+
+### Fixed
+
+- `apm install NAME@MARKETPLACE` now respects `metadata.pluginRoot` from marketplace manifests, fixing resolution of bare-name plugins in marketplaces like `awesome-copilot` (#512)
+- Windows unit test assertion tolerates Rich console line-wrapping on long temp paths (#510)
+- Release validation scripts match updated `apm deps list` scope output (#510)
+
+## [0.8.8] - 2026-03-31
+
+### Added
+
+- `apm install -g/--global` for user-scope package installation with per-target support matrix and `apm uninstall -g` lifecycle (#452)
+- Marketplace integration: `apm install NAME@MARKETPLACE` syntax, `apm marketplace add/list/browse/update/remove`, `apm search` across registered marketplaces (#503)
+- Codex as integration target: skills to `.agents/skills/`, agents to `.codex/agents/*.toml`, hooks to `.codex/hooks.json`, `--target codex` on install/compile/pack (#504)
+- Lockfile-driven reproducible installs for registry proxies with `content_hash` verification and `RegistryConfig` -- by @chkp-roniz (#401)
+
 ### Changed
 
-- `apm deps update` now skips download and integration for packages whose resolved SHA matches the lockfile SHA, making the common "nothing changed" case near-instant (#495)
+- `apm deps update` skips download when resolved SHA matches lockfile SHA, making the common "nothing changed" case near-instant (#500)
+
+### Fixed
+
+- `apm install -g ./local-pkg` rejects local path dependencies at user scope with a clear error (#452)
+- Orphan documentation pages (`ci-policy-setup`, `policy-reference`) added to sidebar navigation; stale GitHub Rulesets content updated (#505, #507)
 
 ## [0.8.7] - 2026-03-30
 
@@ -39,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `apm install --target` flag to force deployment to a specific target (copilot, claude, cursor, opencode, all) (#456)
+- Global `apm install --global` / `-g` and `apm uninstall --global` flags for user-scope package installation, backed by `InstallScope`-based scope resolution in `core/scope.py`; deploys primitives to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, `~/.config/opencode/` and tracks metadata under `~/.apm/` (#452)
 
 ### Fixed
 

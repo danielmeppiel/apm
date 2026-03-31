@@ -36,6 +36,8 @@ class LockedDependency:
     local_path: Optional[str] = None  # Original local path (relative to project root)
     content_hash: Optional[str] = None  # SHA-256 of package file tree
     is_dev: bool = False  # True for devDependencies
+    discovered_via: Optional[str] = None  # Marketplace name (provenance)
+    marketplace_plugin_name: Optional[str] = None  # Plugin name in marketplace
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
@@ -78,6 +80,10 @@ class LockedDependency:
             result["content_hash"] = self.content_hash
         if self.is_dev:
             result["is_dev"] = True
+        if self.discovered_via:
+            result["discovered_via"] = self.discovered_via
+        if self.marketplace_plugin_name:
+            result["marketplace_plugin_name"] = self.marketplace_plugin_name
         return result
 
     @classmethod
@@ -114,6 +120,8 @@ class LockedDependency:
             local_path=data.get("local_path"),
             content_hash=data.get("content_hash"),
             is_dev=data.get("is_dev", False),
+            discovered_via=data.get("discovered_via"),
+            marketplace_plugin_name=data.get("marketplace_plugin_name"),
         )
 
     @classmethod

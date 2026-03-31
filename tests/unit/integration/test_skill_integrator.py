@@ -3035,3 +3035,61 @@ class TestCursorSkillIntegration:
         ).read_text()
         assert "# Version 2" in cursor_content
         assert "# Version 1" not in cursor_content
+
+
+class TestCodexSkillDeployRoot:
+    """Tests for Codex skill deployment to .agents/skills/ via deploy_root."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.root = Path(self.temp_dir)
+        (self.root / ".codex").mkdir()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_codex_skills_deploy_to_agents_dir(self):
+        """Codex skills deploy to .agents/skills/ not .codex/skills/."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        # Create a minimal skill package
+        skill_dir = self.root / "apm_modules" / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\nSkill content.\n")
+
+        pi = Mock()
+        pi.install_path = skill_dir
+        pi.package = Mock()
+        pi.package.name = "my-skill"
+        pi.package_type = PackageType.CLAUDE_SKILL
+
+        targets = [KNOWN_TARGETS["codex"]]
+        deployed = copy_skill_to_target(pi, skill_dir, self.root, targets=targets)
+
+        assert len(deployed) == 1
+        # Skill deployed to .agents/skills/ not .codex/skills/
+        assert ".agents" in str(deployed[0])
+        assert (self.root / ".agents" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert not (self.root / ".codex" / "skills").exists()
+
+    def test_other_targets_still_deploy_to_own_root(self):
+        """Copilot skills still deploy to .github/skills/."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        (self.root / ".github").mkdir()
+        skill_dir = self.root / "apm_modules" / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\nSkill content.\n")
+
+        pi = Mock()
+        pi.install_path = skill_dir
+        pi.package = Mock()
+        pi.package.name = "my-skill"
+        pi.package_type = PackageType.CLAUDE_SKILL
+
+        targets = [KNOWN_TARGETS["copilot"]]
+        deployed = copy_skill_to_target(pi, skill_dir, self.root, targets=targets)
+
+        assert len(deployed) == 1
+        assert ".github" in str(deployed[0])
+        assert (self.root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
