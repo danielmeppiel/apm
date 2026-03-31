@@ -6,17 +6,17 @@ air-gapped and enterprise-proxy installs.
 
 Environment variables (canonical)::
 
-    PROXY_REGISTRY_URL      – Full proxy base URL, e.g.
+    PROXY_REGISTRY_URL      -- Full proxy base URL, e.g.
                             ``https://art.example.com/artifactory/github``
-    PROXY_REGISTRY_TOKEN    – Bearer token for the proxy.
-    PROXY_REGISTRY_ONLY     – Set to ``1``/``true``/``yes`` to block all
+    PROXY_REGISTRY_TOKEN    -- Bearer token for the proxy.
+    PROXY_REGISTRY_ONLY     -- Set to ``1``/``true``/``yes`` to block all
                             direct VCS downloads.
 
 Deprecated aliases (still functional, emit ``DeprecationWarning``)::
 
-    ARTIFACTORY_BASE_URL  → PROXY_REGISTRY_URL
-    ARTIFACTORY_APM_TOKEN → PROXY_REGISTRY_TOKEN
-    ARTIFACTORY_ONLY      → PROXY_REGISTRY_ONLY
+    ARTIFACTORY_BASE_URL  -> PROXY_REGISTRY_URL
+    ARTIFACTORY_APM_TOKEN -> PROXY_REGISTRY_TOKEN
+    ARTIFACTORY_ONLY      -> PROXY_REGISTRY_ONLY
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ class RegistryConfig:
     token:
         Optional Bearer token for authenticating against the proxy.
     enforce_only:
-        When ``True``, direct VCS downloads are blocked — only the proxy
+        When ``True``, direct VCS downloads are blocked -- only the proxy
         may serve packages.
     """
 
@@ -194,7 +194,7 @@ def is_enforce_only() -> bool:
 
     Checks ``PROXY_REGISTRY_ONLY`` first; falls back to the deprecated
     ``ARTIFACTORY_ONLY``.  Does **not** require a full :class:`RegistryConfig`
-    to be available — callers that only need the flag (e.g.
+    to be available -- callers that only need the flag (e.g.
     :class:`~apm_cli.deps.github_downloader.GitHubPackageDownloader`) can
     use this without constructing the full config.
     """

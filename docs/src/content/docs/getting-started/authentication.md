@@ -165,12 +165,12 @@ Air-gapped environments route all VCS traffic through a JFrog Artifactory proxy.
 |----------|---------|
 | `PROXY_REGISTRY_URL` | Full proxy base URL, e.g. `https://art.example.com/artifactory/github` |
 | `PROXY_REGISTRY_TOKEN` | Bearer token for the proxy |
-| `PROXY_REGISTRY_ONLY` | Set to `1` to block all direct VCS access — only proxy downloads allowed |
+| `PROXY_REGISTRY_ONLY` | Set to `1` to block all direct VCS access -- only proxy downloads allowed |
 
 ```bash
 export PROXY_REGISTRY_URL=https://art.example.com/artifactory/github
 export PROXY_REGISTRY_TOKEN=your_bearer_token
-export PROXY_REGISTRY_ONLY=1    # optional — enforces proxy-only mode
+export PROXY_REGISTRY_ONLY=1    # optional -- enforces proxy-only mode
 
 apm install
 ```
@@ -184,7 +184,7 @@ After a successful proxy install, `apm.lock.yaml` records the proxy host and pat
 ```yaml
 dependencies:
   - repo_url: owner/repo
-    host: art.example.com        # pure FQDN — no path
+    host: art.example.com        # pure FQDN -- no path
     registry_prefix: artifactory/github  # path prefix
     resolved_commit: abc123def456
 ```

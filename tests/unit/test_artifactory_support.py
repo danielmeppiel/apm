@@ -851,7 +851,7 @@ class TestArtifactoryOnlyMode:
                 dl.download_package("microsoft/some-package", Path("/tmp/test-pkg"))
 
 
-# ── RegistryConfig: FQDN / prefix split and generic registry ──
+# -- RegistryConfig: FQDN / prefix split and generic registry --
 
 
 class TestRegistryConfig:
@@ -926,7 +926,7 @@ class TestRegistryConfig:
         assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
 
     def test_registry_config_lockfile_round_trip(self):
-        """host and registry_prefix survive YAML write → read round trip."""
+        """host and registry_prefix survive YAML write -> read round trip."""
         from apm_cli.deps.lockfile import LockedDependency, LockFile
         from apm_cli.deps.registry_proxy import RegistryConfig
 
@@ -951,7 +951,7 @@ class TestRegistryConfig:
         assert dep2.registry_prefix == "artifactory/github"
 
 
-# ── drift.py: build_download_ref with registry_prefix ──
+# -- drift.py: build_download_ref with registry_prefix --
 
 
 class TestBuildDownloadRefRegistryPrefix:
@@ -1036,14 +1036,14 @@ class TestBuildDownloadRefRegistryPrefix:
         assert ref is dep  # --update returns original dep_ref unchanged
 
 
-# ── RegistryConfig.validate_lockfile_deps: conflict detection ──
+# -- RegistryConfig.validate_lockfile_deps: conflict detection --
 
 
 class TestRegistryOnlyConflictDetection:
     """Test validate_lockfile_deps uses classify_host for accurate conflict detection."""
 
     def test_github_com_dep_is_a_conflict(self):
-        """github.com host is a direct VCS source → conflict when enforce_only=True."""
+        """github.com host is a direct VCS source -> conflict when enforce_only=True."""
         from apm_cli.deps.lockfile import LockedDependency, LockFile
         from apm_cli.deps.registry_proxy import RegistryConfig
 
@@ -1123,7 +1123,7 @@ class TestRegistryOnlyConflictDetection:
         assert cfg.validate_lockfile_deps([locked]) == []
 
 
-# ── RegistryConfig.find_missing_hashes: supply chain integrity ──
+# -- RegistryConfig.find_missing_hashes: supply chain integrity --
 
 
 class TestFindMissingHashes:

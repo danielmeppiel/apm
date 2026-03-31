@@ -33,7 +33,7 @@ class InstalledPackage:
         The exact commit SHA that was installed, or ``None`` for local / Artifactory
         packages where no commit is available.
     depth:
-        Dependency tree depth (1 = direct, 2 = transitive, …).
+        Dependency tree depth (1 = direct, 2 = transitive, ...).
     resolved_by:
         ``repo_url`` of the parent that introduced this dependency, or ``None``
         for direct dependencies.
