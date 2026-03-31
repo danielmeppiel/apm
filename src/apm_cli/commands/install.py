@@ -123,14 +123,54 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     # First, validate all packages
     valid_outcomes = []  # (canonical, already_present) tuples
     invalid_outcomes = []  # (package, reason) tuples
+    _marketplace_provenance = {}  # canonical -> {discovered_via, marketplace_plugin_name}
 
     if logger:
         logger.validation_start(len(packages))
 
     for package in packages:
+        # --- Marketplace pre-parse intercept ---
+        # If input matches NAME@MARKETPLACE (no slashes, no colons), resolve
+        # via the marketplace registry before the standard parse path.
+        marketplace_provenance = None
+        if "/" not in package and not DependencyReference.is_local_path(package):
+            try:
+                from ..marketplace.resolver import (
+                    parse_marketplace_ref,
+                    resolve_marketplace_plugin,
+                )
+
+                mkt_ref = parse_marketplace_ref(package)
+                if mkt_ref is not None:
+                    plugin_name, marketplace_name = mkt_ref
+                    if logger:
+                        logger.verbose_detail(
+                            f"    Resolving {plugin_name}@{marketplace_name} via marketplace..."
+                        )
+                    canonical_str, resolved_plugin = resolve_marketplace_plugin(
+                        plugin_name,
+                        marketplace_name,
+                        auth_resolver=auth_resolver,
+                    )
+                    if logger:
+                        logger.verbose_detail(
+                            f"    Resolved to: {canonical_str}"
+                        )
+                    marketplace_provenance = {
+                        "discovered_via": marketplace_name,
+                        "marketplace_plugin_name": plugin_name,
+                    }
+                    package = canonical_str
+            except Exception as mkt_err:
+                reason = str(mkt_err)
+                invalid_outcomes.append((package, reason))
+                if logger:
+                    logger.validation_fail(package, reason)
+                continue
+
         # Validate package format (should be owner/repo, a git URL, or a local path)
         if "/" not in package and not DependencyReference.is_local_path(package):
-            reason = "invalid format -- use 'owner/repo'"
+            reason = "invalid format -- use 'owner/repo' or 'plugin-name@marketplace'"
             invalid_outcomes.append((package, reason))
             if logger:
                 logger.validation_fail(package, reason)
@@ -161,6 +201,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if not already_in_deps:
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
+            if marketplace_provenance:
+                _marketplace_provenance[canonical] = marketplace_provenance
         else:
             reason = _local_path_failure_reason(dep_ref)
             if not reason:
@@ -171,7 +213,11 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if logger:
                 logger.validation_fail(package, reason)
 
-    outcome = _ValidationOutcome(valid=valid_outcomes, invalid=invalid_outcomes)
+    outcome = _ValidationOutcome(
+        valid=valid_outcomes,
+        invalid=invalid_outcomes,
+        marketplace_provenance=_marketplace_provenance or None,
+    )
 
     # Let the logger emit a summary and decide whether to continue
     if logger:
@@ -700,6 +746,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     logger=logger,
                     auth_resolver=auth_resolver,
                     target=target,
+                    marketplace_provenance=(
+                        outcome.marketplace_provenance if packages and outcome else None
+                    ),
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -1023,6 +1072,7 @@ def _install_apm_dependencies(
     logger: "InstallLogger" = None,
     auth_resolver: "AuthResolver" = None,
     target: str = None,
+    marketplace_provenance: dict = None,
 ):
     """Install APM package dependencies.
 
@@ -2158,6 +2208,12 @@ def _install_apm_dependencies(
                 for dep_key, locked_dep in lockfile.dependencies.items():
                     if dep_key in _package_hashes:
                         locked_dep.content_hash = _package_hashes[dep_key]
+                # Attach marketplace provenance if available
+                if marketplace_provenance:
+                    for canonical, prov in marketplace_provenance.items():
+                        if canonical in lockfile.dependencies:
+                            lockfile.dependencies[canonical].discovered_via = prov.get("discovered_via")
+                            lockfile.dependencies[canonical].marketplace_plugin_name = prov.get("marketplace_plugin_name")
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).
