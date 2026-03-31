@@ -10,9 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support Codex CLI as integration target with skills (`.agents/skills/`), agents (`.codex/agents/*.toml`), and hooks (`.codex/hooks.json`)
-- Add `deploy_root` field to `PrimitiveMapping` for cross-root primitive deployment
-- Add `--target codex` to install, compile, and pack commands
+- Support Codex CLI as integration target with skills (`.agents/skills/`), agents (`.codex/agents/*.toml`), and hooks (`.codex/hooks.json`) (#504)
+- Add `deploy_root` field to `PrimitiveMapping` for cross-root primitive deployment (#504)
+- Add `--target codex` to install, compile, and pack commands (#504)
 
 ### Changed
 

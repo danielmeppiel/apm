@@ -161,7 +161,7 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
     ),
     # Codex CLI: skills use the cross-tool .agents/ dir (agent skills standard),
     # agents are TOML under .codex/agents/, hooks merge into .codex/hooks.json.
-    # Instructions are compile-only (AGENTS.md) — not installed.
+    # Instructions are compile-only (AGENTS.md) -- not installed.
     "codex": TargetProfile(
         name="codex",
         root_dir=".codex",

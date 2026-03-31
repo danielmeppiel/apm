@@ -208,21 +208,25 @@ class BaseIntegrator:
         hook_tuple = tuple(hook_prefixes)
 
         # Single O(M) pass -- each path is routed in O(1)
+        # Component_map is checked first: it holds specific (root, subdir)
+        # pairs and takes priority over broad prefix matching.  This prevents
+        # catch-all hook prefixes (e.g. ".codex/") from swallowing paths
+        # that belong to a more specific bucket (e.g. ".codex/agents/").
         for p in managed_files:
+            slash1 = p.find("/")
+            if slash1 > 0:
+                slash2 = p.find("/", slash1 + 1)
+                if slash2 > 0:
+                    bkey = component_map.get(
+                        (p[:slash1], p[slash1 + 1 : slash2])
+                    )
+                    if bkey:
+                        buckets[bkey].add(p)
+                        continue
             if p.startswith(skill_tuple):
                 buckets["skills"].add(p)
             elif p.startswith(hook_tuple):
                 buckets["hooks"].add(p)
-            else:
-                slash1 = p.find("/")
-                if slash1 > 0:
-                    slash2 = p.find("/", slash1 + 1)
-                    if slash2 > 0:
-                        bkey = component_map.get(
-                            (p[:slash1], p[slash1 + 1 : slash2])
-                        )
-                        if bkey:
-                            buckets[bkey].add(p)
 
         return buckets
 

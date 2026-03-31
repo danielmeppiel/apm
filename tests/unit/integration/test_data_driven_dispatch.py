@@ -495,9 +495,9 @@ class TestCodexPartitionRouting:
         }
         buckets = BaseIntegrator.partition_managed_files(managed)
         assert ".agents/skills/my-skill/SKILL.md" in buckets["skills"]
-        # Codex hooks mapping has empty subdir, so .codex/ is a
-        # catch-all hook prefix -- both agents and hooks route there.
-        assert ".codex/agents/my-agent.toml" in buckets["hooks"]
+        # Codex agents under .codex/agents/ route to the agents_codex bucket.
+        assert ".codex/agents/my-agent.toml" in buckets["agents_codex"]
+        # Only true Codex hook paths route to the hooks bucket.
         assert ".codex/hooks/pkg/script.sh" in buckets["hooks"]
 
 

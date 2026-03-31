@@ -936,8 +936,11 @@ class SkillIntegrator(BaseIntegrator):
             stats['errors'] += result['errors']
         
         # Clean .agents/skills/ (cross-tool agent skills standard, used by Codex)
+        # Only clean if .codex/ exists -- .agents/ is cross-tool, so we must
+        # not delete skills managed by other tools when Codex is not active.
+        codex_dir = project_root / ".codex"
         agents_skills_dir = project_root / ".agents" / "skills"
-        if agents_skills_dir.exists():
+        if codex_dir.exists() and agents_skills_dir.exists():
             result = self._clean_orphaned_skills(agents_skills_dir, installed_skill_names)
             stats['files_removed'] += result['files_removed']
             stats['errors'] += result['errors']

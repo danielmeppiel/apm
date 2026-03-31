@@ -1479,7 +1479,7 @@ class TestCodexHookIntegration:
             }
 
         hook_file = hooks_dir / "hooks.json"
-        with open(hook_file, 'w') as f:
+        with open(hook_file, 'w', encoding='utf-8') as f:
             json.dump(hook_data, f)
 
         pi = MagicMock()
