@@ -40,16 +40,28 @@ def parse_marketplace_ref(specifier: str) -> Optional[Tuple[str, str]]:
 
 
 def _resolve_github_source(source: dict) -> str:
-    """Resolve a ``github`` source type to ``owner/repo[#ref]``."""
+    """Resolve a ``github`` source type to ``owner/repo[/path][#ref]``.
+
+    Accepts ``path`` field (Copilot CLI format) as a virtual subdirectory.
+    """
     repo = source.get("repo", "")
     ref = source.get("ref", "")
+    path = source.get("path", "").strip("/")
     if not repo or "/" not in repo:
         raise ValueError(
             f"Invalid github source: 'repo' field must be 'owner/repo', got '{repo}'"
         )
+    if path:
+        if ".." in path.split("/"):
+            raise ValueError(
+                f"Invalid github source: 'path' must not contain '..', got '{path}'"
+            )
+        base = f"{repo}/{path}"
+    else:
+        base = repo
     if ref:
-        return f"{repo}#{ref}"
-    return repo
+        return f"{base}#{ref}"
+    return base
 
 
 def _resolve_url_source(source: dict) -> str:
@@ -80,7 +92,7 @@ def _resolve_git_subdir_source(source: dict) -> str:
     """Resolve a ``git-subdir`` source type to ``owner/repo[/subdir][#ref]``."""
     repo = source.get("repo", "")
     ref = source.get("ref", "")
-    subdir = source.get("subdir", "").strip("/")
+    subdir = (source.get("subdir", "") or source.get("path", "")).strip("/")
     if not repo or "/" not in repo:
         raise ValueError(
             f"Invalid git-subdir source: 'repo' must be 'owner/repo', got '{repo}'"

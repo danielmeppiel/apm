@@ -744,8 +744,11 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
             try:
                 # If specific packages were requested, only install those
-                # Otherwise install all from apm.yml
-                only_pkgs = builtins.list(packages) if packages else None
+                # Otherwise install all from apm.yml.
+                # Use validated_packages (canonical strings) instead of
+                # raw packages (which may contain marketplace refs like
+                # NAME@MARKETPLACE that don't match resolved dep identities).
+                only_pkgs = builtins.list(validated_packages) if packages else None
                 install_result = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,

@@ -129,12 +129,16 @@ def _parse_plugin_entry(
             # Relative path source (Claude shorthand)
             source = raw
         elif isinstance(raw, dict):
-            source_type = raw.get("type", "")
+            # Type discriminator: Copilot CLI uses "source" key, Claude uses "type"
+            source_type = raw.get("type", "") or raw.get("source", "")
             if source_type == "npm":
                 logger.debug(
                     "Skipping npm source type for plugin '%s' (unsupported)", name
                 )
                 return None
+            # Normalize: ensure "type" key is set for downstream resolvers
+            if source_type and "type" not in raw:
+                raw = {**raw, "type": source_type}
             source = raw
         else:
             logger.debug(

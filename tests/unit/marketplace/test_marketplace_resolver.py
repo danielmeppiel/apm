@@ -99,6 +99,26 @@ class TestResolveGithubSource:
     def test_without_ref(self):
         assert _resolve_github_source({"repo": "owner/repo"}) == "owner/repo"
 
+    def test_with_path(self):
+        """Copilot CLI format uses 'path' for subdirectory."""
+        result = _resolve_github_source({
+            "repo": "microsoft/azure-skills",
+            "path": ".github/plugins/azure-skills",
+        })
+        assert result == "microsoft/azure-skills/.github/plugins/azure-skills"
+
+    def test_with_path_and_ref(self):
+        result = _resolve_github_source({
+            "repo": "owner/mono",
+            "path": "plugins/foo",
+            "ref": "v2.0",
+        })
+        assert result == "owner/mono/plugins/foo#v2.0"
+
+    def test_path_traversal_rejected(self):
+        with pytest.raises(ValueError, match="must not contain"):
+            _resolve_github_source({"repo": "owner/repo", "path": "../escape"})
+
     def test_invalid_repo(self):
         with pytest.raises(ValueError, match="owner/repo"):
             _resolve_github_source({"repo": "just-a-name"})
@@ -171,6 +191,18 @@ class TestResolvePluginSource:
             source={"type": "github", "repo": "owner/repo", "ref": "v1.0"},
         )
         assert resolve_plugin_source(p) == "owner/repo#v1.0"
+
+    def test_github_source_with_path(self):
+        """Copilot CLI format: github source with 'path' field."""
+        p = MarketplacePlugin(
+            name="azure",
+            source={
+                "type": "github",
+                "repo": "microsoft/azure-skills",
+                "path": ".github/plugins/azure-skills",
+            },
+        )
+        assert resolve_plugin_source(p) == "microsoft/azure-skills/.github/plugins/azure-skills"
 
     def test_url_source(self):
         p = MarketplacePlugin(

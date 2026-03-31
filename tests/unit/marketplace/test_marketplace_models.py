@@ -249,6 +249,45 @@ class TestParseMarketplaceJson:
         manifest = parse_marketplace_json(data)
         assert len(manifest.plugins) == 0
 
+    def test_copilot_cli_source_key_as_type(self):
+        """Copilot CLI format uses 'source' (not 'type') as type discriminator inside dict."""
+        data = {
+            "name": "Awesome Copilot",
+            "plugins": [
+                {
+                    "name": "azure",
+                    "description": "Azure skills",
+                    "source": {
+                        "source": "github",
+                        "repo": "microsoft/azure-skills",
+                        "path": ".github/plugins/azure-skills",
+                    },
+                }
+            ],
+        }
+        manifest = parse_marketplace_json(data, "awesome-copilot")
+        assert len(manifest.plugins) == 1
+        p = manifest.plugins[0]
+        assert p.name == "azure"
+        # Parser should normalize "source" key to "type" key
+        assert p.source["type"] == "github"
+        assert p.source["repo"] == "microsoft/azure-skills"
+        assert p.source["path"] == ".github/plugins/azure-skills"
+
+    def test_npm_via_source_key_skipped(self):
+        """npm source type should be skipped even when using 'source' key."""
+        data = {
+            "name": "Test",
+            "plugins": [
+                {
+                    "name": "npm-plugin",
+                    "source": {"source": "npm", "package": "@scope/pkg"},
+                }
+            ],
+        }
+        manifest = parse_marketplace_json(data)
+        assert len(manifest.plugins) == 0
+
     def test_invalid_entries_skipped(self):
         data = {
             "name": "Test",
