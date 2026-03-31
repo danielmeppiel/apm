@@ -11,8 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Support Codex CLI as integration target with skills (`.agents/skills/`), agents (`.codex/agents/*.toml`), and hooks (`.codex/hooks.json`) (#504)
-- Add `deploy_root` field to `PrimitiveMapping` for cross-root primitive deployment (#504)
-- Add `--target codex` to install, compile, and pack commands (#504)
+- Marketplace integration for plugin discovery and governance: `apm marketplace add/list/browse/update/remove` commands, `apm search QUERY@MARKETPLACE` scoped search, `apm install NAME@MARKETPLACE` syntax for installing plugins from marketplace registries; lockfile provenance fields `discovered_via` and `marketplace_plugin_name` to track marketplace origin; support for Copilot CLI and Claude Code `marketplace.json` formats with 4 source types (github, url, git-subdir, relative path) (#503)
+
+### Fixed
+
+- `apm install -g ./local-pkg` now rejects local path dependencies at user scope with a clear error instead of silently failing (relative paths resolve against `cwd` during validation but against `$HOME` during copy) (#452)
 
 ### Changed
 
@@ -45,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `apm install --target` flag to force deployment to a specific target (copilot, claude, cursor, opencode, all) (#456)
+- Global `apm install --global` / `-g` and `apm uninstall --global` flags for user-scope package installation, backed by `InstallScope`-based scope resolution in `core/scope.py`; deploys primitives to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, `~/.config/opencode/` and tracks metadata under `~/.apm/` (#452)
 
 ### Fixed
 

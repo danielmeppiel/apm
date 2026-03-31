@@ -62,7 +62,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, auth_resolver=None):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None, auth_resolver=None, scope=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -74,7 +74,9 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         dry_run: If True, only show what would be added.
         dev: If True, write to devDependencies instead of dependencies.
         logger: InstallLogger for structured output.
+        manifest_path: Explicit path to apm.yml (defaults to cwd/apm.yml).
         auth_resolver: Shared auth resolver for caching credentials.
+        scope: InstallScope controlling project vs user deployment.
 
     Returns:
         Tuple of (validated_packages list, _ValidationOutcome).
@@ -83,7 +85,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     import tempfile
     from pathlib import Path
 
-    apm_yml_path = Path(APM_YML_FILENAME)
+    apm_yml_path = manifest_path or Path(APM_YML_FILENAME)
 
     # Read current apm.yml
     try:
@@ -123,18 +125,64 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     # First, validate all packages
     valid_outcomes = []  # (canonical, already_present) tuples
     invalid_outcomes = []  # (package, reason) tuples
+    _marketplace_provenance = {}  # canonical -> {discovered_via, marketplace_plugin_name}
 
     if logger:
         logger.validation_start(len(packages))
 
     for package in packages:
-        # Validate package format (should be owner/repo, a git URL, or a local path)
+        # --- Marketplace pre-parse intercept ---
+        # If input has no slash and is not a local path, check if it is a
+        # marketplace ref (NAME@MARKETPLACE).  If so, resolve it to a
+        # canonical owner/repo[#ref] string before entering the standard
+        # parse path.  Anything that doesn't match is rejected as an
+        # invalid format.
+        marketplace_provenance = None
         if "/" not in package and not DependencyReference.is_local_path(package):
-            reason = "invalid format -- use 'owner/repo'"
-            invalid_outcomes.append((package, reason))
-            if logger:
-                logger.validation_fail(package, reason)
-            continue
+            try:
+                from ..marketplace.resolver import (
+                    parse_marketplace_ref,
+                    resolve_marketplace_plugin,
+                )
+
+                mkt_ref = parse_marketplace_ref(package)
+            except ImportError:
+                mkt_ref = None
+
+            if mkt_ref is not None:
+                plugin_name, marketplace_name = mkt_ref
+                try:
+                    if logger:
+                        logger.verbose_detail(
+                            f"    Resolving {plugin_name}@{marketplace_name} via marketplace..."
+                        )
+                    canonical_str, resolved_plugin = resolve_marketplace_plugin(
+                        plugin_name,
+                        marketplace_name,
+                        auth_resolver=auth_resolver,
+                    )
+                    if logger:
+                        logger.verbose_detail(
+                            f"    Resolved to: {canonical_str}"
+                        )
+                    marketplace_provenance = {
+                        "discovered_via": marketplace_name,
+                        "marketplace_plugin_name": plugin_name,
+                    }
+                    package = canonical_str
+                except Exception as mkt_err:
+                    reason = str(mkt_err)
+                    invalid_outcomes.append((package, reason))
+                    if logger:
+                        logger.validation_fail(package, reason)
+                    continue
+            else:
+                # No slash, not a local path, and not a marketplace ref
+                reason = "invalid format -- use 'owner/repo' or 'plugin-name@marketplace'"
+                invalid_outcomes.append((package, reason))
+                if logger:
+                    logger.validation_fail(package, reason)
+                continue
 
         # Canonicalize input
         try:
@@ -147,6 +195,21 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if logger:
                 logger.validation_fail(package, reason)
             continue
+
+        # Reject local packages at user scope -- relative paths resolve
+        # against cwd during validation but against $HOME during copy,
+        # causing silent failures.
+        if dep_ref.is_local and scope is not None:
+            from ..core.scope import InstallScope
+            if scope is InstallScope.USER:
+                reason = (
+                    "local packages are not supported at user scope (--global). "
+                    "Use a remote reference (owner/repo) instead"
+                )
+                invalid_outcomes.append((package, reason))
+                if logger:
+                    logger.validation_fail(package, reason)
+                continue
 
         # Check if package is already in dependencies (by identity)
         already_in_deps = identity in existing_identities
@@ -161,6 +224,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if not already_in_deps:
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
+            if marketplace_provenance:
+                _marketplace_provenance[identity] = marketplace_provenance
         else:
             reason = _local_path_failure_reason(dep_ref)
             if not reason:
@@ -171,7 +236,11 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if logger:
                 logger.validation_fail(package, reason)
 
-    outcome = _ValidationOutcome(valid=valid_outcomes, invalid=invalid_outcomes)
+    outcome = _ValidationOutcome(
+        valid=valid_outcomes,
+        invalid=invalid_outcomes,
+        marketplace_provenance=_marketplace_provenance or None,
+    )
 
     # Let the logger emit a summary and decide whether to continue
     if logger:
@@ -546,8 +615,14 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
     default=None,
     help="Force deployment to a specific target (overrides auto-detection)",
 )
+@click.option(
+    "--global", "-g", "global_",
+    is_flag=True,
+    default=False,
+    help="Install to user scope (~/.apm/) instead of the current project",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target, global_):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -566,38 +641,63 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm install --only=mcp                  # Install only MCP dependencies
         apm install --update                    # Update dependencies to latest Git refs
         apm install --dry-run                   # Show what would be installed
+        apm install -g org/pkg1                 # Install to user scope (~/.apm/)
     """
     try:
-        # Create structured logger for install output
+        # Create structured logger for install output early so exception
+        # handlers can always reference it (avoids UnboundLocalError if
+        # scope initialisation below throws).
         is_partial = bool(packages)
         logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
+
+        # Resolve scope
+        from ..core.scope import InstallScope, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs, warn_unsupported_user_scope
+        scope = InstallScope.USER if global_ else InstallScope.PROJECT
+
+        if scope is InstallScope.USER:
+            ensure_user_dirs()
+            logger.progress("Installing to user scope (~/.apm/)")
+            _scope_warn = warn_unsupported_user_scope()
+            if _scope_warn:
+                logger.warning(_scope_warn)
+
+        # Scope-aware paths
+        manifest_path = get_manifest_path(scope)
+        apm_dir = get_apm_dir(scope)
+        # Display name for messages (short for project scope, full for user scope)
+        manifest_display = str(manifest_path) if scope is InstallScope.USER else APM_YML_FILENAME
 
         # Create shared auth resolver for all downloads in this CLI invocation
         # to ensure credentials are cached and reused (prevents duplicate auth popups)
         auth_resolver = AuthResolver()
 
         # Check if apm.yml exists
-        apm_yml_exists = Path(APM_YML_FILENAME).exists()
+        apm_yml_exists = manifest_path.exists()
 
         # Auto-bootstrap: create minimal apm.yml when packages specified but no apm.yml
         if not apm_yml_exists and packages:
             # Get current directory name as project name
-            project_name = Path.cwd().name
+            project_name = Path.cwd().name if scope is InstallScope.PROJECT else Path.home().name
             config = _get_default_config(project_name)
-            _create_minimal_apm_yml(config)
-            logger.success(f"Created {APM_YML_FILENAME}")
+            _create_minimal_apm_yml(config, target_path=manifest_path)
+            logger.success(f"Created {manifest_display}")
 
         # Error when NO apm.yml AND NO packages
         if not apm_yml_exists and not packages:
-            logger.error(f"No {APM_YML_FILENAME} found")
-            logger.progress("Run 'apm init' to create one, or:")
-            logger.progress("  apm install <org/repo> to auto-create + install")
+            logger.error(f"No {manifest_display} found")
+            if scope is InstallScope.USER:
+                logger.progress("Run 'apm install -g <org/repo>' to auto-create + install")
+            else:
+                logger.progress("Run 'apm init' to create one, or:")
+                logger.progress("  apm install <org/repo> to auto-create + install")
             sys.exit(1)
 
         # If packages are specified, validate and add them to apm.yml first
         if packages:
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
-                packages, dry_run, dev=dev, logger=logger, auth_resolver=auth_resolver,
+                packages, dry_run, dev=dev, logger=logger,
+                manifest_path=manifest_path, auth_resolver=auth_resolver,
+                scope=scope,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -612,9 +712,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Parse apm.yml to get both APM and MCP dependencies
         try:
-            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
+            apm_package = APMPackage.from_apm_yml(manifest_path)
         except Exception as e:
-            logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to parse {manifest_display}: {e}")
             sys.exit(1)
 
         logger.verbose_detail(
@@ -639,6 +739,13 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # Determine what to install based on install mode
         should_install_apm = install_mode != InstallMode.MCP
         should_install_mcp = install_mode != InstallMode.APM
+        # MCP servers are workspace-scoped (.vscode/mcp.json); skip at user scope
+        if scope is InstallScope.USER:
+            should_install_mcp = False
+            if logger:
+                logger.verbose_detail(
+                    "MCP servers skipped at user scope (workspace-scoped concept)"
+                )
 
         # Show what will be installed if dry run
         if dry_run:
@@ -669,7 +776,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         agent_count = 0
 
         # Migrate legacy apm.lock → apm.lock.yaml if needed (one-time, transparent)
-        migrate_lockfile_if_needed(Path.cwd())
+        migrate_lockfile_if_needed(apm_dir)
 
         # Capture old MCP servers and configs from lockfile BEFORE
         # _install_apm_dependencies regenerates it (which drops the fields).
@@ -677,7 +784,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # field after the lockfile is regenerated by the APM install step.
         old_mcp_servers: builtins.set = builtins.set()
         old_mcp_configs: builtins.dict = {}
-        _lock_path = get_lockfile_path(Path.cwd())
+        _lock_path = get_lockfile_path(apm_dir)
         _existing_lock = LockFile.read(_lock_path)
         if _existing_lock:
             old_mcp_servers = builtins.set(_existing_lock.mcp_servers)
@@ -692,14 +799,21 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
             try:
                 # If specific packages were requested, only install those
-                # Otherwise install all from apm.yml
-                only_pkgs = builtins.list(packages) if packages else None
+                # Otherwise install all from apm.yml.
+                # Use validated_packages (canonical strings) instead of
+                # raw packages (which may contain marketplace refs like
+                # NAME@MARKETPLACE that don't match resolved dep identities).
+                only_pkgs = builtins.list(validated_packages) if packages else None
                 install_result = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    scope=scope,
                     auth_resolver=auth_resolver,
                     target=target,
+                    marketplace_provenance=(
+                        outcome.marketplace_provenance if packages and outcome else None
+                    ),
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -720,9 +834,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             clear_apm_yml_cache()
 
         # Collect transitive MCP dependencies from resolved APM packages
-        apm_modules_path = Path.cwd() / APM_MODULES_DIR
+        apm_modules_path = get_modules_dir(scope)
         if should_install_mcp and apm_modules_path.exists():
-            lock_path = get_lockfile_path(Path.cwd())
+            lock_path = get_lockfile_path(apm_dir)
             transitive_mcp = MCPIntegrator.collect_transitive(
                 apm_modules_path, lock_path, trust_transitive_mcp,
                 diagnostics=apm_diagnostics,
@@ -849,6 +963,7 @@ def _integrate_package_primitives(
     diagnostics,
     package_name="",
     logger=None,
+    scope=None,
 ):
     """Run the full integration pipeline for a single package.
 
@@ -857,8 +972,14 @@ def _integrate_package_primitives(
     Skills are handled separately because ``SkillIntegrator`` already
     routes across all targets internally.
 
+    When *scope* is ``InstallScope.USER``, targets and primitives that
+    do not support user-scope deployment are silently skipped.
+
     Returns a dict with integration counters and the list of deployed file paths.
     """
+    from apm_cli.core.scope import InstallScope
+
+    _user_scope = scope is InstallScope.USER
     result = {
         "prompts": 0,
         "agents": 0,
@@ -890,9 +1011,26 @@ def _integrate_package_primitives(
 
     # --- target x primitive dispatch loop ---
     for _target in targets:
+        # Skip entire target when user scope is not supported
+        if _user_scope and not _target.user_supported:
+            if logger:
+                logger.verbose_detail(
+                    f"Skipping {_target.name} at user scope (not supported)"
+                )
+            continue
+
         for _prim_name, _mapping in _target.primitives.items():
             if _prim_name == "skills":
                 continue  # handled separately below
+
+            # Skip primitives unsupported at user scope
+            if _user_scope and _prim_name in _target.unsupported_user_primitives:
+                if logger:
+                    logger.verbose_detail(
+                        f"Skipping {_prim_name} for {_target.name} "
+                        f"at user scope (not supported)"
+                    )
+                continue
 
             # --- hooks (different return type) ---
             if _prim_name == "hooks":
@@ -1025,8 +1163,10 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    scope=None,
     auth_resolver: "AuthResolver" = None,
     target: str = None,
+    marketplace_provenance: dict = None,
 ):
     """Install APM package dependencies.
 
@@ -1038,11 +1178,16 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        scope: InstallScope controlling project vs user deployment
         auth_resolver: Shared auth resolver for caching credentials
         target: Explicit target override from --target CLI flag
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
+
+    from apm_cli.core.scope import InstallScope, get_deploy_root, get_apm_dir, get_modules_dir
+    if scope is None:
+        scope = InstallScope.PROJECT
 
     apm_deps = apm_package.get_apm_dependencies()
     dev_apm_deps = apm_package.get_dev_apm_dependencies()
@@ -1050,11 +1195,12 @@ def _install_apm_dependencies(
     if not all_apm_deps:
         return InstallResult()
 
-    project_root = Path.cwd()
+    project_root = get_deploy_root(scope)
+    apm_dir = get_apm_dir(scope)
 
     # T5: Check for existing lockfile - use locked versions for reproducible installs
     from apm_cli.deps.lockfile import LockFile, get_lockfile_path
-    lockfile_path = get_lockfile_path(project_root)
+    lockfile_path = get_lockfile_path(apm_dir)
     existing_lockfile = None
     lockfile_count = 0
     if lockfile_path.exists():
@@ -1072,8 +1218,8 @@ def _install_apm_dependencies(
                         _ref = locked_dep.resolved_ref if hasattr(locked_dep, 'resolved_ref') and locked_dep.resolved_ref else ""
                         logger.lockfile_entry(locked_dep.get_unique_key(), ref=_ref, sha=_sha)
 
-    apm_modules_dir = project_root / APM_MODULES_DIR
-    apm_modules_dir.mkdir(exist_ok=True)
+    apm_modules_dir = get_modules_dir(scope)
+    apm_modules_dir.mkdir(parents=True, exist_ok=True)
 
     # Use provided resolver or create new one if not in a CLI session context
     if auth_resolver is None:
@@ -1114,6 +1260,12 @@ def _install_apm_dependencies(
         try:
             # Handle local packages: copy instead of git clone
             if dep_ref.is_local and dep_ref.local_path:
+                if scope is InstallScope.USER:
+                    # Cannot resolve local paths at user scope
+                    callback_failures[dep_ref.get_unique_key()] = (
+                        f"local package '{dep_ref.local_path}' skipped at user scope"
+                    )
+                    return None
                 result_path = _copy_local_package(dep_ref, install_path, project_root)
                 if result_path:
                     callback_downloaded[dep_ref.get_unique_key()] = None
@@ -1286,16 +1438,42 @@ def _install_apm_dependencies(
         # Determine active targets.  When --target or apm.yml target is set
         # the user's choice wins.  Otherwise auto-detect from existing dirs,
         # falling back to copilot when nothing is found.
-        from apm_cli.integration.targets import active_targets as _active_targets
+        from apm_cli.integration.targets import (
+            active_targets as _active_targets,
+            active_targets_user_scope as _active_targets_user,
+        )
 
-        _targets = _active_targets(project_root, explicit_target=_explicit)
+        _is_user = scope is InstallScope.USER
+        if _is_user:
+            _targets = _active_targets_user(explicit_target=_explicit)
+        else:
+            _targets = _active_targets(project_root, explicit_target=_explicit)
+
+        # Log target detection results
+        if logger and _targets:
+            _scope_label = "global" if _is_user else "project"
+            _target_names = ", ".join(
+                f"{t.name} (~/{t.effective_root(user_scope=_is_user)}/)"
+                if _is_user else t.name
+                for t in _targets
+            )
+            logger.verbose_detail(
+                f"Active {_scope_label} targets: {_target_names}"
+            )
+            if _is_user:
+                from apm_cli.deps.lockfile import get_lockfile_path
+                logger.verbose_detail(
+                    f"Lockfile: {get_lockfile_path(apm_dir)}"
+                )
+
         for _t in _targets:
-            _target_dir = project_root / _t.root_dir
+            _root = _t.effective_root(user_scope=_is_user)
+            _target_dir = project_root / _root
             if not _target_dir.exists():
                 _target_dir.mkdir(parents=True, exist_ok=True)
                 if logger:
                     logger.verbose_detail(
-                        f"Created {_t.root_dir}/ ({_t.name} target)"
+                        f"Created {_root}/ ({_t.name} target)"
                     )
 
         detected_target, detection_reason = detect_target(
@@ -1346,7 +1524,7 @@ def _install_apm_dependencies(
 
         # Build managed_files from existing lockfile for collision detection
         managed_files = builtins.set()
-        existing_lockfile = LockFile.read(get_lockfile_path(project_root)) if project_root else None
+        existing_lockfile = LockFile.read(get_lockfile_path(apm_dir)) if apm_dir else None
         if existing_lockfile:
             for dep in existing_lockfile.dependencies.values():
                 managed_files.update(dep.deployed_files)
@@ -1539,6 +1717,23 @@ def _install_apm_dependencies(
 
                 # --- Local package: copy from filesystem (no git download) ---
                 if dep_ref.is_local and dep_ref.local_path:
+                    # User scope: relative paths would resolve against $HOME
+                    # instead of cwd, producing wrong results.  Skip with a
+                    # clear diagnostic rather than silently failing.
+                    if scope is InstallScope.USER:
+                        diagnostics.warn(
+                            f"Skipped local package '{dep_ref.local_path}' "
+                            "-- local paths are not supported at user scope (--global). "
+                            "Use a remote reference (owner/repo) instead.",
+                            package=dep_ref.local_path,
+                        )
+                        if logger:
+                            logger.verbose_detail(
+                                f"  Skipping {dep_ref.local_path} (local packages "
+                                "resolve against cwd, not $HOME)"
+                            )
+                        continue
+
                     result_path = _copy_local_package(dep_ref, install_path, project_root)
                     if not result_path:
                         diagnostics.error(
@@ -1644,6 +1839,7 @@ def _install_apm_dependencies(
                             diagnostics=diagnostics,
                             package_name=dep_key,
                             logger=logger,
+                            scope=scope,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1905,6 +2101,7 @@ def _install_apm_dependencies(
                             diagnostics=diagnostics,
                             package_name=dep_key,
                             logger=logger,
+                            scope=scope,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -2099,6 +2296,7 @@ def _install_apm_dependencies(
                                 diagnostics=diagnostics,
                                 package_name=dep_ref.get_unique_key(),
                                 logger=logger,
+                                scope=scope,
                             )
                             total_prompts_integrated += int_result["prompts"]
                             total_agents_integrated += int_result["agents"]
@@ -2202,6 +2400,12 @@ def _install_apm_dependencies(
                 for dep_key, locked_dep in lockfile.dependencies.items():
                     if dep_key in _package_hashes:
                         locked_dep.content_hash = _package_hashes[dep_key]
+                # Attach marketplace provenance if available
+                if marketplace_provenance:
+                    for dep_key, prov in marketplace_provenance.items():
+                        if dep_key in lockfile.dependencies:
+                            lockfile.dependencies[dep_key].discovered_via = prov.get("discovered_via")
+                            lockfile.dependencies[dep_key].marketplace_plugin_name = prov.get("marketplace_plugin_name")
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).
@@ -2221,7 +2425,7 @@ def _install_apm_dependencies(
                             # else: orphan — package was in lockfile but is no longer in
                             # the manifest (full install only). Don't preserve so the
                             # lockfile stays in sync with what apm.yml declares.
-                lockfile_path = get_lockfile_path(project_root)
+                lockfile_path = get_lockfile_path(apm_dir)
 
                 # When installing a subset of packages (apm install <pkg>),
                 # merge new entries into the existing lockfile instead of

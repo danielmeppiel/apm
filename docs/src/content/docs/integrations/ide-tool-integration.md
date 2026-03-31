@@ -51,6 +51,8 @@ apm compile
 
 For running agentic workflows locally, see the [Agent Workflows guide](../../guides/agent-workflows/).
 
+> **User-scope deployment**: `apm install -g` deploys primitives to user-level directories (`~/.copilot/`, `~/.claude/`, etc.), making packages available across all projects. See [Global Installation](../../guides/dependencies/#global-user-scope-installation) for per-target coverage.
+
 ## VS Code Integration
 
 APM works natively with VS Code's GitHub Copilot implementation.
