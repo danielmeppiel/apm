@@ -1053,12 +1053,15 @@ def _install_apm_dependencies(
     lockfile_path = get_lockfile_path(project_root)
     existing_lockfile = None
     lockfile_count = 0
-    if lockfile_path.exists() and not update_refs:
+    if lockfile_path.exists():
         existing_lockfile = LockFile.read(lockfile_path)
         if existing_lockfile and existing_lockfile.dependencies:
             lockfile_count = len(existing_lockfile.dependencies)
             if logger:
-                logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
+                if update_refs:
+                    logger.verbose_detail(f"Loaded apm.lock.yaml for SHA comparison ({lockfile_count} dependencies)")
+                else:
+                    logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
                 if logger.verbose:
                     for locked_dep in existing_lockfile.get_all_dependencies():
                         _sha = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else ""
@@ -1383,7 +1386,7 @@ def _install_apm_dependencies(
             # detect_ref_change() handles all transitions including None→ref.
             _pd_locked_chk = (
                 existing_lockfile.get_dependency(_pd_key)
-                if existing_lockfile and not update_refs
+                if existing_lockfile
                 else None
             )
             _pd_ref_changed = detect_ref_change(
@@ -1397,6 +1400,19 @@ def _install_apm_dependencies(
                     try:
                         from git import Repo as _PDGitRepo
                         if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked.resolved_commit:
+                            continue
+                    except Exception:
+                        pass
+            # Perf: when update_refs=True, skip pre-download for packages where
+            # the local HEAD matches the lockfile SHA.  The sequential loop will
+            # resolve the remote ref and compare it to the lockfile SHA.  If the
+            # remote is unchanged the download is skipped entirely; if it changed,
+            # it falls back to sequential download (rare case).
+            if update_refs and _pd_path.exists() and _pd_locked_chk:
+                if _pd_locked_chk.resolved_commit and _pd_locked_chk.resolved_commit != "cached":
+                    try:
+                        from git import Repo as _PDGitRepo
+                        if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked_chk.resolved_commit:
                             continue
                     except Exception:
                         pass
@@ -1612,11 +1628,14 @@ def _install_apm_dependencies(
                 from apm_cli.models.apm_package import GitReferenceType
 
                 resolved_ref = None
-                if dep_ref.reference and dep_ref.get_unique_key() not in _pre_downloaded_keys:
-                    try:
-                        resolved_ref = downloader.resolve_git_reference(dep_ref)
-                    except Exception:
-                        pass  # If resolution fails, skip cache (fetch latest)
+                if dep_ref.get_unique_key() not in _pre_downloaded_keys:
+                    # Resolve when there is an explicit ref, OR when update_refs
+                    # is True (need the latest SHA to compare against lockfile).
+                    if dep_ref.reference or update_refs:
+                        try:
+                            resolved_ref = downloader.resolve_git_reference(dep_ref)
+                        except Exception:
+                            pass  # If resolution fails, skip cache (fetch latest)
 
                 # Use cache only for tags and commits (not branches)
                 is_cacheable = resolved_ref and resolved_ref.ref_type in [
@@ -1629,7 +1648,7 @@ def _install_apm_dependencies(
                 # detect_ref_change() handles all transitions including None→ref.
                 _dep_locked_chk = (
                     existing_lockfile.get_dependency(dep_ref.get_unique_key())
-                    if existing_lockfile and not update_refs
+                    if existing_lockfile
                     else None
                 )
                 ref_changed = detect_ref_change(
@@ -1638,16 +1657,24 @@ def _install_apm_dependencies(
                 # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
                 # — but not when the manifest ref has changed (user wants different version).
                 lockfile_match = False
-                if install_path.exists() and existing_lockfile and not update_refs and not ref_changed:
+                if install_path.exists() and existing_lockfile:
                     locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
                     if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                        try:
-                            from git import Repo as GitRepo
-                            local_repo = GitRepo(install_path)
-                            if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                        if update_refs:
+                            # Update mode: compare resolved remote SHA with lockfile SHA.
+                            # If the remote ref still resolves to the same commit,
+                            # the package content is unchanged — skip download.
+                            if resolved_ref and resolved_ref.resolved_commit == locked_dep.resolved_commit:
                                 lockfile_match = True
-                        except Exception:
-                            pass  # Not a git repo or invalid — fall through to download
+                        elif not ref_changed:
+                            # Normal mode: compare local HEAD with lockfile SHA.
+                            try:
+                                from git import Repo as GitRepo
+                                local_repo = GitRepo(install_path)
+                                if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                    lockfile_match = True
+                            except Exception:
+                                pass  # Not a git repo or invalid — fall through to download
                 skip_download = install_path.exists() and (
                     (is_cacheable and not update_refs) or already_resolved or lockfile_match
                 )
@@ -1713,8 +1740,10 @@ def _install_apm_dependencies(
                                 source=dep_ref.repo_url,
                             )
 
-                        # Create basic resolved reference for cached packages
-                        resolved_ref = ResolvedReference(
+                        # Use resolved reference from ref resolution if available
+                        # (e.g. when update_refs matched the lockfile SHA),
+                        # otherwise create a placeholder for cached packages.
+                        cached_resolved_ref = resolved_ref if resolved_ref else ResolvedReference(
                             original_ref=dep_ref.reference or "default",
                             ref_type=GitReferenceType.BRANCH,
                             resolved_commit="cached",  # Mark as cached since we don't know exact commit
@@ -1724,7 +1753,7 @@ def _install_apm_dependencies(
                         cached_package_info = PackageInfo(
                             package=cached_package,
                             install_path=install_path,
-                            resolved_reference=resolved_ref,
+                            resolved_reference=cached_resolved_ref,
                             installed_at=datetime.now().isoformat(),
                             dependency_ref=dep_ref,  # Store for canonical dependency string
                         )
@@ -1740,9 +1769,13 @@ def _install_apm_dependencies(
                         depth = node.depth if node else 1
                         resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                         _is_dev = node.is_dev if node else False
-                        # Get commit SHA: callback capture > existing lockfile > explicit reference
+                        # Get commit SHA: resolved ref > callback capture > existing lockfile > explicit reference
                         dep_key = dep_ref.get_unique_key()
-                        cached_commit = callback_downloaded.get(dep_key)
+                        cached_commit = None
+                        if resolved_ref and resolved_ref.resolved_commit and resolved_ref.resolved_commit != "cached":
+                            cached_commit = resolved_ref.resolved_commit
+                        if not cached_commit:
+                            cached_commit = callback_downloaded.get(dep_key)
                         if not cached_commit and existing_lockfile:
                             locked_dep = existing_lockfile.get_dependency(dep_key)
                             if locked_dep:
