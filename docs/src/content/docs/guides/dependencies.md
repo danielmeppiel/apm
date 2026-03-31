@@ -279,6 +279,47 @@ dependencies:
 
 **Pack guard:** `apm pack` rejects packages with local path dependencies — replace them with remote references before distributing.
 
+## Global (User-Scope) Installation
+
+By default, `apm install` targets the **current project** -- manifest, modules, and lockfile live in
+the working directory and deployed primitives go to `.github/`, `.claude/`, `.cursor/`, `.opencode/`.
+
+Pass `--global` (or `-g`) to install to your **home directory** instead, making packages available
+across every project on the machine:
+
+```bash
+apm install -g microsoft/apm-sample-package
+apm uninstall -g microsoft/apm-sample-package
+```
+
+| Item | Project scope (default) | User scope (`-g`) |
+|------|------------------------|-------------------|
+| Manifest | `./apm.yml` | `~/.apm/apm.yml` |
+| Modules | `./apm_modules/` | `~/.apm/apm_modules/` |
+| Lockfile | `./apm.lock.yaml` | `~/.apm/apm.lock.yaml` |
+| Deployed primitives | `./.github/`, `./.claude/`, ... | `~/.github/`, `~/.claude/`, ... |
+
+### Per-target support
+
+Not every AI tool supports user-level configuration. APM warns when a `--global` install targets
+a tool that lacks native user-level support.
+
+| Target | User-level dir | Status | Notes | Reference |
+|--------|---------------|--------|-------|-----------|
+| Claude Code | `~/.claude/` | Supported | All primitives | [Settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
+| Copilot CLI | `~/.copilot/` | Partial | Agents, skills, instructions; prompts not supported | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
+| Cursor | N/A | Not supported | User rules via Settings UI only | [Rules](https://cursor.com/docs/rules) |
+| OpenCode | N/A | Not supported | No user-level config docs | -- |
+
+### When to use each scope
+
+| Use case | Scope |
+|----------|-------|
+| Team-shared instructions and prompts | Project (`apm install`) |
+| Personal Claude Code commands / agents | User (`apm install -g`) |
+| CI/CD reproducible setup | Project |
+| Cross-project coding standards (Claude Code) | User |
+
 ## MCP Dependency Formats
 
 MCP dependencies support three forms: string references, overlay objects, and self-defined servers.
