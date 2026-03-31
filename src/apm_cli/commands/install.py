@@ -588,11 +588,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         if scope is InstallScope.USER:
             ensure_user_dirs()
-            _rich_info("[i] Installing to user scope (~/.apm/)")
+            logger.progress("Installing to user scope (~/.apm/)")
             _scope_warn = warn_unsupported_user_scope()
             if _scope_warn:
-                from ..utils.console import _rich_warning
-                _rich_warning(_scope_warn)
+                logger.warning(_scope_warn)
 
         # Scope-aware paths
         manifest_path = get_manifest_path(scope)

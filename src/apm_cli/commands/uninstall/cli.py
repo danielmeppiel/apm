@@ -73,8 +73,7 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
             sys.exit(1)
 
         if scope is InstallScope.USER:
-            from ...utils.console import _rich_info
-            _rich_info("[i] Uninstalling from user scope (~/.apm/)")
+            logger.progress("Uninstalling from user scope (~/.apm/)")
 
         logger.start(f"Uninstalling {len(packages)} package(s)...")
 
