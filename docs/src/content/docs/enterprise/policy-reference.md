@@ -499,3 +499,9 @@ dependencies:
     - "contoso/agent-standards"
   max_depth: 5  # Tightens from 10 to 5
 ```
+
+## Related
+
+- [Governance & Compliance](../../enterprise/governance/) -- conceptual overview of APM's governance model
+- [CI Policy Enforcement](../../guides/ci-policy-setup/) -- step-by-step CI setup tutorial
+- [GitHub Rulesets](../../integrations/github-rulesets/) -- enforce policy as a required status check
