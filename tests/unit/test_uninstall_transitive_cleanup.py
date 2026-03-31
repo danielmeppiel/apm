@@ -325,28 +325,10 @@ class TestUninstallTransitiveDependencyCleanup:
                     "apm_cli.models.apm_package.validate_apm_package",
                     side_effect=_capture_validate,
                 ), patch(
-                    "apm_cli.core.target_detection.detect_target",
-                    return_value=(None, None),
-                ), patch(
-                    "apm_cli.core.target_detection.should_integrate_claude",
-                    return_value=False,
-                ), patch(
-                    "apm_cli.integration.prompt_integrator.PromptIntegrator.should_integrate",
-                    return_value=False,
-                ), patch(
-                    "apm_cli.integration.agent_integrator.AgentIntegrator.should_integrate",
-                    return_value=False,
+                    "apm_cli.integration.targets.active_targets",
+                    return_value=[],
                 ), patch(
                     "apm_cli.integration.skill_integrator.SkillIntegrator.integrate_package_skill",
-                    return_value=None,
-                ), patch(
-                    "apm_cli.integration.command_integrator.CommandIntegrator.integrate_package_commands",
-                    return_value=None,
-                ), patch(
-                    "apm_cli.integration.hook_integrator.HookIntegrator.integrate_package_hooks",
-                    return_value=None,
-                ), patch(
-                    "apm_cli.integration.instruction_integrator.InstructionIntegrator.integrate_package_instructions",
                     return_value=None,
                 ):
                     result = self.runner.invoke(cli, ["uninstall", "acme/pkg-a"])

@@ -1,10 +1,15 @@
 """Prompt integration functionality for APM packages."""
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import List, Dict
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.utils.paths import portable_relpath
+
+if TYPE_CHECKING:
+    from apm_cli.integration.targets import TargetProfile
 
 
 class PromptIntegrator(BaseIntegrator):
@@ -66,6 +71,60 @@ class PromptIntegrator(BaseIntegrator):
     
 
     
+    # ------------------------------------------------------------------
+    # Target-driven API (data-driven dispatch)
+    # ------------------------------------------------------------------
+
+    def integrate_prompts_for_target(
+        self,
+        target: "TargetProfile",
+        package_info,
+        project_root: Path,
+        *,
+        force: bool = False,
+        managed_files: Optional[Set[str]] = None,
+        diagnostics=None,
+    ) -> IntegrationResult:
+        """Integrate prompts for a single *target*."""
+        mapping = target.primitives.get("prompts")
+        if not mapping:
+            return IntegrationResult(0, 0, 0, [])
+
+        target_root = project_root / target.root_dir
+        if not target.auto_create and not target_root.is_dir():
+            return IntegrationResult(0, 0, 0, [])
+
+        return self.integrate_package_prompts(
+            package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
+    def sync_for_target(
+        self,
+        target: "TargetProfile",
+        apm_package,
+        project_root: Path,
+        managed_files: Optional[Set[str]] = None,
+    ) -> Dict[str, int]:
+        """Remove APM-managed prompt files for a single *target*."""
+        mapping = target.primitives.get("prompts")
+        if not mapping:
+            return {"files_removed": 0, "errors": 0}
+        prefix = f"{target.root_dir}/{mapping.subdir}/"
+        legacy_dir = project_root / target.root_dir / mapping.subdir
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=prefix,
+            legacy_glob_dir=legacy_dir,
+            legacy_glob_pattern="*-apm.prompt.md",
+        )
+
+    # ------------------------------------------------------------------
+    # Legacy API
+    # ------------------------------------------------------------------
+
     def integrate_package_prompts(self, package_info, project_root: Path,
                                     force: bool = False,
                                     managed_files: set = None,

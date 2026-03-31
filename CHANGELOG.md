@@ -8,25 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `RegistryConfig` dataclass in `apm_cli.deps.registry_proxy` -- registry-agnostic abstraction over VCS proxies; reads canonical `PROXY_REGISTRY_URL` / `PROXY_REGISTRY_TOKEN` / `PROXY_REGISTRY_ONLY` env vars with deprecated fallback to `ARTIFACTORY_*` aliases
-- `InstalledPackage` dataclass in `apm_cli.deps.installed_package` -- replaces the ad hoc positional tuple used to accumulate install results before lockfile generation; `LockFile.from_installed_packages()` accepts both the new dataclass and legacy tuples
-- `LockedDependency.registry_prefix` field in `apm.lock.yaml` -- stores the URL path prefix (e.g. `artifactory/github`) separately from the pure FQDN `host`; enables correct auth token routing and air-gapped re-installs through the same proxy
-- `PROXY_REGISTRY_ONLY` / `PROXY_REGISTRY_URL` / `PROXY_REGISTRY_TOKEN` -- canonical generic registry env vars replacing the deprecated `ARTIFACTORY_*` equivalents (deprecated aliases still work with a `DeprecationWarning`)
-- Post-download `content_hash` verification: fresh downloads are now verified against the lockfile's recorded SHA-256 hash; a mismatch aborts the install with a supply-chain warning instead of silently accepting different content
-- `RegistryConfig.find_missing_hashes()` warns at startup when registry-proxy lockfile entries lack a `content_hash`, prompting `--update` to populate them for tamper detection
+## [0.8.7] - 2026-03-30
 
 ### Fixed
 
-- Lockfile recorded compound `host` strings (e.g. `art.example.com/artifactory/github`) that `AuthResolver.classify_host()` could not parse, causing GitHub PAT to be used instead of `PROXY_REGISTRY_TOKEN` for proxy re-installs; `host` is now stored as a pure FQDN and `registry_prefix` carries the path prefix
-- Re-installs in air-gapped environments no longer fall back to GitHub when the lockfile entry has a `registry_prefix`; `build_download_ref()` sets `artifactory_prefix` on the download ref so the downloader uses the proxy code path
+- `--target opencode` no longer writes prompts/agents to `.github/`; dispatch loop now only fires primitives declared by the selected target (#488, #494)
+- `--target cursor` now correctly deploys skills to `.cursor/skills/` instead of `.github/skills/` -- `SkillIntegrator` respects the explicit target list end-to-end (#482, #494)
+- Misleading "transitive dep" error message for direct dependency download failures (#478)
+- Sparse checkout using global token instead of per-org token from `GITHUB_APM_PAT_<ORG>` (#478)
+- Duplicate error count when a dependency fails during both resolution and install phases (#478)
+- Windows Defender false-positive (`Trojan:Win32/Bearfoos.B!ml`) mitigation: embed PE version info in Windows binary and disable UPX compression on Windows builds -- by @sergio-sisternes-epam (#490)
+- `apm deps update` was a no-op -- rewrote to delegate to the install engine so lockfile, deployed files, and integration state are all refreshed correctly -- by @webmaxru (#493)
 
 ### Changed
 
-- `GitHubPackageDownloader._is_artifactory_only()` now delegates to `registry_proxy.is_enforce_only()` which checks `PROXY_REGISTRY_ONLY` before the deprecated `ARTIFACTORY_ONLY`; no behavior change when using `ARTIFACTORY_ONLY`
-- `build_download_ref()` in `drift.py` is now the single authoritative host-patching point; duplicate host-override logic removed from `install.py`
-- `apm install` with `PROXY_REGISTRY_ONLY=1` now validates the existing lockfile at startup and exits with a clear error if any entry is locked to a direct VCS source (non-proxy host)
+- Integration dispatch is now data-driven: `KNOWN_TARGETS` defines each target's primitives and directory layout; adding a target requires zero code changes (#494)
+- `partition_managed_files()` uses O(1) component-based path routing instead of linear prefix scan (#494)
+- Uninstall sync uses pre-partitioned buckets via `partition_bucket_key()` instead of re-scanning the full managed-files set (#494)
+
+### Security
+
+- Bump `pygments` from 2.19.2 to 2.20.0 (#495)
 
 ## [0.8.6] - 2026-03-27
 
