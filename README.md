@@ -101,6 +101,12 @@ apm install azure-cloud-development@awesome-copilot
 
 See the **[Getting Started guide](https://microsoft.github.io/apm/getting-started/quick-start/)** for the full walkthrough.
 
+## Works with agentrc
+
+[agentrc](https://github.com/microsoft/agentrc) analyzes your codebase and generates tailored agent instructions — architecture, conventions, build commands — from real code, not templates.
+
+Use agentrc to author high-quality instructions, then package them with APM to share across your org. The `.instructions.md` format is shared by both tools — no conversion needed when moving instructions into APM packages.
+
 ## Community
 
 Created and maintained by [@danielmeppiel](https://github.com/danielmeppiel).
