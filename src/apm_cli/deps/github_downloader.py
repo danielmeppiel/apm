@@ -208,10 +208,27 @@ class GitHubPackageDownloader:
         
         return env
 
+    # --- Registry proxy support ---
+
+    @property
+    def registry_config(self):
+        """Lazily-constructed :class:`~apm_cli.deps.registry_proxy.RegistryConfig`.
+
+        Returns ``None`` when no registry proxy is configured.
+        """
+        if not hasattr(self, "_registry_config_cache"):
+            from .registry_proxy import RegistryConfig
+            self._registry_config_cache = RegistryConfig.from_env()
+        return self._registry_config_cache
+
     # --- Artifactory VCS archive download support ---
 
     def _get_artifactory_headers(self) -> Dict[str, str]:
-        """Build HTTP headers for Artifactory requests."""
+        """Build HTTP headers for registry/Artifactory requests."""
+        cfg = self.registry_config
+        if cfg is not None:
+            return cfg.get_headers()
+        # Fallback: direct artifactory_token attribute (legacy path)
         headers = {}
         if self.artifactory_token:
             headers['Authorization'] = f'Bearer {self.artifactory_token}'
@@ -328,8 +345,13 @@ class GitHubPackageDownloader:
 
     @staticmethod
     def _is_artifactory_only() -> bool:
-        """Return True when ARTIFACTORY_ONLY is set, blocking all direct git operations."""
-        return os.environ.get('ARTIFACTORY_ONLY', '').strip().lower() in ('1', 'true', 'yes')
+        """Return True when registry-only mode is active.
+
+        Checks the canonical ``PROXY_REGISTRY_ONLY`` env var, falling back to the
+        deprecated ``ARTIFACTORY_ONLY`` alias.
+        """
+        from .registry_proxy import is_enforce_only
+        return is_enforce_only()
 
     def _should_use_artifactory_proxy(self, dep_ref: 'DependencyReference') -> bool:
         """Check if a dependency should be routed through the Artifactory transparent proxy."""
@@ -1863,15 +1885,16 @@ author: {dep_ref.repo_url.split('/')[0]}
             art_proxy = self._parse_artifactory_base_url()
             if self._is_artifactory_only() and not dep_ref.is_artifactory() and not art_proxy:
                 raise RuntimeError(
-                    f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
-                    "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                    f"PROXY_REGISTRY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                    "Set PROXY_REGISTRY_URL or use explicit Artifactory FQDN syntax."
                 )
             if dep_ref.is_virtual_file():
                 return self.download_virtual_file_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_collection():
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_subdirectory():
-                # When ARTIFACTORY_ONLY is set, download full archive and extract subdir
+                # When PROXY_REGISTRY_ONLY is set, download full archive and extract subdir
+                art_proxy = self._parse_artifactory_base_url()
                 if self._is_artifactory_only() and art_proxy:
                     return self._download_subdirectory_from_artifactory(
                         dep_ref, target_path, art_proxy, progress_task_id, progress_obj
@@ -1893,11 +1916,11 @@ author: {dep_ref.repo_url.split('/')[0]}
                 dep_ref, target_path, art_proxy, progress_task_id, progress_obj
             )
 
-        # When ARTIFACTORY_ONLY is set but no Artifactory proxy matched, block direct git
+        # When PROXY_REGISTRY_ONLY is set but no Artifactory proxy matched, block direct git
         if self._is_artifactory_only():
             raise RuntimeError(
-                f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{dep_ref}'. "
-                "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                f"PROXY_REGISTRY_ONLY is set but no Artifactory proxy is configured for '{dep_ref}'. "
+                "Set PROXY_REGISTRY_URL or use explicit Artifactory FQDN syntax."
             )
 
         # Regular package download (existing logic)
