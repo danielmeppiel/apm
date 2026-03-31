@@ -303,14 +303,14 @@ apm deps list --all    # project + user-scope packages
 
 ### Per-target support
 
-All four targets support user-scope installation. Coverage varies by primitive type:
+Coverage varies by target and primitive type:
 
-| Target | User-level dir | Primitives | Not supported |
-|--------|---------------|------------|---------------|
-| Claude Code | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
-| Copilot | `~/.copilot/` | Skills, agents, instructions, hooks | Prompts |
-| Cursor | `~/.cursor/` | Skills, agents, hooks | Rules |
-| OpenCode | `~/.config/opencode/` | Skills, agents, commands | Hooks |
+| Target | Status | User-level dir | Primitives | Not supported |
+|--------|--------|---------------|------------|---------------|
+| Claude Code | Supported | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
+| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, instructions, hooks | Prompts (not supported by Copilot CLI) |
+| Cursor | Partial | `~/.cursor/` | Skills, agents, hooks | Rules |
+| OpenCode | Partial | `~/.config/opencode/` | Skills, agents, commands | Hooks |
 
 Target detection mirrors project scope: APM auto-detects by `~/.<target>/` directory presence,
 falling back to Copilot. Security scanning runs for global installs.

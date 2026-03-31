@@ -739,6 +739,7 @@ class TestInstallGlobalFlag:
                 # Should create ~/.apm/ directory
                 assert (fake_home / ".apm").is_dir()
                 assert (fake_home / ".apm" / "apm_modules").is_dir()
+                assert result.exit_code == 1  # No packages or manifest provided
                 assert "user scope" in result.output.lower() or "~/.apm/" in result.output
                 # Should warn about unsupported targets
                 assert "cursor" in result.output.lower()

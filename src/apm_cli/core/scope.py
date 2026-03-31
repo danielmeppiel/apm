@@ -153,7 +153,7 @@ def warn_unsupported_user_scope() -> str:
 
     supported_names = ", ".join(fully_supported)
     parts.append(
-        f"[!] User-scope primitives are fully supported by {supported_names}."
+        f"User-scope primitives are fully supported by {supported_names}."
     )
 
     if partially_supported:
@@ -172,7 +172,7 @@ def warn_unsupported_user_scope() -> str:
             unsupported_prims.append(f"{name} ({', '.join(prims)})")
     if unsupported_prims:
         parts.append(
-            "[!] Some primitives are not supported: "
+            "Some primitives are not supported: "
             + "; ".join(unsupported_prims)
         )
 
