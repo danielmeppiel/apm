@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-03-31
+
+### Fixed
+
+- `apm install NAME@MARKETPLACE` now respects `metadata.pluginRoot` from marketplace manifests, fixing resolution of bare-name plugins in marketplaces like `awesome-copilot` (#512)
+- Windows unit test assertion tolerates Rich console line-wrapping on long temp paths (#510)
+- Release validation scripts match updated `apm deps list` scope output (#510)
+
 ## [0.8.8] - 2026-03-31
 
 ### Added

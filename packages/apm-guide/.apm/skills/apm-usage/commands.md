@@ -1,0 +1,84 @@
+# CLI Command Reference
+
+## Project setup
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm init [NAME]` | Initialize a new APM project | `-y` skip prompts, `--plugin` authoring mode |
+
+## Dependency management
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm install [PKGS...]` | Install packages | `--update` refresh refs, `--force` overwrite, `--dry-run`, `--verbose`, `--only [apm\|mcp]`, `--target`, `--dev`, `-g` global, `--trust-transitive-mcp`, `--parallel-downloads N` |
+| `apm uninstall PKGS...` | Remove packages | `--dry-run`, `-g` global |
+| `apm prune` | Remove orphaned packages | `--dry-run` |
+| `apm deps list` | List installed packages | `-g` global, `--all` both scopes |
+| `apm deps tree` | Show dependency tree | -- |
+| `apm deps info PKG` | Show package details | -- |
+| `apm deps clean` | Clean dependency cache | `--dry-run`, `-y` skip confirm |
+| `apm deps update [PKGS...]` | Update specific packages | `--verbose`, `--force`, `--target`, `--parallel-downloads N` |
+
+## Compilation
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm compile` | Compile agent context | `-o` output, `-t` target, `--chatmode`, `--dry-run`, `--no-links`, `--watch`, `--validate`, `--single-agents`, `-v` verbose, `--local-only`, `--clean`, `--with-constitution/--no-constitution` |
+
+## Scripts
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm run SCRIPT` | Execute a named script | `-p name=value` (repeatable) |
+| `apm preview SCRIPT` | Preview script without running | `-p name=value` |
+| `apm list` | List available scripts | -- |
+
+## Security and audit
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm audit [PKG]` | Scan for security issues | `--file PATH`, `--strip`, `--dry-run`, `-v`, `-f [text\|json\|sarif\|md]`, `-o PATH`, `--ci`, `--policy SOURCE`, `--no-cache`, `--no-fail-fast` |
+
+## Distribution
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm pack` | Bundle package for distribution | `-o PATH`, `-t TARGET`, `--archive`, `--dry-run`, `--format [apm\|plugin]`, `--force` |
+| `apm unpack BUNDLE` | Extract a bundle | `-o PATH`, `--skip-verify`, `--force`, `--dry-run` |
+
+## Marketplace
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm marketplace add OWNER/REPO` | Register a marketplace | `-n NAME`, `-b BRANCH` |
+| `apm marketplace list` | List registered marketplaces | -- |
+| `apm marketplace browse NAME` | Browse marketplace packages | -- |
+| `apm marketplace update [NAME]` | Update marketplace index | -- |
+| `apm marketplace remove NAME` | Remove a marketplace | `-y` skip confirm |
+| `apm search QUERY@MARKETPLACE` | Search marketplace | `--limit N` |
+
+## MCP servers
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm mcp list` | List MCP servers in project | `--limit N` |
+| `apm mcp search QUERY` | Search MCP registry | `--limit N` |
+| `apm mcp show SERVER` | Show server details | -- |
+
+## Runtime management (experimental)
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm runtime setup {copilot\|codex\|llm}` | Install a runtime | `--version`, `--vanilla` |
+| `apm runtime list` | Show installed runtimes | -- |
+| `apm runtime remove {copilot\|codex\|llm}` | Remove a runtime | `--yes` |
+| `apm runtime status` | Show active runtime | -- |
+
+## Configuration and updates
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `apm config` | Show current configuration | -- |
+| `apm config get [KEY]` | Get a config value | -- |
+| `apm config set KEY VALUE` | Set a config value | -- |
+| `apm update` | Update APM itself | `--check` only check |
