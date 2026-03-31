@@ -184,7 +184,8 @@ class BaseIntegrator:
 
         for target in KNOWN_TARGETS.values():
             for prim_name, mapping in target.primitives.items():
-                prefix = f"{target.root_dir}/{mapping.subdir}/"
+                effective_root = mapping.deploy_root or target.root_dir
+                prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
                 if prim_name == "skills":
                     skill_prefixes.append(prefix)
                 elif prim_name == "hooks":
@@ -197,7 +198,7 @@ class BaseIntegrator:
                     if bucket_key not in buckets:
                         buckets[bucket_key] = set()
                     component_map[
-                        (target.root_dir, mapping.subdir)
+                        (effective_root, mapping.subdir)
                     ] = bucket_key
 
         buckets["skills"] = set()

@@ -26,6 +26,16 @@ class PrimitiveMapping:
     """Opaque tag used by integrators to select the right
     content transformer (e.g. ``"cursor_rules"``)."""
 
+    deploy_root: Optional[str] = None
+    """Override *root_dir* for this primitive only.
+
+    When set, integrators use ``deploy_root`` instead of
+    ``target.root_dir`` to compute the deploy directory.
+    For example, Codex skills deploy to ``.agents/`` (cross-tool
+    directory) rather than ``.codex/``.  Default ``None`` preserves
+    existing behavior for all other targets.
+    """
+
 
 @dataclass(frozen=True)
 class TargetProfile:
@@ -149,6 +159,27 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         auto_create=False,
         detect_by_dir=True,
     ),
+    # Codex CLI: skills use the cross-tool .agents/ dir (agent skills standard),
+    # agents are TOML under .codex/agents/, hooks merge into .codex/hooks.json.
+    # Instructions are compile-only (AGENTS.md) — not installed.
+    "codex": TargetProfile(
+        name="codex",
+        root_dir=".codex",
+        primitives={
+            "agents": PrimitiveMapping(
+                "agents", ".toml", "codex_agent"
+            ),
+            "skills": PrimitiveMapping(
+                "skills", "/SKILL.md", "skill_standard",
+                deploy_root=".agents",
+            ),
+            "hooks": PrimitiveMapping(
+                "", "hooks.json", "codex_hooks"
+            ),
+        },
+        auto_create=False,
+        detect_by_dir=True,
+    ),
 }
 
 
@@ -157,8 +188,23 @@ def get_integration_prefixes() -> tuple:
 
     Used by ``BaseIntegrator.validate_deploy_path`` so the allow-list
     stays in sync with registered targets.
+
+    Includes prefixes from ``deploy_root`` overrides (e.g. ``.agents/``
+    for Codex skills) so cross-root paths pass security validation.
     """
-    return tuple(t.prefix for t in KNOWN_TARGETS.values())
+    prefixes: list[str] = []
+    seen: set[str] = set()
+    for t in KNOWN_TARGETS.values():
+        if t.prefix not in seen:
+            seen.add(t.prefix)
+            prefixes.append(t.prefix)
+        for m in t.primitives.values():
+            if m.deploy_root is not None:
+                dp = f"{m.deploy_root}/"
+                if dp not in seen:
+                    seen.add(dp)
+                    prefixes.append(dp)
+    return tuple(prefixes)
 
 
 def active_targets(project_root, explicit_target: "Optional[str]" = None) -> list:

@@ -266,8 +266,8 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
             if not _entry:
                 continue
             _integrator, _counter_key = _entry
-            _prefix = f"{_target.root_dir}/{_mapping.subdir}/"
-            _deploy_dir = project_root / _target.root_dir / _mapping.subdir
+            _effective_root = _mapping.deploy_root or _target.root_dir
+            _deploy_dir = project_root / _effective_root / _mapping.subdir
             if not _deploy_dir.exists():
                 continue
             _managed_subset = None
@@ -283,11 +283,16 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
             counts[_counter_key] += result.get("files_removed", 0)
 
     # Skills (multi-target, handled by SkillIntegrator)
-    if any(
-        (project_root / t.root_dir / "skills").exists()
-        for t in KNOWN_TARGETS.values()
-        if t.supports("skills")
-    ):
+    # Check both target root_dir and deploy_root for skill directories
+    _skill_dirs_exist = False
+    for t in KNOWN_TARGETS.values():
+        if t.supports("skills"):
+            sm = t.primitives["skills"]
+            er = sm.deploy_root or t.root_dir
+            if (project_root / er / "skills").exists():
+                _skill_dirs_exist = True
+                break
+    if _skill_dirs_exist:
         integrator = SkillIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
                                              managed_files=_buckets["skills"] if _buckets else None)

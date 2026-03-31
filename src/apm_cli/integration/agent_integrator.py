@@ -7,6 +7,7 @@ See skill-strategy.md for the full architectural rationale (T5).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List
 
@@ -109,8 +110,9 @@ class AgentIntegrator(BaseIntegrator):
         if not mapping:
             return IntegrationResult(0, 0, 0, [])
 
-        target_root = project_root / target.root_dir
-        if not target.auto_create and not target_root.is_dir():
+        effective_root = mapping.deploy_root or target.root_dir
+        target_root = project_root / effective_root
+        if not target.auto_create and not (project_root / target.root_dir).is_dir():
             return IntegrationResult(0, 0, 0, [])
 
         self.init_link_resolver(package_info, project_root)
@@ -140,7 +142,11 @@ class AgentIntegrator(BaseIntegrator):
                 files_skipped += 1
                 continue
 
-            links_resolved = self.copy_agent(source_file, target_path)
+            if mapping.format_id == "codex_agent":
+                self._write_codex_agent(source_file, target_path)
+                links_resolved = 0
+            else:
+                links_resolved = self.copy_agent(source_file, target_path)
             total_links_resolved += links_resolved
             files_integrated += 1
             target_paths.append(target_path)
@@ -164,8 +170,9 @@ class AgentIntegrator(BaseIntegrator):
         mapping = target.primitives.get("agents")
         if not mapping:
             return {"files_removed": 0, "errors": 0}
-        prefix = f"{target.root_dir}/{mapping.subdir}/"
-        legacy_dir = project_root / target.root_dir / mapping.subdir
+        effective_root = mapping.deploy_root or target.root_dir
+        prefix = f"{effective_root}/{mapping.subdir}/"
+        legacy_dir = project_root / effective_root / mapping.subdir
         # Copilot uses .agent.md suffix; others use plain .md
         legacy_pattern = "*-apm.agent.md" if mapping.extension == ".agent.md" else "*-apm.md"
         return self.sync_remove_files(
@@ -202,6 +209,51 @@ class AgentIntegrator(BaseIntegrator):
         content, links_resolved = self.resolve_links(content, source, target)
         target.write_text(content, encoding='utf-8')
         return links_resolved
+
+    # ------------------------------------------------------------------
+    # Codex agent transformer (MD -> TOML)
+    # ------------------------------------------------------------------
+
+    _FRONTMATTER_RE = re.compile(
+        r"^---\s*\n(.*?)\n---\s*\n?",
+        re.DOTALL,
+    )
+
+    @staticmethod
+    def _write_codex_agent(source: Path, target: Path) -> None:
+        """Transform an ``.agent.md`` file to Codex ``.toml`` format.
+
+        Parses YAML frontmatter for ``name`` and ``description``, uses
+        the markdown body as ``developer_instructions``.
+        """
+        import toml as _toml
+
+        content = source.read_text(encoding="utf-8")
+
+        name = source.stem
+        if name.endswith(".agent"):
+            name = name[: -len(".agent")]
+        description = ""
+        body = content
+
+        fm_match = AgentIntegrator._FRONTMATTER_RE.match(content)
+        if fm_match:
+            body = content[fm_match.end():]
+            try:
+                import yaml
+
+                fm = yaml.safe_load(fm_match.group(1)) or {}
+                name = fm.get("name", name)
+                description = fm.get("description", description)
+            except Exception:
+                pass
+
+        doc = {
+            "name": name,
+            "description": description,
+            "developer_instructions": body.strip(),
+        }
+        target.write_text(_toml.dumps(doc), encoding="utf-8")
     
     def integrate_package_agents(self, package_info, project_root: Path,
                                    force: bool = False,
