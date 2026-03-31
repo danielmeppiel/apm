@@ -8,18 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-03-31
+
 ### Added
 
-- Support Codex CLI as integration target with skills (`.agents/skills/`), agents (`.codex/agents/*.toml`), and hooks (`.codex/hooks.json`) (#504)
-- Marketplace integration for plugin discovery and governance: `apm marketplace add/list/browse/update/remove` commands, `apm search QUERY@MARKETPLACE` scoped search, `apm install NAME@MARKETPLACE` syntax for installing plugins from marketplace registries; lockfile provenance fields `discovered_via` and `marketplace_plugin_name` to track marketplace origin; support for Copilot CLI and Claude Code `marketplace.json` formats with 4 source types (github, url, git-subdir, relative path) (#503)
-
-### Fixed
-
-- `apm install -g ./local-pkg` now rejects local path dependencies at user scope with a clear error instead of silently failing (relative paths resolve against `cwd` during validation but against `$HOME` during copy) (#452)
+- `apm install -g/--global` for user-scope package installation with per-target support matrix and `apm uninstall -g` lifecycle (#452)
+- Marketplace integration: `apm install NAME@MARKETPLACE` syntax, `apm marketplace add/list/browse/update/remove`, `apm search` across registered marketplaces (#503)
+- Codex as integration target: skills to `.agents/skills/`, agents to `.codex/agents/*.toml`, hooks to `.codex/hooks.json`, `--target codex` on install/compile/pack (#504)
+- Lockfile-driven reproducible installs for registry proxies with `content_hash` verification and `RegistryConfig` -- by @chkp-roniz (#401)
 
 ### Changed
 
-- `apm deps update` now skips download and integration for packages whose resolved SHA matches the lockfile SHA, making the common "nothing changed" case near-instant (#495)
+- `apm deps update` skips download when resolved SHA matches lockfile SHA, making the common "nothing changed" case near-instant (#500)
+
+### Fixed
+
+- `apm install -g ./local-pkg` rejects local path dependencies at user scope with a clear error (#452)
+- Orphan documentation pages (`ci-policy-setup`, `policy-reference`) added to sidebar navigation; stale GitHub Rulesets content updated (#505, #507)
 
 ## [0.8.7] - 2026-03-30
 
