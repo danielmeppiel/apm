@@ -1053,12 +1053,15 @@ def _install_apm_dependencies(
     lockfile_path = get_lockfile_path(project_root)
     existing_lockfile = None
     lockfile_count = 0
-    if lockfile_path.exists() and not update_refs:
+    if lockfile_path.exists():
         existing_lockfile = LockFile.read(lockfile_path)
         if existing_lockfile and existing_lockfile.dependencies:
             lockfile_count = len(existing_lockfile.dependencies)
             if logger:
-                logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
+                if update_refs:
+                    logger.verbose_detail(f"Loaded apm.lock.yaml for SHA comparison ({lockfile_count} dependencies)")
+                else:
+                    logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
                 if logger.verbose:
                     for locked_dep in existing_lockfile.get_all_dependencies():
                         _sha = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else ""
@@ -1326,11 +1329,16 @@ def _install_apm_dependencies(
 
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.registry_proxy import RegistryConfig
         from ..utils.content_hash import compute_package_hash as _compute_hash
-        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev)
+        installed_packages: List[InstalledPackage] = []
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
         _package_hashes: builtins.dict = {}  # dep_key → sha256 hash (captured at download/verify time)
+
+        # Resolve registry proxy configuration once for this install session.
+        registry_config = RegistryConfig.from_env()
 
         # Build managed_files from existing lockfile for collision detection
         managed_files = builtins.set()
@@ -1338,6 +1346,53 @@ def _install_apm_dependencies(
         if existing_lockfile:
             for dep in existing_lockfile.dependencies.values():
                 managed_files.update(dep.deployed_files)
+
+            # Conflict: registry-only mode requires all locked deps to route
+            # through the configured proxy. Deps locked to direct VCS sources
+            # (github.com, GHE Cloud, GHES) are incompatible.
+            if registry_config and registry_config.enforce_only:
+                conflicts = registry_config.validate_lockfile_deps(
+                    list(existing_lockfile.dependencies.values())
+                )
+                if conflicts:
+                    _rich_error(
+                        "PROXY_REGISTRY_ONLY is set but the lockfile contains "
+                        "dependencies locked to direct VCS sources:"
+                    )
+                    for dep in conflicts[:10]:
+                        host = dep.host or "github.com"
+                        name = dep.repo_url
+                        if dep.virtual_path:
+                            name = f"{name}/{dep.virtual_path}"
+                        _rich_error(f"  - {name} (host: {host})")
+                    _rich_error(
+                        "Re-run with 'apm install --update' to re-resolve "
+                        "through the registry, or unset PROXY_REGISTRY_ONLY."
+                    )
+                    sys.exit(1)
+
+            # Supply chain warning: registry-proxy entries without a
+            # content_hash cannot be verified on re-install.
+            if registry_config and registry_config.enforce_only:
+                missing = registry_config.find_missing_hashes(
+                    list(existing_lockfile.dependencies.values())
+                )
+                if missing:
+                    diagnostics.warn(
+                        "The following registry-proxy dependencies have no "
+                        "content_hash in the lockfile. Run 'apm install "
+                        "--update' to populate hashes for tamper detection.",
+                        package="lockfile",
+                    )
+                    for dep in missing[:10]:
+                        name = dep.repo_url
+                        if dep.virtual_path:
+                            name = f"{name}/{dep.virtual_path}"
+                        diagnostics.warn(
+                            f"  - {name} (host: {dep.host})",
+                            package="lockfile",
+                        )
+
         # Normalize path separators once for O(1) lookups in check_collision
         from apm_cli.integration.base_integrator import BaseIntegrator
         managed_files = BaseIntegrator.normalize_managed_files(managed_files)
@@ -1383,23 +1438,27 @@ def _install_apm_dependencies(
             # detect_ref_change() handles all transitions including None→ref.
             _pd_locked_chk = (
                 existing_lockfile.get_dependency(_pd_key)
-                if existing_lockfile and not update_refs
+                if existing_lockfile
                 else None
             )
             _pd_ref_changed = detect_ref_change(
                 _pd_ref, _pd_locked_chk, update_refs=update_refs
             )
-            # Skip if lockfile SHA matches local HEAD (Phase 5 check)
-            # — but only if the ref itself has not changed in the manifest.
-            if _pd_path.exists() and existing_lockfile and not update_refs and not _pd_ref_changed:
-                _pd_locked = existing_lockfile.get_dependency(_pd_key)
-                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
-                    try:
-                        from git import Repo as _PDGitRepo
-                        if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked.resolved_commit:
-                            continue
-                    except Exception:
-                        pass
+            # Skip if lockfile SHA matches local HEAD.
+            # Normal mode: only when the ref hasn't changed in the manifest.
+            # Update mode: defer to the sequential loop which resolves the
+            # remote ref and compares -- if unchanged, the download is skipped
+            # entirely; if changed, it falls back to sequential download.
+            if (_pd_path.exists() and _pd_locked_chk
+                    and _pd_locked_chk.resolved_commit
+                    and _pd_locked_chk.resolved_commit != "cached"
+                    and (update_refs or not _pd_ref_changed)):
+                try:
+                    from git import Repo as _PDGitRepo
+                    if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked_chk.resolved_commit:
+                        continue
+                except Exception:
+                    pass
             # Build download ref (use locked commit for reproducibility).
             # build_download_ref() uses the manifest ref when ref_changed is True.
             _pd_dlref = build_download_ref(
@@ -1540,7 +1599,11 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev))
+                    installed_packages.append(InstalledPackage(
+                        dep_ref=dep_ref, resolved_commit=None,
+                        depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                        registry_config=None,  # local deps never go through registry
+                    ))
                     dep_key = dep_ref.get_unique_key()
                     if install_path.is_dir() and not dep_ref.is_local:
                         _package_hashes[dep_key] = _compute_hash(install_path)
@@ -1612,11 +1675,22 @@ def _install_apm_dependencies(
                 from apm_cli.models.apm_package import GitReferenceType
 
                 resolved_ref = None
-                if dep_ref.reference and dep_ref.get_unique_key() not in _pre_downloaded_keys:
-                    try:
-                        resolved_ref = downloader.resolve_git_reference(dep_ref)
-                    except Exception:
-                        pass  # If resolution fails, skip cache (fetch latest)
+                if dep_ref.get_unique_key() not in _pre_downloaded_keys:
+                    # Resolve when there is an explicit ref, OR when update_refs
+                    # is True AND we have a non-cached lockfile entry to compare
+                    # against (otherwise resolution is wasted work -- the package
+                    # will be downloaded regardless).
+                    _has_lockfile_sha = False
+                    if update_refs and existing_lockfile:
+                        _lck = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                        _has_lockfile_sha = bool(
+                            _lck and _lck.resolved_commit and _lck.resolved_commit != "cached"
+                        )
+                    if dep_ref.reference or (update_refs and _has_lockfile_sha):
+                        try:
+                            resolved_ref = downloader.resolve_git_reference(dep_ref)
+                        except Exception:
+                            pass  # If resolution fails, skip cache (fetch latest)
 
                 # Use cache only for tags and commits (not branches)
                 is_cacheable = resolved_ref and resolved_ref.ref_type in [
@@ -1629,25 +1703,41 @@ def _install_apm_dependencies(
                 # detect_ref_change() handles all transitions including None→ref.
                 _dep_locked_chk = (
                     existing_lockfile.get_dependency(dep_ref.get_unique_key())
-                    if existing_lockfile and not update_refs
+                    if existing_lockfile
                     else None
                 )
                 ref_changed = detect_ref_change(
                     dep_ref, _dep_locked_chk, update_refs=update_refs
                 )
                 # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
-                # — but not when the manifest ref has changed (user wants different version).
+                # -- but not when the manifest ref has changed (user wants different version).
                 lockfile_match = False
-                if install_path.exists() and existing_lockfile and not update_refs and not ref_changed:
+                if install_path.exists() and existing_lockfile:
                     locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
                     if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                        try:
-                            from git import Repo as GitRepo
-                            local_repo = GitRepo(install_path)
-                            if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
-                                lockfile_match = True
-                        except Exception:
-                            pass  # Not a git repo or invalid — fall through to download
+                        if update_refs:
+                            # Update mode: compare resolved remote SHA with lockfile SHA.
+                            # If the remote ref still resolves to the same commit,
+                            # the package content is unchanged -- skip download.
+                            # Also verify local checkout matches to guard against
+                            # corrupted installs that bypassed pre-download checks.
+                            if resolved_ref and resolved_ref.resolved_commit == locked_dep.resolved_commit:
+                                try:
+                                    from git import Repo as GitRepo
+                                    local_repo = GitRepo(install_path)
+                                    if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                        lockfile_match = True
+                                except Exception:
+                                    pass  # Local checkout invalid -- fall through to download
+                        elif not ref_changed:
+                            # Normal mode: compare local HEAD with lockfile SHA.
+                            try:
+                                from git import Repo as GitRepo
+                                local_repo = GitRepo(install_path)
+                                if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                    lockfile_match = True
+                            except Exception:
+                                pass  # Not a git repo or invalid -- fall through to download
                 skip_download = install_path.exists() and (
                     (is_cacheable and not update_refs) or already_resolved or lockfile_match
                 )
@@ -1664,6 +1754,20 @@ def _install_apm_dependencies(
                         if logger:
                             logger.progress(_hash_msg)
                         safe_rmtree(install_path, apm_modules_dir)
+                        skip_download = False
+
+                # When registry-only mode is active, bypass cache if the
+                # cached artifact was NOT previously downloaded via the
+                # registry (no registry_prefix in lockfile). This handles
+                # the transition from direct-VCS installs to proxy installs
+                # for packages not yet in the lockfile.
+                if (
+                    skip_download
+                    and registry_config
+                    and registry_config.enforce_only
+                    and not dep_ref.is_local
+                ):
+                    if not _dep_locked_chk or _dep_locked_chk.registry_prefix is None:
                         skip_download = False
 
                 if skip_download:
@@ -1713,8 +1817,10 @@ def _install_apm_dependencies(
                                 source=dep_ref.repo_url,
                             )
 
-                        # Create basic resolved reference for cached packages
-                        resolved_ref = ResolvedReference(
+                        # Use resolved reference from ref resolution if available
+                        # (e.g. when update_refs matched the lockfile SHA),
+                        # otherwise create a placeholder for cached packages.
+                        resolved_or_cached_ref = resolved_ref if resolved_ref else ResolvedReference(
                             original_ref=dep_ref.reference or "default",
                             ref_type=GitReferenceType.BRANCH,
                             resolved_commit="cached",  # Mark as cached since we don't know exact commit
@@ -1724,7 +1830,7 @@ def _install_apm_dependencies(
                         cached_package_info = PackageInfo(
                             package=cached_package,
                             install_path=install_path,
-                            resolved_reference=resolved_ref,
+                            resolved_reference=resolved_or_cached_ref,
                             installed_at=datetime.now().isoformat(),
                             dependency_ref=dep_ref,  # Store for canonical dependency string
                         )
@@ -1740,16 +1846,32 @@ def _install_apm_dependencies(
                         depth = node.depth if node else 1
                         resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                         _is_dev = node.is_dev if node else False
-                        # Get commit SHA: callback capture > existing lockfile > explicit reference
+                        # Get commit SHA: resolved ref > callback capture > existing lockfile > explicit reference
                         dep_key = dep_ref.get_unique_key()
-                        cached_commit = callback_downloaded.get(dep_key)
+                        cached_commit = None
+                        if resolved_ref and resolved_ref.resolved_commit and resolved_ref.resolved_commit != "cached":
+                            cached_commit = resolved_ref.resolved_commit
+                        if not cached_commit:
+                            cached_commit = callback_downloaded.get(dep_key)
                         if not cached_commit and existing_lockfile:
                             locked_dep = existing_lockfile.get_dependency(dep_key)
                             if locked_dep:
                                 cached_commit = locked_dep.resolved_commit
                         if not cached_commit:
                             cached_commit = dep_ref.reference
-                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by, _is_dev))
+                        # Determine if the cached package came from the registry:
+                        # prefer the lockfile record, then the current registry config.
+                        _cached_registry = None
+                        if _dep_locked_chk and _dep_locked_chk.registry_prefix:
+                            # Reconstruct RegistryConfig from lockfile to preserve original source
+                            _cached_registry = registry_config
+                        elif registry_config and not dep_ref.is_local:
+                            _cached_registry = registry_config
+                        installed_packages.append(InstalledPackage(
+                            dep_ref=dep_ref, resolved_commit=cached_commit,
+                            depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                            registry_config=_cached_registry,
+                        ))
                         if install_path.is_dir():
                             _package_hashes[dep_key] = _compute_hash(install_path)
                         # Track package type for lockfile
@@ -1895,9 +2017,39 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by, _is_dev))
+                    installed_packages.append(InstalledPackage(
+                        dep_ref=dep_ref, resolved_commit=resolved_commit,
+                        depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                        registry_config=registry_config if not dep_ref.is_local else None,
+                    ))
                     if install_path.is_dir():
                         _package_hashes[dep_ref.get_unique_key()] = _compute_hash(install_path)
+
+                    # Supply chain protection: verify content hash on fresh
+                    # downloads when the lockfile already records a hash.
+                    # A mismatch means the downloaded content differs from
+                    # what was previously locked — possible tampering.
+                    if (
+                        not update_refs
+                        and _dep_locked_chk
+                        and _dep_locked_chk.content_hash
+                        and dep_ref.get_unique_key() in _package_hashes
+                    ):
+                        _fresh_hash = _package_hashes[dep_ref.get_unique_key()]
+                        if _fresh_hash != _dep_locked_chk.content_hash:
+                            safe_rmtree(install_path, apm_modules_dir)
+                            _rich_error(
+                                f"Content hash mismatch for "
+                                f"{dep_ref.get_unique_key()}: "
+                                f"expected {_dep_locked_chk.content_hash}, "
+                                f"got {_fresh_hash}. "
+                                "The downloaded content differs from the "
+                                "lockfile record. This may indicate a "
+                                "supply-chain attack. Use 'apm install "
+                                "--update' to accept new content and "
+                                "update the lockfile."
+                            )
+                            sys.exit(1)
 
                     # Track package type for lockfile
                     if hasattr(package_info, 'package_type') and package_info.package_type:

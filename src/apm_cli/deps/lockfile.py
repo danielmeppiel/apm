@@ -22,6 +22,7 @@ class LockedDependency:
 
     repo_url: str
     host: Optional[str] = None
+    registry_prefix: Optional[str] = None  # Registry path prefix, e.g. "artifactory/github"
     resolved_commit: Optional[str] = None
     resolved_ref: Optional[str] = None
     version: Optional[str] = None
@@ -49,6 +50,8 @@ class LockedDependency:
         result: Dict[str, Any] = {"repo_url": self.repo_url}
         if self.host:
             result["host"] = self.host
+        if self.registry_prefix:
+            result["registry_prefix"] = self.registry_prefix
         if self.resolved_commit:
             result["resolved_commit"] = self.resolved_commit
         if self.resolved_ref:
@@ -97,6 +100,7 @@ class LockedDependency:
         return cls(
             repo_url=data["repo_url"],
             host=data.get("host"),
+            registry_prefix=data.get("registry_prefix"),
             resolved_commit=data.get("resolved_commit"),
             resolved_ref=data.get("resolved_ref"),
             version=data.get("version"),
@@ -120,11 +124,32 @@ class LockedDependency:
         depth: int,
         resolved_by: Optional[str],
         is_dev: bool = False,
+        registry_config=None,
     ) -> "LockedDependency":
-        """Create from a DependencyReference with resolution info."""
+        """Create from a DependencyReference with resolution info.
+
+        Args:
+            dep_ref: The resolved dependency reference.
+            resolved_commit: Exact commit SHA that was installed, or ``None``.
+            depth: Dependency tree depth.
+            resolved_by: Parent repo URL, or ``None`` for direct dependencies.
+            is_dev: Whether this is a dev-only dependency.
+            registry_config: Optional :class:`~apm_cli.deps.registry_proxy.RegistryConfig`
+                used for this download.  When provided, ``host`` is set to the
+                pure FQDN (e.g. ``"art.example.com"``) and ``registry_prefix``
+                is set to the URL path prefix (e.g. ``"artifactory/github"``),
+                ensuring correct auth routing on subsequent installs.
+        """
+        if registry_config is not None:
+            host = registry_config.host
+            registry_prefix = registry_config.prefix
+        else:
+            host = dep_ref.host
+            registry_prefix = None
         return cls(
             repo_url=dep_ref.repo_url,
-            host=dep_ref.host,
+            host=host,
+            registry_prefix=registry_prefix,
             resolved_commit=resolved_commit,
             resolved_ref=dep_ref.reference,
             virtual_path=dep_ref.virtual_path,
@@ -225,41 +250,56 @@ class LockFile:
     @classmethod
     def from_installed_packages(
         cls,
-        installed_packages: List[tuple],
+        installed_packages,
         dependency_graph,
     ) -> "LockFile":
         """Create a lock file from installed packages.
-        
+
         Args:
-            installed_packages: List of (dep_ref, resolved_commit, depth, resolved_by)
-                or (dep_ref, resolved_commit, depth, resolved_by, is_dev) tuples.
-                The 5th element is optional for backward compatibility.
-            dependency_graph: The resolved DependencyGraph for additional metadata
+            installed_packages: List of
+                :class:`~apm_cli.deps.installed_package.InstalledPackage`
+                objects **or** legacy tuples of the form
+                ``(dep_ref, resolved_commit, depth, resolved_by[, is_dev])``.
+                The 5th tuple element is optional for backward compatibility.
+            dependency_graph: The resolved DependencyGraph for additional metadata.
         """
+        from .installed_package import InstalledPackage
+
         # Get APM version
         try:
             from importlib.metadata import version
             apm_version = version("apm-cli")
         except Exception:
             apm_version = "unknown"
-        
+
         lock = cls(apm_version=apm_version)
-        
+
         for entry in installed_packages:
-            if len(entry) >= 5:
+            if isinstance(entry, InstalledPackage):
+                dep_ref = entry.dep_ref
+                resolved_commit = entry.resolved_commit
+                depth = entry.depth
+                resolved_by = entry.resolved_by
+                is_dev = entry.is_dev
+                registry_config = getattr(entry, "registry_config", None)
+            elif len(entry) >= 5:
                 dep_ref, resolved_commit, depth, resolved_by, is_dev = entry[:5]
+                registry_config = None
             else:
                 dep_ref, resolved_commit, depth, resolved_by = entry[:4]
                 is_dev = False
+                registry_config = None
+
             locked_dep = LockedDependency.from_dependency_ref(
                 dep_ref=dep_ref,
                 resolved_commit=resolved_commit,
                 depth=depth,
                 resolved_by=resolved_by,
                 is_dev=is_dev,
+                registry_config=registry_config,
             )
             lock.add_dependency(locked_dep)
-        
+
         return lock
 
     def get_installed_paths(self, apm_modules_dir: Path) -> List[str]:
