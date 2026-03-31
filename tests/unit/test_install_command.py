@@ -818,7 +818,9 @@ class TestInstallGlobalFlag:
                     )
 
                 # Should fail with clear message about local packages
-                assert "local packages are not supported at user scope" in result.output
+                # Use shorter substring to tolerate Rich word-wrapping on
+                # platforms with long temp paths (Windows).
+                assert "not supported at user scope" in result.output
                 # Should suggest using remote reference
                 assert "owner/repo" in result.output
             finally:
@@ -840,7 +842,7 @@ class TestInstallGlobalFlag:
                         cli, ["install", "--global", str(local_pkg)]
                     )
 
-                assert "local packages are not supported at user scope" in result.output
+                assert "not supported at user scope" in result.output
             finally:
                 os.chdir(self.original_dir)
 
@@ -857,6 +859,6 @@ class TestInstallGlobalFlag:
                         cli, ["install", "--global", "~/some-pkg"]
                     )
 
-                assert "local packages are not supported at user scope" in result.output
+                assert "not supported at user scope" in result.output
             finally:
                 os.chdir(self.original_dir)
