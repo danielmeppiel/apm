@@ -130,7 +130,7 @@ def _resolve_relative_source(
     rel = rel.strip("/")
 
     # If plugin_root is set and source is a bare name, prepend it
-    if plugin_root and rel and "/" not in rel:
+    if plugin_root and rel and rel != "." and "/" not in rel:
         root = plugin_root.strip("/")
         if root.startswith("./"):
             root = root[2:]

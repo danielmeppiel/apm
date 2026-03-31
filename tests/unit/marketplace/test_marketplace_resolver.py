@@ -215,6 +215,13 @@ class TestResolveRelativeSource:
         )
         assert result == "org/repo/plugins/my-plugin"
 
+    def test_dot_source_with_plugin_root(self):
+        """source='.' means repo root -- plugin_root must not apply."""
+        result = _resolve_relative_source(
+            ".", "org", "repo", plugin_root="./plugins",
+        )
+        assert result == "org/repo"
+
 
 class TestResolvePluginSource:
     """Integration of all source type resolvers."""

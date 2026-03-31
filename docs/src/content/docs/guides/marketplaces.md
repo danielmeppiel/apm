@@ -48,6 +48,21 @@ Both Copilot CLI and Claude Code `marketplace.json` formats are supported. Copil
 
 npm sources are not supported. Copilot CLI format uses `"repository"` and optional `"ref"` fields instead of `"source"`.
 
+### Plugin root directory
+
+Marketplaces can declare a `metadata.pluginRoot` field to specify the base directory for bare-name sources:
+
+```json
+{
+  "metadata": { "pluginRoot": "./plugins" },
+  "plugins": [
+    { "name": "my-tool", "source": "my-tool" }
+  ]
+}
+```
+
+With `pluginRoot` set to `./plugins`, the source `"my-tool"` resolves to `owner/repo/plugins/my-tool`. Sources that already contain a path separator (e.g. `./custom/path`) are not affected by `pluginRoot`.
+
 ## Register a marketplace
 
 ```bash
