@@ -673,6 +673,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # MCP servers are workspace-scoped (.vscode/mcp.json); skip at user scope
         if scope is InstallScope.USER:
             should_install_mcp = False
+            if logger:
+                logger.verbose_detail(
+                    "MCP servers skipped at user scope (workspace-scoped concept)"
+                )
 
         # Show what will be installed if dry run
         if dry_run:
@@ -934,6 +938,10 @@ def _integrate_package_primitives(
     for _target in targets:
         # Skip entire target when user scope is not supported
         if _user_scope and not _target.user_supported:
+            if logger:
+                logger.verbose_detail(
+                    f"Skipping {_target.name} at user scope (not supported)"
+                )
             continue
 
         for _prim_name, _mapping in _target.primitives.items():
@@ -942,6 +950,11 @@ def _integrate_package_primitives(
 
             # Skip primitives unsupported at user scope
             if _user_scope and _prim_name in _target.unsupported_user_primitives:
+                if logger:
+                    logger.verbose_detail(
+                        f"Skipping {_prim_name} for {_target.name} "
+                        f"at user scope (not supported)"
+                    )
                 continue
 
             # --- hooks (different return type) ---
@@ -1339,16 +1352,42 @@ def _install_apm_dependencies(
         # Determine active targets.  When --target or apm.yml target is set
         # the user's choice wins.  Otherwise auto-detect from existing dirs,
         # falling back to copilot when nothing is found.
-        from apm_cli.integration.targets import active_targets as _active_targets
+        from apm_cli.integration.targets import (
+            active_targets as _active_targets,
+            active_targets_user_scope as _active_targets_user,
+        )
 
-        _targets = _active_targets(project_root, explicit_target=_explicit)
+        _is_user = scope is InstallScope.USER
+        if _is_user:
+            _targets = _active_targets_user(explicit_target=_explicit)
+        else:
+            _targets = _active_targets(project_root, explicit_target=_explicit)
+
+        # Log target detection results
+        if logger and _targets:
+            _scope_label = "global" if _is_user else "project"
+            _target_names = ", ".join(
+                f"{t.name} (~/{t.effective_root(user_scope=_is_user)}/)"
+                if _is_user else t.name
+                for t in _targets
+            )
+            logger.verbose_detail(
+                f"Active {_scope_label} targets: {_target_names}"
+            )
+            if _is_user:
+                from apm_cli.deps.lockfile import get_lockfile_path
+                logger.verbose_detail(
+                    f"Lockfile: {get_lockfile_path(apm_dir)}"
+                )
+
         for _t in _targets:
-            _target_dir = project_root / _t.root_dir
+            _root = _t.effective_root(user_scope=_is_user)
+            _target_dir = project_root / _root
             if not _target_dir.exists():
                 _target_dir.mkdir(parents=True, exist_ok=True)
                 if logger:
                     logger.verbose_detail(
-                        f"Created {_t.root_dir}/ ({_t.name} target)"
+                        f"Created {_root}/ ({_t.name} target)"
                     )
 
         detected_target, detection_reason = detect_target(

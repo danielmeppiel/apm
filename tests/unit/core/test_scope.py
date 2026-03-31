@@ -173,11 +173,15 @@ class TestTargetProfileUserScope:
     def test_copilot_is_partially_supported(self):
         assert KNOWN_TARGETS["copilot"].user_supported == "partial"
 
-    def test_cursor_is_not_supported(self):
-        assert KNOWN_TARGETS["cursor"].user_supported is False
+    def test_cursor_is_partially_supported(self):
+        assert KNOWN_TARGETS["cursor"].user_supported == "partial"
+        assert KNOWN_TARGETS["cursor"].user_root_dir == ".cursor"
+        assert "instructions" in KNOWN_TARGETS["cursor"].unsupported_user_primitives
 
-    def test_opencode_is_not_supported(self):
-        assert KNOWN_TARGETS["opencode"].user_supported is False
+    def test_opencode_is_partially_supported(self):
+        assert KNOWN_TARGETS["opencode"].user_supported == "partial"
+        assert KNOWN_TARGETS["opencode"].user_root_dir == ".config/opencode"
+        assert "hooks" in KNOWN_TARGETS["opencode"].unsupported_user_primitives
 
     def test_copilot_user_root_dir(self):
         assert KNOWN_TARGETS["copilot"].user_root_dir == ".copilot"
@@ -207,8 +211,19 @@ class TestTargetProfileUserScope:
         assert KNOWN_TARGETS["copilot"].supports_at_user_scope("agents") is True
         assert KNOWN_TARGETS["copilot"].supports_at_user_scope("prompts") is False
 
-    def test_supports_at_user_scope_unsupported_target(self):
-        assert KNOWN_TARGETS["cursor"].supports_at_user_scope("agents") is False
+    def test_supports_at_user_scope_cursor_partial(self):
+        # Cursor supports agents at user scope but not instructions
+        assert KNOWN_TARGETS["cursor"].supports_at_user_scope("agents") is True
+        assert KNOWN_TARGETS["cursor"].supports_at_user_scope("skills") is True
+        assert KNOWN_TARGETS["cursor"].supports_at_user_scope("hooks") is True
+        assert KNOWN_TARGETS["cursor"].supports_at_user_scope("instructions") is False
+
+    def test_supports_at_user_scope_opencode_partial(self):
+        # OpenCode supports agents at user scope but not hooks
+        assert KNOWN_TARGETS["opencode"].supports_at_user_scope("agents") is True
+        assert KNOWN_TARGETS["opencode"].supports_at_user_scope("skills") is True
+        assert KNOWN_TARGETS["opencode"].supports_at_user_scope("commands") is True
+        assert KNOWN_TARGETS["opencode"].supports_at_user_scope("hooks") is False
 
     def test_unsupported_targets_have_no_user_root(self):
         for name, profile in KNOWN_TARGETS.items():
@@ -228,25 +243,102 @@ class TestScopeWarnings:
 
     def test_get_unsupported_targets(self):
         unsupported = get_unsupported_targets()
-        assert "cursor" in unsupported
-        assert "opencode" in unsupported
-        # Partially supported targets should NOT appear in unsupported
+        # All targets now support user scope (fully or partially)
+        assert "cursor" not in unsupported
+        assert "opencode" not in unsupported
         assert "copilot" not in unsupported
         assert "claude" not in unsupported
 
-    def test_warn_message_includes_unsupported_names(self):
+    def test_warn_message_includes_partial_targets(self):
         msg = warn_unsupported_user_scope()
-        assert msg  # non-empty
+        assert msg  # non-empty because there are partially supported targets
+        # All four targets now support user scope
         assert "cursor" in msg
         assert "opencode" in msg
-        # Claude is fully supported and should be listed as such
+        assert "copilot" in msg
+        # Claude is fully supported
         assert "claude" in msg
         assert "fully supported" in msg.lower()
-        # Partially supported targets should be listed
-        assert "copilot" in msg
+        # Copilot, cursor, opencode are partially supported
         assert "partially supported" in msg.lower()
 
     def test_warn_message_includes_unsupported_primitives(self):
         msg = warn_unsupported_user_scope()
-        assert "prompts" in msg.lower()
+        # Copilot excludes prompts
         assert "copilot (prompts)" in msg
+        # Cursor excludes instructions
+        assert "cursor (instructions)" in msg
+        # OpenCode excludes hooks
+        assert "opencode (hooks)" in msg
+
+
+# ---------------------------------------------------------------------------
+# active_targets_user_scope
+# ---------------------------------------------------------------------------
+
+
+class TestActiveTargetsUserScope:
+    """Tests for active_targets_user_scope() in targets.py."""
+
+    def test_explicit_copilot(self):
+        from apm_cli.integration.targets import active_targets_user_scope
+        result = active_targets_user_scope(explicit_target="copilot")
+        assert len(result) == 1
+        assert result[0].name == "copilot"
+
+    def test_explicit_all_returns_all_user_capable(self):
+        from apm_cli.integration.targets import active_targets_user_scope
+        result = active_targets_user_scope(explicit_target="all")
+        names = {t.name for t in result}
+        assert "copilot" in names
+        assert "claude" in names
+        assert "cursor" in names
+        assert "opencode" in names
+
+    def test_explicit_unknown_returns_empty(self):
+        from apm_cli.integration.targets import active_targets_user_scope
+        result = active_targets_user_scope(explicit_target="nonexistent")
+        assert result == []
+
+    def test_explicit_vscode_alias(self):
+        from apm_cli.integration.targets import active_targets_user_scope
+        result = active_targets_user_scope(explicit_target="vscode")
+        assert len(result) == 1
+        assert result[0].name == "copilot"
+
+    def test_auto_detect_by_dir_presence(self, tmp_path):
+        """When cursor dir exists at ~/, it should be detected."""
+        from apm_cli.integration.targets import active_targets_user_scope
+        (tmp_path / ".cursor").mkdir()
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            result = active_targets_user_scope()
+        names = {t.name for t in result}
+        assert "cursor" in names
+
+    def test_auto_detect_multiple_dirs(self, tmp_path):
+        """Detects all targets with existing home dirs."""
+        from apm_cli.integration.targets import active_targets_user_scope
+        (tmp_path / ".cursor").mkdir()
+        (tmp_path / ".claude").mkdir()
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            result = active_targets_user_scope()
+        names = {t.name for t in result}
+        assert "cursor" in names
+        assert "claude" in names
+
+    def test_fallback_to_copilot(self, tmp_path):
+        """When no target dirs exist, falls back to copilot."""
+        from apm_cli.integration.targets import active_targets_user_scope
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            result = active_targets_user_scope()
+        assert len(result) == 1
+        assert result[0].name == "copilot"
+
+    def test_opencode_nested_dir(self, tmp_path):
+        """OpenCode uses ~/.config/opencode/ which is nested."""
+        from apm_cli.integration.targets import active_targets_user_scope
+        (tmp_path / ".config" / "opencode").mkdir(parents=True)
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            result = active_targets_user_scope()
+        names = {t.name for t in result}
+        assert "opencode" in names

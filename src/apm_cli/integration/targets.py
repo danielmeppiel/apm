@@ -163,7 +163,9 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         detect_by_dir=True,
         user_supported=True,
     ),
-    # Cursor -- user-level rules are managed via Cursor Settings UI only.
+    # Cursor -- at user scope, ~/.cursor/ supports skills, agents, hooks,
+    # and MCP.  Rules/instructions are managed via Cursor Settings UI only
+    # (not file-based), so "instructions" is excluded from user scope.
     # Ref: https://cursor.com/docs/rules
     "cursor": TargetProfile(
         name="cursor",
@@ -184,10 +186,12 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         },
         auto_create=False,
         detect_by_dir=True,
-        user_supported=False,
+        user_supported="partial",
+        user_root_dir=".cursor",
+        unsupported_user_primitives=("instructions",),
     ),
-    # OpenCode -- no official docs confirm user-level reading from ~/.opencode/.
-    # Does not support hooks -- instructions are via AGENTS.md (apm compile).
+    # OpenCode -- at user scope, ~/.config/opencode/ supports skills, agents,
+    # and commands.  OpenCode has no hooks concept, so "hooks" is excluded.
     "opencode": TargetProfile(
         name="opencode",
         root_dir=".opencode",
@@ -204,7 +208,9 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         },
         auto_create=False,
         detect_by_dir=True,
-        user_supported=False,
+        user_supported="partial",
+        user_root_dir=".config/opencode",
+        unsupported_user_primitives=("hooks",),
     ),
 }
 
@@ -216,6 +222,54 @@ def get_integration_prefixes() -> tuple:
     stays in sync with registered targets.
     """
     return tuple(t.prefix for t in KNOWN_TARGETS.values())
+
+
+def active_targets_user_scope(
+    explicit_target: "Optional[str]" = None,
+) -> list:
+    """Return ``TargetProfile`` instances for user-scope deployment.
+
+    Mirrors ``active_targets()`` but operates against ``~/`` and filters
+    out targets that do not support user scope.
+
+    Resolution order:
+
+    1. **Explicit target** (``--target``): returns the matching profile
+       if it supports user scope.  ``"all"`` returns every user-capable
+       target.
+    2. **Directory detection**: profiles whose ``effective_root(user_scope=True)``
+       directory exists under ``~/``.
+    3. **Fallback**: ``[copilot]`` -- same default as project scope.
+    """
+    from pathlib import Path
+
+    home = Path.home()
+
+    # --- explicit target ---
+    if explicit_target:
+        canonical = explicit_target
+        if canonical in ("copilot", "vscode", "agents"):
+            canonical = "copilot"
+        if canonical == "all":
+            return [
+                p for p in KNOWN_TARGETS.values()
+                if p.user_supported
+            ]
+        profile = KNOWN_TARGETS.get(canonical)
+        if profile and profile.user_supported:
+            return [profile]
+        return []
+
+    # --- auto-detect by directory presence at ~/ ---
+    detected = [
+        p for p in KNOWN_TARGETS.values()
+        if p.user_supported and (home / p.effective_root(user_scope=True)).is_dir()
+    ]
+    if detected:
+        return detected
+
+    # --- fallback: copilot is the universal default ---
+    return [KNOWN_TARGETS["copilot"]]
 
 
 def active_targets(project_root, explicit_target: "Optional[str]" = None) -> list:

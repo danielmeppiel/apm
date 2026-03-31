@@ -95,7 +95,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--verbose` - Show individual file paths and full error details in the diagnostic summary
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 - `--dev` - Add packages to [`devDependencies`](../manifest-schema/#5-devdependencies) instead of `dependencies`. Dev deps are installed locally but excluded from `apm pack --format plugin` bundles
-- `-g, --global` - Install to user scope (`~/.apm/`) instead of the current project. Primitives deploy to `~/.github/`, `~/.claude/`, etc.
+- `-g, --global` - Install to user scope (`~/.apm/`) instead of the current project. Primitives deploy to `~/.copilot/`, `~/.claude/`, etc.
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
@@ -610,13 +610,23 @@ apm deps COMMAND [OPTIONS]
 Show all installed APM dependencies in a Rich table format with per-primitive counts.
 
 ```bash
-apm deps list
+apm deps list [OPTIONS]
 ```
+
+**Options:**
+- `-g, --global` - List user-scope packages from `~/.apm/` instead of the current project
+- `--all` - List packages from both project and user scope
 
 **Examples:**
 ```bash
-# Show all installed APM packages
+# Show project-scope packages
 apm deps list
+
+# Show user-scope packages
+apm deps list -g
+
+# Show both scopes
+apm deps list --all
 ```
 
 **Sample Output:**

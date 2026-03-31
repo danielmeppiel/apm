@@ -290,6 +290,8 @@ across every project on the machine:
 ```bash
 apm install -g microsoft/apm-sample-package
 apm uninstall -g microsoft/apm-sample-package
+apm deps list -g       # user-scope packages only
+apm deps list --all    # project + user-scope packages
 ```
 
 | Item | Project scope (default) | User scope (`-g`) |
@@ -297,28 +299,34 @@ apm uninstall -g microsoft/apm-sample-package
 | Manifest | `./apm.yml` | `~/.apm/apm.yml` |
 | Modules | `./apm_modules/` | `~/.apm/apm_modules/` |
 | Lockfile | `./apm.lock.yaml` | `~/.apm/apm.lock.yaml` |
-| Deployed primitives | `./.github/`, `./.claude/`, ... | `~/.github/`, `~/.claude/`, ... |
+| Deployed primitives | `./.github/`, `./.claude/`, ... | `~/.copilot/`, `~/.claude/`, `~/.cursor/`, `~/.config/opencode/` |
 
 ### Per-target support
 
-Not every AI tool supports user-level configuration. APM warns when a `--global` install targets
-a tool that lacks native user-level support.
+All four targets support user-scope installation. Coverage varies by primitive type:
 
-| Target | User-level dir | Status | Notes | Reference |
-|--------|---------------|--------|-------|-----------|
-| Claude Code | `~/.claude/` | Supported | All primitives | [Settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
-| Copilot CLI | `~/.copilot/` | Partial | Agents, skills, instructions; prompts not supported | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
-| Cursor | N/A | Not supported | User rules via Settings UI only | [Rules](https://cursor.com/docs/rules) |
-| OpenCode | N/A | Not supported | No user-level config docs | -- |
+| Target | User-level dir | Primitives | Not supported |
+|--------|---------------|------------|---------------|
+| Claude Code | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
+| Copilot | `~/.copilot/` | Skills, agents, instructions, hooks | Prompts |
+| Cursor | `~/.cursor/` | Skills, agents, hooks | Rules |
+| OpenCode | `~/.config/opencode/` | Skills, agents, commands | Hooks |
+
+Target detection mirrors project scope: APM auto-detects by `~/.<target>/` directory presence,
+falling back to Copilot. Security scanning runs for global installs.
 
 ### When to use each scope
 
 | Use case | Scope |
 |----------|-------|
 | Team-shared instructions and prompts | Project (`apm install`) |
-| Personal Claude Code commands / agents | User (`apm install -g`) |
+| Personal commands, agents, or skills | User (`apm install -g`) |
 | CI/CD reproducible setup | Project |
-| Cross-project coding standards (Claude Code) | User |
+| Cross-project coding standards | User |
+
+:::note
+MCP servers are not supported at user scope. Each target uses a different MCP configuration format; user-scope MCP support is planned for a future release.
+:::
 
 ## MCP Dependency Formats
 
