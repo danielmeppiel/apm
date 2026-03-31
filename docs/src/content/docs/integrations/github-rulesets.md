@@ -58,21 +58,28 @@ Once configured, any PR that introduces content issues detected by `apm audit` w
 
 ## What It Catches
 
-`apm audit` provides two tiers of checks:
+`apm audit` operates in three modes, each adding more checks:
 
-**Baseline checks** (always available):
-- **Hidden Unicode characters** -- tag characters, bidi overrides, and variation selectors embedded in prompt files
-- **Zero-width and invisible characters** -- characters that could alter agent behavior without visible changes
-- **Lockfile consistency** (`apm audit --ci`) -- verifies installed packages match the lockfile, detects missing or modified files, and checks for unresolved dependencies
+**Content scanning** (`apm audit`):
+- **Critical: Hidden Unicode characters** -- tag characters (U+E0001-E007F), bidi overrides (U+202A-202E, U+2066-2069), and SMP variation selectors. Exit code **1**.
+- **Warning: Zero-width and invisible characters** -- zero-width spaces/joiners, mid-file BOM, soft hyphens. Exit code **2**. These are suspicious but not attack vectors.
 
-**Policy enforcement checks** (`apm audit --ci --policy org`):
+**CI baseline checks** (`apm audit --ci`) -- adds lockfile verification on top of content scanning:
+- **Lockfile exists** -- validates `apm.lock.yaml` is present when dependencies are declared
+- **Ref consistency** -- every dependency's manifest ref matches the lockfile
+- **Deployed files present** -- all files listed in lockfile exist on disk
+- **No orphaned packages** -- no packages in lockfile are absent from manifest
+- **Config consistency** -- MCP server configs match lockfile baseline
+- **Content integrity** -- fails on **critical** Unicode only (warnings are not CI-blocking)
+
+In `--ci` mode, exit codes are binary: **0** = pass, **1** = fail. Warning-level characters do not fail CI.
+
+**Policy enforcement** (`apm audit --ci --policy org`) -- adds organizational rules:
 - **Approved/denied sources** -- restrict which repositories packages can come from
 - **MCP transport controls** -- allow/deny transport types, trust settings for transitive MCP
 - **Manifest requirements** -- enforce required fields, content types, scripts
 - **Compilation rules** -- target and strategy constraints
 - **Unmanaged file detection** -- flag files in integration directories not tracked by the lockfile
-
-When issues are detected, the command exits with a non-zero status code (1 = critical, 2 = warnings) and the check fails.
 
 For full setup instructions, see the [CI Policy Enforcement](../../guides/ci-policy-setup/) guide. For the complete policy schema, see the [Policy Reference](../../enterprise/policy-reference/).
 
@@ -80,8 +87,8 @@ For full setup instructions, see the [CI Policy Enforcement](../../guides/ci-pol
 
 | Level | Description | Status |
 |-------|-------------|--------|
-| 1 | `apm audit` as a required status check (content scanning via exit codes) | Available |
-| 2 | `apm audit --ci` with lockfile consistency checking | Available |
+| 1 | `apm audit` as a required status check (content scanning: critical=exit 1, warning=exit 2) | Available |
+| 2 | `apm audit --ci` with lockfile verification (binary pass/fail, warnings do not block) | Available |
 | 3 | `apm audit --ci --policy org` with organization policy enforcement | Available |
 | 4 | GitHub recommends apm-action for agent governance | Future |
 | 5 | Native Rulesets UI for agent configuration policy | Future |
