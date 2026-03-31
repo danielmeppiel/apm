@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `deploy_root` field to `PrimitiveMapping` for cross-root primitive deployment
 - Add `--target codex` to install, compile, and pack commands
 
+### Changed
+
+- `apm deps update` now skips download and integration for packages whose resolved SHA matches the lockfile SHA, making the common "nothing changed" case near-instant (#495)
+
 ## [0.8.7] - 2026-03-30
 
 ### Fixed
