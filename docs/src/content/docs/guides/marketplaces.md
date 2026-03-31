@@ -25,7 +25,7 @@ A marketplace is a GitHub repository with a `marketplace.json` at its root. The 
     },
     {
       "name": "eslint-rules",
-      "source": { "type": "git-subdir", "repo": "acme/monorepo/plugins/eslint-rules" }
+      "source": { "type": "git-subdir", "repo": "acme/monorepo", "subdir": "plugins/eslint-rules" }
     },
     {
       "name": "local-tools",
@@ -43,8 +43,8 @@ Both Copilot CLI and Claude Code `marketplace.json` formats are supported. Copil
 |------|-------------|---------|
 | `github` | GitHub `owner/repo` shorthand | `acme/code-review-plugin` |
 | `url` | Full HTTPS or SSH Git URL | `https://github.com/acme/style-guide.git` |
-| `git-subdir` | Subdirectory within a Git repository | `acme/monorepo/plugins/eslint-rules` |
-| String `source` | Local or relative path (Claude shorthand) | `./tools/local-plugin` |
+| `git-subdir` | Subdirectory within a Git repository (`repo` + `subdir`) | `acme/monorepo` + `plugins/eslint-rules` |
+| String `source` | Subdirectory within the marketplace repository itself | `./tools/local-plugin` |
 
 npm sources are not supported. Copilot CLI format uses `"repository"` and optional `"ref"` fields instead of `"source"`.
 
