@@ -340,7 +340,7 @@ Use the [hybrid authoring workflow](#hybrid-authoring-workflow) to develop plugi
 ## Finding Plugins
 
 Plugins can be found through:
-- **Marketplaces** -- curated `marketplace.json` indexes browsable with `apm marketplace browse` and searchable with `apm search`. See the [Marketplaces guide](../marketplaces/) for setup.
+- **Marketplaces** -- curated `marketplace.json` indexes browsable with `apm marketplace browse` and searchable with `apm search QUERY@MARKETPLACE`. See the [Marketplaces guide](../marketplaces/) for setup.
 - GitHub repositories (search for repos with `plugin.json`)
 - Organization-specific plugin repositories
 

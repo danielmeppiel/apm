@@ -953,16 +953,16 @@ apm marketplace remove acme-plugins
 apm marketplace remove acme-plugins --yes
 ```
 
-### `apm search` - Search plugins across marketplaces
+### `apm search` - Search plugins in a marketplace
 
-Search for plugins by name or description across all registered marketplaces.
+Search for plugins by name or description within a specific marketplace.
 
 ```bash
-apm search QUERY [OPTIONS]
+apm search QUERY@MARKETPLACE [OPTIONS]
 ```
 
 **Arguments:**
-- `QUERY` - Search term to find plugins
+- `QUERY@MARKETPLACE` - Search term scoped to a marketplace (e.g., `security@skills`)
 
 **Options:**
 - `--limit INTEGER` - Maximum results to return (default: 20)
@@ -970,11 +970,11 @@ apm search QUERY [OPTIONS]
 
 **Examples:**
 ```bash
-# Search for code review plugins
-apm search "code review"
+# Search for code review plugins in a marketplace
+apm search "code review@skills"
 
 # Limit results
-apm search "linting" --limit 5
+apm search "linting@awesome-copilot" --limit 5
 ```
 
 ### `apm run` (Experimental) - Execute prompts
