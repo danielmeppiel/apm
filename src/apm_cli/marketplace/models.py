@@ -202,7 +202,7 @@ def parse_marketplace_json(
         )
         raw_plugins = []
 
-    plugins: list[MarketplacePlugin] = []
+    plugins: List[MarketplacePlugin] = []
     for entry in raw_plugins:
         if not isinstance(entry, dict):
             continue

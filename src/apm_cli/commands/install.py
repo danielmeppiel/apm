@@ -130,8 +130,11 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
     for package in packages:
         # --- Marketplace pre-parse intercept ---
-        # If input matches NAME@MARKETPLACE (no slashes, no colons), resolve
-        # via the marketplace registry before the standard parse path.
+        # If input has no slash and is not a local path, check if it is a
+        # marketplace ref (NAME@MARKETPLACE).  If so, resolve it to a
+        # canonical owner/repo[#ref] string before entering the standard
+        # parse path.  Anything that doesn't match is rejected as an
+        # invalid format.
         marketplace_provenance = None
         if "/" not in package and not DependencyReference.is_local_path(package):
             try:
@@ -141,8 +144,12 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 )
 
                 mkt_ref = parse_marketplace_ref(package)
-                if mkt_ref is not None:
-                    plugin_name, marketplace_name = mkt_ref
+            except Exception:
+                mkt_ref = None
+
+            if mkt_ref is not None:
+                plugin_name, marketplace_name = mkt_ref
+                try:
                     if logger:
                         logger.verbose_detail(
                             f"    Resolving {plugin_name}@{marketplace_name} via marketplace..."
@@ -161,20 +168,19 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                         "marketplace_plugin_name": plugin_name,
                     }
                     package = canonical_str
-            except Exception as mkt_err:
-                reason = str(mkt_err)
+                except Exception as mkt_err:
+                    reason = str(mkt_err)
+                    invalid_outcomes.append((package, reason))
+                    if logger:
+                        logger.validation_fail(package, reason)
+                    continue
+            else:
+                # No slash, not a local path, and not a marketplace ref
+                reason = "invalid format -- use 'owner/repo' or 'plugin-name@marketplace'"
                 invalid_outcomes.append((package, reason))
                 if logger:
                     logger.validation_fail(package, reason)
                 continue
-
-        # Validate package format (should be owner/repo, a git URL, or a local path)
-        if "/" not in package and not DependencyReference.is_local_path(package):
-            reason = "invalid format -- use 'owner/repo' or 'plugin-name@marketplace'"
-            invalid_outcomes.append((package, reason))
-            if logger:
-                logger.validation_fail(package, reason)
-            continue
 
         # Canonicalize input
         try:
