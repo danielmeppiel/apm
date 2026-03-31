@@ -81,7 +81,7 @@ apm install [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, FQDN shorthand (`host/owner/repo`), or local filesystem paths (`./path`, `../path`, `/absolute/path`, `~/path`). All forms are normalized to canonical format in `apm.yml`.
+- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, FQDN shorthand (`host/owner/repo`), local filesystem paths (`./path`, `../path`, `/absolute/path`, `~/path`), or marketplace references (`NAME@MARKETPLACE`). All forms are normalized to canonical format in `apm.yml`.
 
 **Options:**
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
@@ -155,6 +155,9 @@ apm install /home/user/repos/my-ai-package
 
 # Install to user scope (available across all projects)
 apm install -g microsoft/apm-sample-package
+
+# Install a plugin from a registered marketplace
+apm install code-review@acme-plugins
 ```
 
 **Auto-Bootstrap Behavior:**
@@ -849,6 +852,148 @@ apm mcp show a5e8a7f0-d4e4-4a1d-b12f-2896a23fd4f1
 - Repository URL
 - Available installation packages
 - Installation instructions
+
+### `apm marketplace` - Plugin marketplace management
+
+Register, browse, and manage plugin marketplaces. Marketplaces are GitHub repositories containing a `marketplace.json` index of plugins.
+
+> See the [Marketplaces guide](../../guides/marketplaces/) for concepts and workflows.
+
+```bash
+apm marketplace COMMAND [OPTIONS]
+```
+
+#### `apm marketplace add` - Register a marketplace
+
+Register a GitHub repository as a plugin marketplace.
+
+```bash
+apm marketplace add OWNER/REPO [OPTIONS]
+```
+
+**Arguments:**
+- `OWNER/REPO` - GitHub repository containing `marketplace.json`
+
+**Options:**
+- `-n, --name TEXT` - Custom display name for the marketplace
+- `-b, --branch TEXT` - Branch to track (default: main)
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Register a marketplace
+apm marketplace add acme/plugin-marketplace
+
+# Register with a custom name and branch
+apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
+```
+
+#### `apm marketplace list` - List registered marketplaces
+
+List all registered marketplaces with their source repository and branch.
+
+```bash
+apm marketplace list [OPTIONS]
+```
+
+**Options:**
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+apm marketplace list
+```
+
+#### `apm marketplace browse` - Browse marketplace plugins
+
+List all plugins available in a registered marketplace.
+
+```bash
+apm marketplace browse NAME [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` - Name of the registered marketplace
+
+**Options:**
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Browse all plugins in a marketplace
+apm marketplace browse acme-plugins
+```
+
+#### `apm marketplace update` - Refresh marketplace cache
+
+Refresh the cached `marketplace.json` for one or all registered marketplaces.
+
+```bash
+apm marketplace update [NAME] [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` - Optional marketplace name. Omit to refresh all.
+
+**Options:**
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Refresh a specific marketplace
+apm marketplace update acme-plugins
+
+# Refresh all marketplaces
+apm marketplace update
+```
+
+#### `apm marketplace remove` - Remove a registered marketplace
+
+Unregister a marketplace. Plugins previously installed from it remain pinned in `apm.lock.yaml`.
+
+```bash
+apm marketplace remove NAME [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` - Name of the marketplace to remove
+
+**Options:**
+- `-y, --yes` - Skip confirmation prompt
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Remove with confirmation prompt
+apm marketplace remove acme-plugins
+
+# Remove without confirmation
+apm marketplace remove acme-plugins --yes
+```
+
+### `apm search` - Search plugins in a marketplace
+
+Search for plugins by name or description within a specific marketplace.
+
+```bash
+apm search QUERY@MARKETPLACE [OPTIONS]
+```
+
+**Arguments:**
+- `QUERY@MARKETPLACE` - Search term scoped to a marketplace (e.g., `security@skills`)
+
+**Options:**
+- `--limit INTEGER` - Maximum results to return (default: 20)
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Search for code review plugins in a marketplace
+apm search "code review@skills"
+
+# Limit results
+apm search "linting@awesome-copilot" --limit 5
+```
 
 ### `apm run` (Experimental) - Execute prompts
 
