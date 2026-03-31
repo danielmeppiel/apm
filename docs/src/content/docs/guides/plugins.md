@@ -340,11 +340,19 @@ Use the [hybrid authoring workflow](#hybrid-authoring-workflow) to develop plugi
 ## Finding Plugins
 
 Plugins can be found through:
+- **Marketplaces** -- curated `marketplace.json` indexes browsable with `apm marketplace browse` and searchable with `apm search`. See the [Marketplaces guide](../marketplaces/) for setup.
 - GitHub repositories (search for repos with `plugin.json`)
 - Organization-specific plugin repositories
-- Community plugin collections
 
-Once found, install them using the standard `apm install owner/repo/plugin-name` command.
+Install by name from a registered marketplace:
+
+```bash
+apm install code-review@acme-plugins
+```
+
+APM resolves marketplace entries to Git URLs, so marketplace-installed plugins get full version locking, security scanning, and governance. See [Marketplaces](../marketplaces/) for details.
+
+For direct installs, use the standard `apm install owner/repo/plugin-name` command.
 
 ## Troubleshooting
 
