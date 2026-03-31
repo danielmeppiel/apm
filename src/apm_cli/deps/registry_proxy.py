@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -34,6 +34,32 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # RegistryConfig
 # ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class RegistryClient(Protocol):
+    """Interface for registry proxy backends.
+
+    Each backend (Artifactory, Nexus, etc.) implements this protocol so
+    the download pipeline can fetch files without knowing which registry
+    type is in use.
+    """
+
+    def fetch_file(
+        self,
+        owner: str,
+        repo: str,
+        file_path: str,
+        ref: str = "main",
+        resilient_get: Optional[Callable] = None,
+    ) -> Optional[bytes]:
+        """Fetch a single file from the registry.
+
+        Returns raw file bytes on success, or ``None`` when the file
+        cannot be fetched (caller should fall back to full-archive
+        download).
+        """
+        ...
 
 
 @dataclass(frozen=True)
@@ -128,6 +154,17 @@ class RegistryConfig:
         if self.token:
             return {"Authorization": f"Bearer {self.token}"}
         return {}
+
+    def get_client(self) -> "RegistryClient":
+        """Return a :class:`RegistryClient` for this configuration.
+
+        Currently returns an Artifactory backend.  When additional
+        registry types are needed, this method can inspect the URL or
+        a configuration hint to select the right backend.
+        """
+        from .artifactory_entry import ArtifactoryRegistryClient
+
+        return ArtifactoryRegistryClient(config=self)
 
     def validate_lockfile_deps(
         self, locked_deps: "List[LockedDependency]"

@@ -315,7 +315,36 @@ class GitHubPackageDownloader:
 
     def _download_file_from_artifactory(self, host: str, prefix: str, owner: str,
                                          repo: str, file_path: str, ref: str, scheme: str = "https") -> bytes:
-        """Download a single file from Artifactory by fetching the full archive and extracting it."""
+        """Download a single file from Artifactory.
+
+        Tries the Archive Entry Download API first (fetches one file
+        without downloading the full archive).  Falls back to the full
+        archive approach when the entry API is unavailable or returns an
+        error.
+        """
+        # Fast path: use the RegistryClient interface for entry download
+        cfg = self.registry_config
+        if cfg is not None and cfg.host == host:
+            client = cfg.get_client()
+            content = client.fetch_file(
+                owner, repo, file_path, ref,
+                resilient_get=self._resilient_get,
+            )
+        else:
+            # No RegistryConfig or host mismatch (explicit FQDN mode) --
+            # fall back to the standalone helper.
+            from .artifactory_entry import fetch_entry_from_archive
+
+            content = fetch_entry_from_archive(
+                host, prefix, owner, repo, file_path, ref,
+                scheme=scheme,
+                headers=self._get_artifactory_headers(),
+                resilient_get=self._resilient_get,
+            )
+        if content is not None:
+            return content
+
+        # Fallback: download full archive and extract the file
         import io
         import zipfile
 
