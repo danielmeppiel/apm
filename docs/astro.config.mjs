@@ -69,6 +69,7 @@ export default defineConfig({
 						{ label: 'Pack & Distribute', slug: 'guides/pack-distribute' },
 						{ label: 'Private Packages', slug: 'guides/private-packages' },
 						{ label: 'Org-Wide Packages', slug: 'guides/org-packages' },
+						{ label: 'Marketplaces', slug: 'guides/marketplaces' },
 						{ label: 'CI Policy Enforcement', slug: 'guides/ci-policy-setup' },
 						{ label: 'Agent Workflows (Experimental)', slug: 'guides/agent-workflows' },
 					],
