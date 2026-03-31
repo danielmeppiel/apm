@@ -50,16 +50,16 @@ apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 
 #### Skill Integration During Install
 
-Skills are integrated to `.github/skills/`:
+Skills are integrated to the target-specific skills directory (e.g., `.github/skills/` for copilot, `.cursor/skills/` for cursor):
 
 | Source | Result |
 |--------|--------|
-| Package with `SKILL.md` | Skill folder copied to `.github/skills/{folder-name}/` |
+| Package with `SKILL.md` | Skill folder copied to `{target}/skills/{folder-name}/` |
 | Package without `SKILL.md` | No skill folder created |
 
 #### Skill Folder Naming
 
-Skill folders use the **source folder name directly** (not flattened paths):
+Skill folders use the **source folder name directly** (not flattened paths). Example for the default copilot target:
 
 ```
 .github/skills/

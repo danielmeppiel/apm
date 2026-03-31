@@ -250,11 +250,11 @@ my-package/
             └── SKILL.md  # Sub-skill B
 ```
 
-On install, APM promotes each sub-skill to a top-level `.github/skills/` entry alongside the parent — see [Sub-skill Promotion](#sub-skill-promotion) below.
+On install, APM promotes each sub-skill to a top-level `{target}/skills/` entry alongside the parent — see [Sub-skill Promotion](#sub-skill-promotion) below.
 
 ### Sub-skill Promotion
 
-When a package contains sub-skills in `.apm/skills/*/` subdirectories, APM promotes each to a top-level entry under `.github/skills/`. This ensures Copilot can discover them independently, since it only scans direct children of `.github/skills/`.
+When a package contains sub-skills in `.apm/skills/*/` subdirectories, APM promotes each to a top-level entry under `{target}/skills/` (e.g., `.github/skills/`, `.cursor/skills/`, `.opencode/skills/` depending on the active target). This ensures each supported IDE can discover them independently.
 
 ```
 # Installed package with sub-skills:
@@ -265,11 +265,18 @@ apm_modules/org/repo/my-package/
         └── azure-naming/
             └── SKILL.md
 
-# Result after install:
+# Result after install (default/copilot target):
 .github/skills/
 ├── my-package/              # Parent skill
 │   └── SKILL.md
 └── azure-naming/            # Promoted sub-skill
+    └── SKILL.md
+
+# Result after install (--target cursor):
+.cursor/skills/
+├── my-package/
+│   └── SKILL.md
+└── azure-naming/
     └── SKILL.md
 ```
 
