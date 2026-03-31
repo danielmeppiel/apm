@@ -147,41 +147,70 @@ class TestMarketplaceRemove:
 
 
 class TestSearch:
-    """Top-level search command."""
+    """Top-level search command -- requires QUERY@MARKETPLACE format."""
 
-    @patch("apm_cli.marketplace.registry.marketplace_count")
-    def test_search_no_marketplaces(self, mock_count, runner):
+    def test_search_missing_at_symbol(self, runner):
         from apm_cli.commands.marketplace import search
 
-        mock_count.return_value = 0
         result = runner.invoke(search, ["security"])
-        assert result.exit_code == 0
-        assert "no marketplace" in result.output.lower() or "add" in result.output.lower()
+        assert result.exit_code != 0
+        assert "QUERY@MARKETPLACE" in result.output
 
-    @patch("apm_cli.marketplace.client.search_all_marketplaces")
-    @patch("apm_cli.marketplace.registry.marketplace_count")
-    def test_search_finds_results(self, mock_count, mock_search, runner):
+    def test_search_empty_query(self, runner):
         from apm_cli.commands.marketplace import search
 
-        mock_count.return_value = 1
+        result = runner.invoke(search, ["@skills"])
+        assert result.exit_code != 0
+        assert "QUERY" in result.output and "MARKETPLACE" in result.output
+
+    def test_search_empty_marketplace(self, runner):
+        from apm_cli.commands.marketplace import search
+
+        result = runner.invoke(search, ["security@"])
+        assert result.exit_code != 0
+        assert "QUERY" in result.output and "MARKETPLACE" in result.output
+
+    @patch("apm_cli.marketplace.registry.get_marketplace_by_name")
+    def test_search_unknown_marketplace(self, mock_get, runner):
+        from apm_cli.commands.marketplace import search
+
+        mock_get.side_effect = Exception("not found")
+        result = runner.invoke(search, ["security@nonexistent"])
+        assert result.exit_code != 0
+        assert "not registered" in result.output.lower()
+
+    @patch("apm_cli.marketplace.client.search_marketplace")
+    @patch("apm_cli.marketplace.registry.get_marketplace_by_name")
+    def test_search_finds_results(self, mock_get, mock_search, runner):
+        from apm_cli.commands.marketplace import search
+
+        mock_get.return_value = MarketplaceSource(
+            name="skills", owner="anthropics", repo="anthropics/skills", path=".claude-plugin/marketplace.json"
+        )
         mock_search.return_value = [
             MarketplacePlugin(
                 name="security-scanner",
                 description="Scans code",
-                source_marketplace="acme",
+                source_marketplace="skills",
             ),
         ]
-        result = runner.invoke(search, ["security"])
+        result = runner.invoke(search, ["security@skills"])
         assert result.exit_code == 0
         assert "security-scanner" in result.output
 
-    @patch("apm_cli.marketplace.client.search_all_marketplaces")
-    @patch("apm_cli.marketplace.registry.marketplace_count")
-    def test_search_no_results(self, mock_count, mock_search, runner):
+    @patch("apm_cli.marketplace.client.search_marketplace")
+    @patch("apm_cli.marketplace.registry.get_marketplace_by_name")
+    def test_search_no_results(self, mock_get, mock_search, runner):
         from apm_cli.commands.marketplace import search
 
-        mock_count.return_value = 1
+        mock_get.return_value = MarketplaceSource(
+            name="skills", owner="anthropics", repo="anthropics/skills", path=".claude-plugin/marketplace.json"
+        )
         mock_search.return_value = []
-        result = runner.invoke(search, ["zzz-nonexistent"])
+        result = runner.invoke(search, ["zzz-nonexistent@skills"])
         assert result.exit_code == 0
-        assert "no plugin" in result.output.lower() or "not found" in result.output.lower() or "browse" in result.output.lower()
+        assert (
+            "no plugin" in result.output.lower()
+            or "not found" in result.output.lower()
+            or "browse" in result.output.lower()
+        )

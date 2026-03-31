@@ -81,20 +81,24 @@ View all plugins available in a specific marketplace:
 apm marketplace browse acme-plugins
 ```
 
-## Search across marketplaces
+## Search a marketplace
 
-Search plugins by name or description across all registered marketplaces:
+Search plugins by name or description in a specific marketplace using `QUERY@MARKETPLACE`:
 
 ```bash
-apm search "code review"
+apm search "code review@skills"
 ```
 
 **Options:**
 - `--limit` -- Maximum results to return (default: 20)
 
 ```bash
-apm search "linting" --limit 5
+apm search "linting@awesome-copilot" --limit 5
 ```
+
+The `@MARKETPLACE` scope is required -- this avoids name collisions when different
+marketplaces contain plugins with the same name. To see everything in a marketplace,
+use `apm marketplace browse <name>` instead.
 
 ## Install from a marketplace
 

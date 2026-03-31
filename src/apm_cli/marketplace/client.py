@@ -250,6 +250,17 @@ def fetch_or_cache(
     return fetch_marketplace(source, auth_resolver=auth_resolver)
 
 
+def search_marketplace(
+    query: str,
+    source: MarketplaceSource,
+    *,
+    auth_resolver: Optional[object] = None,
+) -> List[MarketplacePlugin]:
+    """Search a single marketplace for plugins matching *query*."""
+    manifest = fetch_marketplace(source, auth_resolver=auth_resolver)
+    return manifest.search(query)
+
+
 def search_all_marketplaces(
     query: str,
     *,

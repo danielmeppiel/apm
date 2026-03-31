@@ -340,32 +340,56 @@ def remove(name, yes, verbose):
 # ---------------------------------------------------------------------------
 
 
-@click.command(name="search", help="Search plugins across all registered marketplaces")
-@click.argument("query", required=True)
+@click.command(
+    name="search",
+    help="Search plugins in a marketplace (QUERY@MARKETPLACE)",
+)
+@click.argument("expression", required=True)
 @click.option("--limit", default=20, show_default=True, help="Max results to show")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
-def search(query, limit, verbose):
-    """Search for plugins across all registered marketplaces."""
+def search(expression, limit, verbose):
+    """Search for plugins in a specific marketplace.
+
+    Use QUERY@MARKETPLACE format, e.g.:  apm marketplace search security@skills
+    """
     logger = CommandLogger("marketplace-search", verbose=verbose)
     try:
-        from ..marketplace.client import search_all_marketplaces
-        from ..marketplace.registry import marketplace_count
+        from ..marketplace.client import search_marketplace
+        from ..marketplace.registry import get_marketplace_by_name
 
-        if marketplace_count() == 0:
-            logger.progress(
-                "No marketplaces registered. "
-                "Use 'apm marketplace add OWNER/REPO' to register one.",
-                symbol="info",
+        if "@" not in expression:
+            logger.error(
+                f"Invalid format: '{expression}'. "
+                "Use QUERY@MARKETPLACE, e.g.: apm marketplace search security@skills"
             )
-            return
+            sys.exit(1)
 
-        logger.start(f"Searching marketplaces for '{query}'...", symbol="search")
-        results = search_all_marketplaces(query)[:limit]
+        query, marketplace_name = expression.rsplit("@", 1)
+        if not query or not marketplace_name:
+            logger.error(
+                "Both QUERY and MARKETPLACE are required. "
+                "Use QUERY@MARKETPLACE, e.g.: apm marketplace search security@skills"
+            )
+            sys.exit(1)
+
+        try:
+            source = get_marketplace_by_name(marketplace_name)
+        except Exception:
+            logger.error(
+                f"Marketplace '{marketplace_name}' is not registered. "
+                "Use 'apm marketplace list' to see registered marketplaces."
+            )
+            sys.exit(1)
+
+        logger.start(
+            f"Searching '{marketplace_name}' for '{query}'...", symbol="search"
+        )
+        results = search_marketplace(query, source)[:limit]
 
         if not results:
             logger.warning(
-                f"No plugins found matching '{query}'. "
-                f"Try 'apm marketplace browse <name>' to see all plugins."
+                f"No plugins found matching '{query}' in '{marketplace_name}'. "
+                f"Try 'apm marketplace browse {marketplace_name}' to see all plugins."
             )
             return
 
@@ -375,19 +399,21 @@ def search(query, limit, verbose):
             logger.success(f"Found {len(results)} plugin(s):", symbol="check")
             for p in results:
                 desc = f" -- {p.description}" if p.description else ""
-                click.echo(f"  {p.name}@{p.source_marketplace}{desc}")
+                click.echo(f"  {p.name}@{marketplace_name}{desc}")
+            click.echo(
+                f"\n  Install: apm install <plugin-name>@{marketplace_name}"
+            )
             return
 
         from rich.table import Table
 
         table = Table(
-            title=f"Search Results: '{query}'",
+            title=f"Search Results: '{query}' in {marketplace_name}",
             show_header=True,
             header_style="bold cyan",
             border_style="cyan",
         )
         table.add_column("Plugin", style="bold white", no_wrap=True)
-        table.add_column("Marketplace", style="cyan")
         table.add_column("Description", style="white", ratio=1)
         table.add_column("Install", style="green")
 
@@ -395,16 +421,16 @@ def search(query, limit, verbose):
             desc = p.description or "--"
             if len(desc) > 60:
                 desc = desc[:57] + "..."
-            mkt = p.source_marketplace or "--"
-            install_cmd = f"{p.name}@{mkt}" if mkt and mkt != "--" else p.name
-            table.add_row(p.name, mkt, desc, install_cmd)
+            table.add_row(p.name, desc, f"{p.name}@{marketplace_name}")
 
         console.print()
         console.print(table)
         console.print(
-            f"\n[dim]Install a plugin: apm install <plugin-name>@<marketplace>[/dim]"
+            f"\n[dim]Install: apm install <plugin-name>@{marketplace_name}[/dim]"
         )
 
+    except SystemExit:
+        raise
     except Exception as e:
         logger.error(f"Search failed: {e}")
         sys.exit(1)
