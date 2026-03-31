@@ -1447,3 +1447,92 @@ class TestDeepCopySafety:
         assert data["hooks"]["Stop"][0]["hooks"][0]["command"] == original_cmd
         # Rewritten should be different
         assert rewritten["hooks"]["Stop"][0]["hooks"][0]["command"] != original_cmd
+
+
+# ─── Codex hook integration tests ────────────────────────────────────────────
+
+
+class TestCodexHookIntegration:
+    """Tests for Codex hooks.json merge with _apm_source markers."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.root = Path(self.temp_dir)
+        (self.root / ".codex").mkdir()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_package_info(self, name="test-pkg", hook_data=None):
+        """Create a mock package info with hook files."""
+        pkg_dir = self.root / "apm_modules" / name
+        hooks_dir = pkg_dir / ".apm" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+
+        if hook_data is None:
+            hook_data = {
+                "hooks": {
+                    "SessionStart": [
+                        {"type": "command", "command": "echo hello"}
+                    ]
+                }
+            }
+
+        hook_file = hooks_dir / "hooks.json"
+        with open(hook_file, 'w') as f:
+            json.dump(hook_data, f)
+
+        pi = MagicMock()
+        pi.install_path = pkg_dir
+        pi.package = MagicMock()
+        pi.package.name = name
+        return pi
+
+    def test_codex_hooks_merge_into_hooks_json(self):
+        """Hooks are merged into .codex/hooks.json with _apm_source markers."""
+        pi = self._make_package_info()
+        integrator = HookIntegrator()
+        result = integrator.integrate_package_hooks_codex(pi, self.root)
+
+        assert result.hooks_integrated == 1
+        hooks_json = self.root / ".codex" / "hooks.json"
+        assert hooks_json.exists()
+        data = json.loads(hooks_json.read_text())
+        assert "SessionStart" in data["hooks"]
+        entries = data["hooks"]["SessionStart"]
+        assert any(e.get("_apm_source") == "test-pkg" for e in entries)
+
+    def test_codex_hooks_preserve_user_hooks(self):
+        """Existing user hooks in .codex/hooks.json are preserved."""
+        # Write existing user hooks
+        hooks_json = self.root / ".codex" / "hooks.json"
+        hooks_json.write_text(json.dumps({
+            "hooks": {
+                "PreToolUse": [
+                    {"type": "command", "command": "echo user-hook"}
+                ]
+            }
+        }))
+
+        pi = self._make_package_info()
+        integrator = HookIntegrator()
+        result = integrator.integrate_package_hooks_codex(pi, self.root)
+
+        data = json.loads(hooks_json.read_text())
+        # User hook preserved
+        assert "PreToolUse" in data["hooks"]
+        user_entries = [e for e in data["hooks"]["PreToolUse"] if "_apm_source" not in e]
+        assert len(user_entries) == 1
+        assert user_entries[0]["command"] == "echo user-hook"
+        # APM hook added
+        assert "SessionStart" in data["hooks"]
+
+    def test_codex_hooks_not_deployed_without_codex_dir(self):
+        """Hooks are not deployed if .codex/ directory doesn't exist."""
+        shutil.rmtree(self.root / ".codex")
+
+        pi = self._make_package_info()
+        integrator = HookIntegrator()
+        result = integrator.integrate_package_hooks_codex(pi, self.root)
+
+        assert result.hooks_integrated == 0
