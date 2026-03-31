@@ -12,28 +12,30 @@ A marketplace is a GitHub repository with a `marketplace.json` at its root. The 
 
 ```json
 {
-  "plugins": {
-    "code-review": {
-      "type": "github",
-      "source": "acme/code-review-plugin"
+  "name": "Acme Plugins",
+  "plugins": [
+    {
+      "name": "code-review",
+      "description": "Automated code review agent",
+      "source": { "type": "github", "repo": "acme/code-review-plugin" }
     },
-    "style-guide": {
-      "type": "url",
-      "source": "https://github.com/acme/style-guide.git"
+    {
+      "name": "style-guide",
+      "source": { "type": "url", "url": "https://github.com/acme/style-guide.git" }
     },
-    "eslint-rules": {
-      "type": "git-subdir",
-      "source": "acme/monorepo/plugins/eslint-rules"
+    {
+      "name": "eslint-rules",
+      "source": { "type": "git-subdir", "repo": "acme/monorepo/plugins/eslint-rules" }
     },
-    "local-tools": {
-      "type": "relative",
+    {
+      "name": "local-tools",
       "source": "./tools/local-plugin"
     }
-  }
+  ]
 }
 ```
 
-Both Copilot CLI and Claude Code `marketplace.json` formats are supported. APM normalizes entries from either format into its canonical dependency representation.
+Both Copilot CLI and Claude Code `marketplace.json` formats are supported. Copilot CLI uses `"repository"` and `"ref"` fields; Claude Code uses `"source"` (string or object). APM normalizes entries from either format into its canonical dependency representation.
 
 ### Supported source types
 
@@ -42,9 +44,9 @@ Both Copilot CLI and Claude Code `marketplace.json` formats are supported. APM n
 | `github` | GitHub `owner/repo` shorthand | `acme/code-review-plugin` |
 | `url` | Full HTTPS or SSH Git URL | `https://github.com/acme/style-guide.git` |
 | `git-subdir` | Subdirectory within a Git repository | `acme/monorepo/plugins/eslint-rules` |
-| `relative` | Local filesystem path | `./tools/local-plugin` |
+| String `source` | Local or relative path (Claude shorthand) | `./tools/local-plugin` |
 
-npm sources are not supported.
+npm sources are not supported. Copilot CLI format uses `"repository"` and optional `"ref"` fields instead of `"source"`.
 
 ## Register a marketplace
 
@@ -115,10 +117,11 @@ apm_modules:
   acme/code-review-plugin:
     resolved: https://github.com/acme/code-review-plugin#main
     commit: abc123def456789
-    marketplace: acme-plugins
+    discovered_via: acme-plugins
+    marketplace_plugin_name: code-review
 ```
 
-The `marketplace` field records which marketplace was used for discovery. The `resolved` URL and `commit` pin the exact version, so builds remain reproducible regardless of marketplace availability.
+The `discovered_via` field records which marketplace was used for discovery. `marketplace_plugin_name` stores the original plugin name from the index. The `resolved` URL and `commit` pin the exact version, so builds remain reproducible regardless of marketplace availability.
 
 ## Cache behavior
 
