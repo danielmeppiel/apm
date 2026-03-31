@@ -685,3 +685,178 @@ class TestLocalPathValidationMessages:
         captured = capsys.readouterr()
         assert "apm install" in captured.out
         assert "... and 3 more" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Global scope (--global / -g) tests
+# ---------------------------------------------------------------------------
+
+
+class TestInstallGlobalFlag:
+    """Tests for the --global / -g flag on apm install."""
+
+    def setup_method(self):
+        self.runner = CliRunner()
+        try:
+            self.original_dir = os.getcwd()
+        except FileNotFoundError:
+            self.original_dir = str(Path(__file__).parent.parent.parent)
+            os.chdir(self.original_dir)
+
+    def teardown_method(self):
+        try:
+            os.chdir(self.original_dir)
+        except (FileNotFoundError, OSError):
+            repo_root = Path(__file__).parent.parent.parent
+            os.chdir(str(repo_root))
+
+    def test_global_flag_shows_scope_info(self):
+        """--global flag should display user scope info message and unsupported target warning."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                # Create a fake home with no manifest so the command errors early
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(cli, ["install", "--global"])
+                assert result.exit_code == 1
+                assert "user scope" in result.output.lower() or "~/.apm/" in result.output
+                # Should warn about unsupported targets
+                assert "cursor" in result.output.lower()
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_global_short_flag_g(self):
+        """-g short flag creates user dirs and shows scope info like --global."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(cli, ["install", "-g"])
+                # Should create ~/.apm/ directory
+                assert (fake_home / ".apm").is_dir()
+                assert (fake_home / ".apm" / "apm_modules").is_dir()
+                assert result.exit_code == 1  # No packages or manifest provided
+                assert "user scope" in result.output.lower() or "~/.apm/" in result.output
+                # Should warn about unsupported targets
+                assert "cursor" in result.output.lower()
+            finally:
+                os.chdir(self.original_dir)
+
+    @patch("apm_cli.commands.install._validate_package_exists")
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
+    def test_global_creates_user_apm_yml(
+        self, mock_install_apm, mock_apm_package, mock_validate
+    ):
+        """--global auto-creates ~/.apm/apm.yml when installing packages."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+
+                mock_validate.return_value = True
+                mock_pkg = MagicMock()
+                mock_pkg.get_apm_dependencies.return_value = [
+                    MagicMock(repo_url="test/pkg", reference="main")
+                ]
+                mock_pkg.get_mcp_dependencies.return_value = []
+                mock_pkg.get_dev_apm_dependencies.return_value = []
+                mock_pkg.target = None
+                mock_apm_package.from_apm_yml.return_value = mock_pkg
+                mock_install_apm.return_value = InstallResult(
+                    diagnostics=MagicMock(has_diagnostics=False, has_critical_security=False)
+                )
+
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(
+                        cli, ["install", "--global", "test/pkg"]
+                    )
+
+                assert result.exit_code == 0
+                user_manifest = fake_home / ".apm" / "apm.yml"
+                assert user_manifest.exists(), f"Expected {user_manifest} to exist"
+                assert (fake_home / ".apm" / "apm_modules").is_dir()
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_global_without_packages_and_no_manifest_errors(self):
+        """--global without packages and no ~/.apm/apm.yml shows error."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+                with patch.object(Path, "home", return_value=fake_home), \
+                     patch.dict(os.environ, {"COLUMNS": "200"}):
+                    result = self.runner.invoke(cli, ["install", "--global"])
+                assert result.exit_code == 1
+                assert "apm.yml" in result.output
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_global_rejects_local_path_package(self):
+        """--global should reject local path packages with a clear error."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+                # Create a local package directory that would pass normal validation
+                local_pkg = Path(tmp_dir) / "my-local-pkg"
+                local_pkg.mkdir()
+                (local_pkg / "apm.yml").write_text("name: my-local-pkg\n")
+
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(
+                        cli, ["install", "--global", "./my-local-pkg"]
+                    )
+
+                # Should fail with clear message about local packages
+                assert "local packages are not supported at user scope" in result.output
+                # Should suggest using remote reference
+                assert "owner/repo" in result.output
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_global_rejects_absolute_local_path(self):
+        """--global should reject absolute local paths too."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+                local_pkg = Path(tmp_dir) / "abs-pkg"
+                local_pkg.mkdir()
+                (local_pkg / "apm.yml").write_text("name: abs-pkg\n")
+
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(
+                        cli, ["install", "--global", str(local_pkg)]
+                    )
+
+                assert "local packages are not supported at user scope" in result.output
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_global_rejects_tilde_local_path(self):
+        """--global should reject ~/path local packages."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(
+                        cli, ["install", "--global", "~/some-pkg"]
+                    )
+
+                assert "local packages are not supported at user scope" in result.output
+            finally:
+                os.chdir(self.original_dir)

@@ -299,6 +299,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                                                       managed_files=_buckets["hooks"] if _buckets else None)
     counts["hooks"] = result.get("files_removed", 0)
 
+
     # Phase 2: Re-integrate from remaining installed packages
     config_target = apm_package.target
     _explicit = config_target or None
@@ -360,11 +361,11 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     return counts
 
 
-def _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, old_mcp_servers):
+def _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, old_mcp_servers, modules_dir=None):
     """Remove MCP servers that are no longer needed after uninstall."""
     if not old_mcp_servers:
         return
-    apm_modules_path = Path.cwd() / APM_MODULES_DIR
+    apm_modules_path = modules_dir if modules_dir is not None else Path.cwd() / APM_MODULES_DIR
     remaining_mcp = MCPIntegrator.collect_transitive(apm_modules_path, lockfile_path, trust_private=True)
     try:
         remaining_root_mcp = apm_package.get_mcp_dependencies()
