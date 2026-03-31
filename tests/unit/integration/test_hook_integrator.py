@@ -1449,7 +1449,7 @@ class TestDeepCopySafety:
         assert rewritten["hooks"]["Stop"][0]["hooks"][0]["command"] != original_cmd
 
 
-# ─── Codex hook integration tests ────────────────────────────────────────────
+# --- Codex hook integration tests ---------------------------------------------
 
 
 class TestCodexHookIntegration:
