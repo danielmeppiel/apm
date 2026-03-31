@@ -62,7 +62,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None, auth_resolver=None):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None, auth_resolver=None, scope=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -76,6 +76,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         logger: InstallLogger for structured output.
         manifest_path: Explicit path to apm.yml (defaults to cwd/apm.yml).
         auth_resolver: Shared auth resolver for caching credentials.
+        scope: InstallScope controlling project vs user deployment.
 
     Returns:
         Tuple of (validated_packages list, _ValidationOutcome).
@@ -194,6 +195,21 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if logger:
                 logger.validation_fail(package, reason)
             continue
+
+        # Reject local packages at user scope -- relative paths resolve
+        # against cwd during validation but against $HOME during copy,
+        # causing silent failures.
+        if dep_ref.is_local and scope is not None:
+            from ..core.scope import InstallScope
+            if scope is InstallScope.USER:
+                reason = (
+                    "local packages are not supported at user scope (--global). "
+                    "Use a remote reference (owner/repo) instead"
+                )
+                invalid_outcomes.append((package, reason))
+                if logger:
+                    logger.validation_fail(package, reason)
+                continue
 
         # Check if package is already in dependencies (by identity)
         already_in_deps = identity in existing_identities
@@ -681,6 +697,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
                 packages, dry_run, dev=dev, logger=logger,
                 manifest_path=manifest_path, auth_resolver=auth_resolver,
+                scope=scope,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -1239,6 +1256,12 @@ def _install_apm_dependencies(
         try:
             # Handle local packages: copy instead of git clone
             if dep_ref.is_local and dep_ref.local_path:
+                if scope is InstallScope.USER:
+                    # Cannot resolve local paths at user scope
+                    callback_failures[dep_ref.get_unique_key()] = (
+                        f"local package '{dep_ref.local_path}' skipped at user scope"
+                    )
+                    return None
                 result_path = _copy_local_package(dep_ref, install_path, project_root)
                 if result_path:
                     callback_downloaded[dep_ref.get_unique_key()] = None
@@ -1690,6 +1713,23 @@ def _install_apm_dependencies(
 
                 # --- Local package: copy from filesystem (no git download) ---
                 if dep_ref.is_local and dep_ref.local_path:
+                    # User scope: relative paths would resolve against $HOME
+                    # instead of cwd, producing wrong results.  Skip with a
+                    # clear diagnostic rather than silently failing.
+                    if scope is InstallScope.USER:
+                        diagnostics.warn(
+                            f"Skipped local package '{dep_ref.local_path}' "
+                            "-- local paths are not supported at user scope (--global). "
+                            "Use a remote reference (owner/repo) instead.",
+                            package=dep_ref.local_path,
+                        )
+                        if logger:
+                            logger.verbose_detail(
+                                f"  Skipping {dep_ref.local_path} (local packages "
+                                "resolve against cwd, not $HOME)"
+                            )
+                        continue
+
                     result_path = _copy_local_package(dep_ref, install_path, project_root)
                     if not result_path:
                         diagnostics.error(

@@ -799,3 +799,64 @@ class TestInstallGlobalFlag:
                 assert "apm.yml" in result.output
             finally:
                 os.chdir(self.original_dir)
+
+    def test_global_rejects_local_path_package(self):
+        """--global should reject local path packages with a clear error."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+                # Create a local package directory that would pass normal validation
+                local_pkg = Path(tmp_dir) / "my-local-pkg"
+                local_pkg.mkdir()
+                (local_pkg / "apm.yml").write_text("name: my-local-pkg\n")
+
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(
+                        cli, ["install", "--global", "./my-local-pkg"]
+                    )
+
+                # Should fail with clear message about local packages
+                assert "local packages are not supported at user scope" in result.output
+                # Should suggest using remote reference
+                assert "owner/repo" in result.output
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_global_rejects_absolute_local_path(self):
+        """--global should reject absolute local paths too."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+                local_pkg = Path(tmp_dir) / "abs-pkg"
+                local_pkg.mkdir()
+                (local_pkg / "apm.yml").write_text("name: abs-pkg\n")
+
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(
+                        cli, ["install", "--global", str(local_pkg)]
+                    )
+
+                assert "local packages are not supported at user scope" in result.output
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_global_rejects_tilde_local_path(self):
+        """--global should reject ~/path local packages."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                fake_home = Path(tmp_dir) / "fakehome"
+                fake_home.mkdir()
+
+                with patch.object(Path, "home", return_value=fake_home):
+                    result = self.runner.invoke(
+                        cli, ["install", "--global", "~/some-pkg"]
+                    )
+
+                assert "local packages are not supported at user scope" in result.output
+            finally:
+                os.chdir(self.original_dir)

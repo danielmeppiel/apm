@@ -279,6 +279,8 @@ dependencies:
 
 **Pack guard:** `apm pack` rejects packages with local path dependencies — replace them with remote references before distributing.
 
+**User-scope guard:** Local path dependencies are **not supported** with `--global` (`-g`). Relative paths resolve against `cwd`, which is meaningless at user scope where packages deploy to `~/.apm/`. Use remote references (`owner/repo`) for global installs.
+
 ## Global (User-Scope) Installation
 
 By default, `apm install` targets the **current project** -- manifest, modules, and lockfile live in
@@ -326,6 +328,10 @@ falling back to Copilot. Security scanning runs for global installs.
 
 :::note
 MCP servers are not supported at user scope. Each target uses a different MCP configuration format; user-scope MCP support is planned for a future release.
+:::
+
+:::caution
+Local path dependencies (`./path`, `../path`, `/abs/path`) are rejected at user scope. Relative paths resolve against `cwd`, which differs from the user-scope deploy root (`~/.apm/`). Use remote references for `apm install -g`.
 :::
 
 ## MCP Dependency Formats
