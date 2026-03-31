@@ -181,6 +181,47 @@ class TestResolveRelativeSource:
         with pytest.raises(ValueError, match="traversal sequence"):
             _resolve_relative_source("../escape", "acme-org", "marketplace")
 
+    def test_bare_name_without_plugin_root(self):
+        """Bare name without plugin_root resolves directly under repo."""
+        result = _resolve_relative_source("my-plugin", "github", "awesome-copilot")
+        assert result == "github/awesome-copilot/my-plugin"
+
+    def test_bare_name_with_plugin_root(self):
+        """Bare name with plugin_root gets prefixed."""
+        result = _resolve_relative_source(
+            "azure-cloud-development", "github", "awesome-copilot",
+            plugin_root="./plugins",
+        )
+        assert result == "github/awesome-copilot/plugins/azure-cloud-development"
+
+    def test_plugin_root_without_dot_slash(self):
+        """plugin_root without leading ./ still works."""
+        result = _resolve_relative_source(
+            "my-plugin", "org", "repo", plugin_root="packages",
+        )
+        assert result == "org/repo/packages/my-plugin"
+
+    def test_plugin_root_ignored_for_path_sources(self):
+        """Sources with / are already paths -- plugin_root should not apply."""
+        result = _resolve_relative_source(
+            "./custom/path/plugin", "org", "repo", plugin_root="./plugins",
+        )
+        assert result == "org/repo/custom/path/plugin"
+
+    def test_plugin_root_trailing_slashes(self):
+        """Trailing slashes on plugin_root are normalized."""
+        result = _resolve_relative_source(
+            "my-plugin", "org", "repo", plugin_root="./plugins/",
+        )
+        assert result == "org/repo/plugins/my-plugin"
+
+    def test_dot_source_with_plugin_root(self):
+        """source='.' means repo root -- plugin_root must not apply."""
+        result = _resolve_relative_source(
+            ".", "org", "repo", plugin_root="./plugins",
+        )
+        assert result == "org/repo"
+
 
 class TestResolvePluginSource:
     """Integration of all source type resolvers."""
@@ -226,6 +267,14 @@ class TestResolvePluginSource:
     def test_relative_source(self):
         p = MarketplacePlugin(name="test", source="./plugins/local")
         assert resolve_plugin_source(p, "acme", "mkt") == "acme/mkt/plugins/local"
+
+    def test_relative_bare_name_with_plugin_root(self):
+        """Bare-name source with plugin_root gets prefixed (awesome-copilot pattern)."""
+        p = MarketplacePlugin(name="azure-cloud-development", source="azure-cloud-development")
+        result = resolve_plugin_source(
+            p, "github", "awesome-copilot", plugin_root="./plugins"
+        )
+        assert result == "github/awesome-copilot/plugins/azure-cloud-development"
 
     def test_npm_source_rejected(self):
         p = MarketplacePlugin(
