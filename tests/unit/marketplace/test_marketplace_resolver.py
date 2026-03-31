@@ -116,7 +116,7 @@ class TestResolveGithubSource:
         assert result == "owner/mono/plugins/foo#v2.0"
 
     def test_path_traversal_rejected(self):
-        with pytest.raises(ValueError, match="must not contain"):
+        with pytest.raises(ValueError, match="traversal sequence"):
             _resolve_github_source({"repo": "owner/repo", "path": "../escape"})
 
     def test_invalid_repo(self):
@@ -162,7 +162,7 @@ class TestResolveGitSubdirSource:
             _resolve_git_subdir_source({"repo": "bad"})
 
     def test_path_traversal_rejected(self):
-        with pytest.raises(ValueError, match="must not contain"):
+        with pytest.raises(ValueError, match="traversal sequence"):
             _resolve_git_subdir_source({"repo": "owner/mono", "subdir": "../escape"})
 
 
@@ -178,7 +178,7 @@ class TestResolveRelativeSource:
         assert result == "acme-org/marketplace"
 
     def test_path_traversal_rejected(self):
-        with pytest.raises(ValueError, match="must not contain"):
+        with pytest.raises(ValueError, match="traversal sequence"):
             _resolve_relative_source("../escape", "acme-org", "marketplace")
 
 

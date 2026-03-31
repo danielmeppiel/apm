@@ -43,9 +43,16 @@ def _sanitize_cache_name(name: str) -> str:
     """Sanitize marketplace name for safe use in file paths."""
     import re
 
+    from ..utils.path_security import PathTraversalError, validate_path_segments
+
     safe = re.sub(r"[^a-zA-Z0-9._-]", "_", name)
     # Prevent path traversal even after sanitization
     safe = safe.strip(".").strip("_") or "unnamed"
+    # Defense-in-depth: validate with centralized path security
+    try:
+        validate_path_segments(safe, context="cache name")
+    except PathTraversalError:
+        safe = "unnamed"
     return safe
 
 

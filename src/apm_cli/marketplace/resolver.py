@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Optional, Tuple
 
+from ..utils.path_security import PathTraversalError, validate_path_segments
 from .client import fetch_or_cache
 from .errors import MarketplaceFetchError, PluginNotFoundError
 from .models import MarketplacePlugin
@@ -52,10 +53,10 @@ def _resolve_github_source(source: dict) -> str:
             f"Invalid github source: 'repo' field must be 'owner/repo', got '{repo}'"
         )
     if path:
-        if ".." in path.split("/"):
-            raise ValueError(
-                f"Invalid github source: 'path' must not contain '..', got '{path}'"
-            )
+        try:
+            validate_path_segments(path, context="github source path")
+        except PathTraversalError as exc:
+            raise ValueError(str(exc)) from exc
         base = f"{repo}/{path}"
     else:
         base = repo
@@ -98,10 +99,10 @@ def _resolve_git_subdir_source(source: dict) -> str:
             f"Invalid git-subdir source: 'repo' must be 'owner/repo', got '{repo}'"
         )
     if subdir:
-        if ".." in subdir.split("/"):
-            raise ValueError(
-                f"Invalid git-subdir source: 'subdir' must not contain '..', got '{subdir}'"
-            )
+        try:
+            validate_path_segments(subdir, context="git-subdir source path")
+        except PathTraversalError as exc:
+            raise ValueError(str(exc)) from exc
         base = f"{repo}/{subdir}"
     else:
         base = repo
@@ -120,11 +121,11 @@ def _resolve_relative_source(source: str, marketplace_owner: str, marketplace_re
     if rel.startswith("./"):
         rel = rel[2:]
     rel = rel.strip("/")
-    if ".." in rel.split("/"):
-        raise ValueError(
-            f"Invalid relative source: path must not contain '..', got '{source}'"
-        )
     if rel and rel != ".":
+        try:
+            validate_path_segments(rel, context="relative source path")
+        except PathTraversalError as exc:
+            raise ValueError(str(exc)) from exc
         return f"{marketplace_owner}/{marketplace_repo}/{rel}"
     return f"{marketplace_owner}/{marketplace_repo}"
 
