@@ -184,7 +184,8 @@ class BaseIntegrator:
 
         for target in KNOWN_TARGETS.values():
             for prim_name, mapping in target.primitives.items():
-                prefix = f"{target.root_dir}/{mapping.subdir}/"
+                effective_root = mapping.deploy_root or target.root_dir
+                prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
                 if prim_name == "skills":
                     skill_prefixes.append(prefix)
                 elif prim_name == "hooks":
@@ -197,7 +198,7 @@ class BaseIntegrator:
                     if bucket_key not in buckets:
                         buckets[bucket_key] = set()
                     component_map[
-                        (target.root_dir, mapping.subdir)
+                        (effective_root, mapping.subdir)
                     ] = bucket_key
 
         buckets["skills"] = set()
@@ -207,21 +208,25 @@ class BaseIntegrator:
         hook_tuple = tuple(hook_prefixes)
 
         # Single O(M) pass -- each path is routed in O(1)
+        # Component_map is checked first: it holds specific (root, subdir)
+        # pairs and takes priority over broad prefix matching.  This prevents
+        # catch-all hook prefixes (e.g. ".codex/") from swallowing paths
+        # that belong to a more specific bucket (e.g. ".codex/agents/").
         for p in managed_files:
+            slash1 = p.find("/")
+            if slash1 > 0:
+                slash2 = p.find("/", slash1 + 1)
+                if slash2 > 0:
+                    bkey = component_map.get(
+                        (p[:slash1], p[slash1 + 1 : slash2])
+                    )
+                    if bkey:
+                        buckets[bkey].add(p)
+                        continue
             if p.startswith(skill_tuple):
                 buckets["skills"].add(p)
             elif p.startswith(hook_tuple):
                 buckets["hooks"].add(p)
-            else:
-                slash1 = p.find("/")
-                if slash1 > 0:
-                    slash2 = p.find("/", slash1 + 1)
-                    if slash2 > 0:
-                        bkey = component_map.get(
-                            (p[:slash1], p[slash1 + 1 : slash2])
-                        )
-                        if bkey:
-                            buckets[bkey].add(p)
 
         return buckets
 

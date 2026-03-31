@@ -34,7 +34,7 @@ When using Spec-kit for Specification-Driven Development (SDD), APM automaticall
 # 1. Set up APM contextual foundation
 apm init my-project && apm install
 
-# 2. Optional: compile for tools without native integration (Codex, Gemini)
+# 2. Optional: compile for Codex/OpenCode instructions, Gemini, etc.
 # Spec-kit constitution is automatically included in compiled AGENTS.md
 apm compile
 
@@ -150,7 +150,7 @@ apm install microsoft/apm-sample-package
 
 ### Optional: Compiled Context with AGENTS.md
 
-For tools that do not support granular primitive discovery (such as Codex or Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot, Claude, or Cursor, which read per-file instructions natively. OpenCode also reads `AGENTS.md`, so run `apm compile` to deploy instructions there.
+For tools that do not support granular primitive discovery (such as Gemini), `apm compile` produces an `AGENTS.md` file that merges instructions into a single document. This is not needed for GitHub Copilot, Claude, or Cursor, which read per-file instructions natively. OpenCode and Codex also read `AGENTS.md`, so run `apm compile` to deploy instructions there.
 
 ```bash
 # Compile all local and dependency instructions into AGENTS.md
@@ -212,6 +212,19 @@ APM natively integrates with OpenCode when a `.opencode/` directory exists in yo
 | `.cursor/hooks.json` (hooks key) | Hooks from installed packages (merged into config) |
 | `.cursor/hooks/{pkg}/` | Referenced hook scripts |
 | `.cursor/mcp.json` | MCP server configurations |
+
+#### Codex CLI (`.codex/`)
+
+| APM Primitive | Codex Destination | Format |
+|---|---|---|
+| Skills (`SKILL.md`) | `.agents/skills/{name}/SKILL.md` | Identical (agentskills.io standard) |
+| Agents (`.agent.md`) | `.codex/agents/*.toml` | Converted from Markdown to TOML |
+| Hooks (`.json`) | `.codex/hooks.json` + `.codex/hooks/{pkg}/` | Merged JSON config with `_apm_source` markers |
+| Instructions | Via `AGENTS.md` | Compile-only (`apm compile --target codex`) |
+
+**Setup**: Create a `.codex/` directory in your project root, then run `apm install`. APM detects the directory and deploys automatically.
+
+> **Note**: Skills deploy to `.agents/skills/` (the cross-tool agent skills standard directory), not `.codex/skills/`. Agents are transformed from `.agent.md` Markdown to `.toml` format.
 
 ### Automatic Agent Integration
 
@@ -298,13 +311,14 @@ apm install anthropics/claude-plugins-official/plugins/hookify
 2. For VS Code: copies hook JSON to `.github/hooks/` and rewrites script paths
 3. For Claude: merges hook definitions into `.claude/settings.json` under the `hooks` key
 4. For Cursor: merges hook definitions into `.cursor/hooks.json` under the `hooks` key (only when `.cursor/` exists)
-5. Copies referenced scripts to the target location
-6. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
-7. `apm uninstall` removes hook files and cleans up merged settings
+5. For Codex: merges hook definitions into `.codex/hooks.json` under the `hooks` key (only when `.codex/` exists)
+6. Copies referenced scripts to the target location
+7. Rewrites `${CLAUDE_PLUGIN_ROOT}` and relative script paths for the target platform
+8. `apm uninstall` removes hook files and cleans up merged settings
 
 ### Optional: Target-Specific Compilation
 
-Compilation is optional for Copilot, Claude, and Cursor, which read per-file instructions natively. For OpenCode, run `apm compile` to generate `AGENTS.md` (OpenCode's instruction source). Also use it when targeting Codex or Gemini:
+Compilation is optional for Copilot, Claude, and Cursor, which read per-file instructions natively. For OpenCode and Codex, run `apm compile` to generate `AGENTS.md` for instructions. Also use it when targeting Gemini:
 
 ```bash
 # Generate all formats (default)

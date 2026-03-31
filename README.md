@@ -4,7 +4,7 @@
 
 Think `package.json`, `requirements.txt`, or `Cargo.toml` — but for AI agent configuration.
 
-GitHub Copilot · Claude Code · Cursor · OpenCode
+GitHub Copilot · Claude Code · Cursor · OpenCode · Codex
 
 **[Documentation](https://microsoft.github.io/apm/)** · **[Quick Start](https://microsoft.github.io/apm/getting-started/quick-start/)** · **[CLI Reference](https://microsoft.github.io/apm/reference/cli-commands/)**
 

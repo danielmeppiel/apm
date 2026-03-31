@@ -609,7 +609,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
     "-t",
     "target",
     type=click.Choice(
-        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        ["copilot", "claude", "cursor", "opencode", "codex", "vscode", "agents", "all"],
         case_sensitive=False,
     ),
     default=None,
@@ -1045,8 +1045,11 @@ def _integrate_package_primitives(
                         _hook_dir = ".claude/settings.json"
                     elif _target.name == "cursor":
                         _hook_dir = ".cursor/hooks.json"
+                    elif _target.name == "codex":
+                        _hook_dir = ".codex/hooks.json"
                     else:
-                        _hook_dir = f"{_target.root_dir}/{_mapping.subdir}/"
+                        _effective_root = _mapping.deploy_root or _target.root_dir
+                        _hook_dir = f"{_effective_root}/{_mapping.subdir}/" if _mapping.subdir else f"{_effective_root}/"
                     _log_integration(
                         f"  |-- {hook_result.hooks_integrated} hook(s) integrated -> {_hook_dir}"
                     )
@@ -1066,7 +1069,8 @@ def _integrate_package_primitives(
             )
             if _int_result.files_integrated > 0:
                 result[_counter_key] += _int_result.files_integrated
-                _deploy_dir = f"{_target.root_dir}/{_mapping.subdir}/"
+                _effective_root = _mapping.deploy_root or _target.root_dir
+                _deploy_dir = f"{_effective_root}/{_mapping.subdir}/"
                 if _prim_name == "instructions" and _mapping.format_id == "cursor_rules":
                     _label = "rule(s)"
                 elif _prim_name == "instructions":

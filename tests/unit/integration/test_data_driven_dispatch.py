@@ -164,6 +164,25 @@ class TestTargetGatingRegression:
         assert ".cursor" not in dispatched_roots
         assert ".opencode" not in dispatched_roots
 
+    def test_codex_only_does_not_write_github_or_claude_dirs(self):
+        """With targets=[codex], no .github/ or .claude/ primitive is dispatched."""
+        targets = [KNOWN_TARGETS["codex"]]
+        _result, mocks = _dispatch(targets)
+        dispatched_roots = set()
+        for name in ("prompt_integrator", "agent_integrator",
+                      "command_integrator", "instruction_integrator",
+                      "hook_integrator"):
+            for attr_name in dir(mocks[name]):
+                method = getattr(mocks[name], attr_name)
+                if hasattr(method, "call_args_list"):
+                    for call_args in method.call_args_list:
+                        if call_args[0] and hasattr(call_args[0][0], "root_dir"):
+                            dispatched_roots.add(call_args[0][0].root_dir)
+        assert ".github" not in dispatched_roots
+        assert ".claude" not in dispatched_roots
+        assert ".cursor" not in dispatched_roots
+        assert ".opencode" not in dispatched_roots
+
     def test_empty_targets_returns_zeros(self):
         """With targets=[], all counters are 0 and no integrators are called."""
         result, mocks = _dispatch(targets=[])
@@ -261,6 +280,7 @@ class TestExhaustivenessChecks:
             "agents_claude",
             "agents_cursor",
             "agents_opencode",
+            "agents_codex",
             "commands",            # was commands_claude, aliased
             "commands_opencode",
             "instructions",        # was instructions_copilot, aliased
@@ -457,3 +477,46 @@ class TestPartitionBucketKey:
 
     def test_unaliased_key_passthrough(self):
         assert BaseIntegrator.partition_bucket_key("agents", "cursor") == "agents_cursor"
+
+
+# ===================================================================
+# 6. TestCodexPartitionRouting
+# ===================================================================
+
+class TestCodexPartitionRouting:
+    """Verify that Codex deployed_files are routed to correct buckets."""
+
+    def test_partition_routes_codex_paths_correctly(self):
+        """Codex deployed_files are routed to correct buckets."""
+        managed = {
+            ".codex/agents/my-agent.toml",
+            ".agents/skills/my-skill/SKILL.md",
+            ".codex/hooks/pkg/script.sh",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed)
+        assert ".agents/skills/my-skill/SKILL.md" in buckets["skills"]
+        # Codex agents under .codex/agents/ route to the agents_codex bucket.
+        assert ".codex/agents/my-agent.toml" in buckets["agents_codex"]
+        # Only true Codex hook paths route to the hooks bucket.
+        assert ".codex/hooks/pkg/script.sh" in buckets["hooks"]
+
+
+# ===================================================================
+# 7. TestIntegrationPrefixSecurity
+# ===================================================================
+
+class TestIntegrationPrefixSecurity:
+    """Verify integration prefixes include deploy_root paths."""
+
+    def test_integration_prefixes_include_agents_dir(self):
+        """get_integration_prefixes() includes .agents/ from deploy_root."""
+        from apm_cli.integration.targets import get_integration_prefixes
+        prefixes = get_integration_prefixes()
+        assert ".agents/" in prefixes
+        assert ".codex/" in prefixes
+
+    def test_deploy_root_validation(self):
+        """validate_deploy_path accepts .agents/skills/ paths."""
+        root = Path("/fake/project")
+        assert BaseIntegrator.validate_deploy_path(".agents/skills/my-skill/SKILL.md", root)
+        assert BaseIntegrator.validate_deploy_path(".codex/agents/my-agent.toml", root)

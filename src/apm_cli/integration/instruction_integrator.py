@@ -72,8 +72,9 @@ class InstructionIntegrator(BaseIntegrator):
         if not mapping:
             return IntegrationResult(0, 0, 0, [])
 
-        target_root = project_root / target.root_dir
-        if not target.auto_create and not target_root.is_dir():
+        effective_root = mapping.deploy_root or target.root_dir
+        target_root = project_root / effective_root
+        if not target.auto_create and not (project_root / target.root_dir).is_dir():
             return IntegrationResult(0, 0, 0, [])
 
         self.init_link_resolver(package_info, project_root)
@@ -138,8 +139,9 @@ class InstructionIntegrator(BaseIntegrator):
         mapping = target.primitives.get("instructions")
         if not mapping:
             return {"files_removed": 0, "errors": 0}
-        prefix = f"{target.root_dir}/{mapping.subdir}/"
-        legacy_dir = project_root / target.root_dir / mapping.subdir
+        effective_root = mapping.deploy_root or target.root_dir
+        prefix = f"{effective_root}/{mapping.subdir}/"
+        legacy_dir = project_root / effective_root / mapping.subdir
         legacy_pattern = (
             "*.mdc" if mapping.format_id == "cursor_rules"
             else "*.instructions.md"

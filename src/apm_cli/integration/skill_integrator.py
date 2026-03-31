@@ -307,7 +307,9 @@ def copy_skill_to_target(
     for target in targets:
         if not target.supports("skills"):
             continue
-        skill_dir = target_base / target.root_dir / "skills" / skill_name
+        skills_mapping = target.primitives["skills"]
+        effective_root = skills_mapping.deploy_root or target.root_dir
+        skill_dir = target_base / effective_root / "skills" / skill_name
         skill_dir.parent.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists():
             shutil.rmtree(skill_dir)
@@ -608,7 +610,9 @@ class SkillIntegrator(BaseIntegrator):
                 continue
 
             is_primary = (idx == 0)  # first active target owns diagnostics
-            target_skills_root = project_root / target.root_dir / "skills"
+            skills_mapping = target.primitives["skills"]
+            effective_root = skills_mapping.deploy_root or target.root_dir
+            target_skills_root = project_root / effective_root / "skills"
             target_skills_root.mkdir(parents=True, exist_ok=True)
 
             n, deployed = self._promote_sub_skills(
@@ -709,7 +713,9 @@ class SkillIntegrator(BaseIntegrator):
                 continue
 
             is_primary = (idx == 0)  # first active target owns diagnostics
-            target_skill_dir = project_root / target.root_dir / "skills" / skill_name
+            skills_mapping = target.primitives["skills"]
+            effective_root = skills_mapping.deploy_root or target.root_dir
+            target_skill_dir = project_root / effective_root / "skills" / skill_name
 
             if is_primary:
                 skill_created = not target_skill_dir.exists()
@@ -728,7 +734,7 @@ class SkillIntegrator(BaseIntegrator):
                 files_copied = sum(1 for _ in target_skill_dir.rglob('*') if _.is_file())
 
             # Promote sub-skills for this target
-            target_skills_root = project_root / target.root_dir / "skills"
+            target_skills_root = project_root / effective_root / "skills"
             _, sub_deployed = self._promote_sub_skills(
                 sub_skills_dir, target_skills_root, skill_name,
                 warn=is_primary,
@@ -865,6 +871,7 @@ class SkillIntegrator(BaseIntegrator):
                     or rel_path.startswith(".claude/skills/")
                     or rel_path.startswith(".cursor/skills/")
                     or rel_path.startswith(".opencode/skills/")
+                    or rel_path.startswith(".agents/skills/")
                 )
                 if not is_skill or ".." in rel_path:
                     continue
@@ -925,6 +932,16 @@ class SkillIntegrator(BaseIntegrator):
         opencode_skills_dir = project_root / ".opencode" / "skills"
         if opencode_skills_dir.exists():
             result = self._clean_orphaned_skills(opencode_skills_dir, installed_skill_names)
+            stats['files_removed'] += result['files_removed']
+            stats['errors'] += result['errors']
+        
+        # Clean .agents/skills/ (cross-tool agent skills standard, used by Codex)
+        # Only clean if .codex/ exists -- .agents/ is cross-tool, so we must
+        # not delete skills managed by other tools when Codex is not active.
+        codex_dir = project_root / ".codex"
+        agents_skills_dir = project_root / ".agents" / "skills"
+        if codex_dir.exists() and agents_skills_dir.exists():
+            result = self._clean_orphaned_skills(agents_skills_dir, installed_skill_names)
             stats['files_removed'] += result['files_removed']
             stats['errors'] += result['errors']
         

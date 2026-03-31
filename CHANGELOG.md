@@ -10,11 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support Codex CLI as integration target with skills (`.agents/skills/`), agents (`.codex/agents/*.toml`), and hooks (`.codex/hooks.json`) (#504)
 - Marketplace integration for plugin discovery and governance: `apm marketplace add/list/browse/update/remove` commands, `apm search QUERY@MARKETPLACE` scoped search, `apm install NAME@MARKETPLACE` syntax for installing plugins from marketplace registries; lockfile provenance fields `discovered_via` and `marketplace_plugin_name` to track marketplace origin; support for Copilot CLI and Claude Code `marketplace.json` formats with 4 source types (github, url, git-subdir, relative path) (#503)
 
 ### Fixed
 
 - `apm install -g ./local-pkg` now rejects local path dependencies at user scope with a clear error instead of silently failing (relative paths resolve against `cwd` during validation but against `$HOME` during copy) (#452)
+
 ### Changed
 
 - `apm deps update` now skips download and integration for packages whose resolved SHA matches the lockfile SHA, making the common "nothing changed" case near-instant (#495)
