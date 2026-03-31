@@ -56,6 +56,17 @@ def add(repo, name, branch, verbose):
         owner, repo_name = parts[0], parts[1]
         display_name = name or repo_name
 
+        # Validate name is identifier-compatible for NAME@MARKETPLACE syntax
+        import re
+
+        if not re.match(r"^[a-zA-Z0-9._-]+$", display_name):
+            logger.error(
+                f"Invalid marketplace name: '{display_name}'. "
+                f"Names must only contain letters, digits, '.', '_', and '-' "
+                f"(required for 'apm install plugin@marketplace' syntax)."
+            )
+            sys.exit(1)
+
         logger.start(f"Registering marketplace '{display_name}'...", symbol="gear")
         logger.verbose_detail(f"    Repository: {owner}/{repo_name}")
         logger.verbose_detail(f"    Branch: {branch}")

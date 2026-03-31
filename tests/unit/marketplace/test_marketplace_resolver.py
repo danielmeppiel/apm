@@ -127,15 +127,23 @@ class TestResolveGitSubdirSource:
             "subdir": "packages/plugin-a",
             "ref": "main",
         })
-        assert result == "owner/monorepo#main"
+        assert result == "owner/monorepo/packages/plugin-a#main"
 
     def test_without_ref(self):
         result = _resolve_git_subdir_source({"repo": "owner/monorepo"})
         assert result == "owner/monorepo"
 
+    def test_without_subdir(self):
+        result = _resolve_git_subdir_source({"repo": "owner/monorepo", "ref": "v1"})
+        assert result == "owner/monorepo#v1"
+
     def test_invalid_repo(self):
         with pytest.raises(ValueError, match="owner/repo"):
             _resolve_git_subdir_source({"repo": "bad"})
+
+    def test_path_traversal_rejected(self):
+        with pytest.raises(ValueError, match="must not contain"):
+            _resolve_git_subdir_source({"repo": "owner/mono", "subdir": "../escape"})
 
 
 class TestResolveRelativeSource:
@@ -143,7 +151,15 @@ class TestResolveRelativeSource:
 
     def test_relative_path(self):
         result = _resolve_relative_source("./plugins/my-plugin", "acme-org", "marketplace")
+        assert result == "acme-org/marketplace/plugins/my-plugin"
+
+    def test_root_relative(self):
+        result = _resolve_relative_source(".", "acme-org", "marketplace")
         assert result == "acme-org/marketplace"
+
+    def test_path_traversal_rejected(self):
+        with pytest.raises(ValueError, match="must not contain"):
+            _resolve_relative_source("../escape", "acme-org", "marketplace")
 
 
 class TestResolvePluginSource:
@@ -173,11 +189,11 @@ class TestResolvePluginSource:
                 "ref": "main",
             },
         )
-        assert resolve_plugin_source(p) == "owner/mono#main"
+        assert resolve_plugin_source(p) == "owner/mono/pkg/a#main"
 
     def test_relative_source(self):
         p = MarketplacePlugin(name="test", source="./plugins/local")
-        assert resolve_plugin_source(p, "acme", "mkt") == "acme/mkt"
+        assert resolve_plugin_source(p, "acme", "mkt") == "acme/mkt/plugins/local"
 
     def test_npm_source_rejected(self):
         p = MarketplacePlugin(

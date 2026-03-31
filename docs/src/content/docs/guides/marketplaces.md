@@ -62,7 +62,7 @@ This registers the marketplace and fetches its `marketplace.json`. By default AP
 
 ```bash
 # Register with a custom name on a specific branch
-apm marketplace add acme/plugin-marketplace --name "Acme Plugins" --branch release
+apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
 ```
 
 ## List registered marketplaces
@@ -125,7 +125,7 @@ The `discovered_via` field records which marketplace was used for discovery. `ma
 
 ## Cache behavior
 
-APM caches marketplace indexes locally with a 1-hour TTL. Within that window, commands like `search` and `browse` use the cached index. After expiry, APM fetches a fresh copy in the background (stale-while-revalidate) so commands remain fast.
+APM caches marketplace indexes locally with a 1-hour TTL. Within that window, commands like `search` and `browse` use the cached index. After expiry, APM fetches a fresh copy from the network. If the network request fails, APM falls back to the expired cache (stale-if-error) so commands still work offline.
 
 Force a cache refresh:
 

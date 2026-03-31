@@ -77,24 +77,43 @@ def _resolve_url_source(source: dict) -> str:
 
 
 def _resolve_git_subdir_source(source: dict) -> str:
-    """Resolve a ``git-subdir`` source type to ``owner/repo[#ref]``."""
+    """Resolve a ``git-subdir`` source type to ``owner/repo[/subdir][#ref]``."""
     repo = source.get("repo", "")
     ref = source.get("ref", "")
-    # subdir = source.get("subdir", "")  # Not used in canonical string
+    subdir = source.get("subdir", "").strip("/")
     if not repo or "/" not in repo:
         raise ValueError(
             f"Invalid git-subdir source: 'repo' must be 'owner/repo', got '{repo}'"
         )
+    if subdir:
+        if ".." in subdir.split("/"):
+            raise ValueError(
+                f"Invalid git-subdir source: 'subdir' must not contain '..', got '{subdir}'"
+            )
+        base = f"{repo}/{subdir}"
+    else:
+        base = repo
     if ref:
-        return f"{repo}#{ref}"
-    return repo
+        return f"{base}#{ref}"
+    return base
 
 
 def _resolve_relative_source(source: str, marketplace_owner: str, marketplace_repo: str) -> str:
-    """Resolve a relative path source to ``owner/repo``.
+    """Resolve a relative path source to ``owner/repo[/subdir]``.
 
     Relative sources point to subdirectories within the marketplace repo itself.
     """
+    # Normalize the relative path (strip leading ./ and trailing /)
+    rel = source.strip("/")
+    if rel.startswith("./"):
+        rel = rel[2:]
+    rel = rel.strip("/")
+    if ".." in rel.split("/"):
+        raise ValueError(
+            f"Invalid relative source: path must not contain '..', got '{source}'"
+        )
+    if rel and rel != ".":
+        return f"{marketplace_owner}/{marketplace_repo}/{rel}"
     return f"{marketplace_owner}/{marketplace_repo}"
 
 

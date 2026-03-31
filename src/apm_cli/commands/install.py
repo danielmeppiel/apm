@@ -144,7 +144,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 )
 
                 mkt_ref = parse_marketplace_ref(package)
-            except Exception:
+            except ImportError:
                 mkt_ref = None
 
             if mkt_ref is not None:
@@ -208,7 +208,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
             if marketplace_provenance:
-                _marketplace_provenance[canonical] = marketplace_provenance
+                _marketplace_provenance[identity] = marketplace_provenance
         else:
             reason = _local_path_failure_reason(dep_ref)
             if not reason:
@@ -2256,10 +2256,10 @@ def _install_apm_dependencies(
                         locked_dep.content_hash = _package_hashes[dep_key]
                 # Attach marketplace provenance if available
                 if marketplace_provenance:
-                    for canonical, prov in marketplace_provenance.items():
-                        if canonical in lockfile.dependencies:
-                            lockfile.dependencies[canonical].discovered_via = prov.get("discovered_via")
-                            lockfile.dependencies[canonical].marketplace_plugin_name = prov.get("marketplace_plugin_name")
+                    for dep_key, prov in marketplace_provenance.items():
+                        if dep_key in lockfile.dependencies:
+                            lockfile.dependencies[dep_key].discovered_via = prov.get("discovered_via")
+                            lockfile.dependencies[dep_key].marketplace_plugin_name = prov.get("marketplace_plugin_name")
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).

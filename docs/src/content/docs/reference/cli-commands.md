@@ -867,7 +867,7 @@ apm marketplace add OWNER/REPO [OPTIONS]
 apm marketplace add acme/plugin-marketplace
 
 # Register with a custom name and branch
-apm marketplace add acme/plugin-marketplace --name "Acme Plugins" --branch release
+apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
 ```
 
 #### `apm marketplace list` - List registered marketplaces

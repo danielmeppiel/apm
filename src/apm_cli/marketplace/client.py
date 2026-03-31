@@ -39,12 +39,22 @@ def _cache_dir() -> str:
     return d
 
 
+def _sanitize_cache_name(name: str) -> str:
+    """Sanitize marketplace name for safe use in file paths."""
+    import re
+
+    safe = re.sub(r"[^a-zA-Z0-9._-]", "_", name)
+    # Prevent path traversal even after sanitization
+    safe = safe.strip(".").strip("_") or "unnamed"
+    return safe
+
+
 def _cache_data_path(name: str) -> str:
-    return os.path.join(_cache_dir(), f"{name}.json")
+    return os.path.join(_cache_dir(), f"{_sanitize_cache_name(name)}.json")
 
 
 def _cache_meta_path(name: str) -> str:
-    return os.path.join(_cache_dir(), f"{name}.meta.json")
+    return os.path.join(_cache_dir(), f"{_sanitize_cache_name(name)}.meta.json")
 
 
 def _read_cache(name: str) -> Optional[Dict]:
@@ -163,14 +173,15 @@ def _auto_detect_path(
     source: MarketplaceSource,
     auth_resolver: Optional[object] = None,
 ) -> Optional[str]:
-    """Probe candidate locations and return the first that exists."""
+    """Probe candidate locations and return the first that exists.
+
+    Returns ``None`` if no location contains a marketplace.json.
+    Raises ``MarketplaceFetchError`` on non-404 failures (auth errors, etc.).
+    """
     for candidate in _MARKETPLACE_PATHS:
-        try:
-            data = _fetch_file(source, candidate, auth_resolver=auth_resolver)
-            if data is not None:
-                return candidate
-        except MarketplaceFetchError:
-            continue
+        data = _fetch_file(source, candidate, auth_resolver=auth_resolver)
+        if data is not None:
+            return candidate
     return None
 
 

@@ -106,9 +106,6 @@ class MarketplaceManifest:
 # Claude Code format:
 #   { "name": "...", "plugins": [ { "name": "...", "source": { "type": "github", ... } } ] }
 
-_SUPPORTED_SOURCE_TYPES = {"relative", "github", "url", "git-subdir"}
-
-
 def _parse_plugin_entry(
     entry: Dict[str, Any], source_name: str
 ) -> Optional[MarketplacePlugin]:
