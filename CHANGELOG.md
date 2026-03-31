@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Marketplace integration for plugin discovery and governance: `apm marketplace add/list/browse/update/remove` commands, `apm search` across marketplaces, `apm install NAME@MARKETPLACE` syntax for installing plugins from marketplace registries
 - Lockfile provenance fields `discovered_via` and `marketplace_plugin_name` to track marketplace origin of dependencies
 - Support for Copilot CLI and Claude Code `marketplace.json` formats with 4 source types (github, url, git-subdir, relative path)
+### Changed
+
+- `apm deps update` now skips download and integration for packages whose resolved SHA matches the lockfile SHA, making the common "nothing changed" case near-instant (#495)
 
 ## [0.8.7] - 2026-03-30
 
