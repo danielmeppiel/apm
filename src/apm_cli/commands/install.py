@@ -1447,7 +1447,7 @@ def _install_apm_dependencies(
             # Skip if lockfile SHA matches local HEAD.
             # Normal mode: only when the ref hasn't changed in the manifest.
             # Update mode: defer to the sequential loop which resolves the
-            # remote ref and compares — if unchanged, the download is skipped
+            # remote ref and compares -- if unchanged, the download is skipped
             # entirely; if changed, it falls back to sequential download.
             if (_pd_path.exists() and _pd_locked_chk
                     and _pd_locked_chk.resolved_commit
@@ -1677,8 +1677,16 @@ def _install_apm_dependencies(
                 resolved_ref = None
                 if dep_ref.get_unique_key() not in _pre_downloaded_keys:
                     # Resolve when there is an explicit ref, OR when update_refs
-                    # is True (need the latest SHA to compare against lockfile).
-                    if dep_ref.reference or update_refs:
+                    # is True AND we have a non-cached lockfile entry to compare
+                    # against (otherwise resolution is wasted work -- the package
+                    # will be downloaded regardless).
+                    _has_lockfile_sha = False
+                    if update_refs and existing_lockfile:
+                        _lck = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                        _has_lockfile_sha = bool(
+                            _lck and _lck.resolved_commit and _lck.resolved_commit != "cached"
+                        )
+                    if dep_ref.reference or (update_refs and _has_lockfile_sha):
                         try:
                             resolved_ref = downloader.resolve_git_reference(dep_ref)
                         except Exception:
@@ -1702,7 +1710,7 @@ def _install_apm_dependencies(
                     dep_ref, _dep_locked_chk, update_refs=update_refs
                 )
                 # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
-                # — but not when the manifest ref has changed (user wants different version).
+                # -- but not when the manifest ref has changed (user wants different version).
                 lockfile_match = False
                 if install_path.exists() and existing_lockfile:
                     locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
@@ -1710,9 +1718,17 @@ def _install_apm_dependencies(
                         if update_refs:
                             # Update mode: compare resolved remote SHA with lockfile SHA.
                             # If the remote ref still resolves to the same commit,
-                            # the package content is unchanged — skip download.
+                            # the package content is unchanged -- skip download.
+                            # Also verify local checkout matches to guard against
+                            # corrupted installs that bypassed pre-download checks.
                             if resolved_ref and resolved_ref.resolved_commit == locked_dep.resolved_commit:
-                                lockfile_match = True
+                                try:
+                                    from git import Repo as GitRepo
+                                    local_repo = GitRepo(install_path)
+                                    if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                        lockfile_match = True
+                                except Exception:
+                                    pass  # Local checkout invalid -- fall through to download
                         elif not ref_changed:
                             # Normal mode: compare local HEAD with lockfile SHA.
                             try:
@@ -1721,7 +1737,7 @@ def _install_apm_dependencies(
                                 if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
                                     lockfile_match = True
                             except Exception:
-                                pass  # Not a git repo or invalid — fall through to download
+                                pass  # Not a git repo or invalid -- fall through to download
                 skip_download = install_path.exists() and (
                     (is_cacheable and not update_refs) or already_resolved or lockfile_match
                 )

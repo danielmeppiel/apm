@@ -524,11 +524,13 @@ class TestUpdateRefsShaComparison:
     """
 
     @staticmethod
-    def _build_lockfile_match_update(*, resolved_sha, lockfile_sha, install_exists):
+    def _build_lockfile_match_update(*, resolved_sha, lockfile_sha, install_exists,
+                                      local_head_sha=None):
         """Reproduce the update_refs lockfile_match check from install.py.
 
         In update mode, lockfile_match is True when the resolved remote SHA
-        matches the lockfile SHA (meaning the remote hasn't changed).
+        matches the lockfile SHA AND local HEAD matches (guarding against
+        corrupted local checkouts).
         """
         resolved_ref = Mock() if resolved_sha else None
         if resolved_ref:
@@ -538,12 +540,18 @@ class TestUpdateRefsShaComparison:
         if locked_dep:
             locked_dep.resolved_commit = lockfile_sha
 
+        # Default: local HEAD matches lockfile when not explicitly set
+        if local_head_sha is None:
+            local_head_sha = lockfile_sha
+
         lockfile_match = False
         if install_exists and locked_dep:
             if locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                # Update mode: compare resolved SHA with lockfile SHA
+                # Update mode: compare resolved SHA with lockfile SHA,
+                # then verify local checkout matches.
                 if resolved_ref and resolved_ref.resolved_commit == locked_dep.resolved_commit:
-                    lockfile_match = True
+                    if local_head_sha == locked_dep.resolved_commit:
+                        lockfile_match = True
         return lockfile_match
 
     def test_matching_sha_skips_download(self):
@@ -592,6 +600,16 @@ class TestUpdateRefsShaComparison:
             resolved_sha="abc123def456",
             lockfile_sha="abc123def456",
             install_exists=False,
+        ) is False
+
+    def test_corrupted_local_checkout_does_not_skip(self):
+        """When local HEAD differs from lockfile SHA, lockfile_match is False
+        even if resolved remote matches lockfile (guards against corrupt installs)."""
+        assert self._build_lockfile_match_update(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            local_head_sha="corrupted_different_sha",
         ) is False
 
     def test_skip_download_with_update_lockfile_match(self):
