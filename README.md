@@ -42,6 +42,7 @@ apm install    # every agent is configured
 - **[Transitive dependencies](https://microsoft.github.io/apm/guides/dependencies/)** — packages can depend on packages; APM resolves the full tree
 - **[Content security](https://microsoft.github.io/apm/enterprise/security/)** — `apm audit` scans for hidden Unicode; `apm install` blocks compromised packages before agents read them
 - **[Author plugins](https://microsoft.github.io/apm/guides/plugins/)** — build Copilot, Claude, and Cursor plugins with dependency management and security scanning, then export standard `plugin.json`
+- **[Marketplaces](https://microsoft.github.io/apm/guides/marketplaces/)** — install plugins from curated registries in one command; deployed across all targets, locked, scanned, and [governed by `apm-policy.yaml`](https://microsoft.github.io/apm/enterprise/security/)
 - **[Pack & distribute](https://microsoft.github.io/apm/guides/pack-distribute/)** — `apm pack` bundles your configuration as a zipped package or a standalone plugin
 - **[CI/CD ready](https://github.com/microsoft/apm-action)** — GitHub Action for automated workflows
 
@@ -89,6 +90,13 @@ Then start adding packages:
 
 ```bash
 apm install microsoft/apm-sample-package#v1.0.0
+```
+
+Or install from a marketplace:
+
+```bash
+apm marketplace add github/awesome-copilot
+apm install azure-cloud-development@awesome-copilot
 ```
 
 See the **[Getting Started guide](https://microsoft.github.io/apm/getting-started/quick-start/)** for the full walkthrough.
