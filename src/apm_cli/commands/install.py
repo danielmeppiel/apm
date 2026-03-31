@@ -1392,30 +1392,21 @@ def _install_apm_dependencies(
             _pd_ref_changed = detect_ref_change(
                 _pd_ref, _pd_locked_chk, update_refs=update_refs
             )
-            # Skip if lockfile SHA matches local HEAD (Phase 5 check)
-            # — but only if the ref itself has not changed in the manifest.
-            if _pd_path.exists() and existing_lockfile and not update_refs and not _pd_ref_changed:
-                _pd_locked = existing_lockfile.get_dependency(_pd_key)
-                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
-                    try:
-                        from git import Repo as _PDGitRepo
-                        if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked.resolved_commit:
-                            continue
-                    except Exception:
-                        pass
-            # Perf: when update_refs=True, skip pre-download for packages where
-            # the local HEAD matches the lockfile SHA.  The sequential loop will
-            # resolve the remote ref and compare it to the lockfile SHA.  If the
-            # remote is unchanged the download is skipped entirely; if it changed,
-            # it falls back to sequential download (rare case).
-            if update_refs and _pd_path.exists() and _pd_locked_chk:
-                if _pd_locked_chk.resolved_commit and _pd_locked_chk.resolved_commit != "cached":
-                    try:
-                        from git import Repo as _PDGitRepo
-                        if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked_chk.resolved_commit:
-                            continue
-                    except Exception:
-                        pass
+            # Skip if lockfile SHA matches local HEAD.
+            # Normal mode: only when the ref hasn't changed in the manifest.
+            # Update mode: defer to the sequential loop which resolves the
+            # remote ref and compares — if unchanged, the download is skipped
+            # entirely; if changed, it falls back to sequential download.
+            if (_pd_path.exists() and _pd_locked_chk
+                    and _pd_locked_chk.resolved_commit
+                    and _pd_locked_chk.resolved_commit != "cached"
+                    and (update_refs or not _pd_ref_changed)):
+                try:
+                    from git import Repo as _PDGitRepo
+                    if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked_chk.resolved_commit:
+                        continue
+                except Exception:
+                    pass
             # Build download ref (use locked commit for reproducibility).
             # build_download_ref() uses the manifest ref when ref_changed is True.
             _pd_dlref = build_download_ref(
@@ -1743,7 +1734,7 @@ def _install_apm_dependencies(
                         # Use resolved reference from ref resolution if available
                         # (e.g. when update_refs matched the lockfile SHA),
                         # otherwise create a placeholder for cached packages.
-                        cached_resolved_ref = resolved_ref if resolved_ref else ResolvedReference(
+                        resolved_or_cached_ref = resolved_ref if resolved_ref else ResolvedReference(
                             original_ref=dep_ref.reference or "default",
                             ref_type=GitReferenceType.BRANCH,
                             resolved_commit="cached",  # Mark as cached since we don't know exact commit
@@ -1753,7 +1744,7 @@ def _install_apm_dependencies(
                         cached_package_info = PackageInfo(
                             package=cached_package,
                             install_path=install_path,
-                            resolved_reference=cached_resolved_ref,
+                            resolved_reference=resolved_or_cached_ref,
                             installed_at=datetime.now().isoformat(),
                             dependency_ref=dep_ref,  # Store for canonical dependency string
                         )
