@@ -65,7 +65,9 @@ class TestConfigShow:
             os.chdir(tmp_dir)
             try:
                 apm_yml = Path(tmp_dir) / "apm.yml"
-                apm_yml.write_text("name: myproject\ncompilation:\n  output: AGENTS.md\n")
+                apm_yml.write_text(
+                    "name: myproject\ncompilation:\n  output: AGENTS.md\n"
+                )
                 apm_config = {
                     "name": "myproject",
                     "version": "0.1",
@@ -79,7 +81,8 @@ class TestConfigShow:
                 with (
                     patch("apm_cli.commands.config.get_version", return_value="1.2.3"),
                     patch(
-                        "apm_cli.commands.config._load_apm_config", return_value=apm_config
+                        "apm_cli.commands.config._load_apm_config",
+                        return_value=apm_config,
                     ),
                 ):
                     result = self.runner.invoke(config, [])
@@ -97,7 +100,9 @@ class TestConfigShow:
             try:
                 with (
                     patch("apm_cli.commands.config.get_version", return_value="0.9.0"),
-                    patch.object(rich.table, "Table", side_effect=ImportError("no rich")),
+                    patch.object(
+                        rich.table, "Table", side_effect=ImportError("no rich")
+                    ),
                 ):
                     result = self.runner.invoke(config, [])
             finally:
@@ -122,9 +127,12 @@ class TestConfigShow:
                 with (
                     patch("apm_cli.commands.config.get_version", return_value="0.9.0"),
                     patch(
-                        "apm_cli.commands.config._load_apm_config", return_value=apm_config
+                        "apm_cli.commands.config._load_apm_config",
+                        return_value=apm_config,
                     ),
-                    patch.object(rich.table, "Table", side_effect=ImportError("no rich")),
+                    patch.object(
+                        rich.table, "Table", side_effect=ImportError("no rich")
+                    ),
                 ):
                     result = self.runner.invoke(config, [])
             finally:
@@ -137,63 +145,121 @@ class TestConfigSet:
 
     def setup_method(self):
         self.runner = CliRunner()
+        self.original_dir = os.getcwd()
+
+    def teardown_method(self):
+        try:
+            os.chdir(self.original_dir)
+        except (FileNotFoundError, OSError):
+            pass
+
+    def _run_in_tmpdir(self, args):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                return self.runner.invoke(config, args)
+            finally:
+                os.chdir(self.original_dir)
 
     def test_set_auto_integrate_true(self):
         """Enable auto-integration."""
-        with patch("apm_cli.config.set_auto_integrate") as mock_set:
-            result = self.runner.invoke(config, ["set", "auto-integrate", "true"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.set_auto_integrate") as mock_set:
+                    result = self.runner.invoke(
+                        config, ["set", "auto-integrate", "true"]
+                    )
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
     def test_set_auto_integrate_yes(self):
         """Enable auto-integration with 'yes' alias."""
-        with patch("apm_cli.config.set_auto_integrate") as mock_set:
-            result = self.runner.invoke(config, ["set", "auto-integrate", "yes"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.set_auto_integrate") as mock_set:
+                    result = self.runner.invoke(
+                        config, ["set", "auto-integrate", "yes"]
+                    )
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
     def test_set_auto_integrate_one(self):
         """Enable auto-integration with '1' alias."""
-        with patch("apm_cli.config.set_auto_integrate") as mock_set:
-            result = self.runner.invoke(config, ["set", "auto-integrate", "1"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.set_auto_integrate") as mock_set:
+                    result = self.runner.invoke(config, ["set", "auto-integrate", "1"])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
     def test_set_auto_integrate_false(self):
         """Disable auto-integration."""
-        with patch("apm_cli.config.set_auto_integrate") as mock_set:
-            result = self.runner.invoke(config, ["set", "auto-integrate", "false"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.set_auto_integrate") as mock_set:
+                    result = self.runner.invoke(
+                        config, ["set", "auto-integrate", "false"]
+                    )
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
         mock_set.assert_called_once_with(False)
 
     def test_set_auto_integrate_no(self):
         """Disable auto-integration with 'no' alias."""
-        with patch("apm_cli.config.set_auto_integrate") as mock_set:
-            result = self.runner.invoke(config, ["set", "auto-integrate", "no"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.set_auto_integrate") as mock_set:
+                    result = self.runner.invoke(config, ["set", "auto-integrate", "no"])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
         mock_set.assert_called_once_with(False)
 
     def test_set_auto_integrate_zero(self):
         """Disable auto-integration with '0' alias."""
-        with patch("apm_cli.config.set_auto_integrate") as mock_set:
-            result = self.runner.invoke(config, ["set", "auto-integrate", "0"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.set_auto_integrate") as mock_set:
+                    result = self.runner.invoke(config, ["set", "auto-integrate", "0"])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
         mock_set.assert_called_once_with(False)
 
     def test_set_auto_integrate_invalid_value(self):
-        """Reject an invalid value for auto-integrate."""
-        result = self.runner.invoke(config, ["set", "auto-integrate", "maybe"])
-        assert result.exit_code == 1
+        """Any value is accepted by the generalized set command."""
+        result = self._run_in_tmpdir(["set", "auto-integrate", "maybe"])
+        assert result.exit_code == 0
 
     def test_set_unknown_key(self):
-        """Reject an unknown configuration key."""
-        result = self.runner.invoke(config, ["set", "nonexistent", "value"])
-        assert result.exit_code == 1
+        """Any key is accepted (written to .apmrc)."""
+        result = self._run_in_tmpdir(["set", "nonexistent", "value"])
+        assert result.exit_code == 0
 
     def test_set_auto_integrate_case_insensitive(self):
         """Value comparison is case-insensitive."""
-        with patch("apm_cli.config.set_auto_integrate") as mock_set:
-            result = self.runner.invoke(config, ["set", "auto-integrate", "TRUE"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.set_auto_integrate") as mock_set:
+                    result = self.runner.invoke(
+                        config, ["set", "auto-integrate", "TRUE"]
+                    )
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
@@ -203,24 +269,53 @@ class TestConfigGet:
 
     def setup_method(self):
         self.runner = CliRunner()
+        self.original_dir = os.getcwd()
+
+    def teardown_method(self):
+        try:
+            os.chdir(self.original_dir)
+        except (FileNotFoundError, OSError):
+            pass
 
     def test_get_auto_integrate(self):
-        """Get the auto-integrate setting."""
-        with patch("apm_cli.config.get_auto_integrate", return_value=True):
-            result = self.runner.invoke(config, ["get", "auto-integrate"])
+        """Get the auto-integrate setting from config.json."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch(
+                    "apm_cli.config.get_config",
+                    return_value={"auto_integrate": True},
+                ):
+                    result = self.runner.invoke(config, ["get", "auto-integrate"])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
-        assert "auto-integrate: True" in result.output
+        assert "True" in result.output
 
     def test_get_auto_integrate_disabled(self):
         """Get auto-integrate when disabled."""
-        with patch("apm_cli.config.get_auto_integrate", return_value=False):
-            result = self.runner.invoke(config, ["get", "auto-integrate"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch(
+                    "apm_cli.config.get_config",
+                    return_value={"auto_integrate": False},
+                ):
+                    result = self.runner.invoke(config, ["get", "auto-integrate"])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 0
-        assert "auto-integrate: False" in result.output
+        assert "False" in result.output
 
     def test_get_unknown_key(self):
-        """Reject an unknown key."""
-        result = self.runner.invoke(config, ["get", "nonexistent"])
+        """Reject an unknown key not in .apmrc or config.json."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                with patch("apm_cli.config.get_config", return_value={}):
+                    result = self.runner.invoke(config, ["get", "nonexistent"])
+            finally:
+                os.chdir(self.original_dir)
         assert result.exit_code == 1
 
     def test_get_all_config(self):
@@ -229,7 +324,7 @@ class TestConfigGet:
         with patch("apm_cli.config.get_config", return_value=fake_config):
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
-        assert "auto-integrate: True" in result.output
+        assert "auto-integrate=True" in result.output
 
     def test_get_all_config_unknown_key_passthrough(self):
         """Unknown config keys are shown as-is."""
@@ -237,7 +332,7 @@ class TestConfigGet:
         with patch("apm_cli.config.get_config", return_value=fake_config):
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
-        assert "some_other_key: value" in result.output
+        assert "some-other-key=value" in result.output
 
 
 class TestAutoIntegrateFunctions:

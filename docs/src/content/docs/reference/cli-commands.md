@@ -1232,7 +1232,7 @@ APM integrates seamlessly with [Spec-kit](https://github.com/github/spec-kit) fo
 
 ### `apm config` - Configure APM CLI
 
-Manage APM CLI configuration settings. Running `apm config` without subcommands displays the current configuration.
+Manage APM CLI configuration settings. Configuration is stored in `.apmrc` files (flat `key=value` format with `${ENV_VAR}` substitution). See the [Configuration Guide](/guides/configuration/) for full details.
 
 ```bash
 apm config [COMMAND]
@@ -1246,79 +1246,86 @@ Display current APM CLI configuration and project settings.
 apm config
 ```
 
-**What's displayed:**
-- Project configuration from `apm.yml` (if in an APM project)
-  - Project name, version, entrypoint
-  - Number of MCP dependencies
-  - Compilation settings (output, chatmode, resolve_links)
-- Global configuration
-  - APM CLI version
-  - `auto-integrate` setting
-
-**Examples:**
-```bash
-# Show current configuration
-apm config
-```
-
 #### `apm config get` - Get a configuration value
-
-Get a specific configuration value or display all configuration values.
 
 ```bash
 apm config get [KEY]
 ```
 
 **Arguments:**
-- `KEY` (optional) - Configuration key to retrieve. Supported keys:
-  - `auto-integrate` - Whether to automatically integrate `.prompt.md` files into AGENTS.md
+- `KEY` (optional) - Any `.apmrc` key: `registry`, `default-client`, `auto-integrate`, `@scope:registry`, etc.
 
-If `KEY` is omitted, displays all configuration values.
+If `KEY` is omitted, displays all configuration values. Sensitive keys (`github-token`, `*:_authToken`) are blocked — use `show-rc` instead.
 
 **Examples:**
 ```bash
-# Get auto-integrate setting
+apm config get registry
 apm config get auto-integrate
-
-# Show all configuration
-apm config get
+apm config get                  # show all
 ```
 
 #### `apm config set` - Set a configuration value
 
-Set a configuration value globally for APM CLI.
+Write a key-value pair to an `.apmrc` file.
 
 ```bash
-apm config set KEY VALUE
+apm config set KEY VALUE [--global]
 ```
 
-**Arguments:**
-- `KEY` - Configuration key to set. Supported keys:
-  - `auto-integrate` - Enable/disable automatic integration of `.prompt.md` files
-- `VALUE` - Value to set. For boolean keys, use: `true`, `false`, `yes`, `no`, `1`, `0`
-
-**Configuration Keys:**
-
-**`auto-integrate`** - Control automatic prompt integration
-- **Type:** Boolean
-- **Default:** `true`
-- **Description:** When enabled, APM automatically discovers and integrates `.prompt.md` files from `.github/prompts/` and `.apm/prompts/` directories into the compiled AGENTS.md file. This ensures all prompts are available to coding agents without manual compilation.
-- **Use Cases:**
-  - Set to `false` if you want to manually manage which prompts are compiled
-  - Set to `true` to ensure all prompts are always included in the context
+**Options:**
+- `--global` - Write to `~/.apm/.apmrc` instead of the project file.
 
 **Examples:**
 ```bash
-# Enable auto-integration (default)
-apm config set auto-integrate true
-
-# Disable auto-integration
+apm config set registry https://custom-registry.example.com
 apm config set auto-integrate false
-
-# Using alternative boolean values
-apm config set auto-integrate yes
-apm config set auto-integrate 1
+apm config set github-token ghp_xxxx --global
+apm config set @myorg:registry https://myorg.pkg.github.com
 ```
+
+#### `apm config delete` - Delete a configuration key
+
+```bash
+apm config delete KEY [--global]
+```
+
+**Examples:**
+```bash
+apm config delete registry
+apm config delete github-token --global
+```
+
+#### `apm config show-rc` - Show merged .apmrc values
+
+Display all `.apmrc` configuration values from all loaded files. Tokens are masked as `***`.
+
+```bash
+apm config show-rc [--json]
+```
+
+#### `apm config which-rc` - Show loaded .apmrc files
+
+List which `.apmrc` files are active and their precedence order.
+
+```bash
+apm config which-rc
+```
+
+#### `apm config init-rc` - Scaffold a new .apmrc
+
+Create a new `.apmrc` file with commented-out defaults. File is created with `0600` permissions.
+
+```bash
+apm config init-rc [--global] [--force]
+```
+
+#### `apm config edit` - Open .apmrc in editor
+
+```bash
+apm config edit [--global]
+```
+
+Opens the project or global `.apmrc` in `$EDITOR`.
 
 ## Runtime Management (Experimental)
 

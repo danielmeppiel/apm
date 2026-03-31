@@ -26,36 +26,45 @@ from typing import Dict, Optional, Tuple
 
 class GitHubTokenManager:
     """Manages GitHub token environment setup for different AI runtimes."""
-    
+
     # Define token precedence for different use cases
     TOKEN_PRECEDENCE = {
-        'copilot': ['GITHUB_COPILOT_PAT', 'GITHUB_TOKEN', 'GITHUB_APM_PAT'],
-        'models': ['GITHUB_TOKEN', 'GITHUB_APM_PAT'],  # GitHub Models prefers user-scoped PAT, falls back to APM PAT
-        'modules': ['GITHUB_APM_PAT', 'GITHUB_TOKEN', 'GH_TOKEN'],  # APM module access (GitHub)
-        'ado_modules': ['ADO_APM_PAT'],  # APM module access (Azure DevOps)
-        'artifactory_modules': ['ARTIFACTORY_APM_TOKEN'],  # APM module access (JFrog Artifactory)
+        "copilot": ["GITHUB_COPILOT_PAT", "GITHUB_TOKEN", "GITHUB_APM_PAT"],
+        "models": [
+            "GITHUB_TOKEN",
+            "GITHUB_APM_PAT",
+        ],  # GitHub Models prefers user-scoped PAT, falls back to APM PAT
+        "modules": [
+            "GITHUB_APM_PAT",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+        ],  # APM module access (GitHub)
+        "ado_modules": ["ADO_APM_PAT"],  # APM module access (Azure DevOps)
+        "artifactory_modules": [
+            "ARTIFACTORY_APM_TOKEN"
+        ],  # APM module access (JFrog Artifactory)
     }
-    
+
     # Runtime-specific environment variable mappings
     RUNTIME_ENV_VARS = {
-        'copilot': ['GH_TOKEN', 'GITHUB_PERSONAL_ACCESS_TOKEN'],
-        'codex': ['GITHUB_TOKEN'],  # Uses GITHUB_TOKEN directly
-        'llm': ['GITHUB_MODELS_KEY'],  # LLM-specific variable for GitHub Models
+        "copilot": ["GH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN"],
+        "codex": ["GITHUB_TOKEN"],  # Uses GITHUB_TOKEN directly
+        "llm": ["GITHUB_MODELS_KEY"],  # LLM-specific variable for GitHub Models
     }
-    
+
     def __init__(self, preserve_existing: bool = True):
         """Initialize token manager.
-        
+
         Args:
             preserve_existing: If True, never overwrite existing environment variables
         """
         self.preserve_existing = preserve_existing
         self._credential_cache: Dict[str, Optional[str]] = {}
-    
+
     @staticmethod
     def _is_valid_credential_token(token: str) -> bool:
         """Validate that a credential-fill token looks like a real credential.
-        
+
         Rejects garbage values that can appear when GIT_ASKPASS or credential
         helpers return prompt text instead of actual tokens.
         """
@@ -63,9 +72,14 @@ class GitHubTokenManager:
             return False
         if len(token) > 1024:
             return False
-        if any(c in token for c in (' ', '\t', '\n', '\r')):
+        if any(c in token for c in (" ", "\t", "\n", "\r")):
             return False
-        prompt_fragments = ('Password for', 'Username for', 'password for', 'username for')
+        prompt_fragments = (
+            "Password for",
+            "Username for",
+            "password for",
+            "username for",
+        )
         if any(fragment in token for fragment in prompt_fragments):
             return False
         return True
@@ -94,128 +108,144 @@ class GitHubTokenManager:
     @staticmethod
     def resolve_credential_from_git(host: str) -> Optional[str]:
         """Resolve a credential from the git credential store.
-        
+
         Uses `git credential fill` to query the user's configured credential
         helpers (macOS Keychain, Windows Credential Manager, gh CLI, etc.).
         This is the same mechanism git clone uses internally.
-        
+
         Args:
             host: The git host to resolve credentials for (e.g., "github.com")
-            
+
         Returns:
             The password/token from the credential store, or None if unavailable
         """
         try:
             result = subprocess.run(
-                ['git', 'credential', 'fill'],
+                ["git", "credential", "fill"],
                 input=f"protocol=https\nhost={host}\n\n",
                 capture_output=True,
                 text=True,
                 timeout=GitHubTokenManager._get_credential_timeout(),
-                env={**os.environ, 'GIT_TERMINAL_PROMPT': '0',
-                     'GIT_ASKPASS': '' if sys.platform != 'win32' else 'echo'},
+                env={
+                    **os.environ,
+                    "GIT_TERMINAL_PROMPT": "0",
+                    "GIT_ASKPASS": "" if sys.platform != "win32" else "echo",
+                },
             )
             if result.returncode != 0:
                 return None
-            
+
             for line in result.stdout.splitlines():
-                if line.startswith('password='):
-                    token = line[len('password='):]
+                if line.startswith("password="):
+                    token = line[len("password=") :]
                     if token and GitHubTokenManager._is_valid_credential_token(token):
                         return token
                     return None
             return None
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return None
-        
+
     def setup_environment(self, env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         """Set up complete token environment for all runtimes.
-        
+
         Args:
             env: Environment dictionary to modify (defaults to os.environ.copy())
-            
+
         Returns:
             Updated environment dictionary with all required tokens set
         """
         if env is None:
             env = os.environ.copy()
-        
+
         # Get available tokens
         available_tokens = self._get_available_tokens(env)
-        
+
         # Set up tokens for each runtime without overwriting existing values
         self._setup_copilot_tokens(env, available_tokens)
         self._setup_codex_tokens(env, available_tokens)
         self._setup_llm_tokens(env, available_tokens)
-        
+
         return env
-    
-    def get_token_for_purpose(self, purpose: str, env: Optional[Dict[str, str]] = None) -> Optional[str]:
+
+    def get_token_for_purpose(
+        self, purpose: str, env: Optional[Dict[str, str]] = None
+    ) -> Optional[str]:
         """Get the best available token for a specific purpose.
-        
+
         Args:
             purpose: Token purpose ('copilot', 'models', 'modules')
             env: Environment to check (defaults to os.environ)
-            
+
         Returns:
             Best available token for the purpose, or None if not available
         """
         if env is None:
             env = os.environ
-            
+
         if purpose not in self.TOKEN_PRECEDENCE:
             raise ValueError(f"Unknown purpose: {purpose}")
-            
+
         for token_var in self.TOKEN_PRECEDENCE[purpose]:
             token = env.get(token_var)
             if token:
                 return token
         return None
-    
-    def get_token_with_credential_fallback(self, purpose: str, host: str, env: Optional[Dict[str, str]] = None) -> Optional[str]:
+
+    def get_token_with_credential_fallback(
+        self, purpose: str, host: str, env: Optional[Dict[str, str]] = None
+    ) -> Optional[str]:
         """Get token for a purpose, falling back to git credential helpers.
-        
+
         Tries environment variables first (via get_token_for_purpose), then
         queries the git credential store as a last resort. Results are cached
         per host to avoid repeated subprocess calls.
-        
+
         Args:
             purpose: Token purpose ('modules', etc.)
             host: Git host to resolve credentials for (e.g., "github.com")
             env: Environment to check (defaults to os.environ)
-            
+
         Returns:
             Best available token, or None if not available from any source
         """
         token = self.get_token_for_purpose(purpose, env)
         if token:
             return token
-        
+
+        # Check .apmrc github-token before the git credential helper.
+        # Only applies to the 'modules' purpose (package downloads).
+        if purpose == "modules":
+            from apm_cli.config import get_effective_token
+
+            apmrc_token = get_effective_token()
+            if apmrc_token:
+                return apmrc_token
+
         if host in self._credential_cache:
             return self._credential_cache[host]
-        
+
         credential = self.resolve_credential_from_git(host)
         self._credential_cache[host] = credential
         return credential
-    
+
     def validate_tokens(self, env: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
         """Validate that required tokens are available.
-        
+
         Args:
             env: Environment to check (defaults to os.environ)
-            
+
         Returns:
             Tuple of (is_valid, error_message)
         """
         if env is None:
             env = os.environ
-            
+
         # Check for at least one valid token
         has_any_token = any(
-            self.get_token_for_purpose(purpose, env) 
-            for purpose in ['copilot', 'models', 'modules']
+            self.get_token_for_purpose(purpose, env)
+            for purpose in ["copilot", "models", "modules"]
         )
-        
+
         if not has_any_token:
             return False, (
                 "No tokens found. Set one of:\n"
@@ -223,19 +253,19 @@ class GitHubTokenManager:
                 "- GITHUB_APM_PAT (fine-grained PAT for APM modules on GitHub)\n"
                 "- ADO_APM_PAT (PAT for APM modules on Azure DevOps)"
             )
-        
+
         # Warn about GitHub Models access if only fine-grained PAT is available
-        models_token = self.get_token_for_purpose('models', env)
+        models_token = self.get_token_for_purpose("models", env)
         if not models_token:
-            has_fine_grained = env.get('GITHUB_APM_PAT')
+            has_fine_grained = env.get("GITHUB_APM_PAT")
             if has_fine_grained:
                 return True, (
                     "Warning: Only fine-grained PAT available. "
                     "GitHub Models requires GITHUB_TOKEN (user-scoped PAT)"
                 )
-        
+
         return True, "Token validation passed"
-    
+
     def _get_available_tokens(self, env: Dict[str, str]) -> Dict[str, str]:
         """Get all available GitHub tokens from environment."""
         tokens = {}
@@ -244,42 +274,46 @@ class GitHubTokenManager:
                 if token_var in env and env[token_var]:
                     tokens[token_var] = env[token_var]
         return tokens
-    
-    def _setup_copilot_tokens(self, env: Dict[str, str], available_tokens: Dict[str, str]):
+
+    def _setup_copilot_tokens(
+        self, env: Dict[str, str], available_tokens: Dict[str, str]
+    ):
         """Set up tokens for Copilot."""
-        copilot_token = self.get_token_for_purpose('copilot', available_tokens)
+        copilot_token = self.get_token_for_purpose("copilot", available_tokens)
         if not copilot_token:
             return
-            
-        for env_var in self.RUNTIME_ENV_VARS['copilot']:
+
+        for env_var in self.RUNTIME_ENV_VARS["copilot"]:
             if self.preserve_existing and env_var in env:
                 continue
             env[env_var] = copilot_token
-    
-    def _setup_codex_tokens(self, env: Dict[str, str], available_tokens: Dict[str, str]):
+
+    def _setup_codex_tokens(
+        self, env: Dict[str, str], available_tokens: Dict[str, str]
+    ):
         """Set up tokens for Codex CLI (preserve existing tokens)."""
         # Codex script checks for both GITHUB_TOKEN and GITHUB_APM_PAT
         # Set up GITHUB_TOKEN if not present
-        if not (self.preserve_existing and 'GITHUB_TOKEN' in env):
-            models_token = self.get_token_for_purpose('models', available_tokens)
-            if models_token and 'GITHUB_TOKEN' not in env:
-                env['GITHUB_TOKEN'] = models_token
-        
+        if not (self.preserve_existing and "GITHUB_TOKEN" in env):
+            models_token = self.get_token_for_purpose("models", available_tokens)
+            if models_token and "GITHUB_TOKEN" not in env:
+                env["GITHUB_TOKEN"] = models_token
+
         # Ensure GITHUB_APM_PAT is available if we have it
-        if not (self.preserve_existing and 'GITHUB_APM_PAT' in env):
-            apm_token = available_tokens.get('GITHUB_APM_PAT')
-            if apm_token and 'GITHUB_APM_PAT' not in env:
-                env['GITHUB_APM_PAT'] = apm_token
-    
+        if not (self.preserve_existing and "GITHUB_APM_PAT" in env):
+            apm_token = available_tokens.get("GITHUB_APM_PAT")
+            if apm_token and "GITHUB_APM_PAT" not in env:
+                env["GITHUB_APM_PAT"] = apm_token
+
     def _setup_llm_tokens(self, env: Dict[str, str], available_tokens: Dict[str, str]):
         """Set up tokens for LLM CLI."""
         # LLM uses GITHUB_MODELS_KEY, prefer GITHUB_TOKEN if available
-        if self.preserve_existing and 'GITHUB_MODELS_KEY' in env:
+        if self.preserve_existing and "GITHUB_MODELS_KEY" in env:
             return
-            
-        models_token = self.get_token_for_purpose('models', available_tokens)
+
+        models_token = self.get_token_for_purpose("models", available_tokens)
         if models_token:
-            env['GITHUB_MODELS_KEY'] = models_token
+            env["GITHUB_MODELS_KEY"] = models_token
 
 
 # Convenience functions for common use cases
@@ -295,19 +329,21 @@ def validate_github_tokens(env: Optional[Dict[str, str]] = None) -> Tuple[bool, 
     return manager.validate_tokens(env)
 
 
-def get_github_token_for_runtime(runtime: str, env: Optional[Dict[str, str]] = None) -> Optional[str]:
+def get_github_token_for_runtime(
+    runtime: str, env: Optional[Dict[str, str]] = None
+) -> Optional[str]:
     """Get the appropriate GitHub token for a specific runtime."""
     manager = GitHubTokenManager()
-    
+
     # Map runtime names to purposes
     runtime_to_purpose = {
-        'copilot': 'copilot',
-        'codex': 'models',
-        'llm': 'models',
+        "copilot": "copilot",
+        "codex": "models",
+        "llm": "models",
     }
-    
+
     purpose = runtime_to_purpose.get(runtime)
     if not purpose:
         raise ValueError(f"Unknown runtime: {runtime}")
-        
+
     return manager.get_token_for_purpose(purpose, env)

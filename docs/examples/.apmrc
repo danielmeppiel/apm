@@ -1,0 +1,57 @@
+# .apmrc — Agent Package Manager configuration
+# https://github.com/microsoft/apm/docs/apmrc.md
+#
+# This file uses a flat key=value format (no section headers).
+# Lines starting with # or ; are comments.
+#
+# Environment variable substitution is supported:
+#   ${VAR}          — use env var value; leave '${VAR}' as-is if unset
+#   ${VAR?}         — use env var value; empty string if unset
+#   ${VAR:-default} — use env var value; fall back to 'default' if unset/empty
+#   ${VAR:+word}    — use 'word' only if VAR is set and non-empty
+#
+# Configuration hierarchy (lowest → highest precedence):
+#   ~/.apmrc  →  ~/.apm/.apmrc  →  $XDG_CONFIG_HOME/apm/.apmrc
+#   →  <project>/.apmrc  →  environment variables  →  CLI flags
+#
+# Recommended practice:
+#   Commit .apmrc with ${VAR} references (no secrets).
+#   Store actual tokens in ~/.apm/.apmrc or shell env vars.
+
+# =============================================================================
+# Registry
+# =============================================================================
+
+# Default registry URL for all package lookups.
+# The env var APM_REGISTRY takes precedence over this value.
+# registry=https://api.mcp.github.com
+
+# Route packages in the @myorg scope to a private registry.
+# @myorg:registry=https://myorg.pkg.github.com
+
+# =============================================================================
+# Authentication
+# =============================================================================
+
+# GitHub personal access token for private packages.
+# The env vars GITHUB_APM_PAT, GITHUB_TOKEN, and GH_TOKEN are checked first.
+# github-token=${GITHUB_APM_PAT}
+
+# Per-host auth token for a scoped registry (mirrors .npmrc convention).
+# //myorg.pkg.github.com/:_authToken=${MYORG_REGISTRY_TOKEN}
+
+# =============================================================================
+# Behavior
+# =============================================================================
+
+# Default AI client target when none is specified on the CLI.
+# Accepted values: vscode, claude, cursor, copilot, codex, opencode
+# default-client=claude
+
+# Automatically integrate installed packages into the client config.
+# Default: true
+# auto-integrate=true
+
+# Suppress interactive prompts and enforce strict mode in CI.
+# Uses ${CI:+true} so it only activates when the CI env var is set.
+# ci-mode=${CI:+true}
