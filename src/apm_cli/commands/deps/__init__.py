@@ -9,8 +9,6 @@ from ._utils import (
     _get_detailed_context_counts,
     _get_package_display_info,
     _get_detailed_package_info,
-    _update_single_package,
-    _update_all_packages,
 )
 
 __all__ = [
@@ -29,6 +27,4 @@ __all__ = [
     "_get_detailed_context_counts",
     "_get_package_display_info",
     "_get_detailed_package_info",
-    "_update_single_package",
-    "_update_all_packages",
 ]

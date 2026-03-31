@@ -8,24 +8,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-03-30
+
 ### Fixed
 
-- Windows antivirus file-lock errors (`WinError 32`) during `apm install`: new `file_ops` retry utility with exponential backoff for `rmtree`/`copytree`/`copy2` operations (#453)
-- `install.sh` now falls back to pip when binary fails in devcontainers with older glibc (#456)
-- Skills now deploy to all active targets (`.opencode/`, `.cursor/`) instead of only `.github/` (#456)
-- `apm install` no longer rewrites `apm.lock.yaml` when dependencies are unchanged, eliminating `generated_at` churn in version control (#456)
-- `.github/` is no longer auto-created when other target dirs (`.claude/`, `.cursor/`, `.opencode/`) already exist; copilot is only the fallback for greenfield projects (#456)
-- Linux binary no longer bundles `libssl.so.3`/`libcrypto.so.3`, preventing OpenSSL ABI conflicts on distros where system `libcurl` requires a newer OpenSSL than the build machine (e.g. Fedora 43) (#466)
-- SSH-style Git URLs (`git@host:owner/../evil`) now reject path traversal sequences, closing a bypass of the HTTPS validation added in #437 -- by @thakoreh (#458)
+- `--target opencode` no longer writes prompts/agents to `.github/`; dispatch loop now only fires primitives declared by the selected target (#488, #494)
+- `--target cursor` now correctly deploys skills to `.cursor/skills/` instead of `.github/skills/` -- `SkillIntegrator` respects the explicit target list end-to-end (#482, #494)
+- Misleading "transitive dep" error message for direct dependency download failures (#478)
+- Sparse checkout using global token instead of per-org token from `GITHUB_APM_PAT_<ORG>` (#478)
+- Duplicate error count when a dependency fails during both resolution and install phases (#478)
+- Windows Defender false-positive (`Trojan:Win32/Bearfoos.B!ml`) mitigation: embed PE version info in Windows binary and disable UPX compression on Windows builds -- by @sergio-sisternes-epam (#490)
+- `apm deps update` was a no-op -- rewrote to delegate to the install engine so lockfile, deployed files, and integration state are all refreshed correctly -- by @webmaxru (#493)
 
 ### Changed
 
-- Consolidated path-segment traversal checks in `DependencyReference` into a single `validate_path_segments()` utility in `path_security.py`, eliminating behavioral drift (backslash normalisation now applied uniformly across all parse paths)
+- Integration dispatch is now data-driven: `KNOWN_TARGETS` defines each target's primitives and directory layout; adding a target requires zero code changes (#494)
+- `partition_managed_files()` uses O(1) component-based path routing instead of linear prefix scan (#494)
+- Uninstall sync uses pre-partitioned buckets via `partition_bucket_key()` instead of re-scanning the full managed-files set (#494)
+
+### Security
+
+- Bump `pygments` from 2.19.2 to 2.20.0 (#495)
+
+## [0.8.6] - 2026-03-27
 
 ### Added
 
 - `apm install --target` flag to force deployment to a specific target (copilot, claude, cursor, opencode, all) (#456)
-- Global `apm install --global` / `-g` and `apm uninstall --global` flags for user-scope package installation, backed by `InstallScope`-based scope resolution in `core/scope.py`; deploys primitives to `~/.github/`, `~/.claude/`, etc. and tracks metadata under `~/.apm/` (#440)
+- Global `apm install --global` / `-g` and `apm uninstall --global` flags for user-scope package installation, backed by `InstallScope`-based scope resolution in `core/scope.py`; deploys primitives to `~/.github/`, `~/.claude/`, etc. and tracks metadata under `~/.apm/` (#452)
+
+### Fixed
+
+- Windows antivirus file-lock errors (`WinError 32`) during `apm install` with `file_ops` retry utility (#440)
+- Installer fallback to pip in devcontainers, target registry, and lockfile idempotency fixes (#456)
+- Reject path traversal sequences in SSH-style Git URLs — by @thakoreh (#458)
+- Exclude bundled OpenSSL libs from Linux binary to prevent ABI conflicts (#466)
+- Allow spaces in ADO repository names when parsing URLs (#437)
+- Gate `.claude/commands/` deployment behind `integrate_claude` flag (#443)
+- Sort instruction discovery order for deterministic Build IDs across platforms (#468)
+- Share `AuthResolver` across install to prevent duplicate auth popups (#424)
+
+### Changed
+
+- Consolidated path-segment traversal checks into `validate_path_segments()` in `path_security.py` (#458)
+
 ## [0.8.5] - 2026-03-24
 
 ### Added

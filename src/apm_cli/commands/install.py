@@ -35,6 +35,12 @@ set = builtins.set
 list = builtins.list
 dict = builtins.dict
 
+# AuthResolver has no optional deps (stdlib + internal utils only), so it must
+# be imported unconditionally here -- NOT inside the APM_DEPS_AVAILABLE guard.
+# If it were gated, a missing optional dep (e.g. GitPython) would cause a
+# NameError in install() before the graceful APM_DEPS_AVAILABLE check fires.
+from ..core.auth import AuthResolver
+
 # APM Dependencies (conditional import for graceful degradation)
 APM_DEPS_AVAILABLE = False
 _APM_IMPORT_ERROR = None
@@ -56,7 +62,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None, auth_resolver=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -69,6 +75,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         dev: If True, write to devDependencies instead of dependencies.
         logger: InstallLogger for structured output.
         manifest_path: Explicit path to apm.yml (defaults to cwd/apm.yml).
+        auth_resolver: Shared auth resolver for caching credentials.
 
     Returns:
         Tuple of (validated_packages list, _ValidationOutcome).
@@ -147,7 +154,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
         # Validate package exists and is accessible
         verbose = bool(logger and logger.verbose)
-        if _validate_package_exists(package, verbose=verbose):
+        if _validate_package_exists(package, verbose=verbose, auth_resolver=auth_resolver):
             valid_outcomes.append((canonical, already_in_deps))
             if logger:
                 logger.validation_pass(canonical, already_present=already_in_deps)
@@ -259,7 +266,7 @@ def _local_path_no_markers_hint(local_dir, verbose_log=None):
         _rich_echo(f"      ... and {len(found) - 5} more", color="dim")
 
 
-def _validate_package_exists(package, verbose=False):
+def _validate_package_exists(package, verbose=False, auth_resolver=None):
     """Validate that a package exists and is accessible on GitHub, Azure DevOps, or locally."""
     import os
     import subprocess
@@ -267,7 +274,9 @@ def _validate_package_exists(package, verbose=False):
     from apm_cli.core.auth import AuthResolver
 
     verbose_log = (lambda msg: _rich_echo(f"  {msg}", color="dim")) if verbose else None
-    auth_resolver = AuthResolver()
+    # Use provided resolver or create new one if not in a CLI session context
+    if auth_resolver is None:
+        auth_resolver = AuthResolver()
 
     try:
         # Parse the package to check if it's a virtual package or ADO
@@ -301,8 +310,8 @@ def _validate_package_exists(package, verbose=False):
             org = dep_ref.repo_url.split('/')[0] if dep_ref.repo_url and '/' in dep_ref.repo_url else None
             if verbose_log:
                 verbose_log(f"Auth resolved: host={host}, org={org}, source={ctx.source}, type={ctx.token_type}")
-            downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
-            result = downloader.validate_virtual_package_exists(dep_ref)
+            virtual_downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
+            result = virtual_downloader.validate_virtual_package_exists(dep_ref)
             if not result and verbose_log:
                 try:
                     err_ctx = auth_resolver.build_error_context(host, f"accessing {package}", org=org)
@@ -317,26 +326,39 @@ def _validate_package_exists(package, verbose=False):
         if dep_ref.is_azure_devops() or (dep_ref.host and dep_ref.host != "github.com"):
             from apm_cli.utils.github_host import is_github_hostname, is_azure_devops_hostname
 
-            downloader = GitHubPackageDownloader()
+            # Determine host type before building the URL so we know whether to
+            # embed a token.  Generic (non-GitHub, non-ADO) hosts are excluded
+            # from APM-managed auth; they rely on git credential helpers via the
+            # relaxed validate_env below.
+            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
+
+            # For GHES / ADO: resolve per-dependency auth up front so the URL
+            # carries an embedded token and avoids triggering OS credential
+            # helper popups during git ls-remote validation.
+            _url_token = None
+            if not is_generic:
+                _dep_ctx = auth_resolver.resolve_for_dep(dep_ref)
+                _url_token = _dep_ctx.token
+
+            ado_downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
             # Set the host
             if dep_ref.host:
-                downloader.github_host = dep_ref.host
+                ado_downloader.github_host = dep_ref.host
 
-            # Build authenticated URL using downloader's auth
-            package_url = downloader._build_repo_url(
-                dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref
+            # Build authenticated URL using the resolved per-dep token.
+            package_url = ado_downloader._build_repo_url(
+                dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref, token=_url_token
             )
 
             # For generic hosts (not GitHub, not ADO), relax the env so native
             # credential helpers (SSH keys, macOS Keychain, etc.) can work.
             # This mirrors _clone_with_fallback() which does the same relaxation.
-            is_generic = not is_github_hostname(dep_ref.host) and not is_azure_devops_hostname(dep_ref.host)
             if is_generic:
-                validate_env = {k: v for k, v in downloader.git_env.items()
+                validate_env = {k: v for k, v in ado_downloader.git_env.items()
                                 if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
                 validate_env['GIT_TERMINAL_PROMPT'] = '0'
             else:
-                validate_env = {**os.environ, **downloader.git_env}
+                validate_env = {**os.environ, **ado_downloader.git_env}
 
             if verbose_log:
                 verbose_log(f"Trying git ls-remote for {dep_ref.host}")
@@ -578,6 +600,10 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # Display name for messages (short for project scope, full for user scope)
         manifest_display = str(manifest_path) if scope is InstallScope.USER else APM_YML_FILENAME
 
+        # Create shared auth resolver for all downloads in this CLI invocation
+        # to ensure credentials are cached and reused (prevents duplicate auth popups)
+        auth_resolver = AuthResolver()
+
         # Check if apm.yml exists
         apm_yml_exists = manifest_path.exists()
 
@@ -603,7 +629,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         if packages:
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
                 packages, dry_run, dev=dev, logger=logger,
-                manifest_path=manifest_path,
+                manifest_path=manifest_path, auth_resolver=auth_resolver,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -705,6 +731,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     parallel_downloads=parallel_downloads,
                     logger=logger,
                     scope=scope,
+                    auth_resolver=auth_resolver,
                     target=target,
                 )
                 apm_count = install_result.installed_count
@@ -843,9 +870,7 @@ def _integrate_package_primitives(
     package_info,
     project_root,
     *,
-    integrate_vscode,
-    integrate_claude,
-    integrate_opencode=False,
+    targets,
     prompt_integrator,
     agent_integrator,
     skill_integrator,
@@ -859,6 +884,11 @@ def _integrate_package_primitives(
     logger=None,
 ):
     """Run the full integration pipeline for a single package.
+
+    Iterates over *targets* (``TargetProfile`` list) and dispatches each
+    primitive to the appropriate integrator via the target-driven API.
+    Skills are handled separately because ``SkillIntegrator`` already
+    routes across all targets internally.
 
     Returns a dict with integration counters and the list of deployed file paths.
     """
@@ -876,196 +906,95 @@ def _integrate_package_primitives(
 
     deployed = result["deployed_files"]
 
-    if not (integrate_vscode or integrate_claude or integrate_opencode):
+    if not targets:
         return result
 
     def _log_integration(msg):
         if logger:
             logger.tree_item(msg)
 
-    # --- prompts ---
-    prompt_result = prompt_integrator.integrate_package_prompts(
+    # Primitive -> (integrator, method_name, result counter key)
+    _PRIMITIVE_INTEGRATORS = {
+        "prompts": (prompt_integrator, "integrate_prompts_for_target", "prompts"),
+        "agents": (agent_integrator, "integrate_agents_for_target", "agents"),
+        "commands": (command_integrator, "integrate_commands_for_target", "commands"),
+        "instructions": (instruction_integrator, "integrate_instructions_for_target", "instructions"),
+    }
+
+    # --- target x primitive dispatch loop ---
+    for _target in targets:
+        for _prim_name, _mapping in _target.primitives.items():
+            if _prim_name == "skills":
+                continue  # handled separately below
+
+            # --- hooks (different return type) ---
+            if _prim_name == "hooks":
+                hook_result = hook_integrator.integrate_hooks_for_target(
+                    _target, package_info, project_root,
+                    force=force, managed_files=managed_files,
+                    diagnostics=diagnostics,
+                )
+                if hook_result.hooks_integrated > 0:
+                    result["hooks"] += hook_result.hooks_integrated
+                    if _target.name == "claude":
+                        _hook_dir = ".claude/settings.json"
+                    elif _target.name == "cursor":
+                        _hook_dir = ".cursor/hooks.json"
+                    else:
+                        _hook_dir = f"{_target.root_dir}/{_mapping.subdir}/"
+                    _log_integration(
+                        f"  |-- {hook_result.hooks_integrated} hook(s) integrated -> {_hook_dir}"
+                    )
+                for tp in hook_result.target_paths:
+                    deployed.append(tp.relative_to(project_root).as_posix())
+                continue
+
+            _entry = _PRIMITIVE_INTEGRATORS.get(_prim_name)
+            if not _entry:
+                continue
+
+            _integrator, _method_name, _counter_key = _entry
+            _int_result = getattr(_integrator, _method_name)(
+                _target, package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+            if _int_result.files_integrated > 0:
+                result[_counter_key] += _int_result.files_integrated
+                _deploy_dir = f"{_target.root_dir}/{_mapping.subdir}/"
+                if _prim_name == "instructions" and _mapping.format_id == "cursor_rules":
+                    _label = "rule(s)"
+                elif _prim_name == "instructions":
+                    _label = "instruction(s)"
+                else:
+                    _label = _prim_name
+                _log_integration(
+                    f"  |-- {_int_result.files_integrated} {_label} integrated -> {_deploy_dir}"
+                )
+            result["links_resolved"] += _int_result.links_resolved
+            for tp in _int_result.target_paths:
+                deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- skills (multi-target, handled by SkillIntegrator internally) ---
+    skill_result = skill_integrator.integrate_package_skill(
         package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
+        diagnostics=diagnostics, managed_files=managed_files, force=force,
+        targets=targets,
     )
-    if prompt_result.files_integrated > 0:
-        result["prompts"] += prompt_result.files_integrated
-        _log_integration(f"  └─ {prompt_result.files_integrated} prompts integrated -> .github/prompts/")
-    if prompt_result.files_updated > 0:
-        _log_integration(f"  └─ {prompt_result.files_updated} prompts updated")
-    result["links_resolved"] += prompt_result.links_resolved
-    for tp in prompt_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- agents (.github) ---
-    agent_result = agent_integrator.integrate_package_agents(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if agent_result.files_integrated > 0:
-        result["agents"] += agent_result.files_integrated
-        _log_integration(f"  └─ {agent_result.files_integrated} agents integrated -> .github/agents/")
-    if agent_result.files_updated > 0:
-        _log_integration(f"  └─ {agent_result.files_updated} agents updated")
-    result["links_resolved"] += agent_result.links_resolved
-    for tp in agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- skills ---
-    if integrate_vscode or integrate_claude or integrate_opencode:
-        skill_result = skill_integrator.integrate_package_skill(
-            package_info, project_root,
-            diagnostics=diagnostics, managed_files=managed_files, force=force,
-        )
-        # Build human-readable list of target dirs from deployed paths
-        _skill_target_dirs: set[str] = set()
-        for tp in skill_result.target_paths:
-            rel = tp.relative_to(project_root)
-            if rel.parts:
-                _skill_target_dirs.add(rel.parts[0])
-        _skill_targets = sorted(_skill_target_dirs)
-        _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
-        if skill_result.skill_created:
-            result["skills"] += 1
-            _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
-        if skill_result.sub_skills_promoted > 0:
-            result["sub_skills"] += skill_result.sub_skills_promoted
-            _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
-        for tp in skill_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- instructions (.github) ---
-    if integrate_vscode:
-        instruction_result = instruction_integrator.integrate_package_instructions(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if instruction_result.files_integrated > 0:
-            result["instructions"] += instruction_result.files_integrated
-            _log_integration(f"  └─ {instruction_result.files_integrated} instruction(s) integrated -> .github/instructions/")
-        result["links_resolved"] += instruction_result.links_resolved
-        for tp in instruction_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Cursor rules (.cursor/rules/) ---
-    cursor_rules_result = instruction_integrator.integrate_package_instructions_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if cursor_rules_result.files_integrated > 0:
-        result["instructions"] += cursor_rules_result.files_integrated
-        _log_integration(f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated -> .cursor/rules/")
-    result["links_resolved"] += cursor_rules_result.links_resolved
-    for tp in cursor_rules_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Claude agents (.claude) ---
-    if integrate_claude:
-        claude_agent_result = agent_integrator.integrate_package_agents_claude(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if claude_agent_result.files_integrated > 0:
-            result["agents"] += claude_agent_result.files_integrated
-            _log_integration(f"  └─ {claude_agent_result.files_integrated} agents integrated -> .claude/agents/")
-        result["links_resolved"] += claude_agent_result.links_resolved
-        for tp in claude_agent_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Cursor agents (.cursor) ---
-    cursor_agent_result = agent_integrator.integrate_package_agents_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if cursor_agent_result.files_integrated > 0:
-        result["agents"] += cursor_agent_result.files_integrated
-        _log_integration(f"  └─ {cursor_agent_result.files_integrated} agents integrated -> .cursor/agents/")
-    result["links_resolved"] += cursor_agent_result.links_resolved
-    for tp in cursor_agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- OpenCode agents (.opencode) ---
-    opencode_agent_result = agent_integrator.integrate_package_agents_opencode(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if opencode_agent_result.files_integrated > 0:
-        result["agents"] += opencode_agent_result.files_integrated
-        _log_integration(f"  └─ {opencode_agent_result.files_integrated} agents integrated -> .opencode/agents/")
-    result["links_resolved"] += opencode_agent_result.links_resolved
-    for tp in opencode_agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- commands (.claude) ---
-    if integrate_claude:
-        command_result = command_integrator.integrate_package_commands(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if command_result.files_integrated > 0:
-            result["commands"] += command_result.files_integrated
-            _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
-        if command_result.files_updated > 0:
-            _log_integration(f"  └─ {command_result.files_updated} commands updated")
-        result["links_resolved"] += command_result.links_resolved
-        for tp in command_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- OpenCode commands (.opencode) ---
-    opencode_command_result = command_integrator.integrate_package_commands_opencode(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if opencode_command_result.files_integrated > 0:
-        result["commands"] += opencode_command_result.files_integrated
-        _log_integration(f"  └─ {opencode_command_result.files_integrated} commands integrated -> .opencode/commands/")
-    result["links_resolved"] += opencode_command_result.links_resolved
-    for tp in opencode_command_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- hooks ---
-    if integrate_vscode:
-        hook_result = hook_integrator.integrate_package_hooks(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if hook_result.hooks_integrated > 0:
-            result["hooks"] += hook_result.hooks_integrated
-            _log_integration(f"  └─ {hook_result.hooks_integrated} hook(s) integrated -> .github/hooks/")
-        for tp in hook_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-    if integrate_claude:
-        hook_result_claude = hook_integrator.integrate_package_hooks_claude(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if hook_result_claude.hooks_integrated > 0:
-            result["hooks"] += hook_result_claude.hooks_integrated
-            _log_integration(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated -> .claude/settings.json")
-        for tp in hook_result_claude.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # Cursor hooks (.cursor/hooks.json) — method self-guards on .cursor/ existence
-    hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if hook_result_cursor.hooks_integrated > 0:
-        result["hooks"] += hook_result_cursor.hooks_integrated
-        _log_integration(f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated -> .cursor/hooks.json")
-    for tp in hook_result_cursor.target_paths:
+    _skill_target_dirs: set[str] = builtins.set()
+    for tp in skill_result.target_paths:
+        rel = tp.relative_to(project_root)
+        if rel.parts:
+            _skill_target_dirs.add(rel.parts[0])
+    _skill_targets = sorted(_skill_target_dirs)
+    _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
+    if skill_result.skill_created:
+        result["skills"] += 1
+        _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
+    if skill_result.sub_skills_promoted > 0:
+        result["sub_skills"] += skill_result.sub_skills_promoted
+        _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
+    for tp in skill_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
 
     return result
@@ -1126,6 +1055,7 @@ def _install_apm_dependencies(
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
     scope=None,
+    auth_resolver: "AuthResolver" = None,
     target: str = None,
 ):
     """Install APM package dependencies.
@@ -1139,6 +1069,7 @@ def _install_apm_dependencies(
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
         scope: InstallScope controlling project vs user deployment
+        auth_resolver: Shared auth resolver for caching credentials
         target: Explicit target override from --target CLI flag
     """
     if not APM_DEPS_AVAILABLE:
@@ -1177,11 +1108,15 @@ def _install_apm_dependencies(
     apm_modules_dir = get_modules_dir(scope)
     apm_modules_dir.mkdir(parents=True, exist_ok=True)
 
+    # Use provided resolver or create new one if not in a CLI session context
+    if auth_resolver is None:
+        auth_resolver = AuthResolver()
+
     # Create downloader early so it can be used for transitive dependency resolution
-    downloader = GitHubPackageDownloader()
+    downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
 
     # Track direct dependency keys so the download callback can distinguish them from transitive
-    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in apm_deps)
+    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in all_apm_deps)
 
     # Track paths already downloaded by the resolver callback to avoid re-downloading
     # Maps dep_key -> resolved_commit (SHA or None) so the cached path can use it
@@ -1190,6 +1125,10 @@ def _install_apm_dependencies(
     # Collect transitive dep failures during resolution — they'll be routed to
     # diagnostics after the DiagnosticCollector is created (later in the flow).
     transitive_failures: list[tuple[str, str]] = []  # (dep_display, message)
+
+    # Track dep keys that failed in download_callback so the main install loop
+    # skips them instead of re-trying and producing a duplicate error entry.
+    callback_failures: builtins.set = builtins.set()
 
     # Create a download callback for transitive dependency resolution
     # This allows the resolver to fetch packages on-demand during tree building
@@ -1238,19 +1177,31 @@ def _install_apm_dependencies(
             callback_downloaded[dep_ref.get_unique_key()] = resolved_sha
             return install_path
         except Exception as e:
-            # Build contextual message including the dependency chain breadcrumb
-            chain_hint = f" (via {parent_chain})" if parent_chain else ""
             dep_display = dep_ref.get_display_name()
-            fail_msg = (
-                f"Failed to resolve transitive dep "
-                f"{dep_ref.repo_url}{chain_hint}: {e}"
-            )
+            dep_key = dep_ref.get_unique_key()
+            is_direct = dep_key in direct_dep_keys
+
+            # Distinguish direct vs transitive failure messages so users
+            # don't see a misleading "transitive dep" label for top-level deps.
+            if is_direct:
+                fail_msg = (
+                    f"Failed to download dependency "
+                    f"{dep_ref.repo_url}: {e}"
+                )
+            else:
+                chain_hint = f" (via {parent_chain})" if parent_chain else ""
+                fail_msg = (
+                    f"Failed to resolve transitive dep "
+                    f"{dep_ref.repo_url}{chain_hint}: {e}"
+                )
+
             # Verbose: inline detail
             if logger:
                 logger.verbose_detail(f"  {fail_msg}")
             elif verbose:
                 _rich_error(f"  └─ {fail_msg}")
             # Collect for deferred diagnostics summary (always, even non-verbose)
+            callback_failures.add(dep_key)
             transitive_failures.append((dep_display, fail_msg))
             return None
 
@@ -1356,9 +1307,6 @@ def _install_apm_dependencies(
         # Auto-detect target for integration (same logic as compile)
         from apm_cli.core.target_detection import (
             detect_target,
-            should_integrate_vscode,
-            should_integrate_claude,
-            should_integrate_opencode,
             get_target_description,
         )
 
@@ -1388,11 +1336,6 @@ def _install_apm_dependencies(
             explicit_target=_explicit,
             config_target=config_target,
         )
-
-        # Determine which integrations to run based on detected target
-        integrate_vscode = should_integrate_vscode(detected_target)
-        integrate_claude = should_integrate_claude(detected_target)
-        integrate_opencode = should_integrate_opencode(detected_target)
 
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
@@ -1539,13 +1482,9 @@ def _install_apm_dependencies(
         _pre_downloaded_keys = builtins.set(_pre_download_results.keys())
 
         # Create progress display for sequential integration
-        _auth_resolver = None
-        if verbose:
-            try:
-                from apm_cli.core.auth import AuthResolver
-                _auth_resolver = AuthResolver()
-            except Exception:
-                pass
+        # Reuse the shared auth_resolver (already created in this invocation) so
+        # verbose auth logging does not trigger a duplicate credential-helper popup.
+        _auth_resolver = auth_resolver
 
         with Progress(
             SpinnerColumn(),
@@ -1566,6 +1505,14 @@ def _install_apm_dependencies(
                 else:
                     # Use the canonical install path from DependencyReference
                     install_path = dep_ref.get_install_path(apm_modules_dir)
+
+                # Skip deps that already failed during BFS resolution callback
+                # to avoid a duplicate error entry in diagnostics.
+                dep_key = dep_ref.get_unique_key()
+                if dep_key in callback_failures:
+                    if logger:
+                        logger.verbose_detail(f"  Skipping {dep_key} (already failed during resolution)")
+                    continue
 
                 # --- Local package: copy from filesystem (no git download) ---
                 if dep_ref.is_local and dep_ref.local_path:
@@ -1658,9 +1605,7 @@ def _install_apm_dependencies(
 
                         int_result = _integrate_package_primitives(
                             package_info, project_root,
-                            integrate_vscode=integrate_vscode,
-                            integrate_claude=integrate_claude,
-                            integrate_opencode=integrate_opencode,
+                            targets=_targets,
                             prompt_integrator=prompt_integrator,
                             agent_integrator=agent_integrator,
                             skill_integrator=skill_integrator,
@@ -1777,7 +1722,7 @@ def _install_apm_dependencies(
                         unpinned_count += 1
 
                     # Skip integration if not needed
-                    if not (integrate_vscode or integrate_claude or integrate_opencode):
+                    if not _targets:
                         continue
 
                     # Integrate prompts for cached packages (zero-config behavior)
@@ -1862,9 +1807,7 @@ def _install_apm_dependencies(
 
                         int_result = _integrate_package_primitives(
                             cached_package_info, project_root,
-                            integrate_vscode=integrate_vscode,
-                            integrate_claude=integrate_claude,
-                            integrate_opencode=integrate_opencode,
+                            targets=_targets,
                             prompt_integrator=prompt_integrator,
                             agent_integrator=agent_integrator,
                             skill_integrator=skill_integrator,
@@ -2024,13 +1967,11 @@ def _install_apm_dependencies(
                         package_deployed_files[dep_ref.get_unique_key()] = []
                         continue
 
-                    if integrate_vscode or integrate_claude or integrate_opencode:
+                    if _targets:
                         try:
                             int_result = _integrate_package_primitives(
                                 package_info, project_root,
-                                integrate_vscode=integrate_vscode,
-                                integrate_claude=integrate_claude,
-                                integrate_opencode=integrate_opencode,
+                                targets=_targets,
                                 prompt_integrator=prompt_integrator,
                                 agent_integrator=agent_integrator,
                                 skill_integrator=skill_integrator,

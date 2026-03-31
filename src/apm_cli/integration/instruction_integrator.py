@@ -1,18 +1,22 @@
 """Instruction integration functionality for APM packages.
 
-Deploys .instructions.md files from APM packages to .github/instructions/
-so VS Code Copilot picks them up natively with applyTo: scoping.
-
-Also converts instructions to Cursor Rules (.mdc) format when a .cursor/
-directory exists in the project root.
+Deploys .instructions.md files from APM packages to the appropriate
+target directory (e.g. ``.github/instructions/`` for Copilot,
+``.cursor/rules/`` for Cursor).  Content transforms are selected by
+the ``format_id`` field in ``PrimitiveMapping``.
 """
+
+from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.utils.paths import portable_relpath
+
+if TYPE_CHECKING:
+    from apm_cli.integration.targets import TargetProfile
 
 
 class InstructionIntegrator(BaseIntegrator):
@@ -43,49 +47,74 @@ class InstructionIntegrator(BaseIntegrator):
         target.write_text(content, encoding='utf-8')
         return links_resolved
 
-    def integrate_package_instructions(
+    # ------------------------------------------------------------------
+    # Target-driven API (data-driven dispatch)
+    # ------------------------------------------------------------------
+
+    def integrate_instructions_for_target(
         self,
+        target: "TargetProfile",
         package_info,
         project_root: Path,
+        *,
         force: bool = False,
         managed_files: Optional[Set[str]] = None,
         diagnostics=None,
-        logger=None,
     ) -> IntegrationResult:
-        """Integrate all instructions from a package into .github/instructions/.
+        """Integrate instructions for a single *target*.
 
-        Skips files that exist locally and are not tracked in any package's
-        deployed_files (user-authored), unless force=True.
+        Selects the content transform via ``format_id``:
+
+        * ``cursor_rules`` -- convert ``applyTo:`` to ``globs:`` frontmatter
+        * anything else    -- copy verbatim (identity transform)
         """
+        mapping = target.primitives.get("instructions")
+        if not mapping:
+            return IntegrationResult(0, 0, 0, [])
+
+        target_root = project_root / target.root_dir
+        if not target.auto_create and not target_root.is_dir():
+            return IntegrationResult(0, 0, 0, [])
+
         self.init_link_resolver(package_info, project_root)
-
         instruction_files = self.find_instruction_files(package_info.install_path)
-
         if not instruction_files:
-            return IntegrationResult(
-                files_integrated=0,
-                files_updated=0,
-                files_skipped=0,
-                target_paths=[],
-            )
+            return IntegrationResult(0, 0, 0, [])
 
-        instructions_dir = project_root / ".github" / "instructions"
-        instructions_dir.mkdir(parents=True, exist_ok=True)
+        deploy_dir = target_root / mapping.subdir
+        deploy_dir.mkdir(parents=True, exist_ok=True)
+
+        use_cursor_transform = mapping.format_id == "cursor_rules"
 
         files_integrated = 0
         files_skipped = 0
-        target_paths = []
+        target_paths: List[Path] = []
         total_links_resolved = 0
 
         for source_file in instruction_files:
-            target_path = instructions_dir / source_file.name
+            if use_cursor_transform:
+                stem = source_file.name
+                if stem.endswith(".instructions.md"):
+                    stem = stem[: -len(".instructions.md")]
+                target_name = f"{stem}{mapping.extension}"
+            else:
+                target_name = source_file.name
+
+            target_path = deploy_dir / target_name
             rel_path = portable_relpath(target_path, project_root)
 
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
+            if self.check_collision(
+                target_path, rel_path, managed_files, force,
+                diagnostics=diagnostics,
+            ):
                 files_skipped += 1
                 continue
 
-            links_resolved = self.copy_instruction(source_file, target_path)
+            if use_cursor_transform:
+                links_resolved = self.copy_instruction_cursor(source_file, target_path)
+            else:
+                links_resolved = self.copy_instruction(source_file, target_path)
+
             total_links_resolved += links_resolved
             files_integrated += 1
             target_paths.append(target_path)
@@ -98,25 +127,63 @@ class InstructionIntegrator(BaseIntegrator):
             links_resolved=total_links_resolved,
         )
 
+    def sync_for_target(
+        self,
+        target: "TargetProfile",
+        apm_package,
+        project_root: Path,
+        managed_files: Optional[Set[str]] = None,
+    ) -> Dict[str, int]:
+        """Remove APM-managed instruction files for a single *target*."""
+        mapping = target.primitives.get("instructions")
+        if not mapping:
+            return {"files_removed": 0, "errors": 0}
+        prefix = f"{target.root_dir}/{mapping.subdir}/"
+        legacy_dir = project_root / target.root_dir / mapping.subdir
+        legacy_pattern = (
+            "*.mdc" if mapping.format_id == "cursor_rules"
+            else "*.instructions.md"
+        )
+        return self.sync_remove_files(
+            project_root,
+            managed_files,
+            prefix=prefix,
+            legacy_glob_dir=legacy_dir,
+            legacy_glob_pattern=legacy_pattern,
+        )
+
+    # ------------------------------------------------------------------
+    # Legacy per-target API (delegates to target-driven methods)
+    # ------------------------------------------------------------------
+
+    def integrate_package_instructions(
+        self,
+        package_info,
+        project_root: Path,
+        force: bool = False,
+        managed_files: Optional[Set[str]] = None,
+        diagnostics=None,
+        logger=None,
+    ) -> IntegrationResult:
+        """Integrate instructions into .github/instructions/."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.integrate_instructions_for_target(
+            KNOWN_TARGETS["copilot"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
     def sync_integration(
         self,
         apm_package,
         project_root: Path,
         managed_files: Optional[Set[str]] = None,
     ) -> Dict[str, int]:
-        """Remove APM-managed instruction files.
-
-        Only removes files listed in *managed_files* (from apm.lock
-        deployed_files).  Falls back to a discovery-based scan when
-        *managed_files* is ``None`` (old lockfile without deployed_files).
-        """
-        instructions_dir = project_root / ".github" / "instructions"
-        return self.sync_remove_files(
-            project_root,
-            managed_files,
-            prefix=".github/instructions/",
-            legacy_glob_dir=instructions_dir,
-            legacy_glob_pattern="*.instructions.md",
+        """Remove APM-managed instruction files from .github/instructions/."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.sync_for_target(
+            KNOWN_TARGETS["copilot"], apm_package, project_root,
+            managed_files=managed_files,
         )
 
     # ------------------------------------------------------------------
@@ -186,65 +253,12 @@ class InstructionIntegrator(BaseIntegrator):
         diagnostics=None,
         logger=None,
     ) -> IntegrationResult:
-        """Integrate instructions as Cursor Rules into ``.cursor/rules/``.
-
-        Only deploys when ``.cursor/`` already exists (opt-in).
-        Creates ``.cursor/rules/`` subdirectory if needed.
-        """
-        cursor_dir = project_root / ".cursor"
-        if not cursor_dir.exists():
-            return IntegrationResult(
-                files_integrated=0,
-                files_updated=0,
-                files_skipped=0,
-                target_paths=[],
-            )
-
-        self.init_link_resolver(package_info, project_root)
-
-        instruction_files = self.find_instruction_files(package_info.install_path)
-
-        if not instruction_files:
-            return IntegrationResult(
-                files_integrated=0,
-                files_updated=0,
-                files_skipped=0,
-                target_paths=[],
-            )
-
-        rules_dir = cursor_dir / "rules"
-        rules_dir.mkdir(parents=True, exist_ok=True)
-
-        files_integrated = 0
-        files_skipped = 0
-        target_paths = []
-        total_links_resolved = 0
-
-        for source_file in instruction_files:
-            # Strip .instructions.md suffix, add .mdc
-            stem = source_file.name
-            if stem.endswith(".instructions.md"):
-                stem = stem[: -len(".instructions.md")]
-            mdc_name = f"{stem}.mdc"
-
-            target_path = rules_dir / mdc_name
-            rel_path = portable_relpath(target_path, project_root)
-
-            if self.check_collision(target_path, rel_path, managed_files, force, diagnostics=diagnostics):
-                files_skipped += 1
-                continue
-
-            links_resolved = self.copy_instruction_cursor(source_file, target_path)
-            total_links_resolved += links_resolved
-            files_integrated += 1
-            target_paths.append(target_path)
-
-        return IntegrationResult(
-            files_integrated=files_integrated,
-            files_updated=0,
-            files_skipped=files_skipped,
-            target_paths=target_paths,
-            links_resolved=total_links_resolved,
+        """Integrate instructions as Cursor Rules into ``.cursor/rules/``."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.integrate_instructions_for_target(
+            KNOWN_TARGETS["cursor"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
         )
 
     def sync_integration_cursor(
@@ -254,11 +268,8 @@ class InstructionIntegrator(BaseIntegrator):
         managed_files: Optional[Set[str]] = None,
     ) -> Dict[str, int]:
         """Remove APM-managed Cursor Rules files from ``.cursor/rules/``."""
-        rules_dir = project_root / ".cursor" / "rules"
-        return self.sync_remove_files(
-            project_root,
-            managed_files,
-            prefix=".cursor/rules/",
-            legacy_glob_dir=rules_dir,
-            legacy_glob_pattern="*.mdc",
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.sync_for_target(
+            KNOWN_TARGETS["cursor"], apm_package, project_root,
+            managed_files=managed_files,
         )

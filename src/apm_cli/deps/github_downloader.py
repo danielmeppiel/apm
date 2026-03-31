@@ -186,20 +186,18 @@ class GitHubPackageDownloader:
         else:
             env['GIT_CONFIG_GLOBAL'] = '/dev/null'
 
-        # Resolve default host tokens via AuthResolver (backward compat properties)
-        default_ctx = self.auth_resolver.resolve(default_host())
-        self._default_github_ctx = default_ctx
-        self.github_token = default_ctx.token
-        self.has_github_token = default_ctx.token is not None
-        self._github_token_from_credential_fill = (
-            self.has_github_token
-            and self.token_manager.get_token_for_purpose('modules', env) is None
-        )
+        # IMPORTANT: Do not resolve credentials via helpers at construction time.
+        # AuthResolver.resolve(...) can trigger OS credential helper UI. If we do
+        # this eagerly (host-only key) and later resolve per-dependency (host+org),
+        # users can see duplicate auth prompts. Keep constructor token state env-only
+        # and resolve lazily per dependency during clone/validate flows.
+        self.github_token = self.token_manager.get_token_for_purpose('modules', env)
+        self.has_github_token = self.github_token is not None
+        self._github_token_from_credential_fill = False
 
-        # Azure DevOps
-        ado_ctx = self.auth_resolver.resolve("dev.azure.com")
-        self.ado_token = ado_ctx.token
-        self.has_ado_token = ado_ctx.token is not None
+        # Azure DevOps (env-only at init; lazy auth resolution happens per dep)
+        self.ado_token = self.token_manager.get_token_for_purpose('ado_modules', env)
+        self.has_ado_token = self.ado_token is not None
 
         # JFrog Artifactory (not host-based, uses dedicated env var)
         self.artifactory_token = self.token_manager.get_token_for_purpose('artifactory_modules', env)
@@ -359,6 +357,36 @@ class GitHubPackageDownloader:
         if not host or not path:
             return None
         return (host, path, parsed.scheme)
+
+    def _resolve_dep_token(self, dep_ref: Optional[DependencyReference] = None) -> Optional[str]:
+        """Resolve the per-dependency auth token via AuthResolver.
+
+        GitHub and ADO hosts use the token resolved by AuthResolver.
+        Generic hosts (GitLab, Bitbucket, etc.) return None so git
+        credential helpers can provide credentials instead.
+
+        Args:
+            dep_ref: Optional dependency reference for host/org lookup.
+
+        Returns:
+            Token string or None.
+        """
+        if dep_ref is None:
+            return self.github_token
+
+        is_ado = dep_ref.is_azure_devops()
+        dep_host = dep_ref.host
+        if dep_host:
+            is_github = is_github_hostname(dep_host)
+        else:
+            is_github = True
+        is_generic = not is_ado and not is_github
+
+        if is_generic:
+            return None
+
+        dep_ctx = self.auth_resolver.resolve_for_dep(dep_ref)
+        return dep_ctx.token
 
     def _resilient_get(self, url: str, headers: Dict[str, str], timeout: int = 30, max_retries: int = 3) -> requests.Response:
         """HTTP GET with retry on 429/503 and rate-limit header awareness (#171).
@@ -568,15 +596,7 @@ class GitHubPackageDownloader:
         is_generic = not is_ado and not is_github
         
         # Resolve per-dependency token via AuthResolver.
-        # Only use resolved token for GitHub/ADO hosts — generic hosts (GitLab,
-        # Bitbucket, etc.) delegate auth to git credential helpers.
-        if dep_ref and not is_generic:
-            dep_ctx = self.auth_resolver.resolve_for_dep(dep_ref)
-            dep_token = dep_ctx.token
-        elif is_generic:
-            dep_token = None
-        else:
-            dep_token = self.github_token  # fallback
+        dep_token = self._resolve_dep_token(dep_ref)
         has_token = dep_token
         
         _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, is_generic={is_generic}, has_token={has_token is not None}")
@@ -648,7 +668,9 @@ class GitHubPackageDownloader:
                 f"If this package lives on a different server (e.g., github.com), "
                 f"use the full hostname in apm.yml: {suggested}"
             )
-        elif not self.has_github_token:
+        elif not has_token:
+            # No auth was resolved (neither env var nor credential helper).
+            # Guide the user through setting up authentication.
             host = dep_host or default_host()
             org = dep_ref.repo_url.split('/')[0] if dep_ref and dep_ref.repo_url else None
             error_msg += self.auth_resolver.build_error_context(host, "clone", org=org)
@@ -1459,8 +1481,12 @@ author: {dep_ref.repo_url.split('/')[0]}
         import subprocess
         try:
             temp_clone_path.mkdir(parents=True, exist_ok=True)
+
+            # Resolve per-dependency token via AuthResolver.
+            dep_token = self._resolve_dep_token(dep_ref)
+
             env = {**os.environ, **(self.git_env or {})}
-            auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref, token=dep_token)
 
             cmds = [
                 ['git', 'init'],
