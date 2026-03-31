@@ -347,3 +347,25 @@ class TestParseMarketplaceJson:
         data = {"name": "Test", "owner": {"name": "Jane"}, "plugins": []}
         manifest = parse_marketplace_json(data)
         assert manifest.owner_name == "Jane"
+
+    def test_plugin_root_from_metadata(self):
+        """metadata.pluginRoot is parsed into manifest.plugin_root."""
+        data = {
+            "name": "Test",
+            "metadata": {"pluginRoot": "./plugins"},
+            "plugins": [],
+        }
+        manifest = parse_marketplace_json(data)
+        assert manifest.plugin_root == "./plugins"
+
+    def test_plugin_root_missing_metadata(self):
+        """No metadata section -> plugin_root is empty."""
+        data = {"name": "Test", "plugins": []}
+        manifest = parse_marketplace_json(data)
+        assert manifest.plugin_root == ""
+
+    def test_plugin_root_missing_key(self):
+        """metadata present but no pluginRoot -> plugin_root is empty."""
+        data = {"name": "Test", "metadata": {"version": "1.0"}, "plugins": []}
+        manifest = parse_marketplace_json(data)
+        assert manifest.plugin_root == ""

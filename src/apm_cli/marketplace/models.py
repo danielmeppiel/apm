@@ -82,6 +82,7 @@ class MarketplaceManifest:
     plugins: Tuple[MarketplacePlugin, ...] = ()
     owner_name: str = ""
     description: str = ""
+    plugin_root: str = ""  # metadata.pluginRoot — base path for bare-name sources
 
     def find_plugin(self, plugin_name: str) -> Optional[MarketplacePlugin]:
         """Find a plugin by exact name (case-insensitive)."""
@@ -195,6 +196,14 @@ def parse_marketplace_json(
         data.get("owner"), dict
     ) else data.get("owner", "")
 
+    # Extract pluginRoot from metadata (base path for bare-name sources)
+    metadata = data.get("metadata", {})
+    plugin_root = ""
+    if isinstance(metadata, dict):
+        raw_root = metadata.get("pluginRoot", "")
+        if isinstance(raw_root, str):
+            plugin_root = raw_root.strip()
+
     raw_plugins = data.get("plugins", [])
     if not isinstance(raw_plugins, list):
         logger.warning(
@@ -216,4 +225,5 @@ def parse_marketplace_json(
         plugins=tuple(plugins),
         owner_name=owner_name,
         description=description,
+        plugin_root=plugin_root,
     )

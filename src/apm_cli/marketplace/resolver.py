@@ -111,16 +111,33 @@ def _resolve_git_subdir_source(source: dict) -> str:
     return base
 
 
-def _resolve_relative_source(source: str, marketplace_owner: str, marketplace_repo: str) -> str:
+def _resolve_relative_source(
+    source: str,
+    marketplace_owner: str,
+    marketplace_repo: str,
+    plugin_root: str = "",
+) -> str:
     """Resolve a relative path source to ``owner/repo[/subdir]``.
 
     Relative sources point to subdirectories within the marketplace repo itself.
+    When *plugin_root* is set (from ``metadata.pluginRoot`` in the manifest),
+    bare names (no ``/``) are resolved under that directory.
     """
     # Normalize the relative path (strip leading ./ and trailing /)
     rel = source.strip("/")
     if rel.startswith("./"):
         rel = rel[2:]
     rel = rel.strip("/")
+
+    # If plugin_root is set and source is a bare name, prepend it
+    if plugin_root and rel and "/" not in rel:
+        root = plugin_root.strip("/")
+        if root.startswith("./"):
+            root = root[2:]
+        root = root.strip("/")
+        if root:
+            rel = f"{root}/{rel}"
+
     if rel and rel != ".":
         try:
             validate_path_segments(rel, context="relative source path")
@@ -134,6 +151,7 @@ def resolve_plugin_source(
     plugin: MarketplacePlugin,
     marketplace_owner: str = "",
     marketplace_repo: str = "",
+    plugin_root: str = "",
 ) -> str:
     """Resolve a plugin's source to a canonical ``owner/repo[#ref]`` string.
 
@@ -144,6 +162,7 @@ def resolve_plugin_source(
         plugin: The marketplace plugin to resolve.
         marketplace_owner: Owner of the marketplace repo (for relative sources).
         marketplace_repo: Repo name of the marketplace (for relative sources).
+        plugin_root: Base path for bare-name sources (from metadata.pluginRoot).
 
     Returns:
         Canonical ``owner/repo[#ref]`` string.
@@ -157,7 +176,9 @@ def resolve_plugin_source(
 
     # String source = relative path
     if isinstance(source, str):
-        return _resolve_relative_source(source, marketplace_owner, marketplace_repo)
+        return _resolve_relative_source(
+            source, marketplace_owner, marketplace_repo, plugin_root=plugin_root
+        )
 
     if not isinstance(source, dict):
         raise ValueError(
@@ -217,6 +238,7 @@ def resolve_marketplace_plugin(
         plugin,
         marketplace_owner=source.owner,
         marketplace_repo=source.repo,
+        plugin_root=manifest.plugin_root,
     )
 
     logger.debug(
