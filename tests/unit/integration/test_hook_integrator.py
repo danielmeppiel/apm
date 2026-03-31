@@ -1333,8 +1333,13 @@ class TestScriptPathRewriting:
         assert ".github/hooks/scripts/my-pkg/scripts/run.sh" in hook["bash"]
         assert ".github/hooks/scripts/my-pkg/scripts/run.ps1" in hook["powershell"]
         assert ".github/hooks/scripts/my-pkg/scripts/run-win.ps1" in hook["windows"]
-        # command and bash reference the same file, so unique scripts = 3
-        assert len(scripts) == 4  # each key independently produces a copy entry
+        # Each key independently produces a copy entry (command and bash
+        # reference the same source file but both emit an entry).
+        assert len(scripts) == 4
+        script_targets = [t for _, t in scripts]
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run.sh") == 2
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run.ps1") == 1
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run-win.ps1") == 1
 
     def test_rewrite_hooks_data_github_copilot_flat_format(self, temp_project):
         """Test _rewrite_hooks_data handles GitHub Copilot flat format (bash/powershell at top level)."""
