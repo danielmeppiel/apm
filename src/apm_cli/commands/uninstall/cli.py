@@ -53,6 +53,7 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
     manifest_path = get_manifest_path(scope)
     apm_dir = get_apm_dir(scope)
     deploy_root = get_deploy_root(scope)
+    manifest_display = str(manifest_path) if scope is InstallScope.USER else APM_YML_FILENAME
 
     logger = CommandLogger("uninstall", verbose=verbose, dry_run=dry_run)
     try:
@@ -60,11 +61,11 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
         if not manifest_path.exists():
             if scope is InstallScope.USER:
                 logger.error(
-                    f"No user manifest found at {manifest_path}. Install a package globally "
+                    f"No user manifest found at {manifest_display}. Install a package globally "
                     "first with 'apm install -g <package>' or create the file manually."
                 )
             else:
-                logger.error(f"No {manifest_path} found. Run 'apm init' in this project first.")
+                logger.error(f"No {manifest_display} found. Run 'apm init' in this project first.")
             sys.exit(1)
 
         if not packages:

@@ -345,14 +345,16 @@ class TestCrossPlatformPaths:
                 f"Path contains backslashes: {posix_str}"
             )
 
-    def test_user_root_strings_start_with_tilde(self):
-        """USER_SCOPE_TARGETS user_root values should start with ~/."""
-        from apm_cli.core.scope import USER_SCOPE_TARGETS
+    def test_user_root_strings_are_relative(self):
+        """TargetProfile user_root_dir values should be relative paths starting
+        with a dot (or None for targets that use root_dir at user scope)."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
 
-        for name, info in USER_SCOPE_TARGETS.items():
-            assert info["user_root"].startswith("~/"), (
-                f"{name} user_root does not start with '~/': {info['user_root']}"
-            )
+        for name, profile in KNOWN_TARGETS.items():
+            if profile.user_root_dir is not None:
+                assert profile.user_root_dir.startswith("."), (
+                    f"{name} user_root_dir does not start with '.': {profile.user_root_dir}"
+                )
 
 
 # ---------------------------------------------------------------------------

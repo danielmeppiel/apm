@@ -9,7 +9,6 @@ import pytest
 from apm_cli.core.scope import (
     InstallScope,
     USER_APM_DIR,
-    USER_SCOPE_TARGETS,
     ensure_user_dirs,
     get_apm_dir,
     get_deploy_root,
@@ -19,6 +18,7 @@ from apm_cli.core.scope import (
     get_unsupported_targets,
     warn_unsupported_user_scope,
 )
+from apm_cli.integration.targets import KNOWN_TARGETS
 
 
 # ---------------------------------------------------------------------------
@@ -150,63 +150,71 @@ class TestEnsureUserDirs:
 
 
 # ---------------------------------------------------------------------------
-# USER_SCOPE_TARGETS registry
+# TargetProfile user-scope metadata (replaces old USER_SCOPE_TARGETS tests)
 # ---------------------------------------------------------------------------
 
 
-class TestUserScopeTargets:
-    """Validate the target support registry."""
+class TestTargetProfileUserScope:
+    """Validate user-scope metadata on TargetProfile in KNOWN_TARGETS."""
 
     def test_all_known_targets_present(self):
-        expected = {"copilot_cli", "vscode", "claude", "cursor", "opencode"}
-        assert set(USER_SCOPE_TARGETS.keys()) == expected
+        expected = {"copilot", "claude", "cursor", "opencode"}
+        assert set(KNOWN_TARGETS.keys()) == expected
 
-    def test_each_target_has_required_keys(self):
-        for name, info in USER_SCOPE_TARGETS.items():
-            assert "supported" in info, f"{name} missing 'supported'"
-            assert "user_root" in info, f"{name} missing 'user_root'"
-            assert "description" in info, f"{name} missing 'description'"
-            assert "primitives" in info, f"{name} missing 'primitives'"
-            assert "reference" in info, f"{name} missing 'reference'"
-
-    def test_user_roots_start_with_tilde(self):
-        for name, info in USER_SCOPE_TARGETS.items():
-            assert info["user_root"].startswith("~/"), (
-                f"{name} user_root should start with '~/'"
+    def test_each_target_has_user_supported(self):
+        for name, profile in KNOWN_TARGETS.items():
+            assert profile.user_supported in (True, False, "partial"), (
+                f"{name} has unexpected user_supported value"
             )
 
     def test_claude_is_supported(self):
-        assert USER_SCOPE_TARGETS["claude"]["supported"] is True
+        assert KNOWN_TARGETS["claude"].user_supported is True
 
-    def test_copilot_cli_is_partially_supported(self):
-        assert USER_SCOPE_TARGETS["copilot_cli"]["supported"] == "partial"
-
-    def test_vscode_is_partially_supported(self):
-        assert USER_SCOPE_TARGETS["vscode"]["supported"] == "partial"
+    def test_copilot_is_partially_supported(self):
+        assert KNOWN_TARGETS["copilot"].user_supported == "partial"
 
     def test_cursor_is_not_supported(self):
-        assert USER_SCOPE_TARGETS["cursor"]["supported"] is False
+        assert KNOWN_TARGETS["cursor"].user_supported is False
 
     def test_opencode_is_not_supported(self):
-        assert USER_SCOPE_TARGETS["opencode"]["supported"] is False
+        assert KNOWN_TARGETS["opencode"].user_supported is False
 
-    def test_claude_has_primitives(self):
-        assert len(USER_SCOPE_TARGETS["claude"]["primitives"]) > 0
+    def test_copilot_user_root_dir(self):
+        assert KNOWN_TARGETS["copilot"].user_root_dir == ".copilot"
 
-    def test_copilot_cli_has_primitives(self):
-        assert len(USER_SCOPE_TARGETS["copilot_cli"]["primitives"]) > 0
+    def test_claude_uses_default_root_at_user_scope(self):
+        # Claude uses .claude at both project and user scope
+        assert KNOWN_TARGETS["claude"].user_root_dir is None
 
-    def test_copilot_cli_has_unsupported_primitives(self):
-        assert "prompts" in USER_SCOPE_TARGETS["copilot_cli"]["unsupported_primitives"]
+    def test_copilot_unsupported_user_primitives(self):
+        assert "prompts" in KNOWN_TARGETS["copilot"].unsupported_user_primitives
 
-    def test_vscode_has_primitives(self):
-        assert len(USER_SCOPE_TARGETS["vscode"]["primitives"]) > 0
+    def test_effective_root_project_scope(self):
+        assert KNOWN_TARGETS["copilot"].effective_root(user_scope=False) == ".github"
 
-    def test_unsupported_targets_have_no_primitives(self):
-        for name, info in USER_SCOPE_TARGETS.items():
-            if info["supported"] is False:
-                assert info["primitives"] == [], (
-                    f"{name} is unsupported but lists primitives"
+    def test_effective_root_user_scope_with_override(self):
+        assert KNOWN_TARGETS["copilot"].effective_root(user_scope=True) == ".copilot"
+
+    def test_effective_root_user_scope_no_override(self):
+        assert KNOWN_TARGETS["claude"].effective_root(user_scope=True) == ".claude"
+
+    def test_supports_at_user_scope_true(self):
+        assert KNOWN_TARGETS["claude"].supports_at_user_scope("agents") is True
+        assert KNOWN_TARGETS["claude"].supports_at_user_scope("commands") is True
+
+    def test_supports_at_user_scope_partial(self):
+        # Copilot supports agents at user scope but not prompts
+        assert KNOWN_TARGETS["copilot"].supports_at_user_scope("agents") is True
+        assert KNOWN_TARGETS["copilot"].supports_at_user_scope("prompts") is False
+
+    def test_supports_at_user_scope_unsupported_target(self):
+        assert KNOWN_TARGETS["cursor"].supports_at_user_scope("agents") is False
+
+    def test_unsupported_targets_have_no_user_root(self):
+        for name, profile in KNOWN_TARGETS.items():
+            if profile.user_supported is False:
+                assert profile.user_root_dir is None, (
+                    f"{name} is unsupported but has user_root_dir set"
                 )
 
 
@@ -223,8 +231,7 @@ class TestScopeWarnings:
         assert "cursor" in unsupported
         assert "opencode" in unsupported
         # Partially supported targets should NOT appear in unsupported
-        assert "copilot_cli" not in unsupported
-        assert "vscode" not in unsupported
+        assert "copilot" not in unsupported
         assert "claude" not in unsupported
 
     def test_warn_message_includes_unsupported_names(self):
@@ -236,11 +243,10 @@ class TestScopeWarnings:
         assert "claude" in msg
         assert "fully supported" in msg.lower()
         # Partially supported targets should be listed
-        assert "copilot_cli" in msg
-        assert "vscode" in msg
+        assert "copilot" in msg
         assert "partially supported" in msg.lower()
 
     def test_warn_message_includes_unsupported_primitives(self):
         msg = warn_unsupported_user_scope()
         assert "prompts" in msg.lower()
-        assert "copilot_cli (prompts)" in msg
+        assert "copilot (prompts)" in msg

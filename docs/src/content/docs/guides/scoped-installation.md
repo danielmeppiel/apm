@@ -35,17 +35,14 @@ apm install -g microsoft/apm-sample-package
 
 ### Per-target support
 
-Currently, only **Claude Code** fully supports user-scope primitives. **Copilot CLI** and **VS Code** are partially supported -- the tools read from user-level directories, but APM's current integrators have limitations. APM deploys primitives relative to the home directory, but some AI tools either read from a different user-level path than what APM produces, or only support workspace-level configuration.
+Not all AI tools support user-level configuration. APM warns during `--global` installs about targets that lack native user-level support.
 
-APM warns during `--global` installs about targets that lack native user-level support.
-
-| Target | User-level directory | Status | Why | Reference |
-|--------|---------------------|--------|-----|-----------|
-| Claude Code | `~/.claude/` | Supported | APM deploys to `~/.claude/` which Claude reads for user-level commands, agents, skills, hooks | [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
-| Copilot (CLI) | `~/.copilot/` | Partially supported | Copilot CLI reads agents, skills, instructions from `~/.copilot/`; Copilot CLI does not support prompts | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
-| VS Code | User `mcp.json` | Partially supported | VS Code reads user-level MCP servers from user `mcp.json`; APM currently only writes to workspace `.vscode/mcp.json` | [VS Code MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) |
-| Cursor | `~/.cursor/` | Not supported | User rules are managed via Cursor Settings UI, not the filesystem | [Cursor rules docs](https://cursor.com/docs/rules) |
-| OpenCode | `~/.opencode/` | Not supported | No official documentation for user-level config | No official docs available |
+| Target | User-level directory | Status | Notes | Reference |
+|---|---|---|---|---|
+| Claude Code | `~/.claude/` | Supported | All primitives (agents, commands, skills, hooks) | [Settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
+| Copilot CLI | `~/.copilot/` | Partial | Agents, skills, instructions; prompts not supported | [Agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli), [Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills), [Instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions) |
+| Cursor | N/A | Not supported | User rules managed via Cursor Settings UI only | [Rules](https://cursor.com/docs/rules) |
+| OpenCode | N/A | Not supported | No official docs for user-level config | -- |
 
 ### Uninstalling user-scope packages
 
@@ -56,7 +53,7 @@ apm uninstall -g microsoft/apm-sample-package
 ## When to use each scope
 
 | Use case | Scope |
-|----------|-------|
+|---|---|
 | Team-shared instructions and prompts | Project (`apm install`) |
 | Personal Claude Code commands and agents | User (`apm install -g`) |
 | CI/CD reproducible setup | Project |

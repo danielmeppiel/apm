@@ -7,31 +7,15 @@ Defines where packages are deployed based on scope:
 - **user**: Deploy to user-level directories (``~/.claude/``, etc.).
   Manifest, lockfile, and modules live under ``~/.apm/``.
 
-User-scope support varies by target:
-
-- **Claude Code** (fully supported): reads ``~/.claude/`` for global
-  commands, agents, skills, and ``CLAUDE.md``.
-  Ref: https://docs.anthropic.com/en/docs/claude-code/settings
-- **Copilot CLI** (partially supported): Copilot CLI reads user-level
-  agents, skills, and instructions from ``~/.copilot/``.  Copilot CLI
-  does not support prompts.
-  Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
-- **VS Code** (partially supported): VS Code supports user-level MCP
-  servers via user ``mcp.json``, but APM's MCP integrator currently
-  only writes to workspace ``.vscode/mcp.json``.
-  Ref: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
-- **Cursor** (not supported): user-level rules are managed via the
-  Cursor Settings UI, not the filesystem.
-  Ref: https://cursor.com/docs/rules
-- **OpenCode** (not supported): no official documentation confirms whether
-  ``~/.opencode/`` is read at user level.
+User-scope support varies by target -- see ``TargetProfile.user_supported``
+in ``apm_cli.integration.targets`` for the canonical registry.
 """
 
 from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 
 # ---------------------------------------------------------------------------
@@ -115,90 +99,21 @@ def ensure_user_dirs() -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Per-target user-scope support
+# Per-target user-scope helpers
 #
-# Tracks which AI tools natively read from a user-level directory
-# (``~/.<tool>/``) so APM can warn when deploying primitives to a
-# target that does not support user-scope.
-#
-# Evidence / references:
-#
-# * Claude Code -- ``~/.claude/`` is the documented user-level config
-#   directory.  Claude reads CLAUDE.md, commands/, agents/, skills/
-#   from it and merges them with project-level ``.claude/``.
-#   Ref: https://docs.anthropic.com/en/docs/claude-code/settings
-#
-# * Copilot CLI -- ``~/.copilot/`` is the documented user-level
-#   directory for custom agents, skills, and instructions.  Copilot CLI
-#   does not support prompts.
-#   Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
-#   Ref (skills): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills
-#   Ref (instructions): https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
-#
-# * VS Code -- supports user-level MCP servers via user mcp.json.
-#   APM's MCP integrator currently only writes to workspace
-#   ``.vscode/mcp.json``.  User mcp.json support is planned.
-#   Ref: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
-#
-# * Cursor -- user-level rules are configured via the Cursor Settings
-#   UI (Settings > Rules for AI).  The ``.cursor/rules/`` directory is
-#   project-scoped only.
-#   Ref: https://cursor.com/docs/rules
-#
-# * OpenCode -- no official documentation confirms user-level reading
-#   from ``~/.opencode/``.  Marked as not supported.
+# These functions query ``KNOWN_TARGETS`` in ``targets.py`` for user-scope
+# metadata.  No parallel registry is needed -- TargetProfile carries
+# ``user_supported``, ``user_root_dir``, and ``unsupported_user_primitives``.
 # ---------------------------------------------------------------------------
-
-USER_SCOPE_TARGETS: Dict[str, Dict[str, object]] = {
-    "claude": {
-        "supported": True,
-        "user_root": "~/.claude",
-        "primitives": ["agents", "commands", "skills", "hooks"],
-        "description": "User-level Claude commands, agents, and settings",
-        "reference": "https://docs.anthropic.com/en/docs/claude-code/settings",
-    },
-    "copilot_cli": {
-        "supported": "partial",
-        "user_root": "~/.copilot",
-        "primitives": ["agents", "skills", "instructions"],
-        "unsupported_primitives": ["prompts"],
-        "description": "Partially supported -- agents, skills, instructions deploy to ~/.copilot/; Copilot CLI does not support prompts",
-        "reference": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
-        "reference_links": {
-            "agents": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
-            "skills": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills",
-            "instructions": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions",
-        },
-    },
-    "vscode": {
-        "supported": "partial",
-        "user_root": "~/.vscode",
-        "primitives": ["mcp_servers"],
-        "description": "Partially supported -- VS Code reads user-level MCP servers from user mcp.json, but APM currently only writes to workspace .vscode/mcp.json",
-        "reference": "https://code.visualstudio.com/docs/copilot/customization/mcp-servers",
-    },
-    "cursor": {
-        "supported": False,
-        "user_root": "~/.cursor",
-        "primitives": [],
-        "description": "Not supported -- user rules are managed via Cursor Settings UI",
-        "reference": "https://cursor.com/docs/rules",
-    },
-    "opencode": {
-        "supported": False,
-        "user_root": "~/.opencode",
-        "primitives": [],
-        "description": "Not supported -- no official documentation for user-level config",
-        "reference": "",
-    },
-}
 
 
 def get_unsupported_targets() -> List[str]:
     """Return target names that do not support user-scope deployment."""
+    from ..integration.targets import KNOWN_TARGETS
+
     return [
-        name for name, info in USER_SCOPE_TARGETS.items()
-        if info["supported"] is False
+        name for name, profile in KNOWN_TARGETS.items()
+        if profile.user_supported is False
     ]
 
 
@@ -209,22 +124,27 @@ def warn_unsupported_user_scope() -> str:
 
     The message distinguishes three categories:
 
-    * **fully supported** -- ``supported is True``
-    * **partially supported** -- ``supported == "partial"``
-    * **not supported** -- ``supported is False``
+    * **fully supported** -- ``user_supported is True``
+    * **partially supported** -- ``user_supported == "partial"``
+    * **not supported** -- ``user_supported is False``
 
-    When some targets have ``unsupported_primitives``, a second line is
-    added listing those primitives per target.
+    When some targets have ``unsupported_user_primitives``, a second line
+    is added listing those primitives per target.
     """
+    from ..integration.targets import KNOWN_TARGETS
+
     fully_supported = [
-        name for name, info in USER_SCOPE_TARGETS.items()
-        if info["supported"] is True
+        name for name, p in KNOWN_TARGETS.items()
+        if p.user_supported is True
     ]
     partially_supported = [
-        name for name, info in USER_SCOPE_TARGETS.items()
-        if info["supported"] == "partial"
+        name for name, p in KNOWN_TARGETS.items()
+        if p.user_supported == "partial"
     ]
-    unsupported = get_unsupported_targets()
+    unsupported = [
+        name for name, p in KNOWN_TARGETS.items()
+        if p.user_supported is False
+    ]
 
     if not unsupported and not partially_supported:
         return ""
@@ -246,8 +166,8 @@ def warn_unsupported_user_scope() -> str:
 
     # Collect per-target unsupported primitives
     unsupported_prims: List[str] = []
-    for name, info in USER_SCOPE_TARGETS.items():
-        prims = info.get("unsupported_primitives", [])
+    for name, profile in KNOWN_TARGETS.items():
+        prims = profile.unsupported_user_primitives
         if prims:
             unsupported_prims.append(f"{name} ({', '.join(prims)})")
     if unsupported_prims:

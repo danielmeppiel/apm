@@ -1,14 +1,14 @@
 """Target profiles for multi-tool integration.
 
-Each target tool (Copilot, Claude, Cursor, …) describes where APM
+Each target tool (Copilot, Claude, Cursor, ...) describes where APM
 primitives should land.  Adding a new target means adding an entry to
-``KNOWN_TARGETS`` — no new classes required.
+``KNOWN_TARGETS`` -- no new classes required.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, Union
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class TargetProfile:
     """Top-level directory in the workspace (e.g. ``".github"``)."""
 
     primitives: Dict[str, PrimitiveMapping]
-    """Mapping from APM primitive name → deployment spec.
+    """Mapping from APM primitive name -> deployment spec.
 
     Only primitives listed here are deployed to this target.
     """
@@ -49,6 +49,30 @@ class TargetProfile:
 
     detect_by_dir: bool = True
     """If ``True``, only deploy when *root_dir* already exists."""
+
+    # -- user-scope metadata --------------------------------------------------
+
+    user_supported: Union[bool, str] = False
+    """Whether this target supports user-scope (``~/``) deployment.
+
+    * ``True``  -- fully supported (all primitives work at user scope).
+    * ``"partial"`` -- some primitives work, others do not.
+    * ``False`` -- not supported at user scope.
+    """
+
+    user_root_dir: Optional[str] = None
+    """Override for *root_dir* at user scope.
+
+    When ``None`` the normal *root_dir* is used at both project and user
+    scope.  Set this when the tool reads from a different directory at
+    user level (e.g. Copilot CLI uses ``~/.copilot/`` instead of
+    ``~/.github/``).
+    """
+
+    unsupported_user_primitives: Tuple[str, ...] = ()
+    """Primitives that are **not** available at user scope even when the
+    target itself is partially supported (e.g. Copilot CLI cannot deploy
+    prompts at user scope)."""
 
     @property
     def prefix(self) -> str:
@@ -62,12 +86,33 @@ class TargetProfile:
         """Return ``True`` if this target accepts *primitive*."""
         return primitive in self.primitives
 
+    def effective_root(self, user_scope: bool = False) -> str:
+        """Return the root directory for the given scope.
+
+        At user scope, returns *user_root_dir* when set, otherwise
+        falls back to the standard *root_dir*.
+        """
+        if user_scope and self.user_root_dir:
+            return self.user_root_dir
+        return self.root_dir
+
+    def supports_at_user_scope(self, primitive: str) -> bool:
+        """Return ``True`` if *primitive* can be deployed at user scope."""
+        if not self.user_supported:
+            return False
+        if primitive in self.unsupported_user_primitives:
+            return False
+        return primitive in self.primitives
+
 
 # ------------------------------------------------------------------
 # Known targets
 # ------------------------------------------------------------------
 
 KNOWN_TARGETS: Dict[str, TargetProfile] = {
+    # Copilot (GitHub) -- at user scope, Copilot CLI reads ~/.copilot/
+    # instead of ~/.github/.  Prompts are not supported at user scope.
+    # Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
     "copilot": TargetProfile(
         name="copilot",
         root_dir=".github",
@@ -90,7 +135,13 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         },
         auto_create=True,
         detect_by_dir=True,
+        user_supported="partial",
+        user_root_dir=".copilot",
+        unsupported_user_primitives=("prompts",),
     ),
+    # Claude Code -- ~/.claude/ is the documented user-level config directory.
+    # All primitives are supported at user scope.
+    # Ref: https://docs.anthropic.com/en/docs/claude-code/settings
     "claude": TargetProfile(
         name="claude",
         root_dir=".claude",
@@ -110,7 +161,10 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         },
         auto_create=False,
         detect_by_dir=True,
+        user_supported=True,
     ),
+    # Cursor -- user-level rules are managed via Cursor Settings UI only.
+    # Ref: https://cursor.com/docs/rules
     "cursor": TargetProfile(
         name="cursor",
         root_dir=".cursor",
@@ -130,8 +184,10 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         },
         auto_create=False,
         detect_by_dir=True,
+        user_supported=False,
     ),
-    # OpenCode does not support hooks — instructions are via AGENTS.md (apm compile).
+    # OpenCode -- no official docs confirm user-level reading from ~/.opencode/.
+    # Does not support hooks -- instructions are via AGENTS.md (apm compile).
     "opencode": TargetProfile(
         name="opencode",
         root_dir=".opencode",
@@ -148,6 +204,7 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         },
         auto_create=False,
         detect_by_dir=True,
+        user_supported=False,
     ),
 }
 

@@ -583,7 +583,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
 
         # Resolve scope
-        from ..core.scope import InstallScope, get_deploy_root, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs, warn_unsupported_user_scope
+        from ..core.scope import InstallScope, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs, warn_unsupported_user_scope
         scope = InstallScope.USER if global_ else InstallScope.PROJECT
 
         if scope is InstallScope.USER:
@@ -671,6 +671,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # Determine what to install based on install mode
         should_install_apm = install_mode != InstallMode.MCP
         should_install_mcp = install_mode != InstallMode.APM
+        # MCP servers are workspace-scoped (.vscode/mcp.json); skip at user scope
+        if scope is InstallScope.USER:
+            should_install_mcp = False
 
         # Show what will be installed if dry run
         if dry_run:
@@ -882,6 +885,7 @@ def _integrate_package_primitives(
     diagnostics,
     package_name="",
     logger=None,
+    scope=None,
 ):
     """Run the full integration pipeline for a single package.
 
@@ -890,8 +894,14 @@ def _integrate_package_primitives(
     Skills are handled separately because ``SkillIntegrator`` already
     routes across all targets internally.
 
+    When *scope* is ``InstallScope.USER``, targets and primitives that
+    do not support user-scope deployment are silently skipped.
+
     Returns a dict with integration counters and the list of deployed file paths.
     """
+    from apm_cli.core.scope import InstallScope
+
+    _user_scope = scope is InstallScope.USER
     result = {
         "prompts": 0,
         "agents": 0,
@@ -923,9 +933,17 @@ def _integrate_package_primitives(
 
     # --- target x primitive dispatch loop ---
     for _target in targets:
+        # Skip entire target when user scope is not supported
+        if _user_scope and not _target.user_supported:
+            continue
+
         for _prim_name, _mapping in _target.primitives.items():
             if _prim_name == "skills":
                 continue  # handled separately below
+
+            # Skip primitives unsupported at user scope
+            if _user_scope and _prim_name in _target.unsupported_user_primitives:
+                continue
 
             # --- hooks (different return type) ---
             if _prim_name == "hooks":
@@ -1617,6 +1635,7 @@ def _install_apm_dependencies(
                             diagnostics=diagnostics,
                             package_name=dep_key,
                             logger=logger,
+                            scope=scope,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1819,6 +1838,7 @@ def _install_apm_dependencies(
                             diagnostics=diagnostics,
                             package_name=dep_key,
                             logger=logger,
+                            scope=scope,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1983,6 +2003,7 @@ def _install_apm_dependencies(
                                 diagnostics=diagnostics,
                                 package_name=dep_ref.get_unique_key(),
                                 logger=logger,
+                                scope=scope,
                             )
                             total_prompts_integrated += int_result["prompts"]
                             total_agents_integrated += int_result["agents"]
