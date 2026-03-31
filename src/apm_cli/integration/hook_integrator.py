@@ -43,6 +43,7 @@ Script path handling:
 """
 
 import json
+import logging
 import re
 import shutil
 from pathlib import Path
@@ -51,6 +52,8 @@ from dataclasses import dataclass, field
 
 from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.utils.paths import portable_relpath
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -70,6 +73,12 @@ class HookIntegrator(BaseIntegrator):
     - Claude: Merged into .claude/settings.json hooks key + .claude/hooks/<pkg>/
     - Cursor: Merged into .cursor/hooks.json hooks key + .cursor/hooks/<pkg>/
     """
+
+    # Keys in hook JSON dicts that may contain script-path references.
+    # Extend this tuple when new platform keys are introduced -- every
+    # call site in _rewrite_hooks_data() iterates over it, so a single
+    # addition here propagates everywhere.
+    HOOK_COMMAND_KEYS: Tuple[str, ...] = ("command", "bash", "powershell", "windows")
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
         """Find all hook JSON files in a package.
@@ -230,13 +239,18 @@ class HookIntegrator(BaseIntegrator):
                 if not isinstance(matcher, dict):
                     continue
                 # Rewrite script paths in the matcher dict itself
-                # (GitHub Copilot flat format: bash/powershell keys at this level)
-                for key in ("command", "bash", "powershell"):
+                # (GitHub Copilot flat format: bash/powershell/windows keys at this level)
+                for key in self.HOOK_COMMAND_KEYS:
                     if key in matcher:
                         new_cmd, scripts = self._rewrite_command_for_target(
                             matcher[key], package_path, package_name, target,
                             hook_file_dir=hook_file_dir,
                         )
+                        if scripts:
+                            _log.debug(
+                                "Hook %s/%s: rewrote '%s' key (%d script(s))",
+                                package_name, event_name, key, len(scripts),
+                            )
                         matcher[key] = new_cmd
                         all_scripts.extend(scripts)
 
@@ -245,12 +259,17 @@ class HookIntegrator(BaseIntegrator):
                 for hook in matcher.get("hooks", []):
                     if not isinstance(hook, dict):
                         continue
-                    for key in ("command", "bash", "powershell"):
+                    for key in self.HOOK_COMMAND_KEYS:
                         if key in hook:
                             new_cmd, scripts = self._rewrite_command_for_target(
                                 hook[key], package_path, package_name, target,
                                 hook_file_dir=hook_file_dir,
                             )
+                            if scripts:
+                                _log.debug(
+                                    "Hook %s/%s: rewrote '%s' key (%d script(s))",
+                                    package_name, event_name, key, len(scripts),
+                                )
                             hook[key] = new_cmd
                             all_scripts.extend(scripts)
 
