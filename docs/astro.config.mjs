@@ -93,6 +93,7 @@ export default defineConfig({
 						{ label: 'IDE & Tool Integration', slug: 'integrations/ide-tool-integration' },
 						{ label: 'AI Runtime Compatibility', slug: 'integrations/runtime-compatibility' },
 						{ label: 'GitHub Rulesets', slug: 'integrations/github-rulesets' },
+						{ label: 'agentrc', slug: 'integrations/agentrc' },
 					],
 				},
 				{
