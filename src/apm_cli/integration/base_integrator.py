@@ -141,6 +141,7 @@ class BaseIntegrator:
         "commands_opencode": "commands_opencode",
         "instructions_copilot": "instructions",
         "instructions_cursor": "rules_cursor",
+        "instructions_claude": "rules_claude",
     }
 
     @staticmethod

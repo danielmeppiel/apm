@@ -1071,7 +1071,7 @@ def _integrate_package_primitives(
                 result[_counter_key] += _int_result.files_integrated
                 _effective_root = _mapping.deploy_root or _target.root_dir
                 _deploy_dir = f"{_effective_root}/{_mapping.subdir}/"
-                if _prim_name == "instructions" and _mapping.format_id == "cursor_rules":
+                if _prim_name == "instructions" and _mapping.format_id in ("cursor_rules", "claude_rules"):
                     _label = "rule(s)"
                 elif _prim_name == "instructions":
                     _label = "instruction(s)"

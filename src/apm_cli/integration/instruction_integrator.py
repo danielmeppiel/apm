@@ -2,8 +2,9 @@
 
 Deploys .instructions.md files from APM packages to the appropriate
 target directory (e.g. ``.github/instructions/`` for Copilot,
-``.cursor/rules/`` for Cursor).  Content transforms are selected by
-the ``format_id`` field in ``PrimitiveMapping``.
+``.cursor/rules/`` for Cursor, ``.claude/rules/`` for Claude Code).
+Content transforms are selected by the ``format_id`` field in
+``PrimitiveMapping``.
 """
 
 from __future__ import annotations
@@ -20,10 +21,13 @@ if TYPE_CHECKING:
 
 
 class InstructionIntegrator(BaseIntegrator):
-    """Handles integration of APM package instructions into .github/instructions/.
+    """Handles integration of APM package instructions.
 
-    Deploys .instructions.md files verbatim (preserving applyTo: frontmatter)
-    so VS Code Copilot discovers them natively.
+    Deploys .instructions.md files to target-specific directories:
+
+    * Copilot: ``.github/instructions/`` (verbatim, preserving applyTo:)
+    * Cursor: ``.cursor/rules/`` (``.mdc`` format, applyTo: -> globs:)
+    * Claude Code: ``.claude/rules/`` (``.md`` format, applyTo: -> paths:)
     """
 
     def find_instruction_files(self, package_path: Path) -> List[Path]:
@@ -65,8 +69,9 @@ class InstructionIntegrator(BaseIntegrator):
 
         Selects the content transform via ``format_id``:
 
-        * ``cursor_rules`` -- convert ``applyTo:`` to ``globs:`` frontmatter
-        * anything else    -- copy verbatim (identity transform)
+        * ``cursor_rules``  -- convert ``applyTo:`` to ``globs:`` frontmatter
+        * ``claude_rules``  -- convert ``applyTo:`` to ``paths:`` frontmatter
+        * anything else     -- copy verbatim (identity transform)
         """
         mapping = target.primitives.get("instructions")
         if not mapping:
@@ -85,7 +90,8 @@ class InstructionIntegrator(BaseIntegrator):
         deploy_dir = target_root / mapping.subdir
         deploy_dir.mkdir(parents=True, exist_ok=True)
 
-        use_cursor_transform = mapping.format_id == "cursor_rules"
+        fmt = mapping.format_id
+        needs_rename = fmt in ("cursor_rules", "claude_rules")
 
         files_integrated = 0
         files_skipped = 0
@@ -93,7 +99,7 @@ class InstructionIntegrator(BaseIntegrator):
         total_links_resolved = 0
 
         for source_file in instruction_files:
-            if use_cursor_transform:
+            if needs_rename:
                 stem = source_file.name
                 if stem.endswith(".instructions.md"):
                     stem = stem[: -len(".instructions.md")]
@@ -111,8 +117,10 @@ class InstructionIntegrator(BaseIntegrator):
                 files_skipped += 1
                 continue
 
-            if use_cursor_transform:
+            if fmt == "cursor_rules":
                 links_resolved = self.copy_instruction_cursor(source_file, target_path)
+            elif fmt == "claude_rules":
+                links_resolved = self.copy_instruction_claude(source_file, target_path)
             else:
                 links_resolved = self.copy_instruction(source_file, target_path)
 
@@ -142,10 +150,12 @@ class InstructionIntegrator(BaseIntegrator):
         effective_root = mapping.deploy_root or target.root_dir
         prefix = f"{effective_root}/{mapping.subdir}/"
         legacy_dir = project_root / effective_root / mapping.subdir
-        legacy_pattern = (
-            "*.mdc" if mapping.format_id == "cursor_rules"
-            else "*.instructions.md"
-        )
+        if mapping.format_id == "cursor_rules":
+            legacy_pattern = "*.mdc"
+        elif mapping.format_id == "claude_rules":
+            legacy_pattern = "*.md"
+        else:
+            legacy_pattern = "*.instructions.md"
         return self.sync_remove_files(
             project_root,
             managed_files,
@@ -273,5 +283,86 @@ class InstructionIntegrator(BaseIntegrator):
         from apm_cli.integration.targets import KNOWN_TARGETS
         return self.sync_for_target(
             KNOWN_TARGETS["cursor"], apm_package, project_root,
+            managed_files=managed_files,
+        )
+
+    # ------------------------------------------------------------------
+    # Claude Code Rules (.md with paths: frontmatter)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _convert_to_claude_rules(content: str) -> str:
+        """Convert APM instruction content to Claude Code rules ``.md`` format.
+
+        Parses existing YAML frontmatter, maps ``applyTo`` to ``paths``
+        (YAML list), and rewrites the frontmatter in Claude's expected
+        format.  Instructions without ``applyTo`` become unconditional
+        rules (no ``paths`` key).
+
+        Ref: https://code.claude.com/docs/en/memory#organize-rules-with-claude%2Frules%2F
+        """
+        body = content
+        apply_to = ""
+
+        # Parse existing frontmatter
+        fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n?', content, re.DOTALL)
+        if fm_match:
+            fm_block = fm_match.group(1)
+            body = content[fm_match.end():]
+
+            for line in fm_block.splitlines():
+                line_stripped = line.strip()
+                if line_stripped.startswith("applyTo:"):
+                    apply_to = line_stripped[len("applyTo:"):].strip().strip("'\"")
+
+        # Build Claude rules frontmatter (only when path-scoped)
+        if apply_to:
+            parts = ["---"]
+            parts.append("paths:")
+            parts.append(f'  - "{apply_to}"')
+            parts.append("---")
+            return "\n".join(parts) + "\n\n" + body.lstrip("\n")
+
+        # No applyTo -> unconditional rule, return body without frontmatter
+        return body.lstrip("\n")
+
+    def copy_instruction_claude(self, source: Path, target: Path) -> int:
+        """Copy instruction file converted to Claude Code rules format.
+
+        Converts ``applyTo:`` to ``paths:`` frontmatter and resolves links.
+        """
+        content = source.read_text(encoding='utf-8')
+        content = self._convert_to_claude_rules(content)
+        content, links_resolved = self.resolve_links(content, source, target)
+        target.write_text(content, encoding='utf-8')
+        return links_resolved
+
+    def integrate_package_instructions_claude(
+        self,
+        package_info,
+        project_root: Path,
+        force: bool = False,
+        managed_files: Optional[Set[str]] = None,
+        diagnostics=None,
+        logger=None,
+    ) -> IntegrationResult:
+        """Integrate instructions as Claude Code rules into ``.claude/rules/``."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.integrate_instructions_for_target(
+            KNOWN_TARGETS["claude"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
+    def sync_integration_claude(
+        self,
+        apm_package,
+        project_root: Path,
+        managed_files: Optional[Set[str]] = None,
+    ) -> Dict[str, int]:
+        """Remove APM-managed Claude Code rules files from ``.claude/rules/``."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        return self.sync_for_target(
+            KNOWN_TARGETS["claude"], apm_package, project_root,
             managed_files=managed_files,
         )

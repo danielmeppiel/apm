@@ -181,6 +181,7 @@ When you run `apm install`, APM integrates package primitives into Claude's nati
 
 | Location | Purpose |
 |----------|---------|
+| `.claude/rules/*.md` | Instructions converted to Claude rules format (`applyTo:` mapped to `paths:` frontmatter) |
 | `.claude/agents/*.md` | Sub-agents from installed packages (from `.agent.md` files) |
 | `.claude/commands/*.md` | Slash commands from installed packages (from `.prompt.md` files) |
 | `.claude/skills/{folder}/` | Skills from packages with `SKILL.md` or `.apm/` primitives |
@@ -378,9 +379,9 @@ Claude Desktop can use `CLAUDE.md` as its project instructions file. Optionally 
 
 APM maintains synchronization between packages and Claude primitives:
 
-- **Install**: Adds agents, commands, and skills for new packages, tracked via `deployed_files` in `apm.lock.yaml`
-- **Uninstall**: Removes only that package's agents, commands, and skill directories (as tracked in `apm.lock.yaml`). User-authored files are preserved.
-- **Update**: Refreshes agents, commands, and skills when package version changes
+- **Install**: Adds rules, agents, commands, and skills for new packages, tracked via `deployed_files` in `apm.lock.yaml`
+- **Uninstall**: Removes only that package's rules, agents, commands, and skill directories (as tracked in `apm.lock.yaml`). User-authored files are preserved.
+- **Update**: Refreshes rules, agents, commands, and skills when package version changes
 - **Virtual Packages**: Individual files and skills (e.g., `github/awesome-copilot/skills/review-and-refactor`) are tracked via `apm.lock.yaml` and removed correctly on uninstall
 
 ## Other IDE Support
