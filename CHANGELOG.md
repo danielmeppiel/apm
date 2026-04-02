@@ -11,10 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Hook integrator now processes the `windows` property in hook JSON files, copying referenced scripts and rewriting paths during install/compile (#311)
-- `apm install -g` now correctly deploys to user-scope directories (e.g., `~/.copilot/` instead of `~/.github/`) across all integrators and uninstall paths (#536, #537)
-- `apm install -g` no longer deploys instructions to `~/.copilot/instructions/` (unsupported by Copilot CLI) (#536, #537)
-- Fixed partition routing for multi-level user directories (e.g., `~/.config/opencode/`) (#536, #537)
-- Fixed uninstall re-integration deploying to wrong paths at user scope (#536, #537)
+- `apm install -g` now correctly deploys to user-scope directories (e.g., `~/.copilot/` instead of `~/.github/`) across all integrators and uninstall paths (#542)
+- `apm install -g` no longer deploys instructions to `~/.copilot/instructions/` (unsupported by Copilot CLI) (#542)
+- Fixed partition routing for multi-level user directories (e.g., `~/.config/opencode/`) (#542)
+- Fixed uninstall re-integration deploying to wrong paths at user scope (#542)
 
 ### Added
 
@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Scope resolution now happens once via `TargetProfile.for_scope()` and `resolve_targets()` -- integrators no longer need scope-aware parameters (#536, #537)
+- Scope resolution now happens once via `TargetProfile.for_scope()` and `resolve_targets()` -- integrators no longer need scope-aware parameters (#542)
 
 ## [0.8.9] - 2026-03-31
 

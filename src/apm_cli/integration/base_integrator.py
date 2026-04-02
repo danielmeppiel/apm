@@ -216,20 +216,39 @@ class BaseIntegrator:
         skill_tuple = tuple(skill_prefixes)
         hook_tuple = tuple(hook_prefixes)
 
-        # Sort prefixes longest-first for greedy matching.
-        # This ensures ".codex/agents/" matches before ".codex/" and
-        # ".config/opencode/agents/" matches before ".config/".
-        sorted_prefixes = sorted(prefix_map.keys(), key=len, reverse=True)
+        # Build a prefix trie keyed by path segments for O(depth) routing.
+        # Each node is a dict; the special key "_bucket" stores the bucket
+        # for a complete prefix ending at that node.  This preserves the
+        # "single pass, O(1) per path" property from the original
+        # component_map approach while supporting multi-level roots like
+        # .config/opencode/.
+        trie: dict = {}
+        for prefix, bucket_key in prefix_map.items():
+            segments = [s for s in prefix.split("/") if s]
+            node = trie
+            for segment in segments:
+                child = node.get(segment)
+                if child is None:
+                    child = {}
+                    node[segment] = child
+                node = child
+            node["_bucket"] = bucket_key
 
         for p in managed_files:
-            # Try longest-prefix match first (handles multi-level roots)
-            matched = False
-            for pfx in sorted_prefixes:
-                if p.startswith(pfx):
-                    buckets[prefix_map[pfx]].add(p)
-                    matched = True
+            # Walk the trie; keep the deepest bucket match (longest prefix).
+            segments = [s for s in p.split("/") if s]
+            node = trie
+            last_bucket: str | None = None
+            for segment in segments:
+                child = node.get(segment)
+                if child is None:
                     break
-            if matched:
+                node = child
+                bk = node.get("_bucket")
+                if bk is not None:
+                    last_bucket = bk
+            if last_bucket is not None:
+                buckets[last_bucket].add(p)
                 continue
             # Fall back to cross-target buckets
             if p.startswith(skill_tuple):
