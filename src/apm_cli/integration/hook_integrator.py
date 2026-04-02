@@ -43,6 +43,7 @@ Script path handling:
 """
 
 import json
+import logging
 import re
 import shutil
 from pathlib import Path
@@ -51,6 +52,8 @@ from dataclasses import dataclass, field
 
 from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.utils.paths import portable_relpath
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -70,6 +73,23 @@ class HookIntegrator(BaseIntegrator):
     - Claude: Merged into .claude/settings.json hooks key + .claude/hooks/<pkg>/
     - Cursor: Merged into .cursor/hooks.json hooks key + .cursor/hooks/<pkg>/
     """
+
+    # Superset of all known script-path keys across supported hook specs.
+    # Every call site in _rewrite_hooks_data() iterates over this tuple,
+    # so a single addition here propagates everywhere.
+    #
+    #   "command":    Claude Code (primary), VS Code (default/cross-platform), Cursor
+    #   "bash":       GitHub Copilot Agent cloud/CLI
+    #   "powershell": GitHub Copilot Agent cloud/CLI
+    #   "windows":    VS Code (OS-specific override)
+    #   "linux":      VS Code (OS-specific override)
+    #   "osx":        VS Code (OS-specific override)
+    #
+    # Refs:
+    #   GH Copilot Agent: https://docs.github.com/en/copilot/concepts/agents/coding-agent/about-hooks
+    #   VS Code:          https://code.visualstudio.com/docs/copilot/customization/hooks
+    #   Claude Code:      https://code.claude.com/docs/en/hooks
+    HOOK_COMMAND_KEYS: Tuple[str, ...] = ("command", "bash", "powershell", "windows", "linux", "osx")
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
         """Find all hook JSON files in a package.
@@ -156,6 +176,8 @@ class HookIntegrator(BaseIntegrator):
             scripts_base = f".github/hooks/scripts/{package_name}"
         elif target == "cursor":
             scripts_base = f".cursor/hooks/{package_name}"
+        elif target == "codex":
+            scripts_base = f".codex/hooks/{package_name}"
         else:
             scripts_base = f".claude/hooks/{package_name}"
 
@@ -228,13 +250,18 @@ class HookIntegrator(BaseIntegrator):
                 if not isinstance(matcher, dict):
                     continue
                 # Rewrite script paths in the matcher dict itself
-                # (GitHub Copilot flat format: bash/powershell keys at this level)
-                for key in ("command", "bash", "powershell"):
+                # (GitHub Copilot flat format: bash/powershell/windows keys at this level)
+                for key in self.HOOK_COMMAND_KEYS:
                     if key in matcher:
                         new_cmd, scripts = self._rewrite_command_for_target(
                             matcher[key], package_path, package_name, target,
                             hook_file_dir=hook_file_dir,
                         )
+                        if scripts:
+                            _log.debug(
+                                "Hook %s/%s: rewrote '%s' key (%d script(s))",
+                                package_name, event_name, key, len(scripts),
+                            )
                         matcher[key] = new_cmd
                         all_scripts.extend(scripts)
 
@@ -243,16 +270,29 @@ class HookIntegrator(BaseIntegrator):
                 for hook in matcher.get("hooks", []):
                     if not isinstance(hook, dict):
                         continue
-                    for key in ("command", "bash", "powershell"):
+                    for key in self.HOOK_COMMAND_KEYS:
                         if key in hook:
                             new_cmd, scripts = self._rewrite_command_for_target(
                                 hook[key], package_path, package_name, target,
                                 hook_file_dir=hook_file_dir,
                             )
+                            if scripts:
+                                _log.debug(
+                                    "Hook %s/%s: rewrote '%s' key (%d script(s))",
+                                    package_name, event_name, key, len(scripts),
+                                )
                             hook[key] = new_cmd
                             all_scripts.extend(scripts)
 
-        return rewritten, all_scripts
+        # De-duplicate by target path to avoid redundant copies when
+        # multiple keys (e.g. command + bash) reference the same script.
+        seen_targets: dict[str, Path] = {}
+        for source, target_rel in all_scripts:
+            if target_rel not in seen_targets:
+                seen_targets[target_rel] = source
+        unique_scripts = [(src, tgt) for tgt, src in seen_targets.items()]
+
+        return rewritten, unique_scripts
 
     def _get_package_name(self, package_info) -> str:
         """Get a short package name for use in file/directory naming.
@@ -545,6 +585,135 @@ class HookIntegrator(BaseIntegrator):
             target_paths=target_paths,
         )
 
+    def integrate_package_hooks_codex(self, package_info, project_root: Path,
+                                      force: bool = False,
+                                      managed_files: set = None,
+                                      diagnostics=None) -> HookIntegrationResult:
+        """Integrate hooks from a package into .codex/hooks.json (Codex target).
+
+        Follows the same merge pattern as Cursor: additive merge with
+        ``_apm_source`` markers for safe cleanup.  Script files are
+        copied to ``.codex/hooks/{package_name}/``.
+
+        Codex hook events: ``SessionStart``, ``PreToolUse``,
+        ``PostToolUse``, ``UserPromptSubmit``, ``Stop``.
+        """
+        codex_dir = project_root / ".codex"
+        if not codex_dir.exists():
+            return HookIntegrationResult(hooks_integrated=0, scripts_copied=0)
+
+        hook_files = self.find_hook_files(package_info.install_path)
+        if not hook_files:
+            return HookIntegrationResult(hooks_integrated=0, scripts_copied=0)
+
+        package_name = self._get_package_name(package_info)
+        hooks_integrated = 0
+        scripts_copied = 0
+        target_paths: List[Path] = []
+
+        hooks_json_path = codex_dir / "hooks.json"
+        hooks_config: Dict = {}
+        if hooks_json_path.exists():
+            try:
+                with open(hooks_json_path, 'r', encoding='utf-8') as f:
+                    hooks_config = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                hooks_config = {}
+
+        if "hooks" not in hooks_config:
+            hooks_config["hooks"] = {}
+
+        for hook_file in hook_files:
+            data = self._parse_hook_json(hook_file)
+            if data is None:
+                continue
+
+            rewritten, scripts = self._rewrite_hooks_data(
+                data, package_info.install_path, package_name, "codex",
+                hook_file_dir=hook_file.parent,
+            )
+
+            hooks = rewritten.get("hooks", {})
+            for event_name, entries in hooks.items():
+                if not isinstance(entries, list):
+                    continue
+                if event_name not in hooks_config["hooks"]:
+                    hooks_config["hooks"][event_name] = []
+
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        entry["_apm_source"] = package_name
+
+                hooks_config["hooks"][event_name].extend(entries)
+
+            hooks_integrated += 1
+
+            for source_file, target_rel in scripts:
+                target_script = project_root / target_rel
+                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
+                    continue
+                target_script.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_file, target_script)
+                scripts_copied += 1
+                target_paths.append(target_script)
+
+        hooks_json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(hooks_json_path, 'w', encoding='utf-8') as f:
+            json.dump(hooks_config, f, indent=2)
+            f.write('\n')
+
+        return HookIntegrationResult(
+            hooks_integrated=hooks_integrated,
+            scripts_copied=scripts_copied,
+            target_paths=target_paths,
+        )
+
+    # ------------------------------------------------------------------
+    # Target-driven API (thin wrappers — HookIntegrator keeps genuine
+    # algorithmic diversity per-target, so we dispatch by target.name)
+    # ------------------------------------------------------------------
+
+    def integrate_hooks_for_target(
+        self,
+        target,
+        package_info,
+        project_root: Path,
+        *,
+        force: bool = False,
+        managed_files: set = None,
+        diagnostics=None,
+    ) -> "HookIntegrationResult":
+        """Integrate hooks for a single *target*.
+
+        Dispatches to the existing per-target methods by ``target.name``
+        because each hook format has genuine algorithmic diversity.
+        """
+        if target.name == "copilot":
+            return self.integrate_package_hooks(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+        if target.name == "claude":
+            return self.integrate_package_hooks_claude(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+        if target.name == "cursor":
+            return self.integrate_package_hooks_cursor(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+        if target.name == "codex":
+            return self.integrate_package_hooks_codex(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+        return HookIntegrationResult(hooks_integrated=0, scripts_copied=0)
+
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict:
         """Remove APM-managed hook files.
@@ -571,6 +740,7 @@ class HookIntegrator(BaseIntegrator):
                     normalized.startswith(".github/hooks/")
                     or normalized.startswith(".claude/hooks/")
                     or normalized.startswith(".cursor/hooks/")
+                    or normalized.startswith(".codex/hooks/")
                 )
                 if not is_hook or ".." in rel_path:
                     continue
@@ -631,6 +801,11 @@ class HookIntegrator(BaseIntegrator):
         # Clean APM entries from .cursor/hooks.json (safe  -- uses _apm_source marker)
         self._clean_apm_entries_from_json(
             project_root / ".cursor" / "hooks.json", stats,
+        )
+
+        # Clean APM entries from .codex/hooks.json (safe  -- uses _apm_source marker)
+        self._clean_apm_entries_from_json(
+            project_root / ".codex" / "hooks.json", stats,
         )
 
         return stats

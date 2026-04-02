@@ -97,3 +97,28 @@ class TestActiveTargets:
     def test_explicit_unknown_returns_empty(self):
         targets = active_targets(self.root, explicit_target="nonexistent")
         assert targets == []
+
+    # -- codex detection --
+
+    def test_only_codex_returns_codex(self):
+        (self.root / ".codex").mkdir()
+        targets = active_targets(self.root)
+        assert [t.name for t in targets] == ["codex"]
+
+    def test_explicit_codex(self):
+        targets = active_targets(self.root, explicit_target="codex")
+        assert [t.name for t in targets] == ["codex"]
+
+    def test_codex_not_detected_when_only_agents_dir_exists(self):
+        """Only .agents/ existing (no .codex/) should NOT detect Codex."""
+        (self.root / ".agents").mkdir()
+        targets = active_targets(self.root)
+        # .agents/ alone doesn't match any target root_dir
+        assert len(targets) == 1
+        assert targets[0].name == "copilot"  # fallback
+
+    def test_all_five_dirs_returns_all_five(self):
+        for d in (".github", ".claude", ".cursor", ".opencode", ".codex"):
+            (self.root / d).mkdir()
+        targets = active_targets(self.root)
+        assert len(targets) == 5

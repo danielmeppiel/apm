@@ -13,7 +13,8 @@ _TARGET_PREFIXES = {
     "claude": [".claude/"],
     "cursor": [".cursor/"],
     "opencode": [".opencode/"],
-    "all": [".github/", ".claude/", ".cursor/", ".opencode/"],
+    "codex": [".codex/", ".agents/"],
+    "all": [".github/", ".claude/", ".cursor/", ".opencode/", ".codex/", ".agents/"],
 }
 
 # Cross-target path equivalences for skills/ and agents/ directories.
@@ -45,6 +46,10 @@ _CROSS_TARGET_MAPS: Dict[str, Dict[str, str]] = {
     "opencode": {
         ".github/skills/": ".opencode/skills/",
         ".github/agents/": ".opencode/agents/",
+    },
+    "codex": {
+        ".github/skills/": ".agents/skills/",
+        ".github/agents/": ".codex/agents/",
     },
 }
 

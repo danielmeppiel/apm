@@ -432,12 +432,13 @@ def _create_plugin_json(config):
         f.write(json.dumps(plugin_data, indent=2) + "\n")
 
 
-def _create_minimal_apm_yml(config, plugin=False):
+def _create_minimal_apm_yml(config, plugin=False, target_path=None):
     """Create minimal apm.yml file with auto-detected metadata.
 
     Args:
         config: dict with name, version, description, author keys.
         plugin: if True, include a devDependencies section.
+        target_path: explicit file path to write (defaults to cwd/apm.yml).
     """
     # Create minimal apm.yml structure
     apm_yml_data = {
@@ -455,4 +456,5 @@ def _create_minimal_apm_yml(config, plugin=False):
 
     # Write apm.yml
     from ..utils.yaml_io import dump_yaml
-    dump_yaml(apm_yml_data, APM_YML_FILENAME)
+    out_path = target_path or APM_YML_FILENAME
+    dump_yaml(apm_yml_data, out_path)

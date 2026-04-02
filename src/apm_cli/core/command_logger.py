@@ -22,6 +22,7 @@ class _ValidationOutcome:
 
     valid: list  # List of (canonical_name, already_present: bool) tuples
     invalid: list  # List of (package_name, reason: str) tuples
+    marketplace_provenance: dict = None  # canonical -> {discovered_via, marketplace_plugin_name}
 
     @property
     def all_failed(self) -> bool:

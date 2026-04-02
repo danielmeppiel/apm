@@ -1,8 +1,8 @@
 """Target detection for auto-selecting compilation and integration targets.
 
 This module implements the auto-detection pattern for determining which agent
-targets (Copilot, Claude, Cursor, OpenCode) should be used based on existing
-project structure and configuration.
+targets (Copilot, Claude, Cursor, OpenCode, Codex) should be used based on
+existing project structure and configuration.
 
 Detection priority (highest to lowest):
 1. Explicit --target flag (always wins)
@@ -12,6 +12,7 @@ Detection priority (highest to lowest):
    - .claude/ only -> claude
    - .cursor/ only -> cursor
    - .opencode/ only -> opencode
+   - .codex/ only -> codex
    - Multiple target folders -> all
    - None exist -> minimal (AGENTS.md only, no folder integration)
 
@@ -23,10 +24,10 @@ from pathlib import Path
 from typing import Literal, Optional, Tuple
 
 # Valid target values (internal canonical form)
-TargetType = Literal["vscode", "claude", "cursor", "opencode", "all", "minimal"]
+TargetType = Literal["vscode", "claude", "cursor", "opencode", "codex", "all", "minimal"]
 
 # User-facing target values (includes aliases accepted by CLI)
-UserTargetType = Literal["copilot", "vscode", "agents", "claude", "cursor", "opencode", "all", "minimal"]
+UserTargetType = Literal["copilot", "vscode", "agents", "claude", "cursor", "opencode", "codex", "all", "minimal"]
 
 
 def detect_target(
@@ -56,6 +57,8 @@ def detect_target(
             return "cursor", "explicit --target flag"
         elif explicit_target == "opencode":
             return "opencode", "explicit --target flag"
+        elif explicit_target == "codex":
+            return "codex", "explicit --target flag"
         elif explicit_target == "all":
             return "all", "explicit --target flag"
     
@@ -69,6 +72,8 @@ def detect_target(
             return "cursor", "apm.yml target"
         elif config_target == "opencode":
             return "opencode", "apm.yml target"
+        elif config_target == "codex":
+            return "codex", "apm.yml target"
         elif config_target == "all":
             return "all", "apm.yml target"
     
@@ -77,6 +82,7 @@ def detect_target(
     claude_exists = (project_root / ".claude").exists()
     cursor_exists = (project_root / ".cursor").is_dir()
     opencode_exists = (project_root / ".opencode").is_dir()
+    codex_exists = (project_root / ".codex").is_dir()
     detected = []
     if github_exists:
         detected.append(".github/")
@@ -86,6 +92,8 @@ def detect_target(
         detected.append(".cursor/")
     if opencode_exists:
         detected.append(".opencode/")
+    if codex_exists:
+        detected.append(".codex/")
 
     if len(detected) >= 2:
         return "all", f"detected {' and '.join(detected)} folders"
@@ -97,9 +105,11 @@ def detect_target(
         return "cursor", "detected .cursor/ folder"
     elif opencode_exists:
         return "opencode", "detected .opencode/ folder"
+    elif codex_exists:
+        return "codex", "detected .codex/ folder"
     else:
         # No known target folders exist - minimal output
-        return "minimal", "no .github/, .claude/, .cursor/, or .opencode/ folder found"
+        return "minimal", "no .github/, .claude/, .cursor/, .opencode/, or .codex/ folder found"
 
 
 def should_integrate_vscode(target: TargetType) -> bool:
@@ -150,10 +160,22 @@ def should_integrate_cursor(target: TargetType) -> bool:
     return target in ("cursor", "all")
 
 
+def should_integrate_codex(target: TargetType) -> bool:
+    """Check if Codex CLI integration should be performed.
+
+    Args:
+        target: The detected or configured target
+
+    Returns:
+        bool: True if Codex integration (agents, skills, hooks) should run
+    """
+    return target in ("codex", "all")
+
+
 def should_compile_agents_md(target: TargetType) -> bool:
     """Check if AGENTS.md should be compiled.
     
-    AGENTS.md is generated for vscode, all, and minimal targets.
+    AGENTS.md is generated for vscode, codex, all, and minimal targets.
     It's the universal format that works everywhere.
     
     Args:
@@ -162,7 +184,7 @@ def should_compile_agents_md(target: TargetType) -> bool:
     Returns:
         bool: True if AGENTS.md should be generated
     """
-    return target in ("vscode", "opencode", "all", "minimal")
+    return target in ("vscode", "opencode", "codex", "all", "minimal")
 
 
 def should_compile_claude_md(target: TargetType) -> bool:
@@ -195,7 +217,8 @@ def get_target_description(target: UserTargetType) -> str:
         "claude": "CLAUDE.md + .claude/commands/ + .claude/agents/ + .claude/skills/",
         "cursor": ".cursor/agents/ + .cursor/skills/ + .cursor/rules/",
         "opencode": "AGENTS.md + .opencode/agents/ + .opencode/commands/ + .opencode/skills/",
-        "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/ + .cursor/ + .opencode/",
+        "codex": "AGENTS.md + .agents/skills/ + .codex/agents/ + .codex/hooks.json",
+        "all": "AGENTS.md + CLAUDE.md + .github/ + .claude/ + .cursor/ + .opencode/ + .codex/ + .agents/",
         "minimal": "AGENTS.md only (create .github/ or .claude/ for full integration)",
     }
     return descriptions.get(normalized, "unknown target")
