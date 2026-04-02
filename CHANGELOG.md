@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `apm install -g` now deploys files to the correct user-scope directories for all integrators; fixes OpenCode deploying to `.opencode/` instead of `.config/opencode/` and similar path mismatches for Copilot (#537, #530)
+
 ## [0.8.9] - 2026-03-31
 
 ### Fixed
