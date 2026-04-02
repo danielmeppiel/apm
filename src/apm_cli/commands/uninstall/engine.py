@@ -224,8 +224,12 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
     return removed, actual_orphans
 
 
-def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger):
-    """Remove deployed files and re-integrate from remaining packages."""
+def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger, user_scope=False):
+    """Remove deployed files and re-integrate from remaining packages.
+
+    When *user_scope* is ``True``, targets are resolved for user-level
+    deployment so cleanup and re-integration use the correct paths.
+    """
     from ...integration.base_integrator import BaseIntegrator
     from ...models.apm_package import PackageInfo, validate_apm_package
     from ...integration.prompt_integrator import PromptIntegrator
@@ -234,10 +238,19 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     from ...integration.command_integrator import CommandIntegrator
     from ...integration.hook_integrator import HookIntegrator
     from ...integration.instruction_integrator import InstructionIntegrator
-    from ...integration.targets import KNOWN_TARGETS, active_targets
+    from ...integration.targets import resolve_targets
+
+    # Resolve targets once -- used for both Phase 1 removal and Phase 2 re-integration.
+    config_target = apm_package.target
+    _explicit = config_target or None
+    _resolved_targets = resolve_targets(project_root, user_scope=user_scope, explicit_target=_explicit)
 
     sync_managed = all_deployed_files if all_deployed_files else None
     if sync_managed is not None:
+        # For removal, partition against both resolved AND unresolved targets
+        # so legacy deployed_files (from older buggy user-scope installs that
+        # wrote to .github/ instead of .copilot/) are still bucketed and
+        # cleaned up during uninstall.
         _buckets = BaseIntegrator.partition_managed_files(sync_managed)
     else:
         _buckets = None
@@ -258,7 +271,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
         "instructions": (_instr_int, "instructions"),
     }
 
-    for _target in KNOWN_TARGETS.values():
+    for _target in _resolved_targets:
         for _prim_name, _mapping in _target.primitives.items():
             if _prim_name in ("skills", "hooks"):
                 continue
@@ -285,7 +298,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     # Skills (multi-target, handled by SkillIntegrator)
     # Check both target root_dir and deploy_root for skill directories
     _skill_dirs_exist = False
-    for t in KNOWN_TARGETS.values():
+    for t in _resolved_targets:
         if t.supports("skills"):
             sm = t.primitives["skills"]
             er = sm.deploy_root or t.root_dir
@@ -295,7 +308,8 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     if _skill_dirs_exist:
         integrator = SkillIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
-                                             managed_files=_buckets["skills"] if _buckets else None)
+                                             managed_files=_buckets["skills"] if _buckets else None,
+                                             targets=_resolved_targets)
         counts["skills"] = result.get("files_removed", 0)
 
     # Hooks (multi-target, sync_integration handles all targets)
@@ -306,9 +320,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
 
 
     # Phase 2: Re-integrate from remaining installed packages
-    config_target = apm_package.target
-    _explicit = config_target or None
-    _targets = active_targets(project_root, explicit_target=_explicit)
+    _targets = _resolved_targets
 
     prompt_integrator = PromptIntegrator()
     agent_integrator = AgentIntegrator()
@@ -358,7 +370,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                         getattr(_integrator, _method)(
                             _target, pkg_info, project_root,
                         )
-            skill_integrator.integrate_package_skill(pkg_info, project_root)
+            skill_integrator.integrate_package_skill(pkg_info, project_root, targets=_targets)
         except Exception:
             pkg_id = dep_ref.get_identity() if hasattr(dep_ref, "get_identity") else str(dep_ref)
             logger.warning(f"Best-effort re-integration skipped for {pkg_id}")

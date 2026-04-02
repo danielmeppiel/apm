@@ -3093,3 +3093,246 @@ class TestCodexSkillDeployRoot:
         assert len(deployed) == 1
         assert ".github" in str(deployed[0])
         assert (self.root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+
+
+class TestSyncIntegrationDynamicPrefixes:
+    """Verify sync_integration derives prefixes dynamically from targets.
+
+    Issue #539: sync_integration() used hardcoded prefixes that missed
+    user-scope paths like .copilot/skills/ and .config/opencode/skills/.
+    """
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_manifest_removal_with_copilot_user_scope(self):
+        """Manifest-based removal handles .copilot/skills/ paths."""
+        from dataclasses import replace as dc_replace
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        copilot = KNOWN_TARGETS["copilot"]
+        resolved = dc_replace(copilot, root_dir=".copilot")
+
+        skills_dir = self.project_root / ".copilot" / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("# Skill")
+
+        managed = {".copilot/skills/my-skill"}
+        apm_package = Mock()
+        result = self.integrator.sync_integration(
+            apm_package, self.project_root,
+            managed_files=managed, targets=[resolved],
+        )
+
+        assert result["files_removed"] == 1
+        assert not skills_dir.exists()
+
+    def test_manifest_removal_with_config_opencode(self):
+        """Manifest-based removal handles .config/opencode/skills/ paths."""
+        from dataclasses import replace as dc_replace
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        resolved = dc_replace(opencode, root_dir=".config/opencode")
+
+        skills_dir = self.project_root / ".config" / "opencode" / "skills" / "test-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("# Skill")
+
+        managed = {".config/opencode/skills/test-skill"}
+        apm_package = Mock()
+        result = self.integrator.sync_integration(
+            apm_package, self.project_root,
+            managed_files=managed, targets=[resolved],
+        )
+
+        assert result["files_removed"] == 1
+        assert not skills_dir.exists()
+
+    def test_manifest_removal_preserves_unmanaged(self):
+        """Managed-file removal does not touch unmanaged skill directories."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        copilot = KNOWN_TARGETS["copilot"]
+
+        skills_dir = self.project_root / ".github" / "skills"
+        (skills_dir / "managed-skill").mkdir(parents=True)
+        (skills_dir / "managed-skill" / "SKILL.md").write_text("# Managed")
+        (skills_dir / "user-skill").mkdir(parents=True)
+        (skills_dir / "user-skill" / "SKILL.md").write_text("# User")
+
+        managed = {".github/skills/managed-skill"}
+        apm_package = Mock()
+        result = self.integrator.sync_integration(
+            apm_package, self.project_root,
+            managed_files=managed, targets=[copilot],
+        )
+
+        assert result["files_removed"] == 1
+        assert not (skills_dir / "managed-skill").exists()
+        assert (skills_dir / "user-skill").exists()
+
+    def test_backward_compat_no_targets_uses_known_targets(self):
+        """Without targets param, falls back to KNOWN_TARGETS (project scope)."""
+        skills_dir = self.project_root / ".github" / "skills" / "orphan-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("# Orphan")
+
+        managed = {".github/skills/orphan-skill"}
+        apm_package = Mock()
+        result = self.integrator.sync_integration(
+            apm_package, self.project_root,
+            managed_files=managed,
+        )
+
+        assert result["files_removed"] == 1
+
+    def test_legacy_cleanup_uses_target_dirs(self):
+        """Legacy orphan cleanup iterates target skill dirs dynamically."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        copilot = KNOWN_TARGETS["copilot"]
+
+        # Create a skill dir that's NOT in installed deps (orphan)
+        skills_dir = self.project_root / ".github" / "skills" / "orphan"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("# Orphan")
+
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+
+        result = self.integrator.sync_integration(
+            apm_package, self.project_root,
+            managed_files=None, targets=[copilot],
+        )
+
+        assert result["files_removed"] == 1
+        assert not skills_dir.exists()
+
+    def test_agents_skills_cleanup_requires_codex_dir(self):
+        """Cross-tool .agents/skills/ only cleaned when .codex/ exists."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        codex = KNOWN_TARGETS["codex"]
+
+        agents_skills = self.project_root / ".agents" / "skills" / "orphan"
+        agents_skills.mkdir(parents=True)
+        (agents_skills / "SKILL.md").write_text("# Orphan")
+
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = []
+
+        # Without .codex/ dir, should NOT clean .agents/skills/
+        result = self.integrator.sync_integration(
+            apm_package, self.project_root,
+            managed_files=None, targets=[codex],
+        )
+        assert result["files_removed"] == 0
+        assert agents_skills.exists()
+
+        # With .codex/ dir, should clean
+        (self.project_root / ".codex").mkdir()
+        result = self.integrator.sync_integration(
+            apm_package, self.project_root,
+            managed_files=None, targets=[codex],
+        )
+        assert result["files_removed"] == 1
+        assert not agents_skills.exists()
+
+
+class TestUninstallPhase2SkillTargets:
+    """Verify that skill re-integration during uninstall uses resolved targets.
+
+    Issue #538: copy_skill_to_target() and uninstall Phase 2 must respect
+    scope-resolved targets so user-scope re-integration deploys to the
+    correct directories.
+    """
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_copy_skill_to_target_respects_resolved_targets(self):
+        """copy_skill_to_target deploys to resolved root_dir from targets."""
+        from dataclasses import replace as dc_replace
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        # Create a resolved copilot target (user scope: .copilot instead of .github)
+        copilot = KNOWN_TARGETS["copilot"]
+        resolved = dc_replace(copilot, root_dir=".copilot")
+        (self.project_root / ".copilot").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pi = Mock()
+        pi.install_path = skill_source
+        pi.package = Mock()
+        pi.package.name = "my-skill"
+        pi.package_type = PackageType.CLAUDE_SKILL
+
+        deployed = copy_skill_to_target(
+            pi, skill_source, self.project_root, targets=[resolved],
+        )
+
+        assert len(deployed) == 1
+        assert ".copilot" in str(deployed[0])
+        assert (self.project_root / ".copilot" / "skills" / "my-skill" / "SKILL.md").exists()
+        assert not (self.project_root / ".github" / "skills").exists()
+
+    def test_copy_skill_to_target_auto_create_guard(self):
+        """copy_skill_to_target skips auto_create=False targets with no dir."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        assert opencode.auto_create is False
+        # Do NOT create .opencode/
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pi = Mock()
+        pi.install_path = skill_source
+        pi.package = Mock()
+        pi.package.name = "my-skill"
+        pi.package_type = PackageType.CLAUDE_SKILL
+
+        deployed = copy_skill_to_target(
+            pi, skill_source, self.project_root, targets=[opencode],
+        )
+
+        assert len(deployed) == 0
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    def test_copy_skill_to_target_fallback_without_targets(self):
+        """copy_skill_to_target falls back to active_targets when no targets given."""
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pi = Mock()
+        pi.install_path = skill_source
+        pi.package = Mock()
+        pi.package.name = "my-skill"
+        pi.package_type = PackageType.CLAUDE_SKILL
+
+        # No targets param -- should use active_targets fallback (copilot default)
+        deployed = copy_skill_to_target(
+            pi, skill_source, self.project_root,
+        )
+
+        assert len(deployed) == 1
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
