@@ -247,11 +247,21 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
 
     sync_managed = all_deployed_files if all_deployed_files else None
     if sync_managed is not None:
-        # For removal, partition against both resolved AND unresolved targets
-        # so legacy deployed_files (from older buggy user-scope installs that
-        # wrote to .github/ instead of .copilot/) are still bucketed and
-        # cleaned up during uninstall.
+        # Partition against default KNOWN_TARGETS for legacy/project-scope
+        # paths, then merge with resolved targets for user-scope paths.
+        # This ensures both .github/ (legacy) and .copilot/ (resolved)
+        # prefixes are recognized during uninstall cleanup.
         _buckets = BaseIntegrator.partition_managed_files(sync_managed)
+        if user_scope and _resolved_targets:
+            _scope_buckets = BaseIntegrator.partition_managed_files(
+                sync_managed, targets=_resolved_targets
+            )
+            for _bname, _bpaths in _scope_buckets.items():
+                _existing = _buckets.get(_bname)
+                if _existing is not None:
+                    _existing.update(_bpaths)
+                else:
+                    _buckets[_bname] = _bpaths
     else:
         _buckets = None
 
