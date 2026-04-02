@@ -611,12 +611,11 @@ class SkillIntegrator(BaseIntegrator):
         owned_by = self._build_skill_ownership_map(project_root)
         count = 0
         all_deployed: list[Path] = []
+        primary_assigned = False
 
         for idx, target in enumerate(targets):
             if not target.supports("skills"):
                 continue
-
-            is_primary = (idx == 0)  # first active target owns diagnostics
             skills_mapping = target.primitives["skills"]
             effective_root = skills_mapping.deploy_root or target.effective_root(user_scope=user_scope)
 
@@ -624,6 +623,10 @@ class SkillIntegrator(BaseIntegrator):
             target_root_dir = project_root / target.effective_root(user_scope=user_scope)
             if not target.auto_create and not target_root_dir.is_dir():
                 continue
+
+            is_primary = not primary_assigned
+            if is_primary:
+                primary_assigned = True
 
             target_skills_root = project_root / effective_root / "skills"
             target_skills_root.mkdir(parents=True, exist_ok=True)
@@ -721,12 +724,12 @@ class SkillIntegrator(BaseIntegrator):
         owned_by = self._build_skill_ownership_map(project_root)
         sub_skills_dir = package_path / ".apm" / "skills"
         primary_effective_root = None
+        primary_assigned = False
 
         for idx, target in enumerate(targets):
             if not target.supports("skills"):
                 continue
 
-            is_primary = (idx == 0)  # first active target owns diagnostics
             skills_mapping = target.primitives["skills"]
             effective_root = skills_mapping.deploy_root or target.effective_root(user_scope=user_scope)
 
@@ -737,6 +740,10 @@ class SkillIntegrator(BaseIntegrator):
 
             if primary_effective_root is None:
                 primary_effective_root = effective_root
+
+            is_primary = not primary_assigned
+            if is_primary:
+                primary_assigned = True
 
             target_skill_dir = project_root / effective_root / "skills" / skill_name
 
@@ -769,6 +776,19 @@ class SkillIntegrator(BaseIntegrator):
                 logger=logger if is_primary else None,
             )
             all_target_paths.extend(sub_deployed)
+
+        if not all_target_paths:
+            # Every target was skipped (auto_create guard)
+            return SkillIntegrationResult(
+                skill_created=False,
+                skill_updated=False,
+                skill_skipped=True,
+                skill_path=None,
+                references_copied=0,
+                links_resolved=0,
+                sub_skills_promoted=0,
+                target_paths=[],
+            )
 
         # Count unique sub-skills from primary target only
         primary_root = project_root / (primary_effective_root or ".github") / "skills"

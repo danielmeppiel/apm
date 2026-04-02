@@ -394,7 +394,7 @@ class TestSkillIntegrator:
         assert virtual_dep_ref.is_virtual  # Sanity check
         assert virtual_dep_ref.is_virtual_subdirectory()  # This is a subdirectory, not file
         
-        # Has SKILL.md → CLAUDE_SKILL type
+        # Has SKILL.md -> CLAUDE_SKILL type
         package_info = self._create_package_info(
             install_path=package_dir,
             name="mcp-builder",
@@ -506,7 +506,7 @@ metadata:
     def test_sync_integration_removes_orphaned_subdirectory_skill(self):
         """Test that sync removes skills for uninstalled subdirectory packages.
         
-        This tests the full install → uninstall flow for virtual subdirectory packages
+        This tests the full install -> uninstall flow for virtual subdirectory packages
         like ComposioHQ/awesome-claude-skills/mcp-builder.
         """
         # Simulate an installed skill from a subdirectory package
@@ -1882,7 +1882,7 @@ Detailed instructions here.
         (claude_skill / "SKILL.md").write_text("# Installed Skill\n")
         
         # Mock apm_package with this dependency installed
-        # "owner/installed-skill" → skill dir name "installed-skill"
+        # "owner/installed-skill" -> skill dir name "installed-skill"
         dep_ref = DependencyReference.parse("owner/installed-skill")
         apm_package = Mock()
         apm_package.get_apm_dependencies.return_value = [dep_ref]
@@ -2481,7 +2481,7 @@ class TestSubSkillContentSkipAndCollisionProtection:
         target = self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md"
         assert target.exists()
 
-        # Second install — content identical; copytree/rmtree should NOT be called
+        # Second install -- content identical; copytree/rmtree should NOT be called
         from unittest.mock import patch
         with patch("shutil.rmtree") as mock_rm, patch("shutil.copytree") as mock_cp:
             self.integrator.integrate_package_skill(pkg_info, self.project_root)
@@ -2503,7 +2503,7 @@ class TestSubSkillContentSkipAndCollisionProtection:
         target = self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md"
         target.write_text("# Modified by user")
 
-        # Second install — content differs
+        # Second install -- content differs
         self.integrator.integrate_package_skill(pkg_info, self.project_root)
 
         # Should be overwritten with original content
@@ -2522,7 +2522,7 @@ class TestSubSkillContentSkipAndCollisionProtection:
         package_dir = self._create_package_with_sub_skills("pkg", sub_skills=["my-skill"])
         pkg_info = self._create_package_info(name="pkg", install_path=package_dir)
 
-        # managed_files is set but does NOT contain this skill → user-authored
+        # managed_files is set but does NOT contain this skill -> user-authored
         managed_files = set()
 
         from apm_cli.utils.diagnostics import DiagnosticCollector
@@ -2575,7 +2575,7 @@ class TestSubSkillContentSkipAndCollisionProtection:
         package_dir = self._create_package_with_sub_skills("my-pkg", sub_skills=["shared-skill"])
         pkg_info = self._create_package_info(name="my-pkg", install_path=package_dir)
 
-        # Managed files includes this skill → it's APM-managed
+        # Managed files includes this skill -> it's APM-managed
         managed_files = {".github/skills/shared-skill"}
 
         from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_OVERWRITE
@@ -2619,7 +2619,7 @@ class TestSubSkillContentSkipAndCollisionProtection:
                 diagnostics=diag, managed_files=managed_files, force=False,
             )
 
-        # Self-overwrite — no diagnostics should be recorded
+        # Self-overwrite -- no diagnostics should be recorded
         assert not diag.has_diagnostics
 
         # Content should be updated
@@ -2702,7 +2702,7 @@ class TestCursorSkillIntegration:
                 )
         return package_dir
 
-    # ========== Test: Opt-in guard — no .cursor/ means no deployment ==========
+    # ========== Test: Opt-in guard -- no .cursor/ means no deployment ==========
 
     def test_no_cursor_deployment_when_cursor_dir_missing(self):
         """Skills should NOT deploy to .cursor/skills/ when .cursor/ doesn't exist."""
@@ -3144,7 +3144,7 @@ class TestUserScopeSkillIntegration:
             package_type=package_type,
         )
 
-    # ========== integrate_package_skill — user_scope path selection ==========
+    # ========== integrate_package_skill -- user_scope path selection ==========
 
     def test_user_scope_deploys_to_user_root_dir(self):
         """With user_scope=True, skills deploy to user_root_dir (.config/opencode)."""
@@ -3190,7 +3190,7 @@ class TestUserScopeSkillIntegration:
         expected = self.project_root / ".opencode" / "skills" / "my-skill" / "SKILL.md"
         assert expected.exists()
 
-    # ========== auto_create guard — no deployment when dir missing ==========
+    # ========== auto_create guard -- no deployment when dir missing ==========
 
     def test_auto_create_false_skips_when_dir_missing(self):
         """auto_create=False targets are skipped when their root dir doesn't exist."""
@@ -3209,7 +3209,8 @@ class TestUserScopeSkillIntegration:
             pkg, self.project_root, targets=[opencode], user_scope=False,
         )
 
-        # Skipped entirely — nothing created
+        # Skipped entirely -- nothing created
+        assert result.skill_skipped is True
         assert len(result.target_paths) == 0
         assert not (self.project_root / ".opencode" / "skills").exists()
 
@@ -3230,6 +3231,7 @@ class TestUserScopeSkillIntegration:
             pkg, self.project_root, targets=[opencode], user_scope=True,
         )
 
+        assert result.skill_skipped is True
         assert len(result.target_paths) == 0
         assert not (self.project_root / ".config" / "opencode" / "skills").exists()
 
@@ -3253,7 +3255,7 @@ class TestUserScopeSkillIntegration:
         assert result.skill_created is True
         assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
 
-    # ========== _promote_sub_skills_standalone — user_scope ==========
+    # ========== _promote_sub_skills_standalone -- user_scope ==========
 
     def test_sub_skill_promotion_uses_user_root(self):
         """Sub-skills promoted at user_scope use user_root_dir."""
@@ -3304,7 +3306,7 @@ class TestUserScopeSkillIntegration:
         assert len(result.target_paths) == 0
         assert not (self.project_root / ".opencode" / "skills").exists()
 
-    # ========== copy_skill_to_target — user_scope ==========
+    # ========== copy_skill_to_target -- user_scope ==========
 
     def test_copy_skill_to_target_user_scope(self):
         """copy_skill_to_target with user_scope=True uses user_root_dir."""
@@ -3358,7 +3360,7 @@ class TestUserScopeSkillIntegration:
         assert len(deployed) == 0
         assert not (self.project_root / ".opencode" / "skills").exists()
 
-    # ========== primary_root — dynamic, not hardcoded .github ==========
+    # ========== primary_root -- dynamic, not hardcoded .github ==========
 
     def test_primary_root_uses_first_active_target(self):
         """Sub-skill counting uses effective root from first active target, not hardcoded .github."""
@@ -3379,10 +3381,10 @@ class TestUserScopeSkillIntegration:
             pkg, self.project_root, targets=[opencode], user_scope=True,
         )
 
-        # Sub-skill should be counted — it's under the primary target's root
+        # Sub-skill should be counted -- it's under the primary target's root
         assert result.sub_skills_promoted == 1
 
-    # ========== backward compatibility — user_scope default ==========
+    # ========== backward compatibility -- user_scope default ==========
 
     def test_user_scope_defaults_to_false(self):
         """Calling without user_scope uses project-scope (root_dir)."""
@@ -3395,7 +3397,7 @@ class TestUserScopeSkillIntegration:
         (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
 
         pkg = self._create_package_info(name="my-skill", install_path=skill_source)
-        # Call WITHOUT user_scope — should work exactly as before
+        # Call WITHOUT user_scope -- should work exactly as before
         result = self.integrator.integrate_package_skill(
             pkg, self.project_root, targets=[copilot],
         )
