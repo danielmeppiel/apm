@@ -22,6 +22,7 @@ from apm_cli.commands.deps import deps
 from apm_cli.commands.init import init
 from apm_cli.commands.install import install
 from apm_cli.commands.list_cmd import list as list_cmd
+from apm_cli.commands.marketplace import marketplace, search as marketplace_search
 from apm_cli.commands.mcp import mcp
 from apm_cli.commands.pack import pack_cmd, unpack_cmd
 from apm_cli.commands.prune import prune
@@ -69,6 +70,8 @@ cli.add_command(list_cmd, name="list")
 cli.add_command(config)
 cli.add_command(runtime)
 cli.add_command(mcp)
+cli.add_command(marketplace)
+cli.add_command(marketplace_search, name="search")
 
 
 def _configure_encoding() -> None:

@@ -69,6 +69,8 @@ export default defineConfig({
 						{ label: 'Pack & Distribute', slug: 'guides/pack-distribute' },
 						{ label: 'Private Packages', slug: 'guides/private-packages' },
 						{ label: 'Org-Wide Packages', slug: 'guides/org-packages' },
+						{ label: 'Marketplaces', slug: 'guides/marketplaces' },
+						{ label: 'CI Policy Enforcement', slug: 'guides/ci-policy-setup' },
 						{ label: 'Agent Workflows (Experimental)', slug: 'guides/agent-workflows' },
 					],
 				},
@@ -77,6 +79,7 @@ export default defineConfig({
 					items: [
 						{ label: 'APM for Teams', slug: 'enterprise/teams' },
 						{ label: 'Governance & Compliance', slug: 'enterprise/governance' },
+						{ label: 'Policy Reference', slug: 'enterprise/policy-reference' },
 						{ label: 'Security Model', slug: 'enterprise/security' },
 						{ label: 'Adoption Playbook', slug: 'enterprise/adoption-playbook' },
 						{ label: 'Making the Case', slug: 'enterprise/making-the-case' },

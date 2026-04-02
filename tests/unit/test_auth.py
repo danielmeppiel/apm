@@ -1,6 +1,8 @@
 """Unit tests for AuthResolver, HostInfo, and AuthContext."""
 
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
@@ -133,6 +135,25 @@ class TestResolve:
                 ctx1 = resolver.resolve("github.com", org="microsoft")
                 ctx2 = resolver.resolve("github.com", org="microsoft")
                 assert ctx1 is ctx2
+
+    def test_caching_is_singleflight_under_concurrency(self):
+        """Concurrent resolve() calls for the same key should populate cache once."""
+        resolver = AuthResolver()
+
+        def _slow_resolve_token(host_info, org):
+            time.sleep(0.05)
+            return ("cred-token", "git-credential-fill")
+
+        with patch.object(AuthResolver, "_resolve_token", side_effect=_slow_resolve_token) as mock_resolve:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                futures = [
+                    pool.submit(resolver.resolve, "github.com", "microsoft")
+                    for _ in range(8)
+                ]
+                contexts = [f.result() for f in futures]
+
+        assert mock_resolve.call_count == 1
+        assert all(ctx is contexts[0] for ctx in contexts)
 
     def test_different_orgs_different_cache(self):
         """Different orgs get different cache entries."""

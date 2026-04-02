@@ -247,18 +247,21 @@ def copy_skill_to_target(
     package_info,
     source_path: Path,
     target_base: Path,
+    targets=None,
 ) -> list[Path]:
-    """Copy skill directory to .github/skills/ and optionally .claude/skills/ and .cursor/skills/.
+    """Copy skill directory to all active target skills/ directories.
     
     This is a standalone function for direct skill copy operations.
     It handles:
     - Package type routing via should_install_skill()
     - Skill name validation/normalization
     - Directory structure preservation
-    - Compatibility copy to .claude/skills/ when .claude/ exists (T7)
-    - Compatibility copy to .cursor/skills/ when .cursor/ exists
+    - Deployment to every active target that supports skills
     
-    Source SKILL.md is copied verbatim  -- no metadata injection.
+    When *targets* is provided, only those targets are used.
+    Otherwise falls back to ``active_targets()``.
+    
+    Source SKILL.md is copied verbatim -- no metadata injection.
     
     Copies:
     - SKILL.md (required)
@@ -271,6 +274,7 @@ def copy_skill_to_target(
         package_info: PackageInfo object with package metadata
         source_path: Path to skill in apm_modules/
         target_base: Usually project root
+        targets: Optional explicit list of TargetProfile objects.
         
     Returns:
         List of all deployed skill directory paths (empty if skipped).
@@ -296,27 +300,16 @@ def copy_skill_to_target(
     
     deployed: list[Path] = []
 
-    # === Primary target: .github/skills/ ===
-    github_skill_dir = target_base / ".github" / "skills" / skill_name
-    
-    # Create .github/skills/ if it doesn't exist
-    github_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-    
-    # If skill already exists, remove it for update
-    if github_skill_dir.exists():
-        shutil.rmtree(github_skill_dir)
-    
-    # Copy the entire skill folder preserving structure
-    # This copies SKILL.md, scripts/, references/, assets/, etc.
-    shutil.copytree(source_path, github_skill_dir)
-    deployed.append(github_skill_dir)
-    
-    # === Opt-in targets: only deploy when target root already exists ===
-    for target_root in (".claude", ".cursor", ".opencode"):
-        target_dir = target_base / target_root
-        if not (target_dir.exists() and target_dir.is_dir()):
+    # Deploy to all active targets that support skills.
+    if targets is None:
+        from apm_cli.integration.targets import active_targets
+        targets = active_targets(target_base)
+    for target in targets:
+        if not target.supports("skills"):
             continue
-        skill_dir = target_dir / "skills" / skill_name
+        skills_mapping = target.primitives["skills"]
+        effective_root = skills_mapping.deploy_root or target.root_dir
+        skill_dir = target_base / effective_root / "skills" / skill_name
         skill_dir.parent.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists():
             shutil.rmtree(skill_dir)
@@ -581,17 +574,19 @@ class SkillIntegrator(BaseIntegrator):
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path, diagnostics=None,
         managed_files=None, force: bool = False, logger=None,
+        targets=None,
     ) -> tuple[int, list[Path]]:
         """Promote sub-skills from a package that is NOT itself a skill.
 
         Packages typed as INSTRUCTIONS may still ship sub-skills under
-        ``.apm/skills/``.  This method promotes them to ``.github/skills/``
-        (and ``.claude/skills/`` when present) without creating a top-level
-        skill entry for the parent package.
+        ``.apm/skills/``.  This method promotes them to all active targets
+        that support skills, without creating a top-level skill entry for
+        the parent package.
 
         Args:
             package_info: PackageInfo object with package metadata.
             project_root: Root directory of the project.
+            targets: Optional explicit list of TargetProfile objects.
 
         Returns:
             tuple[int, list[Path]]: (count of promoted sub-skills, list of deployed dirs)
@@ -601,65 +596,56 @@ class SkillIntegrator(BaseIntegrator):
         if not sub_skills_dir.is_dir():
             return 0, []
 
+        if targets is None:
+            from apm_cli.integration.targets import active_targets
+            targets = active_targets(project_root)
+
         parent_name = package_path.name
-        github_skills_root = project_root / ".github" / "skills"
-        github_skills_root.mkdir(parents=True, exist_ok=True)
         owned_by = self._build_skill_ownership_map(project_root)
-        count, deployed = self._promote_sub_skills(
-            sub_skills_dir, github_skills_root, parent_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force, project_root=project_root
-        )
-        all_deployed = list(deployed)
+        count = 0
+        all_deployed: list[Path] = []
 
-        # Also promote into .claude/skills/ when .claude/ exists
-        claude_dir = project_root / ".claude"
-        if claude_dir.exists() and claude_dir.is_dir():
-            claude_skills_root = claude_dir / "skills"
-            _, claude_deployed = self._promote_sub_skills(
-                sub_skills_dir, claude_skills_root, parent_name, warn=False, project_root=project_root
-            )
-            all_deployed.extend(claude_deployed)
+        for idx, target in enumerate(targets):
+            if not target.supports("skills"):
+                continue
 
-        # Also promote into .cursor/skills/ when .cursor/ exists
-        cursor_dir = project_root / ".cursor"
-        if cursor_dir.exists() and cursor_dir.is_dir():
-            cursor_skills_root = cursor_dir / "skills"
-            _, cursor_deployed = self._promote_sub_skills(
-                sub_skills_dir, cursor_skills_root, parent_name, warn=False, project_root=project_root
-            )
-            all_deployed.extend(cursor_deployed)
+            is_primary = (idx == 0)  # first active target owns diagnostics
+            skills_mapping = target.primitives["skills"]
+            effective_root = skills_mapping.deploy_root or target.root_dir
+            target_skills_root = project_root / effective_root / "skills"
+            target_skills_root.mkdir(parents=True, exist_ok=True)
 
-        # Also promote into .opencode/skills/ when .opencode/ exists
-        opencode_dir = project_root / ".opencode"
-        if opencode_dir.exists() and opencode_dir.is_dir():
-            opencode_skills_root = opencode_dir / "skills"
-            _, opencode_deployed = self._promote_sub_skills(
-                sub_skills_dir, opencode_skills_root, parent_name, warn=False, project_root=project_root
+            n, deployed = self._promote_sub_skills(
+                sub_skills_dir, target_skills_root, parent_name,
+                warn=is_primary,
+                owned_by=owned_by if is_primary else None,
+                diagnostics=diagnostics if is_primary else None,
+                managed_files=managed_files if is_primary else None,
+                force=force,
+                project_root=project_root,
             )
-            all_deployed.extend(opencode_deployed)
+            if is_primary:
+                count = n
+            all_deployed.extend(deployed)
 
         return count, all_deployed
 
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path,
         diagnostics=None, managed_files=None, force: bool = False,
-        logger=None,
+        logger=None, targets=None,
     ) -> SkillIntegrationResult:
-        """Copy a native Skill (with existing SKILL.md) to .github/skills/ and optionally .claude/skills/ and .cursor/skills/.
+        """Copy a native Skill (with existing SKILL.md) to all active targets.
         
         For packages that already have a SKILL.md at their root (like those from
-        awesome-claude-skills), we copy the entire skill folder rather than 
-        regenerating from .apm/ primitives.
+        awesome-claude-skills), we copy the entire skill folder to every active
+        target that supports skills (driven by ``active_targets()``).
         
-        The skill folder name is the source folder name (e.g., `mcp-builder`),
+        The skill folder name is the source folder name (e.g., ``mcp-builder``),
         validated and normalized per the agentskills.io spec.
         
-        Source SKILL.md is copied verbatim  -- no metadata injection. Orphan
+        Source SKILL.md is copied verbatim -- no metadata injection. Orphan
         detection uses apm.lock via directory name matching instead.
-        
-        T7 Enhancement: Also copies to .claude/skills/ when .claude/ folder exists
-        and to .cursor/skills/ when .cursor/ folder exists.
-        This ensures Claude Code and Cursor users get skills while not polluting
-        projects that don't use those tools.
         
         Copies:
         - SKILL.md (required)
@@ -707,99 +693,95 @@ class SkillIntegrator(BaseIntegrator):
                 except ImportError:
                     pass  # CLI not available in tests
         
-        # Primary target: .github/skills/
-        github_skill_dir = project_root / ".github" / "skills" / skill_name
-        github_skill_md = github_skill_dir / "SKILL.md"
-        
-        # Always copy  -- source integrity is preserved, orphan detection uses apm.lock
-        skill_created = not github_skill_dir.exists()
-        skill_updated = not skill_created
-        
+        # Deploy to all active targets that support skills.
+        # When *targets* is provided (from --target), use it directly.
+        # Otherwise auto-detect with copilot as the fallback.
+        if targets is None:
+            from apm_cli.integration.targets import active_targets
+            targets = active_targets(project_root)
+        skill_created = False
+        skill_updated = False
         files_copied = 0
-        claude_skill_dir: Path | None = None
-        
-        # === Copy to .github/skills/ (primary) ===
-        if github_skill_dir.exists():
-            shutil.rmtree(github_skill_dir)
-        
-        github_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(package_path, github_skill_dir,
-                        ignore=shutil.ignore_patterns('.apm'))
-        
-        files_copied = sum(1 for _ in github_skill_dir.rglob('*') if _.is_file())
-        
-        # Track deployed paths
-        all_target_paths = [github_skill_dir]
-        
-        # === Promote sub-skills to top-level entries ===
-        # Packages may contain sub-skills in .apm/skills/*/ subdirectories.
-        # Copilot only discovers .github/skills/<name>/SKILL.md (direct children),
-        # so we promote each sub-skill to an independent top-level entry.
-        sub_skills_dir = package_path / ".apm" / "skills"
-        github_skills_root = project_root / ".github" / "skills"
+        all_target_paths: list[Path] = []
+        primary_skill_md: Path | None = None
+
         owned_by = self._build_skill_ownership_map(project_root)
-        sub_skills_count, sub_deployed = self._promote_sub_skills(sub_skills_dir, github_skills_root, skill_name, warn=True, owned_by=owned_by, diagnostics=diagnostics, managed_files=managed_files, force=force, project_root=project_root, logger=logger)
-        all_target_paths.extend(sub_deployed)
-        
-        # === T7: Copy to .claude/skills/ (secondary - compatibility) ===
-        claude_dir = project_root / ".claude"
-        if claude_dir.exists() and claude_dir.is_dir():
-            claude_skill_dir = claude_dir / "skills" / skill_name
-            
-            if claude_skill_dir.exists():
-                shutil.rmtree(claude_skill_dir)
-            
-            claude_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(package_path, claude_skill_dir,
+        sub_skills_dir = package_path / ".apm" / "skills"
+
+        for idx, target in enumerate(targets):
+            if not target.supports("skills"):
+                continue
+
+            is_primary = (idx == 0)  # first active target owns diagnostics
+            skills_mapping = target.primitives["skills"]
+            effective_root = skills_mapping.deploy_root or target.root_dir
+            target_skill_dir = project_root / effective_root / "skills" / skill_name
+
+            if is_primary:
+                skill_created = not target_skill_dir.exists()
+                skill_updated = not skill_created
+                primary_skill_md = target_skill_dir / "SKILL.md"
+
+            if target_skill_dir.exists():
+                shutil.rmtree(target_skill_dir)
+
+            target_skill_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(package_path, target_skill_dir,
                             ignore=shutil.ignore_patterns('.apm'))
-            all_target_paths.append(claude_skill_dir)
-            
-            # Promote sub-skills for Claude too
-            claude_skills_root = claude_dir / "skills"
-            _, claude_sub_deployed = self._promote_sub_skills(sub_skills_dir, claude_skills_root, skill_name, warn=False, project_root=project_root)
-            all_target_paths.extend(claude_sub_deployed)
-        
-        # === Copy to .cursor/skills/ (tertiary - compatibility) ===
-        cursor_dir = project_root / ".cursor"
-        if cursor_dir.exists() and cursor_dir.is_dir():
-            cursor_skill_dir = cursor_dir / "skills" / skill_name
-            
-            if cursor_skill_dir.exists():
-                shutil.rmtree(cursor_skill_dir)
-            
-            cursor_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(package_path, cursor_skill_dir,
-                            ignore=shutil.ignore_patterns('.apm'))
-            all_target_paths.append(cursor_skill_dir)
-            
-            # Promote sub-skills for Cursor too
-            cursor_skills_root = cursor_dir / "skills"
-            _, cursor_sub_deployed = self._promote_sub_skills(sub_skills_dir, cursor_skills_root, skill_name, warn=False, project_root=project_root)
-            all_target_paths.extend(cursor_sub_deployed)
+            all_target_paths.append(target_skill_dir)
+
+            if is_primary:
+                files_copied = sum(1 for _ in target_skill_dir.rglob('*') if _.is_file())
+
+            # Promote sub-skills for this target
+            target_skills_root = project_root / effective_root / "skills"
+            _, sub_deployed = self._promote_sub_skills(
+                sub_skills_dir, target_skills_root, skill_name,
+                warn=is_primary,
+                owned_by=owned_by if is_primary else None,
+                diagnostics=diagnostics if is_primary else None,
+                managed_files=managed_files if is_primary else None,
+                force=force,
+                project_root=project_root,
+                logger=logger if is_primary else None,
+            )
+            all_target_paths.extend(sub_deployed)
+
+        # Count unique sub-skills from primary target only
+        primary_root = project_root / ".github" / "skills"
+        sub_skills_count = sum(
+            1 for p in all_target_paths
+            if p.parent == primary_root and p.name != skill_name
+        )
         
         return SkillIntegrationResult(
             skill_created=skill_created,
             skill_updated=skill_updated,
             skill_skipped=False,
-            skill_path=github_skill_md,
+            skill_path=primary_skill_md,
             references_copied=files_copied,
             links_resolved=0,
             sub_skills_promoted=sub_skills_count,
             target_paths=all_target_paths
         )
 
-    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None, managed_files=None, force: bool = False, logger=None) -> SkillIntegrationResult:
-        """Integrate a package's skill into .github/skills/ directory.
+    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None, managed_files=None, force: bool = False, logger=None, targets=None) -> SkillIntegrationResult:
+        """Integrate a package's skill into all active target directories.
         
-        Copies native skills (packages with SKILL.md at root) to .github/skills/
-        and optionally .claude/skills/ and .cursor/skills/. Also promotes any sub-skills from .apm/skills/.
+        Copies native skills (packages with SKILL.md at root) to every active
+        target that supports skills (e.g. .github/skills/, .claude/skills/,
+        .opencode/skills/). Also promotes any sub-skills from .apm/skills/.
         
-        Packages without SKILL.md at root are not installed as skills  -- only their
+        When *targets* is provided (e.g. from ``--target cursor``), only those
+        targets are considered.  Otherwise falls back to ``active_targets()``.
+        
+        Packages without SKILL.md at root are not installed as skills -- only their
         sub-skills (if any) are promoted.
         
         Args:
             package_info: PackageInfo object with package metadata
             project_root: Root directory of the project
+            targets: Optional explicit list of TargetProfile objects.
             
         Returns:
             SkillIntegrationResult: Results of the integration operation
@@ -811,7 +793,7 @@ class SkillIntegrator(BaseIntegrator):
             # Even non-skill packages may ship sub-skills under .apm/skills/.
             # Promote them so Copilot can discover them independently.
             sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-                package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger
+                package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets
             )
             return SkillIntegrationResult(
                 skill_created=False,
@@ -844,12 +826,12 @@ class SkillIntegrator(BaseIntegrator):
         # Check if this is a native Skill (already has SKILL.md at root)
         source_skill_md = package_path / "SKILL.md"
         if source_skill_md.exists():
-            return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger)
+            return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets)
         
         # No SKILL.md at root  -- not a skill package.
         # Still promote any sub-skills shipped under .apm/skills/.
         sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-            package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger
+            package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets
         )
         return SkillIntegrationResult(
             skill_created=False,
@@ -889,6 +871,7 @@ class SkillIntegrator(BaseIntegrator):
                     or rel_path.startswith(".claude/skills/")
                     or rel_path.startswith(".cursor/skills/")
                     or rel_path.startswith(".opencode/skills/")
+                    or rel_path.startswith(".agents/skills/")
                 )
                 if not is_skill or ".." in rel_path:
                     continue
@@ -949,6 +932,16 @@ class SkillIntegrator(BaseIntegrator):
         opencode_skills_dir = project_root / ".opencode" / "skills"
         if opencode_skills_dir.exists():
             result = self._clean_orphaned_skills(opencode_skills_dir, installed_skill_names)
+            stats['files_removed'] += result['files_removed']
+            stats['errors'] += result['errors']
+        
+        # Clean .agents/skills/ (cross-tool agent skills standard, used by Codex)
+        # Only clean if .codex/ exists -- .agents/ is cross-tool, so we must
+        # not delete skills managed by other tools when Codex is not active.
+        codex_dir = project_root / ".codex"
+        agents_skills_dir = project_root / ".agents" / "skills"
+        if codex_dir.exists() and agents_skills_dir.exists():
+            result = self._clean_orphaned_skills(agents_skills_dir, installed_skill_names)
             stats['files_removed'] += result['files_removed']
             stats['errors'] += result['errors']
         

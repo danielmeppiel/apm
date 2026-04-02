@@ -81,12 +81,13 @@ apm install [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, FQDN shorthand (`host/owner/repo`), or local filesystem paths (`./path`, `../path`, `/absolute/path`, `~/path`). All forms are normalized to canonical format in `apm.yml`.
+- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, FQDN shorthand (`host/owner/repo`), local filesystem paths (`./path`, `../path`, `/absolute/path`, `~/path`), or marketplace references (`NAME@MARKETPLACE`). All forms are normalized to canonical format in `apm.yml`.
 
 **Options:**
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
 - `--exclude TEXT` - Exclude specific runtime from installation
 - `--only [apm|mcp]` - Install only specific dependency type
+- `--target [copilot|claude|cursor|codex|opencode|all]` - Force deployment to a specific target (overrides auto-detection)
 - `--update` - Update dependencies to latest Git references  
 - `--force` - Overwrite locally-authored files on collision; bypass security scan blocks
 - `--dry-run` - Show what would be installed without installing
@@ -94,6 +95,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--verbose` - Show individual file paths and full error details in the diagnostic summary
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 - `--dev` - Add packages to [`devDependencies`](../manifest-schema/#5-devdependencies) instead of `dependencies`. Dev deps are installed locally but excluded from `apm pack --format plugin` bundles
+- `-g, --global` - Install to user scope (`~/.apm/`) instead of the current project. Primitives deploy to `~/.copilot/`, `~/.claude/`, etc.
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml`
@@ -150,6 +152,12 @@ apm install --dev owner/test-helpers
 # Install from a local path (copies to apm_modules/_local/)
 apm install ./packages/my-shared-skills
 apm install /home/user/repos/my-ai-package
+
+# Install to user scope (available across all projects)
+apm install -g microsoft/apm-sample-package
+
+# Install a plugin from a registered marketplace
+apm install code-review@acme-plugins
 ```
 
 **Auto-Bootstrap Behavior:**
@@ -270,6 +278,7 @@ apm uninstall [OPTIONS] PACKAGES...
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
+- `-g, --global` - Remove from user scope (`~/.apm/`) instead of the current project
 
 **Examples:**
 ```bash
@@ -281,6 +290,9 @@ apm uninstall https://github.com/microsoft/apm-sample-package.git
 
 # Preview what would be removed
 apm uninstall microsoft/apm-sample-package --dry-run
+
+# Uninstall from user scope
+apm uninstall -g microsoft/apm-sample-package
 ```
 
 **What Gets Removed:**
@@ -439,7 +451,7 @@ apm pack [OPTIONS]
 
 **Options:**
 - `-o, --output PATH` - Output directory (default: `./build`)
-- `-t, --target [copilot|vscode|claude|cursor|opencode|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
+- `-t, --target [copilot|vscode|claude|cursor|codex|opencode|all]` - Filter files by target. Auto-detects from `apm.yml` if not specified. `vscode` is an alias for `copilot`
 - `--archive` - Produce a `.tar.gz` archive instead of a directory
 - `--dry-run` - List files that would be packed without writing anything
 - `--format [apm|plugin]` - Bundle format (default: `apm`). `plugin` produces a standalone plugin directory with `plugin.json`
@@ -601,13 +613,23 @@ apm deps COMMAND [OPTIONS]
 Show all installed APM dependencies in a Rich table format with per-primitive counts.
 
 ```bash
-apm deps list
+apm deps list [OPTIONS]
 ```
+
+**Options:**
+- `-g, --global` - List user-scope packages from `~/.apm/` instead of the current project
+- `--all` - List packages from both project and user scope
 
 **Examples:**
 ```bash
-# Show all installed APM packages
+# Show project-scope packages
 apm deps list
+
+# Show user-scope packages
+apm deps list -g
+
+# Show both scopes
+apm deps list --all
 ```
 
 **Sample Output:**
@@ -716,22 +738,38 @@ apm deps clean --yes
 
 #### `apm deps update` - Update APM dependencies
 
-Update installed APM dependencies to their latest versions.
+Re-resolve git references to their latest commits, download updated content,
+re-integrate primitives, and regenerate the lockfile.
 
 ```bash
-apm deps update [PACKAGE]
+apm deps update [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGE` - Optional. Update specific package only
+- `PACKAGES` - Optional. One or more packages to update. Omit to update all.
+
+**Options:**
+- `--verbose, -v` - Show detailed update information
+- `--force` - Overwrite locally-authored files on collision
+- `--target, -t` - Force deployment to a specific target (copilot, claude, cursor, opencode, vscode, agents, all)
+- `--parallel-downloads` - Max concurrent downloads (default: 4)
 
 **Examples:**
 ```bash
-# Update all APM dependencies to latest versions
+# Update all APM dependencies to latest refs
 apm deps update
 
-# Update specific package to latest version
-apm deps update compliance-rules
+# Update a specific package (short name or full owner/repo)
+apm deps update owner/compliance-rules
+
+# Update multiple packages
+apm deps update org/pkg-a org/pkg-b
+
+# Update with verbose output
+apm deps update --verbose
+
+# Force overwrite local files on collision
+apm deps update --force
 ```
 
 ### `apm mcp` - Browse MCP server registry
@@ -814,6 +852,148 @@ apm mcp show a5e8a7f0-d4e4-4a1d-b12f-2896a23fd4f1
 - Repository URL
 - Available installation packages
 - Installation instructions
+
+### `apm marketplace` - Plugin marketplace management
+
+Register, browse, and manage plugin marketplaces. Marketplaces are GitHub repositories containing a `marketplace.json` index of plugins.
+
+> See the [Marketplaces guide](../../guides/marketplaces/) for concepts and workflows.
+
+```bash
+apm marketplace COMMAND [OPTIONS]
+```
+
+#### `apm marketplace add` - Register a marketplace
+
+Register a GitHub repository as a plugin marketplace.
+
+```bash
+apm marketplace add OWNER/REPO [OPTIONS]
+```
+
+**Arguments:**
+- `OWNER/REPO` - GitHub repository containing `marketplace.json`
+
+**Options:**
+- `-n, --name TEXT` - Custom display name for the marketplace
+- `-b, --branch TEXT` - Branch to track (default: main)
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Register a marketplace
+apm marketplace add acme/plugin-marketplace
+
+# Register with a custom name and branch
+apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
+```
+
+#### `apm marketplace list` - List registered marketplaces
+
+List all registered marketplaces with their source repository and branch.
+
+```bash
+apm marketplace list [OPTIONS]
+```
+
+**Options:**
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+apm marketplace list
+```
+
+#### `apm marketplace browse` - Browse marketplace plugins
+
+List all plugins available in a registered marketplace.
+
+```bash
+apm marketplace browse NAME [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` - Name of the registered marketplace
+
+**Options:**
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Browse all plugins in a marketplace
+apm marketplace browse acme-plugins
+```
+
+#### `apm marketplace update` - Refresh marketplace cache
+
+Refresh the cached `marketplace.json` for one or all registered marketplaces.
+
+```bash
+apm marketplace update [NAME] [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` - Optional marketplace name. Omit to refresh all.
+
+**Options:**
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Refresh a specific marketplace
+apm marketplace update acme-plugins
+
+# Refresh all marketplaces
+apm marketplace update
+```
+
+#### `apm marketplace remove` - Remove a registered marketplace
+
+Unregister a marketplace. Plugins previously installed from it remain pinned in `apm.lock.yaml`.
+
+```bash
+apm marketplace remove NAME [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` - Name of the marketplace to remove
+
+**Options:**
+- `-y, --yes` - Skip confirmation prompt
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Remove with confirmation prompt
+apm marketplace remove acme-plugins
+
+# Remove without confirmation
+apm marketplace remove acme-plugins --yes
+```
+
+### `apm search` - Search plugins in a marketplace
+
+Search for plugins by name or description within a specific marketplace.
+
+```bash
+apm search QUERY@MARKETPLACE [OPTIONS]
+```
+
+**Arguments:**
+- `QUERY@MARKETPLACE` - Search term scoped to a marketplace (e.g., `security@skills`)
+
+**Options:**
+- `--limit INTEGER` - Maximum results to return (default: 20)
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Search for code review plugins in a marketplace
+apm search "code review@skills"
+
+# Limit results
+apm search "linting@awesome-copilot" --limit 5
+```
 
 ### `apm run` (Experimental) - Execute prompts
 
@@ -904,7 +1084,7 @@ apm compile [OPTIONS]
 
 **Options:**
 - `-o, --output TEXT` - Output file path (for single-file mode)
-- `-t, --target [vscode|agents|claude|opencode|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
+- `-t, --target [vscode|agents|claude|codex|opencode|all]` - Target agent format. `agents` is an alias for `vscode`. Auto-detects if not specified.
 - `--chatmode TEXT` - Chatmode to prepend to the AGENTS.md file
 - `--dry-run` - Preview compilation without writing files (shows placement decisions)
 - `--no-links` - Skip markdown link resolution
@@ -924,6 +1104,7 @@ When `--target` is not specified, APM auto-detects based on existing project str
 |-----------|--------|--------|
 | `.github/` exists only | `vscode` | AGENTS.md + .github/ |
 | `.claude/` exists only | `claude` | CLAUDE.md + .claude/ |
+| `.codex/` exists | `codex` | AGENTS.md + .codex/ + .agents/ |
 | Both folders exist | `all` | All outputs |
 | Neither folder exists | `minimal` | AGENTS.md only |
 
@@ -931,15 +1112,16 @@ You can also set a persistent target in `apm.yml`:
 ```yaml
 name: my-project
 version: 1.0.0
-target: vscode  # or claude, opencode, or all
+target: vscode  # or claude, codex, opencode, or all
 ```
 
 **Target Formats (explicit):**
 
 | Target | Output Files | Best For |
 |--------|--------------|----------|
-| `vscode` | AGENTS.md, .github/prompts/, .github/agents/, .github/skills/ | GitHub Copilot, Cursor, Codex, Gemini |
+| `vscode` | AGENTS.md, .github/prompts/, .github/agents/, .github/skills/ | GitHub Copilot, Cursor, Gemini |
 | `claude` | CLAUDE.md, .claude/commands/, SKILL.md | Claude Code, Claude Desktop |
+| `codex` | AGENTS.md, .agents/skills/, .codex/agents/, .codex/hooks.json | Codex CLI |
 | `opencode` | AGENTS.md, .opencode/agents/, .opencode/commands/, .opencode/skills/ | OpenCode |
 | `all` | All of the above | Universal compatibility |
 

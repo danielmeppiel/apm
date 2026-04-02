@@ -30,7 +30,7 @@ APM supports multiple dependency types:
 | **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
 | **Virtual Subdirectory Package** | Folder path in repo | `github/awesome-copilot/skills/review-and-refactor` |
 | **Local Path Package** | Path starts with `./`, `../`, or `/` | `./packages/my-shared-skills` |
-| **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` |
+| **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` or `dev.azure.com/org/My%20Project/_git/My%20Repo` |
 
 **Virtual Subdirectory Packages** are skill folders from monorepos - they download an entire folder and may contain a SKILL.md plus resources.
 
@@ -278,6 +278,61 @@ dependencies:
 **Lockfile representation:** Local dependencies are tracked with `source: local` and `local_path` fields. No `resolved_commit` is stored.
 
 **Pack guard:** `apm pack` rejects packages with local path dependencies — replace them with remote references before distributing.
+
+**User-scope guard:** Local path dependencies are **not supported** with `--global` (`-g`). Relative paths resolve against `cwd`, which is meaningless at user scope where packages deploy to `~/.apm/`. Use remote references (`owner/repo`) for global installs.
+
+## Global (User-Scope) Installation
+
+By default, `apm install` targets the **current project** -- manifest, modules, and lockfile live in
+the working directory and deployed primitives go to `.github/`, `.claude/`, `.cursor/`, `.opencode/`.
+
+Pass `--global` (or `-g`) to install to your **home directory** instead, making packages available
+across every project on the machine:
+
+```bash
+apm install -g microsoft/apm-sample-package
+apm uninstall -g microsoft/apm-sample-package
+apm deps list -g       # user-scope packages only
+apm deps list --all    # project + user-scope packages
+```
+
+| Item | Project scope (default) | User scope (`-g`) |
+|------|------------------------|-------------------|
+| Manifest | `./apm.yml` | `~/.apm/apm.yml` |
+| Modules | `./apm_modules/` | `~/.apm/apm_modules/` |
+| Lockfile | `./apm.lock.yaml` | `~/.apm/apm.lock.yaml` |
+| Deployed primitives | `./.github/`, `./.claude/`, ... | `~/.copilot/`, `~/.claude/`, `~/.cursor/`, `~/.config/opencode/` |
+
+### Per-target support
+
+Coverage varies by target and primitive type:
+
+| Target | Status | User-level dir | Primitives | Not supported |
+|--------|--------|---------------|------------|---------------|
+| Claude Code | Supported | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
+| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, instructions, hooks | Prompts (not supported by Copilot CLI) |
+| Cursor | Partial | `~/.cursor/` | Skills, agents, hooks | Rules |
+| OpenCode | Partial | `~/.config/opencode/` | Skills, agents, commands | Hooks |
+
+Target detection mirrors project scope: APM auto-detects by `~/.<target>/` directory presence,
+falling back to Copilot. Security scanning runs for global installs.
+
+### When to use each scope
+
+| Use case | Scope |
+|----------|-------|
+| Team-shared instructions and prompts | Project (`apm install`) |
+| Personal commands, agents, or skills | User (`apm install -g`) |
+| CI/CD reproducible setup | Project |
+| Cross-project coding standards | User |
+
+:::note
+MCP servers are not supported at user scope. Each target uses a different MCP configuration format; user-scope MCP support is planned for a future release.
+:::
+
+:::caution
+Local path dependencies (`./path`, `../path`, `/abs/path`) are rejected at user scope. Relative paths resolve against `cwd`, which differs from the user-scope deploy root (`~/.apm/`). Use remote references for `apm install -g`.
+:::
 
 ## MCP Dependency Formats
 
@@ -554,11 +609,14 @@ dependencies:
 ### Updating Dependencies
 
 ```bash
-# Update all dependencies to latest versions
+# Update all dependencies to latest refs
 apm deps update
 
-# Update specific dependency  
-apm deps update apm-sample-package
+# Update specific dependency (use the owner/repo form from apm.yml)
+apm deps update owner/apm-sample-package
+
+# Update with verbose output
+apm deps update --verbose
 
 # Install with updates (equivalent to update)
 apm install --update

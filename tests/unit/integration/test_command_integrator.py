@@ -365,3 +365,115 @@ class TestOpenCodeCommandIntegration:
         integrator = CommandIntegrator()
         result = integrator.sync_integration_opencode(None, temp_project_no_opencode)
         assert result["files_removed"] == 0
+
+
+class TestIntegratePackagePrimitivesTargetGating:
+    """Tests that _integrate_package_primitives respects target gating.
+
+    Regression test for: commands/agents/hooks were dispatched to targets
+    that were not in the active targets list (e.g., --target copilot wrote
+    to .claude/).
+    """
+
+    def _make_mock_integrators(self):
+        """Return a dict of MagicMock integrators for _integrate_package_primitives."""
+        from unittest.mock import MagicMock
+
+        def _empty_result(*args, **kwargs):
+            r = MagicMock()
+            r.files_integrated = 0
+            r.files_updated = 0
+            r.links_resolved = 0
+            r.target_paths = []
+            r.skill_created = False
+            r.sub_skills_promoted = 0
+            r.hooks_integrated = 0
+            return r
+
+        integrators = {}
+        for name in (
+            "prompt_integrator",
+            "agent_integrator",
+            "skill_integrator",
+            "instruction_integrator",
+            "command_integrator",
+            "hook_integrator",
+        ):
+            m = MagicMock()
+            # Target-driven methods used by the dispatch loop
+            for method in (
+                "integrate_prompts_for_target",
+                "integrate_agents_for_target",
+                "integrate_commands_for_target",
+                "integrate_instructions_for_target",
+                "integrate_hooks_for_target",
+                "integrate_package_skill",
+            ):
+                getattr(m, method).side_effect = _empty_result
+            integrators[name] = m
+        return integrators
+
+    def test_copilot_only_does_not_dispatch_commands(self):
+        """When targets=[copilot], commands must not be dispatched.
+
+        Copilot has no ``commands`` primitive, so the dispatch loop
+        should never call ``integrate_commands_for_target``.
+        """
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".github").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                targets=[KNOWN_TARGETS["copilot"]],
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            integrators["command_integrator"].integrate_commands_for_target.assert_not_called()
+            assert not (project_root / ".claude" / "commands").exists()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_claude_target_dispatches_commands(self):
+        """When targets=[claude], commands must be dispatched."""
+        import tempfile, shutil
+        from apm_cli.commands.install import _integrate_package_primitives
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_root = Path(temp_dir)
+            (project_root / ".claude").mkdir()
+
+            package_info = MagicMock()
+            integrators = self._make_mock_integrators()
+            diagnostics = DiagnosticCollector(verbose=False)
+
+            _integrate_package_primitives(
+                package_info,
+                project_root,
+                targets=[KNOWN_TARGETS["claude"]],
+                managed_files=set(),
+                force=False,
+                diagnostics=diagnostics,
+                **integrators,
+            )
+
+            integrators["command_integrator"].integrate_commands_for_target.assert_called_once()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)

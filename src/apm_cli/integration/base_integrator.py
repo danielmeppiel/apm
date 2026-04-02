@@ -130,56 +130,105 @@ class BaseIntegrator:
             return False
         return True
 
+    # Backward-compat aliases mapping raw ``{prim}_{target}`` keys to
+    # the bucket names that existing callers expect.  Shared between
+    # ``partition_managed_files`` and ``partition_bucket_key`` so the
+    # mapping is defined exactly once.
+    _BUCKET_ALIASES: dict = {
+        "prompts_copilot": "prompts",
+        "agents_copilot": "agents_github",
+        "commands_claude": "commands",
+        "commands_opencode": "commands_opencode",
+        "instructions_copilot": "instructions",
+        "instructions_cursor": "rules_cursor",
+        "instructions_claude": "rules_claude",
+    }
+
+    @staticmethod
+    def partition_bucket_key(prim_name: str, target_name: str) -> str:
+        """Return the canonical bucket key for a (primitive, target) pair.
+
+        Applies backward-compat aliases so callers stay in sync with
+        ``partition_managed_files`` bucket naming.
+        """
+        raw = f"{prim_name}_{target_name}"
+        return BaseIntegrator._BUCKET_ALIASES.get(raw, raw)
+
     @staticmethod
     def partition_managed_files(
         managed_files: Set[str],
     ) -> dict:
         """Partition *managed_files* by integration prefix in a single pass.
 
-        Returns a dict with keys ``"prompts"``, ``"agents_github"``,
-        ``"agents_claude"``, ``"agents_cursor"``, ``"agents_opencode"``,
-        ``"commands"``, ``"commands_opencode"``, ``"skills"``, ``"hooks"``,
-        ``"instructions"``, ``"rules_cursor"`` mapping to the subset of
-        paths for each integration type.
+        Bucket keys are generated dynamically from ``KNOWN_TARGETS`` so
+        adding a new target or primitive automatically creates the
+        corresponding bucket.
+
+        Cross-target buckets (``skills``, ``hooks``) group all targets
+        together because ``SkillIntegrator`` and ``HookIntegrator``
+        handle multi-target sync internally.
+
+        Path routing uses an O(1) dict keyed by ``(root_dir, subdir)``
+        parsed from the first two path segments, avoiding a linear scan
+        over all known prefixes.
         """
-        buckets: dict = {
-            "prompts": set(),
-            "agents_github": set(),
-            "agents_claude": set(),
-            "agents_cursor": set(),
-            "agents_opencode": set(),
-            "commands": set(),
-            "commands_opencode": set(),
-            "skills": set(),
-            "hooks": set(),
-            "instructions": set(),
-            "rules_cursor": set(),
-        }
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        buckets: dict = {}
+
+        # Skills and hooks are cross-target (single bucket each)
+        skill_prefixes: list = []
+        hook_prefixes: list = []
+
+        # O(1) lookup: (root_dir, subdir) -> bucket_key
+        component_map: dict = {}
+
+        for target in KNOWN_TARGETS.values():
+            for prim_name, mapping in target.primitives.items():
+                effective_root = mapping.deploy_root or target.root_dir
+                prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                if prim_name == "skills":
+                    skill_prefixes.append(prefix)
+                elif prim_name == "hooks":
+                    hook_prefixes.append(prefix)
+                else:
+                    raw_key = f"{prim_name}_{target.name}"
+                    bucket_key = BaseIntegrator._BUCKET_ALIASES.get(
+                        raw_key, raw_key
+                    )
+                    if bucket_key not in buckets:
+                        buckets[bucket_key] = set()
+                    component_map[
+                        (effective_root, mapping.subdir)
+                    ] = bucket_key
+
+        buckets["skills"] = set()
+        buckets["hooks"] = set()
+
+        skill_tuple = tuple(skill_prefixes)
+        hook_tuple = tuple(hook_prefixes)
+
+        # Single O(M) pass -- each path is routed in O(1)
+        # Component_map is checked first: it holds specific (root, subdir)
+        # pairs and takes priority over broad prefix matching.  This prevents
+        # catch-all hook prefixes (e.g. ".codex/") from swallowing paths
+        # that belong to a more specific bucket (e.g. ".codex/agents/").
         for p in managed_files:
-            if p.startswith(".github/prompts/"):
-                buckets["prompts"].add(p)
-            elif p.startswith(".github/agents/"):
-                buckets["agents_github"].add(p)
-            elif p.startswith(".claude/agents/"):
-                buckets["agents_claude"].add(p)
-            elif p.startswith(".cursor/agents/"):
-                buckets["agents_cursor"].add(p)
-            elif p.startswith(".opencode/agents/"):
-                buckets["agents_opencode"].add(p)
-            elif p.startswith(".claude/commands/"):
-                buckets["commands"].add(p)
-            elif p.startswith(".opencode/commands/"):
-                buckets["commands_opencode"].add(p)
-            elif p.startswith((".github/skills/", ".claude/skills/", ".cursor/skills/", ".opencode/skills/")):
+            slash1 = p.find("/")
+            if slash1 > 0:
+                slash2 = p.find("/", slash1 + 1)
+                if slash2 > 0:
+                    bkey = component_map.get(
+                        (p[:slash1], p[slash1 + 1 : slash2])
+                    )
+                    if bkey:
+                        buckets[bkey].add(p)
+                        continue
+            if p.startswith(skill_tuple):
                 buckets["skills"].add(p)
-            elif p.startswith(
-                (".github/hooks/", ".claude/hooks/", ".cursor/hooks/", ".opencode/hooks/")
-            ):
+            elif p.startswith(hook_tuple):
                 buckets["hooks"].add(p)
-            elif p.startswith(".github/instructions/"):
-                buckets["instructions"].add(p)
-            elif p.startswith(".cursor/rules/"):
-                buckets["rules_cursor"].add(p)
+
         return buckets
 
     @staticmethod
