@@ -1093,3 +1093,62 @@ class TestOpenCodeAgentIntegration:
 
         assert result['files_removed'] == 0
         assert result['errors'] == 0
+
+
+class TestCodexAgentIntegration:
+    """Tests for Codex TOML agent transformation."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.root = Path(self.temp_dir)
+        (self.root / ".codex").mkdir()
+
+    def teardown_method(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_agent_md_to_toml_with_frontmatter(self):
+        """Agent .md with YAML frontmatter is converted to .toml."""
+        import toml
+
+        source = self.root / "test.agent.md"
+        source.write_text(
+            "---\nname: my-agent\ndescription: A test agent\n---\nDo something useful.\n",
+            encoding="utf-8",
+        )
+        target = self.root / ".codex" / "agents" / "test.toml"
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        AgentIntegrator._write_codex_agent(source, target)
+
+        assert target.exists()
+        data = toml.loads(target.read_text(encoding="utf-8"))
+        assert data["name"] == "my-agent"
+        assert data["description"] == "A test agent"
+        assert data["developer_instructions"] == "Do something useful."
+
+    def test_agent_md_to_toml_without_frontmatter(self):
+        """Agent .md without frontmatter uses filename as name."""
+        import toml
+
+        source = self.root / "helper.agent.md"
+        source.write_text("Instructions for the helper agent.\n", encoding="utf-8")
+        target = self.root / ".codex" / "agents" / "helper.toml"
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        AgentIntegrator._write_codex_agent(source, target)
+
+        data = toml.loads(target.read_text(encoding="utf-8"))
+        assert data["name"] == "helper"
+        assert data["description"] == ""
+        assert "Instructions for the helper agent." in data["developer_instructions"]
+
+    def test_codex_agent_target_filename_is_toml(self):
+        """AgentIntegrator generates .toml filenames for Codex target."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        integrator = AgentIntegrator()
+        codex = KNOWN_TARGETS["codex"]
+        source = Path("/fake/test.agent.md")
+        filename = integrator.get_target_filename_for_target(source, "pkg", codex)
+        assert filename == "test.toml"

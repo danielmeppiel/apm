@@ -1218,6 +1218,299 @@ class TestScriptPathRewriting:
         assert ".github/hooks/scripts/my-pkg/scripts/check.ps1" in cmd
         assert len(scripts) == 1
 
+    def test_rewrite_windows_key(self, temp_project):
+        """Test rewriting the windows key (GitHub Copilot format)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "scan-secrets.ps1").write_text("Write-Host 'scanning'")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "./scripts/scan-secrets.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert "./" not in cmd
+        assert ".github/hooks/scripts/my-pkg/scripts/scan-secrets.ps1" in cmd
+        assert len(scripts) == 1
+
+    def test_rewrite_linux_key(self, temp_project):
+        """Test rewriting the linux key (VS Code OS-specific override)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "validate.sh").write_text("#!/bin/bash")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "./scripts/validate.sh",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert "./" not in cmd
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.sh" in cmd
+        assert len(scripts) == 1
+
+    def test_rewrite_osx_key(self, temp_project):
+        """Test rewriting the osx key (VS Code OS-specific override)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "format-mac.sh").write_text("#!/bin/bash")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "./scripts/format-mac.sh",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert "./" not in cmd
+        assert ".github/hooks/scripts/my-pkg/scripts/format-mac.sh" in cmd
+        assert len(scripts) == 1
+
+    def test_rewrite_hooks_data_windows_flat_format(self, temp_project):
+        """Test _rewrite_hooks_data handles windows key in flat format (GitHub Copilot)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "validate.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "validate.ps1").write_text("Write-Host 'ok'")
+
+        data = {
+            "version": 1,
+            "hooks": {
+                "preToolUse": [
+                    {
+                        "type": "command",
+                        "bash": "./scripts/validate.sh",
+                        "windows": "./scripts/validate.ps1",
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["preToolUse"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.sh" in hook["bash"]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.ps1" in hook["windows"]
+        assert len(scripts) == 2
+
+    def test_rewrite_hooks_data_windows_nested_format(self, temp_project):
+        """Test _rewrite_hooks_data handles windows key in nested format (Claude-style)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "validate.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "validate.ps1").write_text("Write-Host 'ok'")
+
+        data = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "./scripts/validate.sh",
+                                "windows": "./scripts/validate.ps1",
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["PreToolUse"][0]["hooks"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.ps1" in hook["windows"]
+        assert len(scripts) == 2
+
+    def test_rewrite_hooks_data_linux_flat_format(self, temp_project):
+        """Test _rewrite_hooks_data handles linux key in flat format (VS Code)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "format.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "format-linux.sh").write_text("#!/bin/bash")
+
+        data = {
+            "hooks": {
+                "PostToolUse": [
+                    {
+                        "type": "command",
+                        "command": "./scripts/format.sh",
+                        "linux": "./scripts/format-linux.sh",
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["PostToolUse"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/format.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/scripts/format-linux.sh" in hook["linux"]
+        assert len(scripts) == 2
+
+    def test_rewrite_hooks_data_linux_nested_format(self, temp_project):
+        """Test _rewrite_hooks_data handles linux key in nested format (Claude-style)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "validate.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "validate-linux.sh").write_text("#!/bin/bash")
+
+        data = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "./scripts/validate.sh",
+                                "linux": "./scripts/validate-linux.sh",
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["PreToolUse"][0]["hooks"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate-linux.sh" in hook["linux"]
+        assert len(scripts) == 2
+
+    def test_rewrite_hooks_data_osx_flat_format(self, temp_project):
+        """Test _rewrite_hooks_data handles osx key in flat format (VS Code)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "format.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "format-mac.sh").write_text("#!/bin/bash")
+
+        data = {
+            "hooks": {
+                "PostToolUse": [
+                    {
+                        "type": "command",
+                        "command": "./scripts/format.sh",
+                        "osx": "./scripts/format-mac.sh",
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["PostToolUse"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/format.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/scripts/format-mac.sh" in hook["osx"]
+        assert len(scripts) == 2
+
+    def test_rewrite_hooks_data_osx_nested_format(self, temp_project):
+        """Test _rewrite_hooks_data handles osx key in nested format (Claude-style)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "validate.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "validate-mac.sh").write_text("#!/bin/bash")
+
+        data = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "./scripts/validate.sh",
+                                "osx": "./scripts/validate-mac.sh",
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["PreToolUse"][0]["hooks"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate-mac.sh" in hook["osx"]
+        assert len(scripts) == 2
+
+    def test_rewrite_hooks_data_all_platform_keys(self, temp_project):
+        """Test _rewrite_hooks_data handles all 6 platform keys together."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "run.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "run.ps1").write_text("Write-Host 'ok'")
+        (pkg_dir / "scripts" / "run-win.ps1").write_text("Write-Host 'win'")
+        (pkg_dir / "scripts" / "run-linux.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "run-mac.sh").write_text("#!/bin/bash")
+
+        data = {
+            "version": 1,
+            "hooks": {
+                "preToolUse": [
+                    {
+                        "type": "command",
+                        "command": "./scripts/run.sh",
+                        "bash": "./scripts/run.sh",
+                        "powershell": "./scripts/run.ps1",
+                        "windows": "./scripts/run-win.ps1",
+                        "linux": "./scripts/run-linux.sh",
+                        "osx": "./scripts/run-mac.sh",
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["preToolUse"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/run.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/scripts/run.sh" in hook["bash"]
+        assert ".github/hooks/scripts/my-pkg/scripts/run.ps1" in hook["powershell"]
+        assert ".github/hooks/scripts/my-pkg/scripts/run-win.ps1" in hook["windows"]
+        assert ".github/hooks/scripts/my-pkg/scripts/run-linux.sh" in hook["linux"]
+        assert ".github/hooks/scripts/my-pkg/scripts/run-mac.sh" in hook["osx"]
+        # Scripts are de-duplicated by target path. command and bash both
+        # reference run.sh with the same target, so only 5 unique entries.
+        assert len(scripts) == 5
+        script_targets = [t for _, t in scripts]
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run.sh") == 1
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run.ps1") == 1
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run-win.ps1") == 1
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run-linux.sh") == 1
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run-mac.sh") == 1
+
     def test_rewrite_hooks_data_github_copilot_flat_format(self, temp_project):
         """Test _rewrite_hooks_data handles GitHub Copilot flat format (bash/powershell at top level)."""
         pkg_dir = temp_project / "pkg"
@@ -1447,3 +1740,92 @@ class TestDeepCopySafety:
         assert data["hooks"]["Stop"][0]["hooks"][0]["command"] == original_cmd
         # Rewritten should be different
         assert rewritten["hooks"]["Stop"][0]["hooks"][0]["command"] != original_cmd
+
+
+# --- Codex hook integration tests ---------------------------------------------
+
+
+class TestCodexHookIntegration:
+    """Tests for Codex hooks.json merge with _apm_source markers."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.root = Path(self.temp_dir)
+        (self.root / ".codex").mkdir()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_package_info(self, name="test-pkg", hook_data=None):
+        """Create a mock package info with hook files."""
+        pkg_dir = self.root / "apm_modules" / name
+        hooks_dir = pkg_dir / ".apm" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+
+        if hook_data is None:
+            hook_data = {
+                "hooks": {
+                    "SessionStart": [
+                        {"type": "command", "command": "echo hello"}
+                    ]
+                }
+            }
+
+        hook_file = hooks_dir / "hooks.json"
+        with open(hook_file, 'w', encoding='utf-8') as f:
+            json.dump(hook_data, f)
+
+        pi = MagicMock()
+        pi.install_path = pkg_dir
+        pi.package = MagicMock()
+        pi.package.name = name
+        return pi
+
+    def test_codex_hooks_merge_into_hooks_json(self):
+        """Hooks are merged into .codex/hooks.json with _apm_source markers."""
+        pi = self._make_package_info()
+        integrator = HookIntegrator()
+        result = integrator.integrate_package_hooks_codex(pi, self.root)
+
+        assert result.hooks_integrated == 1
+        hooks_json = self.root / ".codex" / "hooks.json"
+        assert hooks_json.exists()
+        data = json.loads(hooks_json.read_text())
+        assert "SessionStart" in data["hooks"]
+        entries = data["hooks"]["SessionStart"]
+        assert any(e.get("_apm_source") == "test-pkg" for e in entries)
+
+    def test_codex_hooks_preserve_user_hooks(self):
+        """Existing user hooks in .codex/hooks.json are preserved."""
+        # Write existing user hooks
+        hooks_json = self.root / ".codex" / "hooks.json"
+        hooks_json.write_text(json.dumps({
+            "hooks": {
+                "PreToolUse": [
+                    {"type": "command", "command": "echo user-hook"}
+                ]
+            }
+        }))
+
+        pi = self._make_package_info()
+        integrator = HookIntegrator()
+        result = integrator.integrate_package_hooks_codex(pi, self.root)
+
+        data = json.loads(hooks_json.read_text())
+        # User hook preserved
+        assert "PreToolUse" in data["hooks"]
+        user_entries = [e for e in data["hooks"]["PreToolUse"] if "_apm_source" not in e]
+        assert len(user_entries) == 1
+        assert user_entries[0]["command"] == "echo user-hook"
+        # APM hook added
+        assert "SessionStart" in data["hooks"]
+
+    def test_codex_hooks_not_deployed_without_codex_dir(self):
+        """Hooks are not deployed if .codex/ directory doesn't exist."""
+        shutil.rmtree(self.root / ".codex")
+
+        pi = self._make_package_info()
+        integrator = HookIntegrator()
+        result = integrator.integrate_package_hooks_codex(pi, self.root)
+
+        assert result.hooks_integrated == 0

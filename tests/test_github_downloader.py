@@ -69,6 +69,15 @@ class TestGitHubPackageDownloader:
             # Should not have GitHub tokens in environment
             assert 'GITHUB_TOKEN' not in env or not env['GITHUB_TOKEN']
             assert 'GH_TOKEN' not in env or not env['GH_TOKEN']
+
+    def test_setup_git_environment_does_not_eagerly_call_credential_helper(self):
+        """Constructor should not invoke git credential helper (lazy per-dep auth)."""
+        with patch.dict(os.environ, {}, clear=True):
+            with patch(
+                'apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git'
+            ) as mock_cred:
+                GitHubPackageDownloader()
+                mock_cred.assert_not_called()
     
     @patch('apm_cli.deps.github_downloader.Repo')
     @patch('tempfile.mkdtemp')

@@ -28,8 +28,14 @@ from .engine import (
     "--dry-run", is_flag=True, help="Show what would be removed without removing"
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed removal information")
+@click.option(
+    "--global", "-g", "global_",
+    is_flag=True,
+    default=False,
+    help="Remove from user scope (~/.apm/) instead of the current project",
+)
 @click.pass_context
-def uninstall(ctx, packages, dry_run, verbose):
+def uninstall(ctx, packages, dry_run, verbose, global_):
     """Remove APM packages from apm.yml and apm_modules (like npm uninstall).
 
     This command removes packages from both the apm.yml dependencies list
@@ -39,28 +45,46 @@ def uninstall(ctx, packages, dry_run, verbose):
         apm uninstall acme/my-package                # Remove one package
         apm uninstall org/pkg1 org/pkg2              # Remove multiple packages
         apm uninstall acme/my-package --dry-run      # Show what would be removed
+        apm uninstall -g acme/my-package             # Remove from user scope
     """
+    from ...core.scope import InstallScope, get_deploy_root, get_apm_dir, get_modules_dir, get_manifest_path
+    scope = InstallScope.USER if global_ else InstallScope.PROJECT
+
+    manifest_path = get_manifest_path(scope)
+    apm_dir = get_apm_dir(scope)
+    deploy_root = get_deploy_root(scope)
+    manifest_display = str(manifest_path) if scope is InstallScope.USER else APM_YML_FILENAME
+
     logger = CommandLogger("uninstall", verbose=verbose, dry_run=dry_run)
     try:
         # Check if apm.yml exists
-        if not Path(APM_YML_FILENAME).exists():
-            logger.error(f"No {APM_YML_FILENAME} found. Run 'apm init' first.")
+        if not manifest_path.exists():
+            if scope is InstallScope.USER:
+                logger.error(
+                    f"No user manifest found at {manifest_display}. Install a package globally "
+                    "first with 'apm install -g <package>' or create the file manually."
+                )
+            else:
+                logger.error(f"No {manifest_display} found. Run 'apm init' in this project first.")
             sys.exit(1)
 
         if not packages:
             logger.error("No packages specified. Specify packages to uninstall.")
             sys.exit(1)
 
+        if scope is InstallScope.USER:
+            logger.progress("Uninstalling from user scope (~/.apm/)")
+
         logger.start(f"Uninstalling {len(packages)} package(s)...")
 
         # Read current apm.yml
         from ...utils.yaml_io import load_yaml, dump_yaml
 
-        apm_yml_path = Path(APM_YML_FILENAME)
+        apm_yml_path = manifest_path
         try:
             data = load_yaml(apm_yml_path) or {}
         except Exception as e:
-            logger.error(f"Failed to read {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to read {apm_yml_path}: {e}")
             sys.exit(1)
 
         if "dependencies" not in data:
@@ -77,8 +101,9 @@ def uninstall(ctx, packages, dry_run, verbose):
             return
 
         # Step 2: Dry run
+        modules_dir = get_modules_dir(scope)
         if dry_run:
-            _dry_run_uninstall(packages_to_remove, Path(APM_MODULES_DIR), logger)
+            _dry_run_uninstall(packages_to_remove, modules_dir, logger)
             return
 
         # Step 3: Remove from apm.yml
@@ -88,24 +113,23 @@ def uninstall(ctx, packages, dry_run, verbose):
         data["dependencies"]["apm"] = current_deps
         try:
             dump_yaml(data, apm_yml_path)
-            logger.success(f"Updated {APM_YML_FILENAME} (removed {len(packages_to_remove)} package(s))")
+            logger.success(f"Updated {apm_yml_path} (removed {len(packages_to_remove)} package(s))")
         except Exception as e:
-            logger.error(f"Failed to write {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to write {apm_yml_path}: {e}")
             sys.exit(1)
 
         # Step 4: Load lockfile and capture pre-uninstall MCP state
-        apm_modules_dir = Path(APM_MODULES_DIR)
         from ...deps.lockfile import LockFile, get_lockfile_path
-        lockfile_path = get_lockfile_path(Path("."))
+        lockfile_path = get_lockfile_path(apm_dir)
         lockfile = LockFile.read(lockfile_path)
         _pre_uninstall_mcp_servers = builtins.set(lockfile.mcp_servers) if lockfile else builtins.set()
 
         # Step 5: Remove packages from disk
-        removed_from_modules = _remove_packages_from_disk(packages_to_remove, apm_modules_dir, logger)
+        removed_from_modules = _remove_packages_from_disk(packages_to_remove, modules_dir, logger)
 
         # Step 6: Cleanup transitive orphans
         orphan_removed, actual_orphans = _cleanup_transitive_orphans(
-            lockfile, packages_to_remove, apm_modules_dir, apm_yml_path, logger
+            lockfile, packages_to_remove, modules_dir, apm_yml_path, logger
         )
         removed_from_modules += orphan_removed
 
@@ -154,9 +178,8 @@ def uninstall(ctx, packages, dry_run, verbose):
         # Step 9: Sync integrations
         cleaned = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
         try:
-            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
-            project_root = Path(".")
-            cleaned = _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger)
+            apm_package = APMPackage.from_apm_yml(manifest_path)
+            cleaned = _sync_integrations_after_uninstall(apm_package, deploy_root, all_deployed_files, logger)
         except Exception:
             pass  # Best effort cleanup
 
@@ -167,8 +190,9 @@ def uninstall(ctx, packages, dry_run, verbose):
 
         # Step 10: MCP cleanup
         try:
-            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
-            _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, _pre_uninstall_mcp_servers)
+            apm_package = APMPackage.from_apm_yml(manifest_path)
+            _cleanup_stale_mcp(apm_package, lockfile, lockfile_path, _pre_uninstall_mcp_servers,
+                               modules_dir=get_modules_dir(scope))
         except Exception:
             logger.warning("MCP cleanup during uninstall failed")
 
