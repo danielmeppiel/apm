@@ -2338,9 +2338,8 @@ def _install_apm_dependencies(
                 # validate_deploy_path() is the safety gate: it rejects path-traversal,
                 # requires a known integration prefix, and checks the resolved path
                 # stays within project_root -- so rmtree is safe here.
-                # Use default prefixes (all KNOWN_TARGETS) so legacy deployed
-                # paths from older buggy installs are also cleaned up.
-                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
+                # Pass resolved targets so user-scope prefixes are accepted.
+                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root, targets=_targets):
                     _target = project_root / _orphan_path
                     if _target.exists():
                         try:
