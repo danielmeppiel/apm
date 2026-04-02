@@ -520,3 +520,93 @@ class TestIntegrationPrefixSecurity:
         root = Path("/fake/project")
         assert BaseIntegrator.validate_deploy_path(".agents/skills/my-skill/SKILL.md", root)
         assert BaseIntegrator.validate_deploy_path(".codex/agents/my-agent.toml", root)
+
+
+# ===================================================================
+# 8. TestUserScopeIntegration
+# ===================================================================
+
+class TestUserScopeIntegration:
+    """Verify user_scope parameter threads through prefixes, validation,
+    and partition routing."""
+
+    def test_get_integration_prefixes_default_no_user_dirs(self):
+        """Without user_scope, user_root_dir prefixes are absent."""
+        from apm_cli.integration.targets import get_integration_prefixes, KNOWN_TARGETS
+        prefixes = get_integration_prefixes()
+        for t in KNOWN_TARGETS.values():
+            if t.user_root_dir and t.user_root_dir != t.root_dir:
+                assert f"{t.user_root_dir}/" not in prefixes
+
+    def test_get_integration_prefixes_user_scope_includes_user_dirs(self):
+        """user_scope=True adds user_root_dir prefixes (.copilot/, etc.)."""
+        from apm_cli.integration.targets import get_integration_prefixes, KNOWN_TARGETS
+        prefixes = get_integration_prefixes(user_scope=True)
+        for t in KNOWN_TARGETS.values():
+            if t.user_root_dir:
+                assert f"{t.user_root_dir}/" in prefixes
+            # Project-scope prefixes still present
+            assert t.prefix in prefixes
+
+    def test_get_integration_prefixes_user_scope_no_duplicates(self):
+        """No duplicate prefixes even when user_root_dir equals root_dir."""
+        from apm_cli.integration.targets import get_integration_prefixes
+        prefixes = get_integration_prefixes(user_scope=True)
+        assert len(prefixes) == len(set(prefixes))
+
+    def test_validate_deploy_path_user_scope_copilot(self):
+        """validate_deploy_path accepts .copilot/ paths at user scope."""
+        root = Path("/fake/home")
+        assert BaseIntegrator.validate_deploy_path(
+            ".copilot/agents/my-agent.md", root, user_scope=True,
+        )
+        # Without user_scope, .copilot/ should be rejected
+        assert not BaseIntegrator.validate_deploy_path(
+            ".copilot/agents/my-agent.md", root, user_scope=False,
+        )
+
+    def test_validate_deploy_path_user_scope_cursor(self):
+        """validate_deploy_path accepts .cursor/ paths at user scope."""
+        root = Path("/fake/home")
+        # .cursor/ is already the root_dir for cursor target, so it should
+        # be accepted even without user_scope
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        cursor_target = KNOWN_TARGETS.get("cursor")
+        if cursor_target and cursor_target.user_root_dir == ".cursor":
+            # .cursor/ is already the project root_dir, so accepted either way
+            assert BaseIntegrator.validate_deploy_path(
+                ".cursor/rules/my-rule.md", root, user_scope=False,
+            )
+
+    def test_validate_deploy_path_backward_compat(self):
+        """Default user_scope=False preserves existing behaviour."""
+        root = Path("/fake/project")
+        assert BaseIntegrator.validate_deploy_path(".github/prompts/test.md", root)
+        assert BaseIntegrator.validate_deploy_path(".claude/commands/test.md", root)
+        assert not BaseIntegrator.validate_deploy_path("../escape.md", root)
+
+    def test_partition_managed_files_user_scope_routes_copilot(self):
+        """partition_managed_files routes .copilot/ paths at user scope."""
+        managed = {
+            ".copilot/agents/my-agent.md",
+            ".copilot/prompts/test.prompt.md",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed, user_scope=True)
+        # At user scope, copilot's effective_root is .copilot, so
+        # .copilot/agents/ maps to agents_github (copilot alias) and
+        # .copilot/prompts/ maps to prompts (copilot alias)
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        copilot = KNOWN_TARGETS["copilot"]
+        if copilot.user_root_dir == ".copilot":
+            assert ".copilot/agents/my-agent.md" in buckets.get("agents_github", set())
+            assert ".copilot/prompts/test.prompt.md" in buckets.get("prompts", set())
+
+    def test_partition_managed_files_default_backward_compat(self):
+        """Default user_scope=False produces same buckets as before."""
+        managed = {
+            ".github/prompts/test.prompt.md",
+            ".claude/commands/test.md",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed)
+        assert ".github/prompts/test.prompt.md" in buckets.get("prompts", set())
+        assert ".claude/commands/test.md" in buckets.get("commands", set())

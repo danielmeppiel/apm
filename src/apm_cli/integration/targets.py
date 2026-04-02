@@ -246,7 +246,7 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
 }
 
 
-def get_integration_prefixes() -> tuple:
+def get_integration_prefixes(user_scope: bool = False) -> tuple:
     """Return all known target root prefixes as a tuple.
 
     Used by ``BaseIntegrator.validate_deploy_path`` so the allow-list
@@ -254,13 +254,24 @@ def get_integration_prefixes() -> tuple:
 
     Includes prefixes from ``deploy_root`` overrides (e.g. ``.agents/``
     for Codex skills) so cross-root paths pass security validation.
+
+    When *user_scope* is ``True``, user-scope prefixes (from
+    ``user_root_dir``) are included alongside project-scope prefixes
+    so that validation works for both scopes.
     """
     prefixes: list[str] = []
     seen: set[str] = set()
     for t in KNOWN_TARGETS.values():
+        # Always include project-scope prefix
         if t.prefix not in seen:
             seen.add(t.prefix)
             prefixes.append(t.prefix)
+        # At user scope, also include user_root_dir prefix
+        if user_scope and t.user_root_dir:
+            user_prefix = f"{t.user_root_dir}/"
+            if user_prefix not in seen:
+                seen.add(user_prefix)
+                prefixes.append(user_prefix)
         for m in t.primitives.values():
             if m.deploy_root is not None:
                 dp = f"{m.deploy_root}/"

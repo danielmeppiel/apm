@@ -224,7 +224,7 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
     return removed, actual_orphans
 
 
-def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger):
+def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger, user_scope=False):
     """Remove deployed files and re-integrate from remaining packages."""
     from ...integration.base_integrator import BaseIntegrator
     from ...models.apm_package import PackageInfo, validate_apm_package
@@ -238,7 +238,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
 
     sync_managed = all_deployed_files if all_deployed_files else None
     if sync_managed is not None:
-        _buckets = BaseIntegrator.partition_managed_files(sync_managed)
+        _buckets = BaseIntegrator.partition_managed_files(sync_managed, user_scope=user_scope)
     else:
         _buckets = None
 
@@ -266,7 +266,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
             if not _entry:
                 continue
             _integrator, _counter_key = _entry
-            _effective_root = _mapping.deploy_root or _target.root_dir
+            _effective_root = _mapping.deploy_root or _target.effective_root(user_scope=user_scope)
             _deploy_dir = project_root / _effective_root / _mapping.subdir
             if not _deploy_dir.exists():
                 continue
@@ -288,7 +288,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     for t in KNOWN_TARGETS.values():
         if t.supports("skills"):
             sm = t.primitives["skills"]
-            er = sm.deploy_root or t.root_dir
+            er = sm.deploy_root or t.effective_root(user_scope=user_scope)
             if (project_root / er / "skills").exists():
                 _skill_dirs_exist = True
                 break

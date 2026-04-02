@@ -2371,7 +2371,7 @@ def _install_apm_dependencies(
                 # validate_deploy_path() is the safety gate: it rejects path-traversal,
                 # requires .github/ or .claude/ prefix, and checks the resolved path
                 # stays within project_root — so rmtree is safe here.
-                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
+                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root, user_scope=_is_user):
                     _target = project_root / _orphan_path
                     if _target.exists():
                         try:

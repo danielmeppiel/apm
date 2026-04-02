@@ -96,15 +96,16 @@ class BaseIntegrator:
     # Known integration prefixes that APM is allowed to deploy/remove under.
     # Derived from ``targets.KNOWN_TARGETS`` so adding a target auto-propagates.
     @staticmethod
-    def _get_integration_prefixes() -> tuple:
+    def _get_integration_prefixes(user_scope: bool = False) -> tuple:
         from apm_cli.integration.targets import get_integration_prefixes
-        return get_integration_prefixes()
+        return get_integration_prefixes(user_scope=user_scope)
 
     @staticmethod
     def validate_deploy_path(
         rel_path: str,
         project_root: Path,
         allowed_prefixes: tuple | None = None,
+        user_scope: bool = False,
     ) -> bool:
         """Return True if *rel_path* is safe for APM to deploy or remove.
 
@@ -117,7 +118,7 @@ class BaseIntegrator:
         3. Resolves within *project_root*
         """
         if allowed_prefixes is None:
-            allowed_prefixes = BaseIntegrator._get_integration_prefixes()
+            allowed_prefixes = BaseIntegrator._get_integration_prefixes(user_scope=user_scope)
         if ".." in rel_path:
             return False
         if not rel_path.startswith(allowed_prefixes):
@@ -156,6 +157,7 @@ class BaseIntegrator:
     @staticmethod
     def partition_managed_files(
         managed_files: Set[str],
+        user_scope: bool = False,
     ) -> dict:
         """Partition *managed_files* by integration prefix in a single pass.
 
@@ -184,7 +186,7 @@ class BaseIntegrator:
 
         for target in KNOWN_TARGETS.values():
             for prim_name, mapping in target.primitives.items():
-                effective_root = mapping.deploy_root or target.root_dir
+                effective_root = mapping.deploy_root or target.effective_root(user_scope=user_scope)
                 prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
                 if prim_name == "skills":
                     skill_prefixes.append(prefix)
