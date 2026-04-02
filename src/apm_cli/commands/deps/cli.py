@@ -478,7 +478,7 @@ def clean(dry_run: bool, yes: bool):
 @click.option(
     "--target", "-t",
     type=click.Choice(
-        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        ["copilot", "claude", "cursor", "opencode", "codex", "vscode", "agents", "all"],
         case_sensitive=False,
     ),
     default=None,

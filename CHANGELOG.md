@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Hook integrator now processes the `windows` property in hook JSON files, copying referenced scripts and rewriting paths during install/compile (#311)
+- `apm deps update --target` now includes `codex` as a valid choice, matching `install` and `compile` (#519)
+- `apm pack --target` now includes `agents` as a valid choice, matching `install` and `compile` (#519)
+- `apm --version` no longer emits Unicode box-drawing characters; uses plain ASCII output for cp1252 compatibility (#519)
+- Replaced Unicode box-drawing and em-dash characters in `diagnostics.py` with ASCII equivalents (#519)
+- Standardized `--target` choice ordering to `copilot|claude|cursor|opencode|codex|vscode|agents|all` across all commands (#519)
+- Replaced Unicode emoji in `cli-commands.md` with ASCII bracket notation (#519)
+- Documented `--verbose` flag for `apm uninstall`, `apm run`, and `apm preview` in CLI reference (#519)
 
 ### Added
 

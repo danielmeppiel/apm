@@ -18,7 +18,7 @@ from apm_cli.utils.console import (
     _rich_warning,
 )
 
-# Diagnostic categories — used as grouping keys in render_summary()
+# Diagnostic categories -- used as grouping keys in render_summary()
 CATEGORY_COLLISION = "collision"
 CATEGORY_OVERWRITE = "overwrite"
 CATEGORY_WARNING = "warning"
@@ -46,7 +46,7 @@ class Diagnostic:
     category: str
     package: str = ""
     detail: str = ""
-    severity: str = ""  # e.g. "critical", "warning", "info" — used by security category
+    severity: str = ""  # e.g. "critical", "warning", "info" -- used by security category
 
 
 class DiagnosticCollector:
@@ -223,13 +223,13 @@ class DiagnosticCollector:
         if console:
             try:
                 console.print()
-                console.print("── Diagnostics ──", style="bold cyan")
+                console.print("-- Diagnostics --", style="bold cyan")
             except Exception:
                 _rich_echo("")
-                _rich_echo("── Diagnostics ──", color="cyan", bold=True)
+                _rich_echo("-- Diagnostics --", color="cyan", bold=True)
         else:
             _rich_echo("")
-            _rich_echo("── Diagnostics ──", color="cyan", bold=True)
+            _rich_echo("-- Diagnostics --", color="cyan", bold=True)
 
         for cat in _CATEGORY_ORDER:
             items = groups.get(cat)
@@ -268,7 +268,7 @@ class DiagnosticCollector:
 
         if critical:
             _rich_echo(
-                f"  [!] {len(critical)} critical security finding(s) — "
+                f"  [!] {len(critical)} critical security finding(s) -- "
                 f"hidden characters detected",
                 color="red",
                 bold=True,
@@ -280,7 +280,7 @@ class DiagnosticCollector:
                     if pkg:
                         _rich_echo(f"    [{pkg}]", color="dim")
                     for d in diags:
-                        _rich_echo(f"      └─ {d.message}", color="red")
+                        _rich_echo(f"      +- {d.message}", color="red")
 
         if warnings:
             _rich_warning(
@@ -294,7 +294,7 @@ class DiagnosticCollector:
                     if pkg:
                         _rich_echo(f"    [{pkg}]", color="dim")
                     for d in diags:
-                        _rich_echo(f"      └─ {d.message}", color="dim")
+                        _rich_echo(f"      +- {d.message}", color="dim")
 
         if info and self.verbose:
             _rich_info(
@@ -308,7 +308,7 @@ class DiagnosticCollector:
         _rich_warning(f"  [!] {count} authentication {noun}")
         for d in items:
             pkg_prefix = f"[{d.package}] " if d.package else ""
-            _rich_echo(f"    └─ {pkg_prefix}{d.message}", color="yellow")
+            _rich_echo(f"    +- {pkg_prefix}{d.message}", color="yellow")
             if d.detail and self.verbose:
                 _rich_echo(f"         {d.detail}", color="dim")
         if not self.verbose:
@@ -330,7 +330,7 @@ class DiagnosticCollector:
                 if pkg:
                     _rich_echo(f"    [{pkg}]", color="dim")
                 for d in diags:
-                    _rich_echo(f"      └─ {d.message}", color="dim")
+                    _rich_echo(f"      +- {d.message}", color="dim")
 
     def _render_overwrite_group(self, items: List[Diagnostic]) -> None:
         count = len(items)
@@ -346,7 +346,7 @@ class DiagnosticCollector:
                 if pkg:
                     _rich_echo(f"    [{pkg}]", color="dim")
                 for d in diags:
-                    _rich_echo(f"      └─ {d.message}", color="dim")
+                    _rich_echo(f"      +- {d.message}", color="dim")
                     if d.detail:
                         _rich_echo(f"         {d.detail}", color="dim")
 
@@ -355,7 +355,7 @@ class DiagnosticCollector:
             pkg_prefix = f"[{d.package}] " if d.package else ""
             _rich_warning(f"  [!] {pkg_prefix}{d.message}")
             if d.detail and self.verbose:
-                _rich_echo(f"    └─ {d.detail}", color="dim")
+                _rich_echo(f"    +- {d.detail}", color="dim")
 
     def _render_error_group(self, items: List[Diagnostic]) -> None:
         count = len(items)
@@ -363,7 +363,7 @@ class DiagnosticCollector:
         _rich_echo(f"  [x] {count} {noun} failed:", color="red")
         for d in items:
             pkg_prefix = f"{d.package} -- " if d.package else ""
-            _rich_echo(f"    └─ {pkg_prefix}{d.message}", color="red")
+            _rich_echo(f"    +- {pkg_prefix}{d.message}", color="red")
             if d.detail and self.verbose:
                 _rich_echo(f"         {d.detail}", color="dim")
 
@@ -371,7 +371,7 @@ class DiagnosticCollector:
         for d in items:
             _rich_info(f"  [i] {d.message}")
             if d.detail and self.verbose:
-                _rich_echo(f"    └─ {d.detail}", color="dim")
+                _rich_echo(f"    +- {d.detail}", color="dim")
 
 
 def _group_by_package(items: List[Diagnostic]) -> Dict[str, List[Diagnostic]]:

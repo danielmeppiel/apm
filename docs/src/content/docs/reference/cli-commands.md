@@ -278,6 +278,7 @@ apm uninstall [OPTIONS] PACKAGES...
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
+- `-v, --verbose` - Show detailed removal information
 - `-g, --global` - Remove from user scope (`~/.apm/`) instead of the current project
 
 **Examples:**
@@ -1010,6 +1011,7 @@ apm run [SCRIPT_NAME] [OPTIONS]
 
 **Options:**
 - `-p, --param TEXT` - Parameter in format `name=value` (can be used multiple times)
+- `-v, --verbose` - Show detailed output
 
 **Examples:**
 ```bash
@@ -1042,6 +1044,7 @@ apm preview [SCRIPT_NAME] [OPTIONS]
 
 **Options:**
 - `-p, --param TEXT` - Parameter in format `name=value`
+- `-v, --verbose` - Show detailed output
 
 **Examples:**
 ```bash
@@ -1388,7 +1391,7 @@ apm runtime list
 
 **Output includes:**
 - Runtime name and description
-- Installation status (✅ Installed / ❌ Not installed)
+- Installation status ([+] Installed / [x] Not installed)
 - Installation path and version
 - Configuration details
 
