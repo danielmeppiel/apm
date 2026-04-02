@@ -285,6 +285,7 @@ class TestExhaustivenessChecks:
             "commands_opencode",
             "instructions",        # was instructions_copilot, aliased
             "rules_cursor",        # was instructions_cursor, aliased
+            "rules_claude",        # was instructions_claude, aliased
             "skills",              # cross-target bucket
             "hooks",               # cross-target bucket
         }
@@ -475,6 +476,9 @@ class TestPartitionBucketKey:
     def test_cursor_instructions_alias(self):
         assert BaseIntegrator.partition_bucket_key("instructions", "cursor") == "rules_cursor"
 
+    def test_claude_instructions_alias(self):
+        assert BaseIntegrator.partition_bucket_key("instructions", "claude") == "rules_claude"
+
     def test_unaliased_key_passthrough(self):
         assert BaseIntegrator.partition_bucket_key("agents", "cursor") == "agents_cursor"
 
@@ -499,6 +503,21 @@ class TestCodexPartitionRouting:
         assert ".codex/agents/my-agent.toml" in buckets["agents_codex"]
         # Only true Codex hook paths route to the hooks bucket.
         assert ".codex/hooks/pkg/script.sh" in buckets["hooks"]
+
+
+class TestClaudeRulesPartitionRouting:
+    """Verify that Claude rules deployed_files are routed to the correct bucket."""
+
+    def test_partition_routes_claude_rules_correctly(self):
+        managed = {
+            ".claude/rules/python.md",
+            ".claude/rules/testing.md",
+            ".claude/agents/reviewer.md",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed)
+        assert ".claude/rules/python.md" in buckets["rules_claude"]
+        assert ".claude/rules/testing.md" in buckets["rules_claude"]
+        assert ".claude/agents/reviewer.md" in buckets["agents_claude"]
 
 
 # ===================================================================
