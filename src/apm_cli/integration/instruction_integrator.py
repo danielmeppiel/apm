@@ -60,6 +60,7 @@ class InstructionIntegrator(BaseIntegrator):
         force: bool = False,
         managed_files: Optional[Set[str]] = None,
         diagnostics=None,
+        user_scope: bool = False,
     ) -> IntegrationResult:
         """Integrate instructions for a single *target*.
 
@@ -72,9 +73,9 @@ class InstructionIntegrator(BaseIntegrator):
         if not mapping:
             return IntegrationResult(0, 0, 0, [])
 
-        effective_root = mapping.deploy_root or target.root_dir
+        effective_root = mapping.deploy_root or target.effective_root(user_scope=user_scope)
         target_root = project_root / effective_root
-        if not target.auto_create and not (project_root / target.root_dir).is_dir():
+        if not target.auto_create and not (project_root / target.effective_root(user_scope=user_scope)).is_dir():
             return IntegrationResult(0, 0, 0, [])
 
         self.init_link_resolver(package_info, project_root)
@@ -134,12 +135,13 @@ class InstructionIntegrator(BaseIntegrator):
         apm_package,
         project_root: Path,
         managed_files: Optional[Set[str]] = None,
+        user_scope: bool = False,
     ) -> Dict[str, int]:
         """Remove APM-managed instruction files for a single *target*."""
         mapping = target.primitives.get("instructions")
         if not mapping:
             return {"files_removed": 0, "errors": 0}
-        effective_root = mapping.deploy_root or target.root_dir
+        effective_root = mapping.deploy_root or target.effective_root(user_scope=user_scope)
         prefix = f"{effective_root}/{mapping.subdir}/"
         legacy_dir = project_root / effective_root / mapping.subdir
         legacy_pattern = (

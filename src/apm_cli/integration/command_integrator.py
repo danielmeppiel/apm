@@ -119,6 +119,7 @@ class CommandIntegrator(BaseIntegrator):
         force: bool = False,
         managed_files: set = None,
         diagnostics=None,
+        user_scope: bool = False,
     ) -> IntegrationResult:
         """Integrate prompt files as commands for a single *target*.
 
@@ -130,9 +131,9 @@ class CommandIntegrator(BaseIntegrator):
         if not mapping:
             return IntegrationResult(0, 0, 0, [], 0)
 
-        effective_root = mapping.deploy_root or target.root_dir
+        effective_root = mapping.deploy_root or target.effective_root(user_scope=user_scope)
         target_root = project_root / effective_root
-        if not target.auto_create and not (project_root / target.root_dir).is_dir():
+        if not target.auto_create and not (project_root / target.effective_root(user_scope=user_scope)).is_dir():
             return IntegrationResult(0, 0, 0, [], 0)
 
         prompt_files = self.find_prompt_files(package_info.install_path)
@@ -185,12 +186,13 @@ class CommandIntegrator(BaseIntegrator):
         apm_package,
         project_root: Path,
         managed_files: set = None,
+        user_scope: bool = False,
     ) -> Dict:
         """Remove APM-managed command files for a single *target*."""
         mapping = target.primitives.get("commands")
         if not mapping:
             return {"files_removed": 0, "errors": 0}
-        effective_root = mapping.deploy_root or target.root_dir
+        effective_root = mapping.deploy_root or target.effective_root(user_scope=user_scope)
         prefix = f"{effective_root}/{mapping.subdir}/"
         legacy_dir = project_root / effective_root / mapping.subdir
         return self.sync_remove_files(

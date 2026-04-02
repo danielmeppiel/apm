@@ -84,13 +84,14 @@ class PromptIntegrator(BaseIntegrator):
         force: bool = False,
         managed_files: Optional[Set[str]] = None,
         diagnostics=None,
+        user_scope: bool = False,
     ) -> IntegrationResult:
         """Integrate prompts for a single *target*."""
         mapping = target.primitives.get("prompts")
         if not mapping:
             return IntegrationResult(0, 0, 0, [])
 
-        if not target.auto_create and not (project_root / target.root_dir).is_dir():
+        if not target.auto_create and not (project_root / target.effective_root(user_scope=user_scope)).is_dir():
             return IntegrationResult(0, 0, 0, [])
 
         return self.integrate_package_prompts(
@@ -105,12 +106,13 @@ class PromptIntegrator(BaseIntegrator):
         apm_package,
         project_root: Path,
         managed_files: Optional[Set[str]] = None,
+        user_scope: bool = False,
     ) -> Dict[str, int]:
         """Remove APM-managed prompt files for a single *target*."""
         mapping = target.primitives.get("prompts")
         if not mapping:
             return {"files_removed": 0, "errors": 0}
-        effective_root = mapping.deploy_root or target.root_dir
+        effective_root = mapping.deploy_root or target.effective_root(user_scope=user_scope)
         prefix = f"{effective_root}/{mapping.subdir}/"
         legacy_dir = project_root / effective_root / mapping.subdir
         return self.sync_remove_files(

@@ -1065,7 +1065,7 @@ def _integrate_package_primitives(
             _int_result = getattr(_integrator, _method_name)(
                 _target, package_info, project_root,
                 force=force, managed_files=managed_files,
-                diagnostics=diagnostics,
+                diagnostics=diagnostics, user_scope=_user_scope,
             )
             if _int_result.files_integrated > 0:
                 result[_counter_key] += _int_result.files_integrated

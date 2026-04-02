@@ -224,7 +224,7 @@ def _cleanup_transitive_orphans(lockfile, packages_to_remove, apm_modules_dir, a
     return removed, actual_orphans
 
 
-def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger):
+def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_files, logger, user_scope: bool = False):
     """Remove deployed files and re-integrate from remaining packages."""
     from ...integration.base_integrator import BaseIntegrator
     from ...models.apm_package import PackageInfo, validate_apm_package
@@ -278,7 +278,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                 _managed_subset = _buckets.get(_bucket_key, set())
             result = _integrator.sync_for_target(
                 _target, apm_package, project_root,
-                managed_files=_managed_subset,
+                managed_files=_managed_subset, user_scope=user_scope,
             )
             counts[_counter_key] += result.get("files_removed", 0)
 
