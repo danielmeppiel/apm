@@ -310,7 +310,7 @@ Coverage varies by target and primitive type:
 | Target | Status | User-level dir | Primitives | Not supported |
 |--------|--------|---------------|------------|---------------|
 | Claude Code | Supported | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
-| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, instructions, hooks | Prompts (not supported by Copilot CLI) |
+| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, hooks | Prompts, instructions |
 | Cursor | Partial | `~/.cursor/` | Skills, agents, hooks | Rules |
 | OpenCode | Partial | `~/.config/opencode/` | Skills, agents, commands | Hooks |
 

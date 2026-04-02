@@ -1011,26 +1011,9 @@ def _integrate_package_primitives(
 
     # --- target x primitive dispatch loop ---
     for _target in targets:
-        # Skip entire target when user scope is not supported
-        if _user_scope and not _target.user_supported:
-            if logger:
-                logger.verbose_detail(
-                    f"Skipping {_target.name} at user scope (not supported)"
-                )
-            continue
-
         for _prim_name, _mapping in _target.primitives.items():
             if _prim_name == "skills":
                 continue  # handled separately below
-
-            # Skip primitives unsupported at user scope
-            if _user_scope and _prim_name in _target.unsupported_user_primitives:
-                if logger:
-                    logger.verbose_detail(
-                        f"Skipping {_prim_name} for {_target.name} "
-                        f"at user scope (not supported)"
-                    )
-                continue
 
             # --- hooks (different return type) ---
             if _prim_name == "hooks":
@@ -1331,7 +1314,7 @@ def _install_apm_dependencies(
     )
 
     try:
-        dependency_graph = resolver.resolve_dependencies(project_root)
+        dependency_graph = resolver.resolve_dependencies(apm_dir)
 
         # Verbose: show resolved tree summary
         if logger:
@@ -1438,22 +1421,18 @@ def _install_apm_dependencies(
         # Determine active targets.  When --target or apm.yml target is set
         # the user's choice wins.  Otherwise auto-detect from existing dirs,
         # falling back to copilot when nothing is found.
-        from apm_cli.integration.targets import (
-            active_targets as _active_targets,
-            active_targets_user_scope as _active_targets_user,
-        )
+        from apm_cli.integration.targets import resolve_targets as _resolve_targets
 
         _is_user = scope is InstallScope.USER
-        if _is_user:
-            _targets = _active_targets_user(explicit_target=_explicit)
-        else:
-            _targets = _active_targets(project_root, explicit_target=_explicit)
+        _targets = _resolve_targets(
+            project_root, user_scope=_is_user, explicit_target=_explicit,
+        )
 
         # Log target detection results
         if logger and _targets:
             _scope_label = "global" if _is_user else "project"
             _target_names = ", ".join(
-                f"{t.name} (~/{t.effective_root(user_scope=_is_user)}/)"
+                f"{t.name} (~/{t.root_dir}/)"
                 if _is_user else t.name
                 for t in _targets
             )
@@ -1467,7 +1446,7 @@ def _install_apm_dependencies(
                 )
 
         for _t in _targets:
-            _root = _t.effective_root(user_scope=_is_user)
+            _root = _t.root_dir
             _target_dir = project_root / _root
             if not _target_dir.exists():
                 _target_dir.mkdir(parents=True, exist_ok=True)
@@ -2357,8 +2336,10 @@ def _install_apm_dependencies(
             _deleted_orphan_paths: builtins.list = []
             for _orphan_path in sorted(orphaned_deployed_files):
                 # validate_deploy_path() is the safety gate: it rejects path-traversal,
-                # requires .github/ or .claude/ prefix, and checks the resolved path
-                # stays within project_root — so rmtree is safe here.
+                # requires a known integration prefix, and checks the resolved path
+                # stays within project_root -- so rmtree is safe here.
+                # Use default prefixes (all KNOWN_TARGETS) so legacy deployed
+                # paths from older buggy installs are also cleaned up.
                 if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
                     _target = project_root / _orphan_path
                     if _target.exists():

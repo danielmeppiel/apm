@@ -179,7 +179,10 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
         cleaned = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
         try:
             apm_package = APMPackage.from_apm_yml(manifest_path)
-            cleaned = _sync_integrations_after_uninstall(apm_package, deploy_root, all_deployed_files, logger)
+            cleaned = _sync_integrations_after_uninstall(
+                apm_package, deploy_root, all_deployed_files, logger,
+                user_scope=scope is InstallScope.USER,
+            )
         except Exception:
             pass  # Best effort cleanup
 

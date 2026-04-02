@@ -114,6 +114,39 @@ class TargetProfile:
             return False
         return primitive in self.primitives
 
+    def for_scope(self, user_scope: bool = False) -> "TargetProfile | None":
+        """Return a scope-resolved copy of this profile.
+
+        When *user_scope* is ``False``, returns ``self`` unchanged.
+
+        When *user_scope* is ``True``:
+        - Returns ``None`` if this target does not support user scope.
+        - Otherwise returns a frozen copy with ``root_dir`` set to
+          ``user_root_dir`` (or left unchanged when ``user_root_dir``
+          is ``None``) and ``primitives`` filtered to exclude entries
+          listed in ``unsupported_user_primitives``.
+
+        This is the **single place** where scope resolution happens.
+        All downstream code reads ``target.root_dir`` directly.
+        """
+        if not user_scope:
+            return self
+        if not self.user_supported:
+            return None
+
+        from dataclasses import replace
+
+        new_root = self.user_root_dir or self.root_dir
+        if self.unsupported_user_primitives:
+            filtered = {
+                k: v for k, v in self.primitives.items()
+                if k not in self.unsupported_user_primitives
+            }
+        else:
+            filtered = self.primitives
+
+        return replace(self, root_dir=new_root, primitives=filtered)
+
 
 # ------------------------------------------------------------------
 # Known targets
@@ -121,7 +154,7 @@ class TargetProfile:
 
 KNOWN_TARGETS: Dict[str, TargetProfile] = {
     # Copilot (GitHub) -- at user scope, Copilot CLI reads ~/.copilot/
-    # instead of ~/.github/.  Prompts are not supported at user scope.
+    # instead of ~/.github/.  Prompts and instructions are not supported at user scope.
     # Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
     "copilot": TargetProfile(
         name="copilot",
@@ -147,7 +180,7 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         detect_by_dir=True,
         user_supported="partial",
         user_root_dir=".copilot",
-        unsupported_user_primitives=("prompts",),
+        unsupported_user_primitives=("prompts", "instructions"),
     ),
     # Claude Code -- ~/.claude/ is the documented user-level config directory.
     # All primitives are supported at user scope.
@@ -251,18 +284,23 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
 }
 
 
-def get_integration_prefixes() -> tuple:
+def get_integration_prefixes(targets=None) -> tuple:
     """Return all known target root prefixes as a tuple.
 
     Used by ``BaseIntegrator.validate_deploy_path`` so the allow-list
     stays in sync with registered targets.
 
+    When *targets* is provided, prefixes are derived from those
+    (already scope-resolved) profiles.  Otherwise falls back to
+    ``KNOWN_TARGETS`` for backward compatibility.
+
     Includes prefixes from ``deploy_root`` overrides (e.g. ``.agents/``
     for Codex skills) so cross-root paths pass security validation.
     """
+    source = targets if targets is not None else KNOWN_TARGETS.values()
     prefixes: list[str] = []
     seen: set[str] = set()
-    for t in KNOWN_TARGETS.values():
+    for t in source:
         if t.prefix not in seen:
             seen.add(t.prefix)
             prefixes.append(t.prefix)
@@ -367,3 +405,35 @@ def active_targets(project_root, explicit_target: "Optional[str]" = None) -> lis
 
     # --- fallback: copilot is the universal default ---
     return [KNOWN_TARGETS["copilot"]]
+
+
+def resolve_targets(
+    project_root,
+    user_scope: bool = False,
+    explicit_target: "Optional[str]" = None,
+) -> list:
+    """Return scope-resolved ``TargetProfile`` instances.
+
+    This is the **single entry point** for obtaining deployment targets.
+    It combines target detection (or explicit selection), scope resolution
+    (``for_scope``), and primitive filtering into one call.
+
+    Callers receive profiles where ``root_dir`` is already correct for
+    the requested scope -- no ``effective_root()`` calls needed.
+
+    Args:
+        project_root: Workspace root (``Path.cwd()`` or ``Path.home()``).
+        user_scope: When ``True``, resolve for user-level deployment.
+        explicit_target: Canonical target name or ``"all"``.
+    """
+    if user_scope:
+        raw = active_targets_user_scope(explicit_target)
+    else:
+        raw = active_targets(project_root, explicit_target)
+
+    resolved = []
+    for t in raw:
+        scoped = t.for_scope(user_scope=user_scope)
+        if scoped is not None:
+            resolved.append(scoped)
+    return resolved
