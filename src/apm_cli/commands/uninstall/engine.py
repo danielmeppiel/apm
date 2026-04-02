@@ -308,7 +308,8 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     if _skill_dirs_exist:
         integrator = SkillIntegrator()
         result = integrator.sync_integration(apm_package, project_root,
-                                             managed_files=_buckets["skills"] if _buckets else None)
+                                             managed_files=_buckets["skills"] if _buckets else None,
+                                             targets=_resolved_targets)
         counts["skills"] = result.get("files_removed", 0)
 
     # Hooks (multi-target, sync_integration handles all targets)
@@ -369,7 +370,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                         getattr(_integrator, _method)(
                             _target, pkg_info, project_root,
                         )
-            skill_integrator.integrate_package_skill(pkg_info, project_root)
+            skill_integrator.integrate_package_skill(pkg_info, project_root, targets=_targets)
         except Exception:
             pkg_id = dep_ref.get_identity() if hasattr(dep_ref, "get_identity") else str(dep_ref)
             logger.warning(f"Best-effort re-integration skipped for {pkg_id}")
