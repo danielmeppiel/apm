@@ -153,7 +153,9 @@ class InstructionIntegrator(BaseIntegrator):
         if mapping.format_id == "cursor_rules":
             legacy_pattern = "*.mdc"
         elif mapping.format_id == "claude_rules":
-            legacy_pattern = "*.md"
+            # Do not use a broad legacy glob for Claude rules to avoid
+            # deleting user-authored .md files under .claude/rules/.
+            legacy_pattern = None
         else:
             legacy_pattern = "*.instructions.md"
         return self.sync_remove_files(
