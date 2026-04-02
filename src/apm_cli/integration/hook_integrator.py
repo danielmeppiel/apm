@@ -284,7 +284,15 @@ class HookIntegrator(BaseIntegrator):
                             hook[key] = new_cmd
                             all_scripts.extend(scripts)
 
-        return rewritten, all_scripts
+        # De-duplicate by target path to avoid redundant copies when
+        # multiple keys (e.g. command + bash) reference the same script.
+        seen_targets: dict[str, Path] = {}
+        for source, target_rel in all_scripts:
+            if target_rel not in seen_targets:
+                seen_targets[target_rel] = source
+        unique_scripts = [(src, tgt) for tgt, src in seen_targets.items()]
+
+        return rewritten, unique_scripts
 
     def _get_package_name(self, package_info) -> str:
         """Get a short package name for use in file/directory naming.

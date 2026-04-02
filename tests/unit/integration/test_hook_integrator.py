@@ -1501,11 +1501,11 @@ class TestScriptPathRewriting:
         assert ".github/hooks/scripts/my-pkg/scripts/run-win.ps1" in hook["windows"]
         assert ".github/hooks/scripts/my-pkg/scripts/run-linux.sh" in hook["linux"]
         assert ".github/hooks/scripts/my-pkg/scripts/run-mac.sh" in hook["osx"]
-        # Each key independently produces a copy entry (command and bash
-        # reference the same source file but both emit an entry).
-        assert len(scripts) == 6
+        # Scripts are de-duplicated by target path. command and bash both
+        # reference run.sh with the same target, so only 5 unique entries.
+        assert len(scripts) == 5
         script_targets = [t for _, t in scripts]
-        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run.sh") == 2
+        assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run.sh") == 1
         assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run.ps1") == 1
         assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run-win.ps1") == 1
         assert script_targets.count(".github/hooks/scripts/my-pkg/scripts/run-linux.sh") == 1
