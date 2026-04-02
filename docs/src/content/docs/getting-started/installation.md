@@ -42,6 +42,12 @@ scoop bucket add apm https://github.com/microsoft/scoop-apm
 scoop install apm
 ```
 
+**Nix (macOS/Linux):**
+
+```bash
+nix run github:microsoft/apm
+```
+
 ## pip install
 
 ```bash

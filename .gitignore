@@ -73,3 +73,6 @@ build/tmp/
 scout-pipeline-result.png
 .copilot/
 .playwright-mcp/
+
+# Nix
+result

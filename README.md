@@ -70,6 +70,8 @@ Native release binaries are published for macOS, Linux, and Windows x86_64. `apm
 ```bash
 # Homebrew
 brew install microsoft/apm/apm
+# Nix
+nix run github:microsoft/apm
 # pip
 pip install apm-cli
 ```
