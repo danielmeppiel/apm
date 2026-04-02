@@ -1,20 +1,20 @@
 {
-  "last_updated": "2026-04-01T01:10:54Z",
+  "last_updated": "2026-04-02T01:07:53Z",
   "last_run_tasks": ["task3", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit tests/test_console.py -x -q",
     "test_full": "python3 -m uv run pytest tests/unit tests/test_console.py -x -q",
     "format": "python3 -m uv run black . && python3 -m uv run isort .",
     "install_dev": "pip install uv --break-system-packages && python3 -m uv sync --extra dev",
-    "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'. RegistryIntegration is lazily imported in mcp.py function bodies; patch at apm_cli.registry.integration.RegistryIntegration. Avoid --cov flag: causes PyYAML global state corruption. compile CLI display helpers: patch 'apm_cli.commands.compile.cli._get_console' not '_helpers._get_console'."
+    "notes": "uv is not on PATH in CI; use 'pip install uv --break-system-packages' then 'python3 -m uv'. RegistryIntegration is lazily imported in mcp.py function bodies; patch at apm_cli.registry.integration.RegistryIntegration. Avoid --cov flag: causes PyYAML global state corruption. APMPackage.from_apm_yml requires 'version' field in apm.yml. Rich imports in deps/cli.py are all lazy (inside function bodies) - patch via sys.modules removal or apm_cli.core.scope.get_apm_dir for scope. use _force_rich_fallback() pattern to stub out rich via sys.modules for text-fallback testing."
   },
   "coverage_baseline": {
-    "total": "61%",
-    "run_date": "2026-04-01",
-    "test_count": 3422,
-    "passing": 3422,
+    "total": "61%+",
+    "run_date": "2026-04-02",
+    "test_count": 3419,
+    "passing": 3419,
     "pre_existing_failures": 0,
-    "notes": "All 3422 tests pass as of 2026-04-01 on main branch. +23 new compile CLI helper tests in this run (was 3398+)."
+    "notes": "All 3419 tests pass as of 2026-04-02. +20 new deps list/tree/info tests in this run (was 3399)."
   },
   "monthly_activity_issue": "open-2026-04",
   "monthly_activity_issue_number": "created-2026-04-01-run-23826960523",
@@ -24,18 +24,22 @@
   "lockfile_format_note": "Lockfile is apm.lock.yaml (LOCKFILE_NAME constant). Legacy apm.lock read via get_lockfile_path fallback. Tests should write apm.lock.yaml.",
   "lazy_import_note": "RegistryIntegration imported lazily inside mcp.py function bodies. Must patch 'apm_cli.registry.integration.RegistryIntegration', not 'apm_cli.commands.mcp.RegistryIntegration'.",
   "compile_cli_note": "compile/cli.py display helpers patch target is 'apm_cli.commands.compile.cli._get_console' (not _helpers). _get_console is imported into the module namespace.",
+  "deps_cli_note": "All imports in deps/cli.py (rich, scope, lockfile) are lazy (inside function bodies). Patch at source module (e.g. apm_cli.core.scope.get_apm_dir). For Rich fallback testing, use sys.modules removal pattern. APMPackage.from_apm_yml requires 'version' field.",
   "testing_backlog": [
     {"id": "config-command", "file": "src/apm_cli/commands/config.py", "coverage": "100%", "priority": "done", "notes": "PR #366 open. 23 tests."},
     {"id": "utils-console", "file": "src/apm_cli/utils/console.py", "coverage": "90%", "priority": "done", "notes": "PR #351 open."},
     {"id": "agents-compiler-display", "file": "src/apm_cli/compilation/agents_compiler.py", "coverage": "82%", "priority": "medium", "notes": "PR #221 open. Remaining: display/formatting paths"},
     {"id": "runtime-manager", "file": "src/apm_cli/runtime/manager.py", "coverage": "90%", "priority": "done", "notes": "PR #380 open. 53 tests."},
     {"id": "output-module", "file": "src/apm_cli/output/models.py, formatters.py, script_formatters.py", "coverage_before": "~0%", "coverage_after": "~70%", "priority": "done", "notes": "PR created 2026-03-31. 72 tests. Branch: test-assist/output-module-coverage-23775479086"},
-    {"id": "compile-cli-helpers", "file": "src/apm_cli/commands/compile/cli.py", "coverage": "~80%+ for helpers", "priority": "done", "notes": "PR created 2026-04-01. 23 tests. Branch: test-assist/compile-cli-helpers-23826960523. Main compile() orchestration still needs tests."},
-    {"id": "deps-cli", "file": "src/apm_cli/commands/deps/cli.py", "coverage": "unknown", "priority": "medium", "notes": "747 lines, deps update/clean/list/tree/info CLI paths. High-value next target."},
-    {"id": "drift", "file": "src/apm_cli/drift.py", "coverage": "has tests", "priority": "low", "notes": "Already covered in test_install_update.py. detect_ref_change, detect_orphans, detect_config_drift, build_download_ref all tested."},
-    {"id": "install-command", "file": "src/apm_cli/commands/install.py", "coverage": "has many tests", "priority": "low", "notes": "2131 lines but already 1742 lines of tests across 5 test files. Lower priority."}
+    {"id": "compile-cli-helpers", "file": "src/apm_cli/commands/compile/cli.py", "coverage": "~80%+ for helpers", "priority": "done", "notes": "PR created 2026-04-01. 23 tests. Branch: test-assist/compile-cli-helpers-23826960523."},
+    {"id": "deps-list-tree-info", "file": "src/apm_cli/commands/deps/cli.py (list/tree/info cmds)", "coverage_before": "0%", "coverage_after": "~70%+ for these cmds", "priority": "done", "notes": "PR created 2026-04-02. 20 tests. Branch: test-assist/deps-list-tree-info-23878586888. clean/update already had tests."},
+    {"id": "deps-cli", "file": "src/apm_cli/commands/deps/cli.py", "coverage": "partial", "priority": "medium", "notes": "list/tree/info now covered. _show_scope_deps internals partially tested. Main update() orchestration still complex."},
+    {"id": "drift", "file": "src/apm_cli/drift.py", "coverage": "has tests", "priority": "low", "notes": "Already covered in test_install_update.py."},
+    {"id": "install-command", "file": "src/apm_cli/commands/install.py", "coverage": "has many tests", "priority": "low", "notes": "2131 lines but already 1742 lines of tests across 5 test files. Lower priority."},
+    {"id": "utils-path-security", "file": "src/apm_cli/utils/path_security.py", "coverage": "unknown", "priority": "medium", "notes": "Security-critical code - validate_path_segments and ensure_path_within. Worth verifying coverage."},
+    {"id": "integration-base", "file": "src/apm_cli/integration/base_integrator.py", "coverage": "unknown", "priority": "medium", "notes": "Core integration infrastructure - partition_managed_files, collision detection, etc."}
   ],
-  "backlog_cursor": "deps-cli",
+  "backlog_cursor": "utils-path-security",
   "open_test_assist_prs": [
     {"number": 221, "title": "test: add unit tests for AgentsCompiler (65%->82%)", "branch": "test-assist/agents-compiler-coverage-1773105017-70450d4bafccea6d", "ci": "passing"},
     {"number": 291, "title": "fix(tests): strip ANSI codes before plain-text assertions", "branch": "test-assist/fix-ansi-failures-2026-03-14-4cae0cad88219467", "ci": "passing", "note": "may be superseded"},
@@ -51,9 +55,19 @@
     {"number": null, "title": "[Test Improver] test: expand update command coverage (~25% -> ~90%)", "branch": "test-assist/update-command-coverage-23625955546", "ci": "pending"},
     {"number": null, "title": "[Test Improver] test: add unit tests for mcp command group (search/show/list)", "branch": "test-assist/mcp-command-coverage-23698265699", "ci": "pending"},
     {"number": null, "title": "[Test Improver] test: add unit tests for output module (models, formatters, script_formatters)", "branch": "test-assist/output-module-coverage-23775479086", "ci": "pending", "note": "created 2026-03-31. 72 tests."},
-    {"number": null, "title": "[Test Improver] test: add unit tests for compile CLI display helpers", "branch": "test-assist/compile-cli-helpers-23826960523", "ci": "pending", "note": "created 2026-04-01. 23 tests."}
+    {"number": null, "title": "[Test Improver] test: add unit tests for compile CLI display helpers", "branch": "test-assist/compile-cli-helpers-23826960523", "ci": "pending", "note": "created 2026-04-01. 23 tests."},
+    {"number": null, "title": "[Test Improver] test: add unit tests for deps list, tree, and info subcommands", "branch": "test-assist/deps-list-tree-info-23878586888", "ci": "pending", "note": "created 2026-04-02. 20 tests."}
   ],
   "completed_work": [
+    {
+      "run": "2026-04-02T01:07:53Z",
+      "tasks": ["task3", "task7"],
+      "branch": "test-assist/deps-list-tree-info-23878586888",
+      "pr_status": "pr_created",
+      "description": "Task3: 20 new tests for deps list/tree/info CLI subcommands (0%->~70%+ for these cmds). 3419 total tests passing.",
+      "coverage_before": {"deps_list_tree_info": "0%"},
+      "coverage_after": {"deps_list_tree_info": "~70%+ for list/tree/info commands"}
+    },
     {
       "run": "2026-04-01T01:10:54Z",
       "tasks": ["task3", "task7"],
@@ -68,18 +82,7 @@
       "tasks": ["task3", "task7"],
       "branch": "test-assist/output-module-coverage-23775479086",
       "pr_status": "pr_created",
-      "description": "Task3: 72 new tests for output module (models/formatters/script_formatters) (~0%->~70%). 3235 total tests passing.",
-      "coverage_before": {"output_models": "~0%", "output_formatters": "~0%", "output_script_formatters": "~0%"},
-      "coverage_after": {"output_models": "~95%", "output_formatters": "~60%+", "output_script_formatters": "~80%+"}
-    },
-    {
-      "run": "2026-03-29T01:09:31Z",
-      "tasks": ["task3", "task7"],
-      "branch": "test-assist/mcp-command-coverage-23698265699",
-      "pr_status": "pr_created",
-      "description": "Task3: 22 new tests for mcp command (search/show/list) (~0%->~75%). 3130 total tests passing.",
-      "coverage_before": {"mcp": "~0%"},
-      "coverage_after": {"mcp": "~75%"}
+      "description": "Task3: 72 new tests for output module (models/formatters/script_formatters) (~0%->~70%). 3235 total tests passing."
     }
   ]
 }
