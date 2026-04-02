@@ -2334,12 +2334,18 @@ def _install_apm_dependencies(
             _removed_orphan_count = 0
             _failed_orphan_count = 0
             _deleted_orphan_paths: builtins.list = []
+            # Build validation targets that cover both default KNOWN_TARGETS
+            # and scope-resolved targets so legacy project-scope orphan paths
+            # (e.g., ".github/...") are also cleaned up at user scope.
+            _validation_targets = _targets or {}
+            _default_targets = getattr(BaseIntegrator, "KNOWN_TARGETS", None)
+            if _default_targets:
+                _validation_targets = {**_default_targets, **_validation_targets}
             for _orphan_path in sorted(orphaned_deployed_files):
                 # validate_deploy_path() is the safety gate: it rejects path-traversal,
                 # requires a known integration prefix, and checks the resolved path
                 # stays within project_root -- so rmtree is safe here.
-                # Pass resolved targets so user-scope prefixes are accepted.
-                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root, targets=_targets):
+                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root, targets=_validation_targets):
                     _target = project_root / _orphan_path
                     if _target.exists():
                         try:
