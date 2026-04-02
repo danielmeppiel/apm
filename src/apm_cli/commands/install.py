@@ -1011,26 +1011,9 @@ def _integrate_package_primitives(
 
     # --- target x primitive dispatch loop ---
     for _target in targets:
-        # Skip entire target when user scope is not supported
-        if _user_scope and not _target.user_supported:
-            if logger:
-                logger.verbose_detail(
-                    f"Skipping {_target.name} at user scope (not supported)"
-                )
-            continue
-
         for _prim_name, _mapping in _target.primitives.items():
             if _prim_name == "skills":
                 continue  # handled separately below
-
-            # Skip primitives unsupported at user scope
-            if _user_scope and _prim_name in _target.unsupported_user_primitives:
-                if logger:
-                    logger.verbose_detail(
-                        f"Skipping {_prim_name} for {_target.name} "
-                        f"at user scope (not supported)"
-                    )
-                continue
 
             # --- hooks (different return type) ---
             if _prim_name == "hooks":
@@ -1280,9 +1263,9 @@ def _install_apm_dependencies(
                     locked_ref = locked_dep.resolved_commit
 
             # Build a DependencyReference with the right ref to avoid lossy
-            # str() → parse() round-trips (#382).
+            # str() -> parse() round-trips (#382).
             from dataclasses import replace as _dc_replace
-            if locked_ref:
+            if locked_ref and not update_refs:
                 download_dep = _dc_replace(dep_ref, reference=locked_ref)
             else:
                 download_dep = dep_ref
@@ -1331,7 +1314,7 @@ def _install_apm_dependencies(
     )
 
     try:
-        dependency_graph = resolver.resolve_dependencies(project_root)
+        dependency_graph = resolver.resolve_dependencies(apm_dir)
 
         # Verbose: show resolved tree summary
         if logger:
@@ -1438,22 +1421,18 @@ def _install_apm_dependencies(
         # Determine active targets.  When --target or apm.yml target is set
         # the user's choice wins.  Otherwise auto-detect from existing dirs,
         # falling back to copilot when nothing is found.
-        from apm_cli.integration.targets import (
-            active_targets as _active_targets,
-            active_targets_user_scope as _active_targets_user,
-        )
+        from apm_cli.integration.targets import resolve_targets as _resolve_targets
 
         _is_user = scope is InstallScope.USER
-        if _is_user:
-            _targets = _active_targets_user(explicit_target=_explicit)
-        else:
-            _targets = _active_targets(project_root, explicit_target=_explicit)
+        _targets = _resolve_targets(
+            project_root, user_scope=_is_user, explicit_target=_explicit,
+        )
 
         # Log target detection results
         if logger and _targets:
             _scope_label = "global" if _is_user else "project"
             _target_names = ", ".join(
-                f"{t.name} (~/{t.effective_root(user_scope=_is_user)}/)"
+                f"{t.name} (~/{t.root_dir}/)"
                 if _is_user else t.name
                 for t in _targets
             )
@@ -1467,7 +1446,7 @@ def _install_apm_dependencies(
                 )
 
         for _t in _targets:
-            _root = _t.effective_root(user_scope=_is_user)
+            _root = _t.root_dir
             _target_dir = project_root / _root
             if not _target_dir.exists():
                 _target_dir.mkdir(parents=True, exist_ok=True)
@@ -1939,7 +1918,9 @@ def _install_apm_dependencies(
                             except Exception:
                                 pass  # Not a git repo or invalid -- fall through to download
                 skip_download = install_path.exists() and (
-                    (is_cacheable and not update_refs) or already_resolved or lockfile_match
+                    (is_cacheable and not update_refs)
+                    or (already_resolved and not update_refs)
+                    or lockfile_match
                 )
 
                 # Verify content integrity when lockfile has a hash
@@ -2355,11 +2336,18 @@ def _install_apm_dependencies(
             _removed_orphan_count = 0
             _failed_orphan_count = 0
             _deleted_orphan_paths: builtins.list = []
+            # Build validation targets that cover both default KNOWN_TARGETS
+            # and scope-resolved targets so legacy project-scope orphan paths
+            # (e.g., ".github/...") are also cleaned up at user scope.
+            _validation_targets = _targets or {}
+            _default_targets = getattr(BaseIntegrator, "KNOWN_TARGETS", None)
+            if _default_targets:
+                _validation_targets = {**_default_targets, **_validation_targets}
             for _orphan_path in sorted(orphaned_deployed_files):
                 # validate_deploy_path() is the safety gate: it rejects path-traversal,
-                # requires .github/ or .claude/ prefix, and checks the resolved path
-                # stays within project_root — so rmtree is safe here.
-                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
+                # requires a known integration prefix, and checks the resolved path
+                # stays within project_root -- so rmtree is safe here.
+                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root, targets=_validation_targets):
                     _target = project_root / _orphan_path
                     if _target.exists():
                         try:

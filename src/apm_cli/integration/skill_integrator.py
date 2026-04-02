@@ -292,7 +292,7 @@ def copy_skill_to_target(
     # Get and validate skill name from folder
     raw_skill_name = source_path.name
     
-    is_valid, error_msg = validate_skill_name(raw_skill_name)
+    is_valid, _ = validate_skill_name(raw_skill_name)
     if is_valid:
         skill_name = raw_skill_name
     else:
@@ -301,6 +301,9 @@ def copy_skill_to_target(
     deployed: list[Path] = []
 
     # Deploy to all active targets that support skills.
+    # When no targets are provided, fall back to project-scope detection.
+    # Callers responsible for user-scope should pass resolved targets
+    # from resolve_targets().
     if targets is None:
         from apm_cli.integration.targets import active_targets
         targets = active_targets(target_base)
@@ -309,6 +312,12 @@ def copy_skill_to_target(
             continue
         skills_mapping = target.primitives["skills"]
         effective_root = skills_mapping.deploy_root or target.root_dir
+
+        # Skip if target dir does not exist and auto_create is disabled
+        target_root_dir = target_base / target.root_dir
+        if not target.auto_create and not target_root_dir.is_dir():
+            continue
+
         skill_dir = target_base / effective_root / "skills" / skill_name
         skill_dir.parent.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists():
@@ -845,35 +854,51 @@ class SkillIntegrator(BaseIntegrator):
         )
     
     def sync_integration(self, apm_package, project_root: Path,
-                          managed_files: set = None) -> Dict[str, int]:
-        """Sync .github/skills/, .claude/skills/, and .cursor/skills/ with currently installed packages.
-        
-        When *managed_files* is provided, only removes skill directories whose
-        paths appear in the set.  Otherwise falls back to npm-style orphan
-        detection (derives expected names from installed dependencies).
-        
+                          managed_files: set = None, targets=None) -> Dict[str, int]:
+        """Sync skill directories with currently installed packages.
+
+        Derives skill prefixes dynamically from *targets* (or
+        ``KNOWN_TARGETS``) so user-scope paths like ``.copilot/skills/``
+        and ``.config/opencode/skills/`` are handled correctly.
+
+        When *managed_files* is provided, only removes skill directories
+        whose paths appear in the set.  Otherwise falls back to
+        npm-style orphan detection (derives expected names from installed
+        dependencies).
+
         Args:
             apm_package: APMPackage with current dependencies
             project_root: Root directory of the project
             managed_files: Set of relative paths known to be APM-managed
-            
+            targets: Optional list of (scope-resolved) TargetProfile objects.
+                     When ``None``, uses ``KNOWN_TARGETS``.
+
         Returns:
             Dict with cleanup statistics
         """
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        source = targets if targets is not None else list(KNOWN_TARGETS.values())
+
         stats = {'files_removed': 0, 'errors': 0}
 
+        # Build the set of valid skill prefixes from targets
+        skill_prefixes: list[str] = []
+        for t in source:
+            if not t.supports("skills"):
+                continue
+            sm = t.primitives["skills"]
+            effective_root = sm.deploy_root or t.root_dir
+            skill_prefixes.append(f"{effective_root}/skills/")
+        skill_prefix_tuple = tuple(skill_prefixes)
+
         if managed_files is not None:
-            # Manifest-based removal  -- only remove tracked skill directories
+            # Manifest-based removal -- only remove tracked skill directories
             project_root_resolved = project_root.resolve()
             for rel_path in managed_files:
-                is_skill = (
-                    rel_path.startswith(".github/skills/")
-                    or rel_path.startswith(".claude/skills/")
-                    or rel_path.startswith(".cursor/skills/")
-                    or rel_path.startswith(".opencode/skills/")
-                    or rel_path.startswith(".agents/skills/")
-                )
-                if not is_skill or ".." in rel_path:
+                if not rel_path.startswith(skill_prefix_tuple):
+                    continue
+                if ".." in rel_path:
                     continue
                 target = project_root / rel_path
                 if not str(target.resolve()).startswith(str(project_root_resolved)):
@@ -885,7 +910,7 @@ class SkillIntegrator(BaseIntegrator):
                     except Exception:
                         stats['errors'] += 1
             return stats
-        
+
         # Legacy fallback: npm-style orphan detection
         # Build set of expected skill directory names from installed packages
         installed_skill_names = set()
@@ -896,7 +921,7 @@ class SkillIntegrator(BaseIntegrator):
             is_valid, _ = validate_skill_name(raw_name)
             skill_name = raw_name if is_valid else normalize_skill_name(raw_name)
             installed_skill_names.add(skill_name)
-            
+
             # Also include promoted sub-skills from installed packages
             install_path = dep.get_install_path(project_root / "apm_modules")
             sub_skills_dir = install_path / ".apm" / "skills"
@@ -906,45 +931,26 @@ class SkillIntegrator(BaseIntegrator):
                         raw_sub = sub_skill_path.name
                         is_valid, _ = validate_skill_name(raw_sub)
                         installed_skill_names.add(raw_sub if is_valid else normalize_skill_name(raw_sub))
-        
-        # Clean .github/skills/ (primary)
-        github_skills_dir = project_root / ".github" / "skills"
-        if github_skills_dir.exists():
-            result = self._clean_orphaned_skills(github_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .claude/skills/ (secondary - T7 compatibility)
-        claude_skills_dir = project_root / ".claude" / "skills"
-        if claude_skills_dir.exists():
-            result = self._clean_orphaned_skills(claude_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .cursor/skills/ (tertiary - compatibility)
-        cursor_skills_dir = project_root / ".cursor" / "skills"
-        if cursor_skills_dir.exists():
-            result = self._clean_orphaned_skills(cursor_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .opencode/skills/
-        opencode_skills_dir = project_root / ".opencode" / "skills"
-        if opencode_skills_dir.exists():
-            result = self._clean_orphaned_skills(opencode_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .agents/skills/ (cross-tool agent skills standard, used by Codex)
-        # Only clean if .codex/ exists -- .agents/ is cross-tool, so we must
-        # not delete skills managed by other tools when Codex is not active.
-        codex_dir = project_root / ".codex"
-        agents_skills_dir = project_root / ".agents" / "skills"
-        if codex_dir.exists() and agents_skills_dir.exists():
-            result = self._clean_orphaned_skills(agents_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
+
+        # Clean all target skill directories dynamically
+        for t in source:
+            if not t.supports("skills"):
+                continue
+            sm = t.primitives["skills"]
+            effective_root = sm.deploy_root or t.root_dir
+
+            # Special guard for cross-tool deploy_root (.agents/)
+            # Only clean if the owning target dir exists
+            if sm.deploy_root:
+                if not (project_root / t.root_dir).is_dir():
+                    continue
+
+            skills_dir = project_root / effective_root / "skills"
+            if skills_dir.exists():
+                result = self._clean_orphaned_skills(skills_dir, installed_skill_names)
+                stats['files_removed'] += result['files_removed']
+                stats['errors'] += result['errors']
+
         return stats
     
     def _clean_orphaned_skills(self, skills_dir: Path, installed_skill_names: set) -> Dict[str, int]:

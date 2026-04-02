@@ -539,3 +539,227 @@ class TestIntegrationPrefixSecurity:
         root = Path("/fake/project")
         assert BaseIntegrator.validate_deploy_path(".agents/skills/my-skill/SKILL.md", root)
         assert BaseIntegrator.validate_deploy_path(".codex/agents/my-agent.toml", root)
+
+
+# ===================================================================
+# 8. TestGetIntegrationPrefixesTargetsParam
+# ===================================================================
+
+
+class TestGetIntegrationPrefixesTargetsParam:
+    """Verify get_integration_prefixes with explicit targets parameter."""
+
+    def test_prefixes_from_resolved_copilot(self):
+        """Resolved copilot target yields .copilot/ prefix."""
+        from dataclasses import replace
+        from apm_cli.integration.targets import get_integration_prefixes
+
+        resolved = replace(KNOWN_TARGETS["copilot"], root_dir=".copilot")
+        prefixes = get_integration_prefixes(targets=[resolved])
+        assert ".copilot/" in prefixes
+        # Should NOT include .github/ since we only passed resolved copilot
+        assert ".github/" not in prefixes
+
+    def test_prefixes_backward_compat(self):
+        """No targets param returns default KNOWN_TARGETS prefixes."""
+        from apm_cli.integration.targets import get_integration_prefixes
+
+        prefixes = get_integration_prefixes()
+        assert ".github/" in prefixes
+        assert ".claude/" in prefixes
+
+
+# ===================================================================
+# 9. TestScopeResolvedPartition
+# ===================================================================
+
+
+class TestScopeResolvedPartition:
+    """Verify partition_managed_files and validate_deploy_path with
+    scope-resolved targets."""
+
+    def test_partition_with_user_scope_copilot_targets(self):
+        """Partition routes .copilot/ paths when given resolved targets."""
+        from dataclasses import replace
+
+        copilot = KNOWN_TARGETS["copilot"]
+        resolved = replace(copilot, root_dir=".copilot")
+        managed = {
+            ".copilot/agents/my-agent.md",
+            ".copilot/skills/my-skill/SKILL.md",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed, targets=[resolved])
+        assert ".copilot/agents/my-agent.md" in buckets.get("agents_github", set())
+        assert ".copilot/skills/my-skill/SKILL.md" in buckets.get("skills", set())
+
+    def test_partition_with_opencode_user_scope(self):
+        """Partition routes .config/opencode/ paths correctly."""
+        from dataclasses import replace
+
+        opencode = KNOWN_TARGETS["opencode"]
+        resolved = replace(opencode, root_dir=".config/opencode")
+        managed = {
+            ".config/opencode/agents/reviewer.md",
+            ".config/opencode/commands/test.md",
+            ".config/opencode/skills/my-skill/SKILL.md",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed, targets=[resolved])
+        assert ".config/opencode/agents/reviewer.md" in buckets.get(
+            "agents_opencode", set()
+        )
+        assert ".config/opencode/commands/test.md" in buckets.get(
+            "commands_opencode", set()
+        )
+        assert ".config/opencode/skills/my-skill/SKILL.md" in buckets.get(
+            "skills", set()
+        )
+
+    def test_partition_backward_compat_no_targets(self):
+        """Without targets param, uses KNOWN_TARGETS (existing behavior)."""
+        managed = {
+            ".github/prompts/test.prompt.md",
+            ".claude/commands/test.md",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed)
+        assert ".github/prompts/test.prompt.md" in buckets.get("prompts", set())
+        assert ".claude/commands/test.md" in buckets.get("commands", set())
+
+    def test_validate_deploy_path_with_resolved_targets(self):
+        """validate_deploy_path accepts .copilot/ with resolved targets."""
+        from dataclasses import replace
+
+        copilot = KNOWN_TARGETS["copilot"]
+        resolved = replace(copilot, root_dir=".copilot")
+        root = Path("/fake/home")
+        assert BaseIntegrator.validate_deploy_path(
+            ".copilot/agents/my-agent.md",
+            root,
+            targets=[resolved],
+        )
+
+    def test_validate_deploy_path_rejects_copilot_without_resolved(self):
+        """validate_deploy_path rejects .copilot/ without resolved targets."""
+        root = Path("/fake/home")
+        assert not BaseIntegrator.validate_deploy_path(
+            ".copilot/agents/my-agent.md",
+            root,
+        )
+
+    def test_validate_deploy_path_backward_compat(self):
+        """Default (no targets) preserves existing behavior."""
+        root = Path("/fake/project")
+        assert BaseIntegrator.validate_deploy_path(".github/prompts/test.md", root)
+        assert BaseIntegrator.validate_deploy_path(".claude/commands/test.md", root)
+        assert not BaseIntegrator.validate_deploy_path("../escape.md", root)
+
+    def test_partition_codex_still_works(self):
+        """Codex deployed_files are routed to correct buckets."""
+        managed = {
+            ".codex/agents/my-agent.toml",
+            ".agents/skills/my-skill/SKILL.md",
+            ".codex/hooks/pkg/script.sh",
+        }
+        buckets = BaseIntegrator.partition_managed_files(managed)
+        assert ".codex/agents/my-agent.toml" in buckets.get("agents_codex", set())
+        assert ".agents/skills/my-skill/SKILL.md" in buckets.get("skills", set())
+        assert ".codex/hooks/pkg/script.sh" in buckets.get("hooks", set())
+
+
+# ===================================================================
+# 8. TestForScope
+# ===================================================================
+
+
+class TestForScope:
+    """Verify TargetProfile.for_scope() and resolve_targets()."""
+
+    def test_project_scope_returns_self(self):
+        """for_scope(user_scope=False) returns the same object."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        copilot = KNOWN_TARGETS["copilot"]
+        assert copilot.for_scope(user_scope=False) is copilot
+
+    def test_unsupported_target_returns_none(self):
+        """for_scope returns None for targets that don't support user scope."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        codex = KNOWN_TARGETS["codex"]
+        assert codex.user_supported is False
+        assert codex.for_scope(user_scope=True) is None
+
+    def test_resolves_root_dir_to_user_root(self):
+        """for_scope replaces root_dir with user_root_dir."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        copilot = KNOWN_TARGETS["copilot"]
+        resolved = copilot.for_scope(user_scope=True)
+        assert resolved is not None
+        assert resolved.root_dir == ".copilot"
+        assert resolved.name == "copilot"
+
+    def test_user_root_dir_none_keeps_root_dir(self):
+        """When user_root_dir is None, root_dir stays unchanged."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        claude = KNOWN_TARGETS["claude"]
+        assert claude.user_root_dir is None
+        resolved = claude.for_scope(user_scope=True)
+        assert resolved is not None
+        assert resolved.root_dir == ".claude"
+
+    def test_filters_unsupported_primitives(self):
+        """for_scope removes unsupported primitives from the dict."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        copilot = KNOWN_TARGETS["copilot"]
+        assert "prompts" in copilot.primitives
+        assert "instructions" in copilot.primitives
+        resolved = copilot.for_scope(user_scope=True)
+        assert "prompts" not in resolved.primitives
+        assert "instructions" not in resolved.primitives
+        # Supported primitives remain
+        assert "agents" in resolved.primitives
+        assert "skills" in resolved.primitives
+        assert "hooks" in resolved.primitives
+
+    def test_no_unsupported_primitives_keeps_all(self):
+        """Targets with empty unsupported_user_primitives keep all primitives."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        claude = KNOWN_TARGETS["claude"]
+        assert claude.unsupported_user_primitives == ()
+        resolved = claude.for_scope(user_scope=True)
+        assert resolved.primitives == claude.primitives
+
+    def test_prefix_property_reflects_resolved_root(self):
+        """The prefix property uses the resolved root_dir."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        copilot = KNOWN_TARGETS["copilot"]
+        resolved = copilot.for_scope(user_scope=True)
+        assert resolved.prefix == ".copilot/"
+        assert copilot.prefix == ".github/"
+
+    def test_opencode_resolves_to_config_dir(self):
+        """OpenCode resolves to .config/opencode at user scope."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        opencode = KNOWN_TARGETS["opencode"]
+        resolved = opencode.for_scope(user_scope=True)
+        assert resolved is not None
+        assert resolved.root_dir == ".config/opencode"
+
+    def test_resolve_targets_project_scope(self):
+        """resolve_targets at project scope returns unmodified profiles."""
+        from apm_cli.integration.targets import resolve_targets
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # No target dirs exist, so fallback to copilot
+            targets = resolve_targets(root, user_scope=False)
+            assert len(targets) >= 1
+            assert targets[0].name == "copilot"
+            assert targets[0].root_dir == ".github"
+
+    def test_resolve_targets_filters_unsupported(self):
+        """resolve_targets at user scope excludes unsupported targets."""
+        from apm_cli.integration.targets import resolve_targets, KNOWN_TARGETS
+        from pathlib import Path
+        targets = resolve_targets(Path.home(), user_scope=True, explicit_target="all")
+        target_names = {t.name for t in targets}
+        # Codex doesn't support user scope
+        assert "codex" not in target_names
