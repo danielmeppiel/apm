@@ -206,4 +206,6 @@ class TestListErrorHandling:
             side_effect=RuntimeError("disk error"),
         ):
             result = runner.invoke(list_command, obj={})
-        assert "disk error" in result.output or "Error" in result.output
+        assert result.exit_code == 1
+        assert "Error listing scripts" in result.output
+        assert "disk error" in result.output
