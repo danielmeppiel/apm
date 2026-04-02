@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm install -g` no longer deploys instructions to `~/.copilot/instructions/` (unsupported by Copilot CLI) (#542)
 - Fixed partition routing for multi-level user directories (e.g., `~/.config/opencode/`) (#542)
 - Fixed uninstall re-integration deploying to wrong paths at user scope (#542)
+- `apm deps update` now correctly re-resolves transitive dependencies instead of reusing stale locked SHAs (#548)
 
 ### Added
 

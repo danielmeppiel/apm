@@ -1263,9 +1263,9 @@ def _install_apm_dependencies(
                     locked_ref = locked_dep.resolved_commit
 
             # Build a DependencyReference with the right ref to avoid lossy
-            # str() → parse() round-trips (#382).
+            # str() -> parse() round-trips (#382).
             from dataclasses import replace as _dc_replace
-            if locked_ref:
+            if locked_ref and not update_refs:
                 download_dep = _dc_replace(dep_ref, reference=locked_ref)
             else:
                 download_dep = dep_ref
@@ -1918,7 +1918,7 @@ def _install_apm_dependencies(
                             except Exception:
                                 pass  # Not a git repo or invalid -- fall through to download
                 skip_download = install_path.exists() and (
-                    (is_cacheable and not update_refs) or already_resolved or lockfile_match
+                    (is_cacheable and not update_refs) or (already_resolved and not update_refs) or lockfile_match
                 )
 
                 # Verify content integrity when lockfile has a hash
