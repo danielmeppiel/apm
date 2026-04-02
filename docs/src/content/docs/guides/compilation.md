@@ -4,7 +4,7 @@ sidebar:
   order: 1
 ---
 
-Compilation is **optional for most users**. If your team uses GitHub Copilot, Claude, or Cursor, `apm install` deploys all primitives in their native format -- you can skip this guide entirely. For OpenCode, `apm install` deploys agents, commands, skills, and MCP, but instructions require `apm compile` to generate the `AGENTS.md` that OpenCode reads. `apm compile` is also needed for Codex, Gemini, or other tools that read single-root-file formats.
+Compilation is **optional for most users**. If your team uses GitHub Copilot, Claude, or Cursor, `apm install` deploys all primitives in their native format -- you can skip this guide entirely. For OpenCode, `apm install` deploys agents, commands, skills, and MCP, but instructions require `apm compile` to generate the `AGENTS.md` that OpenCode reads. For Codex, `apm install` deploys skills, agents, and hooks natively, but instructions require `apm compile`. `apm compile` is also needed for Gemini or other tools that read single-root-file formats.
 
 **Solving the AI agent scalability problem through constraint satisfaction optimization**
 
@@ -22,12 +22,14 @@ When you run `apm compile` without specifying a target, APM automatically detect
 |-------------------|--------|---------------------|
 | `.github/` folder only | `copilot` | AGENTS.md (instructions only) |
 | `.claude/` folder only | `claude` | CLAUDE.md (instructions only) |
+| `.codex/` folder exists | `codex` | AGENTS.md (instructions only) |
 | Both folders exist | `all` | Both AGENTS.md and CLAUDE.md |
 | Neither folder exists | `minimal` | AGENTS.md only (universal format) |
 
 ```bash
 apm compile                    # Auto-detects target from project structure
-apm compile --target copilot   # Force GitHub Copilot, Cursor, Codex, Gemini
+apm compile --target copilot   # Force GitHub Copilot, Cursor, Gemini
+apm compile --target codex     # Force Codex CLI
 apm compile --target claude    # Force Claude Code, Claude Desktop
 ```
 
@@ -35,21 +37,22 @@ You can set a persistent target in `apm.yml`:
 ```yaml
 name: my-project
 version: 1.0.0
-target: copilot  # or vscode, claude, or all
+target: copilot  # or vscode, claude, codex, or all
 ```
 
 ### Output Files
 
 | Target | Files Generated | Consumers |
 |--------|-----------------|-----------|
-| `copilot` | `AGENTS.md` | GitHub Copilot, Cursor, OpenCode, Codex, Gemini |
+| `copilot` | `AGENTS.md` | GitHub Copilot, Cursor, OpenCode, Gemini |
+| `codex` | `AGENTS.md` | Codex CLI |
 | `claude` | `CLAUDE.md` | Claude Code, Claude Desktop |
 | `all` | Both `AGENTS.md` and `CLAUDE.md` | Universal compatibility |
 | `minimal` | `AGENTS.md` only | Works everywhere, no folder integration |
 
 > **Aliases**: `vscode` and `agents` are accepted as aliases for `copilot`.
 
-> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](../../integrations/ide-tool-integration/) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, `.claude/commands/`, `.cursor/rules/`, `.cursor/agents/`, `.opencode/agents/`, and `.opencode/commands/`.
+> **Note**: `AGENTS.md` and `CLAUDE.md` contain **only instructions** (grouped by `applyTo` patterns). Prompts, agents, commands, hooks, and skills are integrated by `apm install`, not `apm compile`. See the [Integrations Guide](../../integrations/ide-tool-integration/) for details on how `apm install` populates `.github/prompts/`, `.github/agents/`, `.github/skills/`, `.claude/commands/`, `.cursor/rules/`, `.cursor/agents/`, `.opencode/agents/`, `.opencode/commands/`, `.codex/agents/`, and `.agents/skills/`.
 
 ### How It Works
 
@@ -436,10 +439,10 @@ Different AI tools get different levels of support from `apm install` vs `apm co
 | Claude | `.claude/` commands, skills, MCP | `CLAUDE.md` | **Full** |
 | Cursor | `.cursor/rules/`, `.cursor/agents/`, `.cursor/skills/`, `.cursor/hooks.json`, `.cursor/mcp.json` | `AGENTS.md` (optional) | **Full** |
 | OpenCode | `.opencode/agents/`, `.opencode/commands/`, `.opencode/skills/`, `opencode.json` (MCP) | Via `AGENTS.md` | **Full** |
-| Codex CLI | -- | `AGENTS.md` | Instructions via compile |
+| Codex CLI | `.agents/skills/`, `.codex/agents/`, `.codex/hooks.json` | `AGENTS.md` (instructions) | **Full** |
 | Gemini | -- | `GEMINI.md` | Instructions via compile |
 
-For Copilot, Claude, and Cursor users, `apm install` handles everything natively. OpenCode users should also run `apm compile` to generate `AGENTS.md` for instructions. Compilation is the bridge that brings instruction support to tools that do not yet have first-class APM integration.
+For Copilot, Claude, and Cursor users, `apm install` handles everything natively. OpenCode and Codex users should also run `apm compile` to generate `AGENTS.md` for instructions. Compilation is the bridge that brings instruction support to tools that do not yet have first-class APM integration.
 
 ## Theoretical Foundations
 

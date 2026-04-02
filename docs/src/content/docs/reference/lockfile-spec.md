@@ -215,8 +215,10 @@ The dependency resolver interacts with the lock file as follows:
 1. **First install** — resolve all refs to commits, write `apm.lock.yaml`.
 2. **Subsequent installs** — read `apm.lock.yaml`, reuse locked commits. Only
    newly added dependencies trigger resolution.
-3. **Update** (`--update` flag or `apm deps update`) — re-resolve all refs,
-   overwrite the lock file with fresh commits.
+3. **Update** (`--update` flag or `apm deps update`) -- re-resolve all refs
+   to their latest commits. If a resolved commit matches the existing lock
+   file entry and the local checkout is intact, the download is skipped.
+   Otherwise, the package is re-fetched. The lock file is always refreshed.
 
 When a locked commit is no longer reachable (force-pushed branch, deleted tag),
 APM MUST report an error and refuse to install until the lock file is updated.

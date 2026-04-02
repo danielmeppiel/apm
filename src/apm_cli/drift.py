@@ -46,7 +46,7 @@ from __future__ import annotations
 import builtins
 from dataclasses import replace as _dataclass_replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from apm_cli.deps.lockfile import LockFile, LockedDependency
@@ -201,6 +201,29 @@ def build_download_ref(
     """
     if existing_lockfile and not update_refs and not ref_changed:
         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
-        if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-            return _dataclass_replace(dep_ref, reference=locked_dep.resolved_commit)
+        if locked_dep:
+            overrides: Dict[str, Any] = {}
+
+            # Prefer the lockfile host so re-installs fetch from the exact same
+            # source (proxy host preserved) — fixes air-gapped reproducibility.
+            # When registry_prefix is set, also restore the artifactory_prefix
+            # field on dep_ref so the downloader takes the proxy code-path and
+            # uses PROXY_REGISTRY_TOKEN for auth instead of the GitHub PAT.
+            if locked_dep.registry_prefix and locked_dep.host:
+                overrides["host"] = locked_dep.host
+                overrides["artifactory_prefix"] = locked_dep.registry_prefix
+            elif isinstance(getattr(locked_dep, "host", None), str) and locked_dep.host != dep_ref.host:
+                overrides["host"] = locked_dep.host
+
+            # Use locked commit SHA for byte-for-byte reproducibility.
+            if locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                overrides["reference"] = locked_dep.resolved_commit
+            # For proxy deps without a commit SHA (Artifactory zip archives),
+            # preserve the locked ref so we download the same ref on replay.
+            elif locked_dep.registry_prefix and locked_dep.resolved_ref and not dep_ref.reference:
+                overrides["reference"] = locked_dep.resolved_ref
+
+            if overrides:
+                return _dataclass_replace(dep_ref, **overrides)
+
     return dep_ref

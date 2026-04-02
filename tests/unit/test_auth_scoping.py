@@ -596,3 +596,48 @@ class TestIsGitHubClassification:
         dep_ref = _dep("https://company.ghe.com/org/repo.git")
         from apm_cli.utils.github_host import is_github_hostname
         assert is_github_hostname(dep_ref.host) is True
+
+
+# ===========================================================================
+# _try_sparse_checkout -- per-dep token resolution
+# ===========================================================================
+
+class TestSparseCheckoutTokenResolution:
+    """Verify _try_sparse_checkout uses resolve_for_dep() for per-dep tokens."""
+
+    def test_sparse_checkout_uses_per_org_token(self, tmp_path):
+        """Sparse checkout should use per-org token, not the global instance token."""
+        org_token = "ghp_ORG_SPECIFIC"
+        global_token = "ghp_GLOBAL"
+
+        with patch.dict(os.environ, {
+            "GITHUB_APM_PAT": global_token,
+            "GITHUB_APM_PAT_ACME": org_token,
+        }, clear=True), patch(
+            "apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git",
+            return_value=None,
+        ):
+            dl = GitHubPackageDownloader()
+            dep = _dep("acme/mono-repo/subdir")
+
+            # Patch subprocess.run to capture the URL used in 'git remote add'
+            captured_urls = []
+
+            def capture_run(cmd, **kwargs):
+                if len(cmd) >= 5 and cmd[:3] == ["git", "remote", "add"]:
+                    captured_urls.append(cmd[4])  # The URL argument (after 'origin')
+                    # Fail after capturing to keep the test fast
+                    return MagicMock(returncode=1, stderr="test abort")
+                # Let other commands (git init, etc.) succeed
+                return MagicMock(returncode=0, stderr="")
+
+            with patch("subprocess.run", side_effect=capture_run):
+                dl._try_sparse_checkout(dep, tmp_path / "sparse", "subdir", ref="main")
+
+            assert len(captured_urls) == 1, f"Expected 1 URL capture, got {captured_urls}"
+            # The per-org token should be in the URL, not the global one
+            assert org_token in captured_urls[0], (
+                f"Expected org-specific token in sparse checkout URL, "
+                f"got: {captured_urls[0]}"
+            )
+            assert global_token not in captured_urls[0]
