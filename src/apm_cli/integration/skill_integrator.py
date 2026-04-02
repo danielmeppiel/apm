@@ -248,6 +248,7 @@ def copy_skill_to_target(
     source_path: Path,
     target_base: Path,
     targets=None,
+    user_scope: bool = False,
 ) -> list[Path]:
     """Copy skill directory to all active target skills/ directories.
     
@@ -308,7 +309,13 @@ def copy_skill_to_target(
         if not target.supports("skills"):
             continue
         skills_mapping = target.primitives["skills"]
-        effective_root = skills_mapping.deploy_root or target.root_dir
+        effective_root = skills_mapping.deploy_root or target.effective_root(user_scope=user_scope)
+
+        # Skip if target dir doesn't exist and auto_create is disabled
+        target_root_dir = target_base / target.effective_root(user_scope=user_scope)
+        if not target.auto_create and not target_root_dir.is_dir():
+            continue
+
         skill_dir = target_base / effective_root / "skills" / skill_name
         skill_dir.parent.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists():
@@ -574,7 +581,7 @@ class SkillIntegrator(BaseIntegrator):
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path, diagnostics=None,
         managed_files=None, force: bool = False, logger=None,
-        targets=None,
+        targets=None, user_scope: bool = False,
     ) -> tuple[int, list[Path]]:
         """Promote sub-skills from a package that is NOT itself a skill.
 
@@ -611,7 +618,13 @@ class SkillIntegrator(BaseIntegrator):
 
             is_primary = (idx == 0)  # first active target owns diagnostics
             skills_mapping = target.primitives["skills"]
-            effective_root = skills_mapping.deploy_root or target.root_dir
+            effective_root = skills_mapping.deploy_root or target.effective_root(user_scope=user_scope)
+
+            # Skip if target dir doesn't exist and auto_create is disabled
+            target_root_dir = project_root / target.effective_root(user_scope=user_scope)
+            if not target.auto_create and not target_root_dir.is_dir():
+                continue
+
             target_skills_root = project_root / effective_root / "skills"
             target_skills_root.mkdir(parents=True, exist_ok=True)
 
@@ -633,7 +646,7 @@ class SkillIntegrator(BaseIntegrator):
     def _integrate_native_skill(
         self, package_info, project_root: Path, source_skill_md: Path,
         diagnostics=None, managed_files=None, force: bool = False,
-        logger=None, targets=None,
+        logger=None, targets=None, user_scope: bool = False,
     ) -> SkillIntegrationResult:
         """Copy a native Skill (with existing SKILL.md) to all active targets.
         
@@ -707,6 +720,7 @@ class SkillIntegrator(BaseIntegrator):
 
         owned_by = self._build_skill_ownership_map(project_root)
         sub_skills_dir = package_path / ".apm" / "skills"
+        primary_effective_root = None
 
         for idx, target in enumerate(targets):
             if not target.supports("skills"):
@@ -714,7 +728,16 @@ class SkillIntegrator(BaseIntegrator):
 
             is_primary = (idx == 0)  # first active target owns diagnostics
             skills_mapping = target.primitives["skills"]
-            effective_root = skills_mapping.deploy_root or target.root_dir
+            effective_root = skills_mapping.deploy_root or target.effective_root(user_scope=user_scope)
+
+            # Skip if target dir doesn't exist and auto_create is disabled
+            target_root_dir = project_root / target.effective_root(user_scope=user_scope)
+            if not target.auto_create and not target_root_dir.is_dir():
+                continue
+
+            if primary_effective_root is None:
+                primary_effective_root = effective_root
+
             target_skill_dir = project_root / effective_root / "skills" / skill_name
 
             if is_primary:
@@ -748,7 +771,7 @@ class SkillIntegrator(BaseIntegrator):
             all_target_paths.extend(sub_deployed)
 
         # Count unique sub-skills from primary target only
-        primary_root = project_root / ".github" / "skills"
+        primary_root = project_root / (primary_effective_root or ".github") / "skills"
         sub_skills_count = sum(
             1 for p in all_target_paths
             if p.parent == primary_root and p.name != skill_name
@@ -765,7 +788,7 @@ class SkillIntegrator(BaseIntegrator):
             target_paths=all_target_paths
         )
 
-    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None, managed_files=None, force: bool = False, logger=None, targets=None) -> SkillIntegrationResult:
+    def integrate_package_skill(self, package_info, project_root: Path, diagnostics=None, managed_files=None, force: bool = False, logger=None, targets=None, user_scope: bool = False) -> SkillIntegrationResult:
         """Integrate a package's skill into all active target directories.
         
         Copies native skills (packages with SKILL.md at root) to every active
@@ -793,7 +816,7 @@ class SkillIntegrator(BaseIntegrator):
             # Even non-skill packages may ship sub-skills under .apm/skills/.
             # Promote them so Copilot can discover them independently.
             sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-                package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets
+                package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets, user_scope=user_scope
             )
             return SkillIntegrationResult(
                 skill_created=False,
@@ -826,12 +849,12 @@ class SkillIntegrator(BaseIntegrator):
         # Check if this is a native Skill (already has SKILL.md at root)
         source_skill_md = package_path / "SKILL.md"
         if source_skill_md.exists():
-            return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets)
+            return self._integrate_native_skill(package_info, project_root, source_skill_md, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets, user_scope=user_scope)
         
         # No SKILL.md at root  -- not a skill package.
         # Still promote any sub-skills shipped under .apm/skills/.
         sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-            package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets
+            package_info, project_root, diagnostics=diagnostics, managed_files=managed_files, force=force, logger=logger, targets=targets, user_scope=user_scope
         )
         return SkillIntegrationResult(
             skill_created=False,

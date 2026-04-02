@@ -1088,7 +1088,7 @@ def _integrate_package_primitives(
     skill_result = skill_integrator.integrate_package_skill(
         package_info, project_root,
         diagnostics=diagnostics, managed_files=managed_files, force=force,
-        targets=targets,
+        targets=targets, user_scope=_user_scope,
     )
     _skill_target_dirs: set[str] = builtins.set()
     for tp in skill_result.target_paths:

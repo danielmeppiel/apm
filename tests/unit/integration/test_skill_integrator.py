@@ -3093,3 +3093,312 @@ class TestCodexSkillDeployRoot:
         assert len(deployed) == 1
         assert ".github" in str(deployed[0])
         assert (self.root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+
+
+class TestUserScopeSkillIntegration:
+    """Tests for user_scope=True and auto_create guard in skill integration.
+
+    Issue #530: skills deploy to wrong paths at user scope.
+    OpenCode config: root_dir=".opencode", user_root_dir=".config/opencode",
+    auto_create=False.
+    """
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.temp_dir)
+        self.apm_modules = self.project_root / "apm_modules"
+        self.apm_modules.mkdir(parents=True)
+        self.integrator = SkillIntegrator()
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_package_info(
+        self,
+        name: str = "test-skill",
+        version: str = "1.0.0",
+        commit: str = "abc123",
+        install_path: Path = None,
+        source: str = None,
+        dependency_ref: DependencyReference = None,
+        package_type: PackageType = PackageType.CLAUDE_SKILL,
+    ) -> PackageInfo:
+        package = APMPackage(
+            name=name,
+            version=version,
+            package_path=install_path or self.project_root / "package",
+            source=source or f"github.com/test/{name}",
+        )
+        resolved_ref = ResolvedReference(
+            original_ref="main",
+            ref_type=GitReferenceType.BRANCH,
+            resolved_commit=commit,
+            ref_name="main",
+        )
+        return PackageInfo(
+            package=package,
+            install_path=install_path or self.project_root / "package",
+            resolved_reference=resolved_ref,
+            installed_at=datetime.now().isoformat(),
+            dependency_ref=dependency_ref,
+            package_type=package_type,
+        )
+
+    # ========== integrate_package_skill — user_scope path selection ==========
+
+    def test_user_scope_deploys_to_user_root_dir(self):
+        """With user_scope=True, skills deploy to user_root_dir (.config/opencode)."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        # Create the user-scope root so auto_create guard passes
+        (self.project_root / opencode.user_root_dir).mkdir(parents=True)
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pkg = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[opencode], user_scope=True,
+        )
+
+        assert result.skill_created is True
+        expected = self.project_root / ".config" / "opencode" / "skills" / "my-skill" / "SKILL.md"
+        assert expected.exists()
+        # Must NOT deploy to .opencode/skills/
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    def test_project_scope_deploys_to_root_dir(self):
+        """With user_scope=False (default), skills deploy to root_dir (.opencode)."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        # Create project-scope root
+        (self.project_root / opencode.root_dir).mkdir(parents=True)
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pkg = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[opencode], user_scope=False,
+        )
+
+        assert result.skill_created is True
+        expected = self.project_root / ".opencode" / "skills" / "my-skill" / "SKILL.md"
+        assert expected.exists()
+
+    # ========== auto_create guard — no deployment when dir missing ==========
+
+    def test_auto_create_false_skips_when_dir_missing(self):
+        """auto_create=False targets are skipped when their root dir doesn't exist."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        assert opencode.auto_create is False  # precondition
+
+        # Do NOT create .opencode/ or .config/opencode/
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pkg = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[opencode], user_scope=False,
+        )
+
+        # Skipped entirely — nothing created
+        assert len(result.target_paths) == 0
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    def test_auto_create_false_skips_user_scope_when_user_dir_missing(self):
+        """auto_create=False with user_scope=True skips when user_root_dir missing."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        # Create .opencode/ (project scope) but NOT .config/opencode/ (user scope)
+        (self.project_root / ".opencode").mkdir()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pkg = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[opencode], user_scope=True,
+        )
+
+        assert len(result.target_paths) == 0
+        assert not (self.project_root / ".config" / "opencode" / "skills").exists()
+
+    def test_auto_create_true_creates_dir(self):
+        """auto_create=True targets (copilot) create their dir even if absent."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        copilot = KNOWN_TARGETS["copilot"]
+        assert copilot.auto_create is True  # precondition
+        assert not (self.project_root / ".github").exists()
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pkg = self._create_package_info(name="my-skill", install_path=skill_source)
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[copilot], user_scope=False,
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
+
+    # ========== _promote_sub_skills_standalone — user_scope ==========
+
+    def test_sub_skill_promotion_uses_user_root(self):
+        """Sub-skills promoted at user_scope use user_root_dir."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        (self.project_root / opencode.user_root_dir).mkdir(parents=True)
+
+        package_dir = self.project_root / "my-pkg"
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text("---\nname: my-pkg\n---\n# Pkg")
+        sub_dir = package_dir / ".apm" / "skills" / "sub-a"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "SKILL.md").write_text("---\nname: sub-a\n---\n# Sub-A")
+
+        pkg = self._create_package_info(name="my-pkg", install_path=package_dir)
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[opencode], user_scope=True,
+        )
+
+        expected = self.project_root / ".config" / "opencode" / "skills" / "sub-a" / "SKILL.md"
+        assert expected.exists()
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    def test_sub_skill_standalone_skips_auto_create_false(self):
+        """Standalone sub-skill promotion skips auto_create=False targets with no dir."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        # Don't create .opencode/ or .config/opencode/
+
+        # Package typed as INSTRUCTIONS so it goes through _promote_sub_skills_standalone
+        package_dir = self.project_root / "my-instructions"
+        package_dir.mkdir()
+        sub_dir = package_dir / ".apm" / "skills" / "sub-a"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "SKILL.md").write_text("---\nname: sub-a\n---\n# Sub-A")
+
+        pkg = self._create_package_info(
+            name="my-instructions", install_path=package_dir,
+            package_type=PackageType.APM_PACKAGE,
+        )
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[opencode], user_scope=False,
+        )
+
+        assert result.skill_skipped is True
+        assert len(result.target_paths) == 0
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    # ========== copy_skill_to_target — user_scope ==========
+
+    def test_copy_skill_to_target_user_scope(self):
+        """copy_skill_to_target with user_scope=True uses user_root_dir."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        (self.project_root / opencode.user_root_dir).mkdir(parents=True)
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pi = Mock()
+        pi.install_path = skill_source
+        pi.package = Mock()
+        pi.package.name = "my-skill"
+        pi.package_type = PackageType.CLAUDE_SKILL
+
+        deployed = copy_skill_to_target(
+            pi, skill_source, self.project_root,
+            targets=[opencode], user_scope=True,
+        )
+
+        assert len(deployed) == 1
+        assert ".config" in str(deployed[0])
+        expected = self.project_root / ".config" / "opencode" / "skills" / "my-skill" / "SKILL.md"
+        assert expected.exists()
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    def test_copy_skill_to_target_auto_create_guard(self):
+        """copy_skill_to_target skips auto_create=False targets with no dir."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        # Do NOT create .opencode/
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pi = Mock()
+        pi.install_path = skill_source
+        pi.package = Mock()
+        pi.package.name = "my-skill"
+        pi.package_type = PackageType.CLAUDE_SKILL
+
+        deployed = copy_skill_to_target(
+            pi, skill_source, self.project_root, targets=[opencode],
+        )
+
+        assert len(deployed) == 0
+        assert not (self.project_root / ".opencode" / "skills").exists()
+
+    # ========== primary_root — dynamic, not hardcoded .github ==========
+
+    def test_primary_root_uses_first_active_target(self):
+        """Sub-skill counting uses effective root from first active target, not hardcoded .github."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        opencode = KNOWN_TARGETS["opencode"]
+        (self.project_root / opencode.user_root_dir).mkdir(parents=True)
+
+        package_dir = self.project_root / "my-pkg"
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text("---\nname: my-pkg\n---\n# Pkg")
+        sub_dir = package_dir / ".apm" / "skills" / "sub-a"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "SKILL.md").write_text("---\nname: sub-a\n---\n# Sub-A")
+
+        pkg = self._create_package_info(name="my-pkg", install_path=package_dir)
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[opencode], user_scope=True,
+        )
+
+        # Sub-skill should be counted — it's under the primary target's root
+        assert result.sub_skills_promoted == 1
+
+    # ========== backward compatibility — user_scope default ==========
+
+    def test_user_scope_defaults_to_false(self):
+        """Calling without user_scope uses project-scope (root_dir)."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        copilot = KNOWN_TARGETS["copilot"]
+
+        skill_source = self.apm_modules / "owner" / "my-skill"
+        skill_source.mkdir(parents=True)
+        (skill_source / "SKILL.md").write_text("---\nname: my-skill\n---\n# My Skill")
+
+        pkg = self._create_package_info(name="my-skill", install_path=skill_source)
+        # Call WITHOUT user_scope — should work exactly as before
+        result = self.integrator.integrate_package_skill(
+            pkg, self.project_root, targets=[copilot],
+        )
+
+        assert result.skill_created is True
+        assert (self.project_root / ".github" / "skills" / "my-skill" / "SKILL.md").exists()
