@@ -571,6 +571,30 @@ class SkillIntegrator(BaseIntegrator):
                 owned_by[skill_name] = owner
         return owned_by
 
+    @staticmethod
+    def _build_native_skill_owner_map(project_root: Path) -> dict[str, str]:
+        """Build a map of skill_name -> dep.get_unique_key() from the lockfile.
+
+        Unlike ``_build_skill_ownership_map`` (which stores only the last path
+        segment for sub-skill self-overwrite detection), this map stores the
+        full canonical unique key of the owning dependency.  That makes it safe
+        to distinguish two distinct packages whose names share the same leaf
+        segment (e.g. ``brandonwise/humanizer`` vs
+        ``Serendeep/dotfiles/.../humanizer``).
+        """
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+
+        owners: dict[str, str] = {}
+        lockfile = LockFile.read(get_lockfile_path(project_root))
+        if not lockfile:
+            return owners
+        for dep in lockfile.get_all_dependencies():
+            for deployed_path in dep.deployed_files:
+                # e.g. ".github/skills/context-map/" -> "context-map"
+                skill_name = deployed_path.rstrip("/").rsplit("/", 1)[-1]
+                owners[skill_name] = dep.get_unique_key()
+        return owners
+
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path, diagnostics=None,
         managed_files=None, force: bool = False, logger=None,
@@ -708,6 +732,17 @@ class SkillIntegrator(BaseIntegrator):
         owned_by = self._build_skill_ownership_map(project_root)
         sub_skills_dir = package_path / ".apm" / "skills"
 
+        # Build a full-key ownership map (skill_name -> dep.get_unique_key()) for
+        # accurate cross-package collision detection on native skills.  The coarser
+        # map used by _promote_sub_skills only stores the last path segment, which
+        # is ambiguous when two distinct packages share the same leaf name (e.g.
+        # brandonwise/humanizer vs Serendeep/dotfiles/.../humanizer — issue #534).
+        native_skill_owners = self._build_native_skill_owner_map(project_root)
+
+        # Full unique key of the package currently being installed.
+        dep_ref = package_info.dependency_ref
+        current_key: str | None = dep_ref.get_unique_key() if dep_ref is not None else None
+
         for idx, target in enumerate(targets):
             if not target.supports("skills"):
                 continue
@@ -723,6 +758,33 @@ class SkillIntegrator(BaseIntegrator):
                 primary_skill_md = target_skill_dir / "SKILL.md"
 
             if target_skill_dir.exists():
+                if is_primary:
+                    prev_owner = native_skill_owners.get(skill_name)
+                    is_self_overwrite = prev_owner is not None and prev_owner == current_key
+                    if prev_owner is not None and not is_self_overwrite:
+                        try:
+                            rel_prefix = target_skill_dir.parent.relative_to(project_root).as_posix()
+                        except ValueError:
+                            rel_prefix = "skills"
+                        rel_path = f"{rel_prefix}/{skill_name}"
+                        if diagnostics is not None:
+                            diagnostics.overwrite(
+                                path=rel_path,
+                                package=skill_name,
+                                detail=f"Skill '{skill_name}' replaced -- previously from another package",
+                            )
+                        elif logger:
+                            logger.warning(
+                                f"Skill '{skill_name}' overwritten by a package from a different source"
+                            )
+                        else:
+                            try:
+                                from apm_cli.utils.console import _rich_warning
+                                _rich_warning(
+                                    f"Skill '{skill_name}' overwritten by a package from a different source"
+                                )
+                            except ImportError:
+                                pass
                 shutil.rmtree(target_skill_dir)
 
             target_skill_dir.parent.mkdir(parents=True, exist_ok=True)

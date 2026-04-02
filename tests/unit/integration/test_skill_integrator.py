@@ -1504,6 +1504,100 @@ Use this skill for comprehensive guidance.
         assert result.skill_created is True
         assert result.references_copied == 4  # All 4 files
 
+    def test_native_skill_cross_package_collision_records_diagnostic(self):
+        """Two distinct packages that both deploy a same-named skill should warn on the second install.
+
+        Reproduces issue #534: brandonwise/humanizer and Serendeep/dotfiles/.../humanizer
+        both claim the 'humanizer' skill directory.  The second install used to silently
+        overwrite the first.  After the fix a diagnostic is recorded instead.
+        """
+        from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_OVERWRITE
+        from unittest.mock import patch
+
+        # --- First package: standalone humanizer skill ---
+        # The install path ends in "humanizer" so skill_name == "humanizer".
+        pkg_a_dir = self.project_root / "brandonwise" / "humanizer"
+        pkg_a_dir.mkdir(parents=True)
+        (pkg_a_dir / "SKILL.md").write_text(
+            "---\nname: humanizer\ndescription: Humanize LLM output\n---\n# Humanizer\n"
+        )
+
+        dep_ref_a = DependencyReference(repo_url="brandonwise/humanizer")
+        pkg_a = self._create_package_info(
+            name="humanizer",
+            install_path=pkg_a_dir,
+            dependency_ref=dep_ref_a,
+        )
+
+        # Install first package — no existing skill, no warning expected.
+        self.integrator.integrate_package_skill(pkg_a, self.project_root)
+        assert (self.project_root / ".github" / "skills" / "humanizer" / "SKILL.md").exists()
+
+        # --- Second package: virtual skill inside a dotfiles repo ---
+        # Also ends in "humanizer" so it would deploy to the same skills/humanizer dir.
+        pkg_b_dir = self.project_root / "Serendeep" / "dotfiles" / "claude" / ".claude" / "skills" / "humanizer"
+        pkg_b_dir.mkdir(parents=True)
+        (pkg_b_dir / "SKILL.md").write_text(
+            "---\nname: humanizer\ndescription: Different humanizer\n---\n# Humanizer v2\n"
+        )
+
+        dep_ref_b = DependencyReference(
+            repo_url="Serendeep/dotfiles",
+            virtual_path="claude/.claude/skills/humanizer",
+            is_virtual=True,
+        )
+        pkg_b = self._create_package_info(
+            name="humanizer",
+            install_path=pkg_b_dir,
+            dependency_ref=dep_ref_b,
+        )
+
+        # Mock the native skill owner map to return pkg_a's unique key as prev owner.
+        owner_map = {"humanizer": dep_ref_a.get_unique_key()}  # "brandonwise/humanizer"
+        diag = DiagnosticCollector()
+
+        with patch.object(SkillIntegrator, "_build_native_skill_owner_map", return_value=owner_map):
+            self.integrator.integrate_package_skill(pkg_b, self.project_root, diagnostics=diag)
+
+        # The overwrite should have been recorded as a diagnostic.
+        assert diag.has_diagnostics, "Expected an overwrite diagnostic but none were recorded"
+        groups = diag.by_category()
+        assert CATEGORY_OVERWRITE in groups
+        assert any("humanizer" in d.message for d in groups[CATEGORY_OVERWRITE])
+
+        # The skill directory should still be updated (overwrite proceeds after warning).
+        content = (self.project_root / ".github" / "skills" / "humanizer" / "SKILL.md").read_text()
+        assert "Humanizer v2" in content
+
+    def test_native_skill_self_reinstall_no_diagnostic(self):
+        """Reinstalling the same native skill package should NOT emit a collision warning."""
+        from apm_cli.utils.diagnostics import DiagnosticCollector
+        from unittest.mock import patch
+
+        pkg_dir = self.project_root / "my-skill"
+        pkg_dir.mkdir()
+        (pkg_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n# Skill\n")
+
+        dep_ref = DependencyReference(repo_url="owner/my-skill")
+        pkg = self._create_package_info(
+            name="my-skill",
+            install_path=pkg_dir,
+            dependency_ref=dep_ref,
+        )
+
+        # First install
+        self.integrator.integrate_package_skill(pkg, self.project_root)
+
+        # Simulate lockfile recording ownership as the same unique key.
+        owner_map = {"my-skill": dep_ref.get_unique_key()}  # "owner/my-skill"
+        diag = DiagnosticCollector()
+
+        with patch.object(SkillIntegrator, "_build_native_skill_owner_map", return_value=owner_map):
+            self.integrator.integrate_package_skill(pkg, self.project_root, diagnostics=diag)
+
+        # Self-reinstall — no overwrite diagnostic should be recorded.
+        assert not diag.has_diagnostics, "Self-reinstall should not produce a collision diagnostic"
+
 
 # =============================================================================
 # T7: Claude Skills Compatibility Copy Tests
