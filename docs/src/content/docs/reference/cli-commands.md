@@ -738,8 +738,9 @@ apm deps clean --yes
 
 #### `apm deps update` - Update APM dependencies
 
-Re-resolve git references to their latest commits, download updated content,
-re-integrate primitives, and regenerate the lockfile.
+Re-resolve git references for all dependencies (direct and transitive) to their
+latest commits, download updated content, re-integrate primitives, and regenerate
+the lockfile.
 
 ```bash
 apm deps update [PACKAGES...] [OPTIONS]
