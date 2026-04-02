@@ -74,11 +74,22 @@ class HookIntegrator(BaseIntegrator):
     - Cursor: Merged into .cursor/hooks.json hooks key + .cursor/hooks/<pkg>/
     """
 
-    # Keys in hook JSON dicts that may contain script-path references.
-    # Extend this tuple when new platform keys are introduced -- every
-    # call site in _rewrite_hooks_data() iterates over it, so a single
-    # addition here propagates everywhere.
-    HOOK_COMMAND_KEYS: Tuple[str, ...] = ("command", "bash", "powershell", "windows")
+    # Superset of all known script-path keys across supported hook specs.
+    # Every call site in _rewrite_hooks_data() iterates over this tuple,
+    # so a single addition here propagates everywhere.
+    #
+    #   "command":    Claude Code (primary), VS Code (default/cross-platform), Cursor
+    #   "bash":       GitHub Copilot Agent cloud/CLI
+    #   "powershell": GitHub Copilot Agent cloud/CLI
+    #   "windows":    VS Code (OS-specific override)
+    #   "linux":      VS Code (OS-specific override)
+    #   "osx":        VS Code (OS-specific override)
+    #
+    # Refs:
+    #   GH Copilot Agent: https://docs.github.com/en/copilot/concepts/agents/coding-agent/about-hooks
+    #   VS Code:          https://code.visualstudio.com/docs/copilot/customization/hooks
+    #   Claude Code:      https://code.claude.com/docs/en/hooks
+    HOOK_COMMAND_KEYS: Tuple[str, ...] = ("command", "bash", "powershell", "windows", "linux", "osx")
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
         """Find all hook JSON files in a package.
