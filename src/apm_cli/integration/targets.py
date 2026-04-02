@@ -121,8 +121,8 @@ class TargetProfile:
 
 KNOWN_TARGETS: Dict[str, TargetProfile] = {
     # Copilot (GitHub) -- at user scope, Copilot CLI reads ~/.copilot/
-    # instead of ~/.github/.  Prompts are not supported at user scope.
-    # Ref: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
+    # instead of ~/.github/.  Prompts and instructions are not supported at user scope.
+    # Ref: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference
     "copilot": TargetProfile(
         name="copilot",
         root_dir=".github",
@@ -147,7 +147,7 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
         detect_by_dir=True,
         user_supported="partial",
         user_root_dir=".copilot",
-        unsupported_user_primitives=("prompts",),
+        unsupported_user_primitives=("prompts", "instructions"),
     ),
     # Claude Code -- ~/.claude/ is the documented user-level config directory.
     # All primitives are supported at user scope.

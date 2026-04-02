@@ -1009,6 +1009,18 @@ def _integrate_package_primitives(
         "instructions": (instruction_integrator, "integrate_instructions_for_target", "instructions"),
     }
 
+    # At user scope, override root_dir with the user-scope directory so
+    # integrators deploy to e.g. ~/.copilot/ instead of ~/.github/.
+    if _user_scope:
+        from dataclasses import replace as _dc_replace
+        _adjusted_targets = []
+        for _t in targets:
+            if _t.user_root_dir and _t.user_root_dir != _t.root_dir:
+                _adjusted_targets.append(_dc_replace(_t, root_dir=_t.user_root_dir))
+            else:
+                _adjusted_targets.append(_t)
+        targets = _adjusted_targets
+
     # --- target x primitive dispatch loop ---
     for _target in targets:
         # Skip entire target when user scope is not supported
@@ -1331,7 +1343,7 @@ def _install_apm_dependencies(
     )
 
     try:
-        dependency_graph = resolver.resolve_dependencies(project_root)
+        dependency_graph = resolver.resolve_dependencies(apm_dir)
 
         # Verbose: show resolved tree summary
         if logger:
