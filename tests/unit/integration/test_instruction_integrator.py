@@ -1074,7 +1074,9 @@ class TestClaudeRulesSyncIntegration:
         assert result["files_removed"] == 1
         assert (rules_dir / "my-custom.md").exists()
 
-    def test_sync_legacy_fallback_removes_all_md(self):
+    def test_sync_legacy_fallback_preserves_user_files(self):
+        """Legacy fallback (managed_files=None) does NOT glob-delete .md files
+        under .claude/rules/ because that would destroy user-authored rules."""
         rules_dir = self.project_root / ".claude" / "rules"
         rules_dir.mkdir(parents=True)
         (rules_dir / "python.md").write_text("# Python")
@@ -1083,7 +1085,9 @@ class TestClaudeRulesSyncIntegration:
         apm_package = Mock()
         result = self.integrator.sync_integration_claude(apm_package, self.project_root, managed_files=None)
 
-        assert result["files_removed"] == 2
+        assert result["files_removed"] == 0
+        assert (rules_dir / "python.md").exists()
+        assert (rules_dir / "testing.md").exists()
 
     def test_sync_handles_missing_rules_dir(self):
         apm_package = Mock()
