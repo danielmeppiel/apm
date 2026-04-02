@@ -1906,6 +1906,20 @@ def _install_apm_dependencies(
                                     local_repo = GitRepo(install_path)
                                     if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
                                         lockfile_match = True
+                                        # Content hash comparison: detect changes
+                                        # invisible to SHA comparison (e.g. registry
+                                        # proxies re-publishing at the same version).
+                                        if lockfile_match and locked_dep.content_hash:
+                                            from ..utils.content_hash import compute_package_hash
+                                            local_hash = compute_package_hash(install_path)
+                                            if local_hash != locked_dep.content_hash:
+                                                lockfile_match = False
+                                                if logger:
+                                                    logger.progress(
+                                                        f"Content changed for "
+                                                        f"{dep_ref.get_unique_key()} "
+                                                        f"at same SHA -- re-downloading"
+                                                    )
                                 except Exception:
                                     pass  # Local checkout invalid -- fall through to download
                         elif not ref_changed:
@@ -2208,7 +2222,7 @@ def _install_apm_dependencies(
                     # Supply chain protection: verify content hash on fresh
                     # downloads when the lockfile already records a hash.
                     # A mismatch means the downloaded content differs from
-                    # what was previously locked — possible tampering.
+                    # what was previously locked -- possible tampering.
                     if (
                         not update_refs
                         and _dep_locked_chk

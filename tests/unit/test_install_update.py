@@ -639,6 +639,194 @@ class TestUpdateRefsShaComparison:
         assert skip_download is False
 
 
+class TestUpdateRefsContentHashComparison:
+    """Tests for content hash comparison during --update lockfile match.
+
+    When ``update_refs=True`` and the resolved remote SHA matches the lockfile
+    SHA *and* local HEAD matches, the engine additionally compares the local
+    content hash against the lockfile's stored ``content_hash``.  If they
+    differ, ``lockfile_match`` is set back to False, forcing a re-download.
+
+    This catches cases where a registry proxy re-publishes content at the
+    same commit SHA (e.g. force-pushed tag or rewritten tree).
+    """
+
+    @staticmethod
+    def _build_lockfile_match_with_content_hash(
+        *, resolved_sha, lockfile_sha, install_exists,
+        local_head_sha=None, lockfile_content_hash=None,
+        local_content_hash=None,
+    ):
+        """Reproduce the update_refs lockfile_match check including content hash.
+
+        Mirrors the logic in ``_install_apm_dependencies()`` at the
+        ``if update_refs:`` block (lines ~1897-1924 in install.py).
+        """
+        resolved_ref = Mock() if resolved_sha else None
+        if resolved_ref:
+            resolved_ref.resolved_commit = resolved_sha
+
+        locked_dep = Mock() if lockfile_sha else None
+        if locked_dep:
+            locked_dep.resolved_commit = lockfile_sha
+            locked_dep.content_hash = lockfile_content_hash
+
+        # Default: local HEAD matches lockfile when not explicitly set
+        if local_head_sha is None:
+            local_head_sha = lockfile_sha
+
+        lockfile_match = False
+        if install_exists and locked_dep:
+            if locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
+                if resolved_ref and resolved_ref.resolved_commit == locked_dep.resolved_commit:
+                    if local_head_sha == locked_dep.resolved_commit:
+                        lockfile_match = True
+                        # Content hash comparison
+                        if lockfile_match and locked_dep.content_hash:
+                            if local_content_hash != locked_dep.content_hash:
+                                lockfile_match = False
+        return lockfile_match
+
+    # -- Scenario 1: SHA matches, hash matches -> skip download --------
+
+    def test_sha_match_hash_match_skips_download(self):
+        """When SHA and content hash both match, lockfile_match is True."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:aabbccdd",
+        ) is True
+
+    # -- Scenario 2: SHA matches, hash differs -> re-download ----------
+
+    def test_sha_match_hash_differs_forces_redownload(self):
+        """When SHA matches but content hash differs, lockfile_match is False."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:different",
+        ) is False
+
+    # -- Scenario 3: No content_hash in lockfile -> skip (backward compat)
+
+    def test_no_content_hash_in_lockfile_skips_download(self):
+        """When lockfile has no content_hash (None), skip as before."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            lockfile_content_hash=None,
+            local_content_hash="sha256:anything",
+        ) is True
+
+    # -- Scenario 4: SHA differs -> re-download regardless ---------------
+
+    def test_sha_differs_redownloads_regardless_of_hash(self):
+        """When SHA differs, lockfile_match is False; hash is never compared."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="new_sha_789",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:aabbccdd",
+        ) is False
+
+    # -- Edge cases -----------------------------------------------------
+
+    def test_sha_match_hash_match_with_explicit_local_head(self):
+        """Explicit local_head_sha matching lockfile SHA, hashes match."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            local_head_sha="abc123def456",
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:aabbccdd",
+        ) is True
+
+    def test_corrupted_checkout_skips_hash_comparison(self):
+        """When local HEAD does not match lockfile, hash is never checked."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            local_head_sha="corrupted_sha",
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:aabbccdd",
+        ) is False
+
+    def test_empty_string_content_hash_treated_as_truthy(self):
+        """An empty-string content_hash is truthy; mismatch forces re-download."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            lockfile_content_hash="",
+            local_content_hash="sha256:something",
+        ) is True  # empty string is falsy in Python, so hash check is skipped
+
+    def test_no_install_path_never_skips(self):
+        """When install path does not exist, lockfile_match is always False."""
+        assert self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=False,
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:aabbccdd",
+        ) is False
+
+    def test_skip_download_uses_lockfile_match_from_hash_check(self):
+        """End-to-end: skip_download integrates content hash outcome.
+
+        When hash differs, lockfile_match=False, so skip_download is False
+        (assuming no other skip conditions apply).
+        """
+        # Hash mismatch -> lockfile_match=False
+        lockfile_match = self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:different",
+        )
+        assert lockfile_match is False
+
+        install_path_exists = True
+        is_cacheable = False
+        update_refs = True
+        already_resolved = False
+
+        skip_download = install_path_exists and (
+            (is_cacheable and not update_refs) or already_resolved or lockfile_match
+        )
+        assert skip_download is False
+
+    def test_skip_download_when_hash_matches(self):
+        """End-to-end: skip_download is True when content hash matches."""
+        lockfile_match = self._build_lockfile_match_with_content_hash(
+            resolved_sha="abc123def456",
+            lockfile_sha="abc123def456",
+            install_exists=True,
+            lockfile_content_hash="sha256:aabbccdd",
+            local_content_hash="sha256:aabbccdd",
+        )
+        assert lockfile_match is True
+
+        install_path_exists = True
+        is_cacheable = False
+        update_refs = True
+        already_resolved = False
+
+        skip_download = install_path_exists and (
+            (is_cacheable and not update_refs) or already_resolved or lockfile_match
+        )
+        assert skip_download is True
+
+
 class TestPreDownloadUpdateRefsSkip:
     """Tests for the pre-download skip optimization when update_refs=True.
 

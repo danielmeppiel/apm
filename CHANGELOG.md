@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm install --update` now compares content hashes when the remote SHA matches the lockfile, detecting content changes invisible to SHA comparison (#515)
 - Hook integrator now processes the `windows` property in hook JSON files, copying referenced scripts and rewriting paths during install/compile (#311)
 - `apm install -g` now correctly deploys to user-scope directories (e.g., `~/.copilot/` instead of `~/.github/`) across all integrators and uninstall paths (#542)
 - `apm install -g` no longer deploys instructions to `~/.copilot/instructions/` (unsupported by Copilot CLI) (#542)
