@@ -4,14 +4,11 @@ Tests cover: search, show, list commands with rich console and fallback paths,
 error handling, edge cases.
 """
 
-import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
-from apm_cli.commands.mcp import mcp, search, show
-from apm_cli.commands.mcp import list as mcp_list
+from apm_cli.commands.mcp import mcp
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +90,7 @@ class TestMcpSearch:
         assert result.exit_code == 0
         # Should warn no results
         printed = " ".join(str(c) for c in mock_console.print.call_args_list)
-        assert "No MCP servers found" in printed or result.exit_code == 0
+        assert "No MCP servers found" in printed
 
     def test_search_fallback_with_results(self):
         """search falls back to plain echo when no Rich console."""
@@ -124,13 +121,20 @@ class TestMcpSearch:
             for i in range(20)
         ]
         mock_console = MagicMock()
+        table_instance = MagicMock()
 
         with patch_registry(search_result=many_servers), \
              patch("apm_cli.commands.mcp._get_console", return_value=mock_console), \
-             patch("rich.table.Table", MagicMock()):
+             patch("rich.table.Table", return_value=table_instance):
             result = runner.invoke(mcp, ["search", "server", "--limit", "3"])
 
         assert result.exit_code == 0
+        # Only 3 rows should have been added to the table
+        assert table_instance.add_row.call_count == 3
+        # Verify no servers beyond the limit appear in the rows
+        row_names = [call.args[0] for call in table_instance.add_row.call_args_list]
+        for i in range(3, 20):
+            assert f"server-{i}" not in row_names
 
     def test_search_registry_exception_exits_1(self):
         """Registry errors cause exit code 1."""
@@ -304,6 +308,13 @@ class TestMcpShow:
             result = runner.invoke(mcp, ["show", "pkg-server"])
 
         assert result.exit_code == 0
+        # Find the add_row call that includes the package name (4-arg calls are pkg_table rows)
+        pkg_row_calls = [c for c in mock_table.add_row.call_args_list if len(c.args) == 4]
+        assert pkg_row_calls, "Expected pkg_table.add_row to have been called"
+        pkg_name_arg = pkg_row_calls[0].args[1]
+        # The 30-char name must be truncated to at most 25 chars
+        assert len(pkg_name_arg) <= 25
+        assert pkg_name_arg.endswith("...")
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +346,7 @@ class TestMcpList:
 
         assert result.exit_code == 0
         printed = " ".join(str(c) for c in mock_console.print.call_args_list)
-        assert "No MCP servers" in printed or result.exit_code == 0
+        assert "No MCP servers" in printed
 
     def test_list_fallback_with_results(self):
         """list falls back to plain echo when no Rich console."""
@@ -366,13 +377,20 @@ class TestMcpList:
             for i in range(30)
         ]
         mock_console = MagicMock()
+        table_instance = MagicMock()
 
         with patch_registry(list_result=many_servers), \
              patch("apm_cli.commands.mcp._get_console", return_value=mock_console), \
-             patch("rich.table.Table", MagicMock()):
+             patch("rich.table.Table", return_value=table_instance):
             result = runner.invoke(mcp, ["list", "--limit", "5"])
 
         assert result.exit_code == 0
+        # Only 5 rows should have been added to the table
+        assert table_instance.add_row.call_count == 5
+        # Verify no servers beyond the limit appear in the rows
+        row_names = [call.args[0] for call in table_instance.add_row.call_args_list]
+        for i in range(5, 30):
+            assert f"s{i}" not in row_names
 
     def test_list_registry_exception_exits_1(self):
         """Registry errors on list cause exit code 1."""
