@@ -4,6 +4,7 @@ import contextlib
 import os
 import sys
 import tempfile
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,42 +15,30 @@ from apm_cli.cli import cli
 
 
 def _force_rich_fallback():
-    """Context-manager patches that force the text-only code path.
+    """Context-manager that forces the text-only code path.
 
     Rich imports inside function bodies are resolved from ``sys.modules`` at
-    call time, so we stub out the modules there instead of the per-attribute
-    path used when the symbols are in a module-level namespace.
+    call time, so we replace each rich sub-module with a proper
+    ``types.ModuleType`` stub whose ``__getattr__`` raises ``ImportError``.
+    Using real ``ModuleType`` objects avoids the brittle behaviour that arises
+    when non-module objects are placed in ``sys.modules``.
     """
-    import contextlib
 
     @contextlib.contextmanager
     def _ctx():
-        fakes = {
-            "rich": None,
-            "rich.console": None,
-            "rich.table": None,
-            "rich.tree": None,
-            "rich.panel": None,
-            "rich.text": None,
-        }
-        # Stash originals (None if not imported yet)
-        originals = {k: sys.modules.get(k) for k in fakes}
-        # Mark each as failed import by removing from sys.modules so the
-        # ``from rich.xxx import Yyy`` inside function bodies raises ImportError
-        for k in fakes:
-            sys.modules.pop(k, None)
-        # Now install a sentinel module that raises on attribute access
-        sentinel = MagicMock()
-        sentinel.__path__ = []  # make it look like a package
+        keys = ["rich", "rich.console", "rich.table", "rich.tree", "rich.panel", "rich.text"]
+        originals = {k: sys.modules.get(k) for k in keys}
 
-        class _BrokenModule:
-            def __getattr__(self, name):
-                raise ImportError(f"rich not available in test")
+        for k in keys:
+            stub = types.ModuleType(k)
+            stub.__path__ = []  # mark as a package so sub-imports resolve here
 
-        broken = _BrokenModule()
-        broken.__path__ = []
-        for k in fakes:
-            sys.modules[k] = broken  # type: ignore[assignment]
+            def _raise(name, _k=k):
+                raise ImportError(f"rich not available in test: {_k}")
+
+            stub.__getattr__ = _raise
+            sys.modules[k] = stub
+
         try:
             yield
         finally:
@@ -62,8 +51,8 @@ def _force_rich_fallback():
     return _ctx()
 
 
-class TestDepsListCommand:
-    """Tests for apm deps list."""
+class _DepsCmdBase:
+    """Shared CWD-management helpers for deps subcommand test classes."""
 
     def setup_method(self):
         self.runner = CliRunner()
@@ -88,6 +77,10 @@ class TestDepsListCommand:
                 yield Path(tmp_dir)
             finally:
                 os.chdir(self.original_dir)
+
+
+class TestDepsListCommand(_DepsCmdBase):
+    """Tests for apm deps list."""
 
     def _make_package(self, root: Path, org: str, repo: str, version: str = "1.0.0") -> Path:
         """Create a minimal installed package under apm_modules/."""
@@ -188,32 +181,8 @@ class TestDepsListCommand:
         assert "2.3.1" in result.output
 
 
-class TestDepsTreeCommand:
+class TestDepsTreeCommand(_DepsCmdBase):
     """Tests for apm deps tree."""
-
-    def setup_method(self):
-        self.runner = CliRunner()
-        try:
-            self.original_dir = os.getcwd()
-        except FileNotFoundError:
-            self.original_dir = str(Path(__file__).parent.parent.parent)
-            os.chdir(self.original_dir)
-
-    def teardown_method(self):
-        try:
-            os.chdir(self.original_dir)
-        except (FileNotFoundError, OSError):
-            repo_root = Path(__file__).parent.parent.parent
-            os.chdir(str(repo_root))
-
-    @contextlib.contextmanager
-    def _chdir_tmp(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            try:
-                os.chdir(tmp_dir)
-                yield Path(tmp_dir)
-            finally:
-                os.chdir(self.original_dir)
 
     def _make_package(self, root: Path, org: str, repo: str) -> Path:
         pkg_dir = root / "apm_modules" / org / repo
@@ -303,32 +272,8 @@ class TestDepsTreeCommand:
         assert "awesomeproject" in result.output
 
 
-class TestDepsInfoCommand:
+class TestDepsInfoCommand(_DepsCmdBase):
     """Tests for apm deps info."""
-
-    def setup_method(self):
-        self.runner = CliRunner()
-        try:
-            self.original_dir = os.getcwd()
-        except FileNotFoundError:
-            self.original_dir = str(Path(__file__).parent.parent.parent)
-            os.chdir(self.original_dir)
-
-    def teardown_method(self):
-        try:
-            os.chdir(self.original_dir)
-        except (FileNotFoundError, OSError):
-            repo_root = Path(__file__).parent.parent.parent
-            os.chdir(str(repo_root))
-
-    @contextlib.contextmanager
-    def _chdir_tmp(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            try:
-                os.chdir(tmp_dir)
-                yield Path(tmp_dir)
-            finally:
-                os.chdir(self.original_dir)
 
     def _make_package(self, root: Path, org: str, repo: str, **kwargs) -> Path:
         pkg_dir = root / "apm_modules" / org / repo
