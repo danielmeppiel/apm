@@ -273,7 +273,14 @@ class TestAlreadyResolvedSkipLogic:
     # --- parametrized truth table ---
 
     @pytest.mark.parametrize(
-        "install_path_exists, is_cacheable, update_refs, already_resolved, lockfile_match, expected",
+        (
+            "install_path_exists",
+            "is_cacheable",
+            "update_refs",
+            "already_resolved",
+            "lockfile_match",
+            "expected",
+        ),
         [
             # path missing -> never skip
             (False, True,  False, True,  True,  False),
