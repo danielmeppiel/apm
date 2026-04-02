@@ -152,10 +152,15 @@ KNOWN_TARGETS: Dict[str, TargetProfile] = {
     # Claude Code -- ~/.claude/ is the documented user-level config directory.
     # All primitives are supported at user scope.
     # Ref: https://docs.anthropic.com/en/docs/claude-code/settings
+    # Instructions deploy to .claude/rules/*.md with paths: frontmatter.
+    # Ref: https://code.claude.com/docs/en/memory#organize-rules-with-claude%2Frules%2F
     "claude": TargetProfile(
         name="claude",
         root_dir=".claude",
         primitives={
+            "instructions": PrimitiveMapping(
+                "rules", ".md", "claude_rules"
+            ),
             "agents": PrimitiveMapping(
                 "agents", ".md", "claude_agent"
             ),
