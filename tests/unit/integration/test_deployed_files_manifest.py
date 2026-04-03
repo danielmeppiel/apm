@@ -668,7 +668,7 @@ class TestHookCollisionDetection:
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=None
         )
-        assert result.hooks_integrated >= 1
+        assert result.files_integrated >= 1
 
     def test_empty_managed_set_all_collisions(self, tmp_path: Path):
         """managed_files=set() → pre-existing hook file is a collision."""
@@ -683,7 +683,7 @@ class TestHookCollisionDetection:
             info, tmp_path, force=False, managed_files=set()
         )
         # Hook file collides → skipped, so no hooks actually integrated
-        assert result.hooks_integrated == 0
+        assert result.files_integrated == 0
         # Verify user content is preserved
         assert json.loads((hooks_dir / "test-pkg-hooks.json").read_text()) == {"user": True}
 
@@ -700,7 +700,7 @@ class TestHookCollisionDetection:
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=managed
         )
-        assert result.hooks_integrated >= 1
+        assert result.files_integrated >= 1
 
     def test_force_overrides_collision(self, tmp_path: Path):
         """force=True overwrites even unmanaged hook files."""
@@ -714,7 +714,7 @@ class TestHookCollisionDetection:
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=True, managed_files=set()
         )
-        assert result.hooks_integrated >= 1
+        assert result.files_integrated >= 1
         # Verify user content was overwritten
         assert json.loads((hooks_dir / "test-pkg-hooks.json").read_text()) != {"user": True}
 
@@ -1072,7 +1072,7 @@ class TestSuccessfulDeployment:
         result = HookIntegrator().integrate_package_hooks(
             info, tmp_path, force=False, managed_files=set()
         )
-        assert result.hooks_integrated >= 1
+        assert result.files_integrated >= 1
         hooks_dir = tmp_path / ".github" / "hooks"
         assert hooks_dir.exists()
         json_files = list(hooks_dir.glob("*.json"))

@@ -202,9 +202,17 @@ class CommandIntegrator(BaseIntegrator):
         )
 
     # ------------------------------------------------------------------
-    # Legacy per-target API (delegates to target-driven methods)
+    # Legacy per-target API (DEPRECATED)
+    #
+    # These methods hardcode a specific target and bypass scope
+    # resolution.  Use the target-driven API (*_for_target) with
+    # profiles from resolve_targets() instead.
+    #
+    # Kept for backward compatibility with external consumers.
+    # Do NOT add new per-target methods here.
     # ------------------------------------------------------------------
 
+    # DEPRECATED: use integrate_commands_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def integrate_package_commands(self, package_info, project_root: Path,
                                     force: bool = False,
                                     managed_files: set = None,
@@ -222,6 +230,7 @@ class CommandIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict:
         """Remove APM-managed command files from .claude/commands/."""
@@ -231,6 +240,7 @@ class CommandIntegrator(BaseIntegrator):
             managed_files=managed_files,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def remove_package_commands(self, package_name: str, project_root: Path,
                                 managed_files: set = None) -> int:
         """Remove APM-managed command files."""
@@ -238,6 +248,7 @@ class CommandIntegrator(BaseIntegrator):
                                        managed_files=managed_files)
         return stats["files_removed"]
 
+    # DEPRECATED: use integrate_commands_for_target(KNOWN_TARGETS["opencode"], ...) instead.
     def integrate_package_commands_opencode(self, package_info, project_root: Path,
                                             force: bool = False,
                                             managed_files: set = None,
@@ -250,6 +261,7 @@ class CommandIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["opencode"], ...) instead.
     def sync_integration_opencode(self, apm_package, project_root: Path,
                                   managed_files: set = None) -> Dict:
         """Remove APM-managed command files from .opencode/commands/."""

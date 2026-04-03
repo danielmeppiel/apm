@@ -35,7 +35,7 @@ def _make_integration_result(n=0):
 def _make_hook_result(n=0):
     """Return a MagicMock mimicking HookIntegrationResult."""
     hr = MagicMock()
-    hr.hooks_integrated = n
+    hr.files_integrated = n
     hr.target_paths = []
     return hr
 
@@ -252,19 +252,15 @@ class TestExhaustivenessChecks:
 
     def test_every_target_primitive_has_dispatch_path(self):
         """For each (target, primitive) in KNOWN_TARGETS, verify the dispatch
-        loop routes to a real integrator method or a known special case."""
-        # The dispatch loop recognizes these primitives via _PRIMITIVE_INTEGRATORS
-        dispatched_primitives = {"prompts", "agents", "commands", "instructions"}
-        # Plus these special cases handled inline
-        special_cases = {"hooks", "skills"}
-        all_handled = dispatched_primitives | special_cases
+        table has a corresponding entry."""
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
 
         for target_name, profile in KNOWN_TARGETS.items():
             for prim_name in profile.primitives:
-                assert prim_name in all_handled, (
+                assert prim_name in dispatch, (
                     f"Primitive '{prim_name}' in target '{target_name}' has no "
-                    f"dispatch path. Add it to _PRIMITIVE_INTEGRATORS or handle "
-                    f"as a special case."
+                    f"entry in the dispatch table."
                 )
 
     def test_partition_parity_with_old_buckets(self):
@@ -763,3 +759,102 @@ class TestForScope:
         target_names = {t.name for t in targets}
         # Codex doesn't support user scope
         assert "codex" not in target_names
+
+
+# ===================================================================
+# TestPrimitiveCoverage
+# ===================================================================
+
+
+class TestPrimitiveCoverage:
+    """Verify that every primitive in KNOWN_TARGETS has a dispatch handler."""
+
+    def test_all_primitives_covered(self):
+        """Every primitive in KNOWN_TARGETS must have an integrator."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        from apm_cli.integration.dispatch import get_dispatch_table
+
+        dispatch = get_dispatch_table()
+        # Should not raise
+        check_primitive_coverage(dispatch)
+
+    def test_missing_primitive_raises(self):
+        """A primitive without a handler triggers RuntimeError."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        import pytest
+
+        # Deliberately omit "instructions"
+        incomplete_dispatch = {
+            "prompts": None, "agents": None, "commands": None,
+        }
+        with pytest.raises(RuntimeError, match="instructions"):
+            check_primitive_coverage(
+                incomplete_dispatch,
+                special_cases={"skills", "hooks"},
+            )
+
+    def test_special_cases_excluded(self):
+        """Primitives in special_cases are not required in the dispatch table."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+
+        dispatch_keys = {
+            "prompts", "agents", "commands", "instructions",
+        }
+        # skills and hooks are special-cased
+        check_primitive_coverage(
+            {k: None for k in dispatch_keys},
+            special_cases={"skills", "hooks"},
+        )
+
+
+# ===================================================================
+# 12. TestDispatchTable
+# ===================================================================
+
+
+class TestDispatchTable:
+    """Verify the unified dispatch table."""
+
+    def test_dispatch_table_has_all_primitives(self):
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        assert "prompts" in dispatch
+        assert "agents" in dispatch
+        assert "commands" in dispatch
+        assert "instructions" in dispatch
+        assert "hooks" in dispatch
+        assert "skills" in dispatch
+
+    def test_skills_is_multi_target(self):
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        assert dispatch["skills"].multi_target is True
+        for name in ("prompts", "agents", "commands", "instructions", "hooks"):
+            assert dispatch[name].multi_target is False
+
+    def test_dispatch_entries_have_valid_methods(self):
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        for name, entry in dispatch.items():
+            integrator = entry.integrator_class()
+            assert hasattr(integrator, entry.integrate_method), (
+                f"{entry.integrator_class.__name__} missing {entry.integrate_method}"
+            )
+            assert hasattr(integrator, entry.sync_method), (
+                f"{entry.integrator_class.__name__} missing {entry.sync_method}"
+            )
+
+    def test_dispatch_counter_keys_match_result_dict(self):
+        """Counter keys in dispatch match the keys used in install result."""
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        expected_counters = {"prompts", "agents", "commands", "instructions", "hooks", "skills"}
+        actual_counters = {entry.counter_key for entry in dispatch.values()}
+        assert actual_counters == expected_counters
+
+    def test_lazy_initialization(self):
+        """get_dispatch_table returns the same object on repeated calls."""
+        from apm_cli.integration.dispatch import get_dispatch_table
+        table1 = get_dispatch_table()
+        table2 = get_dispatch_table()
+        assert table1 is table2

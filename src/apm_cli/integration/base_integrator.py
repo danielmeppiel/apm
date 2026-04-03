@@ -13,13 +13,26 @@ from apm_cli.utils.console import _rich_warning
 
 @dataclass
 class IntegrationResult:
-    """Result of a file-level integration operation."""
+    """Result of any file-level integration operation.
+
+    The core fields (files_integrated, files_skipped, target_paths,
+    links_resolved) are used by all integrators.  Hook- and skill-specific
+    fields default to zero/False and are ignored by integrators that do
+    not produce them.
+    """
 
     files_integrated: int
     files_updated: int  # Kept for CLI compat, always 0 today
     files_skipped: int
     target_paths: List[Path]
     links_resolved: int = 0
+
+    # Hook-specific (default 0 when not applicable)
+    scripts_copied: int = 0
+
+    # Skill-specific (default 0/False when not applicable)
+    sub_skills_promoted: int = 0
+    skill_created: bool = False
 
 
 class BaseIntegrator:
