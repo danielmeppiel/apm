@@ -1529,7 +1529,7 @@ Use this skill for comprehensive guidance.
             dependency_ref=dep_ref_a,
         )
 
-        # Install first package — no existing skill, no warning expected.
+        # Install first package -- no existing skill, no warning expected.
         self.integrator.integrate_package_skill(pkg_a, self.project_root)
         assert (self.project_root / ".github" / "skills" / "humanizer" / "SKILL.md").exists()
 
@@ -1595,8 +1595,116 @@ Use this skill for comprehensive guidance.
         with patch.object(SkillIntegrator, "_build_native_skill_owner_map", return_value=owner_map):
             self.integrator.integrate_package_skill(pkg, self.project_root, diagnostics=diag)
 
-        # Self-reinstall — no overwrite diagnostic should be recorded.
+        # Self-reinstall -- no overwrite diagnostic should be recorded.
         assert not diag.has_diagnostics, "Self-reinstall should not produce a collision diagnostic"
+
+    def test_native_skill_collision_via_real_lockfile(self):
+        """Collision detection works from actual lockfile data (no internal mocking).
+
+        Writes an apm.lock.yaml with brandonwise/humanizer having deployed
+        .github/skills/humanizer/, then installs a second distinct package that
+        would claim the same skill name.  Verifies that an overwrite diagnostic is
+        recorded without patching any private method.
+        """
+        from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_OVERWRITE
+        from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+
+        # Write a lockfile that records brandonwise/humanizer as the owner.
+        lockfile = LockFile()
+        lockfile.add_dependency(LockedDependency(
+            repo_url="brandonwise/humanizer",
+            resolved_commit="abc123",
+            deployed_files=[
+                ".github/skills/humanizer/",
+                ".claude/skills/humanizer/",
+            ],
+        ))
+        lockfile_path = get_lockfile_path(self.project_root)
+        lockfile_path.write_text(lockfile.to_yaml())
+
+        # Deploy the existing skill directory so there is something to overwrite.
+        existing = self.project_root / ".github" / "skills" / "humanizer"
+        existing.mkdir(parents=True)
+        (existing / "SKILL.md").write_text("---\nname: humanizer\n---\n# Original\n")
+
+        # Second package: a virtual skill from a dotfiles repo with the same leaf name.
+        # The install path MUST end in "humanizer" because skill_name = package_path.name.
+        pkg_b_dir = self.project_root / "Serendeep" / "dotfiles" / "claude" / ".claude" / "skills" / "humanizer"
+        pkg_b_dir.mkdir(parents=True)
+        (pkg_b_dir / "SKILL.md").write_text("---\nname: humanizer\n---\n# Fork\n")
+
+        dep_ref_b = DependencyReference(
+            repo_url="Serendeep/dotfiles",
+            virtual_path="claude/.claude/skills/humanizer",
+            is_virtual=True,
+        )
+        pkg_b = self._create_package_info(
+            name="humanizer",
+            install_path=pkg_b_dir,
+            dependency_ref=dep_ref_b,
+        )
+
+        diag = DiagnosticCollector()
+        self.integrator.integrate_package_skill(pkg_b, self.project_root, diagnostics=diag)
+
+        # An overwrite diagnostic must be recorded because the previous owner
+        # (brandonwise/humanizer) differs from the incoming package.
+        assert diag.has_diagnostics, "Expected overwrite diagnostic from real lockfile"
+        groups = diag.by_category()
+        assert CATEGORY_OVERWRITE in groups
+        assert any("humanizer" in d.message for d in groups[CATEGORY_OVERWRITE])
+
+    def test_native_skill_same_run_collision_without_lockfile(self):
+        """Within a single install run, the second package colliding on a skill name is
+        detected via the in-memory session map even when no lockfile exists yet.
+        """
+        from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_OVERWRITE
+
+        # No lockfile present -- fresh repo.
+
+        # Package A: installs 'humanizer' skill first.
+        pkg_a_dir = self.project_root / "brandonwise" / "humanizer"
+        pkg_a_dir.mkdir(parents=True)
+        (pkg_a_dir / "SKILL.md").write_text("---\nname: humanizer\n---\n# A\n")
+
+        dep_ref_a = DependencyReference(repo_url="brandonwise/humanizer")
+        pkg_a = self._create_package_info(
+            name="humanizer",
+            install_path=pkg_a_dir,
+            dependency_ref=dep_ref_a,
+        )
+
+        diag_a = DiagnosticCollector()
+        self.integrator.integrate_package_skill(pkg_a, self.project_root, diagnostics=diag_a)
+
+        # No diagnostic for the first install.
+        assert not diag_a.has_diagnostics
+
+        # Package B: different package, same skill name, same integrator instance.
+        # Install path must also end in "humanizer" for skill_name to match.
+        pkg_b_dir = self.project_root / "Serendeep" / "dotfiles" / "claude" / ".claude" / "skills" / "humanizer"
+        pkg_b_dir.mkdir(parents=True)
+        (pkg_b_dir / "SKILL.md").write_text("---\nname: humanizer\n---\n# B\n")
+
+        dep_ref_b = DependencyReference(
+            repo_url="Serendeep/dotfiles",
+            virtual_path="claude/.claude/skills/humanizer",
+            is_virtual=True,
+        )
+        pkg_b = self._create_package_info(
+            name="humanizer",
+            install_path=pkg_b_dir,
+            dependency_ref=dep_ref_b,
+        )
+
+        diag_b = DiagnosticCollector()
+        self.integrator.integrate_package_skill(pkg_b, self.project_root, diagnostics=diag_b)
+
+        # The second install should trigger a collision diagnostic via session tracking.
+        assert diag_b.has_diagnostics, "Same-run collision not detected without lockfile"
+        groups = diag_b.by_category()
+        assert CATEGORY_OVERWRITE in groups
+        assert any("humanizer" in d.message for d in groups[CATEGORY_OVERWRITE])
 
 
 # =============================================================================
@@ -2707,13 +2815,16 @@ class TestSubSkillContentSkipAndCollisionProtection:
         from apm_cli.utils.diagnostics import DiagnosticCollector
         diag = DiagnosticCollector()
 
-        with patch.object(SkillIntegrator, '_build_skill_ownership_map', return_value={"my-sub": "my-pkg"}):
+        # Patch _build_ownership_maps (the single lockfile-read entry point) to return
+        # ownership for both the sub-skill map and the native-owner map.
+        with patch.object(SkillIntegrator, '_build_ownership_maps',
+                          return_value=({"my-sub": "my-pkg"}, {})):
             self.integrator.integrate_package_skill(
                 pkg_info, self.project_root,
                 diagnostics=diag, managed_files=managed_files, force=False,
             )
 
-        # Self-overwrite — no diagnostics should be recorded
+        # Self-overwrite -- no diagnostics should be recorded
         assert not diag.has_diagnostics
 
         # Content should be updated

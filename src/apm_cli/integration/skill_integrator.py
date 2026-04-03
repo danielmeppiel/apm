@@ -330,14 +330,20 @@ def copy_skill_to_target(
 
 class SkillIntegrator(BaseIntegrator):
     """Handles integration of native SKILL.md files for Claude Code, Cursor, and VS Code.
-    
+
     Claude Skills Spec:
     - SKILL.md files provide structured context for Claude Code
     - YAML frontmatter with name, description, and metadata
     - Markdown body with instructions and agent definitions
     - references/ subdirectory for prompt files
     """
-    
+
+    def __init__(self) -> None:
+        # In-memory map of skill_name -> dep.get_unique_key() updated as each native
+        # skill is deployed in the current install run.  Complements the lockfile-based
+        # map so that same-manifest collisions are detected before the lockfile is written.
+        self._native_skill_session_owners: dict[str, str] = {}
+
     def find_instruction_files(self, package_path: Path) -> List[Path]:
         """Find all instruction files in a package.
         
@@ -560,49 +566,54 @@ class SkillIntegrator(BaseIntegrator):
         return promoted, deployed
 
     @staticmethod
+    def _build_ownership_maps(project_root: Path) -> tuple[dict[str, str], dict[str, str]]:
+        """Read the lockfile once and build two ownership maps.
+
+        Returns a tuple of:
+        - owned_by: skill_name -> last-segment owner name, for sub-skill self-overwrite detection.
+        - native_owners: skill_name -> dep.get_unique_key(), for native-skill cross-package
+          collision detection.  Only paths under a ``/skills/`` prefix are included to avoid
+          false attribution from non-skill deployed_files entries (prompts, hooks, commands, etc.).
+        """
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+
+        owned_by: dict[str, str] = {}
+        native_owners: dict[str, str] = {}
+        lockfile = LockFile.read(get_lockfile_path(project_root))
+        if not lockfile:
+            return owned_by, native_owners
+        for dep in lockfile.get_all_dependencies():
+            short_owner = (dep.virtual_path or dep.repo_url).rsplit("/", 1)[-1]
+            unique_key = dep.get_unique_key()
+            for deployed_path in dep.deployed_files:
+                normalized = deployed_path.rstrip("/").replace("\\", "/")
+                skill_name = normalized.rsplit("/", 1)[-1]
+                # Both maps cover all paths for sub-skill self-overwrite tracking.
+                owned_by[skill_name] = short_owner
+                # Native-owner map is scoped to skill paths only to avoid false
+                # attribution from prompts/hooks/commands that share a leaf name.
+                if "/skills/" in normalized:
+                    native_owners[skill_name] = unique_key
+        return owned_by, native_owners
+
+    @staticmethod
     def _build_skill_ownership_map(project_root: Path) -> dict[str, str]:
         """Build a map of skill_name -> owner_package_name from the lockfile.
 
         Used to distinguish self-overwrites (no warning) from cross-package
         conflicts (warning) when promoting sub-skills.
         """
-        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
-
-        owned_by: dict[str, str] = {}
-        lockfile = LockFile.read(get_lockfile_path(project_root))
-        if not lockfile:
-            return owned_by
-        for dep in lockfile.get_all_dependencies():
-            owner = (dep.virtual_path or dep.repo_url).rsplit("/", 1)[-1]
-            for deployed_path in dep.deployed_files:
-                # e.g. ".github/skills/context-map" -> "context-map"
-                skill_name = deployed_path.rstrip("/").rsplit("/", 1)[-1]
-                owned_by[skill_name] = owner
+        owned_by, _ = SkillIntegrator._build_ownership_maps(project_root)
         return owned_by
 
     @staticmethod
     def _build_native_skill_owner_map(project_root: Path) -> dict[str, str]:
         """Build a map of skill_name -> dep.get_unique_key() from the lockfile.
 
-        Unlike ``_build_skill_ownership_map`` (which stores only the last path
-        segment for sub-skill self-overwrite detection), this map stores the
-        full canonical unique key of the owning dependency.  That makes it safe
-        to distinguish two distinct packages whose names share the same leaf
-        segment (e.g. ``brandonwise/humanizer`` vs
-        ``Serendeep/dotfiles/.../humanizer``).
+        Scoped to ``/skills/`` paths only -- see ``_build_ownership_maps`` for details.
         """
-        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
-
-        owners: dict[str, str] = {}
-        lockfile = LockFile.read(get_lockfile_path(project_root))
-        if not lockfile:
-            return owners
-        for dep in lockfile.get_all_dependencies():
-            for deployed_path in dep.deployed_files:
-                # e.g. ".github/skills/context-map/" -> "context-map"
-                skill_name = deployed_path.rstrip("/").rsplit("/", 1)[-1]
-                owners[skill_name] = dep.get_unique_key()
-        return owners
+        _, native_owners = SkillIntegrator._build_ownership_maps(project_root)
+        return native_owners
 
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path, diagnostics=None,
@@ -738,15 +749,9 @@ class SkillIntegrator(BaseIntegrator):
         all_target_paths: list[Path] = []
         primary_skill_md: Path | None = None
 
-        owned_by = self._build_skill_ownership_map(project_root)
+        # Read lockfile once and derive both maps in a single pass.
+        owned_by, lockfile_native_owners = self._build_ownership_maps(project_root)
         sub_skills_dir = package_path / ".apm" / "skills"
-
-        # Build a full-key ownership map (skill_name -> dep.get_unique_key()) for
-        # accurate cross-package collision detection on native skills.  The coarser
-        # map used by _promote_sub_skills only stores the last path segment, which
-        # is ambiguous when two distinct packages share the same leaf name (e.g.
-        # brandonwise/humanizer vs Serendeep/dotfiles/.../humanizer — issue #534).
-        native_skill_owners = self._build_native_skill_owner_map(project_root)
 
         # Full unique key of the package currently being installed.
         dep_ref = package_info.dependency_ref
@@ -768,7 +773,13 @@ class SkillIntegrator(BaseIntegrator):
 
             if target_skill_dir.exists():
                 if is_primary:
-                    prev_owner = native_skill_owners.get(skill_name)
+                    # Check both the lockfile (previous runs) and the in-memory session
+                    # map (current run) so that same-manifest collisions are caught even
+                    # before the lockfile has been written for this run.
+                    prev_owner = (
+                        lockfile_native_owners.get(skill_name)
+                        or self._native_skill_session_owners.get(skill_name)
+                    )
                     is_self_overwrite = prev_owner is not None and prev_owner == current_key
                     if prev_owner is not None and not is_self_overwrite:
                         try:
@@ -776,22 +787,22 @@ class SkillIntegrator(BaseIntegrator):
                         except ValueError:
                             rel_prefix = "skills"
                         rel_path = f"{rel_prefix}/{skill_name}"
+                        detail = (
+                            f"Skill '{skill_name}' from '{current_key}' "
+                            f"replaced existing skill previously provided by '{prev_owner}'"
+                        )
                         if diagnostics is not None:
                             diagnostics.overwrite(
                                 path=rel_path,
                                 package=skill_name,
-                                detail=f"Skill '{skill_name}' replaced -- previously from another package",
+                                detail=detail,
                             )
                         elif logger:
-                            logger.warning(
-                                f"Skill '{skill_name}' overwritten by a package from a different source"
-                            )
+                            logger.warning(detail)
                         else:
                             try:
                                 from apm_cli.utils.console import _rich_warning
-                                _rich_warning(
-                                    f"Skill '{skill_name}' overwritten by a package from a different source"
-                                )
+                                _rich_warning(detail)
                             except ImportError:
                                 pass
                 shutil.rmtree(target_skill_dir)
@@ -817,6 +828,11 @@ class SkillIntegrator(BaseIntegrator):
                 logger=logger if is_primary else None,
             )
             all_target_paths.extend(sub_deployed)
+
+        # Record ownership in the session map so subsequent packages installed in
+        # the same run can detect a collision even before the lockfile is written.
+        if current_key is not None:
+            self._native_skill_session_owners[skill_name] = current_key
 
         # Count unique sub-skills from primary target only
         primary_root = project_root / ".github" / "skills"
