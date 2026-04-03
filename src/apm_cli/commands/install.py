@@ -982,7 +982,6 @@ def _integrate_package_primitives(
     from apm_cli.integration.dispatch import get_dispatch_table
 
     _dispatch = get_dispatch_table()
-    _user_scope = scope is InstallScope.USER
     result = {
         "prompts": 0,
         "agents": 0,

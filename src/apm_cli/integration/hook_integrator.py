@@ -56,9 +56,23 @@ from apm_cli.utils.paths import portable_relpath
 _log = logging.getLogger(__name__)
 
 
-# DEPRECATED -- use IntegrationResult directly.
-# Kept as alias for backward compatibility with external consumers.
-HookIntegrationResult = IntegrationResult
+# DEPRECATED -- use IntegrationResult directly for new code.
+# Backward-compatible shim: accepts hooks_integrated= kwarg and
+# exposes a hooks_integrated property for consumers of the old API.
+class HookIntegrationResult(IntegrationResult):
+    """Backward-compatible wrapper around IntegrationResult."""
+
+    def __init__(self, *args, hooks_integrated=None, **kwargs):
+        if hooks_integrated is not None:
+            kwargs.setdefault("files_integrated", hooks_integrated)
+            kwargs.setdefault("files_updated", 0)
+            kwargs.setdefault("files_skipped", 0)
+        super().__init__(*args, **kwargs)
+
+    @property
+    def hooks_integrated(self):
+        """Alias for files_integrated (backward compat)."""
+        return self.files_integrated
 
 
 @dataclass(frozen=True)
