@@ -1706,6 +1706,84 @@ Use this skill for comprehensive guidance.
         assert CATEGORY_OVERWRITE in groups
         assert any("humanizer" in d.message for d in groups[CATEGORY_OVERWRITE])
 
+    def test_native_skill_collision_falls_back_to_rich_warning(self):
+        """When called without diagnostics or logger (e.g. uninstall sync), the
+        _rich_warning fallback is used for cross-package collisions.
+        """
+        from unittest.mock import patch
+        from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+
+        # Write a lockfile recording a previous owner.
+        lockfile = LockFile()
+        lockfile.add_dependency(LockedDependency(
+            repo_url="brandonwise/humanizer",
+            resolved_commit="abc123",
+            deployed_files=[".github/skills/humanizer/"],
+        ))
+        get_lockfile_path(self.project_root).write_text(lockfile.to_yaml())
+
+        existing = self.project_root / ".github" / "skills" / "humanizer"
+        existing.mkdir(parents=True)
+        (existing / "SKILL.md").write_text("---\nname: humanizer\n---\n# Original\n")
+
+        pkg_dir = self.project_root / "Serendeep" / "humanizer"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "SKILL.md").write_text("---\nname: humanizer\n---\n# Fork\n")
+
+        dep_ref = DependencyReference(repo_url="Serendeep/humanizer")
+        pkg = self._create_package_info(
+            name="humanizer",
+            install_path=pkg_dir,
+            dependency_ref=dep_ref,
+        )
+
+        with patch("apm_cli.utils.console._rich_warning") as mock_warn:
+            # No diagnostics, no logger -- triggers _rich_warning fallback.
+            self.integrator.integrate_package_skill(pkg, self.project_root)
+
+        mock_warn.assert_called_once()
+        msg = mock_warn.call_args[0][0]
+        assert "humanizer" in msg
+        assert "remove one package" in msg
+
+    def test_native_skill_collision_diagnostic_package_is_current_key(self):
+        """diagnostics.overwrite() must receive package=current_key (not skill_name)
+        so render_summary() groups by the package that caused the collision.
+        """
+        from apm_cli.utils.diagnostics import DiagnosticCollector, CATEGORY_OVERWRITE
+        from unittest.mock import patch
+
+        existing = self.project_root / ".github" / "skills" / "humanizer"
+        existing.mkdir(parents=True)
+        (existing / "SKILL.md").write_text("---\nname: humanizer\n---\n# Original\n")
+
+        pkg_dir = self.project_root / "Serendeep" / "humanizer"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "SKILL.md").write_text("---\nname: humanizer\n---\n# Fork\n")
+
+        dep_ref = DependencyReference(repo_url="Serendeep/humanizer")
+        pkg = self._create_package_info(
+            name="humanizer",
+            install_path=pkg_dir,
+            dependency_ref=dep_ref,
+        )
+
+        diag = DiagnosticCollector()
+
+        # Patch _build_ownership_maps (the single entry point) to inject prev ownership.
+        with patch.object(SkillIntegrator, "_build_ownership_maps",
+                          return_value=({}, {"humanizer": "brandonwise/humanizer"})):
+            self.integrator.integrate_package_skill(pkg, self.project_root, diagnostics=diag)
+
+        groups = diag.by_category()
+        assert CATEGORY_OVERWRITE in groups
+        entries = groups[CATEGORY_OVERWRITE]
+        # The package field must be the current package's unique key, not the skill name.
+        assert all(e.package != "humanizer" for e in entries), (
+            "diagnostics.overwrite() was called with package=skill_name instead of package=current_key"
+        )
+        assert any(e.package == "Serendeep/humanizer" for e in entries)
+
 
 # =============================================================================
 # T7: Claude Skills Compatibility Copy Tests

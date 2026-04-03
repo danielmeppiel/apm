@@ -787,24 +787,26 @@ class SkillIntegrator(BaseIntegrator):
                         except ValueError:
                             rel_prefix = "skills"
                         rel_path = f"{rel_prefix}/{skill_name}"
+                        # Issue 1: package= should identify the package causing the
+                        # collision (current_key), not the skill name, so render_summary()
+                        # groups diagnostics by the package responsible.
+                        # Issue 2: message must tell the user what to do ("So What?" test).
                         detail = (
-                            f"Skill '{skill_name}' from '{current_key}' "
-                            f"replaced existing skill previously provided by '{prev_owner}'"
+                            f"Skill '{skill_name}' from '{current_key}' replaced "
+                            f"'{prev_owner}' -- remove one package to avoid this"
                         )
                         if diagnostics is not None:
                             diagnostics.overwrite(
                                 path=rel_path,
-                                package=skill_name,
+                                package=current_key or skill_name,
                                 detail=detail,
                             )
                         elif logger:
                             logger.warning(detail)
                         else:
-                            try:
-                                from apm_cli.utils.console import _rich_warning
-                                _rich_warning(detail)
-                            except ImportError:
-                                pass
+                            # Reached when called without diagnostics or logger (e.g. uninstall sync).
+                            from apm_cli.utils.console import _rich_warning
+                            _rich_warning(detail)
                 shutil.rmtree(target_skill_dir)
 
             target_skill_dir.parent.mkdir(parents=True, exist_ok=True)
