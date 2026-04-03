@@ -858,3 +858,62 @@ class TestDispatchTable:
         table1 = get_dispatch_table()
         table2 = get_dispatch_table()
         assert table1 is table2
+
+
+# ===================================================================
+# 13. TestCoverageReverse + TestHookResultShim
+# ===================================================================
+
+
+class TestCoverageReverse:
+    """Verify bidirectional coverage checks."""
+
+    def test_dead_dispatch_entry_raises(self):
+        """An entry in the dispatch table with no matching target raises."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        import pytest
+
+        # Add a fake primitive not in any target
+        dispatch = {
+            "prompts": None, "agents": None, "commands": None,
+            "instructions": None, "hooks": None, "skills": None,
+            "phantoms": None,  # not in any KNOWN_TARGETS
+        }
+        with pytest.raises(RuntimeError, match="phantoms"):
+            check_primitive_coverage(dispatch)
+
+    def test_full_dispatch_table_passes_bidirectional(self):
+        """The real dispatch table passes both forward and reverse checks."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        from apm_cli.integration.dispatch import get_dispatch_table
+        # Should not raise (checks both directions + method existence)
+        check_primitive_coverage(get_dispatch_table())
+
+
+class TestHookResultShim:
+    """Verify HookIntegrationResult backward-compat construction."""
+
+    def test_old_style_construction(self):
+        """Old-style HookIntegrationResult(hooks_integrated=N) works."""
+        from apm_cli.integration.hook_integrator import HookIntegrationResult
+        r = HookIntegrationResult(hooks_integrated=5, scripts_copied=3, target_paths=[])
+        assert r.hooks_integrated == 5
+        assert r.files_integrated == 5
+        assert r.scripts_copied == 3
+
+    def test_old_style_no_target_paths(self):
+        """Old-style construction without target_paths defaults to []."""
+        from apm_cli.integration.hook_integrator import HookIntegrationResult
+        r = HookIntegrationResult(hooks_integrated=0, scripts_copied=0)
+        assert r.hooks_integrated == 0
+        assert r.target_paths == []
+
+    def test_new_style_construction(self):
+        """New-style IntegrationResult fields work on HookIntegrationResult."""
+        from apm_cli.integration.hook_integrator import HookIntegrationResult
+        r = HookIntegrationResult(
+            files_integrated=3, files_updated=0, files_skipped=0,
+            target_paths=[], scripts_copied=1,
+        )
+        assert r.files_integrated == 3
+        assert r.hooks_integrated == 3  # property alias

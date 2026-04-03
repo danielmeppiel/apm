@@ -67,6 +67,7 @@ class HookIntegrationResult(IntegrationResult):
             kwargs.setdefault("files_integrated", hooks_integrated)
             kwargs.setdefault("files_updated", 0)
             kwargs.setdefault("files_skipped", 0)
+            kwargs.setdefault("target_paths", [])
         super().__init__(*args, **kwargs)
 
     @property
