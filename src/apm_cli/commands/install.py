@@ -1263,9 +1263,9 @@ def _install_apm_dependencies(
                     locked_ref = locked_dep.resolved_commit
 
             # Build a DependencyReference with the right ref to avoid lossy
-            # str() → parse() round-trips (#382).
+            # str() -> parse() round-trips (#382).
             from dataclasses import replace as _dc_replace
-            if locked_ref:
+            if locked_ref and not update_refs:
                 download_dep = _dc_replace(dep_ref, reference=locked_ref)
             else:
                 download_dep = dep_ref
@@ -1918,7 +1918,9 @@ def _install_apm_dependencies(
                             except Exception:
                                 pass  # Not a git repo or invalid -- fall through to download
                 skip_download = install_path.exists() and (
-                    (is_cacheable and not update_refs) or already_resolved or lockfile_match
+                    (is_cacheable and not update_refs)
+                    or (already_resolved and not update_refs)
+                    or lockfile_match
                 )
 
                 # Verify content integrity when lockfile has a hash
@@ -2334,13 +2336,18 @@ def _install_apm_dependencies(
             _removed_orphan_count = 0
             _failed_orphan_count = 0
             _deleted_orphan_paths: builtins.list = []
+            # Build validation targets that cover both default KNOWN_TARGETS
+            # and scope-resolved targets so legacy project-scope orphan paths
+            # (e.g., ".github/...") are also cleaned up at user scope.
+            _validation_targets = _targets or {}
+            _default_targets = getattr(BaseIntegrator, "KNOWN_TARGETS", None)
+            if _default_targets:
+                _validation_targets = {**_default_targets, **_validation_targets}
             for _orphan_path in sorted(orphaned_deployed_files):
                 # validate_deploy_path() is the safety gate: it rejects path-traversal,
                 # requires a known integration prefix, and checks the resolved path
                 # stays within project_root -- so rmtree is safe here.
-                # Use default prefixes (all KNOWN_TARGETS) so legacy deployed
-                # paths from older buggy installs are also cleaned up.
-                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
+                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root, targets=_validation_targets):
                     _target = project_root / _orphan_path
                     if _target.exists():
                         try:

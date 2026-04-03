@@ -292,7 +292,7 @@ def copy_skill_to_target(
     # Get and validate skill name from folder
     raw_skill_name = source_path.name
     
-    is_valid, error_msg = validate_skill_name(raw_skill_name)
+    is_valid, _ = validate_skill_name(raw_skill_name)
     if is_valid:
         skill_name = raw_skill_name
     else:
@@ -996,7 +996,7 @@ class SkillIntegrator(BaseIntegrator):
             raw_name = dep.repo_url.split('/')[-1]
             if dep.is_virtual and dep.virtual_path:
                 raw_name = dep.virtual_path.split('/')[-1]
-            is_valid, error_msg = validate_skill_name(raw_name)
+            is_valid, _ = validate_skill_name(raw_name)
             skill_name = raw_name if is_valid else normalize_skill_name(raw_name)
             installed_skill_names.add(skill_name)
 
