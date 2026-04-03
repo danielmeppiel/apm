@@ -261,7 +261,8 @@ class ScriptRunner:
 
             # Check if this is a runtime command (copilot, codex, llm) before transformation
             is_runtime_cmd = any(
-                runtime in command for runtime in ["copilot", "codex", "llm"]
+                re.search(r"(?:^|\s)" + runtime + r"(?:\s|$)", command)
+                for runtime in ["copilot", "codex", "llm"]
             ) and re.search(re.escape(prompt_file), command)
 
             # Transform command based on runtime pattern
@@ -343,7 +344,7 @@ class ScriptRunner:
         # Handle individual runtime patterns without environment variables
 
         # Handle "codex [args] file.prompt.md [more_args]" -> "codex exec [args] [more_args]"
-        if re.search(r"codex\s+.*" + re.escape(prompt_file), command):
+        if re.search(r"^codex\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"codex\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -359,7 +360,7 @@ class ScriptRunner:
                 return result
 
         # Handle "copilot [args] file.prompt.md [more_args]" -> "copilot [args] [more_args]"
-        elif re.search(r"copilot\s+.*" + re.escape(prompt_file), command):
+        elif re.search(r"^copilot\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"copilot\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -378,7 +379,7 @@ class ScriptRunner:
                 return result
 
         # Handle "llm [args] file.prompt.md [more_args]" -> "llm [args] [more_args]"
-        elif re.search(r"llm\s+.*" + re.escape(prompt_file), command):
+        elif re.search(r"^llm\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"llm\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -410,12 +411,11 @@ class ScriptRunner:
             Name of the detected runtime (copilot, codex, llm, or unknown)
         """
         command_lower = command.lower().strip()
-        # Check for runtime keywords anywhere in the command, not just at the start
-        if "copilot" in command_lower:
+        if re.search(r"(?:^|\s)copilot(?:\s|$)", command_lower):
             return "copilot"
-        elif "codex" in command_lower:
+        elif re.search(r"(?:^|\s)codex(?:\s|$)", command_lower):
             return "codex"
-        elif "llm" in command_lower:
+        elif re.search(r"(?:^|\s)llm(?:\s|$)", command_lower):
             return "llm"
         else:
             return "unknown"

@@ -118,18 +118,46 @@ class TestScriptRunner:
     def test_detect_runtime_copilot(self):
         """Test runtime detection for copilot commands."""
         assert self.script_runner._detect_runtime("copilot --log-level all") == "copilot"
-    
+
     def test_detect_runtime_codex(self):
         """Test runtime detection for codex commands."""
         assert self.script_runner._detect_runtime("codex exec --skip-git-repo-check") == "codex"
-    
+
     def test_detect_runtime_llm(self):
         """Test runtime detection for llm commands."""
         assert self.script_runner._detect_runtime("llm --model gpt-4") == "llm"
-    
+
     def test_detect_runtime_unknown(self):
         """Test runtime detection for unknown commands."""
         assert self.script_runner._detect_runtime("unknown-command") == "unknown"
+
+    def test_detect_runtime_model_name_containing_codex(self):
+        """codex as a substring of a model name should not be detected as the codex runtime."""
+        # e.g. copilot --model gpt-5.3-codex — the runtime is copilot, not codex
+        assert self.script_runner._detect_runtime("copilot --model gpt-5.3-codex") == "copilot"
+
+    def test_detect_runtime_hyphenated_codex(self):
+        """A hyphen-prefixed codex substring must not trigger codex detection."""
+        assert self.script_runner._detect_runtime("run-codex-tool --flag") == "unknown"
+
+    def test_transform_runtime_command_copilot_with_codex_model(self):
+        """copilot command using --model containing 'codex' must not be mis-routed to codex runtime."""
+        original = "copilot --allow-all-tools --model gpt-5.3-codex -p fix-issue.prompt.md"
+        result = self.script_runner._transform_runtime_command(
+            original, "fix-issue.prompt.md", self.compiled_content, self.compiled_path
+        )
+        # Should be treated as a copilot command, not transformed into "codex exec ..."
+        assert result.startswith("copilot")
+        assert "codex exec" not in result
+
+    def test_transform_runtime_command_copilot_with_codex_model_name(self):
+        """--model codex (bare word as model name) must not trigger codex runtime path."""
+        original = "copilot --model codex -p fix-issue.prompt.md"
+        result = self.script_runner._transform_runtime_command(
+            original, "fix-issue.prompt.md", self.compiled_content, self.compiled_path
+        )
+        assert result.startswith("copilot")
+        assert "codex exec" not in result
     
     @patch('subprocess.run')
     @patch('apm_cli.core.script_runner.shutil.which', return_value=None)
