@@ -788,8 +788,6 @@ class GitHubPackageDownloader:
                     ref_name = ref if ref else repo.active_branch.name
 
                 except GitCommandError:
-                    if not ref:
-                        raise
                     # If branch/tag clone fails, try full clone and resolve reference
                     try:
                         repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None, dep_ref=dep_ref)
