@@ -230,14 +230,16 @@ class TestConfigGet:
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
         assert "auto-integrate: True" in result.output
+        # Internal keys must not appear — users cannot set them via apm config set
+        assert "default_client" not in result.output
 
-    def test_get_all_config_unknown_key_passthrough(self):
-        """Unknown config keys are shown as-is."""
-        fake_config = {"some_other_key": "value"}
+    def test_get_all_config_internal_keys_suppressed(self):
+        """Internal config keys are not shown to users."""
+        fake_config = {"default_client": "vscode"}
         with patch("apm_cli.config.get_config", return_value=fake_config):
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
-        assert "some_other_key: value" in result.output
+        assert "default_client" not in result.output
 
 
 class TestAutoIntegrateFunctions:

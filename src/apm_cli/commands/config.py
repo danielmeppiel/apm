@@ -166,8 +166,7 @@ def get(key):
         config_data = get_config()
         logger.progress("APM Configuration:")
         for k, v in config_data.items():
-            # Map internal keys to user-friendly names
+            # Only expose user-settable keys; internal keys (e.g. default_client)
+            # are silently skipped to avoid confusing users who cannot set them.
             if k == "auto_integrate":
                 click.echo(f"  auto-integrate: {v}")
-            else:
-                click.echo(f"  {k}: {v}")
