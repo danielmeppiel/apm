@@ -232,13 +232,11 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     """
     from ...integration.base_integrator import BaseIntegrator
     from ...models.apm_package import PackageInfo, validate_apm_package
-    from ...integration.prompt_integrator import PromptIntegrator
-    from ...integration.agent_integrator import AgentIntegrator
-    from ...integration.skill_integrator import SkillIntegrator
-    from ...integration.command_integrator import CommandIntegrator
-    from ...integration.hook_integrator import HookIntegrator
-    from ...integration.instruction_integrator import InstructionIntegrator
+    from ...integration.dispatch import get_dispatch_table
     from ...integration.targets import resolve_targets
+
+    _dispatch = get_dispatch_table()
+    _integrators = {name: entry.integrator_class() for name, entry in _dispatch.items()}
 
     # Resolve targets once -- used for both Phase 1 removal and Phase 2 re-integration.
     config_target = apm_package.target
@@ -265,30 +263,15 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     else:
         _buckets = None
 
-    counts = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
+    counts = {entry.counter_key: 0 for entry in _dispatch.values()}
 
     # Phase 1: Remove all APM-deployed files
-    # Use target-driven sync for prompts, agents, commands, instructions
-    _prompt_int = PromptIntegrator()
-    _agent_int = AgentIntegrator()
-    _cmd_int = CommandIntegrator()
-    _instr_int = InstructionIntegrator()
-
-    _SYNC_DISPATCH = {
-        "prompts": (_prompt_int, "prompts"),
-        "agents": (_agent_int, "agents"),
-        "commands": (_cmd_int, "commands"),
-        "instructions": (_instr_int, "instructions"),
-    }
-
+    # Per-target sync for primitives with sync_for_target
     for _target in _resolved_targets:
         for _prim_name, _mapping in _target.primitives.items():
-            if _prim_name in ("skills", "hooks"):
+            _entry = _dispatch.get(_prim_name)
+            if not _entry or _entry.sync_method != "sync_for_target":
                 continue
-            _entry = _SYNC_DISPATCH.get(_prim_name)
-            if not _entry:
-                continue
-            _integrator, _counter_key = _entry
             _effective_root = _mapping.deploy_root or _target.root_dir
             _deploy_dir = project_root / _effective_root / _mapping.subdir
             if not _deploy_dir.exists():
@@ -299,11 +282,11 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                     _prim_name, _target.name
                 )
                 _managed_subset = _buckets.get(_bucket_key, set())
-            result = _integrator.sync_for_target(
+            result = _integrators[_prim_name].sync_for_target(
                 _target, apm_package, project_root,
                 managed_files=_managed_subset,
             )
-            counts[_counter_key] += result.get("files_removed", 0)
+            counts[_entry.counter_key] += result.get("files_removed", 0)
 
     # Skills (multi-target, handled by SkillIntegrator)
     # Check both target root_dir and deploy_root for skill directories
@@ -316,35 +299,23 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
                 _skill_dirs_exist = True
                 break
     if _skill_dirs_exist:
-        integrator = SkillIntegrator()
-        result = integrator.sync_integration(apm_package, project_root,
-                                             managed_files=_buckets["skills"] if _buckets else None,
-                                             targets=_resolved_targets)
+        result = _integrators["skills"].sync_integration(
+            apm_package, project_root,
+            managed_files=_buckets["skills"] if _buckets else None,
+            targets=_resolved_targets,
+        )
         counts["skills"] = result.get("files_removed", 0)
 
-    # Hooks (multi-target, sync_integration handles all targets)
-    hook_integrator_cleanup = HookIntegrator()
-    result = hook_integrator_cleanup.sync_integration(apm_package, project_root,
-                                                      managed_files=_buckets["hooks"] if _buckets else None)
+    # Hooks (multi-target sync_integration handles all targets)
+    result = _integrators["hooks"].sync_integration(
+        apm_package, project_root,
+        managed_files=_buckets["hooks"] if _buckets else None,
+    )
     counts["hooks"] = result.get("files_removed", 0)
 
 
     # Phase 2: Re-integrate from remaining installed packages
     _targets = _resolved_targets
-
-    prompt_integrator = PromptIntegrator()
-    agent_integrator = AgentIntegrator()
-    skill_integrator = SkillIntegrator()
-    command_integrator = CommandIntegrator()
-    hook_integrator_reint = HookIntegrator()
-    instruction_integrator_reint = InstructionIntegrator()
-
-    _REINT_DISPATCH = {
-        "prompts": (prompt_integrator, "integrate_prompts_for_target"),
-        "agents": (agent_integrator, "integrate_agents_for_target"),
-        "commands": (command_integrator, "integrate_commands_for_target"),
-        "instructions": (instruction_integrator_reint, "integrate_instructions_for_target"),
-    }
 
     for dep in apm_package.get_apm_dependencies():
         dep_ref = dep if hasattr(dep, 'repo_url') else None
@@ -367,20 +338,15 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
         try:
             for _target in _targets:
                 for _prim_name in _target.primitives:
-                    if _prim_name == "skills":
+                    _entry = _dispatch.get(_prim_name)
+                    if not _entry or _entry.multi_target:
                         continue
-                    if _prim_name == "hooks":
-                        hook_integrator_reint.integrate_hooks_for_target(
-                            _target, pkg_info, project_root,
-                        )
-                        continue
-                    _entry = _REINT_DISPATCH.get(_prim_name)
-                    if _entry:
-                        _integrator, _method = _entry
-                        getattr(_integrator, _method)(
-                            _target, pkg_info, project_root,
-                        )
-            skill_integrator.integrate_package_skill(pkg_info, project_root, targets=_targets)
+                    getattr(_integrators[_prim_name], _entry.integrate_method)(
+                        _target, pkg_info, project_root,
+                    )
+            _integrators["skills"].integrate_package_skill(
+                pkg_info, project_root, targets=_targets,
+            )
         except Exception:
             pkg_id = dep_ref.get_identity() if hasattr(dep_ref, "get_identity") else str(dep_ref)
             logger.warning(f"Best-effort re-integration skipped for {pkg_id}")

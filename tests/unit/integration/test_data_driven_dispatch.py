@@ -10,7 +10,7 @@ Validates that:
 import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.integration.targets import KNOWN_TARGETS, PrimitiveMapping, TargetProfile
@@ -35,7 +35,7 @@ def _make_integration_result(n=0):
 def _make_hook_result(n=0):
     """Return a MagicMock mimicking HookIntegrationResult."""
     hr = MagicMock()
-    hr.hooks_integrated = n
+    hr.files_integrated = n
     hr.target_paths = []
     return hr
 
@@ -252,19 +252,15 @@ class TestExhaustivenessChecks:
 
     def test_every_target_primitive_has_dispatch_path(self):
         """For each (target, primitive) in KNOWN_TARGETS, verify the dispatch
-        loop routes to a real integrator method or a known special case."""
-        # The dispatch loop recognizes these primitives via _PRIMITIVE_INTEGRATORS
-        dispatched_primitives = {"prompts", "agents", "commands", "instructions"}
-        # Plus these special cases handled inline
-        special_cases = {"hooks", "skills"}
-        all_handled = dispatched_primitives | special_cases
+        table has a corresponding entry."""
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
 
         for target_name, profile in KNOWN_TARGETS.items():
             for prim_name in profile.primitives:
-                assert prim_name in all_handled, (
+                assert prim_name in dispatch, (
                     f"Primitive '{prim_name}' in target '{target_name}' has no "
-                    f"dispatch path. Add it to _PRIMITIVE_INTEGRATORS or handle "
-                    f"as a special case."
+                    f"entry in the dispatch table."
                 )
 
     def test_partition_parity_with_old_buckets(self):
@@ -396,19 +392,13 @@ class TestSyntheticTargetProfile:
         claude_dir.mkdir(parents=True)
         (claude_dir / "other.md").write_text("test")
 
-        # Patch validate_deploy_path to accept .newcode/ prefix (which
-        # is not in KNOWN_TARGETS) while keeping all other security checks
-        _orig = BaseIntegrator.validate_deploy_path
-
-        def _patched(rel_path, project_root, allowed_prefixes=None):
-            extended = (".newcode/",) + (allowed_prefixes or BaseIntegrator._get_integration_prefixes())
-            return _orig(rel_path, project_root, allowed_prefixes=extended)
-
-        with patch.object(BaseIntegrator, "validate_deploy_path", staticmethod(_patched)):
-            result = integrator.sync_for_target(
-                synthetic, apm_package, self.root,
-                managed_files=managed,
-            )
+        # sync_for_target passes targets=[synthetic] through to
+        # validate_deploy_path, so .newcode/ prefix is accepted
+        # without patching.
+        result = integrator.sync_for_target(
+            synthetic, apm_package, self.root,
+            managed_files=managed,
+        )
 
         # The .newcode files should be removed
         assert result["files_removed"] == 2
@@ -763,3 +753,161 @@ class TestForScope:
         target_names = {t.name for t in targets}
         # Codex doesn't support user scope
         assert "codex" not in target_names
+
+
+# ===================================================================
+# TestPrimitiveCoverage
+# ===================================================================
+
+
+class TestPrimitiveCoverage:
+    """Verify that every primitive in KNOWN_TARGETS has a dispatch handler."""
+
+    def test_all_primitives_covered(self):
+        """Every primitive in KNOWN_TARGETS must have an integrator."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        from apm_cli.integration.dispatch import get_dispatch_table
+
+        dispatch = get_dispatch_table()
+        # Should not raise
+        check_primitive_coverage(dispatch)
+
+    def test_missing_primitive_raises(self):
+        """A primitive without a handler triggers RuntimeError."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        import pytest
+
+        # Deliberately omit "instructions"
+        incomplete_dispatch = {
+            "prompts": None, "agents": None, "commands": None,
+        }
+        with pytest.raises(RuntimeError, match="instructions"):
+            check_primitive_coverage(
+                incomplete_dispatch,
+                special_cases={"skills", "hooks"},
+            )
+
+    def test_special_cases_excluded(self):
+        """Primitives in special_cases are not required in the dispatch table."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+
+        dispatch_keys = {
+            "prompts", "agents", "commands", "instructions",
+        }
+        # skills and hooks are special-cased
+        check_primitive_coverage(
+            {k: None for k in dispatch_keys},
+            special_cases={"skills", "hooks"},
+        )
+
+
+# ===================================================================
+# 12. TestDispatchTable
+# ===================================================================
+
+
+class TestDispatchTable:
+    """Verify the unified dispatch table."""
+
+    def test_dispatch_table_has_all_primitives(self):
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        assert "prompts" in dispatch
+        assert "agents" in dispatch
+        assert "commands" in dispatch
+        assert "instructions" in dispatch
+        assert "hooks" in dispatch
+        assert "skills" in dispatch
+
+    def test_skills_is_multi_target(self):
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        assert dispatch["skills"].multi_target is True
+        for name in ("prompts", "agents", "commands", "instructions", "hooks"):
+            assert dispatch[name].multi_target is False
+
+    def test_dispatch_entries_have_valid_methods(self):
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        for name, entry in dispatch.items():
+            integrator = entry.integrator_class()
+            assert hasattr(integrator, entry.integrate_method), (
+                f"{entry.integrator_class.__name__} missing {entry.integrate_method}"
+            )
+            assert hasattr(integrator, entry.sync_method), (
+                f"{entry.integrator_class.__name__} missing {entry.sync_method}"
+            )
+
+    def test_dispatch_counter_keys_match_result_dict(self):
+        """Counter keys in dispatch match the keys used in install result."""
+        from apm_cli.integration.dispatch import get_dispatch_table
+        dispatch = get_dispatch_table()
+        expected_counters = {"prompts", "agents", "commands", "instructions", "hooks", "skills"}
+        actual_counters = {entry.counter_key for entry in dispatch.values()}
+        assert actual_counters == expected_counters
+
+    def test_lazy_initialization(self):
+        """get_dispatch_table returns the same object on repeated calls."""
+        from apm_cli.integration.dispatch import get_dispatch_table
+        table1 = get_dispatch_table()
+        table2 = get_dispatch_table()
+        assert table1 is table2
+
+
+# ===================================================================
+# 13. TestCoverageReverse + TestHookResultShim
+# ===================================================================
+
+
+class TestCoverageReverse:
+    """Verify bidirectional coverage checks."""
+
+    def test_dead_dispatch_entry_raises(self):
+        """An entry in the dispatch table with no matching target raises."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        import pytest
+
+        # Add a fake primitive not in any target
+        dispatch = {
+            "prompts": None, "agents": None, "commands": None,
+            "instructions": None, "hooks": None, "skills": None,
+            "phantoms": None,  # not in any KNOWN_TARGETS
+        }
+        with pytest.raises(RuntimeError, match="phantoms"):
+            check_primitive_coverage(dispatch)
+
+    def test_full_dispatch_table_passes_bidirectional(self):
+        """The real dispatch table passes both forward and reverse checks."""
+        from apm_cli.integration.coverage import check_primitive_coverage
+        from apm_cli.integration.dispatch import get_dispatch_table
+        # Should not raise (checks both directions + method existence)
+        check_primitive_coverage(get_dispatch_table())
+
+
+class TestHookResultShim:
+    """Verify HookIntegrationResult backward-compat construction."""
+
+    def test_old_style_construction(self):
+        """Old-style HookIntegrationResult(hooks_integrated=N) works."""
+        from apm_cli.integration.hook_integrator import HookIntegrationResult
+        r = HookIntegrationResult(hooks_integrated=5, scripts_copied=3, target_paths=[])
+        assert r.hooks_integrated == 5
+        assert r.files_integrated == 5
+        assert r.scripts_copied == 3
+
+    def test_old_style_no_target_paths(self):
+        """Old-style construction without target_paths defaults to []."""
+        from apm_cli.integration.hook_integrator import HookIntegrationResult
+        r = HookIntegrationResult(hooks_integrated=0, scripts_copied=0)
+        assert r.hooks_integrated == 0
+        assert r.target_paths == []
+
+    def test_new_style_construction(self):
+        """New-style IntegrationResult fields work on HookIntegrationResult."""
+        from apm_cli.integration.hook_integrator import HookIntegrationResult
+        r = HookIntegrationResult(
+            files_integrated=3, files_updated=0, files_skipped=0,
+            target_paths=[], scripts_copied=1,
+        )
+        assert r.files_integrated == 3
+        assert r.hooks_integrated == 3  # property alias

@@ -13,13 +13,26 @@ from apm_cli.utils.console import _rich_warning
 
 @dataclass
 class IntegrationResult:
-    """Result of a file-level integration operation."""
+    """Result of any file-level integration operation.
+
+    The core fields (files_integrated, files_skipped, target_paths,
+    links_resolved) are used by all integrators.  Hook- and skill-specific
+    fields default to zero/False and are ignored by integrators that do
+    not produce them.
+    """
 
     files_integrated: int
     files_updated: int  # Kept for CLI compat, always 0 today
     files_skipped: int
     target_paths: List[Path]
     links_resolved: int = 0
+
+    # Hook-specific (default 0 when not applicable)
+    scripts_copied: int = 0
+
+    # Skill-specific (default 0/False when not applicable)
+    sub_skills_promoted: int = 0
+    skill_created: bool = False
 
 
 class BaseIntegrator:
@@ -337,6 +350,7 @@ class BaseIntegrator:
         prefix: str,
         legacy_glob_dir: Optional[Path] = None,
         legacy_glob_pattern: Optional[str] = None,
+        targets=None,
     ) -> Dict[str, int]:
         """Remove APM-managed files matching *prefix* from *managed_files*.
 
@@ -350,6 +364,9 @@ class BaseIntegrator:
             legacy_glob_dir: Directory to glob inside for the legacy fallback.
             legacy_glob_pattern: Glob pattern for legacy fallback
                                  (e.g. ``"*-apm.prompt.md"``).
+            targets: Optional target profiles for path validation.
+                     Passed through to ``validate_deploy_path()`` so
+                     user-scope prefixes are recognised.
 
         Returns:
             ``{"files_removed": int, "errors": int}``
@@ -361,7 +378,7 @@ class BaseIntegrator:
                 # managed_files is pre-normalized  -- no .replace() needed
                 if not rel_path.startswith(prefix):
                     continue
-                if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
+                if not BaseIntegrator.validate_deploy_path(rel_path, project_root, targets=targets):
                     continue
                 target = project_root / rel_path
                 if target.exists():
