@@ -263,7 +263,7 @@ def _sync_integrations_after_uninstall(apm_package, project_root, all_deployed_f
     else:
         _buckets = None
 
-    counts = {"prompts": 0, "agents": 0, "skills": 0, "commands": 0, "hooks": 0, "instructions": 0}
+    counts = {entry.counter_key: 0 for entry in _dispatch.values()}
 
     # Phase 1: Remove all APM-deployed files
     # Per-target sync for primitives with sync_for_target

@@ -13,10 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Set
 
-import pytest
-
 from apm_cli.integration.agent_integrator import AgentIntegrator
-from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
 from apm_cli.integration.instruction_integrator import InstructionIntegrator
 from apm_cli.integration.prompt_integrator import PromptIntegrator
@@ -30,30 +27,6 @@ from apm_cli.models.validation import PackageType
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-# User-scope roots (.copilot/, .config/opencode/) are not in the default
-# allowed-prefix list returned by get_integration_prefixes() when called
-# without targets.  sync_remove_files() calls validate_deploy_path()
-# without targets, so uninstall at user scope for copilot/opencode would
-# be silently rejected.  This fixture extends the prefix list so cycle
-# tests exercise the full install-then-uninstall path.
-_USER_SCOPE_PREFIXES = (".copilot/", ".config/opencode/")
-
-
-@pytest.fixture()
-def allow_user_scope_prefixes(monkeypatch):
-    """Extend integration prefixes to include user-scope roots."""
-    _original = BaseIntegrator._get_integration_prefixes
-
-    def _extended(targets=None):
-        base = _original(targets=targets)
-        return base + _USER_SCOPE_PREFIXES
-
-    monkeypatch.setattr(
-        BaseIntegrator,
-        "_get_integration_prefixes",
-        staticmethod(_extended),
-    )
 
 
 def _make_pkg(
@@ -220,7 +193,7 @@ class TestCopilotInstallUninstallCycle:
         for p in deployed:
             assert not (self.project_root / p).exists(), f"not removed: {p}"
 
-    def test_user_scope(self, allow_user_scope_prefixes):
+    def test_user_scope(self):
         """At user scope, agents deploy to .copilot/; instructions filtered."""
         target = KNOWN_TARGETS["copilot"].for_scope(user_scope=True)
         assert target is not None
@@ -608,7 +581,7 @@ class TestOpenCodeInstallUninstallCycle:
         for p in deployed:
             assert not (self.project_root / p).exists()
 
-    def test_user_scope(self, allow_user_scope_prefixes):
+    def test_user_scope(self):
         """OpenCode user scope: deploy to .config/opencode/, verify .opencode/ untouched."""
         target = KNOWN_TARGETS["opencode"].for_scope(user_scope=True)
         assert target is not None

@@ -366,7 +366,7 @@ class HookIntegrator(BaseIntegrator):
         hook_files = self.find_hook_files(package_info.install_path)
 
         if not hook_files:
-            return IntegrationResult(
+            return HookIntegrationResult(
                 files_integrated=0, files_updated=0,
                 files_skipped=0, target_paths=[],
             )
@@ -417,7 +417,7 @@ class HookIntegrator(BaseIntegrator):
                 scripts_copied += 1
                 target_paths.append(target_script)
 
-        return IntegrationResult(
+        return HookIntegrationResult(
             files_integrated=hooks_integrated, files_updated=0,
             files_skipped=0, target_paths=target_paths,
             scripts_copied=scripts_copied,
@@ -436,14 +436,14 @@ class HookIntegrator(BaseIntegrator):
         force: bool = False,
         managed_files: set = None,
         diagnostics=None,
-    ) -> IntegrationResult:
+    ) -> HookIntegrationResult:
         """Integrate hooks by merging into a target-specific JSON config.
 
         This is the shared implementation for Claude, Cursor, and Codex
         targets that merge hook entries into a single JSON file (as
         opposed to Copilot which uses individual JSON files).
         """
-        _empty = IntegrationResult(
+        _empty = HookIntegrationResult(
             files_integrated=0, files_updated=0,
             files_skipped=0, target_paths=[],
         )
@@ -526,7 +526,7 @@ class HookIntegrator(BaseIntegrator):
             json.dump(json_config, f, indent=2)
             f.write('\n')
 
-        return IntegrationResult(
+        return HookIntegrationResult(
             files_integrated=hooks_integrated, files_updated=0,
             files_skipped=0, target_paths=target_paths,
             scripts_copied=scripts_copied,
@@ -613,7 +613,7 @@ class HookIntegrator(BaseIntegrator):
                 diagnostics=diagnostics,
             )
 
-        return IntegrationResult(
+        return HookIntegrationResult(
             files_integrated=0, files_updated=0,
             files_skipped=0, target_paths=[],
         )

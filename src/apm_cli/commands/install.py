@@ -977,8 +977,6 @@ def _integrate_package_primitives(
 
     Returns a dict with integration counters and the list of deployed file paths.
     """
-    from apm_cli.core.scope import InstallScope
-
     from apm_cli.integration.dispatch import get_dispatch_table
 
     _dispatch = get_dispatch_table()

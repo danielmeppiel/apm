@@ -181,6 +181,7 @@ class AgentIntegrator(BaseIntegrator):
             prefix=prefix,
             legacy_glob_dir=legacy_dir,
             legacy_glob_pattern=legacy_pattern,
+            targets=[target],
         )
 
     # ------------------------------------------------------------------

@@ -350,6 +350,7 @@ class BaseIntegrator:
         prefix: str,
         legacy_glob_dir: Optional[Path] = None,
         legacy_glob_pattern: Optional[str] = None,
+        targets=None,
     ) -> Dict[str, int]:
         """Remove APM-managed files matching *prefix* from *managed_files*.
 
@@ -363,6 +364,9 @@ class BaseIntegrator:
             legacy_glob_dir: Directory to glob inside for the legacy fallback.
             legacy_glob_pattern: Glob pattern for legacy fallback
                                  (e.g. ``"*-apm.prompt.md"``).
+            targets: Optional target profiles for path validation.
+                     Passed through to ``validate_deploy_path()`` so
+                     user-scope prefixes are recognised.
 
         Returns:
             ``{"files_removed": int, "errors": int}``
@@ -374,7 +378,7 @@ class BaseIntegrator:
                 # managed_files is pre-normalized  -- no .replace() needed
                 if not rel_path.startswith(prefix):
                     continue
-                if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
+                if not BaseIntegrator.validate_deploy_path(rel_path, project_root, targets=targets):
                     continue
                 target = project_root / rel_path
                 if target.exists():

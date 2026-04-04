@@ -199,6 +199,7 @@ class CommandIntegrator(BaseIntegrator):
             prefix=prefix,
             legacy_glob_dir=legacy_dir,
             legacy_glob_pattern="*-apm.md",
+            targets=[target],
         )
 
     # ------------------------------------------------------------------

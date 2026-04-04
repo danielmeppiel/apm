@@ -396,8 +396,8 @@ class TestSyntheticTargetProfile:
         # is not in KNOWN_TARGETS) while keeping all other security checks
         _orig = BaseIntegrator.validate_deploy_path
 
-        def _patched(rel_path, project_root, allowed_prefixes=None):
-            extended = (".newcode/",) + (allowed_prefixes or BaseIntegrator._get_integration_prefixes())
+        def _patched(rel_path, project_root, allowed_prefixes=None, targets=None):
+            extended = (".newcode/",) + (allowed_prefixes or BaseIntegrator._get_integration_prefixes(targets=targets))
             return _orig(rel_path, project_root, allowed_prefixes=extended)
 
         with patch.object(BaseIntegrator, "validate_deploy_path", staticmethod(_patched)):
