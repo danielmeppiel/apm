@@ -225,21 +225,19 @@ class TestConfigGet:
 
     def test_get_all_config(self):
         """Show all config when no key is provided."""
-        fake_config = {"auto_integrate": True, "default_client": "vscode"}
-        with patch("apm_cli.config.get_config", return_value=fake_config):
+        with patch("apm_cli.config.get_auto_integrate", return_value=True):
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
         assert "auto-integrate: True" in result.output
-        # Internal keys must not appear — users cannot set them via apm config set
+        # Internal keys must not appear - users cannot set them via apm config set
         assert "default_client" not in result.output
 
-    def test_get_all_config_internal_keys_suppressed(self):
-        """Internal config keys are not shown to users."""
-        fake_config = {"default_client": "vscode"}
-        with patch("apm_cli.config.get_config", return_value=fake_config):
+    def test_get_all_config_fresh_install(self):
+        """auto-integrate is shown even on a fresh install with no key in the file."""
+        with patch("apm_cli.config.get_auto_integrate", return_value=True):
             result = self.runner.invoke(config, ["get"])
         assert result.exit_code == 0
-        assert "default_client" not in result.output
+        assert "auto-integrate: True" in result.output
 
 
 class TestAutoIntegrateFunctions:
