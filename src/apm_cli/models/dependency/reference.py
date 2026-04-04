@@ -580,7 +580,7 @@ class DependencyReference:
                 for seg in path_segments
             )
             has_collection = "collections" in path_segments
-            if has_virtual_ext or has_collection:
+            if has_virtual_ext or has_collection or len(path_segments) > 2:
                 min_base_segments = 2
             else:
                 min_base_segments = len(path_segments)

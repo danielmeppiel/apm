@@ -1024,6 +1024,21 @@ class GitHubPackageDownloader:
             # All raw attempts failed — fall through to API path which
             # handles private repos, rate-limit messaging, and SAML errors.
         
+        # Try raw URL for generic hosts (Gitea, GitLab, etc.)
+        if host.lower() not in ("github.com",) and not host.lower().endswith(".ghe.com"):
+            raw_url = f"https://{host}/{owner}/{repo}/raw/{ref}/{file_path}"
+            raw_headers = {}
+            if token:
+                raw_headers['Authorization'] = f'token {token}'
+            try:
+                response = self._resilient_get(raw_url, headers=raw_headers, timeout=30)
+                if response.status_code == 200:
+                    if verbose_callback:
+                        verbose_callback(f"Downloaded file: {host}/{dep_ref.repo_url}/{file_path}")
+                    return response.content
+            except:
+                pass
+        
         # --- Contents API path (authenticated, enterprise, or raw fallback) ---
         # Build GitHub API URL - format differs by host type
         if host == "github.com":
@@ -1031,7 +1046,7 @@ class GitHubPackageDownloader:
         elif host.lower().endswith(".ghe.com"):
             api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         else:
-            api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+            api_url = f"https://{host}/api/v1/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         
         # Set up authentication headers
         headers = {
