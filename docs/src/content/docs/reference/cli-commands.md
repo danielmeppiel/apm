@@ -753,6 +753,7 @@ apm deps update [PACKAGES...] [OPTIONS]
 **Options:**
 - `--verbose, -v` - Show detailed update information
 - `--force` - Overwrite locally-authored files on collision
+- `-g, --global` - Update user-scope dependencies (`~/.apm/`)
 - `--target, -t` - Force deployment to a specific target (copilot, claude, cursor, opencode, vscode, agents, all)
 - `--parallel-downloads` - Max concurrent downloads (default: 4)
 

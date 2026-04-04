@@ -618,6 +618,9 @@ apm deps update owner/apm-sample-package
 # Update with verbose output
 apm deps update --verbose
 
+# Update user-scope dependencies
+apm deps update -g
+
 # Install with updates (equivalent to update)
 apm install --update
 ```

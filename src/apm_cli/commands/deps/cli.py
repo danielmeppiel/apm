@@ -608,6 +608,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
             logger=logger,
             auth_resolver=auth_resolver,
             target=target,
+            scope=scope,
         )
     except Exception as e:
         logger.error(f"Update failed: {e}")
