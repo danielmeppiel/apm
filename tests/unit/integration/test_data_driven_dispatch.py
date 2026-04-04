@@ -10,7 +10,7 @@ Validates that:
 import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.integration.targets import KNOWN_TARGETS, PrimitiveMapping, TargetProfile
@@ -392,19 +392,13 @@ class TestSyntheticTargetProfile:
         claude_dir.mkdir(parents=True)
         (claude_dir / "other.md").write_text("test")
 
-        # Patch validate_deploy_path to accept .newcode/ prefix (which
-        # is not in KNOWN_TARGETS) while keeping all other security checks
-        _orig = BaseIntegrator.validate_deploy_path
-
-        def _patched(rel_path, project_root, allowed_prefixes=None, targets=None):
-            extended = (".newcode/",) + (allowed_prefixes or BaseIntegrator._get_integration_prefixes(targets=targets))
-            return _orig(rel_path, project_root, allowed_prefixes=extended)
-
-        with patch.object(BaseIntegrator, "validate_deploy_path", staticmethod(_patched)):
-            result = integrator.sync_for_target(
-                synthetic, apm_package, self.root,
-                managed_files=managed,
-            )
+        # sync_for_target passes targets=[synthetic] through to
+        # validate_deploy_path, so .newcode/ prefix is accepted
+        # without patching.
+        result = integrator.sync_for_target(
+            synthetic, apm_package, self.root,
+            managed_files=managed,
+        )
 
         # The .newcode files should be removed
         assert result["files_removed"] == 2
