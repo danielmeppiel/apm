@@ -376,6 +376,21 @@ If you see a skill name validation warning:
 1. **Check naming:** Names must be lowercase, 1-64 chars, hyphens only (no underscores)
 2. **Auto-normalization:** APM automatically normalizes invalid names when possible
 
+### Skill Name Collision Warning
+
+If you see a warning like:
+
+```
+[!] Skill 'humanizer': replaced 'org/other-package' -- remove one package to avoid this
+```
+
+Two of your installed packages deploy a native skill with the same name. The second install
+overwrote the first. To resolve:
+
+1. **Identify the conflict**: The warning names both the incoming package and the previous owner.
+2. **Remove one**: Uninstall the package you no longer need with `apm uninstall owner/repo`.
+3. **Reinstall**: Run `apm install` again to restore a clean state.
+
 ### Metadata Missing
 
 If skill lacks APM metadata:

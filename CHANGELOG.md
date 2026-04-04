@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standardized `--target` choices, replaced Unicode with ASCII for cp1252 compatibility, and documented missing CLI flags (#519)
 - `apm install -g` now correctly deploys to user-scope directories, skips unsupported primitives, and cleans up on uninstall -- including multi-level paths like `~/.config/opencode/` (#542)
 - `apm deps update` now correctly re-resolves transitive dependencies instead of reusing stale locked SHAs (#548)
+- `apm install` now warns when two packages deploy a native skill with the same name, identifying both the incoming and previous owner so users know which dependency to remove (#545)
 
 ### Added
 
