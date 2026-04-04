@@ -438,6 +438,41 @@ class TestVSCodeIntegration:
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
         assert (temp_project / ".github" / "hooks").exists()
 
+    def test_integrate_package_hooks_user_scope_uses_copilot_root(self, temp_project):
+        """Hooks land in .copilot/hooks/ when target.root_dir is '.copilot' (user scope)."""
+        pkg_dir = temp_project / "apm_modules" / "anthropics" / "hookify"
+        hooks_dir = pkg_dir / "hooks"
+        hooks_dir.mkdir(parents=True)
+        (hooks_dir / "hooks.json").write_text(json.dumps(HOOKIFY_HOOKS_JSON, indent=2))
+        for script in ["pretooluse.py", "posttooluse.py", "stop.py", "userpromptsubmit.py"]:
+            (hooks_dir / script).write_text(f"#!/usr/bin/env python3\n# {script}")
+
+        pkg_info = _make_package_info(pkg_dir, "hookify")
+        integrator = HookIntegrator()
+
+        # Simulate a scope-resolved Copilot target at user scope (root_dir=".copilot")
+        mock_target = MagicMock()
+        mock_target.root_dir = ".copilot"
+
+        result = integrator.integrate_package_hooks(pkg_info, temp_project, target=mock_target)
+
+        assert result.hooks_integrated == 1
+        assert result.scripts_copied == 4
+
+        # Hook JSON must be in .copilot/hooks/, NOT .github/hooks/
+        assert (temp_project / ".copilot" / "hooks" / "hookify-hooks.json").exists()
+        assert not (temp_project / ".github" / "hooks" / "hookify-hooks.json").exists()
+
+        # Script paths inside the hook JSON must reference .copilot/, not .github/
+        data = json.loads((temp_project / ".copilot" / "hooks" / "hookify-hooks.json").read_text())
+        cmd = data["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert ".copilot/hooks/scripts/hookify/" in cmd
+        assert ".github" not in cmd
+
+        # Scripts must be copied under .copilot/hooks/scripts/
+        scripts_dir = temp_project / ".copilot" / "hooks" / "scripts" / "hookify" / "hooks"
+        assert (scripts_dir / "pretooluse.py").exists()
+
 
 # ─── Claude integration tests ────────────────────────────────────────────────
 

@@ -152,6 +152,7 @@ class HookIntegrator(BaseIntegrator):
         package_name: str,
         target: str,
         hook_file_dir: Optional[Path] = None,
+        hook_root: str = ".github",
     ) -> Tuple[str, List[Tuple[Path, str]]]:
         """Rewrite a hook command to use installed script paths.
 
@@ -165,6 +166,8 @@ class HookIntegrator(BaseIntegrator):
             package_name: Name used for the scripts subdirectory
             target: "vscode" or "claude"
             hook_file_dir: Directory containing the hook JSON file (for ./path resolution)
+            hook_root: Root directory for the vscode/copilot target (e.g. ".github" or
+                ".copilot" at user scope).  Ignored for non-vscode targets.
 
         Returns:
             Tuple of (rewritten_command, list of (source_file, relative_target_path))
@@ -173,7 +176,7 @@ class HookIntegrator(BaseIntegrator):
         new_command = command
 
         if target == "vscode":
-            scripts_base = f".github/hooks/scripts/{package_name}"
+            scripts_base = f"{hook_root}/hooks/scripts/{package_name}"
         elif target == "cursor":
             scripts_base = f".cursor/hooks/{package_name}"
         elif target == "codex":
@@ -223,6 +226,7 @@ class HookIntegrator(BaseIntegrator):
         package_name: str,
         target: str,
         hook_file_dir: Optional[Path] = None,
+        hook_root: str = ".github",
     ) -> Tuple[Dict, List[Tuple[Path, str]]]:
         """Rewrite all command paths in a hooks JSON structure.
 
@@ -234,6 +238,9 @@ class HookIntegrator(BaseIntegrator):
             package_name: Name for scripts subdirectory
             target: "vscode" or "claude"
             hook_file_dir: Directory containing the hook JSON file (for ./path resolution)
+            hook_root: Root directory for the vscode/copilot target (e.g. ".github" or
+                ".copilot" at user scope).  Forwarded to
+                ``_rewrite_command_for_target``; ignored for non-vscode targets.
 
         Returns:
             Tuple of (rewritten_data_copy, list of (source_file, target_rel_path))
@@ -256,6 +263,7 @@ class HookIntegrator(BaseIntegrator):
                         new_cmd, scripts = self._rewrite_command_for_target(
                             matcher[key], package_path, package_name, target,
                             hook_file_dir=hook_file_dir,
+                            hook_root=hook_root,
                         )
                         if scripts:
                             _log.debug(
@@ -275,6 +283,7 @@ class HookIntegrator(BaseIntegrator):
                             new_cmd, scripts = self._rewrite_command_for_target(
                                 hook[key], package_path, package_name, target,
                                 hook_file_dir=hook_file_dir,
+                                hook_root=hook_root,
                             )
                             if scripts:
                                 _log.debug(
@@ -308,17 +317,25 @@ class HookIntegrator(BaseIntegrator):
     def integrate_package_hooks(self, package_info, project_root: Path,
                                  force: bool = False,
                                  managed_files: set = None,
-                                 diagnostics=None) -> HookIntegrationResult:
-        """Integrate hooks from a package into .github/hooks/ (VSCode target).
+                                 diagnostics=None,
+                                 target=None) -> HookIntegrationResult:
+        """Integrate hooks from a package into the copilot hooks directory.
 
         Deploys hook JSON files with clean filenames and copies referenced
         script files. Skips user-authored files unless force=True.
+
+        At project scope this is ``.github/hooks/``; at user scope it is
+        ``.copilot/hooks/`` (driven by ``target.root_dir`` when *target* is
+        provided).
 
         Args:
             package_info: PackageInfo with package metadata and install path
             project_root: Root directory of the project
             force: If True, overwrite user-authored files on collision
             managed_files: Set of relative paths known to be APM-managed
+            target: Scope-resolved TargetProfile for the copilot target.
+                When provided, ``target.root_dir`` is used as the root
+                directory instead of the default ``".github"``.
 
         Returns:
             HookIntegrationResult: Results of the integration operation
@@ -331,7 +348,8 @@ class HookIntegrator(BaseIntegrator):
                 scripts_copied=0,
             )
 
-        hooks_dir = project_root / ".github" / "hooks"
+        hook_root = target.root_dir if target is not None else ".github"
+        hooks_dir = project_root / hook_root / "hooks"
         hooks_dir.mkdir(parents=True, exist_ok=True)
 
         package_name = self._get_package_name(package_info)
@@ -344,10 +362,11 @@ class HookIntegrator(BaseIntegrator):
             if data is None:
                 continue
 
-            # Rewrite script paths for VSCode target
+            # Rewrite script paths for VSCode/Copilot target
             rewritten, scripts = self._rewrite_hooks_data(
                 data, package_info.install_path, package_name, "vscode",
                 hook_file_dir=hook_file.parent,
+                hook_root=hook_root,
             )
 
             # Generate target filename (clean, no -apm suffix)
@@ -693,6 +712,7 @@ class HookIntegrator(BaseIntegrator):
                 package_info, project_root,
                 force=force, managed_files=managed_files,
                 diagnostics=diagnostics,
+                target=target,
             )
         if target.name == "claude":
             return self.integrate_package_hooks_claude(
