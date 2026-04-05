@@ -255,7 +255,7 @@ class TestVSCodeIntegration:
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 4
 
         # Check hook JSON was created
@@ -292,7 +292,7 @@ class TestVSCodeIntegration:
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 1
 
         # Verify rewritten paths
@@ -328,7 +328,7 @@ class TestVSCodeIntegration:
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 1
 
         target_json = temp_project / ".github" / "hooks" / "ralph-loop-hooks.json"
@@ -346,7 +346,7 @@ class TestVSCodeIntegration:
         integrator = HookIntegrator()
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
-        assert result.hooks_integrated == 0
+        assert result.files_integrated == 0
         assert result.scripts_copied == 0
 
     def test_integrate_hooks_from_apm_convention(self, temp_project):
@@ -376,7 +376,7 @@ class TestVSCodeIntegration:
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         target_json = temp_project / ".github" / "hooks" / "security-hooks-security.json"
         assert target_json.exists()
 
@@ -404,7 +404,7 @@ class TestVSCodeIntegration:
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 0  # No scripts to copy for system commands
 
         target_json = temp_project / ".github" / "hooks" / "format-pkg-format.json"
@@ -423,7 +423,7 @@ class TestVSCodeIntegration:
         integrator = HookIntegrator()
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
-        assert result.hooks_integrated == 0
+        assert result.files_integrated == 0
 
     def test_creates_github_hooks_dir(self, temp_project):
         """Test that .github/hooks/ directory is created if it doesn't exist."""
@@ -473,7 +473,7 @@ class TestClaudeIntegration:
 
         result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 4
 
         # Check settings.json was created/updated
@@ -510,7 +510,7 @@ class TestClaudeIntegration:
 
         result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         settings = json.loads((temp_project / ".claude" / "settings.json").read_text())
         assert "SessionStart" in settings["hooks"]
 
@@ -528,7 +528,7 @@ class TestClaudeIntegration:
 
         result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         settings = json.loads((temp_project / ".claude" / "settings.json").read_text())
         assert "Stop" in settings["hooks"]
         cmd = settings["hooks"]["Stop"][0]["hooks"][0]["command"]
@@ -604,7 +604,7 @@ class TestClaudeIntegration:
         integrator = HookIntegrator()
 
         result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
-        assert result.hooks_integrated == 0
+        assert result.files_integrated == 0
 
     def test_creates_settings_json(self, temp_project):
         """Test that .claude/settings.json is created if it doesn't exist."""
@@ -621,7 +621,7 @@ class TestClaudeIntegration:
         integrator = HookIntegrator()
 
         result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert (temp_project / ".claude" / "settings.json").exists()
 
     def test_integrate_hooks_with_scripts_in_hooks_subdir_claude(self, temp_project):
@@ -651,7 +651,7 @@ class TestClaudeIntegration:
 
         result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 1
 
         # Verify rewritten command in settings.json
@@ -700,7 +700,7 @@ class TestCursorIntegration:
 
         result = integrator.integrate_package_hooks_cursor(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 4
 
         # Check hooks.json was created/updated
@@ -731,7 +731,7 @@ class TestCursorIntegration:
 
         result = integrator.integrate_package_hooks_cursor(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 0
+        assert result.files_integrated == 0
         assert result.scripts_copied == 0
         assert not (temp_project / ".cursor" / "hooks.json").exists()
 
@@ -1596,7 +1596,7 @@ class TestScriptPathRewriting:
 
         result = integrator.integrate_package_hooks(pkg_info, temp_project)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         assert result.scripts_copied == 1
 
         # Verify the rewritten command points to the bundled script
@@ -1643,12 +1643,12 @@ class TestEndToEnd:
 
         # Install VSCode hooks
         vscode_result = integrator.integrate_package_hooks(pkg_info, temp_project)
-        assert vscode_result.hooks_integrated == 1
+        assert vscode_result.files_integrated == 1
         assert vscode_result.scripts_copied == 4
 
         # Install Claude hooks
         claude_result = integrator.integrate_package_hooks_claude(pkg_info, temp_project)
-        assert claude_result.hooks_integrated == 1
+        assert claude_result.files_integrated == 1
 
         # Verify files exist
         assert (temp_project / ".github" / "hooks" / "hookify-hooks.json").exists()
@@ -1787,7 +1787,7 @@ class TestCodexHookIntegration:
         integrator = HookIntegrator()
         result = integrator.integrate_package_hooks_codex(pi, self.root)
 
-        assert result.hooks_integrated == 1
+        assert result.files_integrated == 1
         hooks_json = self.root / ".codex" / "hooks.json"
         assert hooks_json.exists()
         data = json.loads(hooks_json.read_text())
@@ -1828,4 +1828,4 @@ class TestCodexHookIntegration:
         integrator = HookIntegrator()
         result = integrator.integrate_package_hooks_codex(pi, self.root)
 
-        assert result.hooks_integrated == 0
+        assert result.files_integrated == 0

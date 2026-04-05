@@ -17,6 +17,8 @@ from .skill_integrator import (
 )
 from .skill_transformer import SkillTransformer
 from .mcp_integrator import MCPIntegrator
+from .coverage import check_primitive_coverage
+from .dispatch import PrimitiveDispatch, get_dispatch_table
 from .targets import (
     TargetProfile,
     PrimitiveMapping,
@@ -28,6 +30,9 @@ from .targets import (
 __all__ = [
     'BaseIntegrator',
     'IntegrationResult',
+    'check_primitive_coverage',
+    'PrimitiveDispatch',
+    'get_dispatch_table',
     'PromptIntegrator',
     'AgentIntegrator',
     'HookIntegrator',

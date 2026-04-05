@@ -977,9 +977,9 @@ def _integrate_package_primitives(
 
     Returns a dict with integration counters and the list of deployed file paths.
     """
-    from apm_cli.core.scope import InstallScope
+    from apm_cli.integration.dispatch import get_dispatch_table
 
-    _user_scope = scope is InstallScope.USER
+    _dispatch = get_dispatch_table()
     result = {
         "prompts": 0,
         "agents": 0,
@@ -1001,63 +1001,47 @@ def _integrate_package_primitives(
         if logger:
             logger.tree_item(msg)
 
-    # Primitive -> (integrator, method_name, result counter key)
-    _PRIMITIVE_INTEGRATORS = {
-        "prompts": (prompt_integrator, "integrate_prompts_for_target", "prompts"),
-        "agents": (agent_integrator, "integrate_agents_for_target", "agents"),
-        "commands": (command_integrator, "integrate_commands_for_target", "commands"),
-        "instructions": (instruction_integrator, "integrate_instructions_for_target", "instructions"),
+    # Map integrator kwargs to dispatch table keys
+    _INTEGRATOR_KWARGS = {
+        "prompts": prompt_integrator,
+        "agents": agent_integrator,
+        "commands": command_integrator,
+        "instructions": instruction_integrator,
+        "hooks": hook_integrator,
+        "skills": skill_integrator,
     }
 
-    # --- target x primitive dispatch loop ---
+    # --- per-target dispatch loop ---
     for _target in targets:
         for _prim_name, _mapping in _target.primitives.items():
-            if _prim_name == "skills":
-                continue  # handled separately below
+            _entry = _dispatch.get(_prim_name)
+            if not _entry or _entry.multi_target:
+                continue  # skills handled below
 
-            # --- hooks (different return type) ---
-            if _prim_name == "hooks":
-                hook_result = hook_integrator.integrate_hooks_for_target(
-                    _target, package_info, project_root,
-                    force=force, managed_files=managed_files,
-                    diagnostics=diagnostics,
-                )
-                if hook_result.hooks_integrated > 0:
-                    result["hooks"] += hook_result.hooks_integrated
-                    if _target.name == "claude":
-                        _hook_dir = ".claude/settings.json"
-                    elif _target.name == "cursor":
-                        _hook_dir = ".cursor/hooks.json"
-                    elif _target.name == "codex":
-                        _hook_dir = ".codex/hooks.json"
-                    else:
-                        _effective_root = _mapping.deploy_root or _target.root_dir
-                        _hook_dir = f"{_effective_root}/{_mapping.subdir}/" if _mapping.subdir else f"{_effective_root}/"
-                    _log_integration(
-                        f"  |-- {hook_result.hooks_integrated} hook(s) integrated -> {_hook_dir}"
-                    )
-                for tp in hook_result.target_paths:
-                    deployed.append(tp.relative_to(project_root).as_posix())
-                continue
-
-            _entry = _PRIMITIVE_INTEGRATORS.get(_prim_name)
-            if not _entry:
-                continue
-
-            _integrator, _method_name, _counter_key = _entry
-            _int_result = getattr(_integrator, _method_name)(
+            _integrator = _INTEGRATOR_KWARGS[_prim_name]
+            _int_result = getattr(_integrator, _entry.integrate_method)(
                 _target, package_info, project_root,
                 force=force, managed_files=managed_files,
                 diagnostics=diagnostics,
             )
+
             if _int_result.files_integrated > 0:
-                result[_counter_key] += _int_result.files_integrated
+                result[_entry.counter_key] += _int_result.files_integrated
                 _effective_root = _mapping.deploy_root or _target.root_dir
-                _deploy_dir = f"{_effective_root}/{_mapping.subdir}/"
+                _deploy_dir = f"{_effective_root}/{_mapping.subdir}/" if _mapping.subdir else f"{_effective_root}/"
+                # Determine display label
                 if _prim_name == "instructions" and _mapping.format_id in ("cursor_rules", "claude_rules"):
                     _label = "rule(s)"
                 elif _prim_name == "instructions":
                     _label = "instruction(s)"
+                elif _prim_name == "hooks":
+                    if _target.name == "claude":
+                        _deploy_dir = ".claude/settings.json"
+                    elif _target.name == "cursor":
+                        _deploy_dir = ".cursor/hooks.json"
+                    elif _target.name == "codex":
+                        _deploy_dir = ".codex/hooks.json"
+                    _label = "hook(s)"
                 else:
                     _label = _prim_name
                 _log_integration(
