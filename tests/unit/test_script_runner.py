@@ -133,7 +133,7 @@ class TestScriptRunner:
 
     def test_detect_runtime_model_name_containing_codex(self):
         """codex as a substring of a model name should not be detected as the codex runtime."""
-        # e.g. copilot --model gpt-5.3-codex — the runtime is copilot, not codex
+        # e.g. copilot --model gpt-5.3-codex - the runtime is copilot, not codex
         assert self.script_runner._detect_runtime("copilot --model gpt-5.3-codex") == "copilot"
 
     def test_detect_runtime_hyphenated_codex(self):
