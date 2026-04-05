@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unified integration dispatch table in `dispatch.py` -- both install and uninstall import from one source of truth (#562)
 - Hook merge logic deduplicated: three copy-pasted JSON-merge methods replaced with `_integrate_merged_hooks()` + config dict (#562)
 
+### Added
+
+- Artifactory Archive Entry Download for virtual file packages: single-file primitives (`.prompt.md`, `.agent.md`, etc.) are now fetched via the `!/{path}` entry API instead of a full archive download, with transparent fallback on unsupported Artifactory versions (#525)
+
 ### Fixed
 
 - `apm deps update -g` now correctly passes scope, preventing user-scope updates from silently using project-scope paths (#562)
