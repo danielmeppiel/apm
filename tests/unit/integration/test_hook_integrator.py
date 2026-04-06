@@ -1829,3 +1829,139 @@ class TestCodexHookIntegration:
         result = integrator.integrate_package_hooks_codex(pi, self.root)
 
         assert result.files_integrated == 0
+
+
+# ─── Scope-resolved target tests (PR #566 rework) ────────────────────────────
+
+
+class TestScopeResolvedHookDeployment:
+    """Tests for scope-aware hook deployment using target.root_dir."""
+
+    def setup_method(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.root = Path(self.tmpdir)
+        # Create package with hooks
+        self.pkg_dir = self.root / "apm_modules" / "scope-pkg"
+        hooks_dir = self.pkg_dir / ".apm" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        hooks_dir.joinpath("hooks.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"type": "command", "command": "echo hello"}]
+            }
+        }), encoding="utf-8")
+
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _make_target(self, name, root_dir, primitives=None):
+        """Create a minimal mock TargetProfile."""
+        from unittest.mock import MagicMock
+        t = MagicMock()
+        t.name = name
+        t.root_dir = root_dir
+        t.supports = lambda prim: prim in (primitives or {"hooks"})
+        if primitives is None:
+            primitives = {"hooks"}
+        t.primitives = {}
+        for p in primitives:
+            mapping = MagicMock()
+            mapping.deploy_root = None
+            t.primitives[p] = mapping
+        return t
+
+    def test_copilot_hooks_deploy_to_scope_resolved_dir(self):
+        """Copilot hooks at user scope deploy to .copilot/hooks/ not .github/hooks/."""
+        copilot_target = self._make_target("copilot", ".copilot")
+        pi = _make_package_info(self.pkg_dir, "scope-pkg")
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks(
+            pi, self.root, target=copilot_target,
+        )
+
+        assert result.files_integrated > 0
+        # Hook file should be under .copilot/hooks/, not .github/hooks/
+        hooks_dir = self.root / ".copilot" / "hooks"
+        assert hooks_dir.exists()
+        assert not (self.root / ".github" / "hooks").exists()
+
+    def test_copilot_hooks_default_to_github(self):
+        """Without target, hooks deploy to .github/hooks/ (backward compat)."""
+        pi = _make_package_info(self.pkg_dir, "scope-pkg")
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks(pi, self.root)
+
+        assert result.files_integrated > 0
+        assert (self.root / ".github" / "hooks").exists()
+
+    def test_merged_hooks_use_target_root_dir(self):
+        """Claude hooks at user scope use target.root_dir for JSON path."""
+        claude_target = self._make_target("claude", ".claude")
+        (self.root / ".claude").mkdir()
+        pi = _make_package_info(self.pkg_dir, "scope-pkg")
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_hooks_for_target(
+            claude_target, pi, self.root,
+        )
+
+        assert result.files_integrated > 0
+        assert (self.root / ".claude" / "settings.json").exists()
+
+    def test_script_paths_rewritten_with_scope_root(self):
+        """Script paths in hook commands use the scope-resolved root_dir."""
+        # Create a hook with a script reference
+        hooks_dir = self.pkg_dir / ".apm" / "hooks"
+        script = hooks_dir / "run.sh"
+        script.write_text("#!/bin/bash\necho test", encoding="utf-8")
+        hooks_dir.joinpath("hooks.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"type": "command", "command": "./run.sh"}]
+            }
+        }), encoding="utf-8")
+
+        copilot_target = self._make_target("copilot", ".copilot")
+        pi = _make_package_info(self.pkg_dir, "scope-pkg")
+        integrator = HookIntegrator()
+
+        result = integrator.integrate_package_hooks(
+            pi, self.root, target=copilot_target,
+        )
+
+        # Script should be copied to .copilot/hooks/scripts/scope-pkg/
+        scripts_dir = self.root / ".copilot" / "hooks" / "scripts" / "scope-pkg"
+        assert scripts_dir.exists()
+        assert (scripts_dir / "run.sh").exists()
+
+    def test_sync_with_copilot_scope_prefix(self):
+        """sync_integration removes .copilot/hooks/ files when target is present."""
+        # Deploy first
+        copilot_target = self._make_target("copilot", ".copilot")
+        pi = _make_package_info(self.pkg_dir, "scope-pkg")
+        integrator = HookIntegrator()
+        result = integrator.integrate_package_hooks(
+            pi, self.root, target=copilot_target,
+        )
+
+        # Collect deployed paths
+        managed = set()
+        for p in result.target_paths:
+            try:
+                managed.add(str(p.relative_to(self.root)).replace("\\", "/"))
+            except ValueError:
+                pass
+
+        # Sync should clean them up
+        stats = integrator.sync_integration(
+            None, self.root, managed_files=managed, targets=[copilot_target],
+        )
+        assert stats['files_removed'] > 0
+
+    def test_auto_create_guard(self):
+        """Targets with auto_create=False should not get directories created."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+        # All targets except copilot have auto_create=False
+        for name, profile in KNOWN_TARGETS.items():
+            if not profile.auto_create:
+                assert name != "copilot", "copilot should have auto_create=True"
