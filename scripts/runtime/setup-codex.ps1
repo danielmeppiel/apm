@@ -41,7 +41,7 @@ function Install-Codex {
 
     Initialize-ApmRuntimeDir
 
-    $runtimeDir = Join-Path $env:USERPROFILE ".apm" "runtimes"
+    $runtimeDir = Join-Path (Join-Path $env:USERPROFILE ".apm") "runtimes"
     $codexBinary = Join-Path $runtimeDir "codex.exe"
     $codexConfigDir = Join-Path $env:USERPROFILE ".codex"
     $codexConfig = Join-Path $codexConfigDir "config.toml"
