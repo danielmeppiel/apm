@@ -12,11 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Artifactory archive entry download for virtual file packages (#525)
 
+### Added
+
+- `apm info <package> [field]` command for inspecting package metadata and remote refs
+- `apm info <package> versions` field selector lists remote tags and branches via `git ls-remote`
+- `apm outdated` command compares locked dependencies against remote refs
+- `--global` flag on `apm info` for inspecting user-scope packages
+
 ### Changed
 
 - Scope resolution now happens once via `TargetProfile.for_scope()` and `resolve_targets()` -- integrators no longer need scope-aware parameters (#562)
 - Unified integration dispatch table in `dispatch.py` -- both install and uninstall import from one source of truth (#562)
 - Hook merge logic deduplicated: three copy-pasted JSON-merge methods replaced with `_integrate_merged_hooks()` + config dict (#562)
+- `apm outdated` uses SHA comparison for branch-pinned deps instead of reporting them as `unknown`
 
 ### Fixed
 

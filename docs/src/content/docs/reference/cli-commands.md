@@ -601,17 +601,20 @@ curl -sSL https://aka.ms/apm-unix | sh
 powershell -ExecutionPolicy Bypass -c "irm https://aka.ms/apm-windows | iex"
 ```
 
-### `apm info` - Show installed package metadata or remote versions
+### `apm info` - Show package metadata or remote versions
 
 Show local metadata for an installed package, or query remote refs with a field selector.
 
 ```bash
-apm info PACKAGE [FIELD]
+apm info PACKAGE [FIELD] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGE` - Installed package name, usually `owner/repo` or a short repo name
+- `PACKAGE` - Package name, usually `owner/repo` or a short repo name
 - `FIELD` - Optional field selector. Supported value: `versions`
+
+**Options:**
+- `-g, --global` - Inspect package from user scope (`~/.apm/`)
 
 **Examples:**
 ```bash
@@ -624,8 +627,8 @@ apm info apm-sample-package
 # List remote tags and branches without cloning
 apm info microsoft/apm-sample-package versions
 
-# Query remote refs for a package ref shorthand
-apm info microsoft/apm-sample-package#v1.0.0 versions
+# Inspect a package from user scope
+apm info microsoft/apm-sample-package -g
 ```
 
 **Behavior:**
@@ -636,7 +639,7 @@ apm info microsoft/apm-sample-package#v1.0.0 versions
 
 ### `apm outdated` - Check locked dependencies for updates
 
-Compare locked remote dependencies against the latest available remote tags.
+Compare locked dependencies against remote refs to detect staleness.
 
 ```bash
 apm outdated [OPTIONS]
@@ -660,10 +663,12 @@ apm outdated --verbose
 
 **Behavior:**
 - Reads the current lockfile (`apm.lock.yaml`; legacy `apm.lock` is migrated automatically)
-- Compares semver-like locked refs against the latest available remote tag
+- For tag-pinned deps: compares the locked semver tag against the latest available remote tag
+- For branch-pinned deps: compares the locked commit SHA against the remote branch tip SHA
+- For deps with no ref: compares against the default branch (main/master) tip SHA
 - Displays `Package`, `Current`, `Latest`, and `Status` columns
 - Status values are `up-to-date`, `outdated`, and `unknown`
-- Local dependencies and non-tag refs are reported as `unknown` or skipped when they cannot be compared
+- Local dependencies and Artifactory dependencies are skipped
 
 ### `apm deps` - Manage APM package dependencies
 
