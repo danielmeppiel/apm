@@ -278,6 +278,7 @@ apm uninstall [OPTIONS] PACKAGES...
 
 **Options:**
 - `--dry-run` - Show what would be removed without removing
+- `-v, --verbose` - Show detailed removal information
 - `-g, --global` - Remove from user scope (`~/.apm/`) instead of the current project
 
 **Examples:**
@@ -738,8 +739,9 @@ apm deps clean --yes
 
 #### `apm deps update` - Update APM dependencies
 
-Re-resolve git references to their latest commits, download updated content,
-re-integrate primitives, and regenerate the lockfile.
+Re-resolve git references for all dependencies (direct and transitive) to their
+latest commits, download updated content, re-integrate primitives, and regenerate
+the lockfile.
 
 ```bash
 apm deps update [PACKAGES...] [OPTIONS]
@@ -751,6 +753,7 @@ apm deps update [PACKAGES...] [OPTIONS]
 **Options:**
 - `--verbose, -v` - Show detailed update information
 - `--force` - Overwrite locally-authored files on collision
+- `-g, --global` - Update user-scope dependencies (`~/.apm/`)
 - `--target, -t` - Force deployment to a specific target (copilot, claude, cursor, opencode, vscode, agents, all)
 - `--parallel-downloads` - Max concurrent downloads (default: 4)
 
@@ -1010,6 +1013,7 @@ apm run [SCRIPT_NAME] [OPTIONS]
 
 **Options:**
 - `-p, --param TEXT` - Parameter in format `name=value` (can be used multiple times)
+- `-v, --verbose` - Show detailed output
 
 **Examples:**
 ```bash
@@ -1042,6 +1046,7 @@ apm preview [SCRIPT_NAME] [OPTIONS]
 
 **Options:**
 - `-p, --param TEXT` - Parameter in format `name=value`
+- `-v, --verbose` - Show detailed output
 
 **Examples:**
 ```bash
@@ -1388,7 +1393,7 @@ apm runtime list
 
 **Output includes:**
 - Runtime name and description
-- Installation status (✅ Installed / ❌ Not installed)
+- Installation status ([+] Installed / [x] Not installed)
 - Installation path and version
 - Configuration details
 

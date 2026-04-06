@@ -478,7 +478,7 @@ def clean(dry_run: bool, yes: bool):
 @click.option(
     "--target", "-t",
     type=click.Choice(
-        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        ["copilot", "claude", "cursor", "opencode", "codex", "vscode", "agents", "all"],
         case_sensitive=False,
     ),
     default=None,
@@ -608,6 +608,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
             logger=logger,
             auth_resolver=auth_resolver,
             target=target,
+            scope=scope,
         )
     except Exception as e:
         logger.error(f"Update failed: {e}")

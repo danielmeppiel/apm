@@ -315,7 +315,36 @@ class GitHubPackageDownloader:
 
     def _download_file_from_artifactory(self, host: str, prefix: str, owner: str,
                                          repo: str, file_path: str, ref: str, scheme: str = "https") -> bytes:
-        """Download a single file from Artifactory by fetching the full archive and extracting it."""
+        """Download a single file from Artifactory.
+
+        Tries the Archive Entry Download API first (fetches one file
+        without downloading the full archive).  Falls back to the full
+        archive approach when the entry API is unavailable or returns an
+        error.
+        """
+        # Fast path: use the RegistryClient interface for entry download
+        cfg = self.registry_config
+        if cfg is not None and cfg.host == host:
+            client = cfg.get_client()
+            content = client.fetch_file(
+                owner, repo, file_path, ref,
+                resilient_get=self._resilient_get,
+            )
+        else:
+            # No RegistryConfig or host mismatch (explicit FQDN mode) --
+            # fall back to the standalone helper.
+            from .artifactory_entry import fetch_entry_from_archive
+
+            content = fetch_entry_from_archive(
+                host, prefix, owner, repo, file_path, ref,
+                scheme=scheme,
+                headers=self._get_artifactory_headers(),
+                resilient_get=self._resilient_get,
+            )
+        if content is not None:
+            return content
+
+        # Fallback: download full archive and extract the file
         import io
         import zipfile
 
@@ -729,8 +758,8 @@ class GitHubPackageDownloader:
             except ValueError as e:
                 raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
-        # Default to main branch if no reference specified
-        ref = dep_ref.reference or "main"
+        # Use user-specified ref; None means "use the remote's default branch"
+        ref = dep_ref.reference or None
 
         # Normalize to string for ResolvedReference.original_ref
         original_ref_str = str(dep_ref)
@@ -740,26 +769,27 @@ class GitHubPackageDownloader:
             self._parse_artifactory_base_url()
             and self._should_use_artifactory_proxy(dep_ref)
         ):
-            is_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
+            effective_ref = ref or "main"
+            is_commit = re.match(r'^[a-f0-9]{7,40}$', effective_ref.lower()) is not None
             return ResolvedReference(
                 original_ref=original_ref_str,
                 ref_type=GitReferenceType.COMMIT if is_commit else GitReferenceType.BRANCH,
                 resolved_commit=None,
-                ref_name=ref
+                ref_name=effective_ref
             )
 
         # Pre-analyze the reference type to determine the best approach
-        is_likely_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
-        
+        is_likely_commit = bool(ref) and re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
+
         # Create a temporary directory for Git operations
         temp_dir = None
         try:
             temp_dir = Path(tempfile.mkdtemp())
-            
+
             if is_likely_commit:
                 # For commit SHAs, clone full repository first, then checkout the commit
                 try:
-                    # Ensure host is set for enterprise repos     
+                    # Ensure host is set for enterprise repos
                     repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None, dep_ref=dep_ref)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
@@ -769,20 +799,22 @@ class GitHubPackageDownloader:
                     sanitized_error = self._sanitize_git_error(str(e))
                     raise ValueError(f"Could not resolve commit '{ref}' in repository {dep_ref.repo_url}: {sanitized_error}")
             else:
-                # For branches and tags, try shallow clone first
+                # For branches and tags, try shallow clone first.
+                # When no ref is specified, omit --branch to let git use the remote HEAD.
                 try:
-                    # Try to clone with specific branch/tag first
+                    clone_kwargs = {'depth': 1}
+                    if ref:
+                        clone_kwargs['branch'] = ref
                     repo = self._clone_with_fallback(
                         dep_ref.repo_url,
                         temp_dir,
                         progress_reporter=None,
                         dep_ref=dep_ref,
-                        depth=1,
-                        branch=ref
+                        **clone_kwargs
                     )
                     ref_type = GitReferenceType.BRANCH  # Could be branch or tag
                     resolved_commit = repo.head.commit.hexsha
-                    ref_name = ref
+                    ref_name = ref if ref else repo.active_branch.name
 
                 except GitCommandError:
                     # If branch/tag clone fails, try full clone and resolve reference

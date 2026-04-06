@@ -310,7 +310,7 @@ Coverage varies by target and primitive type:
 | Target | Status | User-level dir | Primitives | Not supported |
 |--------|--------|---------------|------------|---------------|
 | Claude Code | Supported | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
-| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, instructions, hooks | Prompts (not supported by Copilot CLI) |
+| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, hooks | Prompts, instructions |
 | Cursor | Partial | `~/.cursor/` | Skills, agents, hooks | Rules |
 | OpenCode | Partial | `~/.config/opencode/` | Skills, agents, commands | Hooks |
 
@@ -618,6 +618,9 @@ apm deps update owner/apm-sample-package
 # Update with verbose output
 apm deps update --verbose
 
+# Update user-scope dependencies
+apm deps update -g
+
 # Install with updates (equivalent to update)
 apm install --update
 ```
@@ -665,7 +668,7 @@ The `mcp_servers` field records the MCP dependency references (e.g. `io.github.g
 
 1. **First install**: APM resolves dependencies, downloads packages, and writes `apm.lock.yaml`
 2. **Subsequent installs**: APM reads `apm.lock.yaml` and uses locked commits for exact reproducibility. If the local checkout already matches the locked commit SHA, the download is skipped entirely.
-3. **Updating**: Use `--update` to re-resolve dependencies and generate a fresh lockfile
+3. **Updating**: Use `--update` to re-resolve dependencies and generate a fresh lockfile. This re-resolves all dependencies, including transitive ones, so stale locked SHAs are never reused.
 
 ### Version Control
 
