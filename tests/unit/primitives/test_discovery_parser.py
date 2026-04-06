@@ -747,6 +747,28 @@ class TestExcludePatternsInDiscovery(unittest.TestCase):
         )
         self.assertEqual(len(collection.instructions), 1)
 
+    def test_discover_primitives_excludes_skill_md(self):
+        """SKILL.md at project root is excluded when matching pattern."""
+        base = Path(self.tmp)
+        skill_content = "# My Skill\n\nSome skill content."
+        (base / "SKILL.md").write_text(skill_content, encoding="utf-8")
+        from apm_cli.primitives.discovery import discover_primitives
+
+        # Without exclusion -- SKILL.md found
+        collection = discover_primitives(self.tmp, exclude_patterns=None)
+        self.assertEqual(len(collection.skills), 1)
+
+        # With exclusion matching SKILL.md
+        collection = discover_primitives(self.tmp, exclude_patterns=["SKILL.md"])
+        self.assertEqual(len(collection.skills), 0)
+
+    def test_validate_rejects_dos_pattern(self):
+        """Patterns with excessive non-consecutive ** segments are rejected."""
+        from apm_cli.utils.exclude import validate_exclude_patterns
+        # 7 non-consecutive ** segments (consecutive ones collapse)
+        with self.assertRaises(ValueError):
+            validate_exclude_patterns(["a/**/b/**/c/**/d/**/e/**/f/**/g/**"])
+
 
 class TestIsReadable(unittest.TestCase):
     """Tests for _is_readable."""
