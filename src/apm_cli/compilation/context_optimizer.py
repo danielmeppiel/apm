@@ -22,6 +22,7 @@ from ..output.models import (
     PlacementStrategy, PlacementSummary
 )
 from ..utils.paths import portable_relpath
+from ..utils.exclude import should_exclude, validate_exclude_patterns
 
 # CRITICAL: Shadow Click commands to prevent namespace collision
 # When this module is imported during 'apm compile', Click's active context
@@ -132,8 +133,8 @@ class ContextOptimizer:
         self._errors: List[str] = []
         self._start_time: Optional[float] = None
         
-        # Configurable exclusion patterns
-        self._exclude_patterns = exclude_patterns or []
+        # Configurable exclusion patterns (validated at init time)
+        self._exclude_patterns = validate_exclude_patterns(exclude_patterns)
     
     def enable_timing(self, verbose: bool = False):
         """Enable performance timing instrumentation."""
@@ -503,110 +504,7 @@ class ContextOptimizer:
         Returns:
             True if path should be excluded, False otherwise
         """
-        if not self._exclude_patterns:
-            return False
-        
-        # Get path relative to base_dir for pattern matching
-        # Resolve the path first to handle cross-platform differences
-        # (e.g., on Windows Path('/test') != Path('C:/test') after resolve)
-        try:
-            resolved = path.resolve()
-        except (OSError, FileNotFoundError):
-            resolved = path.absolute()
-        try:
-            rel_path = resolved.relative_to(self.base_dir.resolve())
-        except ValueError:
-            # Path is not relative to base_dir, don't exclude
-            return False
-        
-        # Check each exclusion pattern
-        for pattern in self._exclude_patterns:
-            if self._matches_pattern(rel_path, pattern):
-                return True
-        
-        return False
-    
-    def _matches_pattern(self, rel_path: Path, pattern: str) -> bool:
-        """Check if a relative path matches an exclusion pattern.
-        
-        Supports glob patterns including ** for recursive matching.
-        
-        Args:
-            rel_path: Path relative to base_dir
-            pattern: Exclusion pattern (glob syntax)
-            
-        Returns:
-            True if path matches pattern, False otherwise
-        """
-        # Normalize both pattern and path to use forward slashes for consistent matching
-        # This handles Windows paths (backslashes) and Unix paths (forward slashes)
-        # Users can provide patterns with either separator
-        normalized_pattern = pattern.replace('\\', '/').replace(os.sep, '/')
-        
-        # Convert path to string with forward slashes
-        rel_path_str = str(rel_path).replace(os.sep, '/')
-        
-        # Handle ** patterns (match any number of directories)
-        if '**' in normalized_pattern:
-            # Convert ** glob to regex-like matching
-            # Split pattern into parts
-            parts = normalized_pattern.split('/')
-            path_parts = rel_path_str.split('/')
-            
-            # Try to match using recursive logic
-            return self._match_glob_recursive(path_parts, parts)
-        
-        # Simple fnmatch for patterns without **
-        if fnmatch.fnmatch(rel_path_str, normalized_pattern):
-            return True
-        
-        # Also check if the path starts with the pattern (for directory matching)
-        # This handles cases like "apm_modules/" matching "apm_modules/foo/bar"
-        if normalized_pattern.endswith('/'):
-            if rel_path_str.startswith(normalized_pattern) or rel_path_str == normalized_pattern.rstrip('/'):
-                return True
-        else:
-            # Check if pattern with trailing slash would match
-            if rel_path_str.startswith(normalized_pattern + '/') or rel_path_str == normalized_pattern:
-                return True
-        
-        return False
-    
-    def _match_glob_recursive(self, path_parts: list, pattern_parts: list) -> bool:
-        """Recursively match path parts against pattern parts with ** support.
-        
-        Args:
-            path_parts: List of path components
-            pattern_parts: List of pattern components
-            
-        Returns:
-            True if path matches pattern, False otherwise
-        """
-        if not pattern_parts:
-            return not path_parts
-        
-        if not path_parts:
-            # Check if remaining pattern parts are all ** or empty
-            # Empty parts can occur from patterns like "foo/" which split to ['foo', '']
-            # or from consecutive slashes like "foo//bar"
-            return all(p == '**' or p == '' for p in pattern_parts)
-        
-        pattern_part = pattern_parts[0]
-        
-        if pattern_part == '**':
-            # ** matches zero or more directories
-            # Try matching with zero directories
-            if self._match_glob_recursive(path_parts, pattern_parts[1:]):
-                return True
-            # Try matching with one or more directories
-            if self._match_glob_recursive(path_parts[1:], pattern_parts):
-                return True
-            return False
-        else:
-            # Regular pattern part - must match current path part
-            if fnmatch.fnmatch(path_parts[0], pattern_part):
-                return self._match_glob_recursive(path_parts[1:], pattern_parts[1:])
-            return False
+        return should_exclude(path, self.base_dir, self._exclude_patterns)
     
     def _find_optimal_placements(
         self,
