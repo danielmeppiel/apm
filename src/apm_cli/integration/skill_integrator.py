@@ -14,6 +14,11 @@ import frontmatter
 from apm_cli.integration.base_integrator import BaseIntegrator
 
 
+# DEPRECATED -- use IntegrationResult directly for new code.
+# Kept for backward compatibility. The fields map as follows:
+# skill_created -> IntegrationResult.skill_created
+# sub_skills_promoted -> IntegrationResult.sub_skills_promoted
+# skill_path, references_copied -> not mapped (skill-internal)
 @dataclass
 class SkillIntegrationResult:
     """Result of skill integration operation."""
@@ -292,7 +297,7 @@ def copy_skill_to_target(
     # Get and validate skill name from folder
     raw_skill_name = source_path.name
     
-    is_valid, error_msg = validate_skill_name(raw_skill_name)
+    is_valid, _ = validate_skill_name(raw_skill_name)
     if is_valid:
         skill_name = raw_skill_name
     else:
@@ -301,6 +306,9 @@ def copy_skill_to_target(
     deployed: list[Path] = []
 
     # Deploy to all active targets that support skills.
+    # When no targets are provided, fall back to project-scope detection.
+    # Callers responsible for user-scope should pass resolved targets
+    # from resolve_targets().
     if targets is None:
         from apm_cli.integration.targets import active_targets
         targets = active_targets(target_base)
@@ -309,6 +317,12 @@ def copy_skill_to_target(
             continue
         skills_mapping = target.primitives["skills"]
         effective_root = skills_mapping.deploy_root or target.root_dir
+
+        # Skip if target dir does not exist and auto_create is disabled
+        target_root_dir = target_base / target.root_dir
+        if not target.auto_create and not target_root_dir.is_dir():
+            continue
+
         skill_dir = target_base / effective_root / "skills" / skill_name
         skill_dir.parent.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists():
@@ -321,14 +335,20 @@ def copy_skill_to_target(
 
 class SkillIntegrator(BaseIntegrator):
     """Handles integration of native SKILL.md files for Claude Code, Cursor, and VS Code.
-    
+
     Claude Skills Spec:
     - SKILL.md files provide structured context for Claude Code
     - YAML frontmatter with name, description, and metadata
     - Markdown body with instructions and agent definitions
     - references/ subdirectory for prompt files
     """
-    
+
+    def __init__(self) -> None:
+        # In-memory map of skill_name -> dep.get_unique_key() updated as each native
+        # skill is deployed in the current install run.  Complements the lockfile-based
+        # map so that same-manifest collisions are detected before the lockfile is written.
+        self._native_skill_session_owners: dict[str, str] = {}
+
     def find_instruction_files(self, package_path: Path) -> List[Path]:
         """Find all instruction files in a package.
         
@@ -551,25 +571,54 @@ class SkillIntegrator(BaseIntegrator):
         return promoted, deployed
 
     @staticmethod
+    def _build_ownership_maps(project_root: Path) -> tuple[dict[str, str], dict[str, str]]:
+        """Read the lockfile once and build two ownership maps.
+
+        Returns a tuple of:
+        - owned_by: skill_name -> last-segment owner name, for sub-skill self-overwrite detection.
+        - native_owners: skill_name -> dep.get_unique_key(), for native-skill cross-package
+          collision detection.  Only paths under a ``/skills/`` prefix are included to avoid
+          false attribution from non-skill deployed_files entries (prompts, hooks, commands, etc.).
+        """
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+
+        owned_by: dict[str, str] = {}
+        native_owners: dict[str, str] = {}
+        lockfile = LockFile.read(get_lockfile_path(project_root))
+        if not lockfile:
+            return owned_by, native_owners
+        for dep in lockfile.get_all_dependencies():
+            short_owner = (dep.virtual_path or dep.repo_url).rsplit("/", 1)[-1]
+            unique_key = dep.get_unique_key()
+            for deployed_path in dep.deployed_files:
+                normalized = deployed_path.rstrip("/").replace("\\", "/")
+                skill_name = normalized.rsplit("/", 1)[-1]
+                # Both maps cover all paths for sub-skill self-overwrite tracking.
+                owned_by[skill_name] = short_owner
+                # Native-owner map is scoped to skill paths only to avoid false
+                # attribution from prompts/hooks/commands that share a leaf name.
+                if "/skills/" in normalized:
+                    native_owners[skill_name] = unique_key
+        return owned_by, native_owners
+
+    @staticmethod
     def _build_skill_ownership_map(project_root: Path) -> dict[str, str]:
         """Build a map of skill_name -> owner_package_name from the lockfile.
 
         Used to distinguish self-overwrites (no warning) from cross-package
         conflicts (warning) when promoting sub-skills.
         """
-        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
-
-        owned_by: dict[str, str] = {}
-        lockfile = LockFile.read(get_lockfile_path(project_root))
-        if not lockfile:
-            return owned_by
-        for dep in lockfile.get_all_dependencies():
-            owner = (dep.virtual_path or dep.repo_url).rsplit("/", 1)[-1]
-            for deployed_path in dep.deployed_files:
-                # e.g. ".github/skills/context-map" -> "context-map"
-                skill_name = deployed_path.rstrip("/").rsplit("/", 1)[-1]
-                owned_by[skill_name] = owner
+        owned_by, _ = SkillIntegrator._build_ownership_maps(project_root)
         return owned_by
+
+    @staticmethod
+    def _build_native_skill_owner_map(project_root: Path) -> dict[str, str]:
+        """Build a map of skill_name -> dep.get_unique_key() from the lockfile.
+
+        Scoped to ``/skills/`` paths only -- see ``_build_ownership_maps`` for details.
+        """
+        _, native_owners = SkillIntegrator._build_ownership_maps(project_root)
+        return native_owners
 
     def _promote_sub_skills_standalone(
         self, package_info, project_root: Path, diagnostics=None,
@@ -705,8 +754,13 @@ class SkillIntegrator(BaseIntegrator):
         all_target_paths: list[Path] = []
         primary_skill_md: Path | None = None
 
-        owned_by = self._build_skill_ownership_map(project_root)
+        # Read lockfile once and derive both maps in a single pass.
+        owned_by, lockfile_native_owners = self._build_ownership_maps(project_root)
         sub_skills_dir = package_path / ".apm" / "skills"
+
+        # Full unique key of the package currently being installed.
+        dep_ref = package_info.dependency_ref
+        current_key: str | None = dep_ref.get_unique_key() if dep_ref is not None else None
 
         for idx, target in enumerate(targets):
             if not target.supports("skills"):
@@ -723,6 +777,41 @@ class SkillIntegrator(BaseIntegrator):
                 primary_skill_md = target_skill_dir / "SKILL.md"
 
             if target_skill_dir.exists():
+                if is_primary:
+                    # Check both the lockfile (previous runs) and the in-memory session
+                    # map (current run) so that same-manifest collisions are caught even
+                    # before the lockfile has been written for this run.
+                    prev_owner = (
+                        lockfile_native_owners.get(skill_name)
+                        or self._native_skill_session_owners.get(skill_name)
+                    )
+                    is_self_overwrite = prev_owner is not None and prev_owner == current_key
+                    if prev_owner is not None and not is_self_overwrite:
+                        try:
+                            rel_prefix = target_skill_dir.parent.relative_to(project_root).as_posix()
+                        except ValueError:
+                            rel_prefix = "skills"
+                        rel_path = f"{rel_prefix}/{skill_name}"
+                        # Issue 1: package= should identify the package causing the
+                        # collision (current_key), not the skill name, so render_summary()
+                        # groups diagnostics by the package responsible.
+                        # Issue 2: message must tell the user what to do ("So What?" test).
+                        detail = (
+                            f"Skill '{skill_name}' from '{current_key}' replaced "
+                            f"'{prev_owner}' -- remove one package to avoid this"
+                        )
+                        if diagnostics is not None:
+                            diagnostics.overwrite(
+                                path=rel_path,
+                                package=current_key or skill_name,
+                                detail=detail,
+                            )
+                        elif logger:
+                            logger.warning(detail)
+                        else:
+                            # Reached when called without diagnostics or logger (e.g. uninstall sync).
+                            from apm_cli.utils.console import _rich_warning
+                            _rich_warning(detail)
                 shutil.rmtree(target_skill_dir)
 
             target_skill_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -746,6 +835,11 @@ class SkillIntegrator(BaseIntegrator):
                 logger=logger if is_primary else None,
             )
             all_target_paths.extend(sub_deployed)
+
+        # Record ownership in the session map so subsequent packages installed in
+        # the same run can detect a collision even before the lockfile is written.
+        if current_key is not None:
+            self._native_skill_session_owners[skill_name] = current_key
 
         # Count unique sub-skills from primary target only
         primary_root = project_root / ".github" / "skills"
@@ -845,35 +939,51 @@ class SkillIntegrator(BaseIntegrator):
         )
     
     def sync_integration(self, apm_package, project_root: Path,
-                          managed_files: set = None) -> Dict[str, int]:
-        """Sync .github/skills/, .claude/skills/, and .cursor/skills/ with currently installed packages.
-        
-        When *managed_files* is provided, only removes skill directories whose
-        paths appear in the set.  Otherwise falls back to npm-style orphan
-        detection (derives expected names from installed dependencies).
-        
+                          managed_files: set = None, targets=None) -> Dict[str, int]:
+        """Sync skill directories with currently installed packages.
+
+        Derives skill prefixes dynamically from *targets* (or
+        ``KNOWN_TARGETS``) so user-scope paths like ``.copilot/skills/``
+        and ``.config/opencode/skills/`` are handled correctly.
+
+        When *managed_files* is provided, only removes skill directories
+        whose paths appear in the set.  Otherwise falls back to
+        npm-style orphan detection (derives expected names from installed
+        dependencies).
+
         Args:
             apm_package: APMPackage with current dependencies
             project_root: Root directory of the project
             managed_files: Set of relative paths known to be APM-managed
-            
+            targets: Optional list of (scope-resolved) TargetProfile objects.
+                     When ``None``, uses ``KNOWN_TARGETS``.
+
         Returns:
             Dict with cleanup statistics
         """
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        source = targets if targets is not None else list(KNOWN_TARGETS.values())
+
         stats = {'files_removed': 0, 'errors': 0}
 
+        # Build the set of valid skill prefixes from targets
+        skill_prefixes: list[str] = []
+        for t in source:
+            if not t.supports("skills"):
+                continue
+            sm = t.primitives["skills"]
+            effective_root = sm.deploy_root or t.root_dir
+            skill_prefixes.append(f"{effective_root}/skills/")
+        skill_prefix_tuple = tuple(skill_prefixes)
+
         if managed_files is not None:
-            # Manifest-based removal  -- only remove tracked skill directories
+            # Manifest-based removal -- only remove tracked skill directories
             project_root_resolved = project_root.resolve()
             for rel_path in managed_files:
-                is_skill = (
-                    rel_path.startswith(".github/skills/")
-                    or rel_path.startswith(".claude/skills/")
-                    or rel_path.startswith(".cursor/skills/")
-                    or rel_path.startswith(".opencode/skills/")
-                    or rel_path.startswith(".agents/skills/")
-                )
-                if not is_skill or ".." in rel_path:
+                if not rel_path.startswith(skill_prefix_tuple):
+                    continue
+                if ".." in rel_path:
                     continue
                 target = project_root / rel_path
                 if not str(target.resolve()).startswith(str(project_root_resolved)):
@@ -885,7 +995,7 @@ class SkillIntegrator(BaseIntegrator):
                     except Exception:
                         stats['errors'] += 1
             return stats
-        
+
         # Legacy fallback: npm-style orphan detection
         # Build set of expected skill directory names from installed packages
         installed_skill_names = set()
@@ -896,7 +1006,7 @@ class SkillIntegrator(BaseIntegrator):
             is_valid, _ = validate_skill_name(raw_name)
             skill_name = raw_name if is_valid else normalize_skill_name(raw_name)
             installed_skill_names.add(skill_name)
-            
+
             # Also include promoted sub-skills from installed packages
             install_path = dep.get_install_path(project_root / "apm_modules")
             sub_skills_dir = install_path / ".apm" / "skills"
@@ -906,45 +1016,26 @@ class SkillIntegrator(BaseIntegrator):
                         raw_sub = sub_skill_path.name
                         is_valid, _ = validate_skill_name(raw_sub)
                         installed_skill_names.add(raw_sub if is_valid else normalize_skill_name(raw_sub))
-        
-        # Clean .github/skills/ (primary)
-        github_skills_dir = project_root / ".github" / "skills"
-        if github_skills_dir.exists():
-            result = self._clean_orphaned_skills(github_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .claude/skills/ (secondary - T7 compatibility)
-        claude_skills_dir = project_root / ".claude" / "skills"
-        if claude_skills_dir.exists():
-            result = self._clean_orphaned_skills(claude_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .cursor/skills/ (tertiary - compatibility)
-        cursor_skills_dir = project_root / ".cursor" / "skills"
-        if cursor_skills_dir.exists():
-            result = self._clean_orphaned_skills(cursor_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .opencode/skills/
-        opencode_skills_dir = project_root / ".opencode" / "skills"
-        if opencode_skills_dir.exists():
-            result = self._clean_orphaned_skills(opencode_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
-        # Clean .agents/skills/ (cross-tool agent skills standard, used by Codex)
-        # Only clean if .codex/ exists -- .agents/ is cross-tool, so we must
-        # not delete skills managed by other tools when Codex is not active.
-        codex_dir = project_root / ".codex"
-        agents_skills_dir = project_root / ".agents" / "skills"
-        if codex_dir.exists() and agents_skills_dir.exists():
-            result = self._clean_orphaned_skills(agents_skills_dir, installed_skill_names)
-            stats['files_removed'] += result['files_removed']
-            stats['errors'] += result['errors']
-        
+
+        # Clean all target skill directories dynamically
+        for t in source:
+            if not t.supports("skills"):
+                continue
+            sm = t.primitives["skills"]
+            effective_root = sm.deploy_root or t.root_dir
+
+            # Special guard for cross-tool deploy_root (.agents/)
+            # Only clean if the owning target dir exists
+            if sm.deploy_root:
+                if not (project_root / t.root_dir).is_dir():
+                    continue
+
+            skills_dir = project_root / effective_root / "skills"
+            if skills_dir.exists():
+                result = self._clean_orphaned_skills(skills_dir, installed_skill_names)
+                stats['files_removed'] += result['files_removed']
+                stats['errors'] += result['errors']
+
         return stats
     
     def _clean_orphaned_skills(self, skills_dir: Path, installed_skill_names: set) -> Dict[str, int]:

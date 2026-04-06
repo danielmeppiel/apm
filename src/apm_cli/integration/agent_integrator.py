@@ -181,20 +181,28 @@ class AgentIntegrator(BaseIntegrator):
             prefix=prefix,
             legacy_glob_dir=legacy_dir,
             legacy_glob_pattern=legacy_pattern,
+            targets=[target],
         )
 
     # ------------------------------------------------------------------
-    # Legacy per-target API (delegates to target-driven methods)
+    # Legacy per-target API (DEPRECATED)
+    #
+    # These methods hardcode a specific target and bypass scope
+    # resolution.  Use the target-driven API (*_for_target) with
+    # profiles from resolve_targets() instead.
+    #
+    # Kept for backward compatibility with external consumers.
+    # Do NOT add new per-target methods here.
     # ------------------------------------------------------------------
 
-    
+    # DEPRECATED: use get_target_filename_for_target(KNOWN_TARGETS["copilot"], ...) instead.
     def get_target_filename(self, source_file: Path, package_name: str) -> str:
         """Generate target filename for copilot (always .agent.md)."""
         from apm_cli.integration.targets import KNOWN_TARGETS
         return self.get_target_filename_for_target(
             source_file, package_name, KNOWN_TARGETS["copilot"],
         )
-    
+
     def copy_agent(self, source: Path, target: Path) -> int:
         """Copy agent file verbatim, resolving context links.
         
@@ -254,7 +262,8 @@ class AgentIntegrator(BaseIntegrator):
             "developer_instructions": body.strip(),
         }
         target.write_text(_toml.dumps(doc), encoding="utf-8")
-    
+
+    # DEPRECATED: use integrate_agents_for_target(KNOWN_TARGETS["copilot"], ...) instead.
     def integrate_package_agents(self, package_info, project_root: Path,
                                    force: bool = False,
                                    managed_files: set = None,
@@ -338,7 +347,8 @@ class AgentIntegrator(BaseIntegrator):
             target_paths=target_paths,
             links_resolved=total_links_resolved,
         )
-    
+
+    # DEPRECATED: use get_target_filename_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def get_target_filename_claude(self, source_file: Path, package_name: str) -> str:
         """Generate target filename for Claude agents (plain .md)."""
         from apm_cli.integration.targets import KNOWN_TARGETS
@@ -346,6 +356,7 @@ class AgentIntegrator(BaseIntegrator):
             source_file, package_name, KNOWN_TARGETS["claude"],
         )
 
+    # DEPRECATED: use integrate_agents_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def integrate_package_agents_claude(self, package_info, project_root: Path,
                                           force: bool = False,
                                           managed_files: set = None,
@@ -364,6 +375,7 @@ class AgentIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["copilot"], ...) instead.
     def sync_integration(self, apm_package, project_root: Path,
                           managed_files: set = None) -> Dict[str, int]:
         """Remove APM-managed agent files from .github/agents/."""
@@ -373,6 +385,7 @@ class AgentIntegrator(BaseIntegrator):
             managed_files=managed_files,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def sync_integration_claude(self, apm_package, project_root: Path,
                                 managed_files: set = None) -> Dict[str, int]:
         """Remove APM-managed agent files from .claude/agents/."""
@@ -382,6 +395,7 @@ class AgentIntegrator(BaseIntegrator):
             managed_files=managed_files,
         )
 
+    # DEPRECATED: use get_target_filename_for_target(KNOWN_TARGETS["cursor"], ...) instead.
     def get_target_filename_cursor(self, source_file: Path, package_name: str) -> str:
         """Generate target filename for Cursor agents (plain .md)."""
         from apm_cli.integration.targets import KNOWN_TARGETS
@@ -389,6 +403,7 @@ class AgentIntegrator(BaseIntegrator):
             source_file, package_name, KNOWN_TARGETS["cursor"],
         )
 
+    # DEPRECATED: use integrate_agents_for_target(KNOWN_TARGETS["cursor"], ...) instead.
     def integrate_package_agents_cursor(self, package_info, project_root: Path,
                                           force: bool = False,
                                           managed_files: set = None,
@@ -401,6 +416,7 @@ class AgentIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["cursor"], ...) instead.
     def sync_integration_cursor(self, apm_package, project_root: Path,
                                 managed_files: set = None) -> Dict[str, int]:
         """Remove APM-managed agent files from .cursor/agents/."""
@@ -410,6 +426,7 @@ class AgentIntegrator(BaseIntegrator):
             managed_files=managed_files,
         )
 
+    # DEPRECATED: use integrate_agents_for_target(KNOWN_TARGETS["opencode"], ...) instead.
     def integrate_package_agents_opencode(self, package_info, project_root: Path,
                                           force: bool = False,
                                           managed_files: set = None,
@@ -422,6 +439,7 @@ class AgentIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["opencode"], ...) instead.
     def sync_integration_opencode(self, apm_package, project_root: Path,
                                   managed_files: set = None) -> Dict[str, int]:
         """Remove APM-managed agent files from .opencode/agents/."""

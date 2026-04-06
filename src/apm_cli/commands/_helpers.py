@@ -220,13 +220,14 @@ def print_version(ctx, param, value):
 
     console = _get_console()
     if console:
-        from rich.panel import Panel  # type: ignore
-        from rich.text import Text  # type: ignore
-
-        version_text = Text()
-        version_text.append("Agent Package Manager (APM) CLI", style="bold cyan")
-        version_text.append(f" version {version_str}", style="white")
-        console.print(Panel(version_text, border_style="cyan", padding=(0, 1)))
+        try:
+            console.print(
+                f"[bold cyan]Agent Package Manager (APM) CLI[/bold cyan] version {version_str}"
+            )
+        except Exception:
+            click.echo(
+                f"{TITLE}Agent Package Manager (APM) CLI{RESET} version {version_str}"
+            )
     else:
         # Graceful fallback when Rich isn't available (e.g., stripped automation environment)
         click.echo(
