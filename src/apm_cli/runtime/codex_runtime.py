@@ -41,8 +41,8 @@ class CodexRuntime(RuntimeAdapter):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout for streaming
                 text=True,
+                encoding="utf-8",
                 bufsize=1,  # Line buffered
-                universal_newlines=True
             )
             
             output_lines = []
@@ -107,6 +107,7 @@ class CodexRuntime(RuntimeAdapter):
                 ["codex", "--version"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=10
             )
             

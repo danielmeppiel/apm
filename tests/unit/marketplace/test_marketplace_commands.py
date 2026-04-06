@@ -53,6 +53,29 @@ class TestMarketplaceAdd:
         assert result.exit_code == 0
         assert "registered" in result.output.lower() or "1 plugin" in result.output
 
+    @patch("apm_cli.marketplace.client.fetch_marketplace")
+    @patch("apm_cli.marketplace.client._auto_detect_path")
+    def test_add_respects_github_host(self, mock_detect, mock_fetch, runner, monkeypatch):
+        from apm_cli.commands.marketplace import marketplace
+
+        monkeypatch.setenv("GITHUB_HOST", "ghe.corp.example.com")
+        mock_detect.return_value = "marketplace.json"
+        mock_fetch.return_value = MarketplaceManifest(
+            name="Test",
+            plugins=(MarketplacePlugin(name="p1"),),
+        )
+
+        result = runner.invoke(marketplace, ["add", "acme-org/plugins"])
+        assert result.exit_code == 0
+
+        # The probe source passed to _auto_detect_path should carry the GHE host
+        probe_source = mock_detect.call_args[0][0]
+        assert probe_source.host == "ghe.corp.example.com"
+
+        # The final source passed to fetch_marketplace should also carry it
+        final_source = mock_fetch.call_args[0][0]
+        assert final_source.host == "ghe.corp.example.com"
+
     @patch("apm_cli.marketplace.client._auto_detect_path")
     def test_no_marketplace_json_found(self, mock_detect, runner):
         from apm_cli.commands.marketplace import marketplace
