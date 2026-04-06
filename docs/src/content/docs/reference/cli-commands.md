@@ -601,6 +601,70 @@ curl -sSL https://aka.ms/apm-unix | sh
 powershell -ExecutionPolicy Bypass -c "irm https://aka.ms/apm-windows | iex"
 ```
 
+### `apm info` - Show installed package metadata or remote versions
+
+Show local metadata for an installed package, or query remote refs with a field selector.
+
+```bash
+apm info PACKAGE [FIELD]
+```
+
+**Arguments:**
+- `PACKAGE` - Installed package name, usually `owner/repo` or a short repo name
+- `FIELD` - Optional field selector. Supported value: `versions`
+
+**Examples:**
+```bash
+# Show installed package metadata
+apm info microsoft/apm-sample-package
+
+# Short-name lookup for an installed package
+apm info apm-sample-package
+
+# List remote tags and branches without cloning
+apm info microsoft/apm-sample-package versions
+
+# Query remote refs for a package ref shorthand
+apm info microsoft/apm-sample-package#v1.0.0 versions
+```
+
+**Behavior:**
+- Without `FIELD`, reads installed package metadata from `apm_modules/`
+- Shows package name, version, description, source, install path, context files, workflows, and hooks
+- `versions` lists remote tags and branches without cloning the repository
+- `versions` does not require the package to be installed locally
+
+### `apm outdated` - Check locked dependencies for updates
+
+Compare locked remote dependencies against the latest available remote tags.
+
+```bash
+apm outdated [OPTIONS]
+```
+
+**Options:**
+- `-g, --global` - Check user-scope dependencies from `~/.apm/`
+- `-v, --verbose` - Show extra detail for outdated packages, including available tags
+
+**Examples:**
+```bash
+# Check project dependencies
+apm outdated
+
+# Check user-scope dependencies
+apm outdated --global
+
+# Show available tags for outdated packages
+apm outdated --verbose
+```
+
+**Behavior:**
+- Reads the current lockfile (`apm.lock.yaml`; legacy `apm.lock` is migrated automatically)
+- Compares semver-like locked refs against the latest available remote tag
+- Displays `Package`, `Current`, `Latest`, and `Status` columns
+- Status values are `up-to-date`, `outdated`, and `unknown`
+- Local dependencies and non-tag refs are reported as `unknown` or skipped when they cannot be compared
+
 ### `apm deps` - Manage APM package dependencies
 
 Manage APM package dependencies with installation status, tree visualization, and package information.
@@ -680,32 +744,27 @@ company-website (local)
 - Version numbers from dependency package metadata
 - Version information for each dependency
 
-#### `apm deps info` - Show detailed package information
+#### `apm deps info` - Alias for `apm info`
 
-Display comprehensive information about a specific installed package.
+Backward-compatible alias for `apm info PACKAGE_NAME`.
 
 ```bash
 apm deps info PACKAGE_NAME
 ```
 
 **Arguments:**
-- `PACKAGE_NAME` - Name of the package to show information about
+- `PACKAGE_NAME` - Installed package name to inspect
 
 **Examples:**
 ```bash
-# Show details for compliance rules package
+# Show installed package metadata
 apm deps info compliance-rules
-
-# Show info for design guidelines package  
-apm deps info design-guidelines
 ```
 
-**Output includes:**
-- Complete package metadata (name, version, description, author)
-- Source repository and installation details
-- Detailed context file counts by type
-- Agent workflow descriptions and counts
-- Installation path and status
+**Notes:**
+- Produces the same local metadata output as `apm info PACKAGE_NAME`
+- Use `apm info` in new docs and scripts
+- For remote refs, use `apm info PACKAGE_NAME versions`
 
 #### `apm deps clean` - Remove all APM dependencies
 

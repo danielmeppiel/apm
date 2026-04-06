@@ -20,11 +20,13 @@ from apm_cli.commands.audit import audit
 from apm_cli.commands.compile import compile as compile_cmd
 from apm_cli.commands.config import config
 from apm_cli.commands.deps import deps
+from apm_cli.commands.info import info as info_cmd
 from apm_cli.commands.init import init
 from apm_cli.commands.install import install
 from apm_cli.commands.list_cmd import list as list_cmd
 from apm_cli.commands.marketplace import marketplace, search as marketplace_search
 from apm_cli.commands.mcp import mcp
+from apm_cli.commands.outdated import outdated as outdated_cmd
 from apm_cli.commands.pack import pack_cmd, unpack_cmd
 from apm_cli.commands.prune import prune
 from apm_cli.commands.run import preview, run
@@ -57,6 +59,7 @@ def cli(ctx):
 # Register command groups
 cli.add_command(audit)
 cli.add_command(deps)
+cli.add_command(info_cmd, name="info")
 cli.add_command(pack_cmd, name="pack")
 cli.add_command(unpack_cmd, name="unpack")
 cli.add_command(init)
@@ -71,6 +74,7 @@ cli.add_command(list_cmd, name="list")
 cli.add_command(config)
 cli.add_command(runtime)
 cli.add_command(mcp)
+cli.add_command(outdated_cmd, name="outdated")
 cli.add_command(marketplace)
 cli.add_command(marketplace_search, name="search")
 

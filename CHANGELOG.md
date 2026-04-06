@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `apm install` now deploys `.instructions.md` files to `.claude/rules/*.md` for Claude Code, converting `applyTo:` frontmatter to Claude's `paths:` format (#516)
+- `apm info <package> [field]` as a top-level command, promoted from `apm deps info`
+- `apm info <package> versions` to list available remote tags and branches without cloning
+- `apm outdated` to check installed dependencies for available updates
 
 ### Changed
 

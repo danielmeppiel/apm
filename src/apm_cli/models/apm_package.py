@@ -15,6 +15,7 @@ from .dependency import (
     DependencyReference,
     GitReferenceType,
     MCPDependency,
+    RemoteRef,
     ResolvedReference,
     parse_git_reference,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "DependencyReference",
     "GitReferenceType",
     "MCPDependency",
+    "RemoteRef",
     "ResolvedReference",
     "parse_git_reference",
     # Backward-compatible re-exports from .validation

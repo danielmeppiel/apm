@@ -1,0 +1,338 @@
+"""Tests for the top-level ``apm info`` command."""
+
+import contextlib
+import os
+import sys
+import tempfile
+import types
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+from click.testing import CliRunner
+
+from apm_cli.cli import cli
+from apm_cli.models.dependency.types import GitReferenceType, RemoteRef
+
+
+# ------------------------------------------------------------------
+# Rich-fallback helper (same approach as test_deps_list_tree_info.py)
+# ------------------------------------------------------------------
+
+def _force_rich_fallback():
+    """Context-manager that forces the text-only code path."""
+
+    @contextlib.contextmanager
+    def _ctx():
+        keys = [
+            "rich",
+            "rich.console",
+            "rich.table",
+            "rich.tree",
+            "rich.panel",
+            "rich.text",
+        ]
+        originals = {k: sys.modules.get(k) for k in keys}
+
+        for k in keys:
+            stub = types.ModuleType(k)
+            stub.__path__ = []
+
+            def _raise(name, _k=k):
+                raise ImportError(f"rich not available in test: {_k}")
+
+            stub.__getattr__ = _raise
+            sys.modules[k] = stub
+
+        try:
+            yield
+        finally:
+            for k, v in originals.items():
+                if v is None:
+                    sys.modules.pop(k, None)
+                else:
+                    sys.modules[k] = v
+
+    return _ctx()
+
+
+# ------------------------------------------------------------------
+# Base class with temp-dir helpers
+# ------------------------------------------------------------------
+
+
+class _InfoCmdBase:
+    """Shared CWD-management helpers."""
+
+    def setup_method(self):
+        self.runner = CliRunner()
+        try:
+            self.original_dir = os.getcwd()
+        except FileNotFoundError:
+            self.original_dir = str(Path(__file__).parent.parent.parent)
+            os.chdir(self.original_dir)
+
+    def teardown_method(self):
+        try:
+            os.chdir(self.original_dir)
+        except (FileNotFoundError, OSError):
+            repo_root = Path(__file__).parent.parent.parent
+            os.chdir(str(repo_root))
+
+    @contextlib.contextmanager
+    def _chdir_tmp(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                yield Path(tmp_dir)
+            finally:
+                os.chdir(self.original_dir)
+
+    @staticmethod
+    def _make_package(root: Path, org: str, repo: str, **kwargs) -> Path:
+        pkg_dir = root / "apm_modules" / org / repo
+        pkg_dir.mkdir(parents=True)
+        version = kwargs.get("version", "1.0.0")
+        description = kwargs.get("description", "A test package")
+        author = kwargs.get("author", "TestAuthor")
+        content = (
+            f"name: {repo}\nversion: {version}\n"
+            f"description: {description}\nauthor: {author}\n"
+        )
+        (pkg_dir / "apm.yml").write_text(content)
+        return pkg_dir
+
+
+# ------------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------------
+
+
+class TestInfoCommand(_InfoCmdBase):
+    """Tests for the top-level ``apm info`` command."""
+
+    # -- basic metadata display -------------------------------------------
+
+    def test_info_shows_package_details(self):
+        """``apm info org/repo`` shows package metadata (fallback mode)."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(
+                tmp,
+                "myorg",
+                "myrepo",
+                version="2.5.0",
+                description="My awesome package",
+                author="Alice",
+            )
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["info", "myorg/myrepo"])
+        assert result.exit_code == 0
+        assert "2.5.0" in result.output
+        assert "My awesome package" in result.output
+        assert "Alice" in result.output
+
+    # -- missing apm_modules/ ---------------------------------------------
+
+    def test_info_no_apm_modules(self):
+        """``apm info`` exits with error when apm_modules/ is missing."""
+        with self._chdir_tmp():
+            result = self.runner.invoke(cli, ["info", "noorg/norepo"])
+        assert result.exit_code == 1
+
+    # -- field: versions (placeholder) ------------------------------------
+
+    def test_info_versions_lists_refs(self):
+        """``apm info org/repo versions`` shows tags and branches."""
+        mock_refs = [
+            RemoteRef(name="v2.0.0", ref_type=GitReferenceType.TAG,
+                      commit_sha="aabbccdd11223344"),
+            RemoteRef(name="v1.0.0", ref_type=GitReferenceType.TAG,
+                      commit_sha="11223344aabbccdd"),
+            RemoteRef(name="main", ref_type=GitReferenceType.BRANCH,
+                      commit_sha="deadbeef12345678"),
+        ]
+        with patch(
+            "apm_cli.commands.info.GitHubPackageDownloader"
+        ) as mock_cls, patch(
+            "apm_cli.commands.info.AuthResolver"
+        ):
+            mock_cls.return_value.list_remote_refs.return_value = mock_refs
+            with _force_rich_fallback():
+                result = self.runner.invoke(
+                    cli, ["info", "myorg/myrepo", "versions"]
+                )
+        assert result.exit_code == 0
+        assert "v2.0.0" in result.output
+        assert "v1.0.0" in result.output
+        assert "main" in result.output
+        assert "tag" in result.output
+        assert "branch" in result.output
+        assert "aabbccdd" in result.output
+        assert "deadbeef" in result.output
+
+    def test_info_versions_empty_refs(self):
+        """``apm info org/repo versions`` with no refs shows info message."""
+        with patch(
+            "apm_cli.commands.info.GitHubPackageDownloader"
+        ) as mock_cls, patch(
+            "apm_cli.commands.info.AuthResolver"
+        ):
+            mock_cls.return_value.list_remote_refs.return_value = []
+            result = self.runner.invoke(
+                cli, ["info", "myorg/myrepo", "versions"]
+            )
+        assert result.exit_code == 0
+        assert "no versions found" in result.output.lower()
+
+    def test_info_versions_runtime_error(self):
+        """``apm info org/repo versions`` exits 1 on RuntimeError."""
+        with patch(
+            "apm_cli.commands.info.GitHubPackageDownloader"
+        ) as mock_cls, patch(
+            "apm_cli.commands.info.AuthResolver"
+        ):
+            mock_cls.return_value.list_remote_refs.side_effect = RuntimeError(
+                "auth failed"
+            )
+            result = self.runner.invoke(
+                cli, ["info", "myorg/myrepo", "versions"]
+            )
+        assert result.exit_code == 1
+        assert "failed to list versions" in result.output.lower()
+
+    def test_info_versions_with_ref_shorthand(self):
+        """``apm info owner/repo#v1.0 versions`` parses ref correctly."""
+        mock_refs = [
+            RemoteRef(name="v1.0.0", ref_type=GitReferenceType.TAG,
+                      commit_sha="abcdef1234567890"),
+        ]
+        with patch(
+            "apm_cli.commands.info.GitHubPackageDownloader"
+        ) as mock_cls, patch(
+            "apm_cli.commands.info.AuthResolver"
+        ):
+            mock_cls.return_value.list_remote_refs.return_value = mock_refs
+            with _force_rich_fallback():
+                result = self.runner.invoke(
+                    cli, ["info", "myorg/myrepo#v1.0", "versions"]
+                )
+        assert result.exit_code == 0
+        assert "v1.0.0" in result.output
+
+    def test_info_versions_does_not_require_apm_modules(self):
+        """``apm info org/repo versions`` works without apm_modules/."""
+        mock_refs = [
+            RemoteRef(name="main", ref_type=GitReferenceType.BRANCH,
+                      commit_sha="1234567890abcdef"),
+        ]
+        with self._chdir_tmp():
+            # No apm_modules/ created -- should still succeed
+            with patch(
+                "apm_cli.commands.info.GitHubPackageDownloader"
+            ) as mock_cls, patch(
+                "apm_cli.commands.info.AuthResolver"
+            ):
+                mock_cls.return_value.list_remote_refs.return_value = mock_refs
+                with _force_rich_fallback():
+                    result = self.runner.invoke(
+                        cli, ["info", "myorg/myrepo", "versions"]
+                    )
+        assert result.exit_code == 0
+        assert "main" in result.output
+
+    # -- invalid field ----------------------------------------------------
+
+    def test_info_invalid_field(self):
+        """``apm info org/repo bad-field`` shows error with valid fields."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "forg", "frepo")
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["info", "forg/frepo", "bad-field"])
+        assert result.exit_code == 1
+        assert "bad-field" in result.output
+        assert "versions" in result.output
+
+    # -- short name resolution --------------------------------------------
+
+    def test_info_short_package_name(self):
+        """``apm info repo`` resolves by short repo name."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "shortorg", "shortrepo")
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["info", "shortrepo"])
+        assert result.exit_code == 0
+        assert "shortrepo" in result.output
+
+    # -- package not found ------------------------------------------------
+
+    def test_info_package_not_found(self):
+        """``apm info`` shows error and lists available packages."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "existorg", "existrepo")
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["info", "doesnotexist"])
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower() or "error" in result.output.lower()
+        assert "existorg/existrepo" in result.output
+
+    # -- SKILL.md-only package (no apm.yml) --------------------------------
+
+    def test_info_skill_only_package(self):
+        """``apm info`` works for packages with SKILL.md but no apm.yml."""
+        with self._chdir_tmp() as tmp:
+            pkg_dir = tmp / "apm_modules" / "skillorg" / "skillrepo"
+            pkg_dir.mkdir(parents=True)
+            (pkg_dir / "SKILL.md").write_text("# My Skill\n")
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["info", "skillorg/skillrepo"])
+        assert result.exit_code == 0
+        assert "skillrepo" in result.output
+
+    # -- bare package (no context files / no workflows) -------------------
+
+    def test_info_bare_package_no_context(self):
+        """``apm info`` reports 'No context files found' for bare packages."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "bareorg", "barerepo")
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["info", "bareorg/barerepo"])
+        assert result.exit_code == 0
+        assert "No context files found" in result.output
+
+    def test_info_bare_package_no_workflows(self):
+        """``apm info`` reports 'No agent workflows found' for bare packages."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "wforg", "wfrepo")
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["info", "wforg/wfrepo"])
+        assert result.exit_code == 0
+        assert "No agent workflows found" in result.output
+
+    # -- no args: Click should show error / usage -------------------------
+
+    def test_info_no_args_shows_error(self):
+        """``apm info`` with no arguments shows an error (PACKAGE is required)."""
+        result = self.runner.invoke(cli, ["info"])
+        # Click exits 2 for missing required arguments
+        assert result.exit_code == 2
+        # Should mention the missing argument or show usage
+        assert "PACKAGE" in result.output or "Missing argument" in result.output or "Usage" in result.output
+
+    # -- DependencyReference.parse failure for versions field -------------
+
+    def test_info_versions_invalid_parse(self):
+        """``apm info <pkg> versions`` exits 1 when DependencyReference.parse raises ValueError."""
+        with patch(
+            "apm_cli.commands.info.DependencyReference"
+        ) as mock_dep_ref_cls:
+            mock_dep_ref_cls.parse.side_effect = ValueError("unsupported host: ftp")
+            result = self.runner.invoke(
+                cli, ["info", "ftp://bad-host/invalid", "versions"]
+            )
+        assert result.exit_code == 1
+        assert "invalid" in result.output.lower() or "ftp" in result.output.lower()

@@ -214,7 +214,7 @@ apm deps list
 apm deps tree
 
 # Get package details
-apm deps info apm-sample-package
+apm info apm-sample-package
 ```
 
 ### 4. Use Dependencies in Compilation
@@ -801,7 +801,7 @@ curl -H "Authorization: token $GITHUB_CLI_PAT" https://api.github.com/user
 
 ```bash
 # Show detailed package information
-apm deps info package-name
+apm info package-name
 
 # Show full dependency tree
 apm deps tree

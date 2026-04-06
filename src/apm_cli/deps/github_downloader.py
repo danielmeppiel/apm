@@ -8,7 +8,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List
 import random
 import re
 from typing import Union
@@ -22,6 +22,7 @@ from ..core.auth import AuthResolver
 from ..models.apm_package import (
     DependencyReference, 
     PackageInfo, 
+    RemoteRef,
     ResolvedReference, 
     GitReferenceType,
     PackageType,
@@ -734,6 +735,222 @@ class GitHubPackageDownloader:
         
         raise RuntimeError(error_msg)
     
+    # ------------------------------------------------------------------
+    # Remote ref enumeration (no clone required)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_ls_remote_output(output: str) -> List[RemoteRef]:
+        """Parse ``git ls-remote --tags --heads`` output into RemoteRef objects.
+
+        Format per line: ``<sha>\\t<refname>``
+
+        For annotated tags git emits two lines::
+
+            <tag-object-sha>   refs/tags/v1.0.0
+            <commit-sha>       refs/tags/v1.0.0^{}
+
+        We want the commit SHA (from the ``^{}`` line) and skip the
+        tag-object-only line.
+
+        Args:
+            output: Raw stdout from ``git ls-remote``.
+
+        Returns:
+            Unsorted list of RemoteRef.
+        """
+        tags: Dict[str, str] = {}       # tag name -> commit sha
+        branches: List[RemoteRef] = []
+
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t", 1)
+            if len(parts) != 2:
+                continue
+            sha, refname = parts[0].strip(), parts[1].strip()
+
+            if refname.startswith("refs/tags/"):
+                tag_name = refname[len("refs/tags/"):]
+                if tag_name.endswith("^{}"):
+                    # Dereferenced commit -- overwrite with the real commit SHA
+                    tag_name = tag_name[:-3]
+                    tags[tag_name] = sha
+                else:
+                    # Only store if we haven't seen the deref line yet
+                    tags.setdefault(tag_name, sha)
+
+            elif refname.startswith("refs/heads/"):
+                branch_name = refname[len("refs/heads/"):]
+                branches.append(RemoteRef(
+                    name=branch_name,
+                    ref_type=GitReferenceType.BRANCH,
+                    commit_sha=sha,
+                ))
+
+        tag_refs = [
+            RemoteRef(name=name, ref_type=GitReferenceType.TAG, commit_sha=sha)
+            for name, sha in tags.items()
+        ]
+        return tag_refs + branches
+
+    @staticmethod
+    def _semver_sort_key(name: str):
+        """Return a sort key for semver-like tag names (descending).
+
+        Non-semver tags sort after all semver tags, alphabetically.
+        """
+        clean = name.lstrip("vV")
+        m = re.match(r"^(\d+)\.(\d+)\.(\d+)(.*)", clean)
+        if m:
+            # Negate for descending order within the first group
+            return (0, -int(m.group(1)), -int(m.group(2)), -int(m.group(3)), m.group(4))
+        return (1, name)
+
+    @classmethod
+    def _sort_remote_refs(cls, refs: List[RemoteRef]) -> List[RemoteRef]:
+        """Sort refs: tags first (semver descending), then branches alphabetically."""
+        tags = [r for r in refs if r.ref_type == GitReferenceType.TAG]
+        branches = [r for r in refs if r.ref_type == GitReferenceType.BRANCH]
+        tags.sort(key=lambda r: cls._semver_sort_key(r.name))
+        branches.sort(key=lambda r: r.name)
+        return tags + branches
+
+    def _list_refs_via_ado_api(self, dep_ref: DependencyReference, token: str) -> List[RemoteRef]:
+        """Fetch remote refs using the Azure DevOps Refs REST API.
+
+        ``GET https://{host}/{org}/{project}/_apis/git/repositories/{repo}/refs?api-version=7.0``
+
+        Args:
+            dep_ref: Dependency reference with ADO fields populated.
+            token: PAT for ADO authentication.
+
+        Returns:
+            List of RemoteRef (unsorted).
+
+        Raises:
+            RuntimeError: On HTTP errors.
+        """
+        host = dep_ref.host or "dev.azure.com"
+        org = dep_ref.ado_organization
+        project = dep_ref.ado_project
+        repo = dep_ref.ado_repo
+        url = (
+            f"https://{host}/{org}/{project}/_apis/git/repositories/{repo}"
+            f"/refs?api-version=7.0"
+        )
+        import base64
+        auth_value = base64.b64encode(f":{token}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {auth_value}",
+            "Accept": "application/json",
+        }
+        response = self._resilient_get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        results: List[RemoteRef] = []
+        for item in data.get("value", []):
+            refname = item.get("name", "")
+            sha = item.get("objectId", "")
+            if refname.startswith("refs/tags/"):
+                name = refname[len("refs/tags/"):]
+                results.append(RemoteRef(name=name, ref_type=GitReferenceType.TAG, commit_sha=sha))
+            elif refname.startswith("refs/heads/"):
+                name = refname[len("refs/heads/"):]
+                results.append(RemoteRef(name=name, ref_type=GitReferenceType.BRANCH, commit_sha=sha))
+        return results
+
+    def list_remote_refs(self, dep_ref: DependencyReference) -> List[RemoteRef]:
+        """Enumerate remote tags and branches without cloning.
+
+        Uses ``git ls-remote --tags --heads`` for GitHub and generic hosts.
+        For Azure DevOps, calls the ADO Refs REST API instead.
+        Artifactory dependencies return an empty list (no git repo).
+
+        Args:
+            dep_ref: Dependency reference describing the remote repo.
+
+        Returns:
+            Sorted list of RemoteRef -- tags first (semver descending),
+            then branches (alphabetically ascending).
+
+        Raises:
+            RuntimeError: If the git command or API call fails.
+        """
+        # Artifactory: no git repo to query
+        if dep_ref.is_artifactory():
+            return []
+
+        is_ado = dep_ref.is_azure_devops()
+        dep_token = self._resolve_dep_token(dep_ref)
+
+        # Azure DevOps: use REST API
+        if is_ado and dep_token and dep_ref.ado_organization:
+            try:
+                refs = self._list_refs_via_ado_api(dep_ref, dep_token)
+                return self._sort_remote_refs(refs)
+            except Exception as e:
+                host = dep_ref.host or "dev.azure.com"
+                error_msg = (
+                    f"Failed to list remote refs for ADO repo "
+                    f"{dep_ref.ado_organization}/{dep_ref.ado_project}/{dep_ref.ado_repo}. "
+                )
+                error_msg += self.auth_resolver.build_error_context(
+                    host, "list refs", org=dep_ref.ado_organization,
+                )
+                error_msg += f" Last error: {e}"
+                raise RuntimeError(error_msg) from e
+
+        # GitHub / generic hosts: git ls-remote
+        repo_url_base = dep_ref.repo_url
+
+        # Build the env -- mirror _clone_with_fallback logic
+        if dep_token:
+            ls_env = self.git_env
+        else:
+            ls_env = {
+                k: v for k, v in self.git_env.items()
+                if k not in ("GIT_ASKPASS", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
+            }
+            ls_env["GIT_TERMINAL_PROMPT"] = "0"
+
+        # Build authenticated URL
+        remote_url = self._build_repo_url(
+            repo_url_base, use_ssh=False, dep_ref=dep_ref, token=dep_token,
+        )
+
+        try:
+            g = git.cmd.Git()
+            output = g.ls_remote("--tags", "--heads", remote_url, env=ls_env)
+            refs = self._parse_ls_remote_output(output)
+            return self._sort_remote_refs(refs)
+        except GitCommandError as e:
+            dep_host = dep_ref.host
+            if dep_host:
+                is_github = is_github_hostname(dep_host)
+            else:
+                is_github = True
+            is_generic = not is_ado and not is_github
+
+            error_msg = f"Failed to list remote refs for {repo_url_base}. "
+            if is_generic:
+                host_name = dep_host or "the target host"
+                error_msg += (
+                    f"For private repositories on {host_name}, configure SSH keys "
+                    f"or a git credential helper. "
+                    f"APM delegates authentication to git for non-GitHub/ADO hosts."
+                )
+            else:
+                host = dep_host or default_host()
+                org = repo_url_base.split("/")[0] if repo_url_base else None
+                error_msg += self.auth_resolver.build_error_context(host, "list refs", org=org)
+
+            sanitized = self._sanitize_git_error(str(e))
+            error_msg += f" Last error: {sanitized}"
+            raise RuntimeError(error_msg) from e
+
     def resolve_git_reference(self, repo_ref: Union[str, "DependencyReference"]) -> ResolvedReference:
         """Resolve a Git reference (branch/tag/commit) to a specific commit SHA.
         
