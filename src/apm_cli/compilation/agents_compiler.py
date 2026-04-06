@@ -253,6 +253,9 @@ class AgentsCompiler:
         """
         from .distributed_compiler import DistributedAgentsCompiler
         
+        errors = self.validate_primitives(primitives)
+        self.errors.extend(errors)
+        
         # Create distributed compiler with exclude patterns
         distributed_compiler = DistributedAgentsCompiler(
             str(self.base_dir),
@@ -317,8 +320,8 @@ class AgentsCompiler:
                 success=True,
                 output_path="Preview mode - no files written",
                 content=self._generate_placement_summary(distributed_result),
-                warnings=distributed_result.warnings,
-                errors=distributed_result.errors,
+                warnings=self.warnings + distributed_result.warnings,
+                errors=self.errors + distributed_result.errors,
                 stats=distributed_result.stats
             )
         
@@ -405,6 +408,9 @@ class AgentsCompiler:
         Returns:
             CompilationResult: Result of the CLAUDE.md compilation.
         """
+        errors = self.validate_primitives(primitives)
+        self.errors.extend(errors)
+        
         # Create Claude formatter
         claude_formatter = ClaudeFormatter(str(self.base_dir))
         
@@ -435,8 +441,8 @@ class AgentsCompiler:
         # not at compile time. This keeps behavior consistent with VSCode prompt integration.
         
         # Merge warnings and errors (no command result anymore)
-        all_warnings = claude_result.warnings
-        all_errors = claude_result.errors
+        all_warnings = self.warnings + claude_result.warnings
+        all_errors = self.errors + claude_result.errors
         
         # Handle dry-run mode
         if config.dry_run:
