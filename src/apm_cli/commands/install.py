@@ -436,6 +436,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=30,
                 env=validate_env,
             )
@@ -1430,6 +1431,8 @@ def _install_apm_dependencies(
                 )
 
         for _t in _targets:
+            if not _t.auto_create:
+                continue
             _root = _t.root_dir
             _target_dir = project_root / _root
             if not _target_dir.exists():
