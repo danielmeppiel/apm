@@ -375,6 +375,9 @@ def _discover_skill_in_directory(directory: Path, collection: PrimitiveCollectio
 def find_primitive_files(base_dir: str, patterns: List[str]) -> List[Path]:
     """Find primitive files matching the given patterns.
     
+    Symlinks are rejected outright to prevent symlink-based traversal
+    attacks from malicious packages.
+    
     Args:
         base_dir (str): Base directory to search in.
         patterns (List[str]): List of glob patterns to match.
@@ -402,10 +405,15 @@ def find_primitive_files(base_dir: str, patterns: List[str]) -> List[Path]:
             seen.add(abs_path)
             unique_files.append(Path(abs_path))
     
-    # Filter out directories and ensure files are readable
+    # Filter out directories, symlinks, and unreadable files
     valid_files = []
     for file_path in unique_files:
-        if file_path.is_file() and _is_readable(file_path):
+        if not file_path.is_file():
+            continue
+        if file_path.is_symlink():
+            logger.debug("Rejected symlink: %s", file_path)
+            continue
+        if _is_readable(file_path):
             valid_files.append(file_path)
     
     return valid_files

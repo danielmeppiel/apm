@@ -151,6 +151,8 @@ class HookIntegrator(BaseIntegrator):
         apm_hooks = package_path / ".apm" / "hooks"
         if apm_hooks.exists():
             for f in sorted(apm_hooks.glob("*.json")):
+                if f.is_symlink():
+                    continue
                 resolved = f.resolve()
                 if resolved not in seen:
                     seen.add(resolved)
@@ -160,6 +162,8 @@ class HookIntegrator(BaseIntegrator):
         hooks_dir = package_path / "hooks"
         if hooks_dir.exists():
             for f in sorted(hooks_dir.glob("*.json")):
+                if f.is_symlink():
+                    continue
                 resolved = f.resolve()
                 if resolved not in seen:
                     seen.add(resolved)

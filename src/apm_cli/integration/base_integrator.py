@@ -409,6 +409,8 @@ class BaseIntegrator:
     ) -> List[Path]:
         """Search *package_path* (and optional subdirectories) for *pattern*.
 
+        Symlinks are rejected outright to prevent traversal attacks.
+
         Args:
             package_path: Root of the installed package.
             pattern: Glob pattern (e.g. ``"*.prompt.md"``).
@@ -429,6 +431,8 @@ class BaseIntegrator:
             if not d.exists():
                 continue
             for f in sorted(d.glob(pattern)):
+                if f.is_symlink():
+                    continue
                 resolved = f.resolve()
                 if resolved not in seen:
                     seen.add(resolved)
