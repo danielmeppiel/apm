@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm info <package> [field]` command for inspecting package metadata and remote refs
 - `apm info <package> versions` field selector lists remote tags and branches via `git ls-remote`
 - `apm outdated` command compares locked dependencies against remote refs
+- `--parallel-checks` (`-j`) option on `apm outdated` for concurrent remote checks (default: 4)
+- Rich progress feedback during `apm outdated` dependency checking
 - `--global` flag on `apm info` for inspecting user-scope packages
 
 ### Changed

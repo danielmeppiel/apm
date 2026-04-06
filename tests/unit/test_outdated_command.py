@@ -779,3 +779,166 @@ class TestOutdatedCommand:
             assert result.exit_code == 0
             # Both packages must be checked (list_remote_refs called twice)
             assert mock_downloader.list_remote_refs.call_count == 2
+
+    # --- Parallel checks ---
+
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_DOWNLOADER)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_GET_APM_DIR)
+    @patch(_PATCH_LOCKFILE)
+    def test_parallel_checks_default(
+        self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
+        mock_migrate, mock_dl_cls, mock_auth,
+    ):
+        """Default parallel-checks=4 should still check all deps."""
+        with self._chdir_tmp() as tmp:
+            mock_get_apm_dir.return_value = tmp
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+
+            deps = {
+                f"org/pkg{i}": _locked_dep(
+                    f"org/pkg{i}", resolved_ref=None,
+                    resolved_commit="aaa",
+                )
+                for i in range(6)
+            }
+            mock_lf_cls.read.return_value = _make_lockfile(deps)
+
+            mock_downloader = MagicMock()
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_branch("main", sha="aaa"),
+            ]
+            mock_dl_cls.return_value = mock_downloader
+
+            result = self.runner.invoke(cli, ["outdated"])
+
+            assert result.exit_code == 0
+            assert "up-to-date" in result.output.lower()
+            assert mock_downloader.list_remote_refs.call_count == 6
+
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_DOWNLOADER)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_GET_APM_DIR)
+    @patch(_PATCH_LOCKFILE)
+    def test_sequential_checks_flag(
+        self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
+        mock_migrate, mock_dl_cls, mock_auth,
+    ):
+        """--parallel-checks 0 forces sequential checking."""
+        with self._chdir_tmp() as tmp:
+            mock_get_apm_dir.return_value = tmp
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+
+            deps = {
+                "org/alpha": _locked_dep(
+                    "org/alpha", resolved_ref=None,
+                    resolved_commit="aaa",
+                ),
+                "org/beta": _locked_dep(
+                    "org/beta", resolved_ref=None,
+                    resolved_commit="aaa",
+                ),
+            }
+            mock_lf_cls.read.return_value = _make_lockfile(deps)
+
+            mock_downloader = MagicMock()
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_branch("main", sha="aaa"),
+            ]
+            mock_dl_cls.return_value = mock_downloader
+
+            result = self.runner.invoke(
+                cli, ["outdated", "--parallel-checks", "0"]
+            )
+
+            assert result.exit_code == 0
+            assert "up-to-date" in result.output.lower()
+            assert mock_downloader.list_remote_refs.call_count == 2
+
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_DOWNLOADER)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_GET_APM_DIR)
+    @patch(_PATCH_LOCKFILE)
+    def test_parallel_checks_custom_value(
+        self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
+        mock_migrate, mock_dl_cls, mock_auth,
+    ):
+        """--parallel-checks 2 uses at most 2 workers but checks all deps."""
+        with self._chdir_tmp() as tmp:
+            mock_get_apm_dir.return_value = tmp
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+
+            deps = {
+                f"org/pkg{i}": _locked_dep(
+                    f"org/pkg{i}", resolved_ref="v1.0.0",
+                    resolved_commit="aaa",
+                )
+                for i in range(4)
+            }
+            mock_lf_cls.read.return_value = _make_lockfile(deps)
+
+            mock_downloader = MagicMock()
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_tag("v2.0.0"),
+                _remote_tag("v1.0.0"),
+            ]
+            mock_dl_cls.return_value = mock_downloader
+
+            result = self.runner.invoke(
+                cli, ["outdated", "-j", "2"]
+            )
+
+            assert result.exit_code == 0
+            assert mock_downloader.list_remote_refs.call_count == 4
+            assert "outdated" in result.output.lower()
+
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_DOWNLOADER)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_GET_APM_DIR)
+    @patch(_PATCH_LOCKFILE)
+    def test_parallel_check_exception_handled(
+        self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
+        mock_migrate, mock_dl_cls, mock_auth,
+    ):
+        """A failing remote check in parallel mode should not crash."""
+        with self._chdir_tmp() as tmp:
+            mock_get_apm_dir.return_value = tmp
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+
+            deps = {
+                "org/good": _locked_dep(
+                    "org/good", resolved_ref="v1.0.0",
+                    resolved_commit="aaa",
+                ),
+                "org/bad": _locked_dep(
+                    "org/bad", resolved_ref="v1.0.0",
+                    resolved_commit="bbb",
+                ),
+            }
+            mock_lf_cls.read.return_value = _make_lockfile(deps)
+
+            mock_downloader = MagicMock()
+
+            def _side_effect(dep_ref):
+                if "bad" in (dep_ref.repo_url or ""):
+                    raise ConnectionError("network down")
+                return [_remote_tag("v1.0.0")]
+
+            mock_downloader.list_remote_refs.side_effect = _side_effect
+            mock_dl_cls.return_value = mock_downloader
+
+            result = self.runner.invoke(
+                cli, ["outdated", "-j", "4"]
+            )
+
+            # Should not crash -- bad dep becomes "unknown"
+            assert result.exit_code == 0
+            assert "unknown" in result.output.lower()

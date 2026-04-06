@@ -648,6 +648,7 @@ apm outdated [OPTIONS]
 **Options:**
 - `-g, --global` - Check user-scope dependencies from `~/.apm/`
 - `-v, --verbose` - Show extra detail for outdated packages, including available tags
+- `-j, --parallel-checks N` - Max concurrent remote checks (default: 4, 0 = sequential)
 
 **Examples:**
 ```bash
@@ -659,6 +660,9 @@ apm outdated --global
 
 # Show available tags for outdated packages
 apm outdated --verbose
+
+# Use 8 parallel checks for large dependency sets
+apm outdated -j 8
 ```
 
 **Behavior:**
