@@ -236,6 +236,7 @@ class TestRuntimeManagerRemoveRuntime:
             ["npm", "uninstall", "-g", "@github/copilot"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
 
     def test_copilot_npm_failure(self):

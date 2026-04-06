@@ -363,7 +363,7 @@ def _auto_detect_author():
 
     try:
         result = subprocess.run(
-            ["git", "config", "user.name"], capture_output=True, text=True, timeout=5
+            ["git", "config", "user.name"], capture_output=True, text=True, encoding="utf-8", timeout=5
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -382,6 +382,7 @@ def _auto_detect_description(project_name):
             ["git", "config", "--get", "remote.origin.url"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
