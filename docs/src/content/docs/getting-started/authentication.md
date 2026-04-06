@@ -199,6 +199,18 @@ With `PROXY_REGISTRY_ONLY=1`, APM will:
 2. Skip the download cache for entries that have no `registry_prefix` (forcing a fresh proxy download)
 3. Raise an error for any package reference that does not route through the configured proxy
 
+### Archive Entry Download
+
+When installing virtual file packages (`.prompt.md`, `.agent.md`, `.instructions.md`, etc.) through an Artifactory proxy, APM uses the [Archive Entry Download API](https://jfrog.com/help/r/jfrog-artifactory-documentation/archive-entry-download) to fetch individual files directly instead of downloading the full archive.
+
+The entry URL pattern appends `!/{root}/{file}` to the archive URL:
+
+```
+GET https://art.example.com/artifactory/github/{owner}/{repo}/archive/{ref}.zip!/{repo}-{ref}/{file}
+```
+
+If the entry API returns a 404, connection error, or is not supported by the Artifactory version in use, APM falls back to downloading the full archive transparently. No configuration is required -- the optimization is automatic.
+
 ### Deprecated Artifactory env vars
 
 The following env vars still work but emit a `DeprecationWarning`. Migrate to the `PROXY_REGISTRY_*` equivalents:
