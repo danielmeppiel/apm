@@ -53,7 +53,7 @@ class Instruction:
         if not self.description:
             errors.append("Missing 'description' in frontmatter")
         if not self.apply_to:
-            errors.append("Missing 'applyTo' in frontmatter (required for instructions)")
+            errors.append("No 'applyTo' pattern specified -- instruction will apply globally")
         if not self.content.strip():
             errors.append("Empty content")
         return errors

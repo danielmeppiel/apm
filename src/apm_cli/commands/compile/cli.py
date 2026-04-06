@@ -154,8 +154,8 @@ def _get_validation_suggestion(error_msg):
     """Get actionable suggestions for validation errors."""
     if "Missing 'description'" in error_msg:
         return "Add 'description: Your description here' to frontmatter"
-    elif "Missing 'applyTo'" in error_msg:
-        return "Add 'applyTo: \"**/*.py\"' to frontmatter"
+    elif "applyTo" in error_msg and "globally" in error_msg:
+        return "Add 'applyTo: \"**/*.py\"' to scope the instruction, or leave as-is for global"
     elif "Empty content" in error_msg:
         return "Add markdown content below the frontmatter"
     else:

@@ -403,8 +403,8 @@ class TestCLIIntegration(unittest.TestCase):
         suggestion = _get_validation_suggestion("Missing 'description' in frontmatter")
         self.assertIn("Add 'description:", suggestion)
         
-        suggestion = _get_validation_suggestion("Missing 'applyTo' in frontmatter")
-        self.assertIn("Add 'applyTo:", suggestion)
+        suggestion = _get_validation_suggestion("No 'applyTo' pattern specified -- instruction will apply globally")
+        self.assertIn("applyTo", suggestion)
         
         suggestion = _get_validation_suggestion("Empty content")
         self.assertIn("Add markdown content", suggestion)
