@@ -233,7 +233,7 @@ class TestAgentsCompiler(unittest.TestCase):
 
         compiler = AgentsCompiler(str(self.temp_path))
         config = CompilationConfig(
-            dry_run=True, resolve_links=False, strategy="distributed"
+            dry_run=True, resolve_links=False, strategy="distributed", target="agents"
         )
 
         result = compiler.compile(config, primitives)

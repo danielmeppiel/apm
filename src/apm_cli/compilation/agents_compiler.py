@@ -247,7 +247,8 @@ class AgentsCompiler:
         """
         from .distributed_compiler import DistributedAgentsCompiler
         
-        self.validate_primitives(primitives)
+        errors = self.validate_primitives(primitives)
+        self.errors.extend(errors)
         
         # Create distributed compiler with exclude patterns
         distributed_compiler = DistributedAgentsCompiler(
@@ -401,7 +402,8 @@ class AgentsCompiler:
         Returns:
             CompilationResult: Result of the CLAUDE.md compilation.
         """
-        self.validate_primitives(primitives)
+        errors = self.validate_primitives(primitives)
+        self.errors.extend(errors)
         
         # Create Claude formatter
         claude_formatter = ClaudeFormatter(str(self.base_dir))
