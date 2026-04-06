@@ -1,7 +1,7 @@
 ---
 title: CI Policy Enforcement
 sidebar:
-  order: 5
+  order: 8
 ---
 
 :::caution[Experimental Feature]
@@ -212,3 +212,9 @@ apm-policy:
 | SARIF | `-f sarif` | GitHub Code Scanning, VS Code |
 
 Combine with `-o <path>` to write to a file.
+
+## Related
+
+- [Governance & Compliance](../../enterprise/governance/) -- conceptual overview of APM's governance model
+- [Policy Reference](../../enterprise/policy-reference/) -- full `apm-policy.yml` schema reference
+- [GitHub Rulesets](../../integrations/github-rulesets/) -- enforce policy as a required status check

@@ -21,7 +21,7 @@ from ..core.command_logger import CommandLogger
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["copilot", "vscode", "claude", "cursor", "opencode", "all"]),
+    type=click.Choice(["copilot", "claude", "cursor", "opencode", "codex", "vscode", "agents", "all"]),
     default=None,
     help="Filter files by target (default: auto-detect). 'vscode' is a deprecated alias for 'copilot'.",
 )

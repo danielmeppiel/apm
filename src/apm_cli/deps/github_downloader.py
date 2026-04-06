@@ -208,10 +208,27 @@ class GitHubPackageDownloader:
         
         return env
 
+    # --- Registry proxy support ---
+
+    @property
+    def registry_config(self):
+        """Lazily-constructed :class:`~apm_cli.deps.registry_proxy.RegistryConfig`.
+
+        Returns ``None`` when no registry proxy is configured.
+        """
+        if not hasattr(self, "_registry_config_cache"):
+            from .registry_proxy import RegistryConfig
+            self._registry_config_cache = RegistryConfig.from_env()
+        return self._registry_config_cache
+
     # --- Artifactory VCS archive download support ---
 
     def _get_artifactory_headers(self) -> Dict[str, str]:
-        """Build HTTP headers for Artifactory requests."""
+        """Build HTTP headers for registry/Artifactory requests."""
+        cfg = self.registry_config
+        if cfg is not None:
+            return cfg.get_headers()
+        # Fallback: direct artifactory_token attribute (legacy path)
         headers = {}
         if self.artifactory_token:
             headers['Authorization'] = f'Bearer {self.artifactory_token}'
@@ -298,7 +315,36 @@ class GitHubPackageDownloader:
 
     def _download_file_from_artifactory(self, host: str, prefix: str, owner: str,
                                          repo: str, file_path: str, ref: str, scheme: str = "https") -> bytes:
-        """Download a single file from Artifactory by fetching the full archive and extracting it."""
+        """Download a single file from Artifactory.
+
+        Tries the Archive Entry Download API first (fetches one file
+        without downloading the full archive).  Falls back to the full
+        archive approach when the entry API is unavailable or returns an
+        error.
+        """
+        # Fast path: use the RegistryClient interface for entry download
+        cfg = self.registry_config
+        if cfg is not None and cfg.host == host:
+            client = cfg.get_client()
+            content = client.fetch_file(
+                owner, repo, file_path, ref,
+                resilient_get=self._resilient_get,
+            )
+        else:
+            # No RegistryConfig or host mismatch (explicit FQDN mode) --
+            # fall back to the standalone helper.
+            from .artifactory_entry import fetch_entry_from_archive
+
+            content = fetch_entry_from_archive(
+                host, prefix, owner, repo, file_path, ref,
+                scheme=scheme,
+                headers=self._get_artifactory_headers(),
+                resilient_get=self._resilient_get,
+            )
+        if content is not None:
+            return content
+
+        # Fallback: download full archive and extract the file
         import io
         import zipfile
 
@@ -328,8 +374,13 @@ class GitHubPackageDownloader:
 
     @staticmethod
     def _is_artifactory_only() -> bool:
-        """Return True when ARTIFACTORY_ONLY is set, blocking all direct git operations."""
-        return os.environ.get('ARTIFACTORY_ONLY', '').strip().lower() in ('1', 'true', 'yes')
+        """Return True when registry-only mode is active.
+
+        Checks the canonical ``PROXY_REGISTRY_ONLY`` env var, falling back to the
+        deprecated ``ARTIFACTORY_ONLY`` alias.
+        """
+        from .registry_proxy import is_enforce_only
+        return is_enforce_only()
 
     def _should_use_artifactory_proxy(self, dep_ref: 'DependencyReference') -> bool:
         """Check if a dependency should be routed through the Artifactory transparent proxy."""
@@ -357,6 +408,36 @@ class GitHubPackageDownloader:
         if not host or not path:
             return None
         return (host, path, parsed.scheme)
+
+    def _resolve_dep_token(self, dep_ref: Optional[DependencyReference] = None) -> Optional[str]:
+        """Resolve the per-dependency auth token via AuthResolver.
+
+        GitHub and ADO hosts use the token resolved by AuthResolver.
+        Generic hosts (GitLab, Bitbucket, etc.) return None so git
+        credential helpers can provide credentials instead.
+
+        Args:
+            dep_ref: Optional dependency reference for host/org lookup.
+
+        Returns:
+            Token string or None.
+        """
+        if dep_ref is None:
+            return self.github_token
+
+        is_ado = dep_ref.is_azure_devops()
+        dep_host = dep_ref.host
+        if dep_host:
+            is_github = is_github_hostname(dep_host)
+        else:
+            is_github = True
+        is_generic = not is_ado and not is_github
+
+        if is_generic:
+            return None
+
+        dep_ctx = self.auth_resolver.resolve_for_dep(dep_ref)
+        return dep_ctx.token
 
     def _resilient_get(self, url: str, headers: Dict[str, str], timeout: int = 30, max_retries: int = 3) -> requests.Response:
         """HTTP GET with retry on 429/503 and rate-limit header awareness (#171).
@@ -566,15 +647,7 @@ class GitHubPackageDownloader:
         is_generic = not is_ado and not is_github
         
         # Resolve per-dependency token via AuthResolver.
-        # Only use resolved token for GitHub/ADO hosts — generic hosts (GitLab,
-        # Bitbucket, etc.) delegate auth to git credential helpers.
-        if dep_ref and not is_generic:
-            dep_ctx = self.auth_resolver.resolve_for_dep(dep_ref)
-            dep_token = dep_ctx.token
-        elif is_generic:
-            dep_token = None
-        else:
-            dep_token = self.github_token  # fallback
+        dep_token = self._resolve_dep_token(dep_ref)
         has_token = dep_token
         
         _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, is_generic={is_generic}, has_token={has_token is not None}")
@@ -685,8 +758,8 @@ class GitHubPackageDownloader:
             except ValueError as e:
                 raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
-        # Default to main branch if no reference specified
-        ref = dep_ref.reference or "main"
+        # Use user-specified ref; None means "use the remote's default branch"
+        ref = dep_ref.reference or None
 
         # Normalize to string for ResolvedReference.original_ref
         original_ref_str = str(dep_ref)
@@ -696,26 +769,27 @@ class GitHubPackageDownloader:
             self._parse_artifactory_base_url()
             and self._should_use_artifactory_proxy(dep_ref)
         ):
-            is_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
+            effective_ref = ref or "main"
+            is_commit = re.match(r'^[a-f0-9]{7,40}$', effective_ref.lower()) is not None
             return ResolvedReference(
                 original_ref=original_ref_str,
                 ref_type=GitReferenceType.COMMIT if is_commit else GitReferenceType.BRANCH,
                 resolved_commit=None,
-                ref_name=ref
+                ref_name=effective_ref
             )
 
         # Pre-analyze the reference type to determine the best approach
-        is_likely_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
-        
+        is_likely_commit = bool(ref) and re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
+
         # Create a temporary directory for Git operations
         temp_dir = None
         try:
             temp_dir = Path(tempfile.mkdtemp())
-            
+
             if is_likely_commit:
                 # For commit SHAs, clone full repository first, then checkout the commit
                 try:
-                    # Ensure host is set for enterprise repos     
+                    # Ensure host is set for enterprise repos
                     repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None, dep_ref=dep_ref)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
@@ -725,20 +799,22 @@ class GitHubPackageDownloader:
                     sanitized_error = self._sanitize_git_error(str(e))
                     raise ValueError(f"Could not resolve commit '{ref}' in repository {dep_ref.repo_url}: {sanitized_error}")
             else:
-                # For branches and tags, try shallow clone first
+                # For branches and tags, try shallow clone first.
+                # When no ref is specified, omit --branch to let git use the remote HEAD.
                 try:
-                    # Try to clone with specific branch/tag first
+                    clone_kwargs = {'depth': 1}
+                    if ref:
+                        clone_kwargs['branch'] = ref
                     repo = self._clone_with_fallback(
                         dep_ref.repo_url,
                         temp_dir,
                         progress_reporter=None,
                         dep_ref=dep_ref,
-                        depth=1,
-                        branch=ref
+                        **clone_kwargs
                     )
                     ref_type = GitReferenceType.BRANCH  # Could be branch or tag
                     resolved_commit = repo.head.commit.hexsha
-                    ref_name = ref
+                    ref_name = ref if ref else repo.active_branch.name
 
                 except GitCommandError:
                     # If branch/tag clone fails, try full clone and resolve reference
@@ -1459,8 +1535,12 @@ author: {dep_ref.repo_url.split('/')[0]}
         import subprocess
         try:
             temp_clone_path.mkdir(parents=True, exist_ok=True)
+
+            # Resolve per-dependency token via AuthResolver.
+            dep_token = self._resolve_dep_token(dep_ref)
+
             env = {**os.environ, **(self.git_env or {})}
-            auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref)
+            auth_url = self._build_repo_url(dep_ref.repo_url, use_ssh=False, dep_ref=dep_ref, token=dep_token)
 
             cmds = [
                 ['git', 'init'],
@@ -1837,15 +1917,16 @@ author: {dep_ref.repo_url.split('/')[0]}
             art_proxy = self._parse_artifactory_base_url()
             if self._is_artifactory_only() and not dep_ref.is_artifactory() and not art_proxy:
                 raise RuntimeError(
-                    f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
-                    "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                    f"PROXY_REGISTRY_ONLY is set but no Artifactory proxy is configured for '{repo_ref}'. "
+                    "Set PROXY_REGISTRY_URL or use explicit Artifactory FQDN syntax."
                 )
             if dep_ref.is_virtual_file():
                 return self.download_virtual_file_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_collection():
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_subdirectory():
-                # When ARTIFACTORY_ONLY is set, download full archive and extract subdir
+                # When PROXY_REGISTRY_ONLY is set, download full archive and extract subdir
+                art_proxy = self._parse_artifactory_base_url()
                 if self._is_artifactory_only() and art_proxy:
                     return self._download_subdirectory_from_artifactory(
                         dep_ref, target_path, art_proxy, progress_task_id, progress_obj
@@ -1867,11 +1948,11 @@ author: {dep_ref.repo_url.split('/')[0]}
                 dep_ref, target_path, art_proxy, progress_task_id, progress_obj
             )
 
-        # When ARTIFACTORY_ONLY is set but no Artifactory proxy matched, block direct git
+        # When PROXY_REGISTRY_ONLY is set but no Artifactory proxy matched, block direct git
         if self._is_artifactory_only():
             raise RuntimeError(
-                f"ARTIFACTORY_ONLY is set but no Artifactory proxy is configured for '{dep_ref}'. "
-                "Set ARTIFACTORY_BASE_URL or use explicit Artifactory FQDN syntax."
+                f"PROXY_REGISTRY_ONLY is set but no Artifactory proxy is configured for '{dep_ref}'. "
+                "Set PROXY_REGISTRY_URL or use explicit Artifactory FQDN syntax."
             )
 
         # Regular package download (existing logic)
