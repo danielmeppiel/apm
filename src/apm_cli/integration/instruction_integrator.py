@@ -164,12 +164,21 @@ class InstructionIntegrator(BaseIntegrator):
             prefix=prefix,
             legacy_glob_dir=legacy_dir,
             legacy_glob_pattern=legacy_pattern,
+            targets=[target],
         )
 
     # ------------------------------------------------------------------
-    # Legacy per-target API (delegates to target-driven methods)
+    # Legacy per-target API (DEPRECATED)
+    #
+    # These methods hardcode a specific target and bypass scope
+    # resolution.  Use the target-driven API (*_for_target) with
+    # profiles from resolve_targets() instead.
+    #
+    # Kept for backward compatibility with external consumers.
+    # Do NOT add new per-target methods here.
     # ------------------------------------------------------------------
 
+    # DEPRECATED: use integrate_instructions_for_target(KNOWN_TARGETS["copilot"], ...) instead.
     def integrate_package_instructions(
         self,
         package_info,
@@ -187,6 +196,7 @@ class InstructionIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["copilot"], ...) instead.
     def sync_integration(
         self,
         apm_package,
@@ -258,6 +268,7 @@ class InstructionIntegrator(BaseIntegrator):
         target.write_text(content, encoding='utf-8')
         return links_resolved
 
+    # DEPRECATED: use integrate_instructions_for_target(KNOWN_TARGETS["cursor"], ...) instead.
     def integrate_package_instructions_cursor(
         self,
         package_info,
@@ -275,6 +286,7 @@ class InstructionIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["cursor"], ...) instead.
     def sync_integration_cursor(
         self,
         apm_package,
@@ -339,6 +351,7 @@ class InstructionIntegrator(BaseIntegrator):
         target.write_text(content, encoding='utf-8')
         return links_resolved
 
+    # DEPRECATED: use integrate_instructions_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def integrate_package_instructions_claude(
         self,
         package_info,
@@ -356,6 +369,7 @@ class InstructionIntegrator(BaseIntegrator):
             diagnostics=diagnostics,
         )
 
+    # DEPRECATED: use sync_for_target(KNOWN_TARGETS["claude"], ...) instead.
     def sync_integration_claude(
         self,
         apm_package,
