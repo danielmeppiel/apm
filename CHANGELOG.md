@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm install -g` now deploys hooks to the scope-resolved target directory (e.g. `~/.copilot/hooks/`) instead of hardcoding `.github/hooks/` (#565)
+- Hook sync/cleanup now derives prefixes dynamically from `KNOWN_TARGETS` instead of hardcoded paths (#565)
+- `auto_create=False` targets no longer get directories unconditionally created during install (#576)
 - `apm deps update -g` now correctly passes scope, preventing user-scope updates from silently using project-scope paths (#562)
 
 ## [0.8.10] - 2026-04-03

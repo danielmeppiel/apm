@@ -1431,6 +1431,8 @@ def _install_apm_dependencies(
                 )
 
         for _t in _targets:
+            if not _t.auto_create:
+                continue
             _root = _t.root_dir
             _target_dir = project_root / _root
             if not _target_dir.exists():
