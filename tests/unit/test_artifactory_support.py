@@ -538,21 +538,22 @@ class TestArtifactoryFileDownload:
         return buf.getvalue()
 
     def test_extract_single_file(self):
-        """Extract a specific file from the archive."""
+        """Extract a specific file from the archive (full-archive fallback)."""
         zip_bytes = self._make_zip_bytes()
         mock_resp = Mock()
         mock_resp.status_code = 200
         mock_resp.content = zip_bytes
 
-        with patch.object(self.downloader, "_resilient_get", return_value=mock_resp):
-            content = self.downloader._download_file_from_artifactory(
-                "art.example.com",
-                "artifactory/github",
-                "owner",
-                "repo",
-                "apm.yml",
-                "main",
-            )
+        with patch("apm_cli.deps.artifactory_entry.fetch_entry_from_archive", return_value=None):
+            with patch.object(self.downloader, "_resilient_get", return_value=mock_resp):
+                content = self.downloader._download_file_from_artifactory(
+                    "art.example.com",
+                    "artifactory/github",
+                    "owner",
+                    "repo",
+                    "apm.yml",
+                    "main",
+                )
 
         assert b"name: test" in content
 
@@ -563,16 +564,48 @@ class TestArtifactoryFileDownload:
         mock_resp.status_code = 200
         mock_resp.content = zip_bytes
 
-        with patch.object(self.downloader, "_resilient_get", return_value=mock_resp):
-            with pytest.raises(RuntimeError, match="Failed to download file"):
-                self.downloader._download_file_from_artifactory(
-                    "art.example.com",
-                    "artifactory/github",
-                    "owner",
-                    "repo",
-                    "nonexistent.txt",
-                    "main",
+        with patch("apm_cli.deps.artifactory_entry.fetch_entry_from_archive", return_value=None):
+            with patch.object(self.downloader, "_resilient_get", return_value=mock_resp):
+                with pytest.raises(RuntimeError, match="Failed to download file"):
+                    self.downloader._download_file_from_artifactory(
+                        "art.example.com",
+                        "artifactory/github",
+                        "owner",
+                        "repo",
+                        "nonexistent.txt",
+                        "main",
+                    )
+
+    def test_entry_download_used_before_full_archive(self):
+        """Archive entry download is tried before the full archive."""
+        expected = b"# My Prompt\nDo something useful."
+
+        with patch("apm_cli.deps.artifactory_entry.fetch_entry_from_archive", return_value=expected) as mock_entry:
+            content = self.downloader._download_file_from_artifactory(
+                "art.example.com", "artifactory/github",
+                "owner", "repo", "prompts/deploy.prompt.md", "main",
+            )
+
+        assert content == expected
+        mock_entry.assert_called_once()
+
+    def test_entry_download_failure_falls_back_to_full_archive(self):
+        """When entry download returns None, full archive is used."""
+        zip_bytes = self._make_zip_bytes(
+            files={"prompts/deploy.prompt.md": b"# Prompt content"}
+        )
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.content = zip_bytes
+
+        with patch("apm_cli.deps.artifactory_entry.fetch_entry_from_archive", return_value=None):
+            with patch.object(self.downloader, "_resilient_get", return_value=mock_resp):
+                content = self.downloader._download_file_from_artifactory(
+                    "art.example.com", "artifactory/github",
+                    "owner", "repo", "prompts/deploy.prompt.md", "main",
                 )
+
+        assert b"# Prompt content" in content
 
 
 class TestArtifactoryResolveReference:
@@ -1191,3 +1224,302 @@ class TestFindMissingHashes:
             content_hash=None,
         )
         assert cfg.find_missing_hashes([locked]) == []
+
+
+# -- RegistryClient protocol and ArtifactoryRegistryClient --
+
+
+class TestRegistryClientProtocol:
+    """Test that ArtifactoryRegistryClient satisfies RegistryClient."""
+
+    def test_implements_protocol(self):
+        """ArtifactoryRegistryClient is a valid RegistryClient."""
+        from apm_cli.deps.artifactory_entry import ArtifactoryRegistryClient
+        from apm_cli.deps.registry_proxy import RegistryClient
+
+        assert isinstance(ArtifactoryRegistryClient, type)
+        assert issubclass(ArtifactoryRegistryClient, RegistryClient)
+
+    def test_get_client_returns_registry_client(self):
+        """RegistryConfig.get_client() returns a RegistryClient instance."""
+        from apm_cli.deps.registry_proxy import RegistryClient, RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        client = cfg.get_client()
+        assert isinstance(client, RegistryClient)
+
+    def test_client_fetch_file_delegates_to_entry_download(self):
+        """ArtifactoryRegistryClient.fetch_file uses the entry download logic."""
+        from apm_cli.deps.artifactory_entry import ArtifactoryRegistryClient
+        from apm_cli.deps.registry_proxy import RegistryConfig
+
+        with patch.dict(
+            os.environ,
+            {"PROXY_REGISTRY_URL": "https://art.example.com/artifactory/github"},
+            clear=True,
+        ):
+            cfg = RegistryConfig.from_env()
+
+        client = ArtifactoryRegistryClient(config=cfg)
+        mock_resp = Mock(status_code=200, content=b"file bytes")
+        mock_get = Mock(return_value=mock_resp)
+
+        result = client.fetch_file("owner", "repo", "file.md", "main", resilient_get=mock_get)
+
+        assert result == b"file bytes"
+        url = mock_get.call_args[0][0]
+        assert url.startswith("https://art.example.com/artifactory/github/")
+        assert "repo-main/file.md" in url
+
+
+# -- Archive Entry Download: fetch individual files from zip --
+
+
+class TestArchiveEntryDownload:
+    """Test fetch_entry_from_archive() shared utility."""
+
+    def _mock_get(self, status_code=200, content=b"file content"):
+        resp = Mock()
+        resp.status_code = status_code
+        resp.content = content
+        return Mock(return_value=resp)
+
+    def test_entry_download_success(self):
+        """Returns file content on HTTP 200."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        expected = b"# My prompt"
+        mock_get = self._mock_get(content=expected)
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "prompts/deploy.prompt.md", "main",
+            headers={"Authorization": "Bearer tok"},
+            resilient_get=mock_get,
+        )
+
+        assert result == expected
+        call_args = mock_get.call_args
+        url = call_args[0][0]
+        assert "!/" in url
+        assert "repo-main/prompts/deploy.prompt.md" in url
+
+    def test_entry_download_returns_none_on_404(self):
+        """Returns None when all URLs return 404."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get(status_code=404)
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "missing.md", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result is None
+        # Should have tried all 3 URL patterns
+        assert mock_get.call_count == 3
+
+    def test_entry_download_returns_none_on_connection_error(self):
+        """Returns None when the HTTP call raises an exception."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+        import requests as _requests
+
+        mock_get = Mock(side_effect=_requests.ConnectionError("refused"))
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "file.md", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result is None
+
+    def test_entry_download_tries_all_url_patterns(self):
+        """Tries GitHub heads, GitLab, and GitHub tags URLs in order."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        resp_404 = Mock(status_code=404, content=b"")
+        resp_200 = Mock(status_code=200, content=b"found it")
+        mock_get = Mock(side_effect=[resp_404, resp_404, resp_200])
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "SKILL.md", "v1.0",
+            resilient_get=mock_get,
+        )
+
+        assert result == b"found it"
+        assert mock_get.call_count == 3
+        urls = [call[0][0] for call in mock_get.call_args_list]
+        assert "refs/heads/v1.0.zip!/repo-v1.0/SKILL.md" in urls[0]
+        assert "archive/v1.0/repo-v1.0.zip!/repo-v1.0/SKILL.md" in urls[1]
+        assert "refs/tags/v1.0.zip!/repo-v1.0/SKILL.md" in urls[2]
+
+    def test_entry_url_encodes_special_chars(self):
+        """Spaces and special characters in file paths are URL-encoded."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get()
+
+        fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "path with spaces/file.md", "main",
+            resilient_get=mock_get,
+        )
+
+        url = mock_get.call_args[0][0]
+        assert "path%20with%20spaces/file.md" in url
+        assert " " not in url.split("!/")[1]
+
+    def test_entry_download_passes_headers(self):
+        """Auth headers are forwarded to the HTTP call."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get()
+        headers = {"Authorization": "Bearer my-token"}
+
+        fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "file.md", "main",
+            headers=headers,
+            resilient_get=mock_get,
+        )
+
+        call_kwargs = mock_get.call_args
+        assert call_kwargs[1]["headers"] == headers
+
+    def test_entry_download_stops_on_first_success(self):
+        """Stops trying URL patterns after the first 200 response."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get(content=b"first hit")
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "file.md", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result == b"first hit"
+        assert mock_get.call_count == 1
+
+    def test_entry_download_rejects_path_traversal(self):
+        """file_path with ../ components is rejected (CWE-22)."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get()
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "../../etc/passwd", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result is None
+        mock_get.assert_not_called()
+
+    def test_entry_download_rejects_mid_path_traversal(self):
+        """Traversal hidden in the middle of the path is also rejected."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get()
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "subdir/../../../secret", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result is None
+        mock_get.assert_not_called()
+
+    def test_entry_download_rejects_dot_segment(self):
+        """Single-dot path segment is also rejected by validate_path_segments."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get()
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "subdir/./file.md", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result is None
+        mock_get.assert_not_called()
+
+    def test_entry_download_rejects_empty_segment(self):
+        """Empty path segments (double slash) are rejected."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get()
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "subdir//file.md", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result is None
+        mock_get.assert_not_called()
+
+    def test_entry_download_with_tag_ref(self):
+        """Tag refs produce correct root prefix ({repo}-{tag})."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get(content=b"tagged content")
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "my-repo", "README.md", "v2.1.0",
+            resilient_get=mock_get,
+        )
+
+        assert result == b"tagged content"
+        url = mock_get.call_args[0][0]
+        assert "my-repo-v2.1.0/README.md" in url
+
+    def test_entry_download_with_slash_ref(self):
+        """Branch refs with slashes try both raw and normalized root prefixes."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        # First call (raw ref "feature/foo") returns 404,
+        # second call (normalized "feature-foo") returns 200
+        resp_404 = Mock(status_code=404, content=b"")
+        resp_200 = Mock(status_code=200, content=b"branch content")
+        mock_get = Mock(side_effect=[resp_404, resp_200])
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "file.md", "feature/foo",
+            resilient_get=mock_get,
+        )
+
+        assert result == b"branch content"
+        urls = [call[0][0] for call in mock_get.call_args_list]
+        # First try: raw ref in root prefix
+        assert "repo-feature/foo/file.md" in urls[0]
+        # Second try: normalized ref in root prefix
+        assert "repo-feature-foo/file.md" in urls[1]
+
+    def test_entry_download_with_no_headers(self):
+        """Works without auth headers (public repos)."""
+        from apm_cli.deps.artifactory_entry import fetch_entry_from_archive
+
+        mock_get = self._mock_get(content=b"public")
+
+        result = fetch_entry_from_archive(
+            "art.example.com", "artifactory/github",
+            "owner", "repo", "file.md", "main",
+            resilient_get=mock_get,
+        )
+
+        assert result == b"public"
+        assert mock_get.call_args[1]["headers"] == {}

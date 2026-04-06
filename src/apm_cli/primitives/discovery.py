@@ -1,12 +1,16 @@
 """Discovery functionality for primitive files."""
 
+import logging
 import os
 import glob
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from .models import PrimitiveCollection
 from .parser import parse_primitive_file, parse_skill_file
+from ..utils.exclude import should_exclude, validate_exclude_patterns
+
+logger = logging.getLogger(__name__)
 from ..models.apm_package import APMPackage
 from ..deps.lockfile import LockFile
 
@@ -52,7 +56,10 @@ DEPENDENCY_PRIMITIVE_PATTERNS: Dict[str, List[str]] = {
 }
 
 
-def discover_primitives(base_dir: str = ".") -> PrimitiveCollection:
+def discover_primitives(
+    base_dir: str = ".",
+    exclude_patterns: Optional[List[str]] = None,
+) -> PrimitiveCollection:
     """Find all APM primitive files in the project.
     
     Searches for .chatmode.md, .instructions.md, .context.md, .memory.md files
@@ -60,17 +67,23 @@ def discover_primitives(base_dir: str = ".") -> PrimitiveCollection:
     
     Args:
         base_dir (str): Base directory to search in. Defaults to current directory.
+        exclude_patterns (Optional[List[str]]): Glob patterns for paths to exclude.
     
     Returns:
         PrimitiveCollection: Collection of discovered and parsed primitives.
     """
     collection = PrimitiveCollection()
+    base_path = Path(base_dir)
+    safe_patterns = validate_exclude_patterns(exclude_patterns)
     
     # Find and parse files for each primitive type
     for primitive_type, patterns in LOCAL_PRIMITIVE_PATTERNS.items():
         files = find_primitive_files(base_dir, patterns)
         
         for file_path in files:
+            if should_exclude(file_path, base_path, safe_patterns):
+                logger.debug("Excluded by pattern: %s", file_path)
+                continue
             try:
                 primitive = parse_primitive_file(file_path, source="local")
                 collection.add_primitive(primitive)
@@ -78,12 +91,15 @@ def discover_primitives(base_dir: str = ".") -> PrimitiveCollection:
                 print(f"Warning: Failed to parse {file_path}: {e}")
     
     # Discover SKILL.md at project root
-    _discover_local_skill(base_dir, collection)
+    _discover_local_skill(base_dir, collection, exclude_patterns=safe_patterns)
     
     return collection
 
 
-def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveCollection:
+def discover_primitives_with_dependencies(
+    base_dir: str = ".",
+    exclude_patterns: Optional[List[str]] = None,
+) -> PrimitiveCollection:
     """Enhanced primitive discovery including dependency sources.
     
     Priority Order:
@@ -93,17 +109,19 @@ def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveColle
     
     Args:
         base_dir (str): Base directory to search in. Defaults to current directory.
+        exclude_patterns (Optional[List[str]]): Glob patterns for paths to exclude.
     
     Returns:
         PrimitiveCollection: Collection of discovered and parsed primitives with source tracking.
     """
     collection = PrimitiveCollection()
+    safe_patterns = validate_exclude_patterns(exclude_patterns)
 
     # Phase 1: Local primitives (highest priority)
-    scan_local_primitives(base_dir, collection)
+    scan_local_primitives(base_dir, collection, exclude_patterns=safe_patterns)
 
     # Phase 1b: Local SKILL.md
-    _discover_local_skill(base_dir, collection)
+    _discover_local_skill(base_dir, collection, exclude_patterns=safe_patterns)
 
     # Phase 2: Dependency primitives (lower priority, with conflict detection)
     # Plugins are normalized into standard APM packages during install
@@ -113,12 +131,17 @@ def discover_primitives_with_dependencies(base_dir: str = ".") -> PrimitiveColle
     return collection
 
 
-def scan_local_primitives(base_dir: str, collection: PrimitiveCollection) -> None:
+def scan_local_primitives(
+    base_dir: str,
+    collection: PrimitiveCollection,
+    exclude_patterns: Optional[List[str]] = None,
+) -> None:
     """Scan local .apm/ directory for primitives.
     
     Args:
         base_dir (str): Base directory to search in.
         collection (PrimitiveCollection): Collection to add primitives to.
+        exclude_patterns (Optional[List[str]]): Pre-validated exclude patterns.
     """
     # Find and parse files for each primitive type
     for primitive_type, patterns in LOCAL_PRIMITIVE_PATTERNS.items():
@@ -131,8 +154,13 @@ def scan_local_primitives(base_dir: str, collection: PrimitiveCollection) -> Non
         
         for file_path in files:
             # Only include files that are NOT in apm_modules directory
-            if not _is_under_directory(file_path, apm_modules_path):
-                local_files.append(file_path)
+            if _is_under_directory(file_path, apm_modules_path):
+                continue
+            # Apply compilation.exclude patterns
+            if should_exclude(file_path, base_path, exclude_patterns):
+                logger.debug("Excluded by pattern: %s", file_path)
+                continue
+            local_files.append(file_path)
         
         for file_path in local_files:
             try:
@@ -157,6 +185,7 @@ def _is_under_directory(file_path: Path, directory: Path) -> bool:
         return True
     except ValueError:
         return False
+
 
 
 def scan_dependency_primitives(base_dir: str, collection: PrimitiveCollection) -> None:
@@ -302,15 +331,23 @@ def scan_directory_with_source(directory: Path, collection: PrimitiveCollection,
     _discover_skill_in_directory(directory, collection, source)
 
 
-def _discover_local_skill(base_dir: str, collection: PrimitiveCollection) -> None:
+def _discover_local_skill(
+    base_dir: str,
+    collection: PrimitiveCollection,
+    exclude_patterns: Optional[List[str]] = None,
+) -> None:
     """Discover SKILL.md at the project root.
     
     Args:
         base_dir (str): Base directory to search in.
         collection (PrimitiveCollection): Collection to add skill to.
+        exclude_patterns (Optional[List[str]]): Pre-validated exclude patterns.
     """
     skill_path = Path(base_dir) / "SKILL.md"
     if skill_path.exists() and _is_readable(skill_path):
+        if should_exclude(skill_path, Path(base_dir), exclude_patterns):
+            logger.debug("Excluded by pattern: %s", skill_path)
+            return
         try:
             skill = parse_skill_file(skill_path, source="local")
             collection.add_primitive(skill)
