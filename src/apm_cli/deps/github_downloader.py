@@ -817,57 +817,12 @@ class GitHubPackageDownloader:
         branches.sort(key=lambda r: r.name)
         return tags + branches
 
-    def _list_refs_via_ado_api(self, dep_ref: DependencyReference, token: str) -> List[RemoteRef]:
-        """Fetch remote refs using the Azure DevOps Refs REST API.
-
-        ``GET https://{host}/{org}/{project}/_apis/git/repositories/{repo}/refs?api-version=7.0``
-
-        Args:
-            dep_ref: Dependency reference with ADO fields populated.
-            token: PAT for ADO authentication.
-
-        Returns:
-            List of RemoteRef (unsorted).
-
-        Raises:
-            RuntimeError: On HTTP errors.
-        """
-        host = dep_ref.host or "dev.azure.com"
-        org = dep_ref.ado_organization
-        project = dep_ref.ado_project
-        repo = dep_ref.ado_repo
-        url = (
-            f"https://{host}/{org}/{project}/_apis/git/repositories/{repo}"
-            f"/refs?api-version=7.0"
-        )
-        import base64
-        auth_value = base64.b64encode(f":{token}".encode()).decode()
-        headers = {
-            "Authorization": f"Basic {auth_value}",
-            "Accept": "application/json",
-        }
-        response = self._resilient_get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-        results: List[RemoteRef] = []
-        for item in data.get("value", []):
-            refname = item.get("name", "")
-            sha = item.get("objectId", "")
-            if refname.startswith("refs/tags/"):
-                name = refname[len("refs/tags/"):]
-                results.append(RemoteRef(name=name, ref_type=GitReferenceType.TAG, commit_sha=sha))
-            elif refname.startswith("refs/heads/"):
-                name = refname[len("refs/heads/"):]
-                results.append(RemoteRef(name=name, ref_type=GitReferenceType.BRANCH, commit_sha=sha))
-        return results
-
     def list_remote_refs(self, dep_ref: DependencyReference) -> List[RemoteRef]:
         """Enumerate remote tags and branches without cloning.
 
-        Uses ``git ls-remote --tags --heads`` for GitHub and generic hosts.
-        For Azure DevOps, calls the ADO Refs REST API instead.
-        Artifactory dependencies return an empty list (no git repo).
+        Uses ``git ls-remote --tags --heads`` for all git hosts (GitHub,
+        Azure DevOps, GitLab, generic).  Artifactory dependencies return
+        an empty list (no git repo).
 
         Args:
             dep_ref: Dependency reference describing the remote repo.
@@ -877,7 +832,7 @@ class GitHubPackageDownloader:
             then branches (alphabetically ascending).
 
         Raises:
-            RuntimeError: If the git command or API call fails.
+            RuntimeError: If the git command fails.
         """
         # Artifactory: no git repo to query
         if dep_ref.is_artifactory():
@@ -886,24 +841,7 @@ class GitHubPackageDownloader:
         is_ado = dep_ref.is_azure_devops()
         dep_token = self._resolve_dep_token(dep_ref)
 
-        # Azure DevOps: use REST API
-        if is_ado and dep_token and dep_ref.ado_organization:
-            try:
-                refs = self._list_refs_via_ado_api(dep_ref, dep_token)
-                return self._sort_remote_refs(refs)
-            except Exception as e:
-                host = dep_ref.host or "dev.azure.com"
-                error_msg = (
-                    f"Failed to list remote refs for ADO repo "
-                    f"{dep_ref.ado_organization}/{dep_ref.ado_project}/{dep_ref.ado_repo}. "
-                )
-                error_msg += self.auth_resolver.build_error_context(
-                    host, "list refs", org=dep_ref.ado_organization,
-                )
-                error_msg += f" Last error: {e}"
-                raise RuntimeError(error_msg) from e
-
-        # GitHub / generic hosts: git ls-remote
+        # All git hosts: git ls-remote
         repo_url_base = dep_ref.repo_url
 
         # Build the env -- mirror _clone_with_fallback logic

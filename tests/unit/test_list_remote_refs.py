@@ -1,6 +1,5 @@
 """Tests for GitHubPackageDownloader.list_remote_refs() and helpers."""
 
-import base64
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
@@ -342,61 +341,55 @@ class TestListRemoteRefsGitHub:
 
 
 # ---------------------------------------------------------------------------
-# list_remote_refs -- Azure DevOps (REST API path)
+# list_remote_refs -- Azure DevOps (git ls-remote path)
 # ---------------------------------------------------------------------------
 
 class TestListRemoteRefsADO:
-    """Tests for the ADO Refs API code path."""
+    """Tests for ADO deps going through the unified git ls-remote path."""
 
-    def test_ado_api_called_with_pat(self):
-        """ADO deps with token use the REST API, not git ls-remote."""
+    @patch("apm_cli.deps.github_downloader.git.cmd.Git")
+    def test_ado_uses_git_ls_remote(self, MockGitCmd):
+        """ADO deps use git ls-remote, not a REST API call."""
         dl = _build_downloader()
         dep = _make_dep_ref(ado=True)
 
         dl._resolve_dep_token = MagicMock(return_value="ado_pat_token")
+        dl._build_repo_url = MagicMock(
+            return_value="https://ado_pat_token@dev.azure.com/myorg/myproj/_git/myrepo",
+        )
 
-        # Mock _resilient_get to return fake ADO response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "value": [
-                {"name": "refs/tags/v1.0.0", "objectId": "aaa111"},
-                {"name": "refs/tags/v2.0.0", "objectId": "bbb222"},
-                {"name": "refs/heads/main", "objectId": "ccc333"},
-            ]
-        }
-        mock_response.raise_for_status = MagicMock()
-        dl._resilient_get = MagicMock(return_value=mock_response)
+        mock_git = MockGitCmd.return_value
+        mock_git.ls_remote.return_value = SAMPLE_LS_REMOTE
 
         result = dl.list_remote_refs(dep)
 
-        # Verify API URL
-        call_args = dl._resilient_get.call_args
-        url = call_args.args[0] if call_args.args else call_args.kwargs.get("url", "")
-        assert "/_apis/git/repositories/myrepo/refs" in url
-        assert "api-version=7.0" in url
-        assert "myorg" in url
-        assert "myproj" in url
-
-        # Verify auth header uses Basic with base64-encoded :token
-        headers = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("headers", {})
-        expected_auth = "Basic " + base64.b64encode(b":ado_pat_token").decode()
-        assert headers["Authorization"] == expected_auth
+        dl._resolve_dep_token.assert_called_once_with(dep)
+        dl._build_repo_url.assert_called_once_with(
+            "owner/repo", use_ssh=False, dep_ref=dep, token="ado_pat_token",
+        )
+        mock_git.ls_remote.assert_called_once()
 
         # Verify sorted output
         tag_names = [r.name for r in result if r.ref_type == GitReferenceType.TAG]
         branch_names = [r.name for r in result if r.ref_type == GitReferenceType.BRANCH]
-        assert tag_names == ["v2.0.0", "v1.0.0"]
-        assert branch_names == ["main"]
+        assert tag_names == ["v2.0.0", "v1.0.0", "v0.9.0"]
+        assert branch_names == ["feature/xyz", "main"]
 
-    def test_ado_api_error_raises_runtime_error(self):
-        """ADO API failure is wrapped in RuntimeError with auth context."""
+    @patch("apm_cli.deps.github_downloader.git.cmd.Git")
+    def test_ado_git_error_raises_runtime_error(self, MockGitCmd):
+        """ADO git ls-remote failure is wrapped in RuntimeError with auth context."""
         dl = _build_downloader()
         dep = _make_dep_ref(ado=True)
 
         dl._resolve_dep_token = MagicMock(return_value="ado_pat")
-        dl._resilient_get = MagicMock(side_effect=Exception("connection refused"))
+        dl._build_repo_url = MagicMock(
+            return_value="https://ado_pat@dev.azure.com/myorg/myproj/_git/myrepo",
+        )
 
-        with pytest.raises(RuntimeError, match="Failed to list remote refs for ADO"):
+        mock_git = MockGitCmd.return_value
+        mock_git.ls_remote.side_effect = GitCommandError("ls-remote", 128)
+
+        with pytest.raises(RuntimeError, match="Failed to list remote refs"):
             dl.list_remote_refs(dep)
 
         dl.auth_resolver.build_error_context.assert_called_once()
@@ -421,15 +414,15 @@ class TestAuthTokenResolution:
 
         dl._resolve_dep_token.assert_called_once_with(dep)
 
-    def test_ado_host_resolves_token(self):
+    @patch("apm_cli.deps.github_downloader.git.cmd.Git")
+    def test_ado_host_resolves_token(self, MockGitCmd):
         dl = _build_downloader()
         dep = _make_dep_ref(ado=True)
         dl._resolve_dep_token = MagicMock(return_value="ado_tok")
-
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"value": []}
-        mock_resp.raise_for_status = MagicMock()
-        dl._resilient_get = MagicMock(return_value=mock_resp)
+        dl._build_repo_url = MagicMock(
+            return_value="https://ado_tok@dev.azure.com/myorg/myproj/_git/myrepo",
+        )
+        MockGitCmd.return_value.ls_remote.return_value = ""
 
         dl.list_remote_refs(dep)
 
