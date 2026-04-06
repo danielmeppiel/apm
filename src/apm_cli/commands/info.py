@@ -247,17 +247,29 @@ def display_versions(package: str, logger: CommandLogger) -> None:
 # ------------------------------------------------------------------
 
 
-@click.command(help="Show detailed information about an installed package")
+@click.command()
 @click.argument("package", required=True)
 @click.argument("field", required=False, default=None)
-def info(package: str, field: Optional[str]):
-    """Show detailed package information.
+@click.option("--global", "-g", "global_", is_flag=True, default=False,
+              help="Inspect package from user scope (~/.apm/)")
+def info(package: str, field: Optional[str], global_: bool):
+    """Show information about a package.
 
-    PACKAGE is the installed package name (e.g. ``org/repo`` or just ``repo``).
+    Without FIELD, displays local metadata for an installed package.
+    With FIELD, queries specific data (may contact the remote).
 
-    When FIELD is omitted the command prints the full local metadata panel.
-    When FIELD is provided only that specific piece of information is shown.
+    \b
+    Fields:
+        versions    List available remote tags and branches
+
+    \b
+    Examples:
+        apm info org/repo                # Local metadata
+        apm info org/repo versions       # Remote tags/branches
+        apm info org/repo -g             # From user scope
     """
+    from ..core.scope import InstallScope, get_apm_dir
+
     logger = CommandLogger("info")
 
     # --- field validation (before any I/O) ---
@@ -274,8 +286,13 @@ def info(package: str, field: Optional[str]):
             return
 
     # --- default: show local metadata ---
-    project_root = Path(".")
-    apm_modules_path = project_root / APM_MODULES_DIR
+    scope = InstallScope.USER if global_ else InstallScope.PROJECT
+    if global_:
+        project_root = get_apm_dir(scope)
+        apm_modules_path = project_root / APM_MODULES_DIR
+    else:
+        project_root = Path(".")
+        apm_modules_path = project_root / APM_MODULES_DIR
 
     if not apm_modules_path.exists():
         logger.error("No apm_modules/ directory found")
