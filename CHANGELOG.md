@@ -8,12 +8,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Scope resolution now happens once via `TargetProfile.for_scope()` and `resolve_targets()` -- integrators no longer need scope-aware parameters (#562)
+- Unified integration dispatch table in `dispatch.py` -- both install and uninstall import from one source of truth (#562)
+- Hook merge logic deduplicated: three copy-pasted JSON-merge methods replaced with `_integrate_merged_hooks()` + config dict (#562)
+
+### Fixed
+
+- `apm install -g` now deploys hooks to the scope-resolved target directory (e.g. `~/.copilot/hooks/`) instead of hardcoding `.github/hooks/` (#565)
+- Hook sync/cleanup now derives prefixes dynamically from `KNOWN_TARGETS` instead of hardcoded paths (#565)
+- `auto_create=False` targets no longer get directories unconditionally created during install (#576)
+- `apm deps update -g` now correctly passes scope, preventing user-scope updates from silently using project-scope paths (#562)
+
+## [0.8.10] - 2026-04-03
+
+### Fixed
+
+- Hook integrator now processes the `windows` property in hook JSON files, copying referenced scripts and rewriting paths during install/compile (#311)
+- Standardized `--target` choices, replaced Unicode with ASCII for cp1252 compatibility, and documented missing CLI flags (#519)
+- `apm install -g` now correctly deploys to user-scope directories, skips unsupported primitives, and cleans up on uninstall -- including multi-level paths like `~/.config/opencode/` (#542)
+- `apm deps update` now correctly re-resolves transitive dependencies instead of reusing stale locked SHAs (#548)
+
+### Added
+
+- `apm install` now deploys `.instructions.md` files to `.claude/rules/*.md` for Claude Code, converting `applyTo:` frontmatter to Claude's `paths:` format (#516)
+
+### Changed
+
+- Artifactory virtual file downloads now use the Archive Entry Download API to fetch individual files without downloading the full archive; falls back to full-archive extraction when the entry API is unavailable (#525)
+
+## [0.8.9] - 2026-03-31
+
+### Fixed
+
+- `apm install NAME@MARKETPLACE` now respects `metadata.pluginRoot` from marketplace manifests, fixing resolution of bare-name plugins in marketplaces like `awesome-copilot` (#512)
+- Windows unit test assertion tolerates Rich console line-wrapping on long temp paths (#510)
+- Release validation scripts match updated `apm deps list` scope output (#510)
+
+## [0.8.8] - 2026-03-31
+
+### Added
+
+- `apm install -g/--global` for user-scope package installation with per-target support matrix and `apm uninstall -g` lifecycle (#452)
+- Marketplace integration: `apm install NAME@MARKETPLACE` syntax, `apm marketplace add/list/browse/update/remove`, `apm search` across registered marketplaces (#503)
+- Codex as integration target: skills to `.agents/skills/`, agents to `.codex/agents/*.toml`, hooks to `.codex/hooks.json`, `--target codex` on install/compile/pack (#504)
+- Lockfile-driven reproducible installs for registry proxies with `content_hash` verification and `RegistryConfig` -- by @chkp-roniz (#401)
+
+### Changed
+
+- `apm deps update` skips download when resolved SHA matches lockfile SHA, making the common "nothing changed" case near-instant (#500)
+
+### Fixed
+
+- `apm install -g ./local-pkg` rejects local path dependencies at user scope with a clear error (#452)
+- Orphan documentation pages (`ci-policy-setup`, `policy-reference`) added to sidebar navigation; stale GitHub Rulesets content updated (#505, #507)
+
+## [0.8.7] - 2026-03-30
+
+### Fixed
+
+- `--target opencode` no longer writes prompts/agents to `.github/`; dispatch loop now only fires primitives declared by the selected target (#488, #494)
+- `--target cursor` now correctly deploys skills to `.cursor/skills/` instead of `.github/skills/` -- `SkillIntegrator` respects the explicit target list end-to-end (#482, #494)
+- Misleading "transitive dep" error message for direct dependency download failures (#478)
+- Sparse checkout using global token instead of per-org token from `GITHUB_APM_PAT_<ORG>` (#478)
+- Duplicate error count when a dependency fails during both resolution and install phases (#478)
+- Windows Defender false-positive (`Trojan:Win32/Bearfoos.B!ml`) mitigation: embed PE version info in Windows binary and disable UPX compression on Windows builds -- by @sergio-sisternes-epam (#490)
+- `apm deps update` was a no-op -- rewrote to delegate to the install engine so lockfile, deployed files, and integration state are all refreshed correctly -- by @webmaxru (#493)
+
+### Changed
+
+- Integration dispatch is now data-driven: `KNOWN_TARGETS` defines each target's primitives and directory layout; adding a target requires zero code changes (#494)
+- `partition_managed_files()` uses O(1) component-based path routing instead of linear prefix scan (#494)
+- Uninstall sync uses pre-partitioned buckets via `partition_bucket_key()` instead of re-scanning the full managed-files set (#494)
+
+### Security
+
+- Bump `pygments` from 2.19.2 to 2.20.0 (#495)
+
 ## [0.8.6] - 2026-03-27
 
 ### Added
 
 - `apm install --target` flag to force deployment to a specific target (copilot, claude, cursor, opencode, all) (#456)
-- WinGet installation method for Windows: `winget install Microsoft.APM` (#88)
+- Global `apm install --global` / `-g` and `apm uninstall --global` flags for user-scope package installation, backed by `InstallScope`-based scope resolution in `core/scope.py`; deploys primitives to `~/.copilot/`, `~/.claude/`, `~/.cursor/`, `~/.config/opencode/` and tracks metadata under `~/.apm/` (#452)
 
 ### Fixed
 

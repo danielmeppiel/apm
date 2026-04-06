@@ -108,16 +108,17 @@ compilation:   <CompilationConfig>
 |---|---|
 | **Type** | `enum<string>` |
 | **Required** | OPTIONAL |
-| **Default** | Auto-detect: `vscode` if `.github/` exists, `claude` if `.claude/` exists, `all` if both, `minimal` if neither |
-| **Allowed values** | `vscode` · `agents` · `claude` · `all` |
+| **Default** | Auto-detect: `vscode` if `.github/` exists, `claude` if `.claude/` exists, `codex` if `.codex/` exists, `all` if both `.github/` and `.claude/`, `minimal` if neither |
+| **Allowed values** | `vscode` · `agents` · `claude` · `codex` · `all` |
 
-Controls which output targets are generated during compilation. When unset, a conforming resolver SHOULD auto-detect based on `.github/` and `.claude/` folder presence. Unknown values MUST be silently ignored (auto-detection takes over).
+Controls which output targets are generated during compilation. When unset, a conforming resolver SHOULD auto-detect based on `.github/`, `.claude/`, and `.codex/` folder presence. Unknown values MUST be silently ignored (auto-detection takes over).
 
 | Value | Effect |
 |---|---|
 | `vscode` | Emits `AGENTS.md` at the project root (and per-directory files in distributed mode) |
 | `agents` | Alias for `vscode` |
 | `claude` | Emits `CLAUDE.md` at the project root |
+| `codex` | Emits `AGENTS.md` and deploys skills to `.agents/skills/`, agents to `.codex/agents/` |
 | `all` | Both `vscode` and `claude` targets |
 | `minimal` | AGENTS.md only at project root. **Auto-detected only** — this value MUST NOT be set explicitly in manifests; it is an internal fallback when no `.github/` or `.claude/` folder is detected. |
 
@@ -378,7 +379,7 @@ The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fiel
 
 | Field | Type | Default | Constraint | Description |
 |---|---|---|---|---|
-| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `all` | Output target (same values as §3.6). Defaults to `all` when set explicitly in compilation config. |
+| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `codex` · `all` | Output target (same values as §3.6). Defaults to `all` when set explicitly in compilation config. |
 | `strategy` | `enum<string>` | `distributed` | `distributed` · `single-file` | `distributed` generates per-directory AGENTS.md files. `single-file` generates one monolithic file. |
 | `single_file` | `bool` | `false` | | Legacy alias. When `true`, overrides `strategy` to `single-file`. |
 | `output` | `string` | `AGENTS.md` | File path | Custom output path for the compiled file. |

@@ -172,7 +172,7 @@ def _get_validation_suggestion(error_msg):
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["copilot", "vscode", "agents", "claude", "cursor", "opencode", "all"]),
+    type=click.Choice(["copilot", "claude", "cursor", "opencode", "codex", "vscode", "agents", "all"]),
     default=None,
     help="Target platform: copilot (AGENTS.md), claude (CLAUDE.md), cursor, opencode, or all. 'vscode' and 'agents' are deprecated aliases for 'copilot'. Auto-detects if not specified.",
 )

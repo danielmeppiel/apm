@@ -43,22 +43,65 @@ Script path handling:
 """
 
 import json
+import logging
 import re
 import shutil
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
 
-from apm_cli.integration.base_integrator import BaseIntegrator
+from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.utils.paths import portable_relpath
 
+_log = logging.getLogger(__name__)
 
-@dataclass
-class HookIntegrationResult:
-    """Result of hook integration operation."""
-    hooks_integrated: int
-    scripts_copied: int
-    target_paths: List[Path] = field(default_factory=list)
+
+# DEPRECATED -- use IntegrationResult directly for new code.
+# Backward-compatible shim: accepts hooks_integrated= kwarg and
+# exposes a hooks_integrated property for consumers of the old API.
+class HookIntegrationResult(IntegrationResult):
+    """Backward-compatible wrapper around IntegrationResult."""
+
+    def __init__(self, *args, hooks_integrated=None, **kwargs):
+        if hooks_integrated is not None:
+            kwargs.setdefault("files_integrated", hooks_integrated)
+            kwargs.setdefault("files_updated", 0)
+            kwargs.setdefault("files_skipped", 0)
+            kwargs.setdefault("target_paths", [])
+        super().__init__(*args, **kwargs)
+
+    @property
+    def hooks_integrated(self):
+        """Alias for files_integrated (backward compat)."""
+        return self.files_integrated
+
+
+@dataclass(frozen=True)
+class _MergeHookConfig:
+    """Configuration for targets that merge hooks into a single JSON file."""
+
+    config_filename: str    # e.g. "settings.json" or "hooks.json"
+    target_key: str         # target name passed to _rewrite_hooks_data
+    require_dir: bool       # True = skip if target dir doesn't exist
+
+
+_MERGE_HOOK_TARGETS: dict[str, _MergeHookConfig] = {
+    "claude": _MergeHookConfig(
+        config_filename="settings.json",
+        target_key="claude",
+        require_dir=False,
+    ),
+    "cursor": _MergeHookConfig(
+        config_filename="hooks.json",
+        target_key="cursor",
+        require_dir=True,
+    ),
+    "codex": _MergeHookConfig(
+        config_filename="hooks.json",
+        target_key="codex",
+        require_dir=True,
+    ),
+}
 
 
 class HookIntegrator(BaseIntegrator):
@@ -70,6 +113,23 @@ class HookIntegrator(BaseIntegrator):
     - Claude: Merged into .claude/settings.json hooks key + .claude/hooks/<pkg>/
     - Cursor: Merged into .cursor/hooks.json hooks key + .cursor/hooks/<pkg>/
     """
+
+    # Superset of all known script-path keys across supported hook specs.
+    # Every call site in _rewrite_hooks_data() iterates over this tuple,
+    # so a single addition here propagates everywhere.
+    #
+    #   "command":    Claude Code (primary), VS Code (default/cross-platform), Cursor
+    #   "bash":       GitHub Copilot Agent cloud/CLI
+    #   "powershell": GitHub Copilot Agent cloud/CLI
+    #   "windows":    VS Code (OS-specific override)
+    #   "linux":      VS Code (OS-specific override)
+    #   "osx":        VS Code (OS-specific override)
+    #
+    # Refs:
+    #   GH Copilot Agent: https://docs.github.com/en/copilot/concepts/agents/coding-agent/about-hooks
+    #   VS Code:          https://code.visualstudio.com/docs/copilot/customization/hooks
+    #   Claude Code:      https://code.claude.com/docs/en/hooks
+    HOOK_COMMAND_KEYS: Tuple[str, ...] = ("command", "bash", "powershell", "windows", "linux", "osx")
 
     def find_hook_files(self, package_path: Path) -> List[Path]:
         """Find all hook JSON files in a package.
@@ -91,6 +151,8 @@ class HookIntegrator(BaseIntegrator):
         apm_hooks = package_path / ".apm" / "hooks"
         if apm_hooks.exists():
             for f in sorted(apm_hooks.glob("*.json")):
+                if f.is_symlink():
+                    continue
                 resolved = f.resolve()
                 if resolved not in seen:
                     seen.add(resolved)
@@ -100,6 +162,8 @@ class HookIntegrator(BaseIntegrator):
         hooks_dir = package_path / "hooks"
         if hooks_dir.exists():
             for f in sorted(hooks_dir.glob("*.json")):
+                if f.is_symlink():
+                    continue
                 resolved = f.resolve()
                 if resolved not in seen:
                     seen.add(resolved)
@@ -132,6 +196,7 @@ class HookIntegrator(BaseIntegrator):
         package_name: str,
         target: str,
         hook_file_dir: Optional[Path] = None,
+        root_dir: Optional[str] = None,
     ) -> Tuple[str, List[Tuple[Path, str]]]:
         """Rewrite a hook command to use installed script paths.
 
@@ -145,6 +210,7 @@ class HookIntegrator(BaseIntegrator):
             package_name: Name used for the scripts subdirectory
             target: "vscode" or "claude"
             hook_file_dir: Directory containing the hook JSON file (for ./path resolution)
+            root_dir: Override root directory (e.g. ".copilot" for user scope)
 
         Returns:
             Tuple of (rewritten_command, list of (source_file, relative_target_path))
@@ -153,11 +219,17 @@ class HookIntegrator(BaseIntegrator):
         new_command = command
 
         if target == "vscode":
-            scripts_base = f".github/hooks/scripts/{package_name}"
+            base_root = root_dir or ".github"
+            scripts_base = f"{base_root}/hooks/scripts/{package_name}"
         elif target == "cursor":
-            scripts_base = f".cursor/hooks/{package_name}"
+            base_root = root_dir or ".cursor"
+            scripts_base = f"{base_root}/hooks/{package_name}"
+        elif target == "codex":
+            base_root = root_dir or ".codex"
+            scripts_base = f"{base_root}/hooks/{package_name}"
         else:
-            scripts_base = f".claude/hooks/{package_name}"
+            base_root = root_dir or ".claude"
+            scripts_base = f"{base_root}/hooks/{package_name}"
 
         # Handle ${CLAUDE_PLUGIN_ROOT} references (always relative to package root)
         plugin_root_pattern = r'\$\{CLAUDE_PLUGIN_ROOT\}(/[^\s]+)'
@@ -201,6 +273,7 @@ class HookIntegrator(BaseIntegrator):
         package_name: str,
         target: str,
         hook_file_dir: Optional[Path] = None,
+        root_dir: Optional[str] = None,
     ) -> Tuple[Dict, List[Tuple[Path, str]]]:
         """Rewrite all command paths in a hooks JSON structure.
 
@@ -212,6 +285,7 @@ class HookIntegrator(BaseIntegrator):
             package_name: Name for scripts subdirectory
             target: "vscode" or "claude"
             hook_file_dir: Directory containing the hook JSON file (for ./path resolution)
+            root_dir: Override root directory (e.g. ".copilot" for user scope)
 
         Returns:
             Tuple of (rewritten_data_copy, list of (source_file, target_rel_path))
@@ -228,13 +302,19 @@ class HookIntegrator(BaseIntegrator):
                 if not isinstance(matcher, dict):
                     continue
                 # Rewrite script paths in the matcher dict itself
-                # (GitHub Copilot flat format: bash/powershell keys at this level)
-                for key in ("command", "bash", "powershell"):
+                # (GitHub Copilot flat format: bash/powershell/windows keys at this level)
+                for key in self.HOOK_COMMAND_KEYS:
                     if key in matcher:
                         new_cmd, scripts = self._rewrite_command_for_target(
                             matcher[key], package_path, package_name, target,
                             hook_file_dir=hook_file_dir,
+                            root_dir=root_dir,
                         )
+                        if scripts:
+                            _log.debug(
+                                "Hook %s/%s: rewrote '%s' key (%d script(s))",
+                                package_name, event_name, key, len(scripts),
+                            )
                         matcher[key] = new_cmd
                         all_scripts.extend(scripts)
 
@@ -243,16 +323,30 @@ class HookIntegrator(BaseIntegrator):
                 for hook in matcher.get("hooks", []):
                     if not isinstance(hook, dict):
                         continue
-                    for key in ("command", "bash", "powershell"):
+                    for key in self.HOOK_COMMAND_KEYS:
                         if key in hook:
                             new_cmd, scripts = self._rewrite_command_for_target(
                                 hook[key], package_path, package_name, target,
                                 hook_file_dir=hook_file_dir,
+                                root_dir=root_dir,
                             )
+                            if scripts:
+                                _log.debug(
+                                    "Hook %s/%s: rewrote '%s' key (%d script(s))",
+                                    package_name, event_name, key, len(scripts),
+                                )
                             hook[key] = new_cmd
                             all_scripts.extend(scripts)
 
-        return rewritten, all_scripts
+        # De-duplicate by target path to avoid redundant copies when
+        # multiple keys (e.g. command + bash) reference the same script.
+        seen_targets: dict[str, Path] = {}
+        for source, target_rel in all_scripts:
+            if target_rel not in seen_targets:
+                seen_targets[target_rel] = source
+        unique_scripts = [(src, tgt) for tgt, src in seen_targets.items()]
+
+        return rewritten, unique_scripts
 
     def _get_package_name(self, package_info) -> str:
         """Get a short package name for use in file/directory naming.
@@ -268,8 +362,9 @@ class HookIntegrator(BaseIntegrator):
     def integrate_package_hooks(self, package_info, project_root: Path,
                                  force: bool = False,
                                  managed_files: set = None,
-                                 diagnostics=None) -> HookIntegrationResult:
-        """Integrate hooks from a package into .github/hooks/ (VSCode target).
+                                 diagnostics=None,
+                                 target=None) -> HookIntegrationResult:
+        """Integrate hooks from a package into hooks dir (Copilot target).
 
         Deploys hook JSON files with clean filenames and copies referenced
         script files. Skips user-authored files unless force=True.
@@ -279,6 +374,7 @@ class HookIntegrator(BaseIntegrator):
             project_root: Root directory of the project
             force: If True, overwrite user-authored files on collision
             managed_files: Set of relative paths known to be APM-managed
+            target: Optional TargetProfile for scope-resolved root_dir
 
         Returns:
             HookIntegrationResult: Results of the integration operation
@@ -287,11 +383,12 @@ class HookIntegrator(BaseIntegrator):
 
         if not hook_files:
             return HookIntegrationResult(
-                hooks_integrated=0,
-                scripts_copied=0,
+                files_integrated=0, files_updated=0,
+                files_skipped=0, target_paths=[],
             )
 
-        hooks_dir = project_root / ".github" / "hooks"
+        root_dir = target.root_dir if target else ".github"
+        hooks_dir = project_root / root_dir / "hooks"
         hooks_dir.mkdir(parents=True, exist_ok=True)
 
         package_name = self._get_package_name(package_info)
@@ -308,6 +405,7 @@ class HookIntegrator(BaseIntegrator):
             rewritten, scripts = self._rewrite_hooks_data(
                 data, package_info.install_path, package_name, "vscode",
                 hook_file_dir=hook_file.parent,
+                root_dir=root_dir,
             )
 
             # Generate target filename (clean, no -apm suffix)
@@ -338,215 +436,214 @@ class HookIntegrator(BaseIntegrator):
                 target_paths.append(target_script)
 
         return HookIntegrationResult(
-            hooks_integrated=hooks_integrated,
+            files_integrated=hooks_integrated, files_updated=0,
+            files_skipped=0, target_paths=target_paths,
             scripts_copied=scripts_copied,
-            target_paths=target_paths,
         )
 
-    def integrate_package_hooks_claude(self, package_info, project_root: Path,
-                                        force: bool = False,
-                                        managed_files: set = None,
-                                        diagnostics=None) -> HookIntegrationResult:
-        """Integrate hooks from a package into .claude/settings.json (Claude target).
+    # ------------------------------------------------------------------
+    # Shared JSON-merge implementation for Claude / Cursor / Codex
+    # ------------------------------------------------------------------
 
-        Merges hook definitions into the Claude settings file and copies
-        referenced script files. Tracks individual script files for
-        manifest-based cleanup.
+    def _integrate_merged_hooks(
+        self,
+        config: "_MergeHookConfig",
+        package_info,
+        project_root: Path,
+        *,
+        force: bool = False,
+        managed_files: set = None,
+        diagnostics=None,
+        target=None,
+    ) -> HookIntegrationResult:
+        """Integrate hooks by merging into a target-specific JSON config.
 
-        Args:
-            package_info: PackageInfo with package metadata and install path
-            project_root: Root directory of the project
-            force: If True, overwrite user-authored files on collision
-            managed_files: Set of relative paths known to be APM-managed
-
-        Returns:
-            HookIntegrationResult: Results of the integration operation
+        This is the shared implementation for Claude, Cursor, and Codex
+        targets that merge hook entries into a single JSON file (as
+        opposed to Copilot which uses individual JSON files).
         """
-        hook_files = self.find_hook_files(package_info.install_path)
+        _empty = HookIntegrationResult(
+            files_integrated=0, files_updated=0,
+            files_skipped=0, target_paths=[],
+        )
 
+        root_dir = target.root_dir if target else f".{config.target_key}"
+        target_dir = project_root / root_dir
+
+        # Opt-in check: some targets only deploy when their dir exists
+        if config.require_dir and not target_dir.exists():
+            return _empty
+
+        hook_files = self.find_hook_files(package_info.install_path)
         if not hook_files:
-            return HookIntegrationResult(
-                hooks_integrated=0,
-                scripts_copied=0,
-            )
+            return _empty
 
         package_name = self._get_package_name(package_info)
         hooks_integrated = 0
         scripts_copied = 0
         target_paths: List[Path] = []
 
-        # Read existing settings
-        settings_path = project_root / ".claude" / "settings.json"
-        settings: Dict = {}
-        if settings_path.exists():
+        # Read existing JSON config
+        json_path = target_dir / config.config_filename
+        json_config: Dict = {}
+        if json_path.exists():
             try:
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    json_config = json.load(f)
             except (json.JSONDecodeError, OSError):
-                settings = {}
+                json_config = {}
 
-        if "hooks" not in settings:
-            settings["hooks"] = {}
+        if "hooks" not in json_config:
+            json_config["hooks"] = {}
 
         for hook_file in hook_files:
             data = self._parse_hook_json(hook_file)
             if data is None:
                 continue
 
-            # Rewrite script paths for Claude target
+            # Rewrite script paths for the target
             rewritten, scripts = self._rewrite_hooks_data(
-                data, package_info.install_path, package_name, "claude",
+                data, package_info.install_path, package_name,
+                config.target_key,
                 hook_file_dir=hook_file.parent,
+                root_dir=root_dir,
             )
 
-            # Merge hooks into settings (additive)
-            hooks = rewritten.get("hooks", {})
-            for event_name, matchers in hooks.items():
-                if not isinstance(matchers, list):
-                    continue
-                if event_name not in settings["hooks"]:
-                    settings["hooks"][event_name] = []
-
-                # Mark each matcher with APM source for sync/cleanup
-                for matcher in matchers:
-                    if isinstance(matcher, dict):
-                        matcher["_apm_source"] = package_name
-
-                settings["hooks"][event_name].extend(matchers)
-
-            hooks_integrated += 1
-
-            # Copy referenced scripts
-            for source_file, target_rel in scripts:
-                target_script = project_root / target_rel
-                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
-                    continue
-                target_script.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source_file, target_script)
-                scripts_copied += 1
-                target_paths.append(target_script)
-
-        # Write settings back
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(settings_path, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2)
-            f.write('\n')
-        # Don't track settings.json in target_paths  -- it's a shared file
-        # cleaned via _apm_source markers, not file-level deletion
-
-        return HookIntegrationResult(
-            hooks_integrated=hooks_integrated,
-            scripts_copied=scripts_copied,
-            target_paths=target_paths,
-        )
-
-    def integrate_package_hooks_cursor(self, package_info, project_root: Path,
-                                        force: bool = False,
-                                        managed_files: set = None,
-                                        diagnostics=None) -> HookIntegrationResult:
-        """Integrate hooks from a package into .cursor/hooks.json (Cursor target).
-
-        Merges hook definitions into the Cursor hooks file and copies
-        referenced script files. Tracks individual script files for
-        manifest-based cleanup.
-
-        Args:
-            package_info: PackageInfo with package metadata and install path
-            project_root: Root directory of the project
-            force: If True, overwrite user-authored files on collision
-            managed_files: Set of relative paths known to be APM-managed
-
-        Returns:
-            HookIntegrationResult: Results of the integration operation
-        """
-        # Only deploy when .cursor/ already exists (opt-in)
-        cursor_dir = project_root / ".cursor"
-        if not cursor_dir.exists():
-            return HookIntegrationResult(
-                hooks_integrated=0,
-                scripts_copied=0,
-            )
-
-        hook_files = self.find_hook_files(package_info.install_path)
-
-        if not hook_files:
-            return HookIntegrationResult(
-                hooks_integrated=0,
-                scripts_copied=0,
-            )
-
-        package_name = self._get_package_name(package_info)
-        hooks_integrated = 0
-        scripts_copied = 0
-        target_paths: List[Path] = []
-
-        # Read existing hooks.json
-        hooks_json_path = project_root / ".cursor" / "hooks.json"
-        hooks_config: Dict = {}
-        if hooks_json_path.exists():
-            try:
-                with open(hooks_json_path, 'r', encoding='utf-8') as f:
-                    hooks_config = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                hooks_config = {}
-
-        if "hooks" not in hooks_config:
-            hooks_config["hooks"] = {}
-
-        for hook_file in hook_files:
-            data = self._parse_hook_json(hook_file)
-            if data is None:
-                continue
-
-            # Rewrite script paths for Cursor target
-            rewritten, scripts = self._rewrite_hooks_data(
-                data, package_info.install_path, package_name, "cursor",
-                hook_file_dir=hook_file.parent,
-            )
-
-            # Merge hooks into hooks.json (additive)
+            # Merge hooks into config (additive)
             hooks = rewritten.get("hooks", {})
             for event_name, entries in hooks.items():
                 if not isinstance(entries, list):
                     continue
-                if event_name not in hooks_config["hooks"]:
-                    hooks_config["hooks"][event_name] = []
+                if event_name not in json_config["hooks"]:
+                    json_config["hooks"][event_name] = []
 
                 # Mark each entry with APM source for sync/cleanup
                 for entry in entries:
                     if isinstance(entry, dict):
                         entry["_apm_source"] = package_name
 
-                hooks_config["hooks"][event_name].extend(entries)
+                json_config["hooks"][event_name].extend(entries)
 
             hooks_integrated += 1
 
             # Copy referenced scripts
             for source_file, target_rel in scripts:
                 target_script = project_root / target_rel
-                if self.check_collision(target_script, target_rel, managed_files, force, diagnostics=diagnostics):
+                if self.check_collision(
+                    target_script, target_rel, managed_files, force,
+                    diagnostics=diagnostics,
+                ):
                     continue
                 target_script.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target_script)
                 scripts_copied += 1
                 target_paths.append(target_script)
 
-        # Write hooks.json back
-        hooks_json_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(hooks_json_path, 'w', encoding='utf-8') as f:
-            json.dump(hooks_config, f, indent=2)
+        # Write JSON config back
+        # Don't track the config file in target_paths -- it's a shared
+        # file cleaned via _apm_source markers, not file-level deletion
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(json_config, f, indent=2)
             f.write('\n')
-        # Don't track hooks.json in target_paths  -- it's a shared file
-        # cleaned via _apm_source markers, not file-level deletion
 
         return HookIntegrationResult(
-            hooks_integrated=hooks_integrated,
+            files_integrated=hooks_integrated, files_updated=0,
+            files_skipped=0, target_paths=target_paths,
             scripts_copied=scripts_copied,
-            target_paths=target_paths,
+        )
+
+    # ------------------------------------------------------------------
+    # DEPRECATED per-target methods -- delegate to _integrate_merged_hooks
+    # ------------------------------------------------------------------
+
+    def integrate_package_hooks_claude(self, package_info, project_root: Path,
+                                        force: bool = False,
+                                        managed_files: set = None,
+                                        diagnostics=None) -> HookIntegrationResult:
+        """Integrate hooks into .claude/settings.json.
+
+        .. deprecated:: Use :meth:`integrate_hooks_for_target` instead.
+        """
+        return self._integrate_merged_hooks(
+            _MERGE_HOOK_TARGETS["claude"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
+    def integrate_package_hooks_cursor(self, package_info, project_root: Path,
+                                        force: bool = False,
+                                        managed_files: set = None,
+                                        diagnostics=None) -> HookIntegrationResult:
+        """Integrate hooks into .cursor/hooks.json.
+
+        .. deprecated:: Use :meth:`integrate_hooks_for_target` instead.
+        """
+        return self._integrate_merged_hooks(
+            _MERGE_HOOK_TARGETS["cursor"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
+    def integrate_package_hooks_codex(self, package_info, project_root: Path,
+                                      force: bool = False,
+                                      managed_files: set = None,
+                                      diagnostics=None) -> HookIntegrationResult:
+        """Integrate hooks into .codex/hooks.json.
+
+        .. deprecated:: Use :meth:`integrate_hooks_for_target` instead.
+        """
+        return self._integrate_merged_hooks(
+            _MERGE_HOOK_TARGETS["codex"], package_info, project_root,
+            force=force, managed_files=managed_files,
+            diagnostics=diagnostics,
+        )
+
+    # ------------------------------------------------------------------
+    # Target-driven API
+    # ------------------------------------------------------------------
+
+    def integrate_hooks_for_target(
+        self,
+        target,
+        package_info,
+        project_root: Path,
+        *,
+        force: bool = False,
+        managed_files: set = None,
+        diagnostics=None,
+    ) -> "HookIntegrationResult":
+        """Integrate hooks for a single *target*.
+
+        Copilot uses individual JSON files (genuinely different pattern).
+        All other merge-based targets are dispatched via the
+        ``_MERGE_HOOK_TARGETS`` registry.
+        """
+        if target.name == "copilot":
+            return self.integrate_package_hooks(
+                package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+                target=target,
+            )
+
+        config = _MERGE_HOOK_TARGETS.get(target.name)
+        if config is not None:
+            return self._integrate_merged_hooks(
+                config, package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+                target=target,
+            )
+
+        return HookIntegrationResult(
+            files_integrated=0, files_updated=0,
+            files_skipped=0, target_paths=[],
         )
 
     def sync_integration(self, apm_package, project_root: Path,
-                          managed_files: set = None) -> Dict:
+                          managed_files: set = None,
+                          targets=None) -> Dict:
         """Remove APM-managed hook files.
 
         Uses *managed_files* (relative paths) to surgically remove only
@@ -555,34 +652,41 @@ class HookIntegrator(BaseIntegrator):
 
         **Never** calls ``shutil.rmtree``.
 
-        Also cleans APM entries from ``.claude/settings.json`` and
-        ``.cursor/hooks.json`` via the ``_apm_source`` marker.
+        Also cleans APM entries from merged-hook JSON files via the
+        ``_apm_source`` marker.
         """
+        from .targets import KNOWN_TARGETS
+
         stats: Dict[str, int] = {'files_removed': 0, 'errors': 0}
 
+        # Derive hook prefixes dynamically from targets
+        source = targets if targets is not None else list(KNOWN_TARGETS.values())
+        hook_prefixes = []
+        for t in source:
+            if t.supports("hooks"):
+                sm = t.primitives["hooks"]
+                effective_root = sm.deploy_root or t.root_dir
+                hook_prefixes.append(f"{effective_root}/hooks/")
+        hook_prefix_tuple = tuple(hook_prefixes)
+
         if managed_files is not None:
-            # Manifest-based removal  -- only remove tracked files
+            # Manifest-based removal -- only remove tracked files
             deleted: list = []
             for rel_path in managed_files:
-                # Normalize path separators for cross-platform compatibility
                 normalized = rel_path.replace("\\", "/")
-                # Only handle hook-related paths
-                is_hook = (
-                    normalized.startswith(".github/hooks/")
-                    or normalized.startswith(".claude/hooks/")
-                    or normalized.startswith(".cursor/hooks/")
-                )
-                if not is_hook or ".." in rel_path:
+                if not normalized.startswith(hook_prefix_tuple):
                     continue
-                target = project_root / rel_path
-                if target.exists() and target.is_file():
+                if ".." in rel_path:
+                    continue
+                target_file = project_root / rel_path
+                if target_file.exists() and target_file.is_file():
                     try:
-                        target.unlink()
+                        target_file.unlink()
                         stats['files_removed'] += 1
-                        deleted.append(target)
+                        deleted.append(target_file)
                     except Exception:
                         stats['errors'] += 1
-            # Batch parent cleanup  -- single bottom-up pass
+            # Batch parent cleanup -- single bottom-up pass
             self.cleanup_empty_parents(deleted, stop_at=project_root)
         else:
             # Legacy fallback  -- glob for old -apm suffix files
@@ -595,43 +699,45 @@ class HookIntegrator(BaseIntegrator):
                     except Exception:
                         stats['errors'] += 1
 
-        # Clean APM entries from .claude/settings.json (safe  -- uses _apm_source marker)
-        settings_path = project_root / ".claude" / "settings.json"
-        if settings_path.exists():
-            try:
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
+        # Clean APM entries from merged-hook JSON configs (uses _apm_source marker)
+        for t in source:
+            config = _MERGE_HOOK_TARGETS.get(t.name)
+            if config is not None:
+                json_path = project_root / t.root_dir / config.config_filename
+                if t.name == "claude":
+                    # Claude uses settings.json with special structure
+                    if json_path.exists():
+                        try:
+                            with open(json_path, 'r', encoding='utf-8') as f:
+                                settings = json.load(f)
 
-                if "hooks" in settings:
-                    modified = False
-                    for event_name in list(settings["hooks"].keys()):
-                        matchers = settings["hooks"][event_name]
-                        if isinstance(matchers, list):
-                            filtered = [
-                                m for m in matchers
-                                if not (isinstance(m, dict) and "_apm_source" in m)
-                            ]
-                            if len(filtered) != len(matchers):
-                                modified = True
-                            settings["hooks"][event_name] = filtered
-                            if not filtered:
-                                del settings["hooks"][event_name]
+                            if "hooks" in settings:
+                                modified = False
+                                for event_name in list(settings["hooks"].keys()):
+                                    matchers = settings["hooks"][event_name]
+                                    if isinstance(matchers, list):
+                                        filtered = [
+                                            m for m in matchers
+                                            if not (isinstance(m, dict) and "_apm_source" in m)
+                                        ]
+                                        if len(filtered) != len(matchers):
+                                            modified = True
+                                        settings["hooks"][event_name] = filtered
+                                        if not filtered:
+                                            del settings["hooks"][event_name]
 
-                    if not settings["hooks"]:
-                        del settings["hooks"]
+                                if not settings["hooks"]:
+                                    del settings["hooks"]
 
-                    if modified:
-                        with open(settings_path, 'w', encoding='utf-8') as f:
-                            json.dump(settings, f, indent=2)
-                            f.write('\n')
-                        stats['files_removed'] += 1
-            except (json.JSONDecodeError, OSError):
-                stats['errors'] += 1
-
-        # Clean APM entries from .cursor/hooks.json (safe  -- uses _apm_source marker)
-        self._clean_apm_entries_from_json(
-            project_root / ".cursor" / "hooks.json", stats,
-        )
+                                if modified:
+                                    with open(json_path, 'w', encoding='utf-8') as f:
+                                        json.dump(settings, f, indent=2)
+                                        f.write('\n')
+                                    stats['files_removed'] += 1
+                        except (json.JSONDecodeError, OSError):
+                            stats['errors'] += 1
+                else:
+                    self._clean_apm_entries_from_json(json_path, stats)
 
         return stats
 

@@ -220,13 +220,14 @@ def print_version(ctx, param, value):
 
     console = _get_console()
     if console:
-        from rich.panel import Panel  # type: ignore
-        from rich.text import Text  # type: ignore
-
-        version_text = Text()
-        version_text.append("Agent Package Manager (APM) CLI", style="bold cyan")
-        version_text.append(f" version {version_str}", style="white")
-        console.print(Panel(version_text, border_style="cyan", padding=(0, 1)))
+        try:
+            console.print(
+                f"[bold cyan]Agent Package Manager (APM) CLI[/bold cyan] version {version_str}"
+            )
+        except Exception:
+            click.echo(
+                f"{TITLE}Agent Package Manager (APM) CLI{RESET} version {version_str}"
+            )
     else:
         # Graceful fallback when Rich isn't available (e.g., stripped automation environment)
         click.echo(
@@ -362,7 +363,7 @@ def _auto_detect_author():
 
     try:
         result = subprocess.run(
-            ["git", "config", "user.name"], capture_output=True, text=True, timeout=5
+            ["git", "config", "user.name"], capture_output=True, text=True, encoding="utf-8", timeout=5
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -381,6 +382,7 @@ def _auto_detect_description(project_name):
             ["git", "config", "--get", "remote.origin.url"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -432,12 +434,13 @@ def _create_plugin_json(config):
         f.write(json.dumps(plugin_data, indent=2) + "\n")
 
 
-def _create_minimal_apm_yml(config, plugin=False):
+def _create_minimal_apm_yml(config, plugin=False, target_path=None):
     """Create minimal apm.yml file with auto-detected metadata.
 
     Args:
         config: dict with name, version, description, author keys.
         plugin: if True, include a devDependencies section.
+        target_path: explicit file path to write (defaults to cwd/apm.yml).
     """
     # Create minimal apm.yml structure
     apm_yml_data = {
@@ -455,4 +458,5 @@ def _create_minimal_apm_yml(config, plugin=False):
 
     # Write apm.yml
     from ..utils.yaml_io import dump_yaml
-    dump_yaml(apm_yml_data, APM_YML_FILENAME)
+    out_path = target_path or APM_YML_FILENAME
+    dump_yaml(apm_yml_data, out_path)

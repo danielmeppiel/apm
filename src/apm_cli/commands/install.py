@@ -62,7 +62,7 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, auth_resolver=None):
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None, auth_resolver=None, scope=None):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -74,7 +74,9 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         dry_run: If True, only show what would be added.
         dev: If True, write to devDependencies instead of dependencies.
         logger: InstallLogger for structured output.
+        manifest_path: Explicit path to apm.yml (defaults to cwd/apm.yml).
         auth_resolver: Shared auth resolver for caching credentials.
+        scope: InstallScope controlling project vs user deployment.
 
     Returns:
         Tuple of (validated_packages list, _ValidationOutcome).
@@ -83,7 +85,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     import tempfile
     from pathlib import Path
 
-    apm_yml_path = Path(APM_YML_FILENAME)
+    apm_yml_path = manifest_path or Path(APM_YML_FILENAME)
 
     # Read current apm.yml
     try:
@@ -123,18 +125,64 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     # First, validate all packages
     valid_outcomes = []  # (canonical, already_present) tuples
     invalid_outcomes = []  # (package, reason) tuples
+    _marketplace_provenance = {}  # canonical -> {discovered_via, marketplace_plugin_name}
 
     if logger:
         logger.validation_start(len(packages))
 
     for package in packages:
-        # Validate package format (should be owner/repo, a git URL, or a local path)
+        # --- Marketplace pre-parse intercept ---
+        # If input has no slash and is not a local path, check if it is a
+        # marketplace ref (NAME@MARKETPLACE).  If so, resolve it to a
+        # canonical owner/repo[#ref] string before entering the standard
+        # parse path.  Anything that doesn't match is rejected as an
+        # invalid format.
+        marketplace_provenance = None
         if "/" not in package and not DependencyReference.is_local_path(package):
-            reason = "invalid format -- use 'owner/repo'"
-            invalid_outcomes.append((package, reason))
-            if logger:
-                logger.validation_fail(package, reason)
-            continue
+            try:
+                from ..marketplace.resolver import (
+                    parse_marketplace_ref,
+                    resolve_marketplace_plugin,
+                )
+
+                mkt_ref = parse_marketplace_ref(package)
+            except ImportError:
+                mkt_ref = None
+
+            if mkt_ref is not None:
+                plugin_name, marketplace_name = mkt_ref
+                try:
+                    if logger:
+                        logger.verbose_detail(
+                            f"    Resolving {plugin_name}@{marketplace_name} via marketplace..."
+                        )
+                    canonical_str, resolved_plugin = resolve_marketplace_plugin(
+                        plugin_name,
+                        marketplace_name,
+                        auth_resolver=auth_resolver,
+                    )
+                    if logger:
+                        logger.verbose_detail(
+                            f"    Resolved to: {canonical_str}"
+                        )
+                    marketplace_provenance = {
+                        "discovered_via": marketplace_name,
+                        "marketplace_plugin_name": plugin_name,
+                    }
+                    package = canonical_str
+                except Exception as mkt_err:
+                    reason = str(mkt_err)
+                    invalid_outcomes.append((package, reason))
+                    if logger:
+                        logger.validation_fail(package, reason)
+                    continue
+            else:
+                # No slash, not a local path, and not a marketplace ref
+                reason = "invalid format -- use 'owner/repo' or 'plugin-name@marketplace'"
+                invalid_outcomes.append((package, reason))
+                if logger:
+                    logger.validation_fail(package, reason)
+                continue
 
         # Canonicalize input
         try:
@@ -147,6 +195,21 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if logger:
                 logger.validation_fail(package, reason)
             continue
+
+        # Reject local packages at user scope -- relative paths resolve
+        # against cwd during validation but against $HOME during copy,
+        # causing silent failures.
+        if dep_ref.is_local and scope is not None:
+            from ..core.scope import InstallScope
+            if scope is InstallScope.USER:
+                reason = (
+                    "local packages are not supported at user scope (--global). "
+                    "Use a remote reference (owner/repo) instead"
+                )
+                invalid_outcomes.append((package, reason))
+                if logger:
+                    logger.validation_fail(package, reason)
+                continue
 
         # Check if package is already in dependencies (by identity)
         already_in_deps = identity in existing_identities
@@ -161,6 +224,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if not already_in_deps:
                 validated_packages.append(canonical)
                 existing_identities.add(identity)  # prevent duplicates within batch
+            if marketplace_provenance:
+                _marketplace_provenance[identity] = marketplace_provenance
         else:
             reason = _local_path_failure_reason(dep_ref)
             if not reason:
@@ -171,7 +236,11 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
             if logger:
                 logger.validation_fail(package, reason)
 
-    outcome = _ValidationOutcome(valid=valid_outcomes, invalid=invalid_outcomes)
+    outcome = _ValidationOutcome(
+        valid=valid_outcomes,
+        invalid=invalid_outcomes,
+        marketplace_provenance=_marketplace_provenance or None,
+    )
 
     # Let the logger emit a summary and decide whether to continue
     if logger:
@@ -367,6 +436,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=30,
                 env=validate_env,
             )
@@ -540,14 +610,20 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
     "-t",
     "target",
     type=click.Choice(
-        ["copilot", "claude", "cursor", "opencode", "vscode", "agents", "all"],
+        ["copilot", "claude", "cursor", "opencode", "codex", "vscode", "agents", "all"],
         case_sensitive=False,
     ),
     default=None,
     help="Force deployment to a specific target (overrides auto-detection)",
 )
+@click.option(
+    "--global", "-g", "global_",
+    is_flag=True,
+    default=False,
+    help="Install to user scope (~/.apm/) instead of the current project",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target, global_):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -566,38 +642,63 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm install --only=mcp                  # Install only MCP dependencies
         apm install --update                    # Update dependencies to latest Git refs
         apm install --dry-run                   # Show what would be installed
+        apm install -g org/pkg1                 # Install to user scope (~/.apm/)
     """
     try:
-        # Create structured logger for install output
+        # Create structured logger for install output early so exception
+        # handlers can always reference it (avoids UnboundLocalError if
+        # scope initialisation below throws).
         is_partial = bool(packages)
         logger = InstallLogger(verbose=verbose, dry_run=dry_run, partial=is_partial)
+
+        # Resolve scope
+        from ..core.scope import InstallScope, get_apm_dir, get_manifest_path, get_modules_dir, ensure_user_dirs, warn_unsupported_user_scope
+        scope = InstallScope.USER if global_ else InstallScope.PROJECT
+
+        if scope is InstallScope.USER:
+            ensure_user_dirs()
+            logger.progress("Installing to user scope (~/.apm/)")
+            _scope_warn = warn_unsupported_user_scope()
+            if _scope_warn:
+                logger.warning(_scope_warn)
+
+        # Scope-aware paths
+        manifest_path = get_manifest_path(scope)
+        apm_dir = get_apm_dir(scope)
+        # Display name for messages (short for project scope, full for user scope)
+        manifest_display = str(manifest_path) if scope is InstallScope.USER else APM_YML_FILENAME
 
         # Create shared auth resolver for all downloads in this CLI invocation
         # to ensure credentials are cached and reused (prevents duplicate auth popups)
         auth_resolver = AuthResolver()
 
         # Check if apm.yml exists
-        apm_yml_exists = Path(APM_YML_FILENAME).exists()
+        apm_yml_exists = manifest_path.exists()
 
         # Auto-bootstrap: create minimal apm.yml when packages specified but no apm.yml
         if not apm_yml_exists and packages:
             # Get current directory name as project name
-            project_name = Path.cwd().name
+            project_name = Path.cwd().name if scope is InstallScope.PROJECT else Path.home().name
             config = _get_default_config(project_name)
-            _create_minimal_apm_yml(config)
-            logger.success(f"Created {APM_YML_FILENAME}")
+            _create_minimal_apm_yml(config, target_path=manifest_path)
+            logger.success(f"Created {manifest_display}")
 
         # Error when NO apm.yml AND NO packages
         if not apm_yml_exists and not packages:
-            logger.error(f"No {APM_YML_FILENAME} found")
-            logger.progress("Run 'apm init' to create one, or:")
-            logger.progress("  apm install <org/repo> to auto-create + install")
+            logger.error(f"No {manifest_display} found")
+            if scope is InstallScope.USER:
+                logger.progress("Run 'apm install -g <org/repo>' to auto-create + install")
+            else:
+                logger.progress("Run 'apm init' to create one, or:")
+                logger.progress("  apm install <org/repo> to auto-create + install")
             sys.exit(1)
 
         # If packages are specified, validate and add them to apm.yml first
         if packages:
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
-                packages, dry_run, dev=dev, logger=logger, auth_resolver=auth_resolver,
+                packages, dry_run, dev=dev, logger=logger,
+                manifest_path=manifest_path, auth_resolver=auth_resolver,
+                scope=scope,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -612,9 +713,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
         # Parse apm.yml to get both APM and MCP dependencies
         try:
-            apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
+            apm_package = APMPackage.from_apm_yml(manifest_path)
         except Exception as e:
-            logger.error(f"Failed to parse {APM_YML_FILENAME}: {e}")
+            logger.error(f"Failed to parse {manifest_display}: {e}")
             sys.exit(1)
 
         logger.verbose_detail(
@@ -639,6 +740,13 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # Determine what to install based on install mode
         should_install_apm = install_mode != InstallMode.MCP
         should_install_mcp = install_mode != InstallMode.APM
+        # MCP servers are workspace-scoped (.vscode/mcp.json); skip at user scope
+        if scope is InstallScope.USER:
+            should_install_mcp = False
+            if logger:
+                logger.verbose_detail(
+                    "MCP servers skipped at user scope (workspace-scoped concept)"
+                )
 
         # Show what will be installed if dry run
         if dry_run:
@@ -669,7 +777,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         agent_count = 0
 
         # Migrate legacy apm.lock → apm.lock.yaml if needed (one-time, transparent)
-        migrate_lockfile_if_needed(Path.cwd())
+        migrate_lockfile_if_needed(apm_dir)
 
         # Capture old MCP servers and configs from lockfile BEFORE
         # _install_apm_dependencies regenerates it (which drops the fields).
@@ -677,7 +785,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # field after the lockfile is regenerated by the APM install step.
         old_mcp_servers: builtins.set = builtins.set()
         old_mcp_configs: builtins.dict = {}
-        _lock_path = get_lockfile_path(Path.cwd())
+        _lock_path = get_lockfile_path(apm_dir)
         _existing_lock = LockFile.read(_lock_path)
         if _existing_lock:
             old_mcp_servers = builtins.set(_existing_lock.mcp_servers)
@@ -692,14 +800,21 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
             try:
                 # If specific packages were requested, only install those
-                # Otherwise install all from apm.yml
-                only_pkgs = builtins.list(packages) if packages else None
+                # Otherwise install all from apm.yml.
+                # Use validated_packages (canonical strings) instead of
+                # raw packages (which may contain marketplace refs like
+                # NAME@MARKETPLACE that don't match resolved dep identities).
+                only_pkgs = builtins.list(validated_packages) if packages else None
                 install_result = _install_apm_dependencies(
                     apm_package, update, verbose, only_pkgs, force=force,
                     parallel_downloads=parallel_downloads,
                     logger=logger,
+                    scope=scope,
                     auth_resolver=auth_resolver,
                     target=target,
+                    marketplace_provenance=(
+                        outcome.marketplace_provenance if packages and outcome else None
+                    ),
                 )
                 apm_count = install_result.installed_count
                 prompt_count = install_result.prompts_integrated
@@ -720,9 +835,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             clear_apm_yml_cache()
 
         # Collect transitive MCP dependencies from resolved APM packages
-        apm_modules_path = Path.cwd() / APM_MODULES_DIR
+        apm_modules_path = get_modules_dir(scope)
         if should_install_mcp and apm_modules_path.exists():
-            lock_path = get_lockfile_path(Path.cwd())
+            lock_path = get_lockfile_path(apm_dir)
             transitive_mcp = MCPIntegrator.collect_transitive(
                 apm_modules_path, lock_path, trust_transitive_mcp,
                 diagnostics=apm_diagnostics,
@@ -837,9 +952,7 @@ def _integrate_package_primitives(
     package_info,
     project_root,
     *,
-    integrate_vscode,
-    integrate_claude,
-    integrate_opencode=False,
+    targets,
     prompt_integrator,
     agent_integrator,
     skill_integrator,
@@ -851,11 +964,23 @@ def _integrate_package_primitives(
     diagnostics,
     package_name="",
     logger=None,
+    scope=None,
 ):
     """Run the full integration pipeline for a single package.
 
+    Iterates over *targets* (``TargetProfile`` list) and dispatches each
+    primitive to the appropriate integrator via the target-driven API.
+    Skills are handled separately because ``SkillIntegrator`` already
+    routes across all targets internally.
+
+    When *scope* is ``InstallScope.USER``, targets and primitives that
+    do not support user-scope deployment are silently skipped.
+
     Returns a dict with integration counters and the list of deployed file paths.
     """
+    from apm_cli.integration.dispatch import get_dispatch_table
+
+    _dispatch = get_dispatch_table()
     result = {
         "prompts": 0,
         "agents": 0,
@@ -870,196 +995,83 @@ def _integrate_package_primitives(
 
     deployed = result["deployed_files"]
 
-    if not (integrate_vscode or integrate_claude or integrate_opencode):
+    if not targets:
         return result
 
     def _log_integration(msg):
         if logger:
             logger.tree_item(msg)
 
-    # --- prompts ---
-    prompt_result = prompt_integrator.integrate_package_prompts(
+    # Map integrator kwargs to dispatch table keys
+    _INTEGRATOR_KWARGS = {
+        "prompts": prompt_integrator,
+        "agents": agent_integrator,
+        "commands": command_integrator,
+        "instructions": instruction_integrator,
+        "hooks": hook_integrator,
+        "skills": skill_integrator,
+    }
+
+    # --- per-target dispatch loop ---
+    for _target in targets:
+        for _prim_name, _mapping in _target.primitives.items():
+            _entry = _dispatch.get(_prim_name)
+            if not _entry or _entry.multi_target:
+                continue  # skills handled below
+
+            _integrator = _INTEGRATOR_KWARGS[_prim_name]
+            _int_result = getattr(_integrator, _entry.integrate_method)(
+                _target, package_info, project_root,
+                force=force, managed_files=managed_files,
+                diagnostics=diagnostics,
+            )
+
+            if _int_result.files_integrated > 0:
+                result[_entry.counter_key] += _int_result.files_integrated
+                _effective_root = _mapping.deploy_root or _target.root_dir
+                _deploy_dir = f"{_effective_root}/{_mapping.subdir}/" if _mapping.subdir else f"{_effective_root}/"
+                # Determine display label
+                if _prim_name == "instructions" and _mapping.format_id in ("cursor_rules", "claude_rules"):
+                    _label = "rule(s)"
+                elif _prim_name == "instructions":
+                    _label = "instruction(s)"
+                elif _prim_name == "hooks":
+                    if _target.name == "claude":
+                        _deploy_dir = ".claude/settings.json"
+                    elif _target.name == "cursor":
+                        _deploy_dir = ".cursor/hooks.json"
+                    elif _target.name == "codex":
+                        _deploy_dir = ".codex/hooks.json"
+                    _label = "hook(s)"
+                else:
+                    _label = _prim_name
+                _log_integration(
+                    f"  |-- {_int_result.files_integrated} {_label} integrated -> {_deploy_dir}"
+                )
+            result["links_resolved"] += _int_result.links_resolved
+            for tp in _int_result.target_paths:
+                deployed.append(tp.relative_to(project_root).as_posix())
+
+    # --- skills (multi-target, handled by SkillIntegrator internally) ---
+    skill_result = skill_integrator.integrate_package_skill(
         package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
+        diagnostics=diagnostics, managed_files=managed_files, force=force,
+        targets=targets,
     )
-    if prompt_result.files_integrated > 0:
-        result["prompts"] += prompt_result.files_integrated
-        _log_integration(f"  └─ {prompt_result.files_integrated} prompts integrated -> .github/prompts/")
-    if prompt_result.files_updated > 0:
-        _log_integration(f"  └─ {prompt_result.files_updated} prompts updated")
-    result["links_resolved"] += prompt_result.links_resolved
-    for tp in prompt_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- agents (.github) ---
-    agent_result = agent_integrator.integrate_package_agents(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if agent_result.files_integrated > 0:
-        result["agents"] += agent_result.files_integrated
-        _log_integration(f"  └─ {agent_result.files_integrated} agents integrated -> .github/agents/")
-    if agent_result.files_updated > 0:
-        _log_integration(f"  └─ {agent_result.files_updated} agents updated")
-    result["links_resolved"] += agent_result.links_resolved
-    for tp in agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- skills ---
-    if integrate_vscode or integrate_claude or integrate_opencode:
-        skill_result = skill_integrator.integrate_package_skill(
-            package_info, project_root,
-            diagnostics=diagnostics, managed_files=managed_files, force=force,
-        )
-        # Build human-readable list of target dirs from deployed paths
-        _skill_target_dirs: set[str] = set()
-        for tp in skill_result.target_paths:
-            rel = tp.relative_to(project_root)
-            if rel.parts:
-                _skill_target_dirs.add(rel.parts[0])
-        _skill_targets = sorted(_skill_target_dirs)
-        _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
-        if skill_result.skill_created:
-            result["skills"] += 1
-            _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
-        if skill_result.sub_skills_promoted > 0:
-            result["sub_skills"] += skill_result.sub_skills_promoted
-            _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
-        for tp in skill_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- instructions (.github) ---
-    if integrate_vscode:
-        instruction_result = instruction_integrator.integrate_package_instructions(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if instruction_result.files_integrated > 0:
-            result["instructions"] += instruction_result.files_integrated
-            _log_integration(f"  └─ {instruction_result.files_integrated} instruction(s) integrated -> .github/instructions/")
-        result["links_resolved"] += instruction_result.links_resolved
-        for tp in instruction_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Cursor rules (.cursor/rules/) ---
-    cursor_rules_result = instruction_integrator.integrate_package_instructions_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if cursor_rules_result.files_integrated > 0:
-        result["instructions"] += cursor_rules_result.files_integrated
-        _log_integration(f"  └─ {cursor_rules_result.files_integrated} rule(s) integrated -> .cursor/rules/")
-    result["links_resolved"] += cursor_rules_result.links_resolved
-    for tp in cursor_rules_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Claude agents (.claude) ---
-    if integrate_claude:
-        claude_agent_result = agent_integrator.integrate_package_agents_claude(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if claude_agent_result.files_integrated > 0:
-            result["agents"] += claude_agent_result.files_integrated
-            _log_integration(f"  └─ {claude_agent_result.files_integrated} agents integrated -> .claude/agents/")
-        result["links_resolved"] += claude_agent_result.links_resolved
-        for tp in claude_agent_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- Cursor agents (.cursor) ---
-    cursor_agent_result = agent_integrator.integrate_package_agents_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if cursor_agent_result.files_integrated > 0:
-        result["agents"] += cursor_agent_result.files_integrated
-        _log_integration(f"  └─ {cursor_agent_result.files_integrated} agents integrated -> .cursor/agents/")
-    result["links_resolved"] += cursor_agent_result.links_resolved
-    for tp in cursor_agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- OpenCode agents (.opencode) ---
-    opencode_agent_result = agent_integrator.integrate_package_agents_opencode(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if opencode_agent_result.files_integrated > 0:
-        result["agents"] += opencode_agent_result.files_integrated
-        _log_integration(f"  └─ {opencode_agent_result.files_integrated} agents integrated -> .opencode/agents/")
-    result["links_resolved"] += opencode_agent_result.links_resolved
-    for tp in opencode_agent_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- commands (.claude) ---
-    if integrate_claude:
-        command_result = command_integrator.integrate_package_commands(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if command_result.files_integrated > 0:
-            result["commands"] += command_result.files_integrated
-            _log_integration(f"  └─ {command_result.files_integrated} commands integrated -> .claude/commands/")
-        if command_result.files_updated > 0:
-            _log_integration(f"  └─ {command_result.files_updated} commands updated")
-        result["links_resolved"] += command_result.links_resolved
-        for tp in command_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- OpenCode commands (.opencode) ---
-    opencode_command_result = command_integrator.integrate_package_commands_opencode(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if opencode_command_result.files_integrated > 0:
-        result["commands"] += opencode_command_result.files_integrated
-        _log_integration(f"  └─ {opencode_command_result.files_integrated} commands integrated -> .opencode/commands/")
-    result["links_resolved"] += opencode_command_result.links_resolved
-    for tp in opencode_command_result.target_paths:
-        deployed.append(tp.relative_to(project_root).as_posix())
-
-    # --- hooks ---
-    if integrate_vscode:
-        hook_result = hook_integrator.integrate_package_hooks(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if hook_result.hooks_integrated > 0:
-            result["hooks"] += hook_result.hooks_integrated
-            _log_integration(f"  └─ {hook_result.hooks_integrated} hook(s) integrated -> .github/hooks/")
-        for tp in hook_result.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-    if integrate_claude:
-        hook_result_claude = hook_integrator.integrate_package_hooks_claude(
-            package_info, project_root,
-            force=force, managed_files=managed_files,
-            diagnostics=diagnostics,
-        )
-        if hook_result_claude.hooks_integrated > 0:
-            result["hooks"] += hook_result_claude.hooks_integrated
-            _log_integration(f"  └─ {hook_result_claude.hooks_integrated} hook(s) integrated -> .claude/settings.json")
-        for tp in hook_result_claude.target_paths:
-            deployed.append(tp.relative_to(project_root).as_posix())
-
-    # Cursor hooks (.cursor/hooks.json) — method self-guards on .cursor/ existence
-    hook_result_cursor = hook_integrator.integrate_package_hooks_cursor(
-        package_info, project_root,
-        force=force, managed_files=managed_files,
-        diagnostics=diagnostics,
-    )
-    if hook_result_cursor.hooks_integrated > 0:
-        result["hooks"] += hook_result_cursor.hooks_integrated
-        _log_integration(f"  └─ {hook_result_cursor.hooks_integrated} hook(s) integrated -> .cursor/hooks.json")
-    for tp in hook_result_cursor.target_paths:
+    _skill_target_dirs: set[str] = builtins.set()
+    for tp in skill_result.target_paths:
+        rel = tp.relative_to(project_root)
+        if rel.parts:
+            _skill_target_dirs.add(rel.parts[0])
+    _skill_targets = sorted(_skill_target_dirs)
+    _skill_target_str = ", ".join(f"{d}/skills/" for d in _skill_targets) or "skills/"
+    if skill_result.skill_created:
+        result["skills"] += 1
+        _log_integration(f"  |-- Skill integrated -> {_skill_target_str}")
+    if skill_result.sub_skills_promoted > 0:
+        result["sub_skills"] += skill_result.sub_skills_promoted
+        _log_integration(f"  |-- {skill_result.sub_skills_promoted} skill(s) integrated -> {_skill_target_str}")
+    for tp in skill_result.target_paths:
         deployed.append(tp.relative_to(project_root).as_posix())
 
     return result
@@ -1119,8 +1131,10 @@ def _install_apm_dependencies(
     force: bool = False,
     parallel_downloads: int = 4,
     logger: "InstallLogger" = None,
+    scope=None,
     auth_resolver: "AuthResolver" = None,
     target: str = None,
+    marketplace_provenance: dict = None,
 ):
     """Install APM package dependencies.
 
@@ -1132,11 +1146,16 @@ def _install_apm_dependencies(
         force: Whether to overwrite locally-authored files on collision
         parallel_downloads: Max concurrent downloads (0 disables parallelism)
         logger: InstallLogger for structured output
+        scope: InstallScope controlling project vs user deployment
         auth_resolver: Shared auth resolver for caching credentials
         target: Explicit target override from --target CLI flag
     """
     if not APM_DEPS_AVAILABLE:
         raise RuntimeError("APM dependency system not available")
+
+    from apm_cli.core.scope import InstallScope, get_deploy_root, get_apm_dir, get_modules_dir
+    if scope is None:
+        scope = InstallScope.PROJECT
 
     apm_deps = apm_package.get_apm_dependencies()
     dev_apm_deps = apm_package.get_dev_apm_dependencies()
@@ -1144,27 +1163,31 @@ def _install_apm_dependencies(
     if not all_apm_deps:
         return InstallResult()
 
-    project_root = Path.cwd()
+    project_root = get_deploy_root(scope)
+    apm_dir = get_apm_dir(scope)
 
     # T5: Check for existing lockfile - use locked versions for reproducible installs
     from apm_cli.deps.lockfile import LockFile, get_lockfile_path
-    lockfile_path = get_lockfile_path(project_root)
+    lockfile_path = get_lockfile_path(apm_dir)
     existing_lockfile = None
     lockfile_count = 0
-    if lockfile_path.exists() and not update_refs:
+    if lockfile_path.exists():
         existing_lockfile = LockFile.read(lockfile_path)
         if existing_lockfile and existing_lockfile.dependencies:
             lockfile_count = len(existing_lockfile.dependencies)
             if logger:
-                logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
+                if update_refs:
+                    logger.verbose_detail(f"Loaded apm.lock.yaml for SHA comparison ({lockfile_count} dependencies)")
+                else:
+                    logger.verbose_detail(f"Using apm.lock.yaml ({lockfile_count} locked dependencies)")
                 if logger.verbose:
                     for locked_dep in existing_lockfile.get_all_dependencies():
                         _sha = locked_dep.resolved_commit[:8] if locked_dep.resolved_commit else ""
                         _ref = locked_dep.resolved_ref if hasattr(locked_dep, 'resolved_ref') and locked_dep.resolved_ref else ""
                         logger.lockfile_entry(locked_dep.get_unique_key(), ref=_ref, sha=_sha)
 
-    apm_modules_dir = project_root / APM_MODULES_DIR
-    apm_modules_dir.mkdir(exist_ok=True)
+    apm_modules_dir = get_modules_dir(scope)
+    apm_modules_dir.mkdir(parents=True, exist_ok=True)
 
     # Use provided resolver or create new one if not in a CLI session context
     if auth_resolver is None:
@@ -1174,7 +1197,7 @@ def _install_apm_dependencies(
     downloader = GitHubPackageDownloader(auth_resolver=auth_resolver)
 
     # Track direct dependency keys so the download callback can distinguish them from transitive
-    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in apm_deps)
+    direct_dep_keys = builtins.set(dep.get_unique_key() for dep in all_apm_deps)
 
     # Track paths already downloaded by the resolver callback to avoid re-downloading
     # Maps dep_key -> resolved_commit (SHA or None) so the cached path can use it
@@ -1183,6 +1206,10 @@ def _install_apm_dependencies(
     # Collect transitive dep failures during resolution — they'll be routed to
     # diagnostics after the DiagnosticCollector is created (later in the flow).
     transitive_failures: list[tuple[str, str]] = []  # (dep_display, message)
+
+    # Track dep keys that failed in download_callback so the main install loop
+    # skips them instead of re-trying and producing a duplicate error entry.
+    callback_failures: builtins.set = builtins.set()
 
     # Create a download callback for transitive dependency resolution
     # This allows the resolver to fetch packages on-demand during tree building
@@ -1201,6 +1228,12 @@ def _install_apm_dependencies(
         try:
             # Handle local packages: copy instead of git clone
             if dep_ref.is_local and dep_ref.local_path:
+                if scope is InstallScope.USER:
+                    # Cannot resolve local paths at user scope
+                    callback_failures[dep_ref.get_unique_key()] = (
+                        f"local package '{dep_ref.local_path}' skipped at user scope"
+                    )
+                    return None
                 result_path = _copy_local_package(dep_ref, install_path, project_root)
                 if result_path:
                     callback_downloaded[dep_ref.get_unique_key()] = None
@@ -1215,9 +1248,9 @@ def _install_apm_dependencies(
                     locked_ref = locked_dep.resolved_commit
 
             # Build a DependencyReference with the right ref to avoid lossy
-            # str() → parse() round-trips (#382).
+            # str() -> parse() round-trips (#382).
             from dataclasses import replace as _dc_replace
-            if locked_ref:
+            if locked_ref and not update_refs:
                 download_dep = _dc_replace(dep_ref, reference=locked_ref)
             else:
                 download_dep = dep_ref
@@ -1231,19 +1264,31 @@ def _install_apm_dependencies(
             callback_downloaded[dep_ref.get_unique_key()] = resolved_sha
             return install_path
         except Exception as e:
-            # Build contextual message including the dependency chain breadcrumb
-            chain_hint = f" (via {parent_chain})" if parent_chain else ""
             dep_display = dep_ref.get_display_name()
-            fail_msg = (
-                f"Failed to resolve transitive dep "
-                f"{dep_ref.repo_url}{chain_hint}: {e}"
-            )
+            dep_key = dep_ref.get_unique_key()
+            is_direct = dep_key in direct_dep_keys
+
+            # Distinguish direct vs transitive failure messages so users
+            # don't see a misleading "transitive dep" label for top-level deps.
+            if is_direct:
+                fail_msg = (
+                    f"Failed to download dependency "
+                    f"{dep_ref.repo_url}: {e}"
+                )
+            else:
+                chain_hint = f" (via {parent_chain})" if parent_chain else ""
+                fail_msg = (
+                    f"Failed to resolve transitive dep "
+                    f"{dep_ref.repo_url}{chain_hint}: {e}"
+                )
+
             # Verbose: inline detail
             if logger:
                 logger.verbose_detail(f"  {fail_msg}")
             elif verbose:
                 _rich_error(f"  └─ {fail_msg}")
             # Collect for deferred diagnostics summary (always, even non-verbose)
+            callback_failures.add(dep_key)
             transitive_failures.append((dep_display, fail_msg))
             return None
 
@@ -1254,7 +1299,7 @@ def _install_apm_dependencies(
     )
 
     try:
-        dependency_graph = resolver.resolve_dependencies(project_root)
+        dependency_graph = resolver.resolve_dependencies(apm_dir)
 
         # Verbose: show resolved tree summary
         if logger:
@@ -1349,9 +1394,6 @@ def _install_apm_dependencies(
         # Auto-detect target for integration (same logic as compile)
         from apm_cli.core.target_detection import (
             detect_target,
-            should_integrate_vscode,
-            should_integrate_claude,
-            should_integrate_opencode,
             get_target_description,
         )
 
@@ -1364,16 +1406,40 @@ def _install_apm_dependencies(
         # Determine active targets.  When --target or apm.yml target is set
         # the user's choice wins.  Otherwise auto-detect from existing dirs,
         # falling back to copilot when nothing is found.
-        from apm_cli.integration.targets import active_targets as _active_targets
+        from apm_cli.integration.targets import resolve_targets as _resolve_targets
 
-        _targets = _active_targets(project_root, explicit_target=_explicit)
+        _is_user = scope is InstallScope.USER
+        _targets = _resolve_targets(
+            project_root, user_scope=_is_user, explicit_target=_explicit,
+        )
+
+        # Log target detection results
+        if logger and _targets:
+            _scope_label = "global" if _is_user else "project"
+            _target_names = ", ".join(
+                f"{t.name} (~/{t.root_dir}/)"
+                if _is_user else t.name
+                for t in _targets
+            )
+            logger.verbose_detail(
+                f"Active {_scope_label} targets: {_target_names}"
+            )
+            if _is_user:
+                from apm_cli.deps.lockfile import get_lockfile_path
+                logger.verbose_detail(
+                    f"Lockfile: {get_lockfile_path(apm_dir)}"
+                )
+
         for _t in _targets:
-            _target_dir = project_root / _t.root_dir
+            if not _t.auto_create:
+                continue
+            _root = _t.root_dir
+            _target_dir = project_root / _root
             if not _target_dir.exists():
                 _target_dir.mkdir(parents=True, exist_ok=True)
                 if logger:
                     logger.verbose_detail(
-                        f"Created {_t.root_dir}/ ({_t.name} target)"
+                        f"Created {_root}/ ({_t.name} target)"
                     )
 
         detected_target, detection_reason = detect_target(
@@ -1381,11 +1447,6 @@ def _install_apm_dependencies(
             explicit_target=_explicit,
             config_target=config_target,
         )
-
-        # Determine which integrations to run based on detected target
-        integrate_vscode = should_integrate_vscode(detected_target)
-        integrate_claude = should_integrate_claude(detected_target)
-        integrate_opencode = should_integrate_opencode(detected_target)
 
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
@@ -1416,18 +1477,70 @@ def _install_apm_dependencies(
 
         # Collect installed packages for lockfile generation
         from apm_cli.deps.lockfile import LockFile, LockedDependency, get_lockfile_path
+        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.registry_proxy import RegistryConfig
         from ..utils.content_hash import compute_package_hash as _compute_hash
-        installed_packages: List[tuple] = []  # List of (dep_ref, resolved_commit, depth, resolved_by, is_dev)
+        installed_packages: List[InstalledPackage] = []
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
         _package_hashes: builtins.dict = {}  # dep_key → sha256 hash (captured at download/verify time)
 
+        # Resolve registry proxy configuration once for this install session.
+        registry_config = RegistryConfig.from_env()
+
         # Build managed_files from existing lockfile for collision detection
         managed_files = builtins.set()
-        existing_lockfile = LockFile.read(get_lockfile_path(project_root)) if project_root else None
+        existing_lockfile = LockFile.read(get_lockfile_path(apm_dir)) if apm_dir else None
         if existing_lockfile:
             for dep in existing_lockfile.dependencies.values():
                 managed_files.update(dep.deployed_files)
+
+            # Conflict: registry-only mode requires all locked deps to route
+            # through the configured proxy. Deps locked to direct VCS sources
+            # (github.com, GHE Cloud, GHES) are incompatible.
+            if registry_config and registry_config.enforce_only:
+                conflicts = registry_config.validate_lockfile_deps(
+                    list(existing_lockfile.dependencies.values())
+                )
+                if conflicts:
+                    _rich_error(
+                        "PROXY_REGISTRY_ONLY is set but the lockfile contains "
+                        "dependencies locked to direct VCS sources:"
+                    )
+                    for dep in conflicts[:10]:
+                        host = dep.host or "github.com"
+                        name = dep.repo_url
+                        if dep.virtual_path:
+                            name = f"{name}/{dep.virtual_path}"
+                        _rich_error(f"  - {name} (host: {host})")
+                    _rich_error(
+                        "Re-run with 'apm install --update' to re-resolve "
+                        "through the registry, or unset PROXY_REGISTRY_ONLY."
+                    )
+                    sys.exit(1)
+
+            # Supply chain warning: registry-proxy entries without a
+            # content_hash cannot be verified on re-install.
+            if registry_config and registry_config.enforce_only:
+                missing = registry_config.find_missing_hashes(
+                    list(existing_lockfile.dependencies.values())
+                )
+                if missing:
+                    diagnostics.warn(
+                        "The following registry-proxy dependencies have no "
+                        "content_hash in the lockfile. Run 'apm install "
+                        "--update' to populate hashes for tamper detection.",
+                        package="lockfile",
+                    )
+                    for dep in missing[:10]:
+                        name = dep.repo_url
+                        if dep.virtual_path:
+                            name = f"{name}/{dep.virtual_path}"
+                        diagnostics.warn(
+                            f"  - {name} (host: {dep.host})",
+                            package="lockfile",
+                        )
+
         # Normalize path separators once for O(1) lookups in check_collision
         from apm_cli.integration.base_integrator import BaseIntegrator
         managed_files = BaseIntegrator.normalize_managed_files(managed_files)
@@ -1473,23 +1586,27 @@ def _install_apm_dependencies(
             # detect_ref_change() handles all transitions including None→ref.
             _pd_locked_chk = (
                 existing_lockfile.get_dependency(_pd_key)
-                if existing_lockfile and not update_refs
+                if existing_lockfile
                 else None
             )
             _pd_ref_changed = detect_ref_change(
                 _pd_ref, _pd_locked_chk, update_refs=update_refs
             )
-            # Skip if lockfile SHA matches local HEAD (Phase 5 check)
-            # — but only if the ref itself has not changed in the manifest.
-            if _pd_path.exists() and existing_lockfile and not update_refs and not _pd_ref_changed:
-                _pd_locked = existing_lockfile.get_dependency(_pd_key)
-                if _pd_locked and _pd_locked.resolved_commit and _pd_locked.resolved_commit != "cached":
-                    try:
-                        from git import Repo as _PDGitRepo
-                        if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked.resolved_commit:
-                            continue
-                    except Exception:
-                        pass
+            # Skip if lockfile SHA matches local HEAD.
+            # Normal mode: only when the ref hasn't changed in the manifest.
+            # Update mode: defer to the sequential loop which resolves the
+            # remote ref and compares -- if unchanged, the download is skipped
+            # entirely; if changed, it falls back to sequential download.
+            if (_pd_path.exists() and _pd_locked_chk
+                    and _pd_locked_chk.resolved_commit
+                    and _pd_locked_chk.resolved_commit != "cached"
+                    and (update_refs or not _pd_ref_changed)):
+                try:
+                    from git import Repo as _PDGitRepo
+                    if _PDGitRepo(_pd_path).head.commit.hexsha == _pd_locked_chk.resolved_commit:
+                        continue
+                except Exception:
+                    pass
             # Build download ref (use locked commit for reproducibility).
             # build_download_ref() uses the manifest ref when ref_changed is True.
             _pd_dlref = build_download_ref(
@@ -1556,8 +1673,33 @@ def _install_apm_dependencies(
                     # Use the canonical install path from DependencyReference
                     install_path = dep_ref.get_install_path(apm_modules_dir)
 
+                # Skip deps that already failed during BFS resolution callback
+                # to avoid a duplicate error entry in diagnostics.
+                dep_key = dep_ref.get_unique_key()
+                if dep_key in callback_failures:
+                    if logger:
+                        logger.verbose_detail(f"  Skipping {dep_key} (already failed during resolution)")
+                    continue
+
                 # --- Local package: copy from filesystem (no git download) ---
                 if dep_ref.is_local and dep_ref.local_path:
+                    # User scope: relative paths would resolve against $HOME
+                    # instead of cwd, producing wrong results.  Skip with a
+                    # clear diagnostic rather than silently failing.
+                    if scope is InstallScope.USER:
+                        diagnostics.warn(
+                            f"Skipped local package '{dep_ref.local_path}' "
+                            "-- local paths are not supported at user scope (--global). "
+                            "Use a remote reference (owner/repo) instead.",
+                            package=dep_ref.local_path,
+                        )
+                        if logger:
+                            logger.verbose_detail(
+                                f"  Skipping {dep_ref.local_path} (local packages "
+                                "resolve against cwd, not $HOME)"
+                            )
+                        continue
+
                     result_path = _copy_local_package(dep_ref, install_path, project_root)
                     if not result_path:
                         diagnostics.error(
@@ -1622,7 +1764,11 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, None, depth, resolved_by, _is_dev))
+                    installed_packages.append(InstalledPackage(
+                        dep_ref=dep_ref, resolved_commit=None,
+                        depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                        registry_config=None,  # local deps never go through registry
+                    ))
                     dep_key = dep_ref.get_unique_key()
                     if install_path.is_dir() and not dep_ref.is_local:
                         _package_hashes[dep_key] = _compute_hash(install_path)
@@ -1647,9 +1793,7 @@ def _install_apm_dependencies(
 
                         int_result = _integrate_package_primitives(
                             package_info, project_root,
-                            integrate_vscode=integrate_vscode,
-                            integrate_claude=integrate_claude,
-                            integrate_opencode=integrate_opencode,
+                            targets=_targets,
                             prompt_integrator=prompt_integrator,
                             agent_integrator=agent_integrator,
                             skill_integrator=skill_integrator,
@@ -1661,6 +1805,7 @@ def _install_apm_dependencies(
                             diagnostics=diagnostics,
                             package_name=dep_key,
                             logger=logger,
+                            scope=scope,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1696,11 +1841,22 @@ def _install_apm_dependencies(
                 from apm_cli.models.apm_package import GitReferenceType
 
                 resolved_ref = None
-                if dep_ref.reference and dep_ref.get_unique_key() not in _pre_downloaded_keys:
-                    try:
-                        resolved_ref = downloader.resolve_git_reference(dep_ref)
-                    except Exception:
-                        pass  # If resolution fails, skip cache (fetch latest)
+                if dep_ref.get_unique_key() not in _pre_downloaded_keys:
+                    # Resolve when there is an explicit ref, OR when update_refs
+                    # is True AND we have a non-cached lockfile entry to compare
+                    # against (otherwise resolution is wasted work -- the package
+                    # will be downloaded regardless).
+                    _has_lockfile_sha = False
+                    if update_refs and existing_lockfile:
+                        _lck = existing_lockfile.get_dependency(dep_ref.get_unique_key())
+                        _has_lockfile_sha = bool(
+                            _lck and _lck.resolved_commit and _lck.resolved_commit != "cached"
+                        )
+                    if dep_ref.reference or (update_refs and _has_lockfile_sha):
+                        try:
+                            resolved_ref = downloader.resolve_git_reference(dep_ref)
+                        except Exception:
+                            pass  # If resolution fails, skip cache (fetch latest)
 
                 # Use cache only for tags and commits (not branches)
                 is_cacheable = resolved_ref and resolved_ref.ref_type in [
@@ -1713,27 +1869,45 @@ def _install_apm_dependencies(
                 # detect_ref_change() handles all transitions including None→ref.
                 _dep_locked_chk = (
                     existing_lockfile.get_dependency(dep_ref.get_unique_key())
-                    if existing_lockfile and not update_refs
+                    if existing_lockfile
                     else None
                 )
                 ref_changed = detect_ref_change(
                     dep_ref, _dep_locked_chk, update_refs=update_refs
                 )
                 # Phase 5 (#171): Also skip when lockfile SHA matches local HEAD
-                # — but not when the manifest ref has changed (user wants different version).
+                # -- but not when the manifest ref has changed (user wants different version).
                 lockfile_match = False
-                if install_path.exists() and existing_lockfile and not update_refs and not ref_changed:
+                if install_path.exists() and existing_lockfile:
                     locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
                     if locked_dep and locked_dep.resolved_commit and locked_dep.resolved_commit != "cached":
-                        try:
-                            from git import Repo as GitRepo
-                            local_repo = GitRepo(install_path)
-                            if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
-                                lockfile_match = True
-                        except Exception:
-                            pass  # Not a git repo or invalid — fall through to download
+                        if update_refs:
+                            # Update mode: compare resolved remote SHA with lockfile SHA.
+                            # If the remote ref still resolves to the same commit,
+                            # the package content is unchanged -- skip download.
+                            # Also verify local checkout matches to guard against
+                            # corrupted installs that bypassed pre-download checks.
+                            if resolved_ref and resolved_ref.resolved_commit == locked_dep.resolved_commit:
+                                try:
+                                    from git import Repo as GitRepo
+                                    local_repo = GitRepo(install_path)
+                                    if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                        lockfile_match = True
+                                except Exception:
+                                    pass  # Local checkout invalid -- fall through to download
+                        elif not ref_changed:
+                            # Normal mode: compare local HEAD with lockfile SHA.
+                            try:
+                                from git import Repo as GitRepo
+                                local_repo = GitRepo(install_path)
+                                if local_repo.head.commit.hexsha == locked_dep.resolved_commit:
+                                    lockfile_match = True
+                            except Exception:
+                                pass  # Not a git repo or invalid -- fall through to download
                 skip_download = install_path.exists() and (
-                    (is_cacheable and not update_refs) or already_resolved or lockfile_match
+                    (is_cacheable and not update_refs)
+                    or (already_resolved and not update_refs)
+                    or lockfile_match
                 )
 
                 # Verify content integrity when lockfile has a hash
@@ -1748,6 +1922,20 @@ def _install_apm_dependencies(
                         if logger:
                             logger.progress(_hash_msg)
                         safe_rmtree(install_path, apm_modules_dir)
+                        skip_download = False
+
+                # When registry-only mode is active, bypass cache if the
+                # cached artifact was NOT previously downloaded via the
+                # registry (no registry_prefix in lockfile). This handles
+                # the transition from direct-VCS installs to proxy installs
+                # for packages not yet in the lockfile.
+                if (
+                    skip_download
+                    and registry_config
+                    and registry_config.enforce_only
+                    and not dep_ref.is_local
+                ):
+                    if not _dep_locked_chk or _dep_locked_chk.registry_prefix is None:
                         skip_download = False
 
                 if skip_download:
@@ -1766,7 +1954,7 @@ def _install_apm_dependencies(
                         unpinned_count += 1
 
                     # Skip integration if not needed
-                    if not (integrate_vscode or integrate_claude or integrate_opencode):
+                    if not _targets:
                         continue
 
                     # Integrate prompts for cached packages (zero-config behavior)
@@ -1797,8 +1985,10 @@ def _install_apm_dependencies(
                                 source=dep_ref.repo_url,
                             )
 
-                        # Create basic resolved reference for cached packages
-                        resolved_ref = ResolvedReference(
+                        # Use resolved reference from ref resolution if available
+                        # (e.g. when update_refs matched the lockfile SHA),
+                        # otherwise create a placeholder for cached packages.
+                        resolved_or_cached_ref = resolved_ref if resolved_ref else ResolvedReference(
                             original_ref=dep_ref.reference or "default",
                             ref_type=GitReferenceType.BRANCH,
                             resolved_commit="cached",  # Mark as cached since we don't know exact commit
@@ -1808,7 +1998,7 @@ def _install_apm_dependencies(
                         cached_package_info = PackageInfo(
                             package=cached_package,
                             install_path=install_path,
-                            resolved_reference=resolved_ref,
+                            resolved_reference=resolved_or_cached_ref,
                             installed_at=datetime.now().isoformat(),
                             dependency_ref=dep_ref,  # Store for canonical dependency string
                         )
@@ -1824,16 +2014,32 @@ def _install_apm_dependencies(
                         depth = node.depth if node else 1
                         resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                         _is_dev = node.is_dev if node else False
-                        # Get commit SHA: callback capture > existing lockfile > explicit reference
+                        # Get commit SHA: resolved ref > callback capture > existing lockfile > explicit reference
                         dep_key = dep_ref.get_unique_key()
-                        cached_commit = callback_downloaded.get(dep_key)
+                        cached_commit = None
+                        if resolved_ref and resolved_ref.resolved_commit and resolved_ref.resolved_commit != "cached":
+                            cached_commit = resolved_ref.resolved_commit
+                        if not cached_commit:
+                            cached_commit = callback_downloaded.get(dep_key)
                         if not cached_commit and existing_lockfile:
                             locked_dep = existing_lockfile.get_dependency(dep_key)
                             if locked_dep:
                                 cached_commit = locked_dep.resolved_commit
                         if not cached_commit:
                             cached_commit = dep_ref.reference
-                        installed_packages.append((dep_ref, cached_commit, depth, resolved_by, _is_dev))
+                        # Determine if the cached package came from the registry:
+                        # prefer the lockfile record, then the current registry config.
+                        _cached_registry = None
+                        if _dep_locked_chk and _dep_locked_chk.registry_prefix:
+                            # Reconstruct RegistryConfig from lockfile to preserve original source
+                            _cached_registry = registry_config
+                        elif registry_config and not dep_ref.is_local:
+                            _cached_registry = registry_config
+                        installed_packages.append(InstalledPackage(
+                            dep_ref=dep_ref, resolved_commit=cached_commit,
+                            depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                            registry_config=_cached_registry,
+                        ))
                         if install_path.is_dir():
                             _package_hashes[dep_key] = _compute_hash(install_path)
                         # Track package type for lockfile
@@ -1851,9 +2057,7 @@ def _install_apm_dependencies(
 
                         int_result = _integrate_package_primitives(
                             cached_package_info, project_root,
-                            integrate_vscode=integrate_vscode,
-                            integrate_claude=integrate_claude,
-                            integrate_opencode=integrate_opencode,
+                            targets=_targets,
                             prompt_integrator=prompt_integrator,
                             agent_integrator=agent_integrator,
                             skill_integrator=skill_integrator,
@@ -1865,6 +2069,7 @@ def _install_apm_dependencies(
                             diagnostics=diagnostics,
                             package_name=dep_key,
                             logger=logger,
+                            scope=scope,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -1981,9 +2186,39 @@ def _install_apm_dependencies(
                     depth = node.depth if node else 1
                     resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
                     _is_dev = node.is_dev if node else False
-                    installed_packages.append((dep_ref, resolved_commit, depth, resolved_by, _is_dev))
+                    installed_packages.append(InstalledPackage(
+                        dep_ref=dep_ref, resolved_commit=resolved_commit,
+                        depth=depth, resolved_by=resolved_by, is_dev=_is_dev,
+                        registry_config=registry_config if not dep_ref.is_local else None,
+                    ))
                     if install_path.is_dir():
                         _package_hashes[dep_ref.get_unique_key()] = _compute_hash(install_path)
+
+                    # Supply chain protection: verify content hash on fresh
+                    # downloads when the lockfile already records a hash.
+                    # A mismatch means the downloaded content differs from
+                    # what was previously locked — possible tampering.
+                    if (
+                        not update_refs
+                        and _dep_locked_chk
+                        and _dep_locked_chk.content_hash
+                        and dep_ref.get_unique_key() in _package_hashes
+                    ):
+                        _fresh_hash = _package_hashes[dep_ref.get_unique_key()]
+                        if _fresh_hash != _dep_locked_chk.content_hash:
+                            safe_rmtree(install_path, apm_modules_dir)
+                            _rich_error(
+                                f"Content hash mismatch for "
+                                f"{dep_ref.get_unique_key()}: "
+                                f"expected {_dep_locked_chk.content_hash}, "
+                                f"got {_fresh_hash}. "
+                                "The downloaded content differs from the "
+                                "lockfile record. This may indicate a "
+                                "supply-chain attack. Use 'apm install "
+                                "--update' to accept new content and "
+                                "update the lockfile."
+                            )
+                            sys.exit(1)
 
                     # Track package type for lockfile
                     if hasattr(package_info, 'package_type') and package_info.package_type:
@@ -2013,13 +2248,11 @@ def _install_apm_dependencies(
                         package_deployed_files[dep_ref.get_unique_key()] = []
                         continue
 
-                    if integrate_vscode or integrate_claude or integrate_opencode:
+                    if _targets:
                         try:
                             int_result = _integrate_package_primitives(
                                 package_info, project_root,
-                                integrate_vscode=integrate_vscode,
-                                integrate_claude=integrate_claude,
-                                integrate_opencode=integrate_opencode,
+                                targets=_targets,
                                 prompt_integrator=prompt_integrator,
                                 agent_integrator=agent_integrator,
                                 skill_integrator=skill_integrator,
@@ -2031,6 +2264,7 @@ def _install_apm_dependencies(
                                 diagnostics=diagnostics,
                                 package_name=dep_ref.get_unique_key(),
                                 logger=logger,
+                                scope=scope,
                             )
                             total_prompts_integrated += int_result["prompts"]
                             total_agents_integrated += int_result["agents"]
@@ -2089,11 +2323,18 @@ def _install_apm_dependencies(
             _removed_orphan_count = 0
             _failed_orphan_count = 0
             _deleted_orphan_paths: builtins.list = []
+            # Build validation targets that cover both default KNOWN_TARGETS
+            # and scope-resolved targets so legacy project-scope orphan paths
+            # (e.g., ".github/...") are also cleaned up at user scope.
+            _validation_targets = _targets or {}
+            _default_targets = getattr(BaseIntegrator, "KNOWN_TARGETS", None)
+            if _default_targets:
+                _validation_targets = {**_default_targets, **_validation_targets}
             for _orphan_path in sorted(orphaned_deployed_files):
                 # validate_deploy_path() is the safety gate: it rejects path-traversal,
-                # requires .github/ or .claude/ prefix, and checks the resolved path
-                # stays within project_root — so rmtree is safe here.
-                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root):
+                # requires a known integration prefix, and checks the resolved path
+                # stays within project_root -- so rmtree is safe here.
+                if BaseIntegrator.validate_deploy_path(_orphan_path, project_root, targets=_validation_targets):
                     _target = project_root / _orphan_path
                     if _target.exists():
                         try:
@@ -2134,6 +2375,12 @@ def _install_apm_dependencies(
                 for dep_key, locked_dep in lockfile.dependencies.items():
                     if dep_key in _package_hashes:
                         locked_dep.content_hash = _package_hashes[dep_key]
+                # Attach marketplace provenance if available
+                if marketplace_provenance:
+                    for dep_key, prov in marketplace_provenance.items():
+                        if dep_key in lockfile.dependencies:
+                            lockfile.dependencies[dep_key].discovered_via = prov.get("discovered_via")
+                            lockfile.dependencies[dep_key].marketplace_plugin_name = prov.get("marketplace_plugin_name")
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).
@@ -2153,7 +2400,7 @@ def _install_apm_dependencies(
                             # else: orphan — package was in lockfile but is no longer in
                             # the manifest (full install only). Don't preserve so the
                             # lockfile stays in sync with what apm.yml declares.
-                lockfile_path = get_lockfile_path(project_root)
+                lockfile_path = get_lockfile_path(apm_dir)
 
                 # When installing a subset of packages (apm install <pkg>),
                 # merge new entries into the existing lockfile instead of

@@ -132,6 +132,33 @@ class TestGitHubPackageDownloader:
             assert result.resolved_commit == 'abcdef123456'
             assert result.ref_name == 'abcdef1'
     
+    @patch('apm_cli.deps.github_downloader.Repo')
+    @patch('tempfile.mkdtemp')
+    def test_resolve_git_reference_no_ref_uses_remote_head(self, mock_mkdtemp, mock_repo_class):
+        """No #ref in dependency string should clone without --branch and detect the
+        remote default branch, so repos that use 'master' or any other name work."""
+        mock_temp_dir = '/tmp/test'
+        mock_mkdtemp.return_value = mock_temp_dir
+
+        mock_repo = Mock()
+        mock_repo.head.commit.hexsha = 'deadbeef1234'
+        mock_repo.active_branch.name = 'master'
+        mock_repo_class.clone_from.return_value = mock_repo
+
+        with patch('pathlib.Path.exists', return_value=True), \
+             patch('shutil.rmtree'):
+
+            result = self.downloader.resolve_git_reference('user/repo')
+
+            assert isinstance(result, ResolvedReference)
+            assert result.ref_type == GitReferenceType.BRANCH
+            assert result.resolved_commit == 'deadbeef1234'
+            assert result.ref_name == 'master'
+
+            # Verify clone was called without a 'branch' keyword argument
+            call_kwargs = mock_repo_class.clone_from.call_args
+            assert 'branch' not in call_kwargs.kwargs
+
     def test_resolve_git_reference_invalid_format(self):
         """Test resolving an invalid repository reference."""
         with pytest.raises(ValueError, match="Invalid repository reference"):

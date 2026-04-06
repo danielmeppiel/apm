@@ -279,6 +279,61 @@ dependencies:
 
 **Pack guard:** `apm pack` rejects packages with local path dependencies — replace them with remote references before distributing.
 
+**User-scope guard:** Local path dependencies are **not supported** with `--global` (`-g`). Relative paths resolve against `cwd`, which is meaningless at user scope where packages deploy to `~/.apm/`. Use remote references (`owner/repo`) for global installs.
+
+## Global (User-Scope) Installation
+
+By default, `apm install` targets the **current project** -- manifest, modules, and lockfile live in
+the working directory and deployed primitives go to `.github/`, `.claude/`, `.cursor/`, `.opencode/`.
+
+Pass `--global` (or `-g`) to install to your **home directory** instead, making packages available
+across every project on the machine:
+
+```bash
+apm install -g microsoft/apm-sample-package
+apm uninstall -g microsoft/apm-sample-package
+apm deps list -g       # user-scope packages only
+apm deps list --all    # project + user-scope packages
+```
+
+| Item | Project scope (default) | User scope (`-g`) |
+|------|------------------------|-------------------|
+| Manifest | `./apm.yml` | `~/.apm/apm.yml` |
+| Modules | `./apm_modules/` | `~/.apm/apm_modules/` |
+| Lockfile | `./apm.lock.yaml` | `~/.apm/apm.lock.yaml` |
+| Deployed primitives | `./.github/`, `./.claude/`, ... | `~/.copilot/`, `~/.claude/`, `~/.cursor/`, `~/.config/opencode/` |
+
+### Per-target support
+
+Coverage varies by target and primitive type:
+
+| Target | Status | User-level dir | Primitives | Not supported |
+|--------|--------|---------------|------------|---------------|
+| Claude Code | Supported | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
+| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, hooks | Prompts, instructions |
+| Cursor | Partial | `~/.cursor/` | Skills, agents, hooks | Rules |
+| OpenCode | Partial | `~/.config/opencode/` | Skills, agents, commands | Hooks |
+
+Target detection mirrors project scope: APM auto-detects by `~/.<target>/` directory presence,
+falling back to Copilot. Security scanning runs for global installs.
+
+### When to use each scope
+
+| Use case | Scope |
+|----------|-------|
+| Team-shared instructions and prompts | Project (`apm install`) |
+| Personal commands, agents, or skills | User (`apm install -g`) |
+| CI/CD reproducible setup | Project |
+| Cross-project coding standards | User |
+
+:::note
+MCP servers are not supported at user scope. Each target uses a different MCP configuration format; user-scope MCP support is planned for a future release.
+:::
+
+:::caution
+Local path dependencies (`./path`, `../path`, `/abs/path`) are rejected at user scope. Relative paths resolve against `cwd`, which differs from the user-scope deploy root (`~/.apm/`). Use remote references for `apm install -g`.
+:::
+
 ## MCP Dependency Formats
 
 MCP dependencies support three forms: string references, overlay objects, and self-defined servers.
@@ -554,11 +609,17 @@ dependencies:
 ### Updating Dependencies
 
 ```bash
-# Update all dependencies to latest versions
+# Update all dependencies to latest refs
 apm deps update
 
-# Update specific dependency  
-apm deps update apm-sample-package
+# Update specific dependency (use the owner/repo form from apm.yml)
+apm deps update owner/apm-sample-package
+
+# Update with verbose output
+apm deps update --verbose
+
+# Update user-scope dependencies
+apm deps update -g
 
 # Install with updates (equivalent to update)
 apm install --update
@@ -607,7 +668,7 @@ The `mcp_servers` field records the MCP dependency references (e.g. `io.github.g
 
 1. **First install**: APM resolves dependencies, downloads packages, and writes `apm.lock.yaml`
 2. **Subsequent installs**: APM reads `apm.lock.yaml` and uses locked commits for exact reproducibility. If the local checkout already matches the locked commit SHA, the download is skipped entirely.
-3. **Updating**: Use `--update` to re-resolve dependencies and generate a fresh lockfile
+3. **Updating**: Use `--update` to re-resolve dependencies and generate a fresh lockfile. This re-resolves all dependencies, including transitive ones, so stale locked SHAs are never reused.
 
 ### Version Control
 

@@ -13,13 +13,26 @@ from apm_cli.utils.console import _rich_warning
 
 @dataclass
 class IntegrationResult:
-    """Result of a file-level integration operation."""
+    """Result of any file-level integration operation.
+
+    The core fields (files_integrated, files_skipped, target_paths,
+    links_resolved) are used by all integrators.  Hook- and skill-specific
+    fields default to zero/False and are ignored by integrators that do
+    not produce them.
+    """
 
     files_integrated: int
     files_updated: int  # Kept for CLI compat, always 0 today
     files_skipped: int
     target_paths: List[Path]
     links_resolved: int = 0
+
+    # Hook-specific (default 0 when not applicable)
+    scripts_copied: int = 0
+
+    # Skill-specific (default 0/False when not applicable)
+    sub_skills_promoted: int = 0
+    skill_created: bool = False
 
 
 class BaseIntegrator:
@@ -96,20 +109,25 @@ class BaseIntegrator:
     # Known integration prefixes that APM is allowed to deploy/remove under.
     # Derived from ``targets.KNOWN_TARGETS`` so adding a target auto-propagates.
     @staticmethod
-    def _get_integration_prefixes() -> tuple:
+    def _get_integration_prefixes(targets=None) -> tuple:
         from apm_cli.integration.targets import get_integration_prefixes
-        return get_integration_prefixes()
+        return get_integration_prefixes(targets=targets)
 
     @staticmethod
     def validate_deploy_path(
         rel_path: str,
         project_root: Path,
         allowed_prefixes: tuple | None = None,
+        targets=None,
     ) -> bool:
         """Return True if *rel_path* is safe for APM to deploy or remove.
 
         Centralised security gate for all paths read from ``deployed_files``
         before any filesystem operation.
+
+        When *targets* is provided, allowed prefixes are derived from
+        those (scope-resolved) profiles.  Otherwise uses all known
+        target prefixes.
 
         Checks:
         1. No path-traversal components (``..``)
@@ -117,7 +135,7 @@ class BaseIntegrator:
         3. Resolves within *project_root*
         """
         if allowed_prefixes is None:
-            allowed_prefixes = BaseIntegrator._get_integration_prefixes()
+            allowed_prefixes = BaseIntegrator._get_integration_prefixes(targets=targets)
         if ".." in rel_path:
             return False
         if not rel_path.startswith(allowed_prefixes):
@@ -130,56 +148,127 @@ class BaseIntegrator:
             return False
         return True
 
+    # Backward-compat aliases mapping raw ``{prim}_{target}`` keys to
+    # the bucket names that existing callers expect.  Shared between
+    # ``partition_managed_files`` and ``partition_bucket_key`` so the
+    # mapping is defined exactly once.
+    _BUCKET_ALIASES: dict = {
+        "prompts_copilot": "prompts",
+        "agents_copilot": "agents_github",
+        "commands_claude": "commands",
+        "commands_opencode": "commands_opencode",
+        "instructions_copilot": "instructions",
+        "instructions_cursor": "rules_cursor",
+        "instructions_claude": "rules_claude",
+    }
+
+    @staticmethod
+    def partition_bucket_key(prim_name: str, target_name: str) -> str:
+        """Return the canonical bucket key for a (primitive, target) pair.
+
+        Applies backward-compat aliases so callers stay in sync with
+        ``partition_managed_files`` bucket naming.
+        """
+        raw = f"{prim_name}_{target_name}"
+        return BaseIntegrator._BUCKET_ALIASES.get(raw, raw)
+
     @staticmethod
     def partition_managed_files(
         managed_files: Set[str],
+        targets=None,
     ) -> dict:
         """Partition *managed_files* by integration prefix in a single pass.
 
-        Returns a dict with keys ``"prompts"``, ``"agents_github"``,
-        ``"agents_claude"``, ``"agents_cursor"``, ``"agents_opencode"``,
-        ``"commands"``, ``"commands_opencode"``, ``"skills"``, ``"hooks"``,
-        ``"instructions"``, ``"rules_cursor"`` mapping to the subset of
-        paths for each integration type.
+        When *targets* is provided, prefixes and bucket keys are derived
+        from those (scope-resolved) profiles.  Otherwise falls back to
+        ``KNOWN_TARGETS`` for backward compatibility.
+
+        Bucket keys are generated dynamically so adding a new target or
+        primitive automatically creates the corresponding bucket.
+
+        Cross-target buckets (``skills``, ``hooks``) group all targets
+        together because ``SkillIntegrator`` and ``HookIntegrator``
+        handle multi-target sync internally.
+
+        Path routing uses a longest-prefix-match strategy so multi-level
+        roots like ``.config/opencode/`` are handled correctly.
         """
-        buckets: dict = {
-            "prompts": set(),
-            "agents_github": set(),
-            "agents_claude": set(),
-            "agents_cursor": set(),
-            "agents_opencode": set(),
-            "commands": set(),
-            "commands_opencode": set(),
-            "skills": set(),
-            "hooks": set(),
-            "instructions": set(),
-            "rules_cursor": set(),
-        }
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        source = targets if targets is not None else KNOWN_TARGETS.values()
+
+        buckets: dict = {}
+
+        # Skills and hooks are cross-target (single bucket each)
+        skill_prefixes: list = []
+        hook_prefixes: list = []
+
+        # prefix -> bucket_key (longest-prefix-match routing)
+        prefix_map: dict = {}
+
+        for target in source:
+            for prim_name, mapping in target.primitives.items():
+                effective_root = mapping.deploy_root or target.root_dir
+                prefix = f"{effective_root}/{mapping.subdir}/" if mapping.subdir else f"{effective_root}/"
+                if prim_name == "skills":
+                    skill_prefixes.append(prefix)
+                elif prim_name == "hooks":
+                    hook_prefixes.append(prefix)
+                else:
+                    raw_key = f"{prim_name}_{target.name}"
+                    bucket_key = BaseIntegrator._BUCKET_ALIASES.get(
+                        raw_key, raw_key
+                    )
+                    if bucket_key not in buckets:
+                        buckets[bucket_key] = set()
+                    prefix_map[prefix] = bucket_key
+
+        buckets["skills"] = set()
+        buckets["hooks"] = set()
+
+        skill_tuple = tuple(skill_prefixes)
+        hook_tuple = tuple(hook_prefixes)
+
+        # Build a prefix trie keyed by path segments for O(depth) routing.
+        # Each node is a dict; the special key "_bucket" stores the bucket
+        # for a complete prefix ending at that node.  This preserves the
+        # "single pass, O(1) per path" property from the original
+        # component_map approach while supporting multi-level roots like
+        # .config/opencode/.
+        trie: dict = {}
+        for prefix, bucket_key in prefix_map.items():
+            segments = [s for s in prefix.split("/") if s]
+            node = trie
+            for segment in segments:
+                child = node.get(segment)
+                if child is None:
+                    child = {}
+                    node[segment] = child
+                node = child
+            node["_bucket"] = bucket_key
+
         for p in managed_files:
-            if p.startswith(".github/prompts/"):
-                buckets["prompts"].add(p)
-            elif p.startswith(".github/agents/"):
-                buckets["agents_github"].add(p)
-            elif p.startswith(".claude/agents/"):
-                buckets["agents_claude"].add(p)
-            elif p.startswith(".cursor/agents/"):
-                buckets["agents_cursor"].add(p)
-            elif p.startswith(".opencode/agents/"):
-                buckets["agents_opencode"].add(p)
-            elif p.startswith(".claude/commands/"):
-                buckets["commands"].add(p)
-            elif p.startswith(".opencode/commands/"):
-                buckets["commands_opencode"].add(p)
-            elif p.startswith((".github/skills/", ".claude/skills/", ".cursor/skills/", ".opencode/skills/")):
+            # Walk the trie; keep the deepest bucket match (longest prefix).
+            segments = [s for s in p.split("/") if s]
+            node = trie
+            last_bucket: str | None = None
+            for segment in segments:
+                child = node.get(segment)
+                if child is None:
+                    break
+                node = child
+                bk = node.get("_bucket")
+                if bk is not None:
+                    last_bucket = bk
+            if last_bucket is not None:
+                buckets[last_bucket].add(p)
+                continue
+            # Fall back to cross-target buckets
+            if p.startswith(skill_tuple):
                 buckets["skills"].add(p)
-            elif p.startswith(
-                (".github/hooks/", ".claude/hooks/", ".cursor/hooks/", ".opencode/hooks/")
-            ):
+            elif p.startswith(hook_tuple):
                 buckets["hooks"].add(p)
-            elif p.startswith(".github/instructions/"):
-                buckets["instructions"].add(p)
-            elif p.startswith(".cursor/rules/"):
-                buckets["rules_cursor"].add(p)
+
         return buckets
 
     @staticmethod
@@ -261,6 +350,7 @@ class BaseIntegrator:
         prefix: str,
         legacy_glob_dir: Optional[Path] = None,
         legacy_glob_pattern: Optional[str] = None,
+        targets=None,
     ) -> Dict[str, int]:
         """Remove APM-managed files matching *prefix* from *managed_files*.
 
@@ -274,6 +364,9 @@ class BaseIntegrator:
             legacy_glob_dir: Directory to glob inside for the legacy fallback.
             legacy_glob_pattern: Glob pattern for legacy fallback
                                  (e.g. ``"*-apm.prompt.md"``).
+            targets: Optional target profiles for path validation.
+                     Passed through to ``validate_deploy_path()`` so
+                     user-scope prefixes are recognised.
 
         Returns:
             ``{"files_removed": int, "errors": int}``
@@ -285,7 +378,7 @@ class BaseIntegrator:
                 # managed_files is pre-normalized  -- no .replace() needed
                 if not rel_path.startswith(prefix):
                     continue
-                if not BaseIntegrator.validate_deploy_path(rel_path, project_root):
+                if not BaseIntegrator.validate_deploy_path(rel_path, project_root, targets=targets):
                     continue
                 target = project_root / rel_path
                 if target.exists():
@@ -316,6 +409,8 @@ class BaseIntegrator:
     ) -> List[Path]:
         """Search *package_path* (and optional subdirectories) for *pattern*.
 
+        Symlinks are rejected outright to prevent traversal attacks.
+
         Args:
             package_path: Root of the installed package.
             pattern: Glob pattern (e.g. ``"*.prompt.md"``).
@@ -336,6 +431,8 @@ class BaseIntegrator:
             if not d.exists():
                 continue
             for f in sorted(d.glob(pattern)):
+                if f.is_symlink():
+                    continue
                 resolved = f.resolve()
                 if resolved not in seen:
                     seen.add(resolved)
