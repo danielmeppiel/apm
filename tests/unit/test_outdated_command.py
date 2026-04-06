@@ -210,7 +210,7 @@ class TestOutdatedCommand:
             assert "v2.0.0" in result.output
             assert "outdated" in result.output.lower()
 
-    # --- Branch ref (unknown status) ---
+    # --- Branch ref (SHA-based comparison) ---
 
     @patch(_PATCH_AUTH)
     @patch(_PATCH_DOWNLOADER)
@@ -218,33 +218,70 @@ class TestOutdatedCommand:
     @patch(_PATCH_GET_LOCKFILE_PATH)
     @patch(_PATCH_GET_APM_DIR)
     @patch(_PATCH_LOCKFILE)
-    def test_branch_ref_shown_as_unknown(
+    def test_branch_ref_outdated_when_sha_differs(
         self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
         mock_migrate, mock_dl_cls, mock_auth,
     ):
-        """Deps locked to a branch show 'unknown' status."""
+        """Branch-pinned dep is outdated when locked SHA differs from remote tip."""
         with self._chdir_tmp() as tmp:
             mock_get_apm_dir.return_value = tmp
             mock_get_path.return_value = tmp / "apm.lock.yaml"
 
             deps = {
-                "org/branch-pkg": _locked_dep("org/branch-pkg", resolved_ref="main"),
+                "org/branch-pkg": _locked_dep(
+                    "org/branch-pkg", resolved_ref="main", resolved_commit="old_sha"
+                ),
             }
             mock_lf_cls.read.return_value = _make_lockfile(deps)
 
-            # Downloader should NOT be called for branch refs
             mock_downloader = MagicMock()
             mock_dl_cls.return_value = mock_downloader
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_branch("main", sha="new_sha_abc123"),
+            ]
 
             result = self.runner.invoke(cli, ["outdated"])
 
             assert result.exit_code == 0
-            assert "unknown" in result.output.lower()
+            assert "outdated" in result.output.lower()
             assert "org/branch-pkg" in result.output
-            # Branch refs skip the remote query entirely
-            mock_downloader.list_remote_refs.assert_not_called()
+            mock_downloader.list_remote_refs.assert_called_once()
 
-    # --- Commit ref (unknown status) ---
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_DOWNLOADER)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_GET_APM_DIR)
+    @patch(_PATCH_LOCKFILE)
+    def test_branch_ref_up_to_date_when_sha_matches(
+        self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
+        mock_migrate, mock_dl_cls, mock_auth,
+    ):
+        """Branch-pinned dep is up-to-date when locked SHA matches remote tip."""
+        with self._chdir_tmp() as tmp:
+            mock_get_apm_dir.return_value = tmp
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+
+            deps = {
+                "org/branch-pkg": _locked_dep(
+                    "org/branch-pkg", resolved_ref="main", resolved_commit="same_sha"
+                ),
+            }
+            mock_lf_cls.read.return_value = _make_lockfile(deps)
+
+            mock_downloader = MagicMock()
+            mock_dl_cls.return_value = mock_downloader
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_branch("main", sha="same_sha"),
+            ]
+
+            result = self.runner.invoke(cli, ["outdated"])
+
+            assert result.exit_code == 0
+            # Should report all up-to-date (success message)
+            assert "up-to-date" in result.output.lower() or "up to date" in result.output.lower()
+
+    # --- Commit ref (unknown status — no matching branch) ---
 
     @patch(_PATCH_AUTH)
     @patch(_PATCH_DOWNLOADER)
@@ -256,7 +293,7 @@ class TestOutdatedCommand:
         self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
         mock_migrate, mock_dl_cls, mock_auth,
     ):
-        """Deps locked to a commit SHA show 'unknown' status."""
+        """Deps locked to a commit SHA show 'unknown' when ref is a raw SHA."""
         with self._chdir_tmp() as tmp:
             mock_get_apm_dir.return_value = tmp
             mock_get_path.return_value = tmp / "apm.lock.yaml"
@@ -271,13 +308,16 @@ class TestOutdatedCommand:
 
             mock_downloader = MagicMock()
             mock_dl_cls.return_value = mock_downloader
+            # No branch matches the 40-char hex ref name
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_branch("main", sha="xyz999"),
+            ]
 
             result = self.runner.invoke(cli, ["outdated"])
 
             assert result.exit_code == 0
             assert "unknown" in result.output.lower()
             assert "org/commit-pkg" in result.output
-            mock_downloader.list_remote_refs.assert_not_called()
 
     # --- Local dep skipped ---
 
@@ -535,7 +575,7 @@ class TestOutdatedCommand:
             # Broken dep in output with unknown
             assert "org/broken" in result.output
 
-    # --- Dep with no resolved_ref ---
+    # --- Dep with no resolved_ref (default branch comparison) ---
 
     @patch(_PATCH_AUTH)
     @patch(_PATCH_DOWNLOADER)
@@ -543,28 +583,64 @@ class TestOutdatedCommand:
     @patch(_PATCH_GET_LOCKFILE_PATH)
     @patch(_PATCH_GET_APM_DIR)
     @patch(_PATCH_LOCKFILE)
-    def test_no_resolved_ref_shows_unknown(
+    def test_no_resolved_ref_compares_against_default_branch(
         self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
         mock_migrate, mock_dl_cls, mock_auth,
     ):
-        """Dep with no resolved_ref should show 'unknown' status."""
+        """Dep with no resolved_ref compares SHA against default branch tip."""
         with self._chdir_tmp() as tmp:
             mock_get_apm_dir.return_value = tmp
             mock_get_path.return_value = tmp / "apm.lock.yaml"
 
             deps = {
-                "org/noref": _locked_dep("org/noref", resolved_ref=None),
+                "org/noref": _locked_dep(
+                    "org/noref", resolved_ref=None, resolved_commit="old_sha"
+                ),
             }
             mock_lf_cls.read.return_value = _make_lockfile(deps)
 
             mock_downloader = MagicMock()
             mock_dl_cls.return_value = mock_downloader
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_branch("main", sha="new_sha_def456"),
+            ]
+
+            result = self.runner.invoke(cli, ["outdated"])
+
+            assert result.exit_code == 0
+            assert "outdated" in result.output.lower()
+            mock_downloader.list_remote_refs.assert_called_once()
+
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_DOWNLOADER)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_GET_APM_DIR)
+    @patch(_PATCH_LOCKFILE)
+    def test_no_resolved_ref_no_branches_shows_unknown(
+        self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
+        mock_migrate, mock_dl_cls, mock_auth,
+    ):
+        """Dep with no resolved_ref and no branches returns unknown."""
+        with self._chdir_tmp() as tmp:
+            mock_get_apm_dir.return_value = tmp
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+
+            deps = {
+                "org/noref": _locked_dep(
+                    "org/noref", resolved_ref=None, resolved_commit="old_sha"
+                ),
+            }
+            mock_lf_cls.read.return_value = _make_lockfile(deps)
+
+            mock_downloader = MagicMock()
+            mock_dl_cls.return_value = mock_downloader
+            mock_downloader.list_remote_refs.return_value = []
 
             result = self.runner.invoke(cli, ["outdated"])
 
             assert result.exit_code == 0
             assert "unknown" in result.output.lower()
-            mock_downloader.list_remote_refs.assert_not_called()
 
     # --- No lockfile with --global ---
 

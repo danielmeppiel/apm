@@ -1,7 +1,7 @@
 """Check for outdated locked dependencies.
 
-Compares locked dependency refs against the latest available remote tags
-and displays a status table.
+Compares locked dependency commit SHAs against remote tip SHAs.
+For tag-pinned deps, also shows the latest available semver tag.
 """
 
 import re
@@ -21,6 +21,41 @@ def _is_tag_ref(ref: str) -> bool:
 def _strip_v(ref: str) -> str:
     """Strip leading 'v' prefix from a version string."""
     return ref[1:] if ref and ref.startswith("v") else (ref or "")
+
+
+def _find_remote_tip(ref_name, remote_refs):
+    """Find the tip SHA for a branch ref from remote refs.
+
+    If *ref_name* is empty/None, looks for HEAD or falls back to
+    common default branch names (main, master).
+    Returns the commit SHA string or None if not found.
+    """
+    from ..models.dependency.types import GitReferenceType
+
+    if not remote_refs:
+        return None
+
+    branch_refs = {r.name: r.commit_sha for r in remote_refs
+                   if r.ref_type == GitReferenceType.BRANCH}
+
+    if ref_name:
+        return branch_refs.get(ref_name)
+
+    # No ref specified -- find the default branch
+    # HEAD is included by git ls-remote; fall back to main/master
+    head_refs = [r for r in remote_refs if r.name == "HEAD"]
+    if head_refs:
+        return head_refs[0].commit_sha
+
+    for default in ("main", "master"):
+        if default in branch_refs:
+            return branch_refs[default]
+
+    # Last resort: first branch in list
+    if branch_refs:
+        return next(iter(branch_refs.values()))
+
+    return None
 
 
 @click.command(name="outdated")
@@ -88,13 +123,8 @@ def outdated(global_, verbose):
             continue
 
         current_ref = dep.resolved_ref or ""
+        locked_sha = dep.resolved_commit or ""
         package_name = dep.get_unique_key()
-
-        # Determine if the current ref is a tag (semver-like)
-        if not _is_tag_ref(current_ref):
-            # Branch or commit ref -- can't meaningfully compare to tags
-            rows.append((package_name, current_ref or "(none)", "-", "unknown", []))
-            continue
 
         # Build a DependencyReference to query remote refs
         try:
@@ -104,7 +134,7 @@ def outdated(global_, verbose):
             )
         except Exception as exc:
             logger.verbose_detail(f"Failed to build ref for {key}: {exc}")
-            rows.append((package_name, current_ref, "-", "unknown", []))
+            rows.append((package_name, current_ref or "(none)", "-", "unknown", []))
             continue
 
         # Fetch remote refs
@@ -112,27 +142,41 @@ def outdated(global_, verbose):
             remote_refs = downloader.list_remote_refs(dep_ref)
         except Exception as exc:
             logger.verbose_detail(f"Failed to fetch refs for {key}: {exc}")
-            rows.append((package_name, current_ref, "-", "unknown", []))
+            rows.append((package_name, current_ref or "(none)", "-", "unknown", []))
             continue
 
-        # Filter to tags only
-        tag_refs = [r for r in remote_refs if r.ref_type == GitReferenceType.TAG]
+        is_tag = _is_tag_ref(current_ref)
 
-        if not tag_refs:
-            rows.append((package_name, current_ref, "-", "unknown", []))
-            continue
+        if is_tag:
+            # Tag-pinned: compare semver AND verify SHA matches
+            tag_refs = [r for r in remote_refs if r.ref_type == GitReferenceType.TAG]
+            if not tag_refs:
+                rows.append((package_name, current_ref, "-", "unknown", []))
+                continue
 
-        latest_tag = tag_refs[0].name  # Already semver-sorted descending
+            latest_tag = tag_refs[0].name
+            current_ver = _strip_v(current_ref)
+            latest_ver = _strip_v(latest_tag)
 
-        # Compare versions (strip 'v' prefix for comparison)
-        current_ver = _strip_v(current_ref)
-        latest_ver = _strip_v(latest_tag)
-
-        if is_newer_version(current_ver, latest_ver):
-            extra = [r.name for r in tag_refs[:10]] if verbose else []
-            rows.append((package_name, current_ref, latest_tag, "outdated", extra))
+            if is_newer_version(current_ver, latest_ver):
+                extra = [r.name for r in tag_refs[:10]] if verbose else []
+                rows.append((package_name, current_ref, latest_tag, "outdated", extra))
+            else:
+                rows.append((package_name, current_ref, latest_tag, "up-to-date", []))
         else:
-            rows.append((package_name, current_ref, latest_tag, "up-to-date", []))
+            # Branch-pinned or no ref: compare locked SHA against remote tip
+            remote_tip_sha = _find_remote_tip(current_ref, remote_refs)
+
+            if not remote_tip_sha:
+                rows.append((package_name, current_ref or "(none)", "-", "unknown", []))
+                continue
+
+            display_ref = current_ref or "(default)"
+            if locked_sha and locked_sha != remote_tip_sha:
+                latest_display = remote_tip_sha[:8]
+                rows.append((package_name, display_ref, latest_display, "outdated", []))
+            else:
+                rows.append((package_name, display_ref, remote_tip_sha[:8], "up-to-date", []))
 
     if not rows:
         logger.success("No remote dependencies to check")
