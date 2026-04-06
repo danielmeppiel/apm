@@ -53,7 +53,7 @@ class RuntimeManager:
                 bundle_dir = Path(sys._MEIPASS)
                 script_path = bundle_dir / "scripts" / "runtime" / script_name
                 if script_path.exists():
-                    return script_path.read_text()
+                    return script_path.read_text(encoding="utf-8")
             
             # Fall back to direct file access for development
             # Look for scripts relative to the repo structure
@@ -61,7 +61,7 @@ class RuntimeManager:
             repo_root = current_file.parent.parent.parent.parent  # Go up to repo root
             script_path = repo_root / "scripts" / "runtime" / script_name
             if script_path.exists():
-                return script_path.read_text()
+                return script_path.read_text(encoding="utf-8")
             
             raise FileNotFoundError(f"Script not found: {script_name}")
         except Exception as e:
@@ -85,15 +85,15 @@ class RuntimeManager:
                 bundle_dir = Path(sys._MEIPASS)
                 script_path = bundle_dir / "scripts" / "github-token-helper.sh"
                 if script_path.exists():
-                    return script_path.read_text()
-            
+                    return script_path.read_text(encoding="utf-8")
+
             # Fall back to direct file access for development
             # Look for scripts relative to the repo structure
             current_file = Path(__file__)
             repo_root = current_file.parent.parent.parent.parent  # Go up to repo root
             script_path = repo_root / "scripts" / "github-token-helper.sh"
             if script_path.exists():
-                return script_path.read_text()
+                return script_path.read_text(encoding="utf-8")
             
             raise FileNotFoundError("github-token-helper.sh not found")
         except Exception as e:
@@ -166,6 +166,7 @@ class RuntimeManager:
                     cwd=temp_dir,
                     capture_output=False,  # Show output to user
                     text=True,
+                    encoding="utf-8",
                     env=env
                 )
                 return result.returncode == 0
@@ -255,6 +256,7 @@ class RuntimeManager:
                         version_cmd,
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
                         timeout=5
                     )
                     if result.returncode == 0:
@@ -293,7 +295,8 @@ class RuntimeManager:
                 result = subprocess.run(
                     ["npm", "uninstall", "-g", "@github/copilot"],
                     capture_output=True,
-                    text=True
+                    text=True,
+                    encoding="utf-8",
                 )
                 if result.returncode == 0:
                     click.echo(f"{Fore.GREEN}[+] Successfully removed {runtime_name} runtime{Style.RESET_ALL}")

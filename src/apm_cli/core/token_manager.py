@@ -111,6 +111,7 @@ class GitHubTokenManager:
                 input=f"protocol=https\nhost={host}\n\n",
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=GitHubTokenManager._get_credential_timeout(),
                 env={**os.environ, 'GIT_TERMINAL_PROMPT': '0',
                      'GIT_ASKPASS': '' if sys.platform != 'win32' else 'echo'},
