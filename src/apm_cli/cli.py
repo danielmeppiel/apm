@@ -75,7 +75,7 @@ cli.add_command(marketplace)
 cli.add_command(marketplace_search, name="search")
 
 
-def _get_current_code_page() -> int:
+def _get_current_code_page() -> "Optional[int]":
     """Get current Windows console code page using WinAPI.
     
     Returns the code page number (e.g., 65001 for UTF-8, 950 for CP950).

@@ -111,35 +111,35 @@ class RuntimeManager:
             if self._is_windows:
                 # Write common utilities as PowerShell
                 common_script = temp_path / "setup-common.ps1"
-                common_script.write_text(common_content)
+                common_script.write_text(common_content, encoding="utf-8")
                 
                 # Write GitHub token helper (empty on Windows)
                 token_helper_content = self.get_token_helper_script()
                 if token_helper_content:
                     token_helper_script = temp_path / "github-token-helper.ps1"
-                    token_helper_script.write_text(token_helper_content)
+                    token_helper_script.write_text(token_helper_content, encoding="utf-8")
                 
                 # Write main script as PowerShell
                 main_script = temp_path / "setup-script.ps1"
-                main_script.write_text(script_content)
+                main_script.write_text(script_content, encoding="utf-8")
             else:
                 # Write common utilities as bash
                 common_script = temp_path / "setup-common.sh"
-                common_script.write_text(common_content)
+                common_script.write_text(common_content, encoding="utf-8")
                 common_script.chmod(0o755)
                 
                 # Write GitHub token helper
                 try:
                     token_helper_content = self.get_token_helper_script()
                     token_helper_script = temp_path / "github-token-helper.sh"
-                    token_helper_script.write_text(token_helper_content)
+                    token_helper_script.write_text(token_helper_content, encoding="utf-8")
                     token_helper_script.chmod(0o755)
                 except Exception as e:
                     click.echo(f"{Fore.YELLOW}[!]  Token helper not available, scripts may use fallback authentication: {e}{Style.RESET_ALL}")
                 
                 # Write main script as bash
                 main_script = temp_path / "setup-script.sh"
-                main_script.write_text(script_content)
+                main_script.write_text(script_content, encoding="utf-8")
                 main_script.chmod(0o755)
             
             # Execute script with environment that includes npm authentication
