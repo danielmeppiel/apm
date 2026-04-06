@@ -39,6 +39,7 @@ def add(repo, name, branch, verbose):
         from ..marketplace.client import _auto_detect_path, fetch_marketplace
         from ..marketplace.models import MarketplaceSource
         from ..marketplace.registry import add_marketplace
+        from ..utils.github_host import default_host
 
         # Parse OWNER/REPO
         if "/" not in repo:
@@ -72,11 +73,13 @@ def add(repo, name, branch, verbose):
         logger.verbose_detail(f"    Branch: {branch}")
 
         # Auto-detect marketplace.json location
+        host = default_host()
         probe_source = MarketplaceSource(
             name=display_name,
             owner=owner,
             repo=repo_name,
             branch=branch,
+            host=host,
         )
         detected_path = _auto_detect_path(probe_source)
 
@@ -96,6 +99,7 @@ def add(repo, name, branch, verbose):
             owner=owner,
             repo=repo_name,
             branch=branch,
+            host=host,
             path=detected_path,
         )
 
