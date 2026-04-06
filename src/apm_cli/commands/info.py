@@ -75,17 +75,54 @@ def resolve_package_path(
     sys.exit(1)
 
 
+def _lookup_lockfile_ref(package: str, project_root: Path):
+    """Return (ref, commit) from the lockfile for *package*, or ("", "")."""
+    try:
+        from ..deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
+
+        migrate_lockfile_if_needed(project_root)
+        lockfile_path = get_lockfile_path(project_root)
+        lockfile = LockFile.read(lockfile_path)
+        if lockfile is None:
+            return "", ""
+
+        # Try exact key first, then substring match
+        dep = lockfile.dependencies.get(package)
+        if dep is None:
+            for key, d in lockfile.dependencies.items():
+                if package in key or key.endswith(f"/{package}"):
+                    dep = d
+                    break
+
+        if dep is not None:
+            return dep.resolved_ref or "", dep.resolved_commit or ""
+    except Exception:
+        pass
+    return "", ""
+
+
 def display_package_info(
     package: str,
     package_path: Path,
     logger: CommandLogger,
+    project_root: Optional[Path] = None,
 ) -> None:
     """Load and render package metadata to the terminal.
 
     Uses a Rich panel when available, falling back to plain text.
+    When *project_root* is provided, the lockfile is consulted for
+    ref and commit information.
     """
     try:
         package_info = _get_detailed_package_info(package_path)
+
+        # Look up lockfile entry for ref/commit info
+        locked_ref = ""
+        locked_commit = ""
+        if project_root is not None:
+            locked_ref, locked_commit = _lookup_lockfile_ref(
+                package, project_root
+            )
 
         try:
             from rich.panel import Panel
@@ -101,6 +138,12 @@ def display_package_info(
             )
             content_lines.append(f"[bold]Author:[/bold] {package_info['author']}")
             content_lines.append(f"[bold]Source:[/bold] {package_info['source']}")
+            if locked_ref:
+                content_lines.append(f"[bold]Ref:[/bold] {locked_ref}")
+            if locked_commit:
+                content_lines.append(
+                    f"[bold]Commit:[/bold] {locked_commit[:12]}"
+                )
             content_lines.append(
                 f"[bold]Install Path:[/bold] {package_info['install_path']}"
             )
@@ -147,6 +190,10 @@ def display_package_info(
             click.echo(f"Description: {package_info['description']}")
             click.echo(f"Author: {package_info['author']}")
             click.echo(f"Source: {package_info['source']}")
+            if locked_ref:
+                click.echo(f"Ref: {locked_ref}")
+            if locked_commit:
+                click.echo(f"Commit: {locked_commit[:12]}")
             click.echo(f"Install Path: {package_info['install_path']}")
             click.echo("")
             click.echo("Context Files:")
@@ -300,4 +347,4 @@ def info(package: str, field: Optional[str], global_: bool):
         sys.exit(1)
 
     package_path = resolve_package_path(package, apm_modules_path, logger)
-    display_package_info(package, package_path, logger)
+    display_package_info(package, package_path, logger, project_root=project_root)
