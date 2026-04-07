@@ -449,6 +449,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
                     cmd,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                     timeout=30,
                     env=validate_env,
                 )
