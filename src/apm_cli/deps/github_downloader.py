@@ -394,14 +394,23 @@ class GitHubPackageDownloader:
         return is_github_hostname(host)
 
     def _parse_artifactory_base_url(self) -> Optional[tuple]:
-        """Parse ARTIFACTORY_BASE_URL into (host, prefix, scheme)."""
+        """Parse PROXY_REGISTRY_URL (or deprecated ARTIFACTORY_BASE_URL) into (host, prefix, scheme)."""
         import urllib.parse as urlparse
-        base_url = os.environ.get('ARTIFACTORY_BASE_URL', '').strip().rstrip('/')
+        import warnings
+        base_url = os.environ.get('PROXY_REGISTRY_URL', '').strip().rstrip('/')
+        if not base_url:
+            base_url = os.environ.get('ARTIFACTORY_BASE_URL', '').strip().rstrip('/')
+            if base_url:
+                warnings.warn(
+                    "ARTIFACTORY_BASE_URL is deprecated; use PROXY_REGISTRY_URL instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
         if not base_url:
             return None
         parsed = urlparse.urlparse(base_url)
         if parsed.scheme not in ('https', 'http'):
-            _debug(f"ARTIFACTORY_BASE_URL has unsupported scheme: {parsed.scheme}")
+            _debug(f"Registry proxy URL has unsupported scheme: {parsed.scheme}")
             return None
         host = parsed.hostname
         path = parsed.path.strip('/')
@@ -1925,8 +1934,13 @@ author: {dep_ref.repo_url.split('/')[0]}
             elif dep_ref.is_virtual_collection():
                 return self.download_collection_package(dep_ref, target_path, progress_task_id, progress_obj)
             elif dep_ref.is_virtual_subdirectory():
-                # When PROXY_REGISTRY_ONLY is set, download full archive and extract subdir
-                art_proxy = self._parse_artifactory_base_url()
+                # Mode 1: explicit Artifactory FQDN from lockfile
+                if dep_ref.is_artifactory():
+                    proxy_info = (dep_ref.host, dep_ref.artifactory_prefix, "https")
+                    return self._download_subdirectory_from_artifactory(
+                        dep_ref, target_path, proxy_info, progress_task_id, progress_obj
+                    )
+                # Mode 2: transparent proxy via env var (art_proxy computed above)
                 if self._is_artifactory_only() and art_proxy:
                     return self._download_subdirectory_from_artifactory(
                         dep_ref, target_path, art_proxy, progress_task_id, progress_obj
