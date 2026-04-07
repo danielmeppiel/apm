@@ -108,9 +108,12 @@ class ScriptRunner:
         # Build helpful error message
         error_msg = f"Script or prompt '{script_name}' not found.\n"
         error_msg += f"Available scripts in apm.yml: {available}\n"
-        error_msg += f"\nTo find available prompts, check:\n"
-        error_msg += f"  - Local: .apm/prompts/, .github/prompts/, or project root\n"
-        error_msg += f"  - Dependencies: apm_modules/*/.apm/prompts/\n"
+        error_msg += f"\nTo get started, create a prompt file first:\n"
+        error_msg += f"  echo '# My agent prompt' > {script_name}.prompt.md\n"
+        error_msg += f"\nThen run again — APM will auto-discover it.\n"
+        error_msg += f"\nOr define a script explicitly in apm.yml:\n"
+        error_msg += f"  scripts:\n"
+        error_msg += f"    {script_name}: copilot {script_name}.prompt.md\n"
         error_msg += f"\nOr install a prompt package:\n"
         error_msg += f"  apm install <owner>/<repo>/path/to/prompt.prompt.md\n"
 
@@ -256,13 +259,12 @@ class ScriptRunner:
             compiled_prompt_files.append(prompt_file)
 
             # Read the compiled content
-            with open(compiled_path, "r") as f:
+            with open(compiled_path, "r", encoding="utf-8") as f:
                 compiled_content = f.read().strip()
 
             # Check if this is a runtime command (copilot, codex, llm) before transformation
             is_runtime_cmd = any(
-                re.search(r"(?:^|\s)" + runtime + r"(?:\s|$)", command)
-                for runtime in ["copilot", "codex", "llm"]
+                runtime in command for runtime in ["copilot", "codex", "llm"]
             ) and re.search(re.escape(prompt_file), command)
 
             # Transform command based on runtime pattern
@@ -344,7 +346,7 @@ class ScriptRunner:
         # Handle individual runtime patterns without environment variables
 
         # Handle "codex [args] file.prompt.md [more_args]" -> "codex exec [args] [more_args]"
-        if re.search(r"^codex\s+.*" + re.escape(prompt_file), command):
+        if re.search(r"codex\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"codex\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -360,7 +362,7 @@ class ScriptRunner:
                 return result
 
         # Handle "copilot [args] file.prompt.md [more_args]" -> "copilot [args] [more_args]"
-        elif re.search(r"^copilot\s+.*" + re.escape(prompt_file), command):
+        elif re.search(r"copilot\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"copilot\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -379,7 +381,7 @@ class ScriptRunner:
                 return result
 
         # Handle "llm [args] file.prompt.md [more_args]" -> "llm [args] [more_args]"
-        elif re.search(r"^llm\s+.*" + re.escape(prompt_file), command):
+        elif re.search(r"llm\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"llm\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -411,11 +413,12 @@ class ScriptRunner:
             Name of the detected runtime (copilot, codex, llm, or unknown)
         """
         command_lower = command.lower().strip()
-        if re.search(r"(?:^|\s)copilot(?:\s|$)", command_lower):
+        # Check for runtime keywords anywhere in the command, not just at the start
+        if "copilot" in command_lower:
             return "copilot"
-        elif re.search(r"(?:^|\s)codex(?:\s|$)", command_lower):
+        elif "codex" in command_lower:
             return "codex"
-        elif re.search(r"(?:^|\s)llm(?:\s|$)", command_lower):
+        elif "llm" in command_lower:
             return "llm"
         else:
             return "unknown"
@@ -497,12 +500,20 @@ class ScriptRunner:
                     print(line)
 
         # Execute using argument list (no shell interpretation) with updated environment
-        # On Windows, resolve the executable via shutil.which() so that shell
-        # wrappers like copilot.cmd / copilot.ps1 are found without shell=True.
+        # On Windows, resolve the executable via APM runtimes dir first, then shutil.which(),
+        # so that APM-installed binaries are found even when ~/.apm/runtimes is not in PATH.
         if sys.platform == "win32" and actual_command_args:
-            resolved = shutil.which(actual_command_args[0])
-            if resolved:
-                actual_command_args[0] = resolved
+            exe_name = actual_command_args[0]
+            apm_runtimes = Path.home() / ".apm" / "runtimes"
+            # Check APM runtimes directory first
+            apm_candidates = [apm_runtimes / exe_name, apm_runtimes / f"{exe_name}.exe"]
+            apm_resolved = next((str(c) for c in apm_candidates if c.exists()), None)
+            if apm_resolved:
+                actual_command_args[0] = apm_resolved
+            else:
+                resolved = shutil.which(exe_name)
+                if resolved:
+                    actual_command_args[0] = resolved
         return subprocess.run(actual_command_args, check=True, env=env_vars)
 
     def _discover_prompt_file(self, name: str) -> Optional[Path]:
@@ -546,24 +557,22 @@ class ScriptRunner:
         ]
 
         for path in local_search_paths:
-            if path.exists() and not path.is_symlink():
+            if path.exists():
                 return path
 
         # 2. Search in dependencies and detect collisions
         apm_modules = Path("apm_modules")
         if apm_modules.exists():
             # Collect ALL .prompt.md matches to detect collisions
-            raw_matches = list(apm_modules.rglob(search_name))
+            matches = list(apm_modules.rglob(search_name))
 
             # Also search for SKILL.md in directories matching the name
+            # e.g., name="architecture-blueprint-generator" -> find */architecture-blueprint-generator/SKILL.md
             for skill_dir in apm_modules.rglob(name):
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists():
-                        raw_matches.append(skill_file)
-
-            # Filter out symlinks
-            matches = [m for m in raw_matches if not m.is_symlink()]
+                        matches.append(skill_file)
 
             if len(matches) == 0:
                 return None
@@ -847,7 +856,15 @@ class ScriptRunner:
     def _detect_installed_runtime(self) -> str:
         """Detect installed runtime with priority order.
 
-        Priority: copilot > codex > error
+        Checks APM-managed runtimes (~/.apm/runtimes/) first, then PATH.
+        This ensures explicitly APM-installed binaries take priority over
+        system-level stubs (e.g. GitHub CLI copilot extensions).
+
+        Priority:
+          1. APM runtimes dir: copilot  (codex excluded — v0.116+ is
+             incompatible with GitHub Models' Chat Completions API)
+          2. PATH: llm > copilot > codex  (llm uses Chat Completions, works
+             with GitHub Models even when codex dropped that API)
 
         Returns:
             Name of detected runtime
@@ -857,18 +874,40 @@ class ScriptRunner:
         """
         import shutil
 
-        # Priority order: copilot first (recommended), then codex
-        if shutil.which("copilot"):
+        apm_runtimes = Path.home() / ".apm" / "runtimes"
+
+        # 1. Check APM-managed runtimes directory first (highest priority).
+        #    Only copilot is checked here — codex installed via APM runtimes
+        #    will be v0.116+ which dropped Chat Completions support and is
+        #    incompatible with GitHub Models.
+        #    llm is checked via PATH only (installed as a Python package).
+        for name in ("copilot",):
+            candidates = [
+                apm_runtimes / name,
+                apm_runtimes / f"{name}.exe",
+                apm_runtimes / f"{name}.cmd",
+            ]
+            if any(c.exists() for c in candidates):
+                # Verify the binary is actually executable before returning
+                exe = next(c for c in candidates if c.exists())
+                if exe.stat().st_size > 0:
+                    return name
+
+        # 2. Fall back to PATH — prefer llm (uses Chat Completions, works with
+        #    GitHub Models even when codex has dropped that API format)
+        if shutil.which("llm"):
+            return "llm"
+        elif shutil.which("copilot"):
             return "copilot"
         elif shutil.which("codex"):
             return "codex"
         else:
             raise RuntimeError(
                 "No compatible runtime found.\n"
-                "Install GitHub Copilot CLI with:\n"
-                "  apm runtime setup copilot\n"
-                "Or install Codex CLI with:\n"
-                "  apm runtime setup codex"
+                "Install the llm CLI with:\n"
+                "  apm runtime setup llm\n"
+                "Or install GitHub Copilot CLI with:\n"
+                "  apm runtime setup copilot"
             )
 
     def _generate_runtime_command(self, runtime: str, prompt_file: Path) -> str:
@@ -887,6 +926,9 @@ class ScriptRunner:
         elif runtime == "codex":
             # Codex CLI with default sandbox and git repo check skip
             return f"codex -s workspace-write --skip-git-repo-check {prompt_file}"
+        elif runtime == "llm":
+            # llm CLI — uses Chat Completions, compatible with GitHub Models
+            return f"llm -m github/gpt-4o {prompt_file}"
         else:
             raise ValueError(f"Unsupported runtime: {runtime}")
 
@@ -916,7 +958,7 @@ class PromptCompiler:
         # Now ensure compiled directory exists
         self.compiled_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(prompt_path, "r") as f:
+        with open(prompt_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         # Parse frontmatter and content
@@ -939,15 +981,13 @@ class PromptCompiler:
         output_path = self.compiled_dir / output_name
 
         # Write compiled content
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(compiled_content)
 
         return str(output_path)
 
     def _resolve_prompt_file(self, prompt_file: str) -> Path:
         """Resolve prompt file path, checking local directory first, then common directories, then dependencies.
-
-        Symlinks are rejected outright to prevent traversal attacks.
 
         Args:
             prompt_file: Relative path to the .prompt.md file
@@ -956,40 +996,40 @@ class PromptCompiler:
             Path: Resolved path to the prompt file
 
         Raises:
-            FileNotFoundError: If prompt file is not found or is a symlink
+            FileNotFoundError: If prompt file is not found in local or dependency modules
         """
         prompt_path = Path(prompt_file)
 
         # First check if it exists in current directory (local)
         if prompt_path.exists():
-            if prompt_path.is_symlink():
-                raise FileNotFoundError(
-                    f"Prompt file '{prompt_file}' is a symlink. "
-                    f"Symlinks are not allowed for security reasons."
-                )
             return prompt_path
 
         # Check in common project directories
         common_dirs = [".github/prompts", ".apm/prompts"]
         for common_dir in common_dirs:
             common_path = Path(common_dir) / prompt_file
-            if common_path.exists() and not common_path.is_symlink():
+            if common_path.exists():
                 return common_path
 
         # If not found locally, search in dependency modules
         apm_modules_dir = Path("apm_modules")
         if apm_modules_dir.exists():
+            # Search all dependency directories for the prompt file
+            # Handle org/repo directory structure (e.g., apm_modules/microsoft/apm-sample-package/)
             for org_dir in apm_modules_dir.iterdir():
                 if org_dir.is_dir() and not org_dir.name.startswith("."):
+                    # Iterate through repos within the org
                     for repo_dir in org_dir.iterdir():
                         if repo_dir.is_dir() and not repo_dir.name.startswith("."):
+                            # Check in the root of the repository
                             dep_prompt_path = repo_dir / prompt_file
-                            if dep_prompt_path.exists() and not dep_prompt_path.is_symlink():
+                            if dep_prompt_path.exists():
                                 return dep_prompt_path
 
+                            # Also check in common subdirectories
                             for subdir in ["prompts", ".", "workflows"]:
                                 sub_prompt_path = repo_dir / subdir / prompt_file
-                                if sub_prompt_path.exists() and not sub_prompt_path.is_symlink():
+                                if sub_prompt_path.exists():
                                     return sub_prompt_path
 
         # If still not found, raise an error with helpful message
