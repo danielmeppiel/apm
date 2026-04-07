@@ -394,29 +394,16 @@ class GitHubPackageDownloader:
         return is_github_hostname(host)
 
     def _parse_artifactory_base_url(self) -> Optional[tuple]:
-        """Parse PROXY_REGISTRY_URL (or deprecated ARTIFACTORY_BASE_URL) into (host, prefix, scheme)."""
-        import urllib.parse as urlparse
-        import warnings
-        base_url = os.environ.get('PROXY_REGISTRY_URL', '').strip().rstrip('/')
-        if not base_url:
-            base_url = os.environ.get('ARTIFACTORY_BASE_URL', '').strip().rstrip('/')
-            if base_url:
-                warnings.warn(
-                    "ARTIFACTORY_BASE_URL is deprecated; use PROXY_REGISTRY_URL instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-        if not base_url:
+        """Return ``(host, prefix, scheme)`` from the registry proxy config, or ``None``.
+
+        Delegates to :meth:`~apm_cli.deps.registry_proxy.RegistryConfig.from_env`
+        so that env-var precedence and deprecation warnings are handled in one place.
+        """
+        from .registry_proxy import RegistryConfig
+        cfg = RegistryConfig.from_env()
+        if cfg is None:
             return None
-        parsed = urlparse.urlparse(base_url)
-        if parsed.scheme not in ('https', 'http'):
-            _debug(f"Registry proxy URL has unsupported scheme: {parsed.scheme}")
-            return None
-        host = parsed.hostname
-        path = parsed.path.strip('/')
-        if not host or not path:
-            return None
-        return (host, path, parsed.scheme)
+        return (cfg.host, cfg.prefix, cfg.scheme)
 
     def _resolve_dep_token(self, dep_ref: Optional[DependencyReference] = None) -> Optional[str]:
         """Resolve the per-dependency auth token via AuthResolver.
