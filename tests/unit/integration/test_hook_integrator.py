@@ -1272,7 +1272,130 @@ class TestScriptPathRewriting:
         assert ".github/hooks/scripts/my-pkg/scripts/format-mac.sh" in cmd
         assert len(scripts) == 1
 
-    def test_rewrite_hooks_data_windows_flat_format(self, temp_project):
+    # -- Windows backslash path tests ------------------------------------------
+
+    def test_rewrite_backslash_relative_path(self, temp_project):
+        """Test rewriting .\\ backslash relative path (Windows convention)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "scan.ps1").write_text("Write-Host 'ok'")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            ".\\scripts\\scan.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert ".\\" not in cmd
+        assert ".github/hooks/scripts/my-pkg/scripts/scan.ps1" in cmd
+        assert len(scripts) == 1
+
+    def test_rewrite_backslash_with_command_prefix(self, temp_project):
+        """Test .\\ path preceded by command text (e.g. pwsh -File .\\scan.ps1)."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "scan.ps1").write_text("Write-Host 'ok'")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "pwsh -File .\\scripts\\scan.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert cmd.startswith("pwsh -File ")
+        assert ".\\" not in cmd
+        assert ".github/hooks/scripts/my-pkg/scripts/scan.ps1" in cmd
+        assert len(scripts) == 1
+
+    def test_rewrite_backslash_plugin_root(self, temp_project):
+        """Test ${CLAUDE_PLUGIN_ROOT} with backslash separators."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "hooks").mkdir(parents=True)
+        (pkg_dir / "hooks" / "validate.ps1").write_text("Write-Host 'ok'")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "pwsh ${CLAUDE_PLUGIN_ROOT}\\hooks\\validate.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert "${CLAUDE_PLUGIN_ROOT}" not in cmd
+        assert "\\" not in cmd
+        assert cmd.startswith("pwsh ")
+        assert ".github/hooks/scripts/my-pkg/hooks/validate.ps1" in cmd
+        assert len(scripts) == 1
+
+    def test_rewrite_backslash_normalizes_to_forward_slash(self, temp_project):
+        """Output paths always use forward slashes regardless of input."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "sub" / "dir").mkdir(parents=True)
+        (pkg_dir / "sub" / "dir" / "run.ps1").write_text("Write-Host 'ok'")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            ".\\sub\\dir\\run.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert "\\" not in cmd
+        assert ".github/hooks/scripts/my-pkg/sub/dir/run.ps1" in cmd
+        # Target path in scripts_to_copy also uses forward slashes
+        assert all("\\" not in target_rel for _, target_rel in scripts)
+
+    def test_rewrite_backslash_path_traversal_rejected(self, temp_project):
+        """Backslash path traversal (..\\) is still rejected."""
+        pkg_dir = temp_project / "pkg"
+        pkg_dir.mkdir(parents=True)
+        # Create file outside package dir
+        (temp_project / "secret.ps1").write_text("bad")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            ".\\..\\secret.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        # Path traversal should be rejected — command unchanged, no scripts
+        assert len(scripts) == 0
+
+    def test_rewrite_hooks_data_windows_backslash_flat(self, temp_project):
+        """Test _rewrite_hooks_data handles backslash paths in windows key."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "validate.sh").write_text("#!/bin/bash")
+        (pkg_dir / "scripts" / "validate.ps1").write_text("Write-Host 'ok'")
+
+        integrator = HookIntegrator()
+        data = {
+            "hooks": {
+                "preToolUse": [
+                    {
+                        "type": "command",
+                        "bash": "./scripts/validate.sh",
+                        "windows": ".\\scripts\\validate.ps1",
+                    }
+                ]
+            }
+        }
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["preToolUse"][0]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.sh" in hook["bash"]
+        assert ".github/hooks/scripts/my-pkg/scripts/validate.ps1" in hook["windows"]
+        assert "\\" not in hook["windows"]
+        assert len(scripts) == 2
         """Test _rewrite_hooks_data handles windows key in flat format (GitHub Copilot)."""
         pkg_dir = temp_project / "pkg"
         (pkg_dir / "scripts").mkdir(parents=True)
@@ -1965,3 +2088,116 @@ class TestScopeResolvedHookDeployment:
         for name, profile in KNOWN_TARGETS.items():
             if not profile.auto_create:
                 assert name != "copilot", "copilot should have auto_create=True"
+
+
+# ─── Backslash path rewrite tests (issue #520) ───────────────────────────────
+
+
+class TestBackslashPathRewrite:
+    """Windows-style backslash paths in hook commands must be rewritten."""
+
+    @pytest.fixture
+    def temp_project(self):
+        temp_dir = tempfile.mkdtemp()
+        yield Path(temp_dir)
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_rewrite_backslash_relative_path(self, temp_project):
+        """Backslash relative paths should be rewritten like forward-slash paths."""
+        pkg_dir = temp_project / "pkg"
+        scripts_dir = pkg_dir / "secrets-scanner"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "scan-secrets.ps1").write_text("Write-Host 'scanning'")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "pwsh -File .\\secrets-scanner\\scan-secrets.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert ".github/hooks/scripts/my-pkg/secrets-scanner/scan-secrets.ps1" in cmd
+        assert len(scripts) == 1
+
+    def test_rewrite_backslash_hooks_data_flat(self, temp_project):
+        """End-to-end: windows key with backslash paths in flat format."""
+        pkg_dir = temp_project / "pkg"
+        scripts_dir = pkg_dir / "secrets-scanner"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "scan.sh").write_text("#!/bin/bash")
+        (scripts_dir / "scan.ps1").write_text("Write-Host 'ok'")
+
+        data = {
+            "hooks": {
+                "Stop": [
+                    {
+                        "type": "command",
+                        "command": "./secrets-scanner/scan.sh",
+                        "windows": "pwsh -File .\\secrets-scanner\\scan.ps1",
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["Stop"][0]
+        assert ".github/hooks/scripts/my-pkg/secrets-scanner/scan.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/secrets-scanner/scan.ps1" in hook["windows"]
+        assert len(scripts) == 2
+
+    def test_rewrite_backslash_hooks_data_nested(self, temp_project):
+        """End-to-end: windows key with backslash paths in nested Claude format."""
+        pkg_dir = temp_project / "pkg"
+        scripts_dir = pkg_dir / "session-auto-commit"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "auto-commit.sh").write_text("#!/bin/bash")
+        (scripts_dir / "auto-commit.ps1").write_text("Write-Host 'commit'")
+
+        data = {
+            "hooks": {
+                "Stop": [
+                    {
+                        "matcher": "Always",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "./session-auto-commit/auto-commit.sh",
+                                "windows": "pwsh -File .\\session-auto-commit\\auto-commit.ps1",
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+
+        integrator = HookIntegrator()
+        rewritten, scripts = integrator._rewrite_hooks_data(
+            data, pkg_dir, "my-pkg", "vscode",
+        )
+
+        hook = rewritten["hooks"]["Stop"][0]["hooks"][0]
+        assert ".github/hooks/scripts/my-pkg/session-auto-commit/auto-commit.sh" in hook["command"]
+        assert ".github/hooks/scripts/my-pkg/session-auto-commit/auto-commit.ps1" in hook["windows"]
+        assert len(scripts) == 2
+
+    def test_rewrite_forward_slash_still_works(self, temp_project):
+        """Forward-slash windows paths (./scripts/scan.ps1) still rewrite correctly."""
+        pkg_dir = temp_project / "pkg"
+        (pkg_dir / "scripts").mkdir(parents=True)
+        (pkg_dir / "scripts" / "scan.ps1").write_text("Write-Host 'ok'")
+
+        integrator = HookIntegrator()
+        cmd, scripts = integrator._rewrite_command_for_target(
+            "./scripts/scan.ps1",
+            pkg_dir,
+            "my-pkg",
+            "vscode",
+        )
+
+        assert ".github/hooks/scripts/my-pkg/scripts/scan.ps1" in cmd
+        assert len(scripts) == 1
