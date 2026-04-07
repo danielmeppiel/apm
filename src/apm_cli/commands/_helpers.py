@@ -460,3 +460,16 @@ def _create_minimal_apm_yml(config, plugin=False, target_path=None):
     from ..utils.yaml_io import dump_yaml
     out_path = target_path or APM_YML_FILENAME
     dump_yaml(apm_yml_data, out_path)
+
+    # For non-plugin projects, create a starter prompt file if it doesn't exist
+    if not plugin:
+        prompt_path = Path(out_path).parent / "start.prompt.md" if target_path else Path("start.prompt.md")
+        if not prompt_path.exists():
+            prompt_path.write_text(
+                "# Start\n\n"
+                "Write your agent instructions here.\n\n"
+                "## Parameters\n\n"
+                "You can pass parameters with `${input:param_name}` syntax.\n"
+                "Example: Hello, ${input:name}!\n",
+                encoding="utf-8",
+            )
