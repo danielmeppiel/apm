@@ -62,9 +62,10 @@ def _sanitize_cache_name(name: str) -> str:
 
 def _cache_key(source: MarketplaceSource) -> str:
     """Cache key that includes host to avoid collisions across hosts."""
-    if source.host == "github.com":
+    normalized_host = source.host.lower()
+    if normalized_host == "github.com":
         return source.name
-    return f"{_sanitize_cache_name(source.host)}__{source.name}"
+    return f"{_sanitize_cache_name(normalized_host)}__{source.name}"
 
 
 def _cache_data_path(name: str) -> str:

@@ -49,10 +49,10 @@ def add(repo, name, branch, host, verbose):
             )
             sys.exit(1)
 
+        from ..utils.github_host import default_host, is_valid_fqdn
+
         parts = repo.split("/")
         if len(parts) == 3 and parts[0] and parts[1] and parts[2]:
-            from ..utils.github_host import is_valid_fqdn
-
             if not is_valid_fqdn(parts[0]):
                 logger.error(
                     f"Invalid host: '{parts[0]}'. "
@@ -72,9 +72,17 @@ def add(repo, name, branch, host, verbose):
             logger.error(f"Invalid format: '{repo}'. Expected 'OWNER/REPO'")
             sys.exit(1)
 
-        from ..utils.github_host import default_host
-
-        resolved_host = host or default_host()
+        if host is not None:
+            normalized_host = host.strip().lower()
+            if not is_valid_fqdn(normalized_host):
+                logger.error(
+                    f"Invalid host: '{host}'. Expected a valid host FQDN "
+                    f"(for example, 'github.com')."
+                )
+                sys.exit(1)
+            resolved_host = normalized_host
+        else:
+            resolved_host = default_host()
         display_name = name or repo_name
 
         # Validate name is identifier-compatible for NAME@MARKETPLACE syntax
