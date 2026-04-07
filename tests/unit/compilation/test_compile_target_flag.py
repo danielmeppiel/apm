@@ -847,3 +847,63 @@ compilation:
             assert config.target == "vscode"
         finally:
             os.chdir(original_dir)
+
+
+class TestCompileWarningOnMissingApplyTo:
+    """Tests that apm compile warns when an instruction is missing applyTo."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def project_with_bad_instruction(self):
+        temp_dir = tempfile.mkdtemp()
+        temp_path = Path(temp_dir)
+
+        (temp_path / "apm.yml").write_text("name: test-project\nversion: 0.1.0\n")
+
+        apm_dir = temp_path / ".apm" / "instructions"
+        apm_dir.mkdir(parents=True)
+
+        (apm_dir / "good.instructions.md").write_text(
+            "---\napplyTo: '**/*.py'\n---\nFollow PEP 8.\n"
+        )
+        (apm_dir / "bad.instructions.md").write_text(
+            "---\ndescription: Missing applyTo\n---\nThis instruction has no scope.\n"
+        )
+
+        yield temp_path
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_cli_warns_missing_apply_to_distributed(
+        self, runner, project_with_bad_instruction
+    ):
+        """Test that apm compile --dry-run warns about missing applyTo in distributed mode."""
+        original_dir = os.getcwd()
+        try:
+            os.chdir(project_with_bad_instruction)
+            result = runner.invoke(
+                cli, ["compile", "--target", "vscode", "--dry-run"]
+            )
+            assert "applyTo" in result.output, (
+                f"Expected warning about missing 'applyTo' in CLI output, got:\n{result.output}"
+            )
+        finally:
+            os.chdir(original_dir)
+
+    def test_cli_warns_missing_apply_to_claude(
+        self, runner, project_with_bad_instruction
+    ):
+        """Test that apm compile --target claude --dry-run warns about missing applyTo."""
+        original_dir = os.getcwd()
+        try:
+            os.chdir(project_with_bad_instruction)
+            result = runner.invoke(
+                cli, ["compile", "--target", "claude", "--dry-run"]
+            )
+            assert "applyTo" in result.output, (
+                f"Expected warning about missing 'applyTo' in CLI output, got:\n{result.output}"
+            )
+        finally:
+            os.chdir(original_dir)

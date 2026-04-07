@@ -1572,7 +1572,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             for cmd in cmds:
                 result = subprocess.run(
                     cmd, cwd=str(temp_clone_path), env=env,
-                    capture_output=True, text=True, timeout=120,
+                    capture_output=True, text=True, encoding="utf-8", timeout=120,
                 )
                 if result.returncode != 0:
                     _debug(f"Sparse-checkout step failed ({' '.join(cmd)}): {result.stderr.strip()}")

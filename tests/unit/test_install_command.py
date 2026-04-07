@@ -88,7 +88,7 @@ class TestInstallCommandAutoBootstrap:
             assert Path("apm.yml").exists()
 
             # Verify apm.yml structure
-            with open("apm.yml") as f:
+            with open("apm.yml", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
                 assert "dependencies" in config
                 assert "apm" in config["dependencies"]
@@ -125,7 +125,7 @@ class TestInstallCommandAutoBootstrap:
             assert Path("apm.yml").exists()
 
             # Verify both packages are in apm.yml
-            with open("apm.yml") as f:
+            with open("apm.yml", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
                 assert "org1/pkg1" in config["dependencies"]["apm"]
                 assert "org2/pkg2" in config["dependencies"]["apm"]
@@ -147,7 +147,7 @@ class TestInstallCommandAutoBootstrap:
                 "dependencies": {"apm": [], "mcp": []},
                 "scripts": {},
             }
-            with open("apm.yml", "w") as f:
+            with open("apm.yml", "w", encoding="utf-8") as f:
                 yaml.dump(existing_config, f)
 
             # Mock APMPackage
@@ -165,7 +165,7 @@ class TestInstallCommandAutoBootstrap:
             assert "Created apm.yml" not in result.output
 
             # Verify original config is preserved
-            with open("apm.yml") as f:
+            with open("apm.yml", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
                 assert config["name"] == "test-project"
                 assert config["author"] == "Test Author"
@@ -202,7 +202,7 @@ class TestInstallCommandAutoBootstrap:
             assert Path("apm.yml").exists()
 
             # Verify auto-detected project name
-            with open("apm.yml") as f:
+            with open("apm.yml", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
                 assert config["name"] == "my-awesome-project"
                 assert "version" in config

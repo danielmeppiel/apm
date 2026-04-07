@@ -85,6 +85,7 @@ def get_build_sha() -> str:
                 cwd=repo_root,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=5,
             )
             if result.returncode == 0:

@@ -613,6 +613,163 @@ class TestScanLocalPrimitives(unittest.TestCase):
         self.assertEqual(collection.count(), 0)
 
 
+class TestExcludePatternsInDiscovery(unittest.TestCase):
+    """Tests for compilation.exclude filtering during primitive discovery."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_scan_local_primitives_excludes_matching_directory(self):
+        """Primitives under excluded directories are filtered out."""
+        base = Path(self.tmp)
+        # Local instruction (should be kept)
+        _write(
+            base / ".apm" / "instructions" / "general.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        # Instruction inside docs/ (should be excluded)
+        _write(
+            base
+            / "docs"
+            / "labs"
+            / ".github"
+            / "instructions"
+            / "react.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        collection = PrimitiveCollection()
+        scan_local_primitives(
+            self.tmp, collection, exclude_patterns=["docs/**"]
+        )
+        self.assertEqual(len(collection.instructions), 1)
+
+    def test_scan_local_primitives_no_exclude_discovers_all(self):
+        """Without exclude patterns, all primitives are discovered."""
+        base = Path(self.tmp)
+        _write(
+            base / ".apm" / "instructions" / "general.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        _write(
+            base
+            / "docs"
+            / "labs"
+            / ".github"
+            / "instructions"
+            / "react.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        collection = PrimitiveCollection()
+        scan_local_primitives(self.tmp, collection, exclude_patterns=None)
+        self.assertEqual(len(collection.instructions), 2)
+
+    def test_scan_local_primitives_multiple_exclude_patterns(self):
+        """Multiple exclude patterns each filter their respective files."""
+        base = Path(self.tmp)
+        _write(
+            base / ".apm" / "instructions" / "kept.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        _write(
+            base
+            / "docs"
+            / ".github"
+            / "instructions"
+            / "a.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        _write(
+            base
+            / "tmp"
+            / ".github"
+            / "instructions"
+            / "b.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        collection = PrimitiveCollection()
+        scan_local_primitives(
+            self.tmp, collection, exclude_patterns=["docs/**", "tmp/**"]
+        )
+        self.assertEqual(len(collection.instructions), 1)
+
+    def test_discover_primitives_respects_exclude(self):
+        """discover_primitives() filters with exclude_patterns."""
+        base = Path(self.tmp)
+        _write(
+            base / ".apm" / "instructions" / "general.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        _write(
+            base
+            / "docs"
+            / ".github"
+            / "instructions"
+            / "leak.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        from apm_cli.primitives.discovery import discover_primitives
+
+        collection = discover_primitives(
+            self.tmp, exclude_patterns=["docs/**"]
+        )
+        self.assertEqual(len(collection.instructions), 1)
+
+    def test_discover_primitives_with_dependencies_respects_exclude(self):
+        """discover_primitives_with_dependencies() filters with exclude_patterns."""
+        base = Path(self.tmp)
+        _write(
+            base / ".apm" / "instructions" / "general.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        _write(
+            base
+            / "docs"
+            / ".github"
+            / "instructions"
+            / "leak.instructions.md",
+            INSTRUCTION_CONTENT,
+        )
+        # Create minimal apm.yml for the function to work
+        (base / "apm.yml").write_text(
+            "name: test\nversion: 1.0.0\n", encoding="utf-8"
+        )
+        from apm_cli.primitives.discovery import (
+            discover_primitives_with_dependencies,
+        )
+
+        collection = discover_primitives_with_dependencies(
+            self.tmp, exclude_patterns=["docs/**"]
+        )
+        self.assertEqual(len(collection.instructions), 1)
+
+    def test_discover_primitives_excludes_skill_md(self):
+        """SKILL.md at project root is excluded when matching pattern."""
+        base = Path(self.tmp)
+        skill_content = "# My Skill\n\nSome skill content."
+        (base / "SKILL.md").write_text(skill_content, encoding="utf-8")
+        from apm_cli.primitives.discovery import discover_primitives
+
+        # Without exclusion -- SKILL.md found
+        collection = discover_primitives(self.tmp, exclude_patterns=None)
+        self.assertEqual(len(collection.skills), 1)
+
+        # With exclusion matching SKILL.md
+        collection = discover_primitives(self.tmp, exclude_patterns=["SKILL.md"])
+        self.assertEqual(len(collection.skills), 0)
+
+    def test_validate_rejects_dos_pattern(self):
+        """Patterns with excessive non-consecutive ** segments are rejected."""
+        from apm_cli.utils.exclude import validate_exclude_patterns
+        # 7 non-consecutive ** segments (consecutive ones collapse)
+        with self.assertRaises(ValueError):
+            validate_exclude_patterns(["a/**/b/**/c/**/d/**/e/**/f/**/g/**"])
+
+
 class TestIsReadable(unittest.TestCase):
     """Tests for _is_readable."""
 

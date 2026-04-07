@@ -73,7 +73,7 @@ class TestPrimitiveModels(unittest.TestCase):
         )
         self.assertEqual(instruction.validate(), [])
 
-        # Missing applyTo (required for instructions)
+        # Missing applyTo (instruction will apply globally)
         instruction_no_apply = Instruction(
             name="test",
             file_path=Path("test.instructions.md"),
