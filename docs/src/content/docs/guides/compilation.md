@@ -61,6 +61,8 @@ target: copilot  # or vscode, claude, codex, or all
 3. **Optimization**: Applies mathematical context optimization (see below)
 4. **Format Generation**: Outputs native files for each target agent format
 
+> **Tip**: `apm compile` warns when any `.instructions.md` file is missing an `applyTo` frontmatter field. An instruction without `applyTo` applies globally and cannot be scoped to specific paths. Add `applyTo` to keep context focused.
+
 ### Example Output
 
 **After `apm compile`:**

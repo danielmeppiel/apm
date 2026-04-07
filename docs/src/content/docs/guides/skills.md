@@ -383,6 +383,16 @@ If skill lacks APM metadata:
 1. Check the skill was installed via APM (not manually copied)
 2. Reinstall the package
 
+### Duplicate Skill Name Warning
+
+If two installed packages deploy a native skill with the same name, APM warns about the conflict:
+
+```
+[!] Skill name conflict: "code-review" deployed by both owner/pkg-a and owner/pkg-b
+```
+
+The last-installed package wins. To resolve: uninstall one of the conflicting packages, or use packages that use distinct skill names.
+
 ## Related Documentation
 
 - [Core Concepts](../../introduction/how-it-works/) - Understanding APM architecture

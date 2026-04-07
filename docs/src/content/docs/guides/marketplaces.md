@@ -75,6 +75,8 @@ This registers the marketplace and fetches its `marketplace.json`. By default AP
 - `--name/-n` -- Custom display name for the marketplace
 - `--branch/-b` -- Branch to track (default: `main`)
 
+> **GitHub Enterprise**: `apm marketplace add` respects the `GITHUB_HOST` environment variable. Set it to your GHES hostname to register marketplaces hosted on a GitHub Enterprise Server instance. See [Authentication](../../getting-started/authentication/) for details.
+
 ```bash
 # Register with a custom name on a specific branch
 apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
