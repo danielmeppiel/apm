@@ -175,12 +175,15 @@ A path must pass all three checks. Failure on any check prevents the file from b
 
 ### Symlink handling
 
-Symlinks are never followed during artifact operations:
+Symlinks are never followed during file discovery or artifact operations:
 
-- **Tree copy operations** skip symlinks entirely — they are excluded from the copy via an ignore filter.
+- **Primitive discovery** (instructions, agents, prompts, contexts, skills) rejects symlinked files during glob-based file enumeration. Symlinks are silently skipped.
+- **Prompt resolution** (`apm preview`, `apm run`) rejects symlinked `.prompt.md` files with an explicit error message.
+- **Integrator file discovery** (agents, instructions, prompts, skills, hooks) rejects symlinked files via `is_symlink()` checks in `find_files_by_glob` and `find_hook_files`.
+- **Tree copy operations** skip symlinks entirely -- they are excluded from the copy via an ignore filter.
 - **MCP configuration files** that are symlinks are rejected with a warning and not parsed.
 - **Manifest parsing** requires files to pass both `.is_file()` and `not .is_symlink()` checks.
-- **Archive creation** — `apm pack` excludes symlinks from bundled archives. Packaged artifacts contain no symbolic links, preventing symlink-based escape attacks in distributed bundles.
+- **Archive creation** -- `apm pack` excludes symlinks from bundled archives. Packaged artifacts contain no symbolic links, preventing symlink-based escape attacks in distributed bundles.
 
 This prevents symlink-based attacks that could escape allowed directories or cause APM to read or write outside the project root.
 

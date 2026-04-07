@@ -20,8 +20,8 @@ class LLMRuntime(RuntimeAdapter):
         
         # Verify llm CLI is available
         try:
-            result = subprocess.run(['llm', '--version'], 
-                                  capture_output=True, text=True, check=True)
+            result = subprocess.run(['llm', '--version'],
+                                  capture_output=True, text=True, encoding="utf-8", check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             raise RuntimeError("llm CLI not found. Please install: pip install llm")
     
@@ -52,8 +52,8 @@ class LLMRuntime(RuntimeAdapter):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,  # Merge stderr into stdout for streaming
                 text=True,
+                encoding="utf-8",
                 bufsize=1,  # Line buffered
-                universal_newlines=True
             )
             
             output_lines = []
@@ -86,8 +86,8 @@ class LLMRuntime(RuntimeAdapter):
             Dict[str, Any]: Dictionary of available models and their info
         """
         try:
-            result = subprocess.run(['llm', 'models', 'list'], 
-                                  capture_output=True, text=True, check=True)
+            result = subprocess.run(['llm', 'models', 'list'],
+                                  capture_output=True, text=True, encoding="utf-8", check=True)
             models = {}
             for line in result.stdout.strip().split('\n'):
                 if line.strip():
@@ -136,8 +136,8 @@ class LLMRuntime(RuntimeAdapter):
             bool: True if runtime is available, False otherwise
         """
         try:
-            subprocess.run(['llm', '--version'], 
-                          capture_output=True, text=True, check=True)
+            subprocess.run(['llm', '--version'],
+                          capture_output=True, text=True, encoding="utf-8", check=True)
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False

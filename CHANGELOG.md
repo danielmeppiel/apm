@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [0.8.11] - 2026-04-06
+
+### Added
+
+- Artifactory archive entry download for virtual file packages (#525)
 
 ### Changed
 
@@ -16,7 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reject symlinked primitive files in all discovery and resolution paths to prevent symlink-based traversal attacks (#596)
+- `apm install -g` now deploys hooks to the scope-resolved target directory instead of hardcoding `.github/hooks/` (#565, #566)
+- Hook sync/cleanup derives prefixes dynamically from `KNOWN_TARGETS` instead of hardcoded paths (#565)
+- `auto_create=False` targets no longer get directories unconditionally created during install (#576)
 - `apm deps update -g` now correctly passes scope, preventing user-scope updates from silently using project-scope paths (#562)
+- Subprocess encoding failures on Windows non-UTF-8 consoles (CP950/CP936) -- all subprocess calls now use explicit UTF-8 encoding (#591)
+- PowerShell 5.1 compatibility: replace multi-argument `Join-Path` calls with nested two-argument calls (#593)
+- `apm marketplace add` now respects `GITHUB_HOST` environment variable for GitHub Enterprise users (#589)
+- `compilation.exclude` patterns now filter primitive discovery, preventing excluded files from leaking into compiled output (#477)
+- Runtime detection in script runner now uses anchored patterns to prevent false positives when runtime keywords appear in flag values (#563)
+- `apm compile` now warns when instructions are missing `applyTo` across all compilation modes (#449)
+- Detect remote default branch instead of hardcoding `main` (#574)
+- Warn when two packages deploy a native skill with the same name (#545)
 
 ## [0.8.10] - 2026-04-03
 

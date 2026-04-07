@@ -261,7 +261,8 @@ class ScriptRunner:
 
             # Check if this is a runtime command (copilot, codex, llm) before transformation
             is_runtime_cmd = any(
-                runtime in command for runtime in ["copilot", "codex", "llm"]
+                re.search(r"(?:^|\s)" + runtime + r"(?:\s|$)", command)
+                for runtime in ["copilot", "codex", "llm"]
             ) and re.search(re.escape(prompt_file), command)
 
             # Transform command based on runtime pattern
@@ -343,7 +344,7 @@ class ScriptRunner:
         # Handle individual runtime patterns without environment variables
 
         # Handle "codex [args] file.prompt.md [more_args]" -> "codex exec [args] [more_args]"
-        if re.search(r"codex\s+.*" + re.escape(prompt_file), command):
+        if re.search(r"^codex\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"codex\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -359,7 +360,7 @@ class ScriptRunner:
                 return result
 
         # Handle "copilot [args] file.prompt.md [more_args]" -> "copilot [args] [more_args]"
-        elif re.search(r"copilot\s+.*" + re.escape(prompt_file), command):
+        elif re.search(r"^copilot\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"copilot\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -378,7 +379,7 @@ class ScriptRunner:
                 return result
 
         # Handle "llm [args] file.prompt.md [more_args]" -> "llm [args] [more_args]"
-        elif re.search(r"llm\s+.*" + re.escape(prompt_file), command):
+        elif re.search(r"^llm\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"llm\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -410,12 +411,11 @@ class ScriptRunner:
             Name of the detected runtime (copilot, codex, llm, or unknown)
         """
         command_lower = command.lower().strip()
-        # Check for runtime keywords anywhere in the command, not just at the start
-        if "copilot" in command_lower:
+        if re.search(r"(?:^|\s)copilot(?:\s|$)", command_lower):
             return "copilot"
-        elif "codex" in command_lower:
+        elif re.search(r"(?:^|\s)codex(?:\s|$)", command_lower):
             return "codex"
-        elif "llm" in command_lower:
+        elif re.search(r"(?:^|\s)llm(?:\s|$)", command_lower):
             return "llm"
         else:
             return "unknown"
@@ -546,22 +546,24 @@ class ScriptRunner:
         ]
 
         for path in local_search_paths:
-            if path.exists():
+            if path.exists() and not path.is_symlink():
                 return path
 
         # 2. Search in dependencies and detect collisions
         apm_modules = Path("apm_modules")
         if apm_modules.exists():
             # Collect ALL .prompt.md matches to detect collisions
-            matches = list(apm_modules.rglob(search_name))
+            raw_matches = list(apm_modules.rglob(search_name))
 
             # Also search for SKILL.md in directories matching the name
-            # e.g., name="architecture-blueprint-generator" -> find */architecture-blueprint-generator/SKILL.md
             for skill_dir in apm_modules.rglob(name):
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists():
-                        matches.append(skill_file)
+                        raw_matches.append(skill_file)
+
+            # Filter out symlinks
+            matches = [m for m in raw_matches if not m.is_symlink()]
 
             if len(matches) == 0:
                 return None
@@ -945,6 +947,8 @@ class PromptCompiler:
     def _resolve_prompt_file(self, prompt_file: str) -> Path:
         """Resolve prompt file path, checking local directory first, then common directories, then dependencies.
 
+        Symlinks are rejected outright to prevent traversal attacks.
+
         Args:
             prompt_file: Relative path to the .prompt.md file
 
@@ -952,40 +956,40 @@ class PromptCompiler:
             Path: Resolved path to the prompt file
 
         Raises:
-            FileNotFoundError: If prompt file is not found in local or dependency modules
+            FileNotFoundError: If prompt file is not found or is a symlink
         """
         prompt_path = Path(prompt_file)
 
         # First check if it exists in current directory (local)
         if prompt_path.exists():
+            if prompt_path.is_symlink():
+                raise FileNotFoundError(
+                    f"Prompt file '{prompt_file}' is a symlink. "
+                    f"Symlinks are not allowed for security reasons."
+                )
             return prompt_path
 
         # Check in common project directories
         common_dirs = [".github/prompts", ".apm/prompts"]
         for common_dir in common_dirs:
             common_path = Path(common_dir) / prompt_file
-            if common_path.exists():
+            if common_path.exists() and not common_path.is_symlink():
                 return common_path
 
         # If not found locally, search in dependency modules
         apm_modules_dir = Path("apm_modules")
         if apm_modules_dir.exists():
-            # Search all dependency directories for the prompt file
-            # Handle org/repo directory structure (e.g., apm_modules/microsoft/apm-sample-package/)
             for org_dir in apm_modules_dir.iterdir():
                 if org_dir.is_dir() and not org_dir.name.startswith("."):
-                    # Iterate through repos within the org
                     for repo_dir in org_dir.iterdir():
                         if repo_dir.is_dir() and not repo_dir.name.startswith("."):
-                            # Check in the root of the repository
                             dep_prompt_path = repo_dir / prompt_file
-                            if dep_prompt_path.exists():
+                            if dep_prompt_path.exists() and not dep_prompt_path.is_symlink():
                                 return dep_prompt_path
 
-                            # Also check in common subdirectories
                             for subdir in ["prompts", ".", "workflows"]:
                                 sub_prompt_path = repo_dir / subdir / prompt_file
-                                if sub_prompt_path.exists():
+                                if sub_prompt_path.exists() and not sub_prompt_path.is_symlink():
                                     return sub_prompt_path
 
         # If still not found, raise an error with helpful message

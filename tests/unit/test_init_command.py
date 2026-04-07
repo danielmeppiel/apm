@@ -123,7 +123,7 @@ class TestInitCommand:
                 assert result.exit_code == 0
                 assert "APM project initialized successfully!" in result.output
                 # Should overwrite the file with minimal structure
-                with open("apm.yml") as f:
+                with open("apm.yml", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
                     # Minimal structure
                     assert "dependencies" in config
@@ -146,7 +146,7 @@ class TestInitCommand:
                     "description": "Custom description",
                     "author": "Custom Author",
                 }
-                with open("apm.yml", "w") as f:
+                with open("apm.yml", "w", encoding="utf-8") as f:
                     yaml.dump(existing_config, f)
 
                 result = self.runner.invoke(cli, ["init", "--yes"])
@@ -176,7 +176,7 @@ class TestInitCommand:
                 assert "Author" in result.output
 
                 # Verify the interactive values were applied to apm.yml
-                with open("apm.yml") as f:
+                with open("apm.yml", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
                     assert config["name"] == "my-test-project"
                     assert config["version"] == "1.5.0"
@@ -234,7 +234,7 @@ class TestInitCommand:
                 project_path = Path(tmp_dir) / "test-project"
 
                 # Verify apm.yml minimal structure
-                with open(project_path / "apm.yml") as f:
+                with open(project_path / "apm.yml", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
                     assert config["name"] == "test-project"
                     assert "version" in config
@@ -273,7 +273,7 @@ class TestInitCommand:
 
                 assert result.exit_code == 0
 
-                with open("apm.yml") as f:
+                with open("apm.yml", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
                     # Should auto-detect author from git
                     assert config["author"] == "Test User"
