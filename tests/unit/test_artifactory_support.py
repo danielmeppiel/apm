@@ -764,10 +764,10 @@ class TestArtifactoryEdgeCases:
                 ), f"Found forbidden term '{term}' in {py_file}"
 
 
-# ── PROXY_REGISTRY_ONLY mode tests ──
+# -- PROXY_REGISTRY_ONLY mode tests --
 
 
-class TestArtifactoryOnlyMode:
+class TestProxyRegistryOnlyMode:
     """Test PROXY_REGISTRY_ONLY env var blocking direct git operations."""
 
     def setup_method(self):
