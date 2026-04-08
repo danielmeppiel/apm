@@ -108,7 +108,7 @@ class Plugin:
         if metadata_file is None:
             raise FileNotFoundError(f"Plugin metadata not found in any expected location: {plugin_path}")
         
-        with open(metadata_file, "r") as f:
+        with open(metadata_file, "r", encoding="utf-8") as f:
             metadata_dict = json.load(f)
         
         metadata = PluginMetadata.from_dict(metadata_dict)
