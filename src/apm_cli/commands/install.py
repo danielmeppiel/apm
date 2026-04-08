@@ -1389,12 +1389,6 @@ def _install_apm_dependencies(
 
         # apm_modules directory already created above
 
-        # Auto-detect target for integration (same logic as compile)
-        from apm_cli.core.target_detection import (
-            detect_target,
-            get_target_description,
-        )
-
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
@@ -1439,12 +1433,6 @@ def _install_apm_dependencies(
                     logger.verbose_detail(
                         f"Created {_root}/ ({_t.name} target)"
                     )
-
-        detected_target, detection_reason = detect_target(
-            project_root=project_root,
-            explicit_target=_explicit,
-            config_target=config_target,
-        )
 
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
