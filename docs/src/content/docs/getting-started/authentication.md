@@ -8,16 +8,16 @@ APM works without tokens for public packages on github.com. Authentication is ne
 
 ## How APM resolves authentication
 
-APM resolves tokens per `(host, org)` pair, and includes repo-path context when available for credential-helper lookups. For each dependency, it walks a resolution chain until it finds a token:
+APM resolves tokens per `(host, org, repo_path)` tuple when repo context is known. It also includes repo-path context when available for credential-helper lookups. For each dependency, it walks a resolution chain until it finds a token:
 
-1. **Per-org env var** — `GITHUB_APM_PAT_{ORG}` (GitHub-like hosts — not ADO)
-2. **Global env vars** — `GITHUB_APM_PAT` → `GITHUB_TOKEN` → `GH_TOKEN` (any host)
-3. **GitHub CLI active account** — `gh auth token --hostname <host>` (GitHub-like hosts)
-4. **Git credential helper** — `git credential fill` with repo-path context when available (any host except ADO)
+1. **Per-org env var** -- `GITHUB_APM_PAT_{ORG}` (GitHub-like hosts -- not ADO)
+2. **Global env vars** -- `GITHUB_APM_PAT` -> `GITHUB_TOKEN` -> `GH_TOKEN` (any host)
+3. **GitHub CLI active account** -- `gh auth token --hostname <host>` (GitHub-like hosts)
+4. **Git credential helper** -- `git credential fill` with repo-path context when available (any host except ADO)
 
 If the global token doesn't work for the target host, APM next tries the active `gh` CLI account before falling back to git credential helpers. When APM knows the repository URL, it includes the repo path in the helper query to reduce ambiguous multi-account prompts on hosts like github.com. If nothing matches, APM attempts unauthenticated access (works for public repos on github.com).
 
-Results are cached per-process — the same `(host, org)` pair is resolved once.
+Results are cached per-process -- the same `(host, org, repo_path)` tuple is resolved once.
 
 All token-bearing requests use HTTPS. Tokens are never sent over unencrypted connections.
 

@@ -23,6 +23,13 @@ import subprocess
 import sys
 from typing import Dict, Optional, Tuple
 
+from apm_cli.utils.github_host import (
+    default_host,
+    is_azure_devops_hostname,
+    is_github_hostname,
+    is_valid_fqdn,
+)
+
 
 class GitHubTokenManager:
     """Manages GitHub token environment setup for different AI runtimes."""
@@ -50,7 +57,7 @@ class GitHubTokenManager:
             preserve_existing: If True, never overwrite existing environment variables
         """
         self.preserve_existing = preserve_existing
-        self._credential_cache: Dict[str, Optional[str]] = {}
+        self._credential_cache: Dict[tuple[str, str, str], Optional[str]] = {}
     
     @staticmethod
     def _is_valid_credential_token(token: str) -> bool:
@@ -69,6 +76,29 @@ class GitHubTokenManager:
         if any(fragment in token for fragment in prompt_fragments):
             return False
         return True
+
+    @staticmethod
+    def _has_control_chars(value: str) -> bool:
+        """Return True when *value* contains credential protocol control chars."""
+        return any(ord(char) < 32 for char in value)
+
+    @staticmethod
+    def _supports_gh_cli_host(host: Optional[str]) -> bool:
+        """Return True when *host* should use gh CLI fallback."""
+        if not host:
+            return False
+        if is_github_hostname(host):
+            return True
+
+        configured_host = default_host().lower()
+        host_lower = host.lower()
+        if host_lower != configured_host:
+            return False
+        if configured_host == "github.com" or configured_host.endswith(".ghe.com"):
+            return False
+        if is_azure_devops_hostname(configured_host):
+            return False
+        return is_valid_fqdn(configured_host)
 
     # `git credential fill` may invoke OS credential helpers that show
     # interactive dialogs (e.g. Windows Credential Manager account picker).
@@ -113,6 +143,14 @@ class GitHubTokenManager:
             The password/token from the credential store, or None if unavailable
         """
         try:
+            fields = [host]
+            if path:
+                fields.append(path)
+            if username:
+                fields.append(username)
+            if any(GitHubTokenManager._has_control_chars(field) for field in fields):
+                return None
+
             request_lines = ['protocol=https', f'host={host}']
             if path:
                 normalized_path = path.lstrip('/')
@@ -244,11 +282,14 @@ class GitHubTokenManager:
         if token:
             return token
         
-        cache_key = (host, path or '', username or '')
+        normalized_host = host.lower() if host else host
+        cache_key = (normalized_host, path or '', username or '')
         if cache_key in self._credential_cache:
             return self._credential_cache[cache_key]
 
-        gh_token = self.resolve_credential_from_gh_cli(host)
+        gh_token = None
+        if self._supports_gh_cli_host(host):
+            gh_token = self.resolve_credential_from_gh_cli(host)
         if gh_token:
             self._credential_cache[cache_key] = gh_token
             return gh_token

@@ -86,7 +86,8 @@ class AuthResolver:
     """Single source of truth for auth resolution.
 
     Every APM operation that touches a remote host MUST use this class.
-    Resolution is per-(host, org) pair, thread-safe, cached per-process.
+    Resolution is per-(host, org, repo_path) tuple when repo context is known,
+    thread-safe, cached per-process.
     """
 
     def __init__(self, token_manager: Optional[GitHubTokenManager] = None):
@@ -258,7 +259,8 @@ class AuthResolver:
 
         When the resolved token comes from a global env var and fails
         (e.g. a github.com PAT tried on ``*.ghe.com``), the method
-        retries with ``git credential fill`` before giving up.
+        retries with ``gh auth token`` and then ``git credential fill``
+        before giving up.
         """
         auth_ctx = self.resolve(host, org, repo_path=repo_path)
         host_info = auth_ctx.host_info
@@ -275,9 +277,10 @@ class AuthResolver:
             if host_info.kind == "ado":
                 raise exc
             _log(f"Token from {auth_ctx.source} failed, trying fallback credentials for {host}")
-            gh_token = self._token_manager.resolve_credential_from_gh_cli(host)
-            if gh_token:
-                return operation(gh_token, self._build_git_env(gh_token))
+            if host_info.kind in ("github", "ghe_cloud", "ghes"):
+                gh_token = self._token_manager.resolve_credential_from_gh_cli(host)
+                if gh_token:
+                    return operation(gh_token, self._build_git_env(gh_token))
             cred = self._token_manager.resolve_credential_from_git(host, path=repo_path)
             if cred:
                 return operation(cred, self._build_git_env(cred))
@@ -378,7 +381,8 @@ class AuthResolver:
         2. Global env vars ``GITHUB_APM_PAT`` → ``GITHUB_TOKEN`` → ``GH_TOKEN``
            (any host — if the token is wrong for the target host,
            ``try_with_fallback`` retries with git credentials)
-        3. Git credential helper (any host except ADO)
+        3. gh CLI active account (GitHub-like hosts only)
+        4. Git credential helper (any host except ADO)
 
         All token-bearing requests use HTTPS, which is the transport
         security boundary.  Host-gating global env vars is unnecessary
@@ -399,11 +403,12 @@ class AuthResolver:
             return token, source
 
         # 3. gh CLI active account (GitHub-like hosts only)
-        gh_token = self._token_manager.resolve_credential_from_gh_cli(host_info.host)
-        if gh_token:
-            return gh_token, "gh-auth-token"
+        if host_info.kind in ("github", "ghe_cloud", "ghes"):
+            gh_token = self._token_manager.resolve_credential_from_gh_cli(host_info.host)
+            if gh_token:
+                return gh_token, "gh-auth-token"
 
-        # 4. Git credential helper (not for ADO — uses its own PAT)
+        # 4. Git credential helper (not for ADO -- uses its own PAT)
         if host_info.kind not in ("ado",):
             credential = self._token_manager.resolve_credential_from_git(
                 host_info.host,
