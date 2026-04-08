@@ -80,6 +80,13 @@ This registers the marketplace and fetches its `marketplace.json`. By default AP
 apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
 ```
 
+**GitHub Enterprise Server:** If `GITHUB_HOST` is set, `apm marketplace add` resolves bare `owner/repo` references against your GHES instance, the same way `apm install` does. Set the variable before running the command:
+
+```bash
+export GITHUB_HOST=github.company.com
+apm marketplace add internal-org/plugin-marketplace
+```
+
 ## List registered marketplaces
 
 ```bash

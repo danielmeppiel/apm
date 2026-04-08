@@ -376,6 +376,17 @@ If you see a skill name validation warning:
 1. **Check naming:** Names must be lowercase, 1-64 chars, hyphens only (no underscores)
 2. **Auto-normalization:** APM automatically normalizes invalid names when possible
 
+### Native Skill Name Collision
+
+If two installed packages deploy a native skill with the same name, APM emits a warning during install:
+
+```
+[!] Native skill name collision: "code-review" is deployed by both acme/code-review and corp/standards.
+    The last package installed wins. Rename one skill or remove the conflicting package.
+```
+
+To resolve: either rename the `SKILL.md` file in one of the packages, or remove the package that is shadowing the other. The last package installed takes precedence at the filesystem level.
+
 ### Metadata Missing
 
 If skill lacks APM metadata:

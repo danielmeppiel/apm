@@ -234,6 +234,8 @@ Optimizing instruction placement...
 Generated 4 AGENTS.md files with guaranteed coverage
 ```
 
+> **[!] Missing `applyTo`:** If any instruction file is missing a valid `applyTo` frontmatter field, `apm compile` emits a warning for each affected file across all compilation modes. Instructions without `applyTo` are treated as global (matching all files) which can inflate context load. Add a glob pattern to each `.instructions.md` frontmatter to silence the warning and improve optimization accuracy.
+
 ### Mathematical Analysis Mode
 
 ```bash
@@ -287,7 +289,7 @@ compilation:
 
 #### Directory Exclusion Patterns
 
-Use the `exclude` field to skip directories during compilation, improving performance in large monorepos:
+Use the `exclude` field to skip directories during both primitive discovery and compilation. Excluded paths are filtered before any scanning begins, so matched files never appear in compiled output even if they would otherwise match an instruction pattern. This improves performance in large monorepos and prevents duplicate instructions from leaking through:
 
 **Pattern Syntax:**
 - `tmp` - Matches directory named "tmp" at any depth
