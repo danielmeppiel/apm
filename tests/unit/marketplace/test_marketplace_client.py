@@ -325,8 +325,8 @@ class TestCacheKey:
     def test_non_default_host_includes_host(self):
         source = MarketplaceSource(name="skills", owner="o", repo="r", host="ghes.corp.com")
         key = client_mod._cache_key(source)
-        assert "ghes.corp.com" in key
-        assert "skills" in key
+        assert key.startswith("ghes.corp.com") or key.startswith("ghes_corp_com")
+        assert key.endswith("skills")
         assert key != "skills"
 
     def test_different_hosts_different_keys(self):
