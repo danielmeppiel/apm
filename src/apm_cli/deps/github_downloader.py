@@ -180,7 +180,9 @@ class GitHubPackageDownloader:
         if sys.platform == 'win32':
             # 'NUL' fails on some Windows git versions; use an empty temp file.
             import tempfile
-            empty_cfg = os.path.join(tempfile.gettempdir(), '.apm_empty_gitconfig')
+            from ..config import get_apm_temp_dir
+            temp_base = get_apm_temp_dir() or tempfile.gettempdir()
+            empty_cfg = os.path.join(temp_base, '.apm_empty_gitconfig')
             with open(empty_cfg, 'w') as f:
                 pass
             env['GIT_CONFIG_GLOBAL'] = empty_cfg
@@ -939,7 +941,8 @@ class GitHubPackageDownloader:
         # Create a temporary directory for Git operations
         temp_dir = None
         try:
-            temp_dir = Path(tempfile.mkdtemp())
+            from ..config import get_apm_temp_dir
+            temp_dir = Path(tempfile.mkdtemp(dir=get_apm_temp_dir()))
 
             if is_likely_commit:
                 # For commit SHAs, clone full repository first, then checkout the commit
@@ -1760,7 +1763,8 @@ author: {dep_ref.repo_url.split('/')[0]}
         # tempfile.TemporaryDirectory().__exit__ calls shutil.rmtree without our
         # retry logic, which raises WinError 32 when git processes still hold
         # handles at the end of the with-block.
-        temp_dir = tempfile.mkdtemp()
+        from ..config import get_apm_temp_dir
+        temp_dir = tempfile.mkdtemp(dir=get_apm_temp_dir())
         try:
             # Sparse checkout always targets "repo/".  If it fails we clone into
             # "repo_clone/" so we never have to rmtree a directory that may still
@@ -1871,6 +1875,20 @@ author: {dep_ref.repo_url.split('/')[0]}
             if progress_obj and progress_task_id is not None:
                 progress_obj.update(progress_task_id, completed=90, total=100)
 
+        except PermissionError:
+            raise RuntimeError(
+                f"Access denied in temporary directory '{temp_dir}'. "
+                "Corporate security may restrict this path. "
+                "Fix: apm config set temp-dir <WRITABLE_PATH>"
+            ) from None
+        except OSError as exc:
+            if getattr(exc, 'errno', None) == 13 or getattr(exc, 'winerror', None) == 5:
+                raise RuntimeError(
+                    f"Access denied in temporary directory '{temp_dir}'. "
+                    "Corporate security may restrict this path. "
+                    "Fix: apm config set temp-dir <WRITABLE_PATH>"
+                ) from None
+            raise
         finally:
             _rmtree(temp_dir)
         
@@ -1923,6 +1941,7 @@ author: {dep_ref.repo_url.split('/')[0]}
     ) -> PackageInfo:
         """Download an archive from Artifactory and extract a subdirectory."""
         import tempfile
+        from ..config import get_apm_temp_dir
         ref = dep_ref.reference or "main"
         subdir_path = dep_ref.virtual_path
         repo_parts = dep_ref.repo_url.split('/')
@@ -1932,7 +1951,7 @@ author: {dep_ref.repo_url.split('/')[0]}
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=10, total=100)
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(dir=get_apm_temp_dir()) as temp_dir:
             temp_path = Path(temp_dir) / "full_pkg"
             self._download_artifactory_archive(host, prefix, owner, repo, ref, temp_path, scheme=scheme)
             if progress_obj and progress_task_id is not None:
