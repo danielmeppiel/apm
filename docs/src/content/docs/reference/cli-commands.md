@@ -601,6 +601,81 @@ curl -sSL https://aka.ms/apm-unix | sh
 powershell -ExecutionPolicy Bypass -c "irm https://aka.ms/apm-windows | iex"
 ```
 
+### `apm view` - View package metadata or list remote versions
+
+Show local metadata for an installed package, or query remote refs with a field selector.
+
+> **Note:** `apm info` is accepted as a hidden alias for backward compatibility.
+
+```bash
+apm view PACKAGE [FIELD] [OPTIONS]
+```
+
+**Arguments:**
+- `PACKAGE` - Package name, usually `owner/repo` or a short repo name
+- `FIELD` - Optional field selector. Supported value: `versions`
+
+**Options:**
+- `-g, --global` - Inspect package from user scope (`~/.apm/`)
+
+**Examples:**
+```bash
+# Show installed package metadata
+apm view microsoft/apm-sample-package
+
+# Short-name lookup for an installed package
+apm view apm-sample-package
+
+# List remote tags and branches without cloning
+apm view microsoft/apm-sample-package versions
+
+# Inspect a package from user scope
+apm view microsoft/apm-sample-package -g
+```
+
+**Behavior:**
+- Without `FIELD`, reads installed package metadata from `apm_modules/`
+- Shows package name, version, description, source, install path, context files, workflows, and hooks
+- `versions` lists remote tags and branches without cloning the repository
+- `versions` does not require the package to be installed locally
+
+### `apm outdated` - Check locked dependencies for updates
+
+Compare locked dependencies against remote refs to detect staleness.
+
+```bash
+apm outdated [OPTIONS]
+```
+
+**Options:**
+- `-g, --global` - Check user-scope dependencies from `~/.apm/`
+- `-v, --verbose` - Show extra detail for outdated packages, including available tags
+- `-j, --parallel-checks N` - Max concurrent remote checks (default: 4, 0 = sequential)
+
+**Examples:**
+```bash
+# Check project dependencies
+apm outdated
+
+# Check user-scope dependencies
+apm outdated --global
+
+# Show available tags for outdated packages
+apm outdated --verbose
+
+# Use 8 parallel checks for large dependency sets
+apm outdated -j 8
+```
+
+**Behavior:**
+- Reads the current lockfile (`apm.lock.yaml`; legacy `apm.lock` is migrated automatically)
+- For tag-pinned deps: compares the locked semver tag against the latest available remote tag
+- For branch-pinned deps: compares the locked commit SHA against the remote branch tip SHA
+- For deps with no ref: compares against the default branch (main/master) tip SHA
+- Displays `Package`, `Current`, `Latest`, and `Status` columns
+- Status values are `up-to-date`, `outdated`, and `unknown`
+- Local dependencies and Artifactory dependencies are skipped
+
 ### `apm deps` - Manage APM package dependencies
 
 Manage APM package dependencies with installation status, tree visualization, and package information.
@@ -680,32 +755,27 @@ company-website (local)
 - Version numbers from dependency package metadata
 - Version information for each dependency
 
-#### `apm deps info` - Show detailed package information
+#### `apm deps info` - Alias for `apm view`
 
-Display comprehensive information about a specific installed package.
+Backward-compatible alias for `apm view PACKAGE_NAME`.
 
 ```bash
 apm deps info PACKAGE_NAME
 ```
 
 **Arguments:**
-- `PACKAGE_NAME` - Name of the package to show information about
+- `PACKAGE_NAME` - Installed package name to inspect
 
 **Examples:**
 ```bash
-# Show details for compliance rules package
+# Show installed package metadata
 apm deps info compliance-rules
-
-# Show info for design guidelines package  
-apm deps info design-guidelines
 ```
 
-**Output includes:**
-- Complete package metadata (name, version, description, author)
-- Source repository and installation details
-- Detailed context file counts by type
-- Agent workflow descriptions and counts
-- Installation path and status
+**Notes:**
+- Produces the same local metadata output as `apm view PACKAGE_NAME`
+- Use `apm view` in new docs and scripts
+- For remote refs, use `apm view PACKAGE_NAME versions`
 
 #### `apm deps clean` - Remove all APM dependencies
 
