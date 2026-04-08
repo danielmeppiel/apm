@@ -942,3 +942,41 @@ class TestOutdatedCommand:
             # Should not crash -- bad dep becomes "unknown"
             assert result.exit_code == 0
             assert "unknown" in result.output.lower()
+
+    # --- ADO dependency handling ---
+
+    @patch(_PATCH_AUTH)
+    @patch(_PATCH_DOWNLOADER)
+    @patch(_PATCH_MIGRATE)
+    @patch(_PATCH_GET_LOCKFILE_PATH)
+    @patch(_PATCH_GET_APM_DIR)
+    @patch(_PATCH_LOCKFILE)
+    def test_ado_dep_builds_correct_reference(
+        self, mock_lf_cls, mock_get_apm_dir, mock_get_path,
+        mock_migrate, mock_dl_cls, mock_auth,
+    ):
+        """ADO deps (host=dev.azure.com) should pass full URL to DependencyReference.parse()."""
+        with self._chdir_tmp() as tmp:
+            mock_get_apm_dir.return_value = tmp
+            mock_get_path.return_value = tmp / "apm.lock.yaml"
+
+            ado_dep = LockedDependency(
+                repo_url="myorg/myproject/_git/myrepo",
+                host="dev.azure.com",
+                resolved_ref="v1.0.0",
+                resolved_commit="aaa",
+            )
+            deps = {"myorg/myproject/_git/myrepo": ado_dep}
+            mock_lf_cls.read.return_value = _make_lockfile(deps)
+
+            mock_downloader = MagicMock()
+            mock_downloader.list_remote_refs.return_value = [
+                _remote_tag("v1.0.0"),
+            ]
+            mock_dl_cls.return_value = mock_downloader
+
+            result = self.runner.invoke(cli, ["outdated"])
+
+            assert result.exit_code == 0
+            # Verify list_remote_refs was called (dep was not silently skipped)
+            mock_downloader.list_remote_refs.assert_called_once()

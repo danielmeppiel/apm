@@ -16,7 +16,7 @@ from ..core.command_logger import CommandLogger
 from ..deps.github_downloader import GitHubPackageDownloader
 from ..models.dependency.reference import DependencyReference
 from ..models.dependency.types import GitReferenceType, RemoteRef
-from ..utils.console import _rich_error, _rich_info
+from ..utils.path_security import PathTraversalError, ensure_path_within, validate_path_segments
 from .deps._utils import _get_detailed_package_info
 
 
@@ -35,18 +35,33 @@ def resolve_package_path(
     package: str,
     apm_modules_path: Path,
     logger: CommandLogger,
-) -> Path:
+) -> Optional[Path]:
     """Locate the package directory inside *apm_modules_path*.
 
     Resolution order:
       1. Direct path match (handles ``org/repo`` and deeper sub-paths).
       2. Fallback two-level scan for short (repo-only) names.
 
+    Returns *None* when path validation fails (traversal attempt).
     Exits via ``sys.exit(1)`` when the package cannot be found so that
     callers do not need to duplicate error handling.
     """
+    # Guard: reject traversal sequences before building any path
+    try:
+        validate_path_segments(package, context="package name")
+    except PathTraversalError as exc:
+        logger.error(str(exc))
+        return None
+
     # 1 -- direct match
     direct_match = apm_modules_path / package
+
+    # Guard: ensure resolved path stays within apm_modules/
+    try:
+        ensure_path_within(direct_match, apm_modules_path)
+    except PathTraversalError as exc:
+        logger.error(str(exc))
+        return None
     if direct_match.is_dir() and (
         (direct_match / APM_YML_FILENAME).exists()
         or (direct_match / SKILL_MD_FILENAME).exists()
@@ -176,7 +191,7 @@ def display_package_info(
             content = "\n".join(content_lines)
             panel = Panel(
                 content,
-                title=f"[i] Package Info: {package}",
+                title=f"[[i]] Package Info: {package}",
                 border_style="cyan",
             )
             console.print(panel)
@@ -238,18 +253,18 @@ def display_versions(package: str, logger: CommandLogger) -> None:
     try:
         dep_ref = DependencyReference.parse(package)
     except ValueError as exc:
-        _rich_error(f"Invalid package reference '{package}': {exc}")
+        logger.error(f"Invalid package reference '{package}': {exc}")
         sys.exit(1)
 
     try:
         downloader = GitHubPackageDownloader(auth_resolver=AuthResolver())
         refs: List[RemoteRef] = downloader.list_remote_refs(dep_ref)
     except RuntimeError as exc:
-        _rich_error(f"Failed to list versions for '{package}': {exc}")
+        logger.error(f"Failed to list versions for '{package}': {exc}")
         sys.exit(1)
 
     if not refs:
-        _rich_info(f"No versions found for '{package}'")
+        logger.progress(f"No versions found for '{package}'")
         return
 
     # -- render with Rich table (fallback to plain text) ---------------
@@ -347,4 +362,6 @@ def info(package: str, field: Optional[str], global_: bool):
         sys.exit(1)
 
     package_path = resolve_package_path(package, apm_modules_path, logger)
+    if package_path is None:
+        sys.exit(1)
     display_package_info(package, package_path, logger, project_root=project_root)

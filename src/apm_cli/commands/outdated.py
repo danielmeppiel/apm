@@ -26,8 +26,8 @@ def _strip_v(ref: str) -> str:
 def _find_remote_tip(ref_name, remote_refs):
     """Find the tip SHA for a branch ref from remote refs.
 
-    If *ref_name* is empty/None, looks for HEAD or falls back to
-    common default branch names (main, master).
+    If *ref_name* is empty/None, falls back to common default branch
+    names (main, master).
     Returns the commit SHA string or None if not found.
     """
     from ..models.dependency.types import GitReferenceType
@@ -42,11 +42,6 @@ def _find_remote_tip(ref_name, remote_refs):
         return branch_refs.get(ref_name)
 
     # No ref specified -- find the default branch
-    # HEAD is included by git ls-remote; fall back to main/master
-    head_refs = [r for r in remote_refs if r.name == "HEAD"]
-    if head_refs:
-        return head_refs[0].commit_sha
-
     for default in ("main", "master"):
         if default in branch_refs:
             return branch_refs[default]
@@ -74,10 +69,9 @@ def _check_one_dep(dep, downloader, verbose):
 
     # Build a DependencyReference to query remote refs
     try:
-        dep_ref = DependencyReference(
-            repo_url=dep.repo_url,
-            host=dep.host,
-        )
+        # Use parse() to correctly handle all host types (GitHub, ADO, etc.)
+        full_url = f"{dep.host}/{dep.repo_url}" if dep.host else dep.repo_url
+        dep_ref = DependencyReference.parse(full_url)
     except Exception:
         return (package_name, current_ref or "(none)", "-", "unknown", [])
 

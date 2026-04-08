@@ -336,3 +336,23 @@ class TestInfoCommand(_InfoCmdBase):
             )
         assert result.exit_code == 1
         assert "invalid" in result.output.lower() or "ftp" in result.output.lower()
+
+    # -- path traversal prevention ----------------------------------------
+
+    def test_info_rejects_path_traversal(self):
+        """``apm info ../../../etc/passwd`` is rejected as a traversal attempt."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "org", "legit")
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["info", "../../../etc/passwd"])
+        assert result.exit_code == 1
+        assert "traversal" in result.output.lower()
+
+    def test_info_rejects_dot_segment(self):
+        """``apm info org/../../../etc/passwd`` is rejected."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "org", "legit")
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["info", "org/../../../etc/passwd"])
+        assert result.exit_code == 1
+        assert "traversal" in result.output.lower()

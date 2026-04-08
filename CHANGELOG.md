@@ -11,22 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Artifactory archive entry download for virtual file packages (#525)
-
-### Added
-
-- `apm info <package> [field]` command for inspecting package metadata and remote refs
-- `apm info <package> versions` field selector lists remote tags and branches via `git ls-remote`
-- `apm outdated` command compares locked dependencies against remote refs
-- `--parallel-checks` (`-j`) option on `apm outdated` for concurrent remote checks (default: 4)
-- Rich progress feedback during `apm outdated` dependency checking
-- `--global` flag on `apm info` for inspecting user-scope packages
+- `apm info <package> [field]` command for inspecting package metadata and remote refs (#613)
+- `apm info <package> versions` field selector lists remote tags and branches via `git ls-remote` (#613)
+- `apm outdated` command compares locked dependencies against remote refs (#613)
+- `--parallel-checks` (`-j`) option on `apm outdated` for concurrent remote checks (default: 4) (#613)
+- Rich progress feedback during `apm outdated` dependency checking (#613)
+- `--global` flag on `apm info` for inspecting user-scope packages (#613)
 
 ### Changed
 
 - Scope resolution now happens once via `TargetProfile.for_scope()` and `resolve_targets()` -- integrators no longer need scope-aware parameters (#562)
 - Unified integration dispatch table in `dispatch.py` -- both install and uninstall import from one source of truth (#562)
 - Hook merge logic deduplicated: three copy-pasted JSON-merge methods replaced with `_integrate_merged_hooks()` + config dict (#562)
-- `apm outdated` uses SHA comparison for branch-pinned deps instead of reporting them as `unknown`
+- `apm outdated` uses SHA comparison for branch-pinned deps instead of reporting them as `unknown` (#613)
 
 ### Fixed
 
@@ -56,9 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `apm install` now deploys `.instructions.md` files to `.claude/rules/*.md` for Claude Code, converting `applyTo:` frontmatter to Claude's `paths:` format (#516)
-- `apm info <package> [field]` as a top-level command, promoted from `apm deps info`
-- `apm info <package> versions` to list available remote tags and branches without cloning
-- `apm outdated` to check installed dependencies for available updates
 
 ### Changed
 
