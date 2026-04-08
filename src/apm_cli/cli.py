@@ -20,7 +20,7 @@ from apm_cli.commands.audit import audit
 from apm_cli.commands.compile import compile as compile_cmd
 from apm_cli.commands.config import config
 from apm_cli.commands.deps import deps
-from apm_cli.commands.info import info as info_cmd
+from apm_cli.commands.view import view as view_cmd
 from apm_cli.commands.init import init
 from apm_cli.commands.install import install
 from apm_cli.commands.list_cmd import list as list_cmd
@@ -59,7 +59,15 @@ def cli(ctx):
 # Register command groups
 cli.add_command(audit)
 cli.add_command(deps)
-cli.add_command(info_cmd, name="info")
+cli.add_command(view_cmd)
+# Hidden backward-compatible alias: ``apm info`` → ``apm view``
+cli.add_command(click.Command(
+    name="info",
+    callback=view_cmd.callback,
+    params=list(view_cmd.params),
+    help=view_cmd.help,
+    hidden=True,
+))
 cli.add_command(pack_cmd, name="pack")
 cli.add_command(unpack_cmd, name="unpack")
 cli.add_command(init)

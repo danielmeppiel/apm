@@ -15,9 +15,9 @@
 | `apm prune` | Remove orphaned packages | `--dry-run` |
 | `apm deps list` | List installed packages | `-g` global, `--all` both scopes |
 | `apm deps tree` | Show dependency tree | -- |
-| `apm info PKG [FIELD]` | Show package details or remote refs | `-g` global, `FIELD=versions` |
+| `apm view PKG [FIELD]` | View package details or remote refs | `-g` global, `FIELD=versions` |
 | `apm outdated` | Check locked deps via SHA/semver comparison | `-g` global, `-v` verbose, `-j N` parallel checks |
-| `apm deps info PKG` | Alias for `apm info PKG` local metadata | -- |
+| `apm deps info PKG` | Alias for `apm view PKG` local metadata | -- |
 | `apm deps clean` | Clean dependency cache | `--dry-run`, `-y` skip confirm |
 | `apm deps update [PKGS...]` | Update specific packages | `--verbose`, `--force`, `--target`, `--parallel-downloads N` |
 

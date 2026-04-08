@@ -1,7 +1,9 @@
-"""Top-level ``apm info`` command.
+"""Top-level ``apm view`` command (renamed from ``apm info``).
 
 Shows detailed metadata for an installed package.  Also exposes helpers
 reused by the backward-compatible ``apm deps info`` alias.
+
+``apm info`` is kept as a hidden backward-compatible alias.
 """
 
 import sys
@@ -309,13 +311,13 @@ def display_versions(package: str, logger: CommandLogger) -> None:
 # ------------------------------------------------------------------
 
 
-@click.command()
+@click.command(name="view")
 @click.argument("package", required=True)
 @click.argument("field", required=False, default=None)
 @click.option("--global", "-g", "global_", is_flag=True, default=False,
               help="Inspect package from user scope (~/.apm/)")
-def info(package: str, field: Optional[str], global_: bool):
-    """Show information about a package.
+def view(package: str, field: Optional[str], global_: bool):
+    """View package metadata or list remote versions.
 
     Without FIELD, displays local metadata for an installed package.
     With FIELD, queries specific data (may contact the remote).
@@ -326,13 +328,13 @@ def info(package: str, field: Optional[str], global_: bool):
 
     \b
     Examples:
-        apm info org/repo                # Local metadata
-        apm info org/repo versions       # Remote tags/branches
-        apm info org/repo -g             # From user scope
+        apm view org/repo                # Local metadata
+        apm view org/repo versions       # Remote tags/branches
+        apm view org/repo -g             # From user scope
     """
     from ..core.scope import InstallScope, get_apm_dir
 
-    logger = CommandLogger("info")
+    logger = CommandLogger("view")
 
     # --- field validation (before any I/O) ---
     if field is not None:

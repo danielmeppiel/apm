@@ -601,12 +601,14 @@ curl -sSL https://aka.ms/apm-unix | sh
 powershell -ExecutionPolicy Bypass -c "irm https://aka.ms/apm-windows | iex"
 ```
 
-### `apm info` - Show package metadata or remote versions
+### `apm view` - View package metadata or list remote versions
 
 Show local metadata for an installed package, or query remote refs with a field selector.
 
+> **Note:** `apm info` is accepted as a hidden alias for backward compatibility.
+
 ```bash
-apm info PACKAGE [FIELD] [OPTIONS]
+apm view PACKAGE [FIELD] [OPTIONS]
 ```
 
 **Arguments:**
@@ -619,16 +621,16 @@ apm info PACKAGE [FIELD] [OPTIONS]
 **Examples:**
 ```bash
 # Show installed package metadata
-apm info microsoft/apm-sample-package
+apm view microsoft/apm-sample-package
 
 # Short-name lookup for an installed package
-apm info apm-sample-package
+apm view apm-sample-package
 
 # List remote tags and branches without cloning
-apm info microsoft/apm-sample-package versions
+apm view microsoft/apm-sample-package versions
 
 # Inspect a package from user scope
-apm info microsoft/apm-sample-package -g
+apm view microsoft/apm-sample-package -g
 ```
 
 **Behavior:**
@@ -753,9 +755,9 @@ company-website (local)
 - Version numbers from dependency package metadata
 - Version information for each dependency
 
-#### `apm deps info` - Alias for `apm info`
+#### `apm deps info` - Alias for `apm view`
 
-Backward-compatible alias for `apm info PACKAGE_NAME`.
+Backward-compatible alias for `apm view PACKAGE_NAME`.
 
 ```bash
 apm deps info PACKAGE_NAME
@@ -771,9 +773,9 @@ apm deps info compliance-rules
 ```
 
 **Notes:**
-- Produces the same local metadata output as `apm info PACKAGE_NAME`
-- Use `apm info` in new docs and scripts
-- For remote refs, use `apm info PACKAGE_NAME versions`
+- Produces the same local metadata output as `apm view PACKAGE_NAME`
+- Use `apm view` in new docs and scripts
+- For remote refs, use `apm view PACKAGE_NAME versions`
 
 #### `apm deps clean` - Remove all APM dependencies
 

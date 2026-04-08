@@ -662,7 +662,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
 @click.argument('package', required=True)
 def info(package: str):
     """Show detailed information about a specific package including context files and workflows."""
-    from ..info import resolve_package_path, display_package_info
+    from ..view import resolve_package_path, display_package_info
 
     logger = CommandLogger("deps-info")
 
