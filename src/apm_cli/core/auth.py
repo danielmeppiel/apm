@@ -1,7 +1,8 @@
 """Centralized authentication resolution for APM CLI.
 
 Every APM operation that touches a remote host MUST use AuthResolver.
-Resolution is per-(host, org) pair, thread-safe, and cached per-process.
+Resolution is per-(host, org, repo-path) tuple when repo context is known,
+thread-safe, and cached per-process.
 
 All token-bearing requests use HTTPS — that is the transport security
 boundary.  Global env vars are tried for every host; if the token is
@@ -178,9 +179,18 @@ class AuthResolver:
 
     # -- core resolution ----------------------------------------------------
 
-    def resolve(self, host: str, org: Optional[str] = None) -> AuthContext:
-        """Resolve auth for *(host, org)*.  Cached & thread-safe."""
-        key = (host.lower() if host else host, org.lower() if org else org)
+    def resolve(
+        self,
+        host: str,
+        org: Optional[str] = None,
+        repo_path: Optional[str] = None,
+    ) -> AuthContext:
+        """Resolve auth for *(host, org, repo_path)*. Cached & thread-safe."""
+        key = (
+            host.lower() if host else host,
+            org.lower() if org else org,
+            repo_path,
+        )
         with self._lock:
             cached = self._cache.get(key)
             if cached is not None:
@@ -193,7 +203,7 @@ class AuthResolver:
             # Bounded by APM_GIT_CREDENTIAL_TIMEOUT (default 60s). No deadlock
             # risk: single lock, never nested.
             host_info = self.classify_host(host)
-            token, source = self._resolve_token(host_info, org)
+            token, source = self._resolve_token(host_info, org, repo_path=repo_path)
             token_type = self.detect_token_type(token) if token else "unknown"
             git_env = self._build_git_env(token)
 
@@ -211,11 +221,13 @@ class AuthResolver:
         """Resolve auth from a ``DependencyReference``."""
         host = dep_ref.host or default_host()
         org: Optional[str] = None
+        repo_path: Optional[str] = None
         if dep_ref.repo_url:
             parts = dep_ref.repo_url.split("/")
             if parts:
                 org = parts[0]
-        return self.resolve(host, org)
+            repo_path = f"{dep_ref.repo_url}.git"
+        return self.resolve(host, org, repo_path=repo_path)
 
     # -- fallback strategy --------------------------------------------------
 
@@ -225,6 +237,7 @@ class AuthResolver:
         operation: Callable[..., T],
         *,
         org: Optional[str] = None,
+        repo_path: Optional[str] = None,
         unauth_first: bool = False,
         verbose_callback: Optional[Callable[[str], None]] = None,
     ) -> T:
@@ -247,7 +260,7 @@ class AuthResolver:
         (e.g. a github.com PAT tried on ``*.ghe.com``), the method
         retries with ``git credential fill`` before giving up.
         """
-        auth_ctx = self.resolve(host, org)
+        auth_ctx = self.resolve(host, org, repo_path=repo_path)
         host_info = auth_ctx.host_info
         git_env = auth_ctx.git_env
 
@@ -261,8 +274,11 @@ class AuthResolver:
                 raise exc
             if host_info.kind == "ado":
                 raise exc
-            _log(f"Token from {auth_ctx.source} failed, trying git credential fill for {host}")
-            cred = self._token_manager.resolve_credential_from_git(host)
+            _log(f"Token from {auth_ctx.source} failed, trying fallback credentials for {host}")
+            gh_token = self._token_manager.resolve_credential_from_gh_cli(host)
+            if gh_token:
+                return operation(gh_token, self._build_git_env(gh_token))
+            cred = self._token_manager.resolve_credential_from_git(host, path=repo_path)
             if cred:
                 return operation(cred, self._build_git_env(cred))
             raise exc
@@ -353,7 +369,7 @@ class AuthResolver:
     # -- internals ----------------------------------------------------------
 
     def _resolve_token(
-        self, host_info: HostInfo, org: Optional[str]
+        self, host_info: HostInfo, org: Optional[str], repo_path: Optional[str] = None
     ) -> tuple[Optional[str], str]:
         """Walk the token resolution chain.  Returns (token, source).
 
@@ -382,9 +398,17 @@ class AuthResolver:
             source = self._identify_env_source(purpose)
             return token, source
 
-        # 3. Git credential helper (not for ADO — uses its own PAT)
+        # 3. gh CLI active account (GitHub-like hosts only)
+        gh_token = self._token_manager.resolve_credential_from_gh_cli(host_info.host)
+        if gh_token:
+            return gh_token, "gh-auth-token"
+
+        # 4. Git credential helper (not for ADO — uses its own PAT)
         if host_info.kind not in ("ado",):
-            credential = self._token_manager.resolve_credential_from_git(host_info.host)
+            credential = self._token_manager.resolve_credential_from_git(
+                host_info.host,
+                path=repo_path,
+            )
             if credential:
                 return credential, "git-credential-fill"
 
