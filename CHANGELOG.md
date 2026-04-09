@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix `apm init` showing overwrite confirmation prompt three times on Windows CP950 terminals (#602)
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
 ### Changed
 
