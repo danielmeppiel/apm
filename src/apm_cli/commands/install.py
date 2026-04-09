@@ -890,7 +890,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             should_install_apm
             and scope is InstallScope.PROJECT
             and not dry_run
-            and _has_local_apm_content(project_root)
+            and (_has_local_apm_content(project_root) or old_local_deployed)
         ):
             try:
                 from apm_cli.integration.targets import resolve_targets as _local_resolve
@@ -927,6 +927,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
                     # Create integrators
                     _local_diagnostics = apm_diagnostics or DiagnosticCollector(verbose=verbose)
+                    _errors_before_local = _local_diagnostics.error_count
                     _local_prompt_int = _PromptInt()
                     _local_agent_int = _AgentInt()
                     _local_skill_int = SkillIntegrator()
@@ -969,9 +970,13 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     # integration that are no longer produced.  Only run when
                     # integration completed without errors to avoid deleting
                     # files that failed to re-deploy.
+                    _errors_before = (
+                        _local_diagnostics.error_count
+                        if _local_diagnostics else 0
+                    )
                     _local_had_errors = (
-                        _local_diagnostics is not apm_diagnostics
-                        and _local_diagnostics.error_count > 0
+                        _local_diagnostics is not None
+                        and _local_diagnostics.error_count > _errors_before_local
                     )
                     if old_local_deployed and not _local_had_errors:
                         _prev_local = builtins.set(old_local_deployed)
@@ -981,6 +986,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                             import shutil as _local_shutil
                             _stale_removed = 0
                             _stale_deleted_paths = []
+                            _stale_failed = []
                             for _stale_path in sorted(_stale):
                                 if BaseIntegrator.validate_deploy_path(
                                     _stale_path, project_root, targets=_local_targets
@@ -995,7 +1001,13 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                                             _stale_deleted_paths.append(_stale_target)
                                             _stale_removed += 1
                                         except Exception:
-                                            pass
+                                            _stale_failed.append(_stale_path)
+                                            logger.verbose_detail(
+                                                f"Failed to remove stale file: {_stale_path}"
+                                            )
+                            # Keep failed paths in local_deployed so they
+                            # are retried on the next install.
+                            _local_deployed.extend(_stale_failed)
                             if _stale_deleted_paths:
                                 BaseIntegrator.cleanup_empty_parents(
                                     _stale_deleted_paths, project_root
@@ -1236,7 +1248,7 @@ def _has_local_apm_content(project_root):
     _PRIMITIVE_DIRS = ("skills", "instructions", "chatmodes", "agents", "prompts", "hooks", "commands")
     for subdir_name in _PRIMITIVE_DIRS:
         subdir = apm_dir / subdir_name
-        if subdir.is_dir() and any(subdir.iterdir()):
+        if subdir.is_dir() and any(p.is_file() for p in subdir.rglob("*")):
             return True
     return False
 

@@ -104,6 +104,12 @@ class TestHasLocalApmContent:
         # Leave it empty
         assert _has_local_apm_content(tmp_path) is False
 
+    def test_apm_dir_with_only_nested_dirs_no_files(self, tmp_path):
+        """.apm/skills/ contains subdirectories but no actual files -> False."""
+        skill_dir = tmp_path / ".apm" / "skills" / "empty-skill"
+        skill_dir.mkdir(parents=True)
+        assert _has_local_apm_content(tmp_path) is False
+
     def test_apm_dir_only_unknown_subdirs(self, tmp_path):
         """.apm/ has only unrecognised sub-dirs -> False."""
         unknown_dir = tmp_path / ".apm" / "random_stuff"

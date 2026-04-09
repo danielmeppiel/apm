@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `apm install` now automatically discovers and deploys local `.apm/` primitives (skills, instructions, agents, prompts, hooks, commands) to target directories, with local content taking priority over dependencies on collision (#626)
+- `apm install` now automatically discovers and deploys local `.apm/` primitives (skills, instructions, agents, prompts, hooks, commands) to target directories, with local content taking priority over dependencies on collision (#626, #644)
 
 ### Fixed
 
