@@ -113,11 +113,14 @@ def set_temp_dir(path: str) -> None:
         path: Filesystem path to use as temporary directory.
 
     Raises:
-        ValueError: If the directory does not exist or is not writable.
+        ValueError: If the path does not exist, is not a directory, or is not
+            writable.
     """
     resolved = os.path.abspath(os.path.expanduser(path))
-    if not os.path.isdir(resolved):
+    if not os.path.exists(resolved):
         raise ValueError(f"Directory does not exist: {resolved}")
+    if not os.path.isdir(resolved):
+        raise ValueError(f"Path is not a directory: {resolved}")
     if not os.access(resolved, os.W_OK):
         raise ValueError(f"Directory is not writable: {resolved}")
     update_config({"temp_dir": resolved})

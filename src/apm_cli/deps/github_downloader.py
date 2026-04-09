@@ -1779,8 +1779,9 @@ class GitHubPackageDownloader:
         # retry logic, which raises WinError 32 when git processes still hold
         # handles at the end of the with-block.
         from ..config import get_apm_temp_dir
-        temp_dir = tempfile.mkdtemp(dir=get_apm_temp_dir())
+        temp_dir = None
         try:
+            temp_dir = tempfile.mkdtemp(dir=get_apm_temp_dir())
             # Sparse checkout always targets "repo/".  If it fails we clone into
             # "repo_clone/" so we never have to rmtree a directory that may still
             # have live git handles from the failed subprocess.
@@ -1890,22 +1891,32 @@ class GitHubPackageDownloader:
             if progress_obj and progress_task_id is not None:
                 progress_obj.update(progress_task_id, completed=90, total=100)
 
-        except PermissionError:
-            raise RuntimeError(
-                f"Access denied in temporary directory '{temp_dir}'. "
-                "Corporate security may restrict this path. "
-                "Fix: apm config set temp-dir <WRITABLE_PATH>"
-            ) from None
-        except OSError as exc:
-            if getattr(exc, 'errno', None) == 13 or getattr(exc, 'winerror', None) == 5:
+        except PermissionError as exc:
+            exc_path = getattr(exc, 'filename', None)
+            # If temp_dir wasn't created (mkdtemp failed) or the error is within
+            # the temp tree, this is likely a restricted temp directory issue.
+            if temp_dir is None or (exc_path and str(exc_path).startswith(str(temp_dir))):
                 raise RuntimeError(
-                    f"Access denied in temporary directory '{temp_dir}'. "
-                    "Corporate security may restrict this path. "
+                    "Access denied in temporary directory"
+                    + (f" '{temp_dir}'" if temp_dir else "")
+                    + ". Corporate security may restrict this path. "
                     "Fix: apm config set temp-dir <WRITABLE_PATH>"
                 ) from None
             raise
+        except OSError as exc:
+            if getattr(exc, 'errno', None) == 13 or getattr(exc, 'winerror', None) == 5:
+                exc_path = getattr(exc, 'filename', None)
+                if temp_dir is None or (exc_path and str(exc_path).startswith(str(temp_dir))):
+                    raise RuntimeError(
+                        "Access denied in temporary directory"
+                        + (f" '{temp_dir}'" if temp_dir else "")
+                        + ". Corporate security may restrict this path. "
+                        "Fix: apm config set temp-dir <WRITABLE_PATH>"
+                    ) from None
+            raise
         finally:
-            _rmtree(temp_dir)
+            if temp_dir:
+                _rmtree(temp_dir)
 
         # Validate the extracted package (after temp dir is cleaned up)
         validation_result = validate_apm_package(target_path)
