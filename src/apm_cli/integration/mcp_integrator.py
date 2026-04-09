@@ -593,62 +593,68 @@ class MCPIntegrator:
 
         # Clean Claude Code project .mcp.json (mcpServers)
         if "claude" in target_runtimes:
-            claude_proj = wr / ".mcp.json"
-            if claude_proj.exists():
-                try:
-                    import json as _json
+            clean_claude_user = install_scope is InstallScope.USER
+            clean_claude_project = install_scope is not InstallScope.USER
 
-                    config = _json.loads(claude_proj.read_text(encoding="utf-8"))
-                    servers = config.get("mcpServers", {})
-                    removed = [n for n in expanded_stale if n in servers]
-                    for name in removed:
-                        del servers[name]
-                    if removed:
-                        claude_proj.write_text(
-                            _json.dumps(config, indent=2), encoding="utf-8"
-                        )
-                        for name in removed:
-                            if logger:
-                                logger.progress(
-                                    f"Removed stale MCP server '{name}' from .mcp.json"
-                                )
-                            else:
-                                _rich_info(
-                                    f"+ Removed stale MCP server '{name}' from .mcp.json"
-                                )
-                except Exception:
-                    _log.debug(
-                        "Failed to clean stale MCP servers from .mcp.json",
-                        exc_info=True,
-                    )
-            claude_user = Path.home() / ".claude.json"
-            if claude_user.exists():
-                try:
-                    import json as _json
+            if clean_claude_project:
+                claude_proj = wr / ".mcp.json"
+                if claude_proj.exists():
+                    try:
+                        import json as _json
 
-                    config = _json.loads(claude_user.read_text(encoding="utf-8"))
-                    servers = config.get("mcpServers", {})
-                    removed = [n for n in expanded_stale if n in servers]
-                    for name in removed:
-                        del servers[name]
-                    if removed:
-                        claude_user.write_text(
-                            _json.dumps(config, indent=2), encoding="utf-8"
-                        )
+                        config = _json.loads(claude_proj.read_text(encoding="utf-8"))
+                        servers = config.get("mcpServers", {})
+                        removed = [n for n in expanded_stale if n in servers]
                         for name in removed:
-                            if logger:
-                                logger.progress(
-                                    f"Removed stale MCP server '{name}' from ~/.claude.json"
-                                )
-                            else:
-                                _rich_info(
-                                    f"+ Removed stale MCP server '{name}' from ~/.claude.json"
-                                )
-                except Exception:
-                    _log.debug(
-                        "Failed to clean stale MCP servers from ~/.claude.json",
-                        exc_info=True,
-                    )
+                            del servers[name]
+                        if removed:
+                            claude_proj.write_text(
+                                _json.dumps(config, indent=2), encoding="utf-8"
+                            )
+                            for name in removed:
+                                if logger:
+                                    logger.progress(
+                                        f"Removed stale MCP server '{name}' from .mcp.json"
+                                    )
+                                else:
+                                    _rich_info(
+                                        f"+ Removed stale MCP server '{name}' from .mcp.json"
+                                    )
+                    except Exception:
+                        _log.debug(
+                            "Failed to clean stale MCP servers from .mcp.json",
+                            exc_info=True,
+                        )
+
+            if clean_claude_user:
+                claude_user = Path.home() / ".claude.json"
+                if claude_user.exists():
+                    try:
+                        import json as _json
+
+                        config = _json.loads(claude_user.read_text(encoding="utf-8"))
+                        servers = config.get("mcpServers", {})
+                        removed = [n for n in expanded_stale if n in servers]
+                        for name in removed:
+                            del servers[name]
+                        if removed:
+                            claude_user.write_text(
+                                _json.dumps(config, indent=2), encoding="utf-8"
+                            )
+                            for name in removed:
+                                if logger:
+                                    logger.progress(
+                                        f"Removed stale MCP server '{name}' from ~/.claude.json"
+                                    )
+                                else:
+                                    _rich_info(
+                                        f"+ Removed stale MCP server '{name}' from ~/.claude.json"
+                                    )
+                    except Exception:
+                        _log.debug(
+                            "Failed to clean stale MCP servers from ~/.claude.json",
+                            exc_info=True,
+                        )
 
         # Clean opencode.json (only if .opencode/ directory exists)
         if "opencode" in target_runtimes:
