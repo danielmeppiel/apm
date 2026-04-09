@@ -353,7 +353,7 @@ class TestTempDirFunctions:
         import apm_cli.config as cfg_module
 
         with tempfile.NamedTemporaryFile() as f:
-            with pytest.raises(ValueError, match="does not exist"):
+            with pytest.raises(ValueError, match="not a directory"):
                 cfg_module.set_temp_dir(f.name)
 
     def test_set_temp_dir_normalises_home_path(self):

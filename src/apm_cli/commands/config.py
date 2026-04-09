@@ -144,7 +144,8 @@ def set(key, value):
     elif key == "temp-dir":
         try:
             set_temp_dir(value)
-            logger.success(f"Temporary directory set to: {value}")
+            from ..config import get_temp_dir
+            logger.success(f"Temporary directory set to: {get_temp_dir()}")
         except ValueError as exc:
             logger.error(str(exc))
             sys.exit(1)
