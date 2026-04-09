@@ -21,7 +21,7 @@ class ClaudeClientAdapter(CopilotClientAdapter):
     """MCP configuration for Claude Code (``mcpServers`` schema).
 
     Registry formatting reuses :class:`CopilotClientAdapter`, then entries are
-    normalized for Claude Code’s on-disk shape (stdio servers omit Copilot-only
+    normalized for Claude Code's on-disk shape (stdio servers omit Copilot-only
     keys like ``type: "local"``, default ``tools``, and empty ``id``).
     """
 
