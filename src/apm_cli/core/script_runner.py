@@ -859,9 +859,11 @@ class ScriptRunner:
         runtime_dir = Path.home() / ".apm" / "runtimes"
 
         # Check APM-managed runtimes first (highest priority)
+        # Use shutil.which with path= to handle platform-specific extensions
+        # (e.g. .exe on Windows via PATHEXT)
         for runtime_name in ["copilot", "codex"]:
-            runtime_path = runtime_dir / runtime_name
-            if runtime_path.exists() and runtime_path.is_file():
+            found = shutil.which(runtime_name, path=str(runtime_dir))
+            if found:
                 return runtime_name
 
         # Fall back to system PATH

@@ -880,13 +880,24 @@ class TestDetectInstalledRuntime:
         runtime_dir.mkdir(parents=True)
         (runtime_dir / "copilot").write_text("binary")
         mock_home.return_value = tmp_path
-        # Even if shutil.which finds codex on PATH, APM copilot wins
-        mock_which.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else None
+
+        def which_side_effect(name, mode=None, path=None):
+            if path is not None:
+                # APM-dir search
+                return str(runtime_dir / name) if name == "copilot" else None
+            # System PATH — should never be reached
+            return "/usr/bin/codex" if name == "codex" else None
+
+        mock_which.side_effect = which_side_effect
 
         result = self.runner._detect_installed_runtime()
 
         assert result == "copilot"
-        mock_which.assert_not_called()
+        # Verify shutil.which was called with path= for the APM-dir check,
+        # and NOT called without path= (system PATH should be skipped)
+        for call in mock_which.call_args_list:
+            assert call.kwargs.get("path") or (len(call.args) > 2 and call.args[2] is not None), \
+                "System PATH shutil.which should not be called when APM-managed runtime found"
 
     @patch("apm_cli.core.script_runner.shutil.which")
     @patch("apm_cli.core.script_runner.Path.home")
@@ -897,10 +908,16 @@ class TestDetectInstalledRuntime:
         (runtime_dir / "codex").write_text("binary")
         mock_home.return_value = tmp_path
 
+        def which_side_effect(name, mode=None, path=None):
+            if path is not None:
+                return str(runtime_dir / name) if name == "codex" else None
+            return None
+
+        mock_which.side_effect = which_side_effect
+
         result = self.runner._detect_installed_runtime()
 
         assert result == "codex"
-        mock_which.assert_not_called()
 
     @patch("apm_cli.core.script_runner.shutil.which")
     @patch("apm_cli.core.script_runner.Path.home")
@@ -909,7 +926,13 @@ class TestDetectInstalledRuntime:
         runtime_dir = tmp_path / ".apm" / "runtimes"
         runtime_dir.mkdir(parents=True)
         mock_home.return_value = tmp_path
-        mock_which.side_effect = lambda name: "/usr/local/bin/copilot" if name == "copilot" else None
+
+        def which_side_effect(name, mode=None, path=None):
+            if path is not None:
+                return None  # Nothing in APM dir
+            return "/usr/local/bin/copilot" if name == "copilot" else None
+
+        mock_which.side_effect = which_side_effect
 
         result = self.runner._detect_installed_runtime()
 
@@ -934,7 +957,13 @@ class TestDetectInstalledRuntime:
         runtime_dir.mkdir(parents=True)
         (runtime_dir / "copilot").mkdir()  # directory, not a file
         mock_home.return_value = tmp_path
-        mock_which.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else None
+
+        def which_side_effect(name, mode=None, path=None):
+            if path is not None:
+                return None  # shutil.which won't match directories
+            return "/usr/bin/codex" if name == "codex" else None
+
+        mock_which.side_effect = which_side_effect
 
         result = self.runner._detect_installed_runtime()
 
@@ -949,3 +978,27 @@ class TestDetectInstalledRuntime:
 
         with pytest.raises(RuntimeError, match="No compatible runtime found"):
             self.runner._detect_installed_runtime()
+
+    @patch("apm_cli.core.script_runner.shutil.which")
+    @patch("apm_cli.core.script_runner.Path.home")
+    def test_windows_exe_detected_in_apm_runtimes(self, mock_home, mock_which, tmp_path):
+        """On Windows, codex.exe in ~/.apm/runtimes/ is detected via shutil.which PATHEXT."""
+        runtime_dir = tmp_path / ".apm" / "runtimes"
+        runtime_dir.mkdir(parents=True)
+        # Windows installs codex.exe, not codex
+        (runtime_dir / "codex.exe").write_text("binary")
+        mock_home.return_value = tmp_path
+
+        def which_side_effect(name, mode=None, path=None):
+            if path is not None:
+                # Simulate Windows PATHEXT: shutil.which("codex", path=dir) finds codex.exe
+                if name == "codex":
+                    return str(runtime_dir / "codex.exe")
+                return None
+            return None
+
+        mock_which.side_effect = which_side_effect
+
+        result = self.runner._detect_installed_runtime()
+
+        assert result == "codex"
