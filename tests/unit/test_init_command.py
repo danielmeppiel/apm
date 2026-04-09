@@ -36,7 +36,7 @@ class TestInitCommand:
             os.chdir(str(repo_root))
 
     def test_init_current_directory(self):
-        """Test initialization in current directory (minimal mode)."""
+        """Test initialization in current directory."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
             try:
@@ -46,7 +46,8 @@ class TestInitCommand:
                 assert result.exit_code == 0
                 assert "APM project initialized successfully!" in result.output
                 assert Path("apm.yml").exists()
-                # Minimal mode: no template files created
+                # starter prompt is created so users can immediately run `apm run start`
+                assert Path("start.prompt.md").exists()
                 assert not Path("hello-world.prompt.md").exists()
                 assert not Path("README.md").exists()
                 assert not Path(".apm").exists()
@@ -54,7 +55,7 @@ class TestInitCommand:
                 os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_explicit_current_directory(self):
-        """Test initialization with explicit '.' argument (minimal mode)."""
+        """Test initialization with explicit '.' argument."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
             try:
@@ -64,13 +65,13 @@ class TestInitCommand:
                 assert result.exit_code == 0
                 assert "APM project initialized successfully!" in result.output
                 assert Path("apm.yml").exists()
-                # Minimal mode: no template files created
+                assert Path("start.prompt.md").exists()
                 assert not Path("hello-world.prompt.md").exists()
             finally:
                 os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_new_directory(self):
-        """Test initialization in new directory (minimal mode)."""
+        """Test initialization in new directory."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
             try:
@@ -84,7 +85,7 @@ class TestInitCommand:
                 assert project_path.exists()
                 assert project_path.is_dir()
                 assert (project_path / "apm.yml").exists()
-                # Minimal mode: no template files created
+                assert (project_path / "start.prompt.md").exists()
                 assert not (project_path / "hello-world.prompt.md").exists()
                 assert not (project_path / "README.md").exists()
                 assert not (project_path / ".apm").exists()
@@ -122,10 +123,9 @@ class TestInitCommand:
 
                 assert result.exit_code == 0
                 assert "APM project initialized successfully!" in result.output
-                # Should overwrite the file with minimal structure
+                # Should overwrite the file with expected structure
                 with open("apm.yml", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
-                    # Minimal structure
                     assert "dependencies" in config
                     assert config["dependencies"] == {"apm": [], "mcp": []}
                     assert "scripts" in config
@@ -221,7 +221,7 @@ class TestInitCommand:
                 os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_validates_project_structure(self):
-        """Test that init creates minimal project structure."""
+        """Test that init creates expected project structure."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
             try:
@@ -233,7 +233,7 @@ class TestInitCommand:
                 # Use absolute path for checking files
                 project_path = Path(tmp_dir) / "test-project"
 
-                # Verify apm.yml minimal structure
+                # Verify apm.yml structure
                 with open(project_path / "apm.yml", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
                     assert config["name"] == "test-project"
@@ -243,7 +243,8 @@ class TestInitCommand:
                     assert "scripts" in config
                     assert config["scripts"] == {}
 
-                # Minimal mode: no template files created
+                # starter prompt created for immediate use
+                assert (project_path / "start.prompt.md").exists()
                 assert not (project_path / "hello-world.prompt.md").exists()
                 assert not (project_path / "README.md").exists()
                 assert not (project_path / ".apm").exists()
@@ -283,7 +284,7 @@ class TestInitCommand:
                 os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup
 
     def test_init_does_not_create_skill_md(self):
-        """Test that init does not create SKILL.md (only apm.yml)."""
+        """Test that init does not create SKILL.md."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             os.chdir(tmp_dir)
             try:
@@ -292,6 +293,7 @@ class TestInitCommand:
 
                 assert result.exit_code == 0
                 assert Path("apm.yml").exists()
+                assert Path("start.prompt.md").exists()
                 assert not Path("SKILL.md").exists()
             finally:
                 os.chdir(self.original_dir)  # restore CWD before TemporaryDirectory cleanup

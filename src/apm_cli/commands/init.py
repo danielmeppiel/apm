@@ -75,16 +75,7 @@ def init(ctx, project_name, yes, plugin, verbose):
             logger.warning("apm.yml already exists")
 
             if not yes:
-                Confirm = _lazy_confirm()
-                if Confirm:
-                    try:
-                        confirm = Confirm.ask("Continue and overwrite?")
-                    except Exception:
-                        confirm = click.confirm("Continue and overwrite?")
-                else:
-                    confirm = click.confirm("Continue and overwrite?")
-
-                if not confirm:
+                if not click.confirm("Continue and overwrite?"):
                     logger.progress("Initialization cancelled.")
                     return
             else:
@@ -121,6 +112,8 @@ def init(ctx, project_name, yes, plugin, verbose):
                 ]
                 if plugin:
                     files_data.append(("*", "plugin.json", "Plugin metadata"))
+                else:
+                    files_data.append(("*", "start.prompt.md", "Starter prompt — edit with your instructions"))
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
         except (ImportError, NameError):
@@ -128,6 +121,8 @@ def init(ctx, project_name, yes, plugin, verbose):
             click.echo("  * apm.yml - Project configuration")
             if plugin:
                 click.echo("  * plugin.json - Plugin metadata")
+            else:
+                click.echo("  * start.prompt.md - Starter prompt — edit with your instructions")
 
         _rich_blank_line()
 
@@ -140,8 +135,7 @@ def init(ctx, project_name, yes, plugin, verbose):
         else:
             next_steps = [
                 "Install a runtime:       apm runtime setup copilot",
-                "Add APM dependencies:    apm install <owner>/<repo>",
-                "Compile agent context:   apm compile",
+                "Edit your prompt:        open start.prompt.md and write your instructions",
                 "Run your first workflow: apm run start",
             ]
 
