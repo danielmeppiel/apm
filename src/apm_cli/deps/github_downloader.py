@@ -183,9 +183,9 @@ class GitHubPackageDownloader:
         # If the user already set GIT_SSH_COMMAND we merge our option in;
         # otherwise we create a minimal command with ConnectTimeout.
         _ssh_timeout = '-o ConnectTimeout=30'
-        existing_ssh_cmd = os.environ.get('GIT_SSH_COMMAND', '')
+        existing_ssh_cmd = os.environ.get('GIT_SSH_COMMAND', '').strip()
         if existing_ssh_cmd:
-            if 'ConnectTimeout' not in existing_ssh_cmd:
+            if 'connecttimeout' not in existing_ssh_cmd.lower():
                 env['GIT_SSH_COMMAND'] = f'{existing_ssh_cmd} {_ssh_timeout}'
             else:
                 env['GIT_SSH_COMMAND'] = existing_ssh_cmd
