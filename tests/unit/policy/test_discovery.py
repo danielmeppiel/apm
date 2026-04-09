@@ -106,6 +106,7 @@ class TestExtractOrgFromGitRemote(unittest.TestCase):
             ["git", "remote", "get-url", "origin"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             cwd=Path("/fake"),
             timeout=5,
         )

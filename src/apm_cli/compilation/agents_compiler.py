@@ -187,11 +187,17 @@ class AgentsCompiler:
             if primitives is None:
                 if config.local_only:
                     # Use basic discovery for local-only mode
-                    primitives = discover_primitives(str(self.base_dir))
+                    primitives = discover_primitives(
+                        str(self.base_dir),
+                        exclude_patterns=config.exclude,
+                    )
                 else:
                     # Use enhanced discovery with dependencies (Task 4 integration)
                     from ..primitives.discovery import discover_primitives_with_dependencies
-                    primitives = discover_primitives_with_dependencies(str(self.base_dir))
+                    primitives = discover_primitives_with_dependencies(
+                        str(self.base_dir),
+                        exclude_patterns=config.exclude,
+                    )
             
             # Route to targets based on config.target
             results: List[CompilationResult] = []
@@ -246,6 +252,9 @@ class AgentsCompiler:
             CompilationResult: Result of distributed compilation.
         """
         from .distributed_compiler import DistributedAgentsCompiler
+        
+        errors = self.validate_primitives(primitives)
+        self.errors.extend(errors)
         
         # Create distributed compiler with exclude patterns
         distributed_compiler = DistributedAgentsCompiler(
@@ -311,8 +320,8 @@ class AgentsCompiler:
                 success=True,
                 output_path="Preview mode - no files written",
                 content=self._generate_placement_summary(distributed_result),
-                warnings=distributed_result.warnings,
-                errors=distributed_result.errors,
+                warnings=self.warnings + distributed_result.warnings,
+                errors=self.errors + distributed_result.errors,
                 stats=distributed_result.stats
             )
         
@@ -399,6 +408,9 @@ class AgentsCompiler:
         Returns:
             CompilationResult: Result of the CLAUDE.md compilation.
         """
+        errors = self.validate_primitives(primitives)
+        self.errors.extend(errors)
+        
         # Create Claude formatter
         claude_formatter = ClaudeFormatter(str(self.base_dir))
         
@@ -429,8 +441,8 @@ class AgentsCompiler:
         # not at compile time. This keeps behavior consistent with VSCode prompt integration.
         
         # Merge warnings and errors (no command result anymore)
-        all_warnings = claude_result.warnings
-        all_errors = claude_result.errors
+        all_warnings = self.warnings + claude_result.warnings
+        all_errors = self.errors + claude_result.errors
         
         # Handle dry-run mode
         if config.dry_run:

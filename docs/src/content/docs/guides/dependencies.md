@@ -214,7 +214,7 @@ apm deps list
 apm deps tree
 
 # Get package details
-apm deps info apm-sample-package
+apm view apm-sample-package
 ```
 
 ### 4. Use Dependencies in Compilation
@@ -618,6 +618,9 @@ apm deps update owner/apm-sample-package
 # Update with verbose output
 apm deps update --verbose
 
+# Update user-scope dependencies
+apm deps update -g
+
 # Install with updates (equivalent to update)
 apm install --update
 ```
@@ -798,7 +801,7 @@ curl -H "Authorization: token $GITHUB_CLI_PAT" https://api.github.com/user
 
 ```bash
 # Show detailed package information
-apm deps info package-name
+apm view package-name
 
 # Show full dependency tree
 apm deps tree

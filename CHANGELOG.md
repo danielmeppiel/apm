@@ -10,6 +10,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
+### Changed
+
+- `apm marketplace browse/search/add/update` now route through the registry proxy when `PROXY_REGISTRY_URL` is set; `PROXY_REGISTRY_ONLY=1` blocks direct GitHub API calls (#506)
+
+## [0.8.11] - 2026-04-06
+
+### Added
+
+- Artifactory archive entry download for virtual file packages (#525)
+- `apm view <package> [field]` command for viewing package metadata and remote refs (#613)
+- `apm view <package> versions` field selector lists remote tags and branches via `git ls-remote` (#613)
+- `apm outdated` command compares locked dependencies against remote refs (#613)
+- `--parallel-checks` (`-j`) option on `apm outdated` for concurrent remote checks (default: 4) (#613)
+- Rich progress feedback during `apm outdated` dependency checking (#613)
+- `--global` flag on `apm view` for inspecting user-scope packages (#613)
+
+### Changed
+
+- Rename `apm info` to `apm view` for npm convention alignment; `apm info` kept as hidden alias (#613)
+- Scope resolution now happens once via `TargetProfile.for_scope()` and `resolve_targets()` -- integrators no longer need scope-aware parameters (#562)
+- Unified integration dispatch table in `dispatch.py` -- both install and uninstall import from one source of truth (#562)
+- Hook merge logic deduplicated: three copy-pasted JSON-merge methods replaced with `_integrate_merged_hooks()` + config dict (#562)
+- `apm outdated` uses SHA comparison for branch-pinned deps instead of reporting them as `unknown` (#613)
+
+### Fixed
+
+- Reject symlinked primitive files in all discovery and resolution paths to prevent symlink-based traversal attacks (#596)
+- `apm install -g` now deploys hooks to the scope-resolved target directory instead of hardcoding `.github/hooks/` (#565, #566)
+- Hook sync/cleanup derives prefixes dynamically from `KNOWN_TARGETS` instead of hardcoded paths (#565)
+- `auto_create=False` targets no longer get directories unconditionally created during install (#576)
+- `apm deps update -g` now correctly passes scope, preventing user-scope updates from silently using project-scope paths (#562)
+- Subprocess encoding failures on Windows non-UTF-8 consoles (CP950/CP936) -- all subprocess calls now use explicit UTF-8 encoding (#591)
+- PowerShell 5.1 compatibility: replace multi-argument `Join-Path` calls with nested two-argument calls (#593)
+- `apm marketplace add` now respects `GITHUB_HOST` environment variable for GitHub Enterprise users (#589)
+- `compilation.exclude` patterns now filter primitive discovery, preventing excluded files from leaking into compiled output (#477)
+- Runtime detection in script runner now uses anchored patterns to prevent false positives when runtime keywords appear in flag values (#563)
+- `apm compile` now warns when instructions are missing `applyTo` across all compilation modes (#449)
+- Detect remote default branch instead of hardcoding `main` (#574)
+- Warn when two packages deploy a native skill with the same name (#545)
+
+## [0.8.10] - 2026-04-03
+
+### Fixed
+
 - Hook integrator now processes the `windows` property in hook JSON files, copying referenced scripts and rewriting paths during install/compile (#311)
 - Standardized `--target` choices, replaced Unicode with ASCII for cp1252 compatibility, and documented missing CLI flags (#519)
 - `apm install -g` now correctly deploys to user-scope directories, skips unsupported primitives, and cleans up on uninstall -- including multi-level paths like `~/.config/opencode/` (#542)
@@ -18,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `apm install` now deploys `.instructions.md` files to `.claude/rules/*.md` for Claude Code, converting `applyTo:` frontmatter to Claude's `paths:` format (#516)
+
+### Changed
+
+- Artifactory virtual file downloads now use the Archive Entry Download API to fetch individual files without downloading the full archive; falls back to full-archive extraction when the entry API is unavailable (#525)
 
 ## [0.8.9] - 2026-03-31
 

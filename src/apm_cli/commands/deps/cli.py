@@ -608,6 +608,7 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
             logger=logger,
             auth_resolver=auth_resolver,
             target=target,
+            scope=scope,
         )
     except Exception as e:
         logger.error(f"Update failed: {e}")
@@ -661,6 +662,8 @@ def update(packages, verbose, force, target, parallel_downloads, global_):
 @click.argument('package', required=True)
 def info(package: str):
     """Show detailed information about a specific package including context files and workflows."""
+    from ..view import resolve_package_path, display_package_info
+
     logger = CommandLogger("deps-info")
 
     project_root = Path(".")
@@ -671,113 +674,5 @@ def info(package: str):
         logger.progress("Run 'apm install' to install dependencies first")
         sys.exit(1)
     
-    # Find the package directory - handle org/repo and deep sub-path structures
-    package_path = None
-    # First try direct path match (handles any depth: org/repo, org/repo/subdir/pkg)
-    direct_match = apm_modules_path / package
-    if direct_match.is_dir() and (
-        (direct_match / APM_YML_FILENAME).exists() or (direct_match / SKILL_MD_FILENAME).exists()
-    ):
-        package_path = direct_match
-    else:
-        # Fallback: scan org/repo structure (2-level) for short package names
-        for org_dir in apm_modules_path.iterdir():
-            if org_dir.is_dir() and not org_dir.name.startswith('.'):
-                for package_dir in org_dir.iterdir():
-                    if package_dir.is_dir() and not package_dir.name.startswith('.'):
-                        if package_dir.name == package or f"{org_dir.name}/{package_dir.name}" == package:
-                            package_path = package_dir
-                            break
-                if package_path:
-                    break
-    
-    if not package_path:
-        logger.error(f"Package '{package}' not found in apm_modules/")
-        logger.progress("Available packages:")
-        
-        for org_dir in apm_modules_path.iterdir():
-            if org_dir.is_dir() and not org_dir.name.startswith('.'):
-                for package_dir in org_dir.iterdir():
-                    if package_dir.is_dir() and not package_dir.name.startswith('.'):
-                        click.echo(f"  - {org_dir.name}/{package_dir.name}")
-        sys.exit(1)
-    
-    try:
-        # Load package information
-        package_info = _get_detailed_package_info(package_path)
-        
-        # Display with Rich panel if available
-        try:
-            from rich.panel import Panel
-            from rich.console import Console
-            from rich.text import Text
-            console = Console()
-            
-            content_lines = []
-            content_lines.append(f"[bold]Name:[/bold] {package_info['name']}")
-            content_lines.append(f"[bold]Version:[/bold] {package_info['version']}")
-            content_lines.append(f"[bold]Description:[/bold] {package_info['description']}")
-            content_lines.append(f"[bold]Author:[/bold] {package_info['author']}")
-            content_lines.append(f"[bold]Source:[/bold] {package_info['source']}")
-            content_lines.append(f"[bold]Install Path:[/bold] {package_info['install_path']}")
-            content_lines.append("")
-            content_lines.append("[bold]Context Files:[/bold]")
-            
-            for context_type, count in package_info['context_files'].items():
-                if count > 0:
-                    content_lines.append(f"  * {count} {context_type}")
-            
-            if not any(count > 0 for count in package_info['context_files'].values()):
-                content_lines.append("  * No context files found")
-                
-            content_lines.append("")
-            content_lines.append("[bold]Agent Workflows:[/bold]")
-            if package_info['workflows'] > 0:
-                content_lines.append(f"  * {package_info['workflows']} executable workflows")
-            else:
-                content_lines.append("  * No agent workflows found")
-            
-            if package_info.get('hooks', 0) > 0:
-                content_lines.append("")
-                content_lines.append("[bold]Hooks:[/bold]")
-                content_lines.append(f"  * {package_info['hooks']} hook file(s)")
-            
-            content = "\n".join(content_lines)
-            panel = Panel(content, title=f"[i] Package Info: {package}", border_style="cyan")
-            console.print(panel)
-            
-        except ImportError:
-            # Fallback text display
-            click.echo(f"[i] Package Info: {package}")
-            click.echo("=" * 40)
-            click.echo(f"Name: {package_info['name']}")
-            click.echo(f"Version: {package_info['version']}")
-            click.echo(f"Description: {package_info['description']}")
-            click.echo(f"Author: {package_info['author']}")
-            click.echo(f"Source: {package_info['source']}")
-            click.echo(f"Install Path: {package_info['install_path']}")
-            click.echo("")
-            click.echo("Context Files:")
-            
-            for context_type, count in package_info['context_files'].items():
-                if count > 0:
-                    click.echo(f"  * {count} {context_type}")
-            
-            if not any(count > 0 for count in package_info['context_files'].values()):
-                click.echo("  * No context files found")
-                
-            click.echo("")
-            click.echo("Agent Workflows:")
-            if package_info['workflows'] > 0:
-                click.echo(f"  * {package_info['workflows']} executable workflows")
-            else:
-                click.echo("  * No agent workflows found")
-            
-            if package_info.get('hooks', 0) > 0:
-                click.echo("")
-                click.echo("Hooks:")
-                click.echo(f"  * {package_info['hooks']} hook file(s)")
-    
-    except Exception as e:
-        logger.error(f"Error reading package information: {e}")
-        sys.exit(1)
+    package_path = resolve_package_path(package, apm_modules_path, logger)
+    display_package_info(package, package_path, logger)

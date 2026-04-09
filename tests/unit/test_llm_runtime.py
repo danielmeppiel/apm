@@ -17,8 +17,8 @@ class TestLLMRuntime:
         runtime = LLMRuntime("gpt-4o-mini")
         
         assert runtime.model_name == "gpt-4o-mini"
-        mock_run.assert_called_once_with(['llm', '--version'], 
-                                        capture_output=True, text=True, check=True)
+        mock_run.assert_called_once_with(['llm', '--version'],
+                                        capture_output=True, text=True, encoding="utf-8", check=True)
     
     @patch('apm_cli.runtime.llm_runtime.subprocess.run')
     def test_init_fallback(self, mock_run):

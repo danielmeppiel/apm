@@ -74,10 +74,15 @@ This registers the marketplace and fetches its `marketplace.json`. By default AP
 **Options:**
 - `--name/-n` -- Custom display name for the marketplace
 - `--branch/-b` -- Branch to track (default: `main`)
+- `--host` -- Git host FQDN for non-github.com hosts (default: `github.com` or `GITHUB_HOST` env var)
 
 ```bash
 # Register with a custom name on a specific branch
 apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
+
+# Register from a GitHub Enterprise host (two equivalent forms)
+apm marketplace add acme/plugin-marketplace --host ghes.corp.example.com
+apm marketplace add ghes.corp.example.com/acme/plugin-marketplace
 ```
 
 ## List registered marketplaces
@@ -155,6 +160,20 @@ apm marketplace update acme-plugins
 # Refresh all registered marketplaces
 apm marketplace update
 ```
+
+## Registry proxy support
+
+When `PROXY_REGISTRY_URL` is set, marketplace commands (`add`, `browse`, `search`, `update`) fetch `marketplace.json` through the registry proxy (Artifactory Archive Entry Download) before falling back to the GitHub Contents API. When `PROXY_REGISTRY_ONLY=1` is also set, the GitHub API fallback is blocked entirely, enabling fully air-gapped marketplace discovery.
+
+```bash
+export PROXY_REGISTRY_URL="https://art.corp.example.com/artifactory/github"
+export PROXY_REGISTRY_ONLY=1  # optional: block direct GitHub access
+
+apm marketplace add anthropics/skills   # fetches via Artifactory
+apm marketplace browse skills           # fetches via Artifactory
+```
+
+This builds on the same proxy infrastructure used by `apm install`. See the [Registry Proxy guide](../registry-proxy/) for full configuration details.
 
 ## Manage marketplaces
 

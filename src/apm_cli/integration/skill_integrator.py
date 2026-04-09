@@ -14,6 +14,11 @@ import frontmatter
 from apm_cli.integration.base_integrator import BaseIntegrator
 
 
+# DEPRECATED -- use IntegrationResult directly for new code.
+# Kept for backward compatibility. The fields map as follows:
+# skill_created -> IntegrationResult.skill_created
+# sub_skills_promoted -> IntegrationResult.sub_skills_promoted
+# skill_path, references_copied -> not mapped (skill-internal)
 @dataclass
 class SkillIntegrationResult:
     """Result of skill integration operation."""

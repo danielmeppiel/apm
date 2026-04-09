@@ -8,7 +8,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List
 import random
 import re
 from typing import Union
@@ -22,6 +22,7 @@ from ..core.auth import AuthResolver
 from ..models.apm_package import (
     DependencyReference, 
     PackageInfo, 
+    RemoteRef,
     ResolvedReference, 
     GitReferenceType,
     PackageType,
@@ -315,7 +316,36 @@ class GitHubPackageDownloader:
 
     def _download_file_from_artifactory(self, host: str, prefix: str, owner: str,
                                          repo: str, file_path: str, ref: str, scheme: str = "https") -> bytes:
-        """Download a single file from Artifactory by fetching the full archive and extracting it."""
+        """Download a single file from Artifactory.
+
+        Tries the Archive Entry Download API first (fetches one file
+        without downloading the full archive).  Falls back to the full
+        archive approach when the entry API is unavailable or returns an
+        error.
+        """
+        # Fast path: use the RegistryClient interface for entry download
+        cfg = self.registry_config
+        if cfg is not None and cfg.host == host:
+            client = cfg.get_client()
+            content = client.fetch_file(
+                owner, repo, file_path, ref,
+                resilient_get=self._resilient_get,
+            )
+        else:
+            # No RegistryConfig or host mismatch (explicit FQDN mode) --
+            # fall back to the standalone helper.
+            from .artifactory_entry import fetch_entry_from_archive
+
+            content = fetch_entry_from_archive(
+                host, prefix, owner, repo, file_path, ref,
+                scheme=scheme,
+                headers=self._get_artifactory_headers(),
+                resilient_get=self._resilient_get,
+            )
+        if content is not None:
+            return content
+
+        # Fallback: download full archive and extract the file
         import io
         import zipfile
 
@@ -705,6 +735,160 @@ class GitHubPackageDownloader:
         
         raise RuntimeError(error_msg)
     
+    # ------------------------------------------------------------------
+    # Remote ref enumeration (no clone required)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_ls_remote_output(output: str) -> List[RemoteRef]:
+        """Parse ``git ls-remote --tags --heads`` output into RemoteRef objects.
+
+        Format per line: ``<sha>\\t<refname>``
+
+        For annotated tags git emits two lines::
+
+            <tag-object-sha>   refs/tags/v1.0.0
+            <commit-sha>       refs/tags/v1.0.0^{}
+
+        We want the commit SHA (from the ``^{}`` line) and skip the
+        tag-object-only line.
+
+        Args:
+            output: Raw stdout from ``git ls-remote``.
+
+        Returns:
+            Unsorted list of RemoteRef.
+        """
+        tags: Dict[str, str] = {}       # tag name -> commit sha
+        branches: List[RemoteRef] = []
+
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t", 1)
+            if len(parts) != 2:
+                continue
+            sha, refname = parts[0].strip(), parts[1].strip()
+
+            if refname.startswith("refs/tags/"):
+                tag_name = refname[len("refs/tags/"):]
+                if tag_name.endswith("^{}"):
+                    # Dereferenced commit -- overwrite with the real commit SHA
+                    tag_name = tag_name[:-3]
+                    tags[tag_name] = sha
+                else:
+                    # Only store if we haven't seen the deref line yet
+                    tags.setdefault(tag_name, sha)
+
+            elif refname.startswith("refs/heads/"):
+                branch_name = refname[len("refs/heads/"):]
+                branches.append(RemoteRef(
+                    name=branch_name,
+                    ref_type=GitReferenceType.BRANCH,
+                    commit_sha=sha,
+                ))
+
+        tag_refs = [
+            RemoteRef(name=name, ref_type=GitReferenceType.TAG, commit_sha=sha)
+            for name, sha in tags.items()
+        ]
+        return tag_refs + branches
+
+    @staticmethod
+    def _semver_sort_key(name: str):
+        """Return a sort key for semver-like tag names (descending).
+
+        Non-semver tags sort after all semver tags, alphabetically.
+        """
+        clean = name.lstrip("vV")
+        m = re.match(r"^(\d+)\.(\d+)\.(\d+)(.*)", clean)
+        if m:
+            # Negate for descending order within the first group
+            return (0, -int(m.group(1)), -int(m.group(2)), -int(m.group(3)), m.group(4))
+        return (1, name)
+
+    @classmethod
+    def _sort_remote_refs(cls, refs: List[RemoteRef]) -> List[RemoteRef]:
+        """Sort refs: tags first (semver descending), then branches alphabetically."""
+        tags = [r for r in refs if r.ref_type == GitReferenceType.TAG]
+        branches = [r for r in refs if r.ref_type == GitReferenceType.BRANCH]
+        tags.sort(key=lambda r: cls._semver_sort_key(r.name))
+        branches.sort(key=lambda r: r.name)
+        return tags + branches
+
+    def list_remote_refs(self, dep_ref: DependencyReference) -> List[RemoteRef]:
+        """Enumerate remote tags and branches without cloning.
+
+        Uses ``git ls-remote --tags --heads`` for all git hosts (GitHub,
+        Azure DevOps, GitLab, generic).  Artifactory dependencies return
+        an empty list (no git repo).
+
+        Args:
+            dep_ref: Dependency reference describing the remote repo.
+
+        Returns:
+            Sorted list of RemoteRef -- tags first (semver descending),
+            then branches (alphabetically ascending).
+
+        Raises:
+            RuntimeError: If the git command fails.
+        """
+        # Artifactory: no git repo to query
+        if dep_ref.is_artifactory():
+            return []
+
+        is_ado = dep_ref.is_azure_devops()
+        dep_token = self._resolve_dep_token(dep_ref)
+
+        # All git hosts: git ls-remote
+        repo_url_base = dep_ref.repo_url
+
+        # Build the env -- mirror _clone_with_fallback logic
+        if dep_token:
+            ls_env = self.git_env
+        else:
+            ls_env = {
+                k: v for k, v in self.git_env.items()
+                if k not in ("GIT_ASKPASS", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
+            }
+            ls_env["GIT_TERMINAL_PROMPT"] = "0"
+
+        # Build authenticated URL
+        remote_url = self._build_repo_url(
+            repo_url_base, use_ssh=False, dep_ref=dep_ref, token=dep_token,
+        )
+
+        try:
+            g = git.cmd.Git()
+            output = g.ls_remote("--tags", "--heads", remote_url, env=ls_env)
+            refs = self._parse_ls_remote_output(output)
+            return self._sort_remote_refs(refs)
+        except GitCommandError as e:
+            dep_host = dep_ref.host
+            if dep_host:
+                is_github = is_github_hostname(dep_host)
+            else:
+                is_github = True
+            is_generic = not is_ado and not is_github
+
+            error_msg = f"Failed to list remote refs for {repo_url_base}. "
+            if is_generic:
+                host_name = dep_host or "the target host"
+                error_msg += (
+                    f"For private repositories on {host_name}, configure SSH keys "
+                    f"or a git credential helper. "
+                    f"APM delegates authentication to git for non-GitHub/ADO hosts."
+                )
+            else:
+                host = dep_host or default_host()
+                org = repo_url_base.split("/")[0] if repo_url_base else None
+                error_msg += self.auth_resolver.build_error_context(host, "list refs", org=org)
+
+            sanitized = self._sanitize_git_error(str(e))
+            error_msg += f" Last error: {sanitized}"
+            raise RuntimeError(error_msg) from e
+
     def resolve_git_reference(self, repo_ref: Union[str, "DependencyReference"]) -> ResolvedReference:
         """Resolve a Git reference (branch/tag/commit) to a specific commit SHA.
         
@@ -729,8 +913,8 @@ class GitHubPackageDownloader:
             except ValueError as e:
                 raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
         
-        # Default to main branch if no reference specified
-        ref = dep_ref.reference or "main"
+        # Use user-specified ref; None means "use the remote's default branch"
+        ref = dep_ref.reference or None
 
         # Normalize to string for ResolvedReference.original_ref
         original_ref_str = str(dep_ref)
@@ -740,26 +924,27 @@ class GitHubPackageDownloader:
             self._parse_artifactory_base_url()
             and self._should_use_artifactory_proxy(dep_ref)
         ):
-            is_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
+            effective_ref = ref or "main"
+            is_commit = re.match(r'^[a-f0-9]{7,40}$', effective_ref.lower()) is not None
             return ResolvedReference(
                 original_ref=original_ref_str,
                 ref_type=GitReferenceType.COMMIT if is_commit else GitReferenceType.BRANCH,
                 resolved_commit=None,
-                ref_name=ref
+                ref_name=effective_ref
             )
 
         # Pre-analyze the reference type to determine the best approach
-        is_likely_commit = re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
-        
+        is_likely_commit = bool(ref) and re.match(r'^[a-f0-9]{7,40}$', ref.lower()) is not None
+
         # Create a temporary directory for Git operations
         temp_dir = None
         try:
             temp_dir = Path(tempfile.mkdtemp())
-            
+
             if is_likely_commit:
                 # For commit SHAs, clone full repository first, then checkout the commit
                 try:
-                    # Ensure host is set for enterprise repos     
+                    # Ensure host is set for enterprise repos
                     repo = self._clone_with_fallback(dep_ref.repo_url, temp_dir, progress_reporter=None, dep_ref=dep_ref)
                     commit = repo.commit(ref)
                     ref_type = GitReferenceType.COMMIT
@@ -769,20 +954,22 @@ class GitHubPackageDownloader:
                     sanitized_error = self._sanitize_git_error(str(e))
                     raise ValueError(f"Could not resolve commit '{ref}' in repository {dep_ref.repo_url}: {sanitized_error}")
             else:
-                # For branches and tags, try shallow clone first
+                # For branches and tags, try shallow clone first.
+                # When no ref is specified, omit --branch to let git use the remote HEAD.
                 try:
-                    # Try to clone with specific branch/tag first
+                    clone_kwargs = {'depth': 1}
+                    if ref:
+                        clone_kwargs['branch'] = ref
                     repo = self._clone_with_fallback(
                         dep_ref.repo_url,
                         temp_dir,
                         progress_reporter=None,
                         dep_ref=dep_ref,
-                        depth=1,
-                        branch=ref
+                        **clone_kwargs
                     )
                     ref_type = GitReferenceType.BRANCH  # Could be branch or tag
                     resolved_commit = repo.head.commit.hexsha
-                    ref_name = ref
+                    ref_name = ref if ref else repo.active_branch.name
 
                 except GitCommandError:
                     # If branch/tag clone fails, try full clone and resolve reference
@@ -1525,7 +1712,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             for cmd in cmds:
                 result = subprocess.run(
                     cmd, cwd=str(temp_clone_path), env=env,
-                    capture_output=True, text=True, timeout=120,
+                    capture_output=True, text=True, encoding="utf-8", timeout=120,
                 )
                 if result.returncode != 0:
                     _debug(f"Sparse-checkout step failed ({' '.join(cmd)}): {result.stderr.strip()}")
