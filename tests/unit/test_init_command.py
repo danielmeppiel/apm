@@ -255,11 +255,13 @@ class TestInitCommand:
 
                 with patch("apm_cli.commands.init.click.confirm", return_value=True) as mock_confirm:
                     result = self.runner.invoke(cli, ["init", "--yes"])
+                    assert result.exit_code == 0
                     # --yes skips the prompt entirely, so confirm should NOT be called
                     mock_confirm.assert_not_called()
 
                 with patch("apm_cli.commands.init.click.confirm", return_value=False) as mock_confirm:
                     result = self.runner.invoke(cli, ["init"])
+                    assert result.exit_code == 0
                     mock_confirm.assert_called_once_with("Continue and overwrite?")
                     assert "Initialization cancelled" in result.output
             finally:
