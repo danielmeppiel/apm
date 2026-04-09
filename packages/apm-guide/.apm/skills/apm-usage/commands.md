@@ -15,7 +15,9 @@
 | `apm prune` | Remove orphaned packages | `--dry-run` |
 | `apm deps list` | List installed packages | `-g` global, `--all` both scopes |
 | `apm deps tree` | Show dependency tree | -- |
-| `apm deps info PKG` | Show package details | -- |
+| `apm view PKG [FIELD]` | View package details or remote refs | `-g` global, `FIELD=versions` |
+| `apm outdated` | Check locked deps via SHA/semver comparison | `-g` global, `-v` verbose, `-j N` parallel checks |
+| `apm deps info PKG` | Alias for `apm view PKG` local metadata | -- |
 | `apm deps clean` | Clean dependency cache | `--dry-run`, `-y` skip confirm |
 | `apm deps update [PKGS...]` | Update specific packages | `--verbose`, `--force`, `--target`, `--parallel-downloads N` |
 
@@ -50,7 +52,7 @@
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `apm marketplace add OWNER/REPO` | Register a marketplace | `-n NAME`, `-b BRANCH` |
+| `apm marketplace add OWNER/REPO` | Register a marketplace | `-n NAME`, `-b BRANCH`, `--host HOST` |
 | `apm marketplace list` | List registered marketplaces | -- |
 | `apm marketplace browse NAME` | Browse marketplace packages | -- |
 | `apm marketplace update [NAME]` | Update marketplace index | -- |

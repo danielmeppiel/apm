@@ -11,18 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
+### Changed
+
+- `apm marketplace browse/search/add/update` now route through the registry proxy when `PROXY_REGISTRY_URL` is set; `PROXY_REGISTRY_ONLY=1` blocks direct GitHub API calls (#506)
 
 ## [0.8.11] - 2026-04-06
 
 ### Added
 
 - Artifactory archive entry download for virtual file packages (#525)
+- `apm view <package> [field]` command for viewing package metadata and remote refs (#613)
+- `apm view <package> versions` field selector lists remote tags and branches via `git ls-remote` (#613)
+- `apm outdated` command compares locked dependencies against remote refs (#613)
+- `--parallel-checks` (`-j`) option on `apm outdated` for concurrent remote checks (default: 4) (#613)
+- Rich progress feedback during `apm outdated` dependency checking (#613)
+- `--global` flag on `apm view` for inspecting user-scope packages (#613)
 
 ### Changed
 
+- Rename `apm info` to `apm view` for npm convention alignment; `apm info` kept as hidden alias (#613)
 - Scope resolution now happens once via `TargetProfile.for_scope()` and `resolve_targets()` -- integrators no longer need scope-aware parameters (#562)
 - Unified integration dispatch table in `dispatch.py` -- both install and uninstall import from one source of truth (#562)
 - Hook merge logic deduplicated: three copy-pasted JSON-merge methods replaced with `_integrate_merged_hooks()` + config dict (#562)
+- `apm outdated` uses SHA comparison for branch-pinned deps instead of reporting them as `unknown` (#613)
 
 ### Fixed
 
