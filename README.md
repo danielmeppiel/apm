@@ -109,7 +109,7 @@ Use agentrc to author high-quality instructions, then package them with APM to s
 
 ## Community
 
-Created and maintained by [@danielmeppiel](https://github.com/danielmeppiel).
+Created by [@danielmeppiel](https://github.com/danielmeppiel). Maintained by [@danielmeppiel](https://github.com/danielmeppiel) and [@sergio-sisternes-epam](https://github.com/sergio-sisternes-epam).
 
 - [Roadmap & Discussions](https://github.com/microsoft/apm/discussions/116)
 - [Contributing](CONTRIBUTING.md)
