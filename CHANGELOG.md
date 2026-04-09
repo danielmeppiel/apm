@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Add explicit UTF-8 encoding to prompt file read/write operations to prevent `UnicodeDecodeError` on non-UTF-8 default locales (e.g., Windows CP950) (#604)
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
 ### Changed
 

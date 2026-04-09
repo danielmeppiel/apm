@@ -325,6 +325,61 @@ Hello ${input:name}!"""
         with pytest.raises(FileNotFoundError, match="Prompt file 'nonexistent.prompt.md' not found"):
             self.compiler.compile("nonexistent.prompt.md", {})
 
+    def test_compile_utf8_content_with_cjk_characters(self):
+        """Test that prompt files with non-ASCII characters compile correctly.
+
+        Regression test for #604: UnicodeDecodeError on Windows CP950
+        when .prompt.md contains CJK or other non-ASCII characters.
+        """
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            prompt_dir = Path(tmp_dir)
+            prompt_path = prompt_dir / "i18n.prompt.md"
+            cjk_content = (
+                "---\n"
+                "description: 国際化テスト\n"
+                "---\n"
+                "\n"
+                "你好世界！こんにちは ${input:name}！\n"
+                "Ünïcödé résumé naïve café"
+            )
+            prompt_path.write_text(cjk_content, encoding="utf-8")
+
+            compiler = PromptCompiler()
+            compiler.compiled_dir = prompt_dir / ".compiled"
+
+            result_path = compiler.compile(
+                str(prompt_path), {"name": "ユーザー"}
+            )
+
+            compiled = Path(result_path).read_text(encoding="utf-8")
+            assert "你好世界！こんにちは ユーザー！" in compiled
+            assert "Ünïcödé résumé naïve café" in compiled
+            # Frontmatter must be stripped
+            assert "---" not in compiled
+        finally:
+            shutil.rmtree(tmp_dir)
+
+    def test_compile_utf8_content_without_frontmatter(self):
+        """Test non-ASCII prompt without frontmatter compiles correctly."""
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            prompt_dir = Path(tmp_dir)
+            prompt_path = prompt_dir / "simple_cjk.prompt.md"
+            prompt_path.write_text(
+                "Привет ${input:who}! 🚀", encoding="utf-8"
+            )
+
+            compiler = PromptCompiler()
+            compiler.compiled_dir = prompt_dir / ".compiled"
+
+            result_path = compiler.compile(str(prompt_path), {"who": "мир"})
+
+            compiled = Path(result_path).read_text(encoding="utf-8")
+            assert compiled == "Привет мир! 🚀"
+        finally:
+            shutil.rmtree(tmp_dir)
+
 
 class TestPromptCompilerDependencyDiscovery:
     """Test PromptCompiler dependency discovery functionality."""
