@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm run start` now checks `~/.apm/runtimes/` before system PATH for runtime detection, preventing system stubs from shadowing APM-managed binaries (#605)
+- Pin codex setup to v0.1.2025051600, the last version compatible with GitHub Models `wire_api = "chat"` (#605)
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
 ### Changed
 

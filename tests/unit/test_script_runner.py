@@ -864,3 +864,88 @@ class TestExecuteRuntimeCommandWindowsResolution:
         )
 
         mock_which.assert_not_called()
+
+
+class TestDetectInstalledRuntime:
+    """Test _detect_installed_runtime() APM-managed vs PATH priority (#605)."""
+
+    def setup_method(self):
+        self.runner = ScriptRunner()
+
+    @patch("apm_cli.core.script_runner.shutil.which")
+    @patch("apm_cli.core.script_runner.Path.home")
+    def test_apm_managed_copilot_preferred_over_path(self, mock_home, mock_which, tmp_path):
+        """APM-managed copilot in ~/.apm/runtimes/ takes priority over PATH."""
+        runtime_dir = tmp_path / ".apm" / "runtimes"
+        runtime_dir.mkdir(parents=True)
+        (runtime_dir / "copilot").write_text("binary")
+        mock_home.return_value = tmp_path
+        # Even if shutil.which finds codex on PATH, APM copilot wins
+        mock_which.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else None
+
+        result = self.runner._detect_installed_runtime()
+
+        assert result == "copilot"
+        mock_which.assert_not_called()
+
+    @patch("apm_cli.core.script_runner.shutil.which")
+    @patch("apm_cli.core.script_runner.Path.home")
+    def test_apm_managed_codex_when_no_copilot(self, mock_home, mock_which, tmp_path):
+        """APM-managed codex is returned when copilot is not in runtimes dir."""
+        runtime_dir = tmp_path / ".apm" / "runtimes"
+        runtime_dir.mkdir(parents=True)
+        (runtime_dir / "codex").write_text("binary")
+        mock_home.return_value = tmp_path
+
+        result = self.runner._detect_installed_runtime()
+
+        assert result == "codex"
+        mock_which.assert_not_called()
+
+    @patch("apm_cli.core.script_runner.shutil.which")
+    @patch("apm_cli.core.script_runner.Path.home")
+    def test_falls_back_to_path_when_no_apm_runtimes(self, mock_home, mock_which, tmp_path):
+        """Falls back to shutil.which when ~/.apm/runtimes/ has no binaries."""
+        runtime_dir = tmp_path / ".apm" / "runtimes"
+        runtime_dir.mkdir(parents=True)
+        mock_home.return_value = tmp_path
+        mock_which.side_effect = lambda name: "/usr/local/bin/copilot" if name == "copilot" else None
+
+        result = self.runner._detect_installed_runtime()
+
+        assert result == "copilot"
+
+    @patch("apm_cli.core.script_runner.shutil.which", return_value=None)
+    @patch("apm_cli.core.script_runner.Path.home")
+    def test_raises_when_no_runtime_found(self, mock_home, mock_which, tmp_path):
+        """Raises RuntimeError when no runtime is found anywhere."""
+        runtime_dir = tmp_path / ".apm" / "runtimes"
+        runtime_dir.mkdir(parents=True)
+        mock_home.return_value = tmp_path
+
+        with pytest.raises(RuntimeError, match="No compatible runtime found"):
+            self.runner._detect_installed_runtime()
+
+    @patch("apm_cli.core.script_runner.shutil.which")
+    @patch("apm_cli.core.script_runner.Path.home")
+    def test_apm_managed_ignores_directories(self, mock_home, mock_which, tmp_path):
+        """Directories named 'copilot' or 'codex' in runtimes dir should not match."""
+        runtime_dir = tmp_path / ".apm" / "runtimes"
+        runtime_dir.mkdir(parents=True)
+        (runtime_dir / "copilot").mkdir()  # directory, not a file
+        mock_home.return_value = tmp_path
+        mock_which.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else None
+
+        result = self.runner._detect_installed_runtime()
+
+        assert result == "codex"
+
+    @patch("apm_cli.core.script_runner.shutil.which", return_value=None)
+    @patch("apm_cli.core.script_runner.Path.home")
+    def test_nonexistent_runtime_dir_falls_to_path(self, mock_home, mock_which, tmp_path):
+        """When ~/.apm/runtimes/ doesn't exist, falls through to PATH check."""
+        # Don't create the runtime_dir — it won't exist
+        mock_home.return_value = tmp_path
+
+        with pytest.raises(RuntimeError, match="No compatible runtime found"):
+            self.runner._detect_installed_runtime()

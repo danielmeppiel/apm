@@ -847,7 +847,8 @@ class ScriptRunner:
     def _detect_installed_runtime(self) -> str:
         """Detect installed runtime with priority order.
 
-        Priority: copilot > codex > error
+        Priority: APM-managed (~/.apm/runtimes/) > system PATH
+        Within each source: copilot > codex > error
 
         Returns:
             Name of detected runtime
@@ -855,9 +856,15 @@ class ScriptRunner:
         Raises:
             RuntimeError: If no compatible runtime is found
         """
-        import shutil
+        runtime_dir = Path.home() / ".apm" / "runtimes"
 
-        # Priority order: copilot first (recommended), then codex
+        # Check APM-managed runtimes first (highest priority)
+        for runtime_name in ["copilot", "codex"]:
+            runtime_path = runtime_dir / runtime_name
+            if runtime_path.exists() and runtime_path.is_file():
+                return runtime_name
+
+        # Fall back to system PATH
         if shutil.which("copilot"):
             return "copilot"
         elif shutil.which("codex"):

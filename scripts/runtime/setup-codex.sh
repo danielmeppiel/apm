@@ -23,7 +23,9 @@ source "$SCRIPT_DIR/setup-common.sh"
 
 # Configuration
 CODEX_REPO="openai/codex"
-CODEX_VERSION="latest"  # Default version
+# Pin to last version compatible with GitHub Models wire_api="chat" (#605)
+# Codex v0.116+ requires wire_api="responses" which GitHub Models does not support.
+CODEX_VERSION="0.1.2025051600"
 VANILLA_MODE=false
 
 # Parse command line arguments
@@ -208,6 +210,9 @@ wire_api = "chat"
 EOF
         
         log_success "Codex configuration created at $codex_config"
+        log_warning "Codex is pinned to v0.1.2025051600 for GitHub Models compatibility (wire_api=\"chat\")."
+        log_warning "Later versions (v0.116+) require wire_api=\"responses\" which GitHub Models does not support."
+        log_warning "To use a newer version, run: apm runtime setup codex <version> (e.g. 'latest')"
         log_info "APM configured Codex with GitHub Models as default provider"
         log_info "Use 'apm install' to configure MCP servers for your projects"
     else
