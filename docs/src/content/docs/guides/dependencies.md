@@ -608,6 +608,38 @@ dependencies:
     - company/internal-standards#abc123        # Specific commit
 ```
 
+### Checking for Outdated Dependencies
+
+Use `apm outdated` to compare locked dependency SHAs and tags against the latest remote refs before deciding whether to update:
+
+```bash
+# Check project dependencies for staleness
+apm outdated
+
+# Check user-scope dependencies
+apm outdated --global
+
+# Show available tags for outdated packages
+apm outdated --verbose
+
+# Use up to 8 parallel remote checks for large dependency sets
+apm outdated -j 8
+```
+
+Output columns:
+- **Package** - dependency identifier from the lockfile
+- **Current** - the ref or tag recorded in `apm.lock.yaml`
+- **Latest** - the newest remote tag or branch-tip SHA
+- **Status** - `up-to-date`, `outdated`, or `unknown`
+
+Tag-pinned deps use semver comparison; branch-pinned deps compare commit SHAs. Local and Artifactory dependencies are skipped.
+
+To inspect all available tags and branches for a specific package before updating:
+
+```bash
+apm view owner/repo-name versions
+```
+
 ### Updating Dependencies
 
 ```bash
