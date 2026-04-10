@@ -500,6 +500,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
             return auth_resolver.try_with_fallback(
                 host, _check_repo,
                 org=org,
+                repo_path=f"{dep_ref.repo_url}.git",
                 unauth_first=True,
                 verbose_callback=verbose_log,
             )
@@ -549,6 +550,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
             return auth_resolver.try_with_fallback(
                 host, _check_repo_fallback,
                 org=org,
+                repo_path=f"{repo_path}.git",
                 unauth_first=True,
                 verbose_callback=verbose_log,
             )

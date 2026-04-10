@@ -243,6 +243,7 @@ def _fetch_file(
             source.host,
             _do_fetch,
             org=source.owner,
+            repo_path=f"{source.owner}/{source.repo}.git",
             unauth_first=True,
         )
     except Exception as exc:

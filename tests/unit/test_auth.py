@@ -9,6 +9,14 @@ import pytest
 
 from apm_cli.core.auth import AuthResolver, HostInfo, AuthContext
 from apm_cli.core.token_manager import GitHubTokenManager
+from apm_cli.models.dependency.reference import DependencyReference
+
+
+@pytest.fixture(autouse=True)
+def disable_gh_cli_fallback():
+    """Keep auth tests deterministic regardless of local gh login state."""
+    with patch.object(GitHubTokenManager, "resolve_credential_from_gh_cli", return_value=None):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +148,7 @@ class TestResolve:
         """Concurrent resolve() calls for the same key should populate cache once."""
         resolver = AuthResolver()
 
-        def _slow_resolve_token(host_info, org):
+        def _slow_resolve_token(host_info, org, repo_path=None):
             time.sleep(0.05)
             return ("cred-token", "git-credential-fill")
 
@@ -190,6 +198,24 @@ class TestResolve:
                 ctx = resolver.resolve("github.com")
                 assert ctx.token == "cred-token"
                 assert ctx.source == "git-credential-fill"
+
+    def test_resolve_for_dep_passes_repo_path_to_credential_fill(self):
+        """Dependency-aware resolution includes repo path for helper disambiguation."""
+        dep_ref = DependencyReference.parse("Devolutions/RDM/.claude/skills/add-culture-rdm")
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(
+                GitHubTokenManager,
+                "resolve_credential_from_git",
+                return_value="cred-token",
+            ) as mock_cred:
+                resolver = AuthResolver()
+                ctx = resolver.resolve_for_dep(dep_ref)
+                assert ctx.token == "cred-token"
+                assert ctx.source == "git-credential-fill"
+                mock_cred.assert_called_once_with(
+                    "github.com",
+                    path="Devolutions/RDM.git",
+                )
 
     def test_global_var_resolves_for_non_default_host(self):
         """GITHUB_APM_PAT resolves for *.ghe.com (any host, not just default)."""

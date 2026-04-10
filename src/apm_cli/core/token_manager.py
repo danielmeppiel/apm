@@ -11,7 +11,7 @@ Token Architecture:
 - GITHUB_TOKEN: User-scoped PAT for GitHub Models API access
 
 Platform Token Selection:
-- GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN -> git credential helpers
+- GitHub: GITHUB_APM_PAT -> GITHUB_TOKEN -> GH_TOKEN -> gh auth token -> git credential helpers
 - Azure DevOps: ADO_APM_PAT
 
 Runtime Requirements:
@@ -22,6 +22,13 @@ import os
 import subprocess
 import sys
 from typing import Dict, Optional, Tuple
+
+from apm_cli.utils.github_host import (
+    default_host,
+    is_azure_devops_hostname,
+    is_github_hostname,
+    is_valid_fqdn,
+)
 
 
 class GitHubTokenManager:
@@ -50,7 +57,7 @@ class GitHubTokenManager:
             preserve_existing: If True, never overwrite existing environment variables
         """
         self.preserve_existing = preserve_existing
-        self._credential_cache: Dict[str, Optional[str]] = {}
+        self._credential_cache: Dict[tuple[str, str, str], Optional[str]] = {}
     
     @staticmethod
     def _is_valid_credential_token(token: str) -> bool:
@@ -69,6 +76,29 @@ class GitHubTokenManager:
         if any(fragment in token for fragment in prompt_fragments):
             return False
         return True
+
+    @staticmethod
+    def _has_control_chars(value: str) -> bool:
+        """Return True when *value* contains credential protocol control chars."""
+        return any(ord(char) < 32 for char in value)
+
+    @staticmethod
+    def _supports_gh_cli_host(host: Optional[str]) -> bool:
+        """Return True when *host* should use gh CLI fallback."""
+        if not host:
+            return False
+        if is_github_hostname(host):
+            return True
+
+        configured_host = default_host().lower()
+        host_lower = host.lower()
+        if host_lower != configured_host:
+            return False
+        if configured_host == "github.com" or configured_host.endswith(".ghe.com"):
+            return False
+        if is_azure_devops_hostname(configured_host):
+            return False
+        return is_valid_fqdn(configured_host)
 
     # `git credential fill` may invoke OS credential helpers that show
     # interactive dialogs (e.g. Windows Credential Manager account picker).
@@ -92,7 +122,11 @@ class GitHubTokenManager:
         return max(1, min(val, cls.MAX_CREDENTIAL_TIMEOUT))
 
     @staticmethod
-    def resolve_credential_from_git(host: str) -> Optional[str]:
+    def resolve_credential_from_git(
+        host: str,
+        path: Optional[str] = None,
+        username: Optional[str] = None,
+    ) -> Optional[str]:
         """Resolve a credential from the git credential store.
         
         Uses `git credential fill` to query the user's configured credential
@@ -101,14 +135,34 @@ class GitHubTokenManager:
         
         Args:
             host: The git host to resolve credentials for (e.g., "github.com")
+            path: Optional repository path (e.g., "owner/repo.git") used to
+                disambiguate multi-account credential helpers.
+            username: Optional username hint for credential helpers.
             
         Returns:
             The password/token from the credential store, or None if unavailable
         """
         try:
+            fields = [host]
+            if path:
+                fields.append(path)
+            if username:
+                fields.append(username)
+            if any(GitHubTokenManager._has_control_chars(field) for field in fields):
+                return None
+
+            request_lines = ['protocol=https', f'host={host}']
+            if path:
+                normalized_path = path.lstrip('/')
+                if normalized_path:
+                    request_lines.append(f'path={normalized_path}')
+            if username:
+                request_lines.append(f'username={username}')
+            request = '\n'.join(request_lines) + '\n\n'
+
             result = subprocess.run(
-                ['git', 'credential', 'fill'],
-                input=f"protocol=https\nhost={host}\n\n",
+                ['git', '-c', 'credential.useHttpPath=true', 'credential', 'fill'],
+                input=request,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -125,6 +179,32 @@ class GitHubTokenManager:
                     if token and GitHubTokenManager._is_valid_credential_token(token):
                         return token
                     return None
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return None
+
+    @staticmethod
+    def resolve_credential_from_gh_cli(host: str) -> Optional[str]:
+        """Resolve a token from the active gh CLI account for the host.
+
+        Uses `gh auth token --hostname <host>` as a non-interactive fallback
+        before invoking OS credential helpers that may display UI.
+        """
+        try:
+            result = subprocess.run(
+                ['gh', 'auth', 'token', '--hostname', host],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                timeout=GitHubTokenManager._get_credential_timeout(),
+                env={**os.environ, 'GH_PROMPT_DISABLED': '1'},
+            )
+            if result.returncode != 0:
+                return None
+
+            token = result.stdout.strip()
+            if token and GitHubTokenManager._is_valid_credential_token(token):
+                return token
             return None
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return None
@@ -173,16 +253,26 @@ class GitHubTokenManager:
                 return token
         return None
     
-    def get_token_with_credential_fallback(self, purpose: str, host: str, env: Optional[Dict[str, str]] = None) -> Optional[str]:
+    def get_token_with_credential_fallback(
+        self,
+        purpose: str,
+        host: str,
+        path: Optional[str] = None,
+        username: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+    ) -> Optional[str]:
         """Get token for a purpose, falling back to git credential helpers.
         
         Tries environment variables first (via get_token_for_purpose), then
-        queries the git credential store as a last resort. Results are cached
-        per host to avoid repeated subprocess calls.
+        checks the active gh CLI account, then queries the git credential
+        store as a last resort. Results are cached per host to avoid repeated
+        subprocess calls.
         
         Args:
             purpose: Token purpose ('modules', etc.)
             host: Git host to resolve credentials for (e.g., "github.com")
+            path: Optional repository path for credential-helper disambiguation
+            username: Optional username hint for credential helpers
             env: Environment to check (defaults to os.environ)
             
         Returns:
@@ -192,11 +282,20 @@ class GitHubTokenManager:
         if token:
             return token
         
-        if host in self._credential_cache:
-            return self._credential_cache[host]
+        normalized_host = host.lower() if host else host
+        cache_key = (normalized_host, path or '', username or '')
+        if cache_key in self._credential_cache:
+            return self._credential_cache[cache_key]
+
+        gh_token = None
+        if self._supports_gh_cli_host(host):
+            gh_token = self.resolve_credential_from_gh_cli(host)
+        if gh_token:
+            self._credential_cache[cache_key] = gh_token
+            return gh_token
         
-        credential = self.resolve_credential_from_git(host)
-        self._credential_cache[host] = credential
+        credential = self.resolve_credential_from_git(host, path=path, username=username)
+        self._credential_cache[cache_key] = credential
         return credential
     
     def validate_tokens(self, env: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
