@@ -182,6 +182,7 @@ class LockFile:
     dependencies: Dict[str, LockedDependency] = field(default_factory=dict)
     mcp_servers: List[str] = field(default_factory=list)
     mcp_configs: Dict[str, dict] = field(default_factory=dict)
+    local_deployed_files: List[str] = field(default_factory=list)
 
     def add_dependency(self, dep: LockedDependency) -> None:
         """Add a dependency to the lock file."""
@@ -214,6 +215,8 @@ class LockFile:
             data["mcp_servers"] = sorted(self.mcp_servers)
         if self.mcp_configs:
             data["mcp_configs"] = dict(sorted(self.mcp_configs.items()))
+        if self.local_deployed_files:
+            data["local_deployed_files"] = sorted(self.local_deployed_files)
         from ..utils.yaml_io import yaml_to_str
         return yaml_to_str(data)
 
@@ -234,6 +237,7 @@ class LockFile:
             lock.add_dependency(LockedDependency.from_dict(dep_data))
         lock.mcp_servers = list(data.get("mcp_servers", []))
         lock.mcp_configs = dict(data.get("mcp_configs") or {})
+        lock.local_deployed_files = list(data.get("local_deployed_files", []))
         return lock
 
     def write(self, path: Path) -> None:
@@ -367,6 +371,8 @@ class LockFile:
         if sorted(self.mcp_servers) != sorted(other.mcp_servers):
             return False
         if self.mcp_configs != other.mcp_configs:
+            return False
+        if sorted(self.local_deployed_files) != sorted(other.local_deployed_files):
             return False
         return True
 
