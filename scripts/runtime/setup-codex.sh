@@ -24,7 +24,7 @@ source "$SCRIPT_DIR/setup-common.sh"
 # Configuration
 CODEX_REPO="openai/codex"
 # Pin to a known stable release for security and reproducibility (#662).
-# Users can override with: apm runtime setup codex <version> (e.g. 'latest')
+# Users can override with: apm runtime setup codex --version <version> (e.g. 'latest')
 CODEX_VERSION="rust-v0.118.0"
 VANILLA_MODE=false
 
@@ -210,8 +210,8 @@ wire_api = "responses"
 EOF
         
         log_success "Codex configuration created at $codex_config"
-        log_info "Codex is pinned to $CODEX_VERSION for reproducibility."
-        log_info "To use a different version, run: apm runtime setup codex <version> (e.g. 'latest')"
+        log_info "Using Codex $CODEX_VERSION."
+        log_info "Override with: apm runtime setup codex --version <version> (e.g. 'latest')"
         log_info "APM configured Codex with GitHub Models as default provider"
         log_info "Use 'apm install' to configure MCP servers for your projects"
     else
