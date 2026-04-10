@@ -85,5 +85,6 @@ apm install            # restores all deps from lockfile
 ```
 
 The lockfile ensures every team member gets the exact same dependency versions.
+`apm install` also deploys the project's own `.apm/` content (instructions, prompts, agents, skills, hooks, commands) to target directories alongside dependency content. Local content wins on collision. This works even with zero dependencies.
 Subsequent `apm install` reads locked commit SHAs for reproducible installs.
 Use `apm install --update` to refresh to latest refs.
