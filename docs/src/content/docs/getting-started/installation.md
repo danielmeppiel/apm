@@ -35,11 +35,10 @@ The installer automatically detects your platform (macOS/Linux/Windows, Intel/AR
 brew install microsoft/apm/apm
 ```
 
-**Scoop (Windows):**
+**WinGet (Windows):**
 
 ```powershell
-scoop bucket add apm https://github.com/microsoft/scoop-apm
-scoop install apm
+winget install Microsoft.APM
 ```
 
 ## pip install
