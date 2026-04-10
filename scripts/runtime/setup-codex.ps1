@@ -1,11 +1,9 @@
 # Setup script for Codex runtime (Windows)
 # Downloads Codex binary from GitHub releases and configures with GitHub Models
 
-# Pin to last version compatible with GitHub Models wire_api="chat" (#605)
-# Codex v0.116+ requires wire_api="responses" which GitHub Models does not support.
 param(
     [switch]$Vanilla,
-    [string]$Version = "0.1.2025051600"
+    [string]$Version = "latest"
 )
 
 $ErrorActionPreference = "Stop"
@@ -167,9 +165,6 @@ wire_api = "chat"
 "@ | Set-Content -Path $codexConfig -Encoding UTF8
 
         Write-Success "Codex configuration created at $codexConfig"
-        Write-WarningText "Codex is pinned to v0.1.2025051600 for GitHub Models compatibility (wire_api='chat')."
-        Write-WarningText "Later versions (v0.116+) require wire_api='responses' which GitHub Models does not support."
-        Write-WarningText "To use a newer version, run: apm runtime setup codex <version> (e.g. 'latest')"
     } else {
         Write-Info "Vanilla mode: Skipping APM configuration"
     }
