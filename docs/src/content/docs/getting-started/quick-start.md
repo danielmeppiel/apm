@@ -97,7 +97,7 @@ my-project/
 Three things happened:
 
 1. The package was downloaded into `apm_modules/` (like `node_modules/`).
-2. Instructions, agents, and skills were deployed to `.github/`, `.claude/`, `.cursor/`, and `.opencode/` (when present) -- the native directories that GitHub Copilot, Claude, Cursor, and OpenCode read from.
+2. Instructions, agents, and skills were deployed to `.github/`, `.claude/`, `.cursor/`, and `.opencode/` (when present) -- the native directories that GitHub Copilot, Claude, Cursor, and OpenCode read from. If the project has its own `.apm/` content, that is deployed too (local content takes priority over dependencies on collision).
 3. A lockfile (`apm.lock.yaml`) was created, pinning the exact commit so every team member gets identical configuration.
 
 Your `apm.yml` now tracks the dependency:
