@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm init` now creates `start.prompt.md` so `apm run start` works out of the box; Next Steps panel no longer references `apm compile` (#649)
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
 ### Changed
 
