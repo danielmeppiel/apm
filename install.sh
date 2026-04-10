@@ -4,7 +4,7 @@ set -e
 # APM CLI Installer Script
 # Usage: curl -sSL https://aka.ms/apm-unix | sh
 # Specific version:     curl -sSL https://aka.ms/apm-unix | sh -s -- @v1.2.3
-# Custom install dir:   curl -sSL https://aka.ms/apm-unix | APM_INSTALL_DIR=~/.local/bin sh
+# Custom install dir:   curl -sSL https://aka.ms/apm-unix | APM_INSTALL_DIR=$HOME/.local/bin sh
 # GitHub Enterprise:    GITHUB_URL=https://gh.corp.com sh install.sh
 # For private repositories, use with authentication:
 #   curl -sSL -H "Authorization: token $GITHUB_APM_PAT" \
@@ -202,9 +202,16 @@ if [ -f "/.dockerenv" ] || [ -f "/run/.containerenv" ] || grep -q "/docker/" /pr
     echo ""
 fi
 
-# Check if we have permission to install to /usr/local/bin
+# Check if we have permission to install to the configured directory
 if [ ! -w "$APM_INSTALL_DIR" ]; then
     echo -e "${YELLOW}Note: Will need sudo permissions to install to $APM_INSTALL_DIR${NC}"
+fi
+
+# Resolve auth token (needed for both API and download paths)
+if [ -n "$GITHUB_APM_PAT" ]; then
+    AUTH_HEADER_VALUE="$GITHUB_APM_PAT"
+elif [ -n "$GITHUB_TOKEN" ]; then
+    AUTH_HEADER_VALUE="$GITHUB_TOKEN"
 fi
 
 # When VERSION is provided, skip GitHub API and compute download URL directly
@@ -494,10 +501,11 @@ else
     sudo cp -r "$TMP_DIR/$EXTRACTED_DIR"/* "$APM_LIB_DIR/"
 fi
 
-# Create symlink in /usr/local/bin pointing to the actual binary
-if [ -w "$APM_INSTALL_DIR" ]; then
+# Create symlink pointing to the actual binary
+if mkdir -p "$APM_INSTALL_DIR" 2>/dev/null && [ -w "$APM_INSTALL_DIR" ]; then
     ln -sf "$APM_LIB_DIR/$BINARY_NAME" "$APM_INSTALL_DIR/$BINARY_NAME"
 else
+    sudo mkdir -p "$APM_INSTALL_DIR"
     sudo ln -sf "$APM_LIB_DIR/$BINARY_NAME" "$APM_INSTALL_DIR/$BINARY_NAME"
 fi
 
