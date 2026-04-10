@@ -12,6 +12,7 @@ from typing import Dict, Optional
 
 from .token_manager import setup_runtime_environment
 from ..output.script_formatters import ScriptExecutionFormatter
+from ..utils.path_security import ensure_path_within, PathTraversalError
 
 
 class ScriptRunner:
@@ -344,25 +345,11 @@ class ScriptRunner:
                         return result
 
         # Handle individual runtime patterns without environment variables
-
-        # Handle "codex [args] file.prompt.md [more_args]" -> "codex exec [args] [more_args]"
-        if re.search(r"codex\s+.*" + re.escape(prompt_file), command):
-            match = re.search(
-                r"codex\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
-            )
-            if match:
-                args_before_file = match.group(1).strip()
-                args_after_file = match.group(3).strip()
-
-                result = "codex exec"
-                if args_before_file:
-                    result += f" {args_before_file}"
-                if args_after_file:
-                    result += f" {args_after_file}"
-                return result
+        # Note: copilot is checked before codex so that "copilot --model codex ..."
+        # is not mis-detected as a codex command.
 
         # Handle "copilot [args] file.prompt.md [more_args]" -> "copilot [args] [more_args]"
-        elif re.search(r"copilot\s+.*" + re.escape(prompt_file), command):
+        if re.search(r"copilot\s+.*" + re.escape(prompt_file), command):
             match = re.search(
                 r"copilot\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
             )
@@ -376,6 +363,22 @@ class ScriptRunner:
                     cleaned_args = args_before_file.replace("-p", "").strip()
                     if cleaned_args:
                         result += f" {cleaned_args}"
+                if args_after_file:
+                    result += f" {args_after_file}"
+                return result
+
+        # Handle "codex [args] file.prompt.md [more_args]" -> "codex exec [args] [more_args]"
+        elif re.search(r"codex\s+.*" + re.escape(prompt_file), command):
+            match = re.search(
+                r"codex\s+(.*?)(" + re.escape(prompt_file) + r")(.*?)$", command
+            )
+            if match:
+                args_before_file = match.group(1).strip()
+                args_after_file = match.group(3).strip()
+
+                result = "codex exec"
+                if args_before_file:
+                    result += f" {args_before_file}"
                 if args_after_file:
                     result += f" {args_after_file}"
                 return result
@@ -413,12 +416,19 @@ class ScriptRunner:
             Name of the detected runtime (copilot, codex, llm, or unknown)
         """
         command_lower = command.lower().strip()
-        # Check for runtime keywords anywhere in the command, not just at the start
-        if "copilot" in command_lower:
+        if not command_lower:
+            return "unknown"
+        # Match on the binary stem only (e.g. "/path/to/codex.exe arg" -> "codex").
+        # This handles Windows absolute paths being prepended while avoiding false
+        # positives from tools whose names contain a runtime keyword as a component
+        # (e.g. "run-codex-tool" must not be detected as codex).
+        first_arg = command_lower.split()[0]
+        binary_stem = Path(first_arg).stem
+        if binary_stem == "copilot":
             return "copilot"
-        elif "codex" in command_lower:
+        elif binary_stem == "codex":
             return "codex"
-        elif "llm" in command_lower:
+        elif binary_stem == "llm":
             return "llm"
         else:
             return "unknown"
@@ -506,7 +516,12 @@ class ScriptRunner:
             exe_name = actual_command_args[0]
             apm_runtimes = Path.home() / ".apm" / "runtimes"
             # Check APM runtimes directory first
-            apm_candidates = [apm_runtimes / exe_name, apm_runtimes / f"{exe_name}.exe"]
+            apm_candidates = [
+                apm_runtimes / exe_name,
+                apm_runtimes / f"{exe_name}.exe",
+                apm_runtimes / f"{exe_name}.cmd",
+                apm_runtimes / f"{exe_name}.bat",
+            ]
             apm_resolved = next((str(c) for c in apm_candidates if c.exists()), None)
             if apm_resolved:
                 actual_command_args[0] = apm_resolved
@@ -558,13 +573,14 @@ class ScriptRunner:
 
         for path in local_search_paths:
             if path.exists():
+                ensure_path_within(path, Path.cwd())
                 return path
 
         # 2. Search in dependencies and detect collisions
         apm_modules = Path("apm_modules")
         if apm_modules.exists():
             # Collect ALL .prompt.md matches to detect collisions
-            matches = list(apm_modules.rglob(search_name))
+            raw_matches = list(apm_modules.rglob(search_name))
 
             # Also search for SKILL.md in directories matching the name
             # e.g., name="architecture-blueprint-generator" -> find */architecture-blueprint-generator/SKILL.md
@@ -572,7 +588,16 @@ class ScriptRunner:
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists():
-                        matches.append(skill_file)
+                        raw_matches.append(skill_file)
+
+            # Filter out paths that resolve outside the project directory (e.g. malicious symlinks)
+            matches = []
+            for m in raw_matches:
+                try:
+                    ensure_path_within(m, Path.cwd())
+                    matches.append(m)
+                except PathTraversalError:
+                    pass
 
             if len(matches) == 0:
                 return None
@@ -1002,6 +1027,7 @@ class PromptCompiler:
 
         # First check if it exists in current directory (local)
         if prompt_path.exists():
+            ensure_path_within(prompt_path, Path.cwd())
             return prompt_path
 
         # Check in common project directories
@@ -1009,6 +1035,7 @@ class PromptCompiler:
         for common_dir in common_dirs:
             common_path = Path(common_dir) / prompt_file
             if common_path.exists():
+                ensure_path_within(common_path, Path.cwd())
                 return common_path
 
         # If not found locally, search in dependency modules
@@ -1024,12 +1051,14 @@ class PromptCompiler:
                             # Check in the root of the repository
                             dep_prompt_path = repo_dir / prompt_file
                             if dep_prompt_path.exists():
+                                ensure_path_within(dep_prompt_path, Path.cwd())
                                 return dep_prompt_path
 
                             # Also check in common subdirectories
                             for subdir in ["prompts", ".", "workflows"]:
                                 sub_prompt_path = repo_dir / subdir / prompt_file
                                 if sub_prompt_path.exists():
+                                    ensure_path_within(sub_prompt_path, Path.cwd())
                                     return sub_prompt_path
 
         # If still not found, raise an error with helpful message
