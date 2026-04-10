@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 REPO="microsoft/apm"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="apm"
 
 # Banner
