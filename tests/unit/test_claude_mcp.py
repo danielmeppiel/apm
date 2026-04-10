@@ -205,7 +205,10 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
             encoding="utf-8",
         )
         MCPIntegrator.remove_stale(
-            {"stale"}, runtime="claude", workspace_root=self.root
+            {"stale"},
+            runtime="claude",
+            workspace_root=self.root,
+            install_scope=InstallScope.PROJECT,
         )
         data = json.loads(mcp.read_text(encoding="utf-8"))
         self.assertIn("keep", data["mcpServers"])
@@ -228,7 +231,9 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            MCPIntegrator.remove_stale({"stale"}, runtime="claude")
+            MCPIntegrator.remove_stale(
+                {"stale"}, runtime="claude", install_scope=InstallScope.USER
+            )
             data = json.loads(cfg.read_text(encoding="utf-8"))
             self.assertIn("keep", data["mcpServers"])
             self.assertNotIn("stale", data["mcpServers"])

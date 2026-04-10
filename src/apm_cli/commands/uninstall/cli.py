@@ -201,6 +201,7 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
                 _pre_uninstall_mcp_servers,
                 modules_dir=get_modules_dir(scope),
                 workspace_root=deploy_root,
+                install_scope=scope,
             )
         except Exception:
             logger.warning("MCP cleanup during uninstall failed")

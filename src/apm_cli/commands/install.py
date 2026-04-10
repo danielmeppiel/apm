@@ -876,6 +876,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     runtime,
                     exclude,
                     workspace_root=get_deploy_root(scope),
+                    install_scope=scope,
                 )
 
             # Persist the new MCP server set and configs in the lockfile
@@ -888,6 +889,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
                     runtime,
                     exclude,
                     workspace_root=get_deploy_root(scope),
+                    install_scope=scope,
                 )
                 MCPIntegrator.update_lockfile(builtins.set(), mcp_configs={})
             logger.verbose_detail("No MCP dependencies found in apm.yml")

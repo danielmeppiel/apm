@@ -453,6 +453,7 @@ class MCPIntegrator:
         exclude: str = None,
         logger=None,
         workspace_root: Optional[Path] = None,
+        install_scope=None,
     ) -> None:
         """Remove MCP server entries that are no longer required by any dependency.
 
@@ -591,10 +592,14 @@ class MCPIntegrator:
                         exc_info=True,
                     )
 
-        # Clean Claude Code project .mcp.json (mcpServers)
+        # Clean Claude Code project .mcp.json (mcpServers) and/or user ~/.claude.json
         if "claude" in target_runtimes:
-            clean_claude_user = install_scope is InstallScope.USER
-            clean_claude_project = install_scope is not InstallScope.USER
+            if install_scope is InstallScope.USER:
+                clean_claude_user, clean_claude_project = True, False
+            elif install_scope is InstallScope.PROJECT:
+                clean_claude_user, clean_claude_project = False, True
+            else:
+                clean_claude_user = clean_claude_project = True
 
             if clean_claude_project:
                 claude_proj = wr / ".mcp.json"
