@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `apm install` now automatically discovers and deploys local `.apm/` primitives (skills, instructions, agents, prompts, hooks, commands) to target directories, with local content taking priority over dependencies on collision (#626, #644)
+
 ### Fixed
 
 - `apm init` now creates `start.prompt.md` so `apm run start` works out of the box; Next Steps panel no longer references `apm compile` (#649)
