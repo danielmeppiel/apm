@@ -72,9 +72,9 @@ apm init my-plugin --plugin
 - `description` - Generated from project name
 - `version` - Defaults to "1.0.0"
 
-### `apm install` - Install APM and MCP dependencies
+### `apm install` - Install dependencies and deploy local content
 
-Install APM package and MCP server dependencies from `apm.yml` (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
+Install APM package and MCP server dependencies from `apm.yml` and deploy the project's own `.apm/` content to target directories (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
 
 ```bash
 apm install [PACKAGES...] [OPTIONS]
@@ -98,8 +98,17 @@ apm install [PACKAGES...] [OPTIONS]
 - `-g, --global` - Install to user scope (`~/.apm/`) instead of the current project. Primitives deploy to `~/.copilot/`, `~/.claude/`, etc.
 
 **Behavior:**
-- `apm install` (no args): Installs **all** packages from `apm.yml`
+- `apm install` (no args): Installs **all** packages from `apm.yml` and deploys the project's own `.apm/` content
 - `apm install <package>`: Installs **only** the specified package (adds to `apm.yml` if not present)
+
+**Local `.apm/` Content Deployment:**
+
+After integrating dependencies, `apm install` deploys primitives from the project's own `.apm/` directory (instructions, prompts, agents, skills, hooks, commands) to target directories (`.github/`, `.claude/`, `.cursor/`, etc.). Local content takes priority over dependencies on collision. Deployed files are tracked in the lockfile for cleanup on subsequent installs. This works even with zero dependencies -- just `apm.yml` and `.apm/` content is enough.
+
+Exceptions:
+- Skipped at user scope (`--global`)
+- Skipped with `--only=mcp`
+- Root `SKILL.md` is not deployed as a local skill (it describes the project itself)
 
 **Diff-Aware Installation (manifest as source of truth):**
 - MCP servers already configured with matching config are skipped (`already configured`)
@@ -215,7 +224,7 @@ APM automatically detects which integrations to enable based on your project str
 
 **VSCode Integration (`.github/` present):**
 
-When you run `apm install`, APM automatically integrates primitives from installed packages:
+When you run `apm install`, APM automatically integrates primitives from installed packages and the project's own `.apm/` directory:
 
 - **Prompts**: `.prompt.md` files → `.github/prompts/*.prompt.md`
 - **Agents**: `.agent.md` files → `.github/agents/*.agent.md`
@@ -942,14 +951,17 @@ Register a GitHub repository as a plugin marketplace.
 
 ```bash
 apm marketplace add OWNER/REPO [OPTIONS]
+apm marketplace add HOST/OWNER/REPO [OPTIONS]
 ```
 
 **Arguments:**
 - `OWNER/REPO` - GitHub repository containing `marketplace.json`
+- `HOST/OWNER/REPO` - Repository on a non-github.com host (e.g., GitHub Enterprise)
 
 **Options:**
 - `-n, --name TEXT` - Custom display name for the marketplace
 - `-b, --branch TEXT` - Branch to track (default: main)
+- `--host TEXT` - Git host FQDN (default: github.com or `GITHUB_HOST` env var)
 - `-v, --verbose` - Show detailed output
 
 **Examples:**
@@ -959,6 +971,10 @@ apm marketplace add acme/plugin-marketplace
 
 # Register with a custom name and branch
 apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
+
+# Register from a GitHub Enterprise host
+apm marketplace add acme/plugin-marketplace --host ghes.corp.example.com
+apm marketplace add ghes.corp.example.com/acme/plugin-marketplace
 ```
 
 #### `apm marketplace list` - List registered marketplaces

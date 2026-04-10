@@ -2,6 +2,10 @@
 
 Uses ``AuthResolver.try_with_fallback(unauth_first=True)`` for public-first
 access with automatic credential fallback for private marketplace repos.
+When ``PROXY_REGISTRY_URL`` is set, fetches are routed through the registry
+proxy (Artifactory Archive Entry Download) before falling back to the
+GitHub Contents API.  When ``PROXY_REGISTRY_ONLY=1``, the GitHub fallback
+is blocked entirely.
 Cache lives at ``~/.apm/cache/marketplace/`` with a 1-hour TTL.
 """
 
@@ -54,6 +58,14 @@ def _sanitize_cache_name(name: str) -> str:
     except PathTraversalError:
         safe = "unnamed"
     return safe
+
+
+def _cache_key(source: MarketplaceSource) -> str:
+    """Cache key that includes host to avoid collisions across hosts."""
+    normalized_host = source.host.lower()
+    if normalized_host == "github.com":
+        return source.name
+    return f"{_sanitize_cache_name(normalized_host)}__{source.name}"
 
 
 def _cache_data_path(name: str) -> str:
@@ -126,6 +138,46 @@ def _clear_cache(name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _try_proxy_fetch(
+    source: MarketplaceSource,
+    file_path: str,
+) -> Optional[Dict]:
+    """Try to fetch marketplace JSON via the registry proxy.
+
+    Returns parsed JSON dict on success, ``None`` when no proxy is
+    configured or the entry download fails.
+    """
+    from ..deps.registry_proxy import RegistryConfig
+
+    cfg = RegistryConfig.from_env()
+    if cfg is None:
+        return None
+
+    from ..deps.artifactory_entry import fetch_entry_from_archive
+
+    content = fetch_entry_from_archive(
+        host=cfg.host,
+        prefix=cfg.prefix,
+        owner=source.owner,
+        repo=source.repo,
+        file_path=file_path,
+        ref=source.branch,
+        scheme=cfg.scheme,
+        headers=cfg.get_headers(),
+    )
+    if content is None:
+        return None
+
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        logger.debug(
+            "Proxy returned non-JSON for %s/%s %s",
+            source.owner, source.repo, file_path,
+        )
+        return None
+
+
 def _github_contents_url(source: MarketplaceSource, file_path: str) -> str:
     """Build the GitHub Contents API URL for a file."""
     from ..core.auth import AuthResolver
@@ -140,11 +192,32 @@ def _fetch_file(
     file_path: str,
     auth_resolver: Optional[object] = None,
 ) -> Optional[Dict]:
-    """Fetch a JSON file from a GitHub repo via the Contents API.
+    """Fetch a JSON file from a GitHub repo.
+
+    When ``PROXY_REGISTRY_URL`` is set, tries the registry proxy first via
+    Artifactory Archive Entry Download.  Falls back to the GitHub Contents
+    API unless ``PROXY_REGISTRY_ONLY=1`` blocks direct access.
 
     Returns parsed JSON or ``None`` if the file does not exist (404).
     Raises ``MarketplaceFetchError`` on unexpected failures.
     """
+    # Proxy-first: try Artifactory Archive Entry Download
+    proxy_result = _try_proxy_fetch(source, file_path)
+    if proxy_result is not None:
+        return proxy_result
+
+    # When registry-only mode is active, block direct GitHub API access
+    from ..deps.registry_proxy import RegistryConfig
+
+    cfg = RegistryConfig.from_env()
+    if cfg is not None and cfg.enforce_only:
+        logger.debug(
+            "PROXY_REGISTRY_ONLY blocks direct GitHub fetch for %s/%s %s",
+            source.owner, source.repo, file_path,
+        )
+        return None
+
+    # Fallback: GitHub Contents API
     url = _github_contents_url(source, file_path)
 
     def _do_fetch(token, _git_env):
@@ -220,9 +293,11 @@ def fetch_marketplace(
     Raises:
         MarketplaceFetchError: If fetch fails and no cache is available.
     """
+    cache_name = _cache_key(source)
+
     # Try fresh cache first
     if not force_refresh:
-        cached = _read_cache(source.name)
+        cached = _read_cache(cache_name)
         if cached is not None:
             logger.debug("Using cached marketplace data for '%s'", source.name)
             return parse_marketplace_json(cached, source.name)
@@ -236,11 +311,11 @@ def fetch_marketplace(
                 f"marketplace.json not found at '{source.path}' "
                 f"in {source.owner}/{source.repo}",
             )
-        _write_cache(source.name, data)
+        _write_cache(cache_name, data)
         return parse_marketplace_json(data, source.name)
     except MarketplaceFetchError:
         # Stale-while-revalidate: serve expired cache on network error
-        stale = _read_stale_cache(source.name)
+        stale = _read_stale_cache(cache_name)
         if stale is not None:
             logger.warning(
                 "Network error fetching '%s'; using stale cache", source.name
@@ -288,16 +363,21 @@ def search_all_marketplaces(
     return results
 
 
-def clear_marketplace_cache(name: Optional[str] = None) -> int:
+def clear_marketplace_cache(
+    name: Optional[str] = None,
+    host: str = "github.com",
+) -> int:
     """Clear cached data for one or all marketplaces.
 
     Returns the number of caches cleared.
     """
     if name:
-        _clear_cache(name)
+        # Build a minimal source to derive the cache key
+        _src = MarketplaceSource(name=name, owner="", repo="", host=host)
+        _clear_cache(_cache_key(_src))
         return 1
     count = 0
     for source in get_registered_marketplaces():
-        _clear_cache(source.name)
+        _clear_cache(_cache_key(source))
         count += 1
     return count
