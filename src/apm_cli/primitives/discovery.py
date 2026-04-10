@@ -311,6 +311,27 @@ def get_dependency_declaration_order(base_dir: str) -> List[str]:
         return []
 
 
+def _scan_patterns(base_dir: Path, patterns: Dict[str, List[str]], collection: PrimitiveCollection, source: str) -> None:
+    """Glob-scan-parse loop for one base directory and one patterns dict.
+
+    Args:
+        base_dir (Path): Directory to scan (e.g., dep/.apm or dep/.github).
+        patterns (Dict[str, List[str]]): Primitive-type → glob-pattern mapping.
+        collection (PrimitiveCollection): Collection to add primitives to.
+        source (str): Source identifier for discovered primitives.
+    """
+    for _primitive_type, type_patterns in patterns.items():
+        for pattern in type_patterns:
+            for file_path_str in glob.glob(str(base_dir / pattern), recursive=True):
+                file_path = Path(file_path_str)
+                if file_path.is_file() and _is_readable(file_path):
+                    try:
+                        primitive = parse_primitive_file(file_path, source=source)
+                        collection.add_primitive(primitive)
+                    except Exception as e:
+                        print(f"Warning: Failed to parse dependency primitive {file_path}: {e}")
+
+
 def scan_directory_with_source(directory: Path, collection: PrimitiveCollection, source: str) -> None:
     """Scan a directory for primitives with a specific source tag.
 
@@ -322,38 +343,14 @@ def scan_directory_with_source(directory: Path, collection: PrimitiveCollection,
     # Scan .apm directory within the dependency
     apm_dir = directory / ".apm"
     if apm_dir.exists():
-        for primitive_type, patterns in DEPENDENCY_PRIMITIVE_PATTERNS.items():
-            for pattern in patterns:
-                full_pattern = str(apm_dir / pattern)
-                matching_files = glob.glob(full_pattern, recursive=True)
-
-                for file_path_str in matching_files:
-                    file_path = Path(file_path_str)
-                    if file_path.is_file() and _is_readable(file_path):
-                        try:
-                            primitive = parse_primitive_file(file_path, source=source)
-                            collection.add_primitive(primitive)
-                        except Exception as e:
-                            print(f"Warning: Failed to parse dependency primitive {file_path}: {e}")
+        _scan_patterns(apm_dir, DEPENDENCY_PRIMITIVE_PATTERNS, collection, source)
 
     # Also scan .github directory — some packages store primitives there instead of (or
     # in addition to) .apm/.  Without this, dependency instructions in .github/instructions/
     # are silently skipped in the normal compile path (issue #631).
     github_dir = directory / ".github"
     if github_dir.exists():
-        for primitive_type, patterns in DEPENDENCY_GITHUB_PRIMITIVE_PATTERNS.items():
-            for pattern in patterns:
-                full_pattern = str(github_dir / pattern)
-                matching_files = glob.glob(full_pattern, recursive=True)
-
-                for file_path_str in matching_files:
-                    file_path = Path(file_path_str)
-                    if file_path.is_file() and _is_readable(file_path):
-                        try:
-                            primitive = parse_primitive_file(file_path, source=source)
-                            collection.add_primitive(primitive)
-                        except Exception as e:
-                            print(f"Warning: Failed to parse dependency primitive {file_path}: {e}")
+        _scan_patterns(github_dir, DEPENDENCY_GITHUB_PRIMITIVE_PATTERNS, collection, source)
 
     # Check for SKILL.md in the dependency root
     _discover_skill_in_directory(directory, collection, source)
