@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `apm install` now automatically discovers and deploys local `.apm/` primitives (skills, instructions, agents, prompts, hooks, commands) to target directories, with local content taking priority over dependencies on collision (#626, #644)
+
 ### Fixed
 
 - VS Code adapter now configures remote MCP servers when `transport_type` is missing or empty in registry data, defaulting to `http` (#654)
