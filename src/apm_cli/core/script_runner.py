@@ -111,7 +111,7 @@ class ScriptRunner:
         error_msg += f"Available scripts in apm.yml: {available}\n"
         error_msg += f"\nTo get started, create a prompt file first:\n"
         error_msg += f"  echo '# My agent prompt' > {script_name}.prompt.md\n"
-        error_msg += f"\nThen run again — APM will auto-discover it.\n"
+        error_msg += f"\nThen run again -- APM will auto-discover it.\n"
         error_msg += f"\nOr define a script explicitly in apm.yml:\n"
         error_msg += f"  scripts:\n"
         error_msg += f"    {script_name}: copilot {script_name}.prompt.md\n"
@@ -886,7 +886,7 @@ class ScriptRunner:
         system-level stubs (e.g. GitHub CLI copilot extensions).
 
         Priority:
-          1. APM runtimes dir: copilot  (codex excluded — v0.116+ is
+          1. APM runtimes dir: copilot  (codex excluded -- v0.116+ is
              incompatible with GitHub Models' Chat Completions API)
           2. PATH: llm > copilot > codex  (llm uses Chat Completions, works
              with GitHub Models even when codex dropped that API)
@@ -902,7 +902,7 @@ class ScriptRunner:
         apm_runtimes = Path.home() / ".apm" / "runtimes"
 
         # 1. Check APM-managed runtimes directory first (highest priority).
-        #    Only copilot is checked here — codex installed via APM runtimes
+        #    Only copilot is checked here -- codex installed via APM runtimes
         #    will be v0.116+ which dropped Chat Completions support and is
         #    incompatible with GitHub Models.
         #    llm is checked via PATH only (installed as a Python package).
@@ -918,7 +918,7 @@ class ScriptRunner:
                 if exe.stat().st_size > 0:
                     return name
 
-        # 2. Fall back to PATH — prefer llm (uses Chat Completions, works with
+        # 2. Fall back to PATH -- prefer llm (uses Chat Completions, works with
         #    GitHub Models even when codex has dropped that API format)
         if shutil.which("llm"):
             return "llm"
@@ -952,7 +952,7 @@ class ScriptRunner:
             # Codex CLI with default sandbox and git repo check skip
             return f"codex -s workspace-write --skip-git-repo-check {prompt_file}"
         elif runtime == "llm":
-            # llm CLI — uses Chat Completions, compatible with GitHub Models
+            # llm CLI -- uses Chat Completions, compatible with GitHub Models
             return f"llm -m github/gpt-4o {prompt_file}"
         else:
             raise ValueError(f"Unsupported runtime: {runtime}")
