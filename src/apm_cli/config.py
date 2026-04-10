@@ -16,7 +16,7 @@ def ensure_config_exists():
         os.makedirs(CONFIG_DIR)
 
     if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "w") as f:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump({"default_client": "vscode"}, f)
 
 
@@ -32,7 +32,7 @@ def get_config():
     if _config_cache is not None:
         return _config_cache
     ensure_config_exists()
-    with open(CONFIG_FILE, "r") as f:
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         _config_cache = json.load(f)
     return _config_cache
 
@@ -53,7 +53,7 @@ def update_config(updates):
     config = get_config()
     config.update(updates)
 
-    with open(CONFIG_FILE, "w") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
     _invalidate_config_cache()
 

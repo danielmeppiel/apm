@@ -200,7 +200,7 @@ class CopilotRuntime(RuntimeAdapter):
             return {}
         
         try:
-            with open(mcp_config_path, 'r') as f:
+            with open(mcp_config_path, 'r', encoding="utf-8") as f:
                 config = json.load(f)
                 return config.get('servers', {})
         except Exception as e:
