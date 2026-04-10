@@ -27,6 +27,28 @@ irm https://aka.ms/apm-windows | iex
 
 The installer automatically detects your platform (macOS/Linux/Windows, Intel/ARM), downloads the latest binary, and adds `apm` to your `PATH`.
 
+### Installer options
+
+The Unix installer supports environment variables for custom environments:
+
+```bash
+# Install a specific version
+curl -sSL https://aka.ms/apm-unix | sh -s -- @v1.2.3
+
+# Custom install directory
+curl -sSL https://aka.ms/apm-unix | APM_INSTALL_DIR=$HOME/.local/bin sh
+
+# Air-gapped / GitHub Enterprise mirror
+GITHUB_URL=https://github.corp.com VERSION=v1.2.3 sh install.sh
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `APM_INSTALL_DIR` | `/usr/local/bin` | Directory for the `apm` symlink |
+| `GITHUB_URL` | `https://github.com` | Base URL for downloads (mirrors, GHE) |
+| `REPO` | `microsoft/apm` | GitHub repository |
+| `VERSION` | *(latest)* | Pin a specific release (skips GitHub API) |
+
 ## Package managers
 
 **Homebrew (macOS/Linux):**
@@ -124,7 +146,7 @@ apm --version
 
 ### `apm: command not found` (macOS / Linux)
 
-Ensure `/usr/local/bin` is in your `PATH`:
+Ensure your install directory is in your `PATH`. The default is `/usr/local/bin`:
 
 ```bash
 echo $PATH | tr ':' '\n' | grep /usr/local/bin
@@ -138,11 +160,10 @@ export PATH="/usr/local/bin:$PATH"
 
 ### Permission denied during install (macOS / Linux)
 
-Use `sudo` for system-wide installation, or install to a user-writable directory instead:
+Use `sudo` for system-wide installation, or install to a user-writable directory:
 
 ```bash
-mkdir -p ~/bin
-# then install the binary to ~/bin/apm and add ~/bin to PATH
+curl -sSL https://aka.ms/apm-unix | APM_INSTALL_DIR=$HOME/.local/bin sh
 ```
 
 ### Authentication errors when installing packages
