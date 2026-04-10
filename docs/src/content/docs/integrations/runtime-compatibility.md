@@ -83,7 +83,7 @@ apm runtime setup codex
 ```
 
 This automatically:
-- Downloads the latest Codex binary for your platform
+- Downloads Codex binary `rust-v0.118.0` for your platform (override with `--version`)
 - Installs to `~/.apm/runtimes/codex`
 - Creates configuration for GitHub Models (`github/gpt-4o`)
 - Updates your PATH
