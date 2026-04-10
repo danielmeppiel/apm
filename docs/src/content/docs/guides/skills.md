@@ -274,6 +274,8 @@ apm_modules/org/repo/my-package/
     └── SKILL.md
 ```
 
+The same promotion applies to the project's own `.apm/skills/` directory. When you run `apm install`, skills in your local `.apm/skills/*/` are deployed to `.github/skills/` (and other detected targets) alongside dependency skills. Local skills take priority on collision. The root `SKILL.md` is not treated as a local skill -- it describes the project itself.
+
 ## Package Detection
 
 APM automatically detects package types:
