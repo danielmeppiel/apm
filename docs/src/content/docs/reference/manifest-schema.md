@@ -378,7 +378,7 @@ devDependencies:
     - owner/lint-rules#v2.0.0
 ```
 
-Created automatically by `apm init --plugin`. Use [`apm install --dev`](../cli-commands/#apm-install---install-apm-and-mcp-dependencies) to add packages:
+Created automatically by `apm init --plugin`. Use [`apm install --dev`](../cli-commands/#apm-install---install-dependencies-and-deploy-local-content) to add packages:
 
 ```bash
 apm install --dev owner/test-helpers
