@@ -149,9 +149,12 @@ class OpenCodeClientAdapter(CopilotClientAdapter):
         elif "url" in copilot_entry:
             entry["type"] = "remote"
             entry["url"] = copilot_entry["url"]
+            headers = copilot_entry.get("headers")
+            if headers:
+                entry["headers"] = dict(headers)
 
         env = copilot_entry.get("env") or {}
         if env:
-            entry["environment"] = env
+            entry["environment"] = dict(env)
 
         return entry

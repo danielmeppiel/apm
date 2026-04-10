@@ -72,9 +72,9 @@ apm init my-plugin --plugin
 - `description` - Generated from project name
 - `version` - Defaults to "1.0.0"
 
-### `apm install` - Install APM and MCP dependencies
+### `apm install` - Install dependencies and deploy local content
 
-Install APM package and MCP server dependencies from `apm.yml` (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
+Install APM package and MCP server dependencies from `apm.yml` and deploy the project's own `.apm/` content to target directories (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
 
 ```bash
 apm install [PACKAGES...] [OPTIONS]
@@ -98,8 +98,17 @@ apm install [PACKAGES...] [OPTIONS]
 - `-g, --global` - Install to user scope (`~/.apm/`) instead of the current project. Primitives deploy to `~/.copilot/`, `~/.claude/`, etc.
 
 **Behavior:**
-- `apm install` (no args): Installs **all** packages from `apm.yml`
+- `apm install` (no args): Installs **all** packages from `apm.yml` and deploys the project's own `.apm/` content
 - `apm install <package>`: Installs **only** the specified package (adds to `apm.yml` if not present)
+
+**Local `.apm/` Content Deployment:**
+
+After integrating dependencies, `apm install` deploys primitives from the project's own `.apm/` directory (instructions, prompts, agents, skills, hooks, commands) to target directories (`.github/`, `.claude/`, `.cursor/`, etc.). Local content takes priority over dependencies on collision. Deployed files are tracked in the lockfile for cleanup on subsequent installs. This works even with zero dependencies -- just `apm.yml` and `.apm/` content is enough.
+
+Exceptions:
+- Skipped at user scope (`--global`)
+- Skipped with `--only=mcp`
+- Root `SKILL.md` is not deployed as a local skill (it describes the project itself)
 
 **Diff-Aware Installation (manifest as source of truth):**
 - MCP servers already configured with matching config are skipped (`already configured`)
@@ -215,7 +224,7 @@ APM automatically detects which integrations to enable based on your project str
 
 **VSCode Integration (`.github/` present):**
 
-When you run `apm install`, APM automatically integrates primitives from installed packages:
+When you run `apm install`, APM automatically integrates primitives from installed packages and the project's own `.apm/` directory:
 
 - **Prompts**: `.prompt.md` files → `.github/prompts/*.prompt.md`
 - **Agents**: `.agent.md` files → `.github/agents/*.agent.md`
@@ -601,6 +610,81 @@ curl -sSL https://aka.ms/apm-unix | sh
 powershell -ExecutionPolicy Bypass -c "irm https://aka.ms/apm-windows | iex"
 ```
 
+### `apm view` - View package metadata or list remote versions
+
+Show local metadata for an installed package, or query remote refs with a field selector.
+
+> **Note:** `apm info` is accepted as a hidden alias for backward compatibility.
+
+```bash
+apm view PACKAGE [FIELD] [OPTIONS]
+```
+
+**Arguments:**
+- `PACKAGE` - Package name, usually `owner/repo` or a short repo name
+- `FIELD` - Optional field selector. Supported value: `versions`
+
+**Options:**
+- `-g, --global` - Inspect package from user scope (`~/.apm/`)
+
+**Examples:**
+```bash
+# Show installed package metadata
+apm view microsoft/apm-sample-package
+
+# Short-name lookup for an installed package
+apm view apm-sample-package
+
+# List remote tags and branches without cloning
+apm view microsoft/apm-sample-package versions
+
+# Inspect a package from user scope
+apm view microsoft/apm-sample-package -g
+```
+
+**Behavior:**
+- Without `FIELD`, reads installed package metadata from `apm_modules/`
+- Shows package name, version, description, source, install path, context files, workflows, and hooks
+- `versions` lists remote tags and branches without cloning the repository
+- `versions` does not require the package to be installed locally
+
+### `apm outdated` - Check locked dependencies for updates
+
+Compare locked dependencies against remote refs to detect staleness.
+
+```bash
+apm outdated [OPTIONS]
+```
+
+**Options:**
+- `-g, --global` - Check user-scope dependencies from `~/.apm/`
+- `-v, --verbose` - Show extra detail for outdated packages, including available tags
+- `-j, --parallel-checks N` - Max concurrent remote checks (default: 4, 0 = sequential)
+
+**Examples:**
+```bash
+# Check project dependencies
+apm outdated
+
+# Check user-scope dependencies
+apm outdated --global
+
+# Show available tags for outdated packages
+apm outdated --verbose
+
+# Use 8 parallel checks for large dependency sets
+apm outdated -j 8
+```
+
+**Behavior:**
+- Reads the current lockfile (`apm.lock.yaml`; legacy `apm.lock` is migrated automatically)
+- For tag-pinned deps: compares the locked semver tag against the latest available remote tag
+- For branch-pinned deps: compares the locked commit SHA against the remote branch tip SHA
+- For deps with no ref: compares against the default branch (main/master) tip SHA
+- Displays `Package`, `Current`, `Latest`, and `Status` columns
+- Status values are `up-to-date`, `outdated`, and `unknown`
+- Local dependencies and Artifactory dependencies are skipped
+
 ### `apm deps` - Manage APM package dependencies
 
 Manage APM package dependencies with installation status, tree visualization, and package information.
@@ -680,32 +764,27 @@ company-website (local)
 - Version numbers from dependency package metadata
 - Version information for each dependency
 
-#### `apm deps info` - Show detailed package information
+#### `apm deps info` - Alias for `apm view`
 
-Display comprehensive information about a specific installed package.
+Backward-compatible alias for `apm view PACKAGE_NAME`.
 
 ```bash
 apm deps info PACKAGE_NAME
 ```
 
 **Arguments:**
-- `PACKAGE_NAME` - Name of the package to show information about
+- `PACKAGE_NAME` - Installed package name to inspect
 
 **Examples:**
 ```bash
-# Show details for compliance rules package
+# Show installed package metadata
 apm deps info compliance-rules
-
-# Show info for design guidelines package  
-apm deps info design-guidelines
 ```
 
-**Output includes:**
-- Complete package metadata (name, version, description, author)
-- Source repository and installation details
-- Detailed context file counts by type
-- Agent workflow descriptions and counts
-- Installation path and status
+**Notes:**
+- Produces the same local metadata output as `apm view PACKAGE_NAME`
+- Use `apm view` in new docs and scripts
+- For remote refs, use `apm view PACKAGE_NAME versions`
 
 #### `apm deps clean` - Remove all APM dependencies
 
@@ -872,14 +951,17 @@ Register a GitHub repository as a plugin marketplace.
 
 ```bash
 apm marketplace add OWNER/REPO [OPTIONS]
+apm marketplace add HOST/OWNER/REPO [OPTIONS]
 ```
 
 **Arguments:**
 - `OWNER/REPO` - GitHub repository containing `marketplace.json`
+- `HOST/OWNER/REPO` - Repository on a non-github.com host (e.g., GitHub Enterprise)
 
 **Options:**
 - `-n, --name TEXT` - Custom display name for the marketplace
 - `-b, --branch TEXT` - Branch to track (default: main)
+- `--host TEXT` - Git host FQDN (default: github.com or `GITHUB_HOST` env var)
 - `-v, --verbose` - Show detailed output
 
 **Examples:**
@@ -889,6 +971,10 @@ apm marketplace add acme/plugin-marketplace
 
 # Register with a custom name and branch
 apm marketplace add acme/plugin-marketplace --name acme-plugins --branch release
+
+# Register from a GitHub Enterprise host
+apm marketplace add acme/plugin-marketplace --host ghes.corp.example.com
+apm marketplace add ghes.corp.example.com/acme/plugin-marketplace
 ```
 
 #### `apm marketplace list` - List registered marketplaces
