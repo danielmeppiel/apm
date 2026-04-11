@@ -166,6 +166,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                         logger.verbose_detail(
                             f"    Resolved to: {canonical_str}"
                         )
+                    # Security-critical: record marketplace provenance so
+                    # the lockfile tracks where each dependency was
+                    # discovered.  These fields enable supply-chain audits
+                    # and prevent silent marketplace source confusion.
                     marketplace_provenance = {
                         "discovered_via": marketplace_name,
                         "marketplace_plugin_name": plugin_name,
@@ -2618,6 +2622,11 @@ def _install_apm_dependencies(
                     if dep_key in _package_hashes:
                         locked_dep.content_hash = _package_hashes[dep_key]
                 # Attach marketplace provenance if available
+                # Security-critical: discovered_via and marketplace_plugin_name
+                # MUST be set for every marketplace-sourced dependency so the
+                # lockfile records supply-chain origin.  Missing provenance
+                # would leave marketplace deps indistinguishable from direct
+                # Git refs, defeating audit and shadow-detection checks.
                 if marketplace_provenance:
                     for dep_key, prov in marketplace_provenance.items():
                         if dep_key in lockfile.dependencies:

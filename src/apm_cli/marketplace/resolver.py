@@ -289,11 +289,53 @@ def resolve_marketplace_plugin(
                 marketplace_name,
             )
 
+            # ---- Version immutability check (advisory) ----
+            from .version_pins import check_version_pin, record_version_pin
+
+            previous_ref = check_version_pin(
+                marketplace_name, plugin_name, entry.version, entry.ref,
+            )
+            if previous_ref is not None:
+                logger.warning(
+                    "Version %s of %s@%s ref changed: was '%s', now '%s'. "
+                    "This may indicate a ref swap attack.",
+                    entry.version,
+                    plugin_name,
+                    marketplace_name,
+                    previous_ref,
+                    entry.ref,
+                )
+            record_version_pin(
+                marketplace_name, plugin_name, entry.version, entry.ref,
+            )
+
     logger.debug(
         "Resolved %s@%s -> %s",
         plugin_name,
         marketplace_name,
         canonical,
     )
+
+    # -- Shadow detection (advisory) --
+    # Warn when the same plugin name exists in other registered
+    # marketplaces.  This helps users notice potential name-squatting
+    # where an attacker publishes a same-named plugin in a secondary
+    # marketplace.
+    try:
+        from .shadow_detector import detect_shadows
+
+        shadows = detect_shadows(
+            plugin_name, marketplace_name, auth_resolver=auth_resolver
+        )
+        for shadow in shadows:
+            logger.warning(
+                "Plugin '%s' also found in marketplace '%s'. "
+                "Verify you are installing from the intended source.",
+                plugin_name,
+                shadow.marketplace_name,
+            )
+    except Exception:
+        # Shadow detection must never break installation
+        logger.debug("Shadow detection failed", exc_info=True)
 
     return canonical, plugin
