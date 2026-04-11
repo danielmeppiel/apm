@@ -353,10 +353,11 @@ def _display_marketplace_versions(
             )
         click.echo("")
         click.echo(f"  Install: apm install {plugin_name}@{marketplace_name}")
-        click.echo(
-            f"  Pin:     apm install {plugin_name}@{marketplace_name}"
-            f"#^{sorted_versions[0].version}"
-        )
+        if latest_version:
+            click.echo(
+                f"  Pin:     apm install {plugin_name}@{marketplace_name}"
+                f"#^{latest_version}"
+            )
 
 
 def display_versions(package: str, logger: CommandLogger) -> None:
