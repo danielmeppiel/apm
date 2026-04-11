@@ -369,6 +369,96 @@ def remove(name, yes, verbose):
 
 
 # ---------------------------------------------------------------------------
+# marketplace validate
+# ---------------------------------------------------------------------------
+
+
+@marketplace.command(help="Validate a marketplace manifest")
+@click.argument("name", required=True)
+@click.option(
+    "--check-refs", is_flag=True, help="Verify version refs are reachable (network)"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
+def validate(name, check_refs, verbose):
+    """Validate the manifest of a registered marketplace."""
+    logger = CommandLogger("marketplace-validate", verbose=verbose)
+    try:
+        from ..marketplace.client import fetch_marketplace
+        from ..marketplace.registry import get_marketplace_by_name
+        from ..marketplace.validator import validate_marketplace
+
+        source = get_marketplace_by_name(name)
+        logger.start(f"Validating marketplace '{name}'...", symbol="gear")
+
+        manifest = fetch_marketplace(source, force_refresh=True)
+
+        # Count version entries across all plugins
+        total_versions = sum(len(p.versions) for p in manifest.plugins)
+        logger.progress(
+            f"Found {len(manifest.plugins)} plugins, "
+            f"{total_versions} version entries",
+            symbol="info",
+        )
+
+        # Verbose: per-plugin details
+        if verbose:
+            for p in manifest.plugins:
+                source_type = "dict" if isinstance(p.source, dict) else "string"
+                logger.verbose_detail(
+                    f"    {p.name}: {len(p.versions)} versions, "
+                    f"source type: {source_type}"
+                )
+
+        # Run validation
+        results = validate_marketplace(manifest)
+
+        # Check-refs placeholder
+        if check_refs:
+            logger.warning(
+                "Ref checking not yet implemented -- skipping ref "
+                "reachability checks",
+                symbol="warning",
+            )
+
+        # Render results
+        passed = 0
+        warning_count = 0
+        error_count = 0
+        click.echo()
+        click.echo("Validation Results:")
+        for r in results:
+            if r.passed and not r.warnings:
+                logger.success(
+                    f"  {r.check_name}: all plugins valid", symbol="check"
+                )
+                passed += 1
+            elif r.warnings and not r.errors:
+                for w in r.warnings:
+                    logger.warning(f"  {r.check_name}: {w}", symbol="warning")
+                warning_count += len(r.warnings)
+            else:
+                for e in r.errors:
+                    logger.error(f"  {r.check_name}: {e}", symbol="error")
+                for w in r.warnings:
+                    logger.warning(f"  {r.check_name}: {w}", symbol="warning")
+                error_count += len(r.errors)
+                warning_count += len(r.warnings)
+
+        click.echo()
+        click.echo(
+            f"Summary: {passed} passed, {warning_count} warnings, "
+            f"{error_count} errors"
+        )
+
+        if error_count > 0:
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Failed to validate marketplace: {e}")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Top-level search command (registered separately in cli.py)
 # ---------------------------------------------------------------------------
 
@@ -466,4 +556,373 @@ def search(expression, limit, verbose):
         raise
     except Exception as e:
         logger.error(f"Search failed: {e}")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# marketplace publish -- helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_git_head_sha():
+    """Get the current git HEAD commit SHA.
+
+    Returns:
+        The full SHA string, or ``None`` if git is not available or the
+        working directory is not a git repository.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _find_local_marketplace_repo(source):
+    """Try to find a local clone of the marketplace repo.
+
+    Checks whether the current working directory (or its git root) has a
+    remote matching *source*'s ``owner/repo``.
+
+    Returns:
+        Repository root path as a string, or ``None``.
+    """
+    import subprocess
+
+    try:
+        # Get git repo root first
+        root_result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+        )
+        if root_result.returncode != 0:
+            return None
+
+        repo_root = root_result.stdout.strip()
+
+        # Check all remotes for a match
+        result = subprocess.run(
+            ["git", "remote", "-v"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+            cwd=repo_root,
+        )
+        if result.returncode != 0:
+            return None
+
+        expected = f"{source.owner}/{source.repo}"
+        for line in result.stdout.splitlines():
+            if expected in line:
+                return repo_root
+    except Exception:
+        pass
+    return None
+
+
+def _clone_marketplace_repo(source):
+    """Clone the marketplace repo to a temporary directory.
+
+    Returns:
+        Path to the cloned directory.
+
+    Raises:
+        RuntimeError: If cloning fails.
+    """
+    import subprocess
+    import tempfile
+
+    clone_url = f"https://{source.host}/{source.owner}/{source.repo}.git"
+    tmp_dir = tempfile.mkdtemp(prefix="apm-marketplace-")
+    try:
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--depth=1",
+                "--branch",
+                source.branch,
+                clone_url,
+                tmp_dir,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Failed to clone marketplace repo "
+            f"'{source.owner}/{source.repo}': {exc.stderr.strip()}"
+        ) from exc
+    return tmp_dir
+
+
+def _update_marketplace_file(file_path, plugin_name, version_str, ref, force):
+    """Read marketplace.json, add a version entry, and write back.
+
+    Operates on the raw JSON dict so no fields are lost during
+    round-tripping through the frozen dataclass layer.
+
+    Args:
+        file_path: Absolute path to marketplace.json.
+        plugin_name: Plugin to update (case-insensitive match).
+        version_str: Semver version string to publish.
+        ref: Git ref for the version entry.
+        force: When ``True``, overwrite an existing entry with the same
+            version string.
+
+    Returns:
+        The *file_path* that was written.
+
+    Raises:
+        FileNotFoundError: If *file_path* does not exist.
+        ValueError: If the plugin is not found in the file.
+    """
+    import json
+
+    with open(file_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    plugins = data.get("plugins", [])
+    target = None
+    for entry in plugins:
+        if entry.get("name", "").lower() == plugin_name.lower():
+            target = entry
+            break
+
+    if target is None:
+        raise ValueError(
+            f"Plugin '{plugin_name}' not found in {file_path}"
+        )
+
+    versions = target.get("versions", [])
+
+    # Remove existing version entry when --force is active
+    if force:
+        versions = [v for v in versions if v.get("version") != version_str]
+
+    versions.append({"version": version_str, "ref": ref})
+    target["versions"] = versions
+
+    with open(file_path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+
+    return file_path
+
+
+# ---------------------------------------------------------------------------
+# marketplace publish
+# ---------------------------------------------------------------------------
+
+
+@marketplace.command(help="Publish a version entry to a marketplace")
+@click.option(
+    "--marketplace",
+    "-m",
+    "marketplace_name",
+    default=None,
+    help="Target marketplace name",
+)
+@click.option(
+    "--version",
+    "version_str",
+    default=None,
+    help="Version to publish (semver X.Y.Z, default: from apm.yml)",
+)
+@click.option(
+    "--ref",
+    default=None,
+    help="Git ref / commit SHA (default: current HEAD)",
+)
+@click.option(
+    "--plugin",
+    "plugin_name",
+    default=None,
+    help="Plugin name in the marketplace (default: name from apm.yml)",
+)
+@click.option("--dry-run", is_flag=True, help="Show what would be published without making changes")
+@click.option("--force", is_flag=True, help="Overwrite existing version entry with a different ref")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
+def publish(marketplace_name, version_str, ref, plugin_name, dry_run, force, verbose):
+    """Publish a new version entry for a plugin in a marketplace."""
+    logger = CommandLogger("marketplace-publish", verbose=verbose, dry_run=dry_run)
+    try:
+        import os
+        from pathlib import Path
+
+        from ..marketplace.client import fetch_marketplace
+        from ..marketplace.registry import (
+            get_marketplace_by_name,
+            get_registered_marketplaces,
+        )
+        from ..marketplace.version_resolver import _parse_semver
+        from ..models.apm_package import APMPackage
+
+        # -- 1. Resolve defaults from apm.yml ---------------------------------
+        if not plugin_name or not version_str:
+            apm_yml_path = Path("apm.yml")
+            if not apm_yml_path.exists():
+                missing = []
+                if not plugin_name:
+                    missing.append("--plugin")
+                if not version_str:
+                    missing.append("--version")
+                logger.error(
+                    f"No apm.yml found. Specify {' and '.join(missing)} explicitly."
+                )
+                sys.exit(1)
+
+            package = APMPackage.from_apm_yml(apm_yml_path)
+            if not plugin_name:
+                plugin_name = package.name
+            if not version_str:
+                version_str = package.version
+
+        # -- 2. Validate version -----------------------------------------------
+        try:
+            _parse_semver(version_str)
+        except ValueError as exc:
+            logger.error(str(exc))
+            sys.exit(1)
+
+        # -- 3. Resolve git ref ------------------------------------------------
+        if not ref:
+            ref = _get_git_head_sha()
+            if not ref:
+                logger.error(
+                    "Could not determine git HEAD SHA. "
+                    "Use --ref to specify a commit."
+                )
+                sys.exit(1)
+
+        # -- 4. Resolve marketplace --------------------------------------------
+        if not marketplace_name:
+            sources = get_registered_marketplaces()
+            if len(sources) == 0:
+                logger.error(
+                    "No marketplaces registered. "
+                    "Use 'apm marketplace add OWNER/REPO' first."
+                )
+                sys.exit(1)
+            elif len(sources) == 1:
+                marketplace_name = sources[0].name
+                logger.verbose_detail(
+                    f"    Auto-selected marketplace: {marketplace_name}"
+                )
+            else:
+                names = ", ".join(s.name for s in sources)
+                logger.error(
+                    f"Multiple marketplaces registered ({names}). "
+                    f"Use --marketplace to specify which one."
+                )
+                sys.exit(1)
+
+        source = get_marketplace_by_name(marketplace_name)
+
+        # -- 5. Start output ---------------------------------------------------
+        logger.start(
+            f"Publishing {plugin_name} v{version_str} "
+            f"to marketplace '{marketplace_name}'...",
+            symbol="gear",
+        )
+        logger.progress(f"Ref: {ref}", symbol="info")
+
+        # -- 6. Fetch manifest and validate ------------------------------------
+        manifest = fetch_marketplace(source, force_refresh=True)
+
+        plugin = manifest.find_plugin(plugin_name)
+        if plugin is None:
+            logger.error(
+                f"Plugin '{plugin_name}' not found in marketplace "
+                f"'{marketplace_name}'. "
+                f"Run 'apm marketplace browse {marketplace_name}' "
+                f"to see available plugins."
+            )
+            sys.exit(1)
+
+        # -- 7. Check for existing version -------------------------------------
+        for existing in plugin.versions:
+            if existing.version == version_str:
+                if existing.ref == ref:
+                    logger.progress(
+                        f"Version {version_str} already published "
+                        f"with same ref. Skipping.",
+                        symbol="info",
+                    )
+                    return
+                if not force:
+                    logger.error(
+                        f"Version {version_str} already exists with a "
+                        f"different ref ({existing.ref}). "
+                        f"Use --force to overwrite."
+                    )
+                    sys.exit(1)
+
+        # -- 8. Dry-run gate ---------------------------------------------------
+        if dry_run:
+            logger.dry_run_notice(
+                f"Would publish {plugin_name} v{version_str} "
+                f"(ref: {ref}) to '{marketplace_name}'"
+            )
+            return
+
+        # -- 9. Locate or clone marketplace repo and update --------------------
+        local_repo = _find_local_marketplace_repo(source)
+        cloned = False
+        if local_repo is None:
+            logger.verbose_detail(
+                "    Marketplace repo not found locally, cloning..."
+            )
+            local_repo = _clone_marketplace_repo(source)
+            cloned = True
+
+        marketplace_file = os.path.join(local_repo, source.path)
+
+        if not os.path.isfile(marketplace_file):
+            logger.error(
+                f"marketplace.json not found at expected path: "
+                f"{marketplace_file}"
+            )
+            sys.exit(1)
+
+        _update_marketplace_file(
+            marketplace_file, plugin_name, version_str, ref, force
+        )
+
+        logger.success(
+            "Version entry added to marketplace.json", symbol="check"
+        )
+        logger.progress(
+            f"Marketplace file: {marketplace_file}", symbol="info"
+        )
+        logger.progress(
+            "Don't forget to commit and push the marketplace repo!",
+            symbol="info",
+        )
+        if cloned:
+            logger.progress(
+                f"Cloned repo location: {local_repo}", symbol="info"
+            )
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to publish: {e}")
         sys.exit(1)
