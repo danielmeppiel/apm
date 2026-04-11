@@ -63,6 +63,27 @@ Marketplaces can declare a `metadata.pluginRoot` field to specify the base direc
 
 With `pluginRoot` set to `./plugins`, the source `"my-tool"` resolves to `owner/repo/plugins/my-tool`. Sources that already contain a path separator (e.g. `./custom/path`) are not affected by `pluginRoot`.
 
+### Versioned plugins
+
+Plugins can declare a `versions` array that maps semver versions to Git refs:
+
+```json
+{
+  "name": "code-review",
+  "description": "Automated code review agent",
+  "source": { "type": "github", "repo": "acme/code-review-plugin" },
+  "versions": [
+    { "version": "2.1.0", "ref": "abc123def456" },
+    { "version": "2.0.0", "ref": "v2.0.0" },
+    { "version": "1.0.0", "ref": "v1.0.0" }
+  ]
+}
+```
+
+When `versions` is present, APM uses semver resolution instead of the source-level ref. The `ref` field accepts commit SHAs, tags, or branch names. List versions newest-first by convention.
+
+Plugins without `versions` continue using the source-level ref -- this is fully backward compatible.
+
 ## Register a marketplace
 
 ```bash
@@ -125,12 +146,37 @@ use `apm marketplace browse <name>` instead.
 Use the `NAME@MARKETPLACE` syntax to install a plugin from a specific marketplace:
 
 ```bash
+# Install latest version
 apm install code-review@acme-plugins
+
+# Install exact version
+apm install code-review@acme-plugins#2.0.0
+
+# Install compatible range (^2.0.0 means >=2.0.0, <3.0.0)
+apm install code-review@acme-plugins#^2.0.0
+
+# Install with tilde range (~2.1.0 means >=2.1.0, <2.2.0)
+apm install code-review@acme-plugins#~2.1.0
+
+# Compound constraint
+apm install code-review@acme-plugins#>=1.0.0,<3.0.0
 ```
 
-APM resolves the plugin name against the marketplace index, fetches the underlying Git repository, and installs it as a standard APM dependency. The resolved source appears in `apm.yml` and `apm.lock.yaml` just like any direct dependency.
+The `#` separator carries a version specifier when the plugin declares `versions`, or a raw git ref when it does not. Plugins without `versions` continue to work as before.
+
+APM resolves the plugin name against the marketplace index, fetches the underlying Git repository at the resolved ref, and installs it as a standard APM dependency. The resolved source appears in `apm.yml` and `apm.lock.yaml` just like any direct dependency.
 
 For full `apm install` options, see [CLI Commands](../../reference/cli-commands/).
+
+## View versions
+
+Show available versions for a marketplace plugin:
+
+```bash
+apm view code-review@acme-plugins
+```
+
+Displays a table of versions with their refs, sorted newest-first. For plugins without `versions`, shows remote tags and branches.
 
 ## Provenance tracking
 
@@ -187,3 +233,69 @@ apm marketplace remove acme-plugins --yes
 ```
 
 Removing a marketplace does not uninstall plugins previously installed from it. Those plugins remain pinned in `apm.lock.yaml` to their resolved Git sources.
+
+## Publish versions
+
+Add a version entry to a marketplace's `marketplace.json`. Reads defaults from `apm.yml` and resolves the current Git HEAD:
+
+```bash
+# Publish current version (reads apm.yml + git HEAD)
+apm marketplace publish --marketplace acme-plugins
+
+# Publish with explicit values
+apm marketplace publish --marketplace acme-plugins --plugin code-review --version 2.1.0 --ref abc123
+
+# Preview without writing
+apm marketplace publish --marketplace acme-plugins --dry-run
+```
+
+The command appends a version entry to the plugin's `versions` array. Use `--force` to overwrite an existing version entry with a different ref.
+
+For full option details, see [CLI Commands](../../reference/cli-commands/).
+
+## Validate a marketplace
+
+Check a marketplace manifest for schema errors, invalid semver formats, and duplicate entries:
+
+```bash
+apm marketplace validate acme-plugins
+
+# Verbose output
+apm marketplace validate acme-plugins --verbose
+```
+
+Catches: missing required fields, malformed version strings, duplicate versions within a plugin, and duplicate plugin names (case-insensitive).
+
+:::note[Planned]
+The `--check-refs` flag will verify that version refs are reachable over the network. It is accepted but not yet implemented.
+:::
+
+For full option details, see [CLI Commands](../../reference/cli-commands/).
+
+## Security
+
+### Version immutability
+
+APM caches version-to-ref mappings in `~/.apm/cache/marketplace/version-pins.json`. On subsequent installs, APM compares the marketplace ref against the cached pin. If a version's ref has changed, APM warns:
+
+```
+WARNING: Version 2.0.0 of code-review@acme-plugins ref changed: was 'v2.0.0', now 'deadbeef'. This may indicate a ref swap attack.
+```
+
+This detects marketplace maintainers (or compromised accounts) silently pointing an existing version at different code.
+
+### Shadow detection
+
+When installing a marketplace plugin, APM checks all other registered marketplaces for plugins with the same name. A match produces a warning:
+
+```
+WARNING: Plugin 'code-review' also found in marketplace 'other-plugins'. Verify you are installing from the intended source.
+```
+
+Shadow detection runs automatically during install -- no configuration required.
+
+### Best practices
+
+- **Use commit SHAs as refs** -- tags and branches can be moved; commit SHAs cannot.
+- **Keep plugin names unique across marketplaces** -- avoids shadow warnings and reduces confusion.
+- **Review immutability warnings** -- a changed ref for an existing version is a strong signal of tampering.
