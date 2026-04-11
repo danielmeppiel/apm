@@ -126,6 +126,7 @@ fields:
 | `deployed_files` | array of strings | MUST | Every file path APM deployed for this dependency, relative to project root. |
 | `source` | string | MAY | Dependency source. `"local"` for local path dependencies. Omitted for remote (git) dependencies. |
 | `version_spec` | string | MAY | Original semver range from the install specifier (e.g., `"^2.0.0"`). Present only for marketplace dependencies installed with a version constraint. Used by `apm outdated` to evaluate updates within the pinned range. |
+| `resolved_version` | string | MAY | Concrete version selected after marketplace semver resolution (e.g., `"2.3.1"`). Present only when APM resolved a marketplace dependency from a version constraint. Omitted for raw git refs and unversioned plugins. |
 | `local_path` | string | MAY | Filesystem path (relative or absolute) to the local package. Present only when `source` is `"local"`. |
 
 Fields with empty or default values (empty strings, `false` booleans, empty

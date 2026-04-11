@@ -253,7 +253,7 @@ def _display_marketplace_versions(
     Fetches the marketplace manifest, finds the plugin, and renders its
     ``versions[]`` array as a Rich table (with plain-text fallback).
     """
-    from ..marketplace.errors import MarketplaceFetchError, PluginNotFoundError
+    from ..marketplace.errors import MarketplaceFetchError
     from ..marketplace.models import MarketplaceSource
     from ..marketplace.registry import get_marketplace_by_name
     from ..marketplace.client import fetch_or_cache
@@ -334,10 +334,11 @@ def _display_marketplace_versions(
         console.print(table)
         click.echo("")
         click.echo(f"  Install: apm install {plugin_name}@{marketplace_name}")
-        click.echo(
-            f"  Pin:     apm install {plugin_name}@{marketplace_name}"
-            f"#^{sorted_versions[0].version}"
-        )
+        if latest_version:
+            click.echo(
+                f"  Pin:     apm install {plugin_name}@{marketplace_name}"
+                f"#^{latest_version}"
+            )
 
     except ImportError:
         # Plain-text fallback

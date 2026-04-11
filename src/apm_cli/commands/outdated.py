@@ -143,7 +143,10 @@ def _check_marketplace_versions(dep, verbose):
         # Check version_spec if available (field added by parallel task)
         version_spec = getattr(dep, "version_spec", None)
         if version_spec:
-            constraints = _expand_specifier(version_spec)
+            try:
+                constraints = _expand_specifier(version_spec)
+            except ValueError:
+                constraints = None
             if constraints and not _version_matches(best_parsed, constraints):
                 # Find best version within the range
                 best_in_range = None

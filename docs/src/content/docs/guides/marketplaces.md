@@ -162,9 +162,9 @@ apm install code-review@acme-plugins#~2.1.0
 apm install code-review@acme-plugins#>=1.0.0,<3.0.0
 ```
 
-The `#` separator carries a version specifier when the plugin declares `versions`, or a raw git ref when it does not. Plugins without `versions` continue to work as before.
+The `#` separator carries a version specifier only when the plugin declares `versions`. For plugins without `versions`, APM uses the source defined in the marketplace manifest, including any `source.ref` value; `#<ref>` does not override unversioned entries.
 
-APM resolves the plugin name against the marketplace index, fetches the underlying Git repository at the resolved ref, and installs it as a standard APM dependency. The resolved source appears in `apm.yml` and `apm.lock.yaml` just like any direct dependency.
+APM resolves the plugin name against the marketplace index, fetches the underlying Git repository using the ref defined by the selected marketplace entry, and installs it as a standard APM dependency. The resolved source appears in `apm.yml` and `apm.lock.yaml` just like any direct dependency.
 
 For full `apm install` options, see [CLI Commands](../../reference/cli-commands/).
 
@@ -176,7 +176,7 @@ Show available versions for a marketplace plugin:
 apm view code-review@acme-plugins
 ```
 
-Displays a table of versions with their refs, sorted newest-first. For plugins without `versions`, shows remote tags and branches.
+Displays a table of versions with their refs, sorted newest-first. Plugins without `versions` show a "no version history" message.
 
 ## Provenance tracking
 
