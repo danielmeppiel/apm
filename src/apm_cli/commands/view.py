@@ -243,6 +243,121 @@ def display_package_info(
         sys.exit(1)
 
 
+def _display_marketplace_versions(
+    plugin_name: str,
+    marketplace_name: str,
+    logger: CommandLogger,
+) -> None:
+    """Display version history for a marketplace plugin.
+
+    Fetches the marketplace manifest, finds the plugin, and renders its
+    ``versions[]`` array as a Rich table (with plain-text fallback).
+    """
+    from ..marketplace.errors import MarketplaceFetchError, PluginNotFoundError
+    from ..marketplace.models import MarketplaceSource
+    from ..marketplace.registry import get_marketplace_by_name
+    from ..marketplace.client import fetch_or_cache
+    from ..marketplace.version_resolver import _parse_semver, _SEMVER_RE
+
+    # -- Fetch marketplace & plugin --
+    try:
+        source: MarketplaceSource = get_marketplace_by_name(marketplace_name)
+    except Exception as exc:
+        # MarketplaceNotFoundError carries actionable guidance
+        logger.error(str(exc))
+        sys.exit(1)
+
+    try:
+        manifest = fetch_or_cache(source)
+    except MarketplaceFetchError as exc:
+        logger.error(str(exc))
+        logger.progress("Check your network connection and try again.")
+        sys.exit(1)
+
+    plugin = manifest.find_plugin(plugin_name)
+    if plugin is None:
+        from ..marketplace.errors import PluginNotFoundError as _PNF
+
+        logger.error(str(_PNF(plugin_name, marketplace_name)))
+        sys.exit(1)
+
+    versions = plugin.versions
+    if not versions:
+        logger.progress(
+            f"No version history available for '{plugin_name}'. "
+            f"Using single-ref source."
+        )
+        return
+
+    # -- Sort by semver descending; non-semver entries go to the end --
+    semver_entries = []
+    non_semver_entries = []
+    for entry in versions:
+        if _SEMVER_RE.match(entry.version.strip()):
+            try:
+                parsed = _parse_semver(entry.version)
+                semver_entries.append((parsed, entry))
+            except ValueError:
+                non_semver_entries.append(entry)
+        else:
+            non_semver_entries.append(entry)
+
+    semver_entries.sort(key=lambda c: c[0], reverse=True)
+    sorted_versions = [e for _, e in semver_entries] + non_semver_entries
+
+    # Determine the "latest" version (only if semver-sorted entries exist)
+    latest_version = semver_entries[0][1].version if semver_entries else None
+
+    # -- Render --
+    title = (
+        f"Available versions: {plugin_name} "
+        f"(marketplace: {marketplace_name})"
+    )
+    try:
+        from rich.console import Console
+        from rich.table import Table
+
+        console = Console()
+        table = Table(
+            title=title,
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Version", style="bold white")
+        table.add_column("Ref", style="dim white")
+        table.add_column("Status", style="yellow")
+
+        for entry in sorted_versions:
+            status = "latest" if entry.version == latest_version else ""
+            table.add_row(entry.version, entry.ref, status)
+
+        console.print(table)
+        click.echo("")
+        click.echo(f"  Install: apm install {plugin_name}@{marketplace_name}")
+        click.echo(
+            f"  Pin:     apm install {plugin_name}@{marketplace_name}"
+            f"#^{sorted_versions[0].version}"
+        )
+
+    except ImportError:
+        # Plain-text fallback
+        click.echo(title)
+        click.echo("-" * 60)
+        click.echo(f"{'Version':<20} {'Ref':<30} {'Status':<10}")
+        click.echo("-" * 60)
+        for entry in sorted_versions:
+            status = "latest" if entry.version == latest_version else ""
+            click.echo(
+                f"{entry.version:<20} {entry.ref:<30} {status:<10}"
+            )
+        click.echo("")
+        click.echo(f"  Install: apm install {plugin_name}@{marketplace_name}")
+        click.echo(
+            f"  Pin:     apm install {plugin_name}@{marketplace_name}"
+            f"#^{sorted_versions[0].version}"
+        )
+
+
 def display_versions(package: str, logger: CommandLogger) -> None:
     """Query and display available remote versions (tags/branches).
 
@@ -251,7 +366,21 @@ def display_versions(package: str, logger: CommandLogger) -> None:
     ``DependencyReference``, queries remote refs via
     ``GitHubPackageDownloader.list_remote_refs``, and renders the result
     as a Rich table (with a plain-text fallback).
+
+    When *package* matches the ``NAME@MARKETPLACE`` pattern, the
+    marketplace manifest is fetched instead and the plugin's version
+    history is displayed.
     """
+    # -- Marketplace path: NAME@MARKETPLACE --
+    from ..marketplace.resolver import parse_marketplace_ref
+
+    marketplace_ref = parse_marketplace_ref(package)
+    if marketplace_ref is not None:
+        plugin_name, marketplace_name, _version_spec = marketplace_ref
+        _display_marketplace_versions(plugin_name, marketplace_name, logger)
+        return
+
+    # -- Git-based path (unchanged) --
     try:
         dep_ref = DependencyReference.parse(package)
     except ValueError as exc:

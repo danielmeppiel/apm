@@ -150,7 +150,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 mkt_ref = None
 
             if mkt_ref is not None:
-                plugin_name, marketplace_name = mkt_ref
+                plugin_name, marketplace_name, version_spec = mkt_ref
                 try:
                     if logger:
                         logger.verbose_detail(
@@ -159,6 +159,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                     canonical_str, resolved_plugin = resolve_marketplace_plugin(
                         plugin_name,
                         marketplace_name,
+                        version_spec=version_spec,
                         auth_resolver=auth_resolver,
                     )
                     if logger:
@@ -168,6 +169,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                     marketplace_provenance = {
                         "discovered_via": marketplace_name,
                         "marketplace_plugin_name": plugin_name,
+                        "version_spec": version_spec,
                     }
                     package = canonical_str
                 except Exception as mkt_err:
@@ -2621,6 +2623,7 @@ def _install_apm_dependencies(
                         if dep_key in lockfile.dependencies:
                             lockfile.dependencies[dep_key].discovered_via = prov.get("discovered_via")
                             lockfile.dependencies[dep_key].marketplace_plugin_name = prov.get("marketplace_plugin_name")
+                            lockfile.dependencies[dep_key].version_spec = prov.get("version_spec")
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).
