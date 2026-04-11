@@ -66,9 +66,11 @@ def _check_marketplace_versions(dep, verbose):
     if not dep.discovered_via or not dep.marketplace_plugin_name:
         return None
 
-    current_ver = dep.version or ""
+    current_ver = dep.version or dep.version_spec or ""
     if not current_ver:
         return None
+    # Strip range prefixes (^, ~, >=) when using version_spec as current
+    current_ver = current_ver.lstrip("^~>=<! ")
 
     try:
         from ..marketplace.client import fetch_or_cache
