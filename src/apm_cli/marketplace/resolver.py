@@ -20,23 +20,34 @@ from .registry import get_marketplace_by_name
 
 logger = logging.getLogger(__name__)
 
-_MARKETPLACE_RE = re.compile(r"^([a-zA-Z0-9._-]+)@([a-zA-Z0-9._-]+)$")
+_MARKETPLACE_RE = re.compile(
+    r"^([a-zA-Z0-9._-]+)@([a-zA-Z0-9._-]+)(?:#(.+))?$"
+)
 
 
-def parse_marketplace_ref(specifier: str) -> Optional[Tuple[str, str]]:
-    """Parse a ``NAME@MARKETPLACE`` specifier.
+def parse_marketplace_ref(
+    specifier: str,
+) -> Optional[Tuple[str, str, Optional[str]]]:
+    """Parse a ``NAME@MARKETPLACE[#version_spec]`` specifier.
+
+    The optional ``#version_spec`` suffix carries a semver range
+    (e.g. ``^2.0.0``) or a raw git ref (e.g. ``main``).
 
     Returns:
-        ``(plugin_name, marketplace_name)`` if the specifier matches,
-        or ``None`` if it does not look like a marketplace ref.
+        ``(plugin_name, marketplace_name, version_spec_or_none)`` if the
+        specifier matches, or ``None`` if it does not look like a
+        marketplace ref.
     """
     s = specifier.strip()
-    # Quick rejection: slashes and colons belong to other formats
-    if "/" in s or ":" in s:
+    # Quick rejection: slashes and colons *before* the fragment belong to
+    # other formats.  Split on ``#`` first so that refs with slashes
+    # (e.g. ``feature/branch``) don't cause a false rejection.
+    head = s.split("#", 1)[0]
+    if "/" in head or ":" in head:
         return None
     match = _MARKETPLACE_RE.match(s)
     if match:
-        return (match.group(1), match.group(2))
+        return (match.group(1), match.group(2), match.group(3))
     return None
 
 
@@ -209,13 +220,21 @@ def resolve_marketplace_plugin(
     plugin_name: str,
     marketplace_name: str,
     *,
+    version_spec: Optional[str] = None,
     auth_resolver: Optional[object] = None,
 ) -> Tuple[str, MarketplacePlugin]:
     """Resolve a marketplace plugin reference to a canonical string.
 
+    When the plugin declares ``versions`` entries and a *version_spec* is
+    given (or ``None`` for latest), the version resolver selects the best
+    match and the returned canonical string carries the matching ref.
+
     Args:
         plugin_name: Plugin name within the marketplace.
         marketplace_name: Registered marketplace name.
+        version_spec: Optional semver range (e.g. ``"^2.0.0"``) or raw
+            git ref.  ``None`` selects the latest published version when
+            the plugin has ``versions``.
         auth_resolver: Optional ``AuthResolver`` instance.
 
     Returns:
@@ -240,6 +259,35 @@ def resolve_marketplace_plugin(
         marketplace_repo=source.repo,
         plugin_root=manifest.plugin_root,
     )
+
+    # ---- Version-aware ref override ----
+    if plugin.versions:
+        from .version_resolver import is_version_specifier, resolve_version
+
+        if version_spec and not is_version_specifier(version_spec):
+            # Treat as a raw git ref -- override whatever ref came from
+            # the source field.
+            base = canonical.split("#", 1)[0]
+            canonical = f"{base}#{version_spec}"
+            logger.debug(
+                "Using raw git ref '%s' for %s@%s",
+                version_spec,
+                plugin_name,
+                marketplace_name,
+            )
+        else:
+            # Resolve against the published versions list.
+            # version_spec=None -> latest (highest semver).
+            entry = resolve_version(version_spec, plugin.versions)
+            base = canonical.split("#", 1)[0]
+            canonical = f"{base}#{entry.ref}"
+            logger.debug(
+                "Resolved version %s (%s) for %s@%s",
+                entry.version,
+                entry.ref,
+                plugin_name,
+                marketplace_name,
+            )
 
     logger.debug(
         "Resolved %s@%s -> %s",

@@ -13,7 +13,7 @@ class TestInstallMarketplacePreParse:
     def test_marketplace_ref_detected(self):
         """NAME@MARKETPLACE triggers marketplace resolution."""
         result = parse_marketplace_ref("security-checks@acme-tools")
-        assert result == ("security-checks", "acme-tools")
+        assert result == ("security-checks", "acme-tools", None)
 
     def test_owner_repo_not_intercepted(self):
         """owner/repo should NOT be intercepted."""

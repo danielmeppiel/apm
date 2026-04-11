@@ -6,6 +6,7 @@ from apm_cli.marketplace.models import (
     MarketplaceManifest,
     MarketplacePlugin,
     MarketplaceSource,
+    VersionEntry,
     parse_marketplace_json,
 )
 
@@ -369,3 +370,200 @@ class TestParseMarketplaceJson:
         data = {"name": "Test", "metadata": {"version": "1.0"}, "plugins": []}
         manifest = parse_marketplace_json(data)
         assert manifest.plugin_root == ""
+
+
+class TestVersionEntry:
+    """Frozen dataclass for plugin version entries."""
+
+    def test_basic_creation(self):
+        ve = VersionEntry(version="2.1.0", ref="abc123def456")
+        assert ve.version == "2.1.0"
+        assert ve.ref == "abc123def456"
+
+    def test_frozen(self):
+        ve = VersionEntry(version="1.0.0", ref="deadbeef")
+        with pytest.raises(AttributeError):
+            ve.version = "2.0.0"
+
+    def test_equality(self):
+        a = VersionEntry(version="1.0.0", ref="abc123")
+        b = VersionEntry(version="1.0.0", ref="abc123")
+        assert a == b
+
+    def test_inequality(self):
+        a = VersionEntry(version="1.0.0", ref="abc123")
+        b = VersionEntry(version="1.0.0", ref="def456")
+        assert a != b
+
+
+class TestMarketplacePluginVersions:
+    """MarketplacePlugin.versions field behavior."""
+
+    def test_default_versions_empty(self):
+        p = MarketplacePlugin(name="my-plugin")
+        assert p.versions == ()
+
+    def test_explicit_versions(self):
+        entries = (
+            VersionEntry(version="2.1.0", ref="abc123"),
+            VersionEntry(version="2.0.0", ref="def456"),
+        )
+        p = MarketplacePlugin(name="my-plugin", versions=entries)
+        assert len(p.versions) == 2
+        assert p.versions[0].version == "2.1.0"
+        assert p.versions[1].ref == "def456"
+
+
+class TestParseVersions:
+    """Parsing versions[] array in _parse_plugin_entry / parse_marketplace_json."""
+
+    def test_parse_plugin_with_versions(self):
+        data = {
+            "name": "Test",
+            "plugins": [
+                {
+                    "name": "skill-auth",
+                    "source": {
+                        "type": "github",
+                        "repo": "acme/monorepo",
+                        "path": "skills/auth",
+                    },
+                    "versions": [
+                        {"version": "2.1.0", "ref": "abc123def456"},
+                        {"version": "2.0.0", "ref": "9f8e7d6c5b4a"},
+                    ],
+                }
+            ],
+        }
+        manifest = parse_marketplace_json(data, "acme")
+        p = manifest.plugins[0]
+        assert len(p.versions) == 2
+        assert p.versions[0] == VersionEntry(version="2.1.0", ref="abc123def456")
+        assert p.versions[1] == VersionEntry(version="2.0.0", ref="9f8e7d6c5b4a")
+
+    def test_parse_plugin_without_versions_backward_compat(self):
+        """Plugins without versions[] should default to empty tuple."""
+        data = {
+            "name": "Test",
+            "plugins": [
+                {
+                    "name": "legacy-plugin",
+                    "repository": "acme-org/legacy",
+                    "version": "1.0.0",
+                }
+            ],
+        }
+        manifest = parse_marketplace_json(data, "test-mkt")
+        p = manifest.plugins[0]
+        assert p.versions == ()
+        assert p.version == "1.0.0"
+
+    def test_malformed_version_entries_skipped(self):
+        """Entries missing version or ref are silently skipped."""
+        data = {
+            "name": "Test",
+            "plugins": [
+                {
+                    "name": "partial-versions",
+                    "repository": "o/r",
+                    "versions": [
+                        {"version": "2.1.0", "ref": "abc123"},
+                        {"version": "2.0.0"},  # Missing ref
+                        {"ref": "deadbeef"},  # Missing version
+                        "not-a-dict",  # Non-dict entry
+                        {"version": "", "ref": "abc"},  # Empty version
+                        {"version": "1.0.0", "ref": ""},  # Empty ref
+                        {"version": "1.5.0", "ref": "cafebabe"},
+                    ],
+                }
+            ],
+        }
+        manifest = parse_marketplace_json(data, "test")
+        p = manifest.plugins[0]
+        assert len(p.versions) == 2
+        assert p.versions[0].version == "2.1.0"
+        assert p.versions[1].version == "1.5.0"
+
+    def test_versions_not_a_list_ignored(self):
+        """Non-list versions field results in empty tuple."""
+        data = {
+            "name": "Test",
+            "plugins": [
+                {
+                    "name": "bad-versions",
+                    "repository": "o/r",
+                    "versions": "not-a-list",
+                }
+            ],
+        }
+        manifest = parse_marketplace_json(data, "test")
+        p = manifest.plugins[0]
+        assert p.versions == ()
+
+    def test_versions_copilot_format(self):
+        """Versions work with Copilot CLI repository format too."""
+        data = {
+            "name": "Test",
+            "plugins": [
+                {
+                    "name": "copilot-plugin",
+                    "repository": "acme-org/plugin",
+                    "ref": "v1.0.0",
+                    "versions": [
+                        {"version": "1.0.0", "ref": "v1.0.0"},
+                        {"version": "0.9.0", "ref": "v0.9.0"},
+                    ],
+                }
+            ],
+        }
+        manifest = parse_marketplace_json(data, "copilot-mkt")
+        p = manifest.plugins[0]
+        assert len(p.versions) == 2
+        assert p.versions[0].version == "1.0.0"
+        assert p.versions[0].ref == "v1.0.0"
+
+    def test_roundtrip_parse_access_verify(self):
+        """Parse -> access versions -> verify values end-to-end."""
+        data = {
+            "name": "Acme Marketplace",
+            "plugins": [
+                {
+                    "name": "skill-auth",
+                    "description": "Auth skill",
+                    "source": {
+                        "type": "github",
+                        "repo": "acme/monorepo",
+                        "path": "skills/auth",
+                    },
+                    "version": "2.1.0",
+                    "tags": ["auth", "security"],
+                    "versions": [
+                        {"version": "2.1.0", "ref": "abc123def456"},
+                        {"version": "2.0.0", "ref": "9f8e7d6c5b4a"},
+                        {"version": "1.0.0", "ref": "111111222222"},
+                    ],
+                },
+                {
+                    "name": "no-versions-plugin",
+                    "repository": "acme/other",
+                },
+            ],
+        }
+        manifest = parse_marketplace_json(data, "acme-mkt")
+
+        # Plugin with versions
+        auth = manifest.find_plugin("skill-auth")
+        assert auth is not None
+        assert auth.version == "2.1.0"
+        assert auth.tags == ("auth", "security")
+        assert len(auth.versions) == 3
+        assert auth.versions[0].version == "2.1.0"
+        assert auth.versions[0].ref == "abc123def456"
+        assert auth.versions[2].version == "1.0.0"
+        assert auth.versions[2].ref == "111111222222"
+        assert auth.source_marketplace == "acme-mkt"
+
+        # Plugin without versions
+        other = manifest.find_plugin("no-versions-plugin")
+        assert other is not None
+        assert other.versions == ()

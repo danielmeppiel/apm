@@ -54,6 +54,14 @@ class MarketplaceSource:
 
 
 @dataclass(frozen=True)
+class VersionEntry:
+    """A single published version of a marketplace plugin."""
+
+    version: str  # Semver string, e.g., "2.1.0"
+    ref: str  # Git ref (SHA, tag, or branch name)
+
+
+@dataclass(frozen=True)
 class MarketplacePlugin:
     """A single plugin entry inside a marketplace manifest."""
 
@@ -62,6 +70,7 @@ class MarketplacePlugin:
     description: str = ""
     version: str = ""
     tags: Tuple[str, ...] = ()
+    versions: Tuple[VersionEntry, ...] = ()  # Published version history
     source_marketplace: str = ""  # Populated during resolution
 
     def matches_query(self, query: str) -> bool:
@@ -121,6 +130,28 @@ def _parse_plugin_entry(
     raw_tags = entry.get("tags", [])
     tags = tuple(raw_tags) if isinstance(raw_tags, list) else ()
 
+    # Parse optional versions array
+    versions: Tuple[VersionEntry, ...] = ()
+    raw_versions = entry.get("versions", [])
+    if isinstance(raw_versions, list):
+        parsed: List[VersionEntry] = []
+        for v_entry in raw_versions:
+            if not isinstance(v_entry, dict):
+                logger.debug(
+                    "Skipping non-dict version entry in plugin '%s'", name
+                )
+                continue
+            v_ver = v_entry.get("version", "")
+            v_ref = v_entry.get("ref", "")
+            if not v_ver or not v_ref:
+                logger.debug(
+                    "Skipping version entry missing version/ref in plugin '%s'",
+                    name,
+                )
+                continue
+            parsed.append(VersionEntry(version=str(v_ver), ref=str(v_ref)))
+        versions = tuple(parsed)
+
     # Determine source -- Copilot uses "repository", Claude uses "source"
     source: Any = None
 
@@ -171,6 +202,7 @@ def _parse_plugin_entry(
         description=description,
         version=version,
         tags=tags,
+        versions=versions,
         source_marketplace=source_name,
     )
 
