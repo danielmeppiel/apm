@@ -653,7 +653,7 @@ apm view microsoft/apm-sample-package -g
 - Shows package name, version, description, source, install path, context files, workflows, and hooks
 - `versions` lists remote tags and branches without cloning the repository
 - `versions` does not require the package to be installed locally
-- `NAME@MARKETPLACE` syntax shows the plugin's declared `versions` array sorted newest-first; for plugins without `versions`, falls back to remote tags and branches
+- `NAME@MARKETPLACE` syntax shows the plugin's declared `versions` array sorted newest-first; plugins without `versions` show no version history
 
 ### `apm outdated` - Check locked dependencies for updates
 
@@ -1079,7 +1079,7 @@ apm marketplace publish [OPTIONS]
 
 **Options:**
 - `-m, --marketplace TEXT` - Target marketplace name
-- `-p, --plugin TEXT` - Plugin name in the marketplace (default: `name` from `apm.yml`)
+- `--plugin TEXT` - Plugin name in the marketplace (default: `name` from `apm.yml`)
 - `--version TEXT` - Version to publish as semver `X.Y.Z` (default: `version` from `apm.yml`)
 - `--ref TEXT` - Git ref or commit SHA (default: current HEAD)
 - `--force` - Overwrite existing version entry with a different ref

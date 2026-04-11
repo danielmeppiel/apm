@@ -895,6 +895,10 @@ def publish(marketplace_name, version_str, ref, plugin_name, dry_run, force, ver
 
         marketplace_file = os.path.join(local_repo, source.path)
 
+        # Validate path to prevent traversal attacks via malicious source.path
+        from ..utils.path_security import ensure_path_within
+        ensure_path_within(Path(marketplace_file), Path(local_repo))
+
         if not os.path.isfile(marketplace_file):
             logger.error(
                 f"marketplace.json not found at expected path: "
