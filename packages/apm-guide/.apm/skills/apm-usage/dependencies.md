@@ -115,6 +115,22 @@ dependencies:
 | Branch | `owner/repo#main` | Development -- tracks latest |
 | Commit SHA | `owner/repo#abc123d` | Maximum reproducibility |
 | No ref | `owner/repo` | Resolves default branch at install time |
+| Marketplace semver | `plugin@marketplace#^2.0.0` | Marketplace plugins with `versions[]` |
+
+## Marketplace version specifiers
+
+When a marketplace plugin declares `versions[]`, the `#` suffix is a semver range:
+
+| Specifier | Meaning | Example |
+|-----------|---------|---------|
+| `2.0.0` | Exact version | `plugin@mkt#2.0.0` |
+| `^2.0.0` | Compatible (`>=2.0.0, <3.0.0`) | `plugin@mkt#^2.0.0` |
+| `~2.1.0` | Patch-level (`>=2.1.0, <2.2.0`) | `plugin@mkt#~2.1.0` |
+| `>=1.5.0` | Minimum version | `plugin@mkt#>=1.5.0` |
+| `>=1.0.0,<3.0.0` | Compound range | `plugin@mkt#>=1.0.0,<3.0.0` |
+| *(omitted)* | Latest version | `plugin@mkt` |
+
+Plugins without `versions[]` continue using the source-level ref (backward compatible).
 
 ## What the lockfile pins
 

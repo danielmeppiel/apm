@@ -57,7 +57,11 @@
 | `apm marketplace browse NAME` | Browse marketplace packages | -- |
 | `apm marketplace update [NAME]` | Update marketplace index | -- |
 | `apm marketplace remove NAME` | Remove a marketplace | `-y` skip confirm |
+| `apm marketplace publish` | Publish version to marketplace.json | `-m MARKETPLACE`, `--version`, `--ref`, `--force`, `--dry-run` |
+| `apm marketplace validate NAME` | Validate marketplace manifest | `--check-refs`, `-v` |
 | `apm search QUERY@MARKETPLACE` | Search marketplace | `--limit N` |
+| `apm install NAME@MKT#^X.Y.Z` | Install with semver range | Supports `^`, `~`, `>=`, exact |
+| `apm view NAME@MARKETPLACE` | View marketplace versions | -- |
 
 ## MCP servers
 

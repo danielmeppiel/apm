@@ -125,6 +125,7 @@ fields:
 | `is_dev` | boolean | MAY | `true` if the dependency was resolved through [`devDependencies`](../manifest-schema/#5-devdependencies). Omitted when `false`. Dev deps are excluded from `apm pack --format plugin` bundles. |
 | `deployed_files` | array of strings | MUST | Every file path APM deployed for this dependency, relative to project root. |
 | `source` | string | MAY | Dependency source. `"local"` for local path dependencies. Omitted for remote (git) dependencies. |
+| `version_spec` | string | MAY | Original semver range from the install specifier (e.g., `"^2.0.0"`). Present only for marketplace dependencies installed with a version constraint. Used by `apm outdated` to evaluate updates within the pinned range. |
 | `local_path` | string | MAY | Filesystem path (relative or absolute) to the local package. Present only when `source` is `"local"`. |
 
 Fields with empty or default values (empty strings, `false` booleans, empty
