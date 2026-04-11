@@ -250,6 +250,48 @@ class TestSSHProtocolNormalization:
         assert result == "git@gitlab.com:acme/repo.git"
 
 
+class TestBitbucketDatacenterSSH:
+    """Regression tests for issue #661: ssh:// URLs with custom ports must be preserved.
+
+    Bitbucket Datacenter (and other self-hosted instances) commonly use non-standard
+    SSH ports (e.g. 7999). When a user explicitly specifies an ssh:// URL in apm.yml
+    the original URL must be kept verbatim so git clones against the correct port
+    instead of silently falling back to HTTPS.
+    """
+
+    def test_preserve_bitbucket_datacenter_ssh_url_with_port(self):
+        """ssh:// URL with custom port must be stored in original_ssh_url."""
+        url = "ssh://git@bitbucket.domain.ext:7999/project/repo.git"
+        dep = DependencyReference.parse(url)
+        assert dep.original_ssh_url == url
+
+    def test_bitbucket_datacenter_host_and_repo_still_parsed(self):
+        """Parsed host/repo_url fields should still be populated correctly."""
+        dep = DependencyReference.parse(
+            "ssh://git@bitbucket.domain.ext:7999/project/repo.git"
+        )
+        assert dep.host == "bitbucket.domain.ext"
+        assert dep.repo_url == "project/repo"
+
+    def test_preserve_standard_ssh_protocol_url(self):
+        """ssh:// without a port also stores the original URL."""
+        url = "ssh://git@github.com/org/repo.git"
+        dep = DependencyReference.parse(url)
+        assert dep.original_ssh_url == url
+
+    def test_https_url_does_not_set_original_ssh_url(self):
+        """HTTPS dependencies must not set original_ssh_url."""
+        dep = DependencyReference.parse(
+            "https://bitbucket.domain.ext/scm/project/repo.git"
+        )
+        assert dep.original_ssh_url is None
+
+    def test_git_at_url_does_not_set_original_ssh_url(self):
+        """git@ SSH shorthand does not go through ssh:// normalisation."""
+        dep = DependencyReference.parse("git@bitbucket.org:acme/rules.git")
+        assert dep.original_ssh_url is None
+
+
 class TestCloneURLBuilding:
     """Test that clone URLs are correctly built for generic hosts."""
 
