@@ -14,9 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix `apm init` showing overwrite confirmation prompt three times on Windows CP950 terminals (#602)
 - Pin codex setup to `rust-v0.118.0` for security and reproducibility; update config to `wire_api = "responses"` (#663)
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
 - Fix `apm compile --target claude` silently skipping dependency instructions stored in `.github/instructions/` (#631)
+
 ### Changed
 
 - `apm marketplace browse/search/add/update` now route through the registry proxy when `PROXY_REGISTRY_URL` is set; `PROXY_REGISTRY_ONLY=1` blocks direct GitHub API calls (#506)
