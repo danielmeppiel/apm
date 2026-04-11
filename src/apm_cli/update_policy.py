@@ -19,6 +19,11 @@ SELF_UPDATE_ENABLED = True
 SELF_UPDATE_DISABLED_MESSAGE = DEFAULT_SELF_UPDATE_DISABLED_MESSAGE
 
 
+def _is_printable_ascii(value: str) -> bool:
+    """Return True when value contains only printable ASCII characters."""
+    return all(" " <= char <= "~" for char in value)
+
+
 def is_self_update_enabled() -> bool:
     """Return True when this build allows self-update."""
     return bool(SELF_UPDATE_ENABLED)
@@ -26,10 +31,17 @@ def is_self_update_enabled() -> bool:
 
 def get_self_update_disabled_message() -> str:
     """Return the guidance message shown when self-update is disabled."""
+    if SELF_UPDATE_DISABLED_MESSAGE is None:
+        return DEFAULT_SELF_UPDATE_DISABLED_MESSAGE
+
     message = str(SELF_UPDATE_DISABLED_MESSAGE).strip()
-    if message:
-        return message
-    return DEFAULT_SELF_UPDATE_DISABLED_MESSAGE
+    if not message:
+        return DEFAULT_SELF_UPDATE_DISABLED_MESSAGE
+
+    if not _is_printable_ascii(message):
+        return DEFAULT_SELF_UPDATE_DISABLED_MESSAGE
+
+    return message
 
 
 def get_update_hint_message() -> str:
