@@ -14,7 +14,7 @@ DEFAULT_SELF_UPDATE_DISABLED_MESSAGE = (
 #
 # Packagers can patch these constants during build, for example:
 # - SELF_UPDATE_ENABLED = False
-# - SELF_UPDATE_DISABLED_MESSAGE = "Update with: conda update apm"
+# - SELF_UPDATE_DISABLED_MESSAGE = "Update with: pixi update apm-cli"
 SELF_UPDATE_ENABLED = True
 SELF_UPDATE_DISABLED_MESSAGE = DEFAULT_SELF_UPDATE_DISABLED_MESSAGE
 

@@ -26,7 +26,7 @@ class TestUpdateCommand(unittest.TestCase):
     @patch("apm_cli.commands.update.is_self_update_enabled", return_value=False)
     @patch(
         "apm_cli.commands.update.get_self_update_disabled_message",
-        return_value="Update with: conda update -c conda-forge apm",
+        return_value="Update with: pixi update apm-cli",
     )
     @patch("subprocess.run")
     @patch("requests.get")
@@ -41,7 +41,7 @@ class TestUpdateCommand(unittest.TestCase):
         result = self.runner.invoke(cli, ["update"])
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Update with: conda update -c conda-forge apm", result.output)
+        self.assertIn("Update with: pixi update apm-cli", result.output)
         mock_get.assert_not_called()
         mock_run.assert_not_called()
 
