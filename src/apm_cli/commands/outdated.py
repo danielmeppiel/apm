@@ -66,11 +66,14 @@ def _check_marketplace_versions(dep, verbose):
     if not dep.discovered_via or not dep.marketplace_plugin_name:
         return None
 
-    current_ver = dep.version or dep.version_spec or ""
+    current_ver = getattr(dep, "resolved_version", None) or dep.version or ""
+    if not current_ver and dep.version_spec:
+        # Extract base version from spec - take first version-like number
+        match = re.search(r"(\d+\.\d+\.\d+)", dep.version_spec)
+        if match:
+            current_ver = match.group(1)
     if not current_ver:
         return None
-    # Strip range prefixes (^, ~, >=) when using version_spec as current
-    current_ver = current_ver.lstrip("^~>=<! ")
 
     try:
         from ..marketplace.client import fetch_or_cache
@@ -142,9 +145,37 @@ def _check_marketplace_versions(dep, verbose):
         if version_spec:
             constraints = _expand_specifier(version_spec)
             if constraints and not _version_matches(best_parsed, constraints):
-                latest_display = (
-                    f"{best_entry.version} (outside range {version_spec})"
-                )
+                # Find best version within the range
+                best_in_range = None
+                best_in_range_parsed = None
+                for entry in plugin.versions:
+                    try:
+                        parsed = _parse_semver(entry.version)
+                    except ValueError:
+                        continue
+                    if parsed > current_parsed and _version_matches(
+                        parsed, constraints,
+                    ):
+                        if (
+                            best_in_range_parsed is None
+                            or parsed > best_in_range_parsed
+                        ):
+                            best_in_range_parsed = parsed
+                            best_in_range = entry
+
+                if (
+                    best_in_range is not None
+                    and best_in_range_parsed is not None
+                    and best_in_range_parsed > current_parsed
+                ):
+                    latest_display = (
+                        f"{best_entry.version} (outside range {version_spec}; "
+                        f"best in range: {best_in_range.version})"
+                    )
+                else:
+                    latest_display = (
+                        f"{best_entry.version} (outside range {version_spec})"
+                    )
 
         extra = [e.version for e in plugin.versions[:10]] if verbose else []
         return (

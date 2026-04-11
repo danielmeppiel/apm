@@ -478,6 +478,15 @@ def view(package: str, field: Optional[str], global_: bool):
             display_versions(package, logger)
             return
 
+    # --- marketplace ref without explicit field -> show versions ---
+    from ..marketplace.resolver import parse_marketplace_ref
+
+    marketplace_ref = parse_marketplace_ref(package)
+    if marketplace_ref is not None:
+        plugin_name, marketplace_name, _version_spec = marketplace_ref
+        _display_marketplace_versions(plugin_name, marketplace_name, logger)
+        return
+
     # --- default: show local metadata ---
     scope = InstallScope.USER if global_ else InstallScope.PROJECT
     if global_:
