@@ -292,7 +292,7 @@ class TestCloneWithFallbackSshUrl:
             target = Path(tempfile.mkdtemp())
             try:
                 dl._clone_with_fallback(dep.repo_url, target, dep_ref=dep)
-            except (RuntimeError, Exception):
+            except (RuntimeError, GitCommandError):
                 pass
             finally:
                 import shutil
