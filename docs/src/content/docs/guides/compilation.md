@@ -57,7 +57,7 @@ target: copilot  # or vscode, claude, codex, or all
 ### How It Works
 
 1. **Primitives Discovery**: Scans `.apm/` and `.github/` directories for instructions, prompts, and agents
-2. **Dependency Merging**: Incorporates primitives from installed packages in `apm_modules/`
+2. **Dependency Merging**: Incorporates primitives from installed packages in `apm_modules/`; each package is scanned for both `.apm/` and `.github/` layouts (e.g. `.apm/instructions/` and `.github/instructions/` are both discovered)
 3. **Optimization**: Applies mathematical context optimization (see below)
 4. **Format Generation**: Outputs native files for each target agent format
 
