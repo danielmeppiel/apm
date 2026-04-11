@@ -421,6 +421,198 @@ class TestVersionSpec:
 
 
 # ---------------------------------------------------------------------------
+# Tests: resolved_version fallback (B6)
+# ---------------------------------------------------------------------------
+
+class TestResolvedVersionFallback:
+    """Tests for resolved_version priority in current version detection."""
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_resolved_version_used_when_available(
+        self, mock_get_mkt, mock_fetch,
+    ):
+        """resolved_version takes priority over dep.version."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin("skill-auth", ["1.2.0", "2.0.0"])],
+        )
+        dep = _marketplace_dep(version="1.0.0")
+        # resolved_version is more accurate (e.g., resolved from ^1.0.0)
+        dep.resolved_version = "1.2.0"  # type: ignore[attr-defined]
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, current, latest, status, _, _ = result
+        # Should use resolved_version, not dep.version
+        assert current == "1.2.0"
+        assert latest == "2.0.0"
+        assert status == "outdated"
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_falls_back_to_version_when_no_resolved(
+        self, mock_get_mkt, mock_fetch,
+    ):
+        """Without resolved_version, falls back to dep.version."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin("skill-auth", ["2.1.0", "3.0.0"])],
+        )
+        dep = _marketplace_dep(version="2.1.0")
+        # No resolved_version attribute set
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, current, _, _, _, _ = result
+        assert current == "2.1.0"
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_version_spec_regex_extraction(self, mock_get_mkt, mock_fetch):
+        """Extracts base version from version_spec via regex when version is None."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin("skill-auth", ["1.0.0", "2.0.0"])],
+        )
+        dep = _marketplace_dep(version=None)
+        dep.version_spec = "^1.0.0"  # type: ignore[attr-defined]
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, current, latest, status, _, _ = result
+        assert current == "1.0.0"
+        assert status == "outdated"
+        # 2.0.0 is outside ^1.0.0 range, so annotation is expected
+        assert "outside range" in latest
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_compound_version_spec_extraction(self, mock_get_mkt, mock_fetch):
+        """Extracts first version from compound spec like >=1.0.0,<2.0.0."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin("skill-auth", ["1.0.0", "1.5.0", "2.0.0"])],
+        )
+        dep = _marketplace_dep(version=None)
+        dep.version_spec = ">=1.0.0,<2.0.0"  # type: ignore[attr-defined]
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, current, _, status, _, _ = result
+        # Should extract "1.0.0" from ">=1.0.0,<2.0.0"
+        assert current == "1.0.0"
+        assert status == "outdated"
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_no_version_no_spec_returns_none(self, mock_get_mkt, mock_fetch):
+        """Returns None when neither version nor version_spec available."""
+        dep = _marketplace_dep(version=None)
+        # version_spec defaults to None on LockedDependency
+
+        result = _check_marketplace_versions(dep, verbose=False)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: best-in-range display (B5)
+# ---------------------------------------------------------------------------
+
+class TestBestInRange:
+    """Tests for showing best upgrade within version range."""
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_shows_best_in_range_when_available(
+        self, mock_get_mkt, mock_fetch,
+    ):
+        """When latest is outside range but upgrades exist within, show both."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin(
+                "skill-auth", ["1.0.0", "1.2.0", "1.5.0", "2.0.0"],
+            )],
+        )
+        dep = _marketplace_dep(version="1.0.0")
+        dep.version_spec = "^1.0.0"  # type: ignore[attr-defined]
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, current, latest, status, _, _ = result
+        assert current == "1.0.0"
+        assert status == "outdated"
+        # 2.0.0 is outside ^1.0.0, but 1.5.0 is the best within range
+        assert "outside range ^1.0.0" in latest
+        assert "best in range: 1.5.0" in latest
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_no_best_in_range_when_already_at_max(
+        self, mock_get_mkt, mock_fetch,
+    ):
+        """When at highest within range, no best-in-range annotation."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin("skill-auth", ["1.5.0", "2.0.0"])],
+        )
+        dep = _marketplace_dep(version="1.5.0")
+        dep.version_spec = "^1.0.0"  # type: ignore[attr-defined]
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, _, latest, status, _, _ = result
+        assert status == "outdated"
+        assert "outside range ^1.0.0" in latest
+        assert "best in range" not in latest
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_best_in_range_picks_highest(self, mock_get_mkt, mock_fetch):
+        """Best-in-range is the highest valid version, not just any."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin(
+                "skill-auth", ["1.0.0", "1.1.0", "1.3.0", "1.9.0", "2.0.0"],
+            )],
+        )
+        dep = _marketplace_dep(version="1.0.0")
+        dep.version_spec = "^1.0.0"  # type: ignore[attr-defined]
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, _, latest, _, _, _ = result
+        # Should pick 1.9.0 as best in range, not 1.1.0 or 1.3.0
+        assert "best in range: 1.9.0" in latest
+
+    @patch(_PATCH_FETCH)
+    @patch(_PATCH_GET_MKT)
+    def test_latest_within_range_no_annotation(self, mock_get_mkt, mock_fetch):
+        """When latest version IS within range, no outside-range annotation."""
+        mock_get_mkt.return_value = _make_source()
+        mock_fetch.return_value = _make_manifest(
+            plugins=[_make_plugin("skill-auth", ["1.0.0", "1.5.0"])],
+        )
+        dep = _marketplace_dep(version="1.0.0")
+        dep.version_spec = "^1.0.0"  # type: ignore[attr-defined]
+
+        result = _check_marketplace_versions(dep, verbose=False)
+
+        assert result is not None
+        _, _, latest, status, _, _ = result
+        assert status == "outdated"
+        assert latest == "1.5.0"
+        assert "outside range" not in latest
+
+
+# ---------------------------------------------------------------------------
 # Tests: result tuple shape
 # ---------------------------------------------------------------------------
 

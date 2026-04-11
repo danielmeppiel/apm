@@ -246,7 +246,7 @@ class TestShadowDetectionInResolver:
             ) as mock_detect,
             caplog.at_level(logging.WARNING, logger="apm_cli.marketplace.resolver"),
         ):
-            canonical, resolved = resolve_marketplace_plugin(
+            canonical, resolved, _ = resolve_marketplace_plugin(
                 "sec-check", "acme"
             )
 

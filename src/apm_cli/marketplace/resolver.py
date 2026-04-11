@@ -10,7 +10,7 @@ The ``@`` disambiguation rule:
 
 import logging
 import re
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 from ..utils.path_security import PathTraversalError, validate_path_segments
 from .client import fetch_or_cache
@@ -222,7 +222,8 @@ def resolve_marketplace_plugin(
     *,
     version_spec: Optional[str] = None,
     auth_resolver: Optional[object] = None,
-) -> Tuple[str, MarketplacePlugin]:
+    warning_handler: Optional[Callable[[str], None]] = None,
+) -> Tuple[str, MarketplacePlugin, Optional[str]]:
     """Resolve a marketplace plugin reference to a canonical string.
 
     When the plugin declares ``versions`` entries and a *version_spec* is
@@ -236,9 +237,18 @@ def resolve_marketplace_plugin(
             git ref.  ``None`` selects the latest published version when
             the plugin has ``versions``.
         auth_resolver: Optional ``AuthResolver`` instance.
+        warning_handler: Optional callback for security warnings.  When
+            provided, warnings (immutability violations, shadow detections)
+            are forwarded here instead of being emitted through Python
+            stdlib logging.  Callers typically pass
+            ``CommandLogger.warning`` so warnings render through the CLI
+            output system.
 
     Returns:
-        Tuple of (canonical ``owner/repo[#ref]`` string, resolved plugin).
+        Tuple of (canonical ``owner/repo[#ref]`` string, resolved plugin,
+        resolved version string or ``None``).  The version is only populated
+        when the plugin declares ``versions`` and the specifier matched a
+        published entry; raw git refs and unversioned plugins yield ``None``.
 
     Raises:
         MarketplaceNotFoundError: If the marketplace is not registered.
@@ -246,6 +256,14 @@ def resolve_marketplace_plugin(
         MarketplaceFetchError: If the marketplace cannot be fetched.
         ValueError: If the plugin source cannot be resolved.
     """
+
+    def _emit_warning(msg: str) -> None:
+        """Route warning through handler when available, else stdlib."""
+        if warning_handler is not None:
+            warning_handler(msg)
+        else:
+            logger.warning("%s", msg)
+
     source = get_marketplace_by_name(marketplace_name)
     manifest = fetch_or_cache(source, auth_resolver=auth_resolver)
 
@@ -259,6 +277,8 @@ def resolve_marketplace_plugin(
         marketplace_repo=source.repo,
         plugin_root=manifest.plugin_root,
     )
+
+    resolved_version: Optional[str] = None
 
     # ---- Version-aware ref override ----
     if plugin.versions:
@@ -281,6 +301,7 @@ def resolve_marketplace_plugin(
             entry = resolve_version(version_spec, plugin.versions)
             base = canonical.split("#", 1)[0]
             canonical = f"{base}#{entry.ref}"
+            resolved_version = entry.version
             logger.debug(
                 "Resolved version %s (%s) for %s@%s",
                 entry.version,
@@ -296,14 +317,16 @@ def resolve_marketplace_plugin(
                 marketplace_name, plugin_name, entry.version, entry.ref,
             )
             if previous_ref is not None:
-                logger.warning(
+                _emit_warning(
                     "Version %s of %s@%s ref changed: was '%s', now '%s'. "
-                    "This may indicate a ref swap attack.",
-                    entry.version,
-                    plugin_name,
-                    marketplace_name,
-                    previous_ref,
-                    entry.ref,
+                    "This may indicate a ref swap attack."
+                    % (
+                        entry.version,
+                        plugin_name,
+                        marketplace_name,
+                        previous_ref,
+                        entry.ref,
+                    )
                 )
             record_version_pin(
                 marketplace_name, plugin_name, entry.version, entry.ref,
@@ -328,14 +351,13 @@ def resolve_marketplace_plugin(
             plugin_name, marketplace_name, auth_resolver=auth_resolver
         )
         for shadow in shadows:
-            logger.warning(
+            _emit_warning(
                 "Plugin '%s' also found in marketplace '%s'. "
-                "Verify you are installing from the intended source.",
-                plugin_name,
-                shadow.marketplace_name,
+                "Verify you are installing from the intended source."
+                % (plugin_name, shadow.marketplace_name)
             )
     except Exception:
         # Shadow detection must never break installation
         logger.debug("Shadow detection failed", exc_info=True)
 
-    return canonical, plugin
+    return canonical, plugin, resolved_version
