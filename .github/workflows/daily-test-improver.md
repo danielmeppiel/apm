@@ -248,13 +248,15 @@ Maintain a single open issue titled `[Test Improver] Monthly Activity {YYYY}-{MM
 
 1. **Find the existing monthly issue (MANDATORY before any create)**:
    - Determine the current month string as `YYYY-MM` (e.g. `2025-04`).
-   - Search for open issues using: `gh search issues --repo <owner>/<repo> --state open --label testing "[Test Improver] Monthly Activity" --json number,title`
-   - From the results, find any issue whose title **contains** the current `YYYY-MM` string.
-   - **If a matching issue for the current month exists: UPDATE it. Do NOT create a new issue.**
+   - Search for open issues using: `gh search issues --repo ${{ github.repository }} --state open --label testing "[Test Improver] Monthly Activity" --json number,title`
+   - From the results, collect all open issues whose title **contains** the current `YYYY-MM` string.
+   - **If exactly one matching issue for the current month exists: UPDATE it. Do NOT create a new issue.**
+   - **If multiple matching issues for the current month exist: treat the lowest-numbered issue as the canonical monthly issue, UPDATE it, and close every other current-month match as a duplicate of that canonical issue.**
+   - Before closing duplicate current-month issues, read any maintainer comments on each of them and preserve any instructions or priorities in memory, then consolidate any still-relevant details into the canonical issue update.
    - If no matching issue exists for the current month but one exists for a previous month: close the old one, then create a new issue for the current month.
    - If no matching issue exists at all: create a new issue for the current month.
-   - Read any maintainer comments on the issue - they may contain instructions or priorities; note them in memory.
-   - **NEVER create a new issue if an open issue with the current month's `YYYY-MM` already exists in its title.**
+   - Read any maintainer comments on the canonical issue - they may contain instructions or priorities; note them in memory.
+   - **NEVER create a new issue if any open issue with the current month's `YYYY-MM` already exists in its title; update the canonical issue and close duplicates instead.**
 2. **Issue body format** - use **exactly** this structure:
 
    ```markdown
