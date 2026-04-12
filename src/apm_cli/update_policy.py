@@ -26,7 +26,7 @@ def _is_printable_ascii(value: str) -> bool:
 
 def is_self_update_enabled() -> bool:
     """Return True when this build allows self-update."""
-    return bool(SELF_UPDATE_ENABLED)
+    return SELF_UPDATE_ENABLED is True
 
 
 def get_self_update_disabled_message() -> str:
