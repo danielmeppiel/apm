@@ -5,6 +5,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from apm_cli.marketplace.errors import MarketplaceFetchError
 from apm_cli.marketplace.models import MarketplaceSource
@@ -313,6 +314,81 @@ class TestProxyAwareFetch:
         assert manifest.name == "Test"
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == "p1"
+
+
+class TestPrivateRepoAuthFallback:
+    """Regression test for #669: private repos return 404 without auth."""
+
+    def test_unauthenticated_404_triggers_auth_retry(self, tmp_path):
+        """An unauthenticated 404 should raise so try_with_fallback retries with a token."""
+        source = _make_source()
+        raw_data = {"name": "Private", "plugins": []}
+
+        mock_resolver = MagicMock()
+        mock_resolver.classify_host.return_value = MagicMock(api_base="https://api.github.com")
+
+        call_tokens = []
+
+        def mock_fallback(host, op, org=None, unauth_first=False):
+            # Simulate try_with_fallback: try unauth first, then auth on exception
+            assert unauth_first is True
+            try:
+                result = op(None, {})
+                call_tokens.append(None)
+                return result
+            except Exception:
+                call_tokens.append("real-token")
+                return op("real-token", {})
+
+        mock_resp_404 = MagicMock()
+        mock_resp_404.status_code = 404
+        mock_resp_404.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_resp_404)
+
+        mock_resp_ok = MagicMock()
+        mock_resp_ok.status_code = 200
+        mock_resp_ok.json.return_value = raw_data
+
+        call_count = [0]
+
+        def mock_get(url, headers=None, timeout=None):
+            call_count[0] += 1
+            if headers and headers.get("Authorization"):
+                return mock_resp_ok
+            return mock_resp_404
+
+        mock_resolver.try_with_fallback.side_effect = mock_fallback
+
+        with patch("apm_cli.deps.registry_proxy.RegistryConfig.from_env", return_value=None), \
+             patch("requests.get", side_effect=mock_get):
+            result = client_mod._fetch_file(source, "marketplace.json", auth_resolver=mock_resolver)
+
+        assert result == raw_data
+        assert "real-token" in call_tokens  # auth fallback was triggered
+
+    def test_authenticated_404_returns_none(self, tmp_path):
+        """A 404 with a valid token means the file genuinely doesn't exist."""
+        source = _make_source()
+
+        mock_resolver = MagicMock()
+        mock_resolver.classify_host.return_value = MagicMock(api_base="https://api.github.com")
+
+        def mock_fallback(host, op, org=None, unauth_first=False):
+            # Simulate auth-first (skipping unauth)
+            return op("real-token", {})
+
+        mock_resp_404 = MagicMock()
+        mock_resp_404.status_code = 404
+
+        def mock_get(url, headers=None, timeout=None):
+            return mock_resp_404
+
+        mock_resolver.try_with_fallback.side_effect = mock_fallback
+
+        with patch("apm_cli.deps.registry_proxy.RegistryConfig.from_env", return_value=None), \
+             patch("requests.get", side_effect=mock_get):
+            result = client_mod._fetch_file(source, "marketplace.json", auth_resolver=mock_resolver)
+
+        assert result is None  # file genuinely not found
 
 
 class TestCacheKey:

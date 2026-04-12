@@ -229,6 +229,11 @@ def _fetch_file(
             headers["Authorization"] = f"token {token}"
         resp = requests.get(url, headers=headers, timeout=30)
         if resp.status_code == 404:
+            if not token:
+                # Unauthenticated 404 may mean "private repo" (GitHub
+                # returns 404 instead of 403 to avoid leaking existence).
+                # Raise so try_with_fallback retries with credentials.
+                resp.raise_for_status()
             return None
         resp.raise_for_status()
         return resp.json()
