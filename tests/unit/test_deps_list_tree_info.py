@@ -372,3 +372,33 @@ class TestDepsInfoCommand(_DepsCmdBase):
                 result = self.runner.invoke(cli, ["deps", "info", "wforg/wfrepo"])
         assert result.exit_code == 0
         assert "No agent workflows found" in result.output
+
+    def test_deps_info_is_identical_to_apm_info(self):
+        """``apm deps info <pkg>`` and ``apm info <pkg>`` produce the same output.
+
+        This is the explicit backward-compatibility contract: the ``deps info``
+        alias must not diverge from the top-level ``info`` command.
+        """
+        with self._chdir_tmp() as tmp:
+            self._make_package(
+                tmp,
+                "compatorg",
+                "compatrepo",
+                version="3.0.0",
+                description="Compat test package",
+                author="BackCompatAuthor",
+            )
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result_deps = self.runner.invoke(
+                    cli, ["deps", "info", "compatorg/compatrepo"]
+                )
+            with _force_rich_fallback():
+                result_info = self.runner.invoke(
+                    cli, ["info", "compatorg/compatrepo"]
+                )
+
+        assert result_deps.exit_code == 0
+        assert result_info.exit_code == 0
+        # The output must be identical (same handler, same display logic)
+        assert result_deps.output == result_info.output
