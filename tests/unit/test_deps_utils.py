@@ -43,6 +43,10 @@ def _make_apm_dir(pkg_dir: Path) -> Path:
     return apm
 
 
+# Intentionally unparsable YAML used to exercise error-handling paths.
+_MALFORMED_YML = ":\n  - :\n    ::: bad"
+
+
 # ==================================================================
 # _is_nested_under_package
 # ==================================================================
@@ -359,7 +363,7 @@ class TestGetPackageDisplayInfo:
 
     def test_malformed_apm_yml(self, tmp_path):
         """Returns error info for unparsable apm.yml."""
-        (tmp_path / APM_YML_FILENAME).write_text(":\n  - :\n    ::: bad")
+        (tmp_path / APM_YML_FILENAME).write_text(_MALFORMED_YML)
         info = _get_package_display_info(tmp_path)
         assert info["version"] == "error"
         assert f"{tmp_path.name}@error" == info["display_name"]
@@ -426,7 +430,7 @@ class TestGetDetailedPackageInfo:
     def test_error_handling(self, tmp_path):
         """Error path returns safe fallback dict."""
         # Write an apm.yml that will cause APMPackage.from_apm_yml to fail
-        (tmp_path / APM_YML_FILENAME).write_text(":\n  - :\n    ::: bad")
+        (tmp_path / APM_YML_FILENAME).write_text(_MALFORMED_YML)
         info = _get_detailed_package_info(tmp_path)
         assert info["version"] == "error"
         assert "Error loading package" in info["description"]

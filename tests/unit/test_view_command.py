@@ -468,7 +468,7 @@ class TestLookupLockfileRef(_InfoCmdBase):
 
         with patch("apm_cli.deps.lockfile.LockFile") as mock_lf, \
              patch("apm_cli.deps.lockfile.get_lockfile_path"), \
-             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):
+             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):  # noqa: patched to prevent real I/O
             mock_lf.read.return_value = mock_lockfile
             ref, commit = _lookup_lockfile_ref("org/repo", Path("/fake"))
         assert ref == "v1.0.0"
@@ -489,7 +489,7 @@ class TestLookupLockfileRef(_InfoCmdBase):
 
         with patch("apm_cli.deps.lockfile.LockFile") as mock_lf, \
              patch("apm_cli.deps.lockfile.get_lockfile_path"), \
-             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):
+             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):  # noqa: patched to prevent real I/O
             mock_lf.read.return_value = mock_lockfile
             ref, commit = _lookup_lockfile_ref("org/repo", Path("/fake"))
         assert ref == "main"
@@ -504,7 +504,7 @@ class TestLookupLockfileRef(_InfoCmdBase):
 
         with patch("apm_cli.deps.lockfile.LockFile") as mock_lf, \
              patch("apm_cli.deps.lockfile.get_lockfile_path"), \
-             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):
+             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):  # noqa: patched to prevent real I/O
             mock_lf.read.return_value = mock_lockfile
             ref, commit = _lookup_lockfile_ref("nomatch", Path("/fake"))
         assert ref == ""
@@ -528,7 +528,7 @@ class TestLookupLockfileRef(_InfoCmdBase):
 
         with patch("apm_cli.deps.lockfile.LockFile") as mock_lf, \
              patch("apm_cli.deps.lockfile.get_lockfile_path"), \
-             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):
+             patch("apm_cli.deps.lockfile.migrate_lockfile_if_needed"):  # noqa: patched to prevent real I/O
             mock_lf.read.return_value = None
             ref, commit = _lookup_lockfile_ref("org/repo", Path("/fake"))
         assert ref == ""
