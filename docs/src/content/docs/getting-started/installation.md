@@ -45,9 +45,12 @@ GITHUB_URL=https://github.corp.com VERSION=v1.2.3 sh install.sh
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APM_INSTALL_DIR` | `/usr/local/bin` | Directory for the `apm` symlink |
+| `APM_LIB_DIR` | `$(dirname APM_INSTALL_DIR)/lib/apm` | Directory for the full binary bundle |
 | `GITHUB_URL` | `https://github.com` | Base URL for downloads (mirrors, GHE) |
-| `REPO` | `microsoft/apm` | GitHub repository |
+| `APM_REPO` | `microsoft/apm` | GitHub repository |
 | `VERSION` | *(latest)* | Pin a specific release (skips GitHub API) |
+
+> **Note:** When using `GITHUB_URL` for a GitHub Enterprise or air-gapped mirror, set `VERSION` as well. The GitHub API call for latest-release discovery still targets `api.github.com`; `VERSION` bypasses it entirely.
 
 ## Package managers
 

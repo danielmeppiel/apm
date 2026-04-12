@@ -19,7 +19,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration (all overridable via environment variables)
-REPO="${REPO:-microsoft/apm}"
+APM_REPO="${APM_REPO:-microsoft/apm}"
 APM_INSTALL_DIR="${APM_INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="apm"
 GITHUB_URL="${GITHUB_URL:-https://github.com}"
@@ -124,7 +124,7 @@ try_pip_installation() {
     
     # Try to install
     if $PIP_CMD install --user apm-cli; then
-        echo -e "${GREEN}✓ APM installed successfully via pip!${NC}"
+        echo -e "${GREEN}[+]APM installed successfully via pip!${NC}"
         
         # Check if apm is now available
         if command -v apm >/dev/null 2>&1; then
@@ -132,20 +132,20 @@ try_pip_installation() {
             echo -e "${BLUE}Version: $INSTALLED_VERSION${NC}"
             echo -e "${BLUE}Location: $(which apm)${NC}"
         else
-            echo -e "${YELLOW}⚠ APM installed but not found in PATH${NC}"
+            echo -e "${YELLOW}[!]APM installed but not found in PATH${NC}"
             echo "You may need to add ~/.local/bin to your PATH:"
             echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
         fi
         
         echo ""
-        echo -e "${GREEN}🎉 Installation complete!${NC}"
+        echo -e "${GREEN}Installation complete!${NC}"
         echo ""
         echo -e "${BLUE}Quick start:${NC}"
         echo "  apm init my-app          # Create a new APM project"
         echo "  cd my-app && apm install # Install dependencies"
         echo "  apm run                  # Run your first prompt"
         echo ""
-        echo -e "${BLUE}Documentation:${NC} $GITHUB_URL/$REPO"
+        echo -e "${BLUE}Documentation:${NC} $GITHUB_URL/$APM_REPO"
         return 0
     else
         echo -e "${RED}Error: pip installation failed${NC}"
@@ -162,7 +162,7 @@ if [ "$PLATFORM" = "linux" ]; then
     if [ -n "$GLIBC_VERSION" ]; then
         # Compare versions
         if [ "$(printf '%s\n' "$REQUIRED_GLIBC" "$GLIBC_VERSION" | sort -V | head -n1)" != "$REQUIRED_GLIBC" ]; then
-            echo -e "${YELLOW}⚠ Compatibility Issue Detected${NC}"
+            echo -e "${YELLOW}[!]Compatibility Issue Detected${NC}"
             echo -e "${YELLOW}Your glibc version: $GLIBC_VERSION${NC}"
             echo -e "${YELLOW}Required version: $REQUIRED_GLIBC or newer${NC}"
             echo ""
@@ -182,7 +182,7 @@ if [ "$PLATFORM" = "linux" ]; then
                 echo "To install APM, you need either:"
                 echo "  1. Python 3.9+ and pip: pip install --user apm-cli"
                 echo "  2. A system with glibc 2.35+ to use the prebuilt binary"
-                echo "  3. Build from source: git clone $GITHUB_URL/$REPO.git && cd apm && uv sync && uv run pip install -e ."
+                echo "  3. Build from source: git clone $GITHUB_URL/$APM_REPO.git && cd apm && uv sync && uv run pip install -e ."
                 echo ""
                 echo "To install Python 3.9+:"
                 echo "  Ubuntu/Debian: sudo apt-get update && sudo apt-get install python3 python3-pip"
@@ -196,7 +196,7 @@ fi
 
 # Detect if running in a container and check compatibility
 if [ -f "/.dockerenv" ] || [ -f "/run/.containerenv" ] || grep -q "/docker/" /proc/1/cgroup 2>/dev/null; then
-    echo -e "${YELLOW}⚠ Container/Dev Container environment detected${NC}"
+    echo -e "${YELLOW}[!]Container/Dev Container environment detected${NC}"
     echo -e "${YELLOW}Note: PyInstaller binaries may have compatibility issues in containers.${NC}"
     echo -e "${YELLOW}If installation fails, consider using: pip install --user apm-cli${NC}"
     echo ""
@@ -217,7 +217,7 @@ fi
 # When VERSION is provided, skip GitHub API and compute download URL directly
 if [ -n "$VERSION" ]; then
     TAG_NAME="$VERSION"
-    DOWNLOAD_URL="$GITHUB_URL/$REPO/releases/download/$TAG_NAME/$DOWNLOAD_BINARY"
+    DOWNLOAD_URL="$GITHUB_URL/$APM_REPO/releases/download/$TAG_NAME/$DOWNLOAD_BINARY"
     echo -e "${GREEN}Version: $TAG_NAME${NC}"
     echo -e "${BLUE}Download URL: $DOWNLOAD_URL${NC}"
 fi
@@ -227,7 +227,7 @@ if [ -z "$TAG_NAME" ]; then
 echo -e "${YELLOW}Fetching latest release information...${NC}"
 
 # Try to fetch release info without authentication first (for public repos)
-LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases/latest")
+LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$APM_REPO/releases/latest")
 CURL_EXIT_CODE=$?
 
 # Check if the response indicates authentication is required (private repo)
@@ -254,7 +254,7 @@ if [ $CURL_EXIT_CODE -ne 0 ] || [ -z "$LATEST_RELEASE" ] || echo "$LATEST_RELEAS
     fi
 
     # Retry with authentication
-    LATEST_RELEASE=$(curl -s -H "Authorization: token $AUTH_HEADER_VALUE" "https://api.github.com/repos/$REPO/releases/latest")
+    LATEST_RELEASE=$(curl -s -H "Authorization: token $AUTH_HEADER_VALUE" "https://api.github.com/repos/$APM_REPO/releases/latest")
     CURL_EXIT_CODE=$?
 fi
 
@@ -279,7 +279,7 @@ fi
 # Extract tag name and download URLs
 # Use grep -o to extract just the matching portion (handles single-line JSON)
 TAG_NAME=$(echo "$LATEST_RELEASE" | grep -o '"tag_name": *"[^"]*"' | awk -F'"' '{print $4}')
-DOWNLOAD_URL="$GITHUB_URL/$REPO/releases/download/$TAG_NAME/$DOWNLOAD_BINARY"
+DOWNLOAD_URL="$GITHUB_URL/$APM_REPO/releases/download/$TAG_NAME/$DOWNLOAD_BINARY"
 
 # Extract API asset URL for private repository downloads
 ASSET_URL=$(echo "$LATEST_RELEASE" | grep -B 3 "\"name\": \"$DOWNLOAD_BINARY\"" | grep -o '"url": *"[^"]*"' | awk -F'"' '{print $4}')
@@ -310,7 +310,7 @@ echo -e "${YELLOW}Downloading APM...${NC}"
 
 # Try downloading without authentication first (for public repos)
 if curl -L --fail --silent --show-error "$DOWNLOAD_URL" -o "$TMP_DIR/$DOWNLOAD_BINARY"; then
-    echo -e "${GREEN}✓ Download successful${NC}"
+    echo -e "${GREEN}[+]Download successful${NC}"
 else
     # If unauthenticated download fails, try with authentication if available
     if [ -n "$AUTH_HEADER_VALUE" ]; then
@@ -323,11 +323,11 @@ else
                 -H "Authorization: token $AUTH_HEADER_VALUE" \
                 -H "Accept: application/octet-stream" \
                 "$ASSET_URL" -o "$TMP_DIR/$DOWNLOAD_BINARY"; then
-                echo -e "${GREEN}✓ Download successful via GitHub API${NC}"
+                echo -e "${GREEN}[+]Download successful via GitHub API${NC}"
             else
                 echo -e "${BLUE}GitHub API download failed, trying direct URL with auth...${NC}"
                 if curl -L --fail --silent --show-error -H "Authorization: token $AUTH_HEADER_VALUE" "$DOWNLOAD_URL" -o "$TMP_DIR/$DOWNLOAD_BINARY"; then
-                    echo -e "${GREEN}✓ Download successful with authentication${NC}"
+                    echo -e "${GREEN}[+]Download successful with authentication${NC}"
                 else
                     echo -e "${RED}Error: Failed to download APM CLI even with authentication${NC}"
                     echo "Direct URL: $DOWNLOAD_URL"
@@ -340,7 +340,7 @@ else
                     echo ""
                     echo "For private repositories, ensure your token has the required permissions."
                     echo "You can try installing from source instead:"
-                    echo "  git clone $GITHUB_URL/$REPO.git"
+                    echo "  git clone $GITHUB_URL/$APM_REPO.git"
                     echo "  cd apm && uv sync && uv run pip install -e ."
                     exit 1
                 fi
@@ -348,7 +348,7 @@ else
         else
             echo -e "${BLUE}No API URL available, trying direct URL with auth...${NC}"
             if curl -L --fail --silent --show-error -H "Authorization: token $AUTH_HEADER_VALUE" "$DOWNLOAD_URL" -o "$TMP_DIR/$DOWNLOAD_BINARY"; then
-                echo -e "${GREEN}✓ Download successful with authentication${NC}"
+                echo -e "${GREEN}[+]Download successful with authentication${NC}"
             else
                 echo -e "${RED}Error: Failed to download APM CLI even with authentication${NC}"
                 echo "URL: $DOWNLOAD_URL"
@@ -360,7 +360,7 @@ else
                 echo ""
                 echo "For private repositories, ensure your token has the required permissions."
                 echo "You can try installing from source instead:"
-                echo "  git clone $GITHUB_URL/$REPO.git"
+                echo "  git clone $GITHUB_URL/$APM_REPO.git"
                 echo "  cd apm && uv sync && uv run pip install -e ."
                 exit 1
             fi
@@ -381,7 +381,7 @@ else
         echo "    GITHUB_APM_PAT=\$GITHUB_APM_PAT sh"
         echo ""
         echo "You can also try installing from source:"
-        echo "  git clone $GITHUB_URL/$REPO.git"
+        echo "  git clone $GITHUB_URL/$APM_REPO.git"
         echo "  cd apm && uv sync && uv run pip install -e ."
         exit 1
     fi
@@ -390,7 +390,7 @@ fi
 # Extract binary from tar.gz
 echo -e "${YELLOW}Extracting binary...${NC}"
 if tar -xzf "$TMP_DIR/$DOWNLOAD_BINARY" -C "$TMP_DIR"; then
-    echo -e "${GREEN}✓ Extraction successful${NC}"
+    echo -e "${GREEN}[+]Extraction successful${NC}"
 else
     echo -e "${RED}Error: Failed to extract binary from archive${NC}"
     exit 1
@@ -411,7 +411,7 @@ else
 fi
 
 if [ $BINARY_TEST_EXIT_CODE -eq 0 ]; then
-    echo -e "${GREEN}✓ Binary test successful${NC}"
+    echo -e "${GREEN}[+]Binary test successful${NC}"
 else
     echo -e "${RED}Error: Downloaded binary failed to run${NC}"
     echo -e "${YELLOW}Exit code: $BINARY_TEST_EXIT_CODE${NC}"
@@ -421,7 +421,7 @@ else
     
     # Try to provide helpful context
     if echo "$BINARY_TEST_OUTPUT" | grep -q "GLIBC"; then
-        echo -e "${YELLOW}⚠ glibc version incompatibility detected${NC}"
+        echo -e "${YELLOW}[!]glibc version incompatibility detected${NC}"
         if [ -n "$GLIBC_VERSION" ]; then
             echo "Your system has glibc $GLIBC_VERSION but the binary requires glibc 2.35+"
         fi
@@ -463,7 +463,7 @@ else
     echo "2. Homebrew (macOS/Linux): brew install microsoft/apm/apm"
     echo ""
     echo "3. From source:"
-    echo "   git clone $GITHUB_URL/$REPO.git"
+    echo "   git clone $GITHUB_URL/$APM_REPO.git"
     echo "   cd apm && uv sync && uv run pip install -e ."
     echo ""
     
@@ -473,7 +473,7 @@ else
         echo ""
     fi
     
-    echo "Need help? Create an issue at: $GITHUB_URL/$REPO/issues"
+    echo "Need help? Create an issue at: $GITHUB_URL/$APM_REPO/issues"
     exit 1
 fi
 
@@ -512,23 +512,23 @@ fi
 # Verify installation
 if command -v apm >/dev/null 2>&1; then
     INSTALLED_VERSION=$(apm --version 2>/dev/null || echo "unknown")
-    echo -e "${GREEN}✓ APM installed successfully!${NC}"
+    echo -e "${GREEN}[+]APM installed successfully!${NC}"
     echo -e "${BLUE}Version: $INSTALLED_VERSION${NC}"
     echo -e "${BLUE}Location: $APM_INSTALL_DIR/$BINARY_NAME -> $APM_LIB_DIR/$BINARY_NAME${NC}"
 else
-    echo -e "${YELLOW}⚠ APM installed but not found in PATH${NC}"
+    echo -e "${YELLOW}[!]APM installed but not found in PATH${NC}"
     echo "You may need to add $APM_INSTALL_DIR to your PATH environment variable."
     echo "Add this line to your shell profile (.bashrc, .zshrc, etc.):"
     echo "  export PATH=\"$APM_INSTALL_DIR:\$PATH\""
 fi
 
 echo ""
-echo -e "${GREEN}🎉 Installation complete!${NC}"
+echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo -e "${BLUE}Quick start:${NC}"
 echo "  apm init my-app          # Create a new APM project"
 echo "  cd my-app && apm install # Install dependencies"
 echo "  apm run                  # Run your first prompt"
 echo ""
-echo -e "${BLUE}Documentation:${NC} $GITHUB_URL/$REPO"
-echo -e "${BLUE}Need help?${NC} Create an issue at $GITHUB_URL/$REPO/issues"
+echo -e "${BLUE}Documentation:${NC} $GITHUB_URL/$APM_REPO"
+echo -e "${BLUE}Need help?${NC} Create an issue at $GITHUB_URL/$APM_REPO/issues"
