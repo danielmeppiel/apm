@@ -1,7 +1,8 @@
 """Tests for URL-based marketplace source and Agent Skills index parser.
 
-Covers Step 1 (MarketplaceSource URL extension) and Step 4
-(parse_agent_skills_index) from the issue #676 implementation plan.
+Covers MarketplaceSource URL fields, serialization round-trips, and the
+parse_agent_skills_index() parser including schema enforcement, skill name
+validation, and source type handling.
 """
 
 import pytest
@@ -33,7 +34,7 @@ _SINGLE_SKILL_INDEX = {
 
 
 # ---------------------------------------------------------------------------
-# MarketplaceSource — URL extension (Step 1)
+# MarketplaceSource — URL fields
 # ---------------------------------------------------------------------------
 
 
@@ -121,6 +122,23 @@ class TestMarketplaceSourceURL:
         src = MarketplaceSource.from_dict(d)
         assert src.source_type == "github"
 
+    def test_github_from_dict_explicit_source_type(self):
+        """Explicit source_type='github' in dict is honoured by from_dict."""
+        d = {"name": "acme", "owner": "acme-org", "repo": "plugins", "source_type": "github"}
+        src = MarketplaceSource.from_dict(d)
+        assert src.source_type == "github"
+        assert src.owner == "acme-org"
+
+    def test_url_source_to_dict_omits_github_only_fields(self):
+        """URL to_dict must not include host, branch, or path."""
+        src = MarketplaceSource(
+            name="x", source_type="url", url="https://example.com"
+        )
+        d = src.to_dict()
+        assert "host" not in d
+        assert "branch" not in d
+        assert "path" not in d
+
     # --- roundtrip ---
 
     def test_url_source_roundtrip(self):
@@ -146,7 +164,7 @@ class TestMarketplaceSourceURL:
 
 
 # ---------------------------------------------------------------------------
-# parse_agent_skills_index (Step 4)
+# parse_agent_skills_index
 # ---------------------------------------------------------------------------
 
 
@@ -222,6 +240,12 @@ class TestParseAgentSkillsIndex:
         manifest = parse_agent_skills_index(data, "test")
         assert len(manifest.plugins) == 0
 
+    def test_missing_skills_key_returns_empty_manifest(self):
+        """No 'skills' key present — returns an empty manifest rather than raising."""
+        data = {"$schema": _KNOWN_SCHEMA}
+        manifest = parse_agent_skills_index(data, "test")
+        assert len(manifest.plugins) == 0
+
     # --- $schema enforcement ---
 
     def test_known_schema_accepted(self):
@@ -246,74 +270,38 @@ class TestParseAgentSkillsIndex:
 
     # --- skill name validation (RFC: 1-64 chars, lowercase alnum + hyphens) ---
 
-    def test_valid_name_simple(self):
+    @pytest.mark.parametrize("name", [
+        "my-skill",
+        "skill-v2-final",
+        "a",
+        "a" * 64,
+        "123",
+    ])
+    def test_valid_name_accepted(self, name):
         data = {
             "$schema": _KNOWN_SCHEMA,
             "skills": [
-                {"name": "my-skill", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
+                {"name": name, "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
             ],
         }
         assert len(parse_agent_skills_index(data, "t").plugins) == 1
 
-    def test_valid_name_with_numbers(self):
+    @pytest.mark.parametrize("name", [
+        "MySkill",
+        "bad name",
+        "-bad",
+        "bad-",
+        "bad--name",
+        "a" * 65,
+        "my_skill",
+        "my.skill",
+        "",
+    ])
+    def test_invalid_name_skipped(self, name):
         data = {
             "$schema": _KNOWN_SCHEMA,
             "skills": [
-                {"name": "skill-v2-final", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
-            ],
-        }
-        assert len(parse_agent_skills_index(data, "t").plugins) == 1
-
-    def test_invalid_name_uppercase_skipped(self):
-        data = {
-            "$schema": _KNOWN_SCHEMA,
-            "skills": [
-                {"name": "MySkill", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
-            ],
-        }
-        assert len(parse_agent_skills_index(data, "t").plugins) == 0
-
-    def test_invalid_name_spaces_skipped(self):
-        data = {
-            "$schema": _KNOWN_SCHEMA,
-            "skills": [
-                {"name": "bad name", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
-            ],
-        }
-        assert len(parse_agent_skills_index(data, "t").plugins) == 0
-
-    def test_invalid_name_leading_hyphen_skipped(self):
-        data = {
-            "$schema": _KNOWN_SCHEMA,
-            "skills": [
-                {"name": "-bad", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
-            ],
-        }
-        assert len(parse_agent_skills_index(data, "t").plugins) == 0
-
-    def test_invalid_name_trailing_hyphen_skipped(self):
-        data = {
-            "$schema": _KNOWN_SCHEMA,
-            "skills": [
-                {"name": "bad-", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
-            ],
-        }
-        assert len(parse_agent_skills_index(data, "t").plugins) == 0
-
-    def test_invalid_name_consecutive_hyphens_skipped(self):
-        data = {
-            "$schema": _KNOWN_SCHEMA,
-            "skills": [
-                {"name": "bad--name", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
-            ],
-        }
-        assert len(parse_agent_skills_index(data, "t").plugins) == 0
-
-    def test_invalid_name_too_long_skipped(self):
-        data = {
-            "$schema": _KNOWN_SCHEMA,
-            "skills": [
-                {"name": "a" * 65, "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
+                {"name": name, "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
             ],
         }
         assert len(parse_agent_skills_index(data, "t").plugins) == 0
@@ -341,3 +329,215 @@ class TestParseAgentSkillsIndex:
         manifest = parse_agent_skills_index(data, "test")
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == "good-skill"
+
+    # --- non-string / non-dict entry handling ---
+
+    def test_non_string_name_skipped(self):
+        """Integer name field must not raise AttributeError (bug guard)."""
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": 42, "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
+            ],
+        }
+        assert len(parse_agent_skills_index(data, "t").plugins) == 0
+
+    def test_non_dict_entry_in_skills_skipped(self):
+        """Non-dict items in skills list are silently skipped."""
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                "not-a-dict",
+                {"name": "good-skill", "type": "skill-md", "url": "/a", "digest": _VALID_DIGEST},
+            ],
+        }
+        manifest = parse_agent_skills_index(data, "t")
+        assert len(manifest.plugins) == 1
+
+    def test_skills_not_a_list_returns_empty(self):
+        """If 'skills' is not a list, parser warns and returns empty manifest."""
+        data = {"$schema": _KNOWN_SCHEMA, "skills": {"name": "oops"}}
+        manifest = parse_agent_skills_index(data, "t")
+        assert len(manifest.plugins) == 0
+
+    # --- source_name / manifest.name ---
+
+    def test_empty_source_name_yields_unknown_manifest_name(self):
+        """Empty source_name falls back to 'unknown' in manifest.name."""
+        manifest = parse_agent_skills_index(_SINGLE_SKILL_INDEX, "")
+        assert manifest.name == "unknown"
+
+    # --- optional entry fields default to empty string ---
+
+    def test_missing_description_defaults_to_empty(self):
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
+            ],
+        }
+        p = parse_agent_skills_index(data, "t").plugins[0]
+        assert p.description == ""
+
+    def test_missing_url_in_entry_defaults_to_empty(self):
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "skill-md", "digest": _VALID_DIGEST}
+            ],
+        }
+        p = parse_agent_skills_index(data, "t").plugins[0]
+        assert p.source["url"] == ""
+
+    def test_entry_without_digest_is_skipped(self):
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "skill-md", "url": "/x"}
+            ],
+        }
+        assert len(parse_agent_skills_index(data, "t").plugins) == 0
+
+    # --- duplicate names ---
+
+    def test_duplicate_skill_names_both_accepted(self):
+        """Parser does not deduplicate; both entries are returned."""
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "skill-md", "url": "/a", "digest": _VALID_DIGEST},
+                {"name": "my-skill", "type": "archive", "url": "/b.tar.gz", "digest": _VALID_DIGEST},
+            ],
+        }
+        manifest = parse_agent_skills_index(data, "t")
+        assert len(manifest.plugins) == 2
+
+
+# ---------------------------------------------------------------------------
+# MarketplaceManifest — source provenance fields (t5-test-04)
+# ---------------------------------------------------------------------------
+
+
+class TestManifestSourceFields:
+    """MarketplaceManifest must carry source_url and source_digest for provenance."""
+
+    def test_parse_agent_skills_index_default_source_fields_are_empty(self):
+        manifest = parse_agent_skills_index(_SINGLE_SKILL_INDEX, "test")
+        assert manifest.source_url == ""
+        assert manifest.source_digest == ""
+
+    def test_parse_agent_skills_index_accepts_source_url_kwarg(self):
+        manifest = parse_agent_skills_index(
+            _SINGLE_SKILL_INDEX, "test",
+            source_url="https://example.com/.well-known/agent-skills/index.json",
+        )
+        assert manifest.source_url == "https://example.com/.well-known/agent-skills/index.json"
+
+    def test_parse_agent_skills_index_accepts_source_digest_kwarg(self):
+        manifest = parse_agent_skills_index(
+            _SINGLE_SKILL_INDEX, "test",
+            source_digest="sha256:" + "a" * 64,
+        )
+        assert manifest.source_digest == "sha256:" + "a" * 64
+
+
+# ---------------------------------------------------------------------------
+# Digest format validation (t5-test-06)
+# ---------------------------------------------------------------------------
+
+
+class TestDigestFormatValidation:
+    """parse_agent_skills_index must skip entries with malformed digest values."""
+
+    def test_valid_digest_entry_is_included(self):
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "ok-skill", "type": "skill-md", "url": "/x", "digest": _VALID_DIGEST}
+            ],
+        }
+        assert len(parse_agent_skills_index(data, "t").plugins) == 1
+
+    @pytest.mark.parametrize("digest", [
+        "md5:abc123",
+        "sha256:abc",
+        "SHA256:" + "a" * 64,
+    ])
+    def test_malformed_digest_entry_skipped(self, digest):
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "bad-skill", "type": "skill-md", "url": "/x", "digest": digest}
+            ],
+        }
+        assert len(parse_agent_skills_index(data, "t").plugins) == 0
+
+    def test_missing_digest_entry_skipped(self):
+        """A skill entry with no digest is skipped — digest is required by the RFC."""
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "no-digest", "type": "skill-md", "url": "/x"}
+            ],
+        }
+        assert len(parse_agent_skills_index(data, "t").plugins) == 0
+
+    def test_valid_and_invalid_digest_only_valid_included(self):
+        """Mixed entries: only those with a valid digest are returned."""
+        data = {
+            "$schema": _KNOWN_SCHEMA,
+            "skills": [
+                {"name": "good", "type": "skill-md", "url": "/a", "digest": _VALID_DIGEST},
+                {"name": "bad", "type": "skill-md", "url": "/b", "digest": "sha256:short"},
+            ],
+        }
+        plugins = parse_agent_skills_index(data, "t").plugins
+        assert len(plugins) == 1
+        assert plugins[0].name == "good"
+
+
+# ---------------------------------------------------------------------------
+# E2 / T11: warning level for invalid skill name entries
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidNameLogLevel:
+    """parse_agent_skills_index must emit WARNING (not DEBUG) for invalid names."""
+
+    def test_invalid_names_emit_warning_not_debug(self, caplog):
+        import logging
+
+        _V = "sha256:" + "a" * 64
+        data = {
+            "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+            "skills": [
+                {"name": "INVALID_UPPER", "type": "skill-md", "url": "/a", "digest": _V},
+                {"name": "also-invalid!", "type": "skill-md", "url": "/b", "digest": _V},
+                {"name": "valid-skill", "type": "skill-md", "url": "/c", "digest": _V},
+            ],
+        }
+        with caplog.at_level(logging.WARNING, logger="apm_cli.marketplace.models"):
+            result = parse_agent_skills_index(data, "test-src")
+
+        assert len(result.plugins) == 1
+        assert result.plugins[0].name == "valid-skill"
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warning_messages) == 2
+
+    def test_structural_issues_do_not_produce_warnings(self, caplog):
+        """Non-dict entries and missing name are structural noise — keep at DEBUG."""
+        import logging
+
+        data = {
+            "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+            "skills": [
+                "not-a-dict",
+                None,
+            ],
+        }
+        with caplog.at_level(logging.WARNING, logger="apm_cli.marketplace.models"):
+            result = parse_agent_skills_index(data, "test-src")
+
+        assert len(result.plugins) == 0
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warning_messages) == 0

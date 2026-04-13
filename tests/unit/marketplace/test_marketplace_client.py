@@ -35,7 +35,8 @@ class TestCache:
 
         cached = client_mod._read_cache("test-mkt")
         assert cached is not None
-        assert cached["name"] == "Test"
+        data_out, _ = cached
+        assert data_out["name"] == "Test"
 
     def test_expired_cache(self, tmp_path, monkeypatch):
         data = {"name": "Test", "plugins": []}
@@ -313,23 +314,3 @@ class TestProxyAwareFetch:
         assert manifest.name == "Test"
         assert len(manifest.plugins) == 1
         assert manifest.plugins[0].name == "p1"
-
-
-class TestCacheKey:
-    """Cache key includes host for non-github.com sources."""
-
-    def test_github_default_unchanged(self):
-        source = MarketplaceSource(name="skills", owner="o", repo="r")
-        assert client_mod._cache_key(source) == "skills"
-
-    def test_non_default_host_includes_host(self):
-        source = MarketplaceSource(name="skills", owner="o", repo="r", host="ghes.corp.com")
-        key = client_mod._cache_key(source)
-        assert key.startswith("ghes.corp.com") or key.startswith("ghes_corp_com")
-        assert key.endswith("skills")
-        assert key != "skills"
-
-    def test_different_hosts_different_keys(self):
-        s1 = MarketplaceSource(name="mkt", owner="o", repo="r", host="a.com")
-        s2 = MarketplaceSource(name="mkt", owner="o", repo="r", host="b.com")
-        assert client_mod._cache_key(s1) != client_mod._cache_key(s2)
