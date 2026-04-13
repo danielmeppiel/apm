@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Agent Skills Discovery RFC v0.2.0 — the only schema version we accept.
+# Agent Skills Discovery RFC v0.2.0 -- the only schema version we accept.
 _AGENT_SKILLS_SCHEMA = "https://schemas.agentskills.io/discovery/0.2.0/schema.json"
 
 # RFC skill-name rule: 1-64 chars, lowercase alphanumeric + hyphens,
@@ -27,8 +27,8 @@ class MarketplaceSource:
     Stored in ``~/.apm/marketplaces.json``.
 
     Two source types are supported:
-    - ``"github"`` (default) — a GitHub-hosted marketplace.json index.
-    - ``"url"`` — an arbitrary HTTPS Agent Skills discovery endpoint.
+    - ``"github"`` (default) -- a GitHub-hosted marketplace.json index.
+    - ``"url"`` -- an arbitrary HTTPS Agent Skills discovery endpoint.
     """
 
     name: str  # Display name (e.g., "acme-tools")
@@ -72,10 +72,15 @@ class MarketplaceSource:
         """Deserialize from JSON dict."""
         source_type = data.get("source_type", "github")
         if source_type == "url":
+            url = data.get("url", "")
+            if not url:
+                raise ValueError(
+                    "URL source requires a non-empty 'url' field"
+                )
             return cls(
                 name=data["name"],
                 source_type="url",
-                url=data.get("url", ""),
+                url=url,
             )
         if source_type != "github":
             raise ValueError(f"Unsupported marketplace source_type: {source_type!r}")
@@ -365,7 +370,22 @@ def parse_agent_skills_index(
             )
             continue
         skill_type = entry.get("type", "")
+        if not isinstance(skill_type, str) or skill_type not in ("skill-md", "archive"):
+            logger.warning(
+                "Skipping Agent Skills entry %r with unsupported type %r in '%s'",
+                name,
+                skill_type,
+                source_name,
+            )
+            continue
         url = entry.get("url", "")
+        if not isinstance(url, str) or not url:
+            logger.warning(
+                "Skipping Agent Skills entry %r with missing/invalid url in '%s'",
+                name,
+                source_name,
+            )
+            continue
         digest = entry.get("digest", "")
         if not _is_valid_digest(digest):
             logger.debug(
@@ -376,6 +396,8 @@ def parse_agent_skills_index(
             )
             continue
         description = entry.get("description", "")
+        if not isinstance(description, str):
+            description = ""
         plugins.append(
             MarketplacePlugin(
                 name=name,

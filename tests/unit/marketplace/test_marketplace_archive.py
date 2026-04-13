@@ -1,4 +1,4 @@
-"""Tests for archive download and extraction (Step 7 — gap #14).
+"""Tests for archive download and extraction (Step 7 -- gap #14).
 
 Covers: _check_archive_member safety checks, _detect_archive_format, _extract_tar_gz,
 _extract_zip, and the download_and_extract_archive public API.
@@ -47,7 +47,7 @@ def _make_zip(members: dict) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Step 7 tests — safety checks
+# Step 7 tests -- safety checks
 # ---------------------------------------------------------------------------
 
 
@@ -68,7 +68,7 @@ class TestArchiveMemberSafetyChecks:
         "skills/../../etc/passwd",
     ])
     def test_path_traversal_rejected(self, path):
-        with pytest.raises(ArchiveError, match="path traversal"):
+        with pytest.raises(ArchiveError, match="traversal"):
             _check_archive_member(path)
 
     def test_absolute_path_rejected(self):
@@ -91,7 +91,7 @@ class TestArchiveMemberSafetyChecks:
 
 
 # ---------------------------------------------------------------------------
-# Step 7 tests — format detection
+# Step 7 tests -- format detection
 # ---------------------------------------------------------------------------
 
 
@@ -126,7 +126,7 @@ class TestDetectArchiveFormat:
 
 
 # ---------------------------------------------------------------------------
-# Step 7 tests — tar.gz extraction
+# Step 7 tests -- tar.gz extraction
 # ---------------------------------------------------------------------------
 
 
@@ -145,7 +145,7 @@ class TestExtractTarGz:
 
     def test_path_traversal_member_rejected(self, tmp_path):
         data = _make_tar_gz({"../evil.txt": b"bad"})
-        with pytest.raises(ArchiveError, match="path traversal|absolute"):
+        with pytest.raises(ArchiveError, match="traversal"):
             _extract_tar_gz(data, str(tmp_path))
 
     def test_decompression_bomb_rejected(self, tmp_path):
@@ -184,7 +184,7 @@ class TestExtractTarGz:
 
 
 # ---------------------------------------------------------------------------
-# Step 7 tests — zip extraction
+# Step 7 tests -- zip extraction
 # ---------------------------------------------------------------------------
 
 
@@ -203,7 +203,7 @@ class TestExtractZip:
 
     def test_path_traversal_member_rejected(self, tmp_path):
         data = _make_zip({"../evil.txt": b"bad"})
-        with pytest.raises(ArchiveError, match="path traversal|absolute"):
+        with pytest.raises(ArchiveError, match="traversal"):
             _extract_zip(data, str(tmp_path))
 
     def test_absolute_path_member_rejected(self, tmp_path):
@@ -227,7 +227,7 @@ class TestExtractZip:
 
 
 # ---------------------------------------------------------------------------
-# Step 7 tests — download_and_extract_archive
+# Step 7 tests -- download_and_extract_archive
 # ---------------------------------------------------------------------------
 
 
@@ -347,3 +347,73 @@ class TestSymlinkAndHardlinkSafety:
         data = self._make_symlink_tar_gz("link.txt", "real.txt")
         with pytest.raises(ArchiveError):
             _extract_tar_gz(data, str(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# Non-regular tar members (device files, FIFOs) -- C09
+# ---------------------------------------------------------------------------
+
+
+class TestNonRegularTarMembers:
+    """Non-regular tar members (device files, FIFOs) must be skipped."""
+
+    def _make_tar_with_member_type(self, name: str, member_type: int) -> bytes:
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            info = tarfile.TarInfo(name=name)
+            info.type = member_type
+            tf.addfile(info)
+        return buf.getvalue()
+
+    def test_device_file_skipped(self, tmp_path):
+        data = self._make_tar_with_member_type("dev/sda", tarfile.CHRTYPE)
+        extracted = _extract_tar_gz(data, str(tmp_path))
+        assert extracted == []
+
+    def test_fifo_skipped(self, tmp_path):
+        data = self._make_tar_with_member_type("pipe", tarfile.FIFOTYPE)
+        extracted = _extract_tar_gz(data, str(tmp_path))
+        assert extracted == []
+
+    def test_block_device_skipped(self, tmp_path):
+        data = self._make_tar_with_member_type("dev/blk", tarfile.BLKTYPE)
+        extracted = _extract_tar_gz(data, str(tmp_path))
+        assert extracted == []
+
+    def test_regular_file_still_extracted(self, tmp_path):
+        data = _make_tar_gz({"hello.txt": b"world"})
+        extracted = _extract_tar_gz(data, str(tmp_path))
+        assert "hello.txt" in extracted
+        assert (tmp_path / "hello.txt").read_bytes() == b"world"
+
+
+# ---------------------------------------------------------------------------
+# Archive HTTPS enforcement -- C08
+# ---------------------------------------------------------------------------
+
+
+class TestArchiveHttpsEnforcement:
+    """download_and_extract_archive must enforce HTTPS."""
+
+    def test_http_url_raises(self, tmp_path):
+        with pytest.raises(ArchiveError, match="HTTPS"):
+            download_and_extract_archive("http://example.com/a.tar.gz", str(tmp_path))
+
+    def test_ftp_url_raises(self, tmp_path):
+        with pytest.raises(ArchiveError, match="HTTPS"):
+            download_and_extract_archive("ftp://example.com/a.tar.gz", str(tmp_path))
+
+    def test_redirect_to_http_raises(self, tmp_path, monkeypatch):
+        import unittest.mock as mock
+
+        resp = mock.MagicMock()
+        resp.status_code = 200
+        resp.url = "http://evil.com/a.tar.gz"
+        resp.headers = {"Content-Type": "application/gzip"}
+        resp.content = b""
+        resp.raise_for_status.return_value = None
+        monkeypatch.setattr("apm_cli.marketplace.archive.requests.get",
+                            lambda *a, **kw: resp)
+
+        with pytest.raises(ArchiveError, match="non-HTTPS"):
+            download_and_extract_archive("https://example.com/a.tar.gz", str(tmp_path))

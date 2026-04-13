@@ -7,12 +7,23 @@ bombs.
 """
 
 import io
+import logging
 import os
 import tarfile
 import zipfile
+from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 import requests
+
+from apm_cli.utils.path_security import (
+    PathTraversalError,
+    ensure_path_within,
+    validate_path_segments,
+)
+
+logger = logging.getLogger(__name__)
 
 _MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024  # 512 MB
 
@@ -23,6 +34,10 @@ class ArchiveError(Exception):
 
 def _check_archive_member(member_path: str) -> None:
     """Validate a single archive member path.
+
+    Uses the centralized ``path_security`` guards where possible and adds
+    archive-specific checks (null bytes, Windows UNC/drive-letter paths)
+    that the centralized module does not cover.
 
     Raises:
         ArchiveError: If the path is absolute (including Windows drive-letter
@@ -41,16 +56,10 @@ def _check_archive_member(member_path: str) -> None:
         len(forward) >= 2 and forward[1] == ":" and forward[0].isalpha()
     ):
         raise ArchiveError(f"Archive member has absolute path: {member_path!r}")
-    normalized = os.path.normpath(member_path)
-    if normalized.startswith(".."):
-        raise ArchiveError(
-            f"Archive member path traversal detected: {member_path!r}"
-        )
-    parts = forward.split("/")
-    if ".." in parts:
-        raise ArchiveError(
-            f"Archive member path traversal detected: {member_path!r}"
-        )
+    try:
+        validate_path_segments(member_path, context="archive member")
+    except PathTraversalError as exc:
+        raise ArchiveError(str(exc)) from exc
 
 
 def _detect_archive_format(content_type: str, url: str) -> str:
@@ -107,6 +116,13 @@ def _extract_tar_gz(data: bytes, dest_dir: str) -> List[str]:
                     raise ArchiveError(
                         f"Symlinks and hard links are not supported: {member.name!r}"
                     )
+                if not member.isreg():
+                    logger.warning(
+                        "Skipping non-regular tar member: %s (type=%s)",
+                        member.name,
+                        member.type,
+                    )
+                    continue
                 _check_archive_member(member.name)
 
                 total_size += member.size
@@ -116,15 +132,24 @@ def _extract_tar_gz(data: bytes, dest_dir: str) -> List[str]:
                         f"(decompression bomb guard)"
                     )
 
-                dest_path = os.path.realpath(os.path.join(dest_dir, member.name))
-                real_dest = os.path.realpath(dest_dir)
-                if not dest_path.startswith(real_dest + os.sep) and dest_path != real_dest:
+                dest_path_obj = Path(os.path.join(dest_dir, member.name))
+                try:
+                    ensure_path_within(dest_path_obj, Path(dest_dir))
+                except PathTraversalError:
                     raise ArchiveError(
                         f"Archive member would extract outside destination: {member.name!r}"
                     )
+                dest_path = str(dest_path_obj.resolve())
 
                 os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                with tf.extractfile(member) as src, open(dest_path, "wb") as dst:
+                src = tf.extractfile(member)
+                if src is None:
+                    logger.warning(
+                        "Cannot extract %s: extractfile returned None",
+                        member.name,
+                    )
+                    continue
+                with src, open(dest_path, "wb") as dst:
                     dst.write(src.read())
                 extracted.append(member.name)
     except (tarfile.TarError, KeyError) as exc:
@@ -163,12 +188,14 @@ def _extract_zip(data: bytes, dest_dir: str) -> List[str]:
                         f"(decompression bomb guard)"
                     )
 
-                dest_path = os.path.realpath(os.path.join(dest_dir, info.filename))
-                real_dest = os.path.realpath(dest_dir)
-                if not dest_path.startswith(real_dest + os.sep) and dest_path != real_dest:
+                dest_path_obj = Path(os.path.join(dest_dir, info.filename))
+                try:
+                    ensure_path_within(dest_path_obj, Path(dest_dir))
+                except PathTraversalError:
                     raise ArchiveError(
                         f"Archive member would extract outside destination: {info.filename!r}"
                     )
+                dest_path = str(dest_path_obj.resolve())
 
                 os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                 with zf.open(info) as src, open(dest_path, "wb") as dst:
@@ -196,11 +223,18 @@ def download_and_extract_archive(url: str, dest_dir: str) -> List[str]:
     Raises:
         ArchiveError: On download failure, unrecognised format, or unsafe content.
     """
+    if urlparse(url).scheme.lower() != "https":
+        raise ArchiveError(f"Only HTTPS URLs are supported for archive download, got: {url!r}")
     try:
         resp = requests.get(url, headers={"User-Agent": "apm-cli"}, timeout=60)
         resp.raise_for_status()
     except requests.exceptions.RequestException as exc:
         raise ArchiveError(f"Failed to download archive from {url!r}: {exc}") from exc
+
+    # Guard against HTTPS->HTTP redirect
+    final_url = getattr(resp, "url", None)
+    if isinstance(final_url, str) and urlparse(final_url).scheme.lower() != "https":
+        raise ArchiveError(f"Redirect to non-HTTPS URL rejected: {final_url!r}")
 
     content_type = resp.headers.get("Content-Type", "")
     fmt = _detect_archive_format(content_type, url)

@@ -34,7 +34,7 @@ _SINGLE_SKILL_INDEX = {
 
 
 # ---------------------------------------------------------------------------
-# MarketplaceSource — URL fields
+# MarketplaceSource -- URL fields
 # ---------------------------------------------------------------------------
 
 
@@ -133,6 +133,18 @@ class TestMarketplaceSourceURL:
         """from_dict with unrecognised source_type must raise ValueError."""
         d = {"name": "x", "source_type": "artifactory", "url": "https://art.corp.com/index.json"}
         with pytest.raises(ValueError, match="artifactory"):
+            MarketplaceSource.from_dict(d)
+
+    def test_url_source_missing_url_raises(self):
+        """from_dict with source_type='url' but no url key must raise."""
+        d = {"name": "x", "source_type": "url"}
+        with pytest.raises(ValueError, match="non-empty"):
+            MarketplaceSource.from_dict(d)
+
+    def test_url_source_empty_url_raises(self):
+        """from_dict with source_type='url' and empty url must raise."""
+        d = {"name": "x", "source_type": "url", "url": ""}
+        with pytest.raises(ValueError, match="non-empty"):
             MarketplaceSource.from_dict(d)
 
     def test_url_source_to_dict_omits_github_only_fields(self):
@@ -247,7 +259,7 @@ class TestParseAgentSkillsIndex:
         assert len(manifest.plugins) == 0
 
     def test_missing_skills_key_returns_empty_manifest(self):
-        """No 'skills' key present — returns an empty manifest rather than raising."""
+        """No 'skills' key present -- returns an empty manifest rather than raising."""
         data = {"$schema": _KNOWN_SCHEMA}
         manifest = parse_agent_skills_index(data, "test")
         assert len(manifest.plugins) == 0
@@ -385,15 +397,15 @@ class TestParseAgentSkillsIndex:
         p = parse_agent_skills_index(data, "t").plugins[0]
         assert p.description == ""
 
-    def test_missing_url_in_entry_defaults_to_empty(self):
+    def test_missing_url_in_entry_is_skipped(self):
+        """Entries without a url field are now skipped (C07 fix)."""
         data = {
             "$schema": _KNOWN_SCHEMA,
             "skills": [
                 {"name": "my-skill", "type": "skill-md", "digest": _VALID_DIGEST}
             ],
         }
-        p = parse_agent_skills_index(data, "t").plugins[0]
-        assert p.source["url"] == ""
+        assert len(parse_agent_skills_index(data, "t").plugins) == 0
 
     def test_entry_without_digest_is_skipped(self):
         data = {
@@ -420,7 +432,7 @@ class TestParseAgentSkillsIndex:
 
 
 # ---------------------------------------------------------------------------
-# MarketplaceManifest — source provenance fields (t5-test-04)
+# MarketplaceManifest -- source provenance fields (t5-test-04)
 # ---------------------------------------------------------------------------
 
 
@@ -479,7 +491,7 @@ class TestDigestFormatValidation:
         assert len(parse_agent_skills_index(data, "t").plugins) == 0
 
     def test_missing_digest_entry_skipped(self):
-        """A skill entry with no digest is skipped — digest is required by the RFC."""
+        """A skill entry with no digest is skipped -- digest is required by the RFC."""
         data = {
             "$schema": _KNOWN_SCHEMA,
             "skills": [
@@ -531,7 +543,7 @@ class TestInvalidNameLogLevel:
         assert len(warning_messages) == 2
 
     def test_structural_issues_do_not_produce_warnings(self, caplog):
-        """Non-dict entries and missing name are structural noise — keep at DEBUG."""
+        """Non-dict entries and missing name are structural noise -- keep at DEBUG."""
         import logging
 
         data = {
@@ -547,3 +559,73 @@ class TestInvalidNameLogLevel:
         assert len(result.plugins) == 0
         warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warning_messages) == 0
+
+
+class TestSkillFieldValidation:
+    """parse_agent_skills_index must validate type/url/description fields."""
+
+    _SCHEMA = "https://schemas.agentskills.io/discovery/0.2.0/schema.json"
+    _DIGEST = "sha256:" + "a" * 64
+
+    def test_unsupported_type_skipped(self):
+        data = {
+            "$schema": self._SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "unknown-type", "url": "/a", "digest": self._DIGEST},
+            ],
+        }
+        result = parse_agent_skills_index(data, "s")
+        assert len(result.plugins) == 0
+
+    def test_non_string_type_skipped(self):
+        data = {
+            "$schema": self._SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": 123, "url": "/a", "digest": self._DIGEST},
+            ],
+        }
+        result = parse_agent_skills_index(data, "s")
+        assert len(result.plugins) == 0
+
+    def test_missing_url_skipped(self):
+        data = {
+            "$schema": self._SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "skill-md", "digest": self._DIGEST},
+            ],
+        }
+        result = parse_agent_skills_index(data, "s")
+        assert len(result.plugins) == 0
+
+    def test_non_string_url_skipped(self):
+        data = {
+            "$schema": self._SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "skill-md", "url": 42, "digest": self._DIGEST},
+            ],
+        }
+        result = parse_agent_skills_index(data, "s")
+        assert len(result.plugins) == 0
+
+    def test_non_string_description_defaults_to_empty(self):
+        data = {
+            "$schema": self._SCHEMA,
+            "skills": [
+                {"name": "my-skill", "type": "skill-md", "url": "/a",
+                 "digest": self._DIGEST, "description": 42},
+            ],
+        }
+        result = parse_agent_skills_index(data, "s")
+        assert len(result.plugins) == 1
+        assert result.plugins[0].description == ""
+
+    def test_valid_skill_md_and_archive_accepted(self):
+        data = {
+            "$schema": self._SCHEMA,
+            "skills": [
+                {"name": "skill-a", "type": "skill-md", "url": "/a", "digest": self._DIGEST},
+                {"name": "skill-b", "type": "archive", "url": "/b", "digest": self._DIGEST},
+            ],
+        }
+        result = parse_agent_skills_index(data, "s")
+        assert len(result.plugins) == 2

@@ -50,6 +50,7 @@ class FetchResult:
 
 
 _CACHE_TTL_SECONDS = 3600  # 1 hour
+_MAX_INDEX_BYTES = 10 * 1024 * 1024  # 10 MB
 _CACHE_DIR_NAME = os.path.join("cache", "marketplace")
 
 # Candidate locations for marketplace.json in a repository (priority order)
@@ -90,7 +91,7 @@ def _cache_key(source: MarketplaceSource) -> str:
     """Cache key that avoids collisions across hosts and URL sources.
 
     - GitHub sources: ``name`` (same host) or ``{host}__{name}`` (GHE).
-    - URL sources: first 16 hex chars of ``sha256(url)`` — avoids
+    - URL sources: first 16 hex chars of ``sha256(url)`` -- avoids
       host-based collisions between two URL sources on the same domain.
     """
     if source.is_url_source:
@@ -241,7 +242,7 @@ def _fetch_url_direct(url: str, *, etag: str = "", last_modified: str = "",
                       expected_digest: str = ""):
     """Fetch a URL marketplace index directly over HTTPS.
 
-    No GitHub auth or proxy involved — used for URL sources only.
+    No GitHub auth or proxy involved -- used for URL sources only.
 
     Supports conditional requests: when *etag* or *last_modified* are provided
     the corresponding ``If-None-Match`` / ``If-Modified-Since`` headers are sent.
@@ -259,7 +260,7 @@ def _fetch_url_direct(url: str, *, etag: str = "", last_modified: str = "",
     """
     from urllib.parse import urlparse
 
-    if urlparse(url).scheme != "https":
+    if urlparse(url).scheme.lower() != "https":
         raise MarketplaceFetchError(url, "URL sources must use HTTPS")
     try:
         headers = {"User-Agent": "apm-cli"}
@@ -270,7 +271,7 @@ def _fetch_url_direct(url: str, *, etag: str = "", last_modified: str = "",
         resp = requests.get(url, headers=headers, timeout=30)
         # Guard against HTTPS→HTTP redirect (S1)
         final_url = getattr(resp, "url", None)
-        if isinstance(final_url, str) and urlparse(final_url).scheme != "https":
+        if isinstance(final_url, str) and urlparse(final_url).scheme.lower() != "https":
             raise MarketplaceFetchError(
                 url, "Redirect to non-HTTPS URL rejected"
             )
@@ -279,7 +280,24 @@ def _fetch_url_direct(url: str, *, etag: str = "", last_modified: str = "",
         if resp.status_code == 404:
             raise MarketplaceFetchError(url, "404 Not Found")
         resp.raise_for_status()
+        content_length = resp.headers.get("Content-Length")
+        if content_length:
+            try:
+                size = int(content_length)
+            except ValueError:
+                pass
+            else:
+                if size > _MAX_INDEX_BYTES:
+                    raise MarketplaceFetchError(
+                        url,
+                        f"Index exceeds size limit ({size} bytes, max {_MAX_INDEX_BYTES})",
+                    )
         raw = resp.content
+        if len(raw) > _MAX_INDEX_BYTES:
+            raise MarketplaceFetchError(
+                url,
+                f"Index exceeds size limit ({len(raw)} bytes, max {_MAX_INDEX_BYTES})",
+            )
         digest = "sha256:" + hashlib.sha256(raw).hexdigest()
         if expected_digest and digest != expected_digest:
             raise MarketplaceFetchError(
@@ -417,7 +435,7 @@ def _parse_manifest(
     For URL sources the index format is auto-detected via
     ``_detect_index_format`` and dispatched to the appropriate parser.
     For GitHub sources ``parse_marketplace_json`` is used directly
-    (``source_url`` and ``source_digest`` are ignored — GitHub sources
+    (``source_url`` and ``source_digest`` are ignored -- GitHub sources
     have no URL provenance).
 
     Args:
@@ -494,7 +512,7 @@ def fetch_marketplace(
 
     # Fetch from network
     try:
-        # URL source — direct HTTPS fetch, no GitHub auth or proxy
+        # URL source -- direct HTTPS fetch, no GitHub auth or proxy
         if source.is_url_source:
             # Read stale ETag/Last-Modified for conditional request
             stale_meta = _read_stale_meta(cache_name)
@@ -506,7 +524,7 @@ def fetch_marketplace(
             )
 
             if result is None:
-                # 304 Not Modified — reset TTL on existing cache, serve stale data
+                # 304 Not Modified -- reset TTL on existing cache, serve stale data
                 stale = _read_stale_cache(cache_name)
                 if stale is not None:
                     _write_cache(
@@ -537,7 +555,7 @@ def fetch_marketplace(
                 source_url=source.url, source_digest=result.digest,
             )
 
-        # GitHub source — proxy-first, then GitHub Contents API
+        # GitHub source -- proxy-first, then GitHub Contents API
         data = _fetch_file(source, source.path, auth_resolver=auth_resolver)
         if data is None:
             raise MarketplaceFetchError(

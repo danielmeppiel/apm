@@ -26,7 +26,7 @@ def _resolve_index_url(raw_url: str) -> str:
     Trailing slashes on bare origins are normalised away.
 
     Args:
-        raw_url: A user-supplied ``https://`` URL — either a bare origin
+        raw_url: A user-supplied ``https://`` URL -- either a bare origin
             (``https://example.com``) or a fully-qualified index URL.
 
     Returns:
@@ -37,7 +37,7 @@ def _resolve_index_url(raw_url: str) -> str:
     parsed = urlparse(raw_url)
     path = parsed.path.rstrip("/")
     if not path or path == "/.well-known/agent-skills":
-        # Bare origin or just the .well-known dir — append full path
+        # Bare origin or just the .well-known dir -- append full path
         base = f"{parsed.scheme}://{parsed.netloc}"
         resolved = base + _WELL_KNOWN_PATH
         if parsed.query:
@@ -279,7 +279,7 @@ def list_cmd(verbose):
 
         for s in sources:
             if s.is_url_source:
-                table.add_row(s.name, s.url, "—", "—")
+                table.add_row(s.name, s.url, "--", "--")
             else:
                 table.add_row(s.name, f"{s.owner}/{s.repo}", s.branch, s.path)
 

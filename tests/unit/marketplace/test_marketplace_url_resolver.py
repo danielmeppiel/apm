@@ -53,7 +53,7 @@ def url_source():
 
 
 # ---------------------------------------------------------------------------
-# resolve_plugin_source — skill-md and archive types (t8-test-02, t8-test-03)
+# resolve_plugin_source -- skill-md and archive types (t8-test-02, t8-test-03)
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +87,7 @@ class TestResolvePluginSourceAgentSkills:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_url_source — non-GitHub HTTPS allowed (t8-test-04, t8-test-05)
+# _resolve_url_source -- non-GitHub HTTPS allowed (t8-test-04, t8-test-05)
 # ---------------------------------------------------------------------------
 
 
@@ -124,9 +124,17 @@ class TestResolveUrlSource:
         with pytest.raises(ValueError, match="HTTPS"):
             _resolve_url_source({"url": url})
 
+    @pytest.mark.parametrize("url", [
+        "HTTPS://cdn.example.com/skills",
+        "Https://CDN.Example.Com/index.json",
+    ])
+    def test_mixed_case_https_scheme_accepted(self, url):
+        """RFC 3986: scheme is case-insensitive; HTTPS:// must be accepted."""
+        assert _resolve_url_source({"url": url}) == url
+
 
 # ---------------------------------------------------------------------------
-# resolve_marketplace_plugin — URL marketplace end-to-end (t8-test-06)
+# resolve_marketplace_plugin -- URL marketplace end-to-end (t8-test-06)
 # ---------------------------------------------------------------------------
 
 
@@ -155,7 +163,7 @@ class TestResolveMarketplacePluginURL:
         assert plugin.name == "code-review"
 
     def test_url_marketplace_passes_empty_owner_repo(self, url_source, skill_md_plugin):
-        """URL sources have owner='' and repo='' — resolver must not crash on this."""
+        """URL sources have owner='' and repo='' -- resolver must not crash on this."""
         manifest = MarketplaceManifest(
             name="example-skills",
             plugins=(skill_md_plugin,),

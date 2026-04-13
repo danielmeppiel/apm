@@ -93,7 +93,7 @@ class TestURLDetection:
         assert source.source_type == "url"
 
     def test_http_url_rejected(self, runner):
-        """Plain http:// (non-TLS) must be rejected — RFC requires HTTPS."""
+        """Plain http:// (non-TLS) must be rejected -- RFC requires HTTPS."""
         from apm_cli.commands.marketplace import marketplace
 
         result = runner.invoke(marketplace, ["add", "http://example.com"])
@@ -110,7 +110,7 @@ class TestURLDetection:
         from apm_cli.commands.marketplace import marketplace
 
         result = runner.invoke(marketplace, ["add", url])
-        # Should NOT produce "Invalid format ... OWNER/REPO" —
+        # Should NOT produce "Invalid format ... OWNER/REPO" --
         # it should enter the URL path (may fail on http or succeed on https)
         assert "OWNER/REPO" not in result.output
 
@@ -300,7 +300,7 @@ class TestGitHubRegression:
 
 
 # ---------------------------------------------------------------------------
-# list command — URL source display (t8-test-07)
+# list command -- URL source display (t8-test-07)
 # ---------------------------------------------------------------------------
 
 
@@ -333,7 +333,8 @@ class TestListURLSource:
         with patch("apm_cli.commands.marketplace._get_console", return_value=None):
             result = runner.invoke(marketplace, ["list"])
 
-        assert "https://example.com" in result.output
+        url = "https://example.com/.well-known/agent-skills/index.json"
+        assert url in result.output
         # Must not show "(/)"-style owner/repo for a URL source
         assert "(/" not in result.output
 
@@ -358,7 +359,7 @@ class TestListURLSource:
 
 
 # ---------------------------------------------------------------------------
-# remove command — URL source display (t8-test-08, t8-test-09)
+# remove command -- URL source display (t8-test-08, t8-test-09)
 # ---------------------------------------------------------------------------
 
 
@@ -389,7 +390,8 @@ class TestRemoveURLSource:
         # Provide "n" so it cancels without actually removing
         result = runner.invoke(marketplace, ["remove", "example-skills"], input="n\n")
 
-        assert "https://example.com" in result.output
+        url = "https://example.com/.well-known/agent-skills/index.json"
+        assert url in result.output
         # Confirm text must not show default "(/)"-style placeholder
         assert "(/" not in result.output
 
@@ -463,7 +465,7 @@ class TestAddCommandErrorMessages:
 
 
 # ---------------------------------------------------------------------------
-# update command — URL source cache clearing
+# update command -- URL source cache clearing
 # ---------------------------------------------------------------------------
 
 

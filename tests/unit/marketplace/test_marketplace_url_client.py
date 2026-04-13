@@ -2,7 +2,7 @@
 
 Covers: _cache_key() URL sources, _fetch_url_direct(), fetch_marketplace()
 URL branch, format auto-detection, cache read/write, stale-while-revalidate.
-GitHub paths are not touched — regression tests confirm they still work.
+GitHub paths are not touched -- regression tests confirm they still work.
 Tests are separate from test_marketplace_client.py which covers GitHub only.
 """
 
@@ -117,7 +117,7 @@ def _write_cache_files_with_digest(source, data, *, digest="", expired=False):
 
 
 # ---------------------------------------------------------------------------
-# _cache_key — URL sources
+# _cache_key -- URL sources
 # ---------------------------------------------------------------------------
 
 
@@ -169,7 +169,7 @@ class TestCacheKey:
 
 
 # ---------------------------------------------------------------------------
-# _fetch_url_direct — network layer
+# _fetch_url_direct -- network layer
 
 
 class TestFetchUrlDirectEmptyUrl:
@@ -182,7 +182,7 @@ class TestFetchUrlDirectEmptyUrl:
 
 
 # ---------------------------------------------------------------------------
-# _detect_index_format — direct unit tests
+# _detect_index_format -- direct unit tests
 # ---------------------------------------------------------------------------
 
 
@@ -240,7 +240,7 @@ class TestFetchUrlDirect:
 
 
 # ---------------------------------------------------------------------------
-# fetch_marketplace — URL branch
+# fetch_marketplace -- URL branch
 # ---------------------------------------------------------------------------
 
 
@@ -345,7 +345,7 @@ class TestFetchMarketplaceURL:
 
 
 # ---------------------------------------------------------------------------
-# FetchResult — digest capture (t5-test-01)
+# FetchResult -- digest capture (t5-test-01)
 # ---------------------------------------------------------------------------
 
 
@@ -403,7 +403,7 @@ class TestFetchUrlDirectDigest:
 
 
 # ---------------------------------------------------------------------------
-# fetch_marketplace — index digest storage + manifest fields (t5-test-02/03)
+# fetch_marketplace -- index digest storage + manifest fields (t5-test-02/03)
 # ---------------------------------------------------------------------------
 
 _FIXED_DIGEST = "sha256:" + "b" * 64
@@ -462,6 +462,7 @@ def _mock_response(status_code, *, json_body=None, json_error=None, raise_for_st
 
     resp = mock.MagicMock()
     resp.status_code = status_code
+    resp.headers = {}
     if json_body is not None:
         body_bytes = json.dumps(json_body).encode()
         resp.content = body_bytes
@@ -782,7 +783,7 @@ class TestFetchMarketplaceStaleWarning:
 
 
 # ---------------------------------------------------------------------------
-# Stale-while-revalidate — source_digest preservation
+# Stale-while-revalidate -- source_digest preservation
 # ---------------------------------------------------------------------------
 
 
@@ -852,3 +853,53 @@ class TestFetchUrlDirectRedirectEnforcement:
         )
         result = _fetch_url_direct("https://example.com/index.json")
         assert isinstance(result, FetchResult)
+
+
+# ---------------------------------------------------------------------------
+# Response size limit -- C18
+# ---------------------------------------------------------------------------
+
+
+class TestFetchUrlDirectSizeLimit:
+    """_fetch_url_direct must reject oversized responses."""
+
+    def test_content_length_over_limit_raises(self, monkeypatch):
+        mock_resp = _mock_response_with_headers(
+            200, json_body={"skills": []},
+            response_headers={"Content-Length": str(11 * 1024 * 1024)},
+        )
+        monkeypatch.setattr(
+            "apm_cli.marketplace.client.requests.get",
+            lambda *a, **kw: mock_resp,
+        )
+        with pytest.raises(MarketplaceFetchError, match="size limit"):
+            _fetch_url_direct("https://example.com/index.json")
+
+    def test_content_length_under_limit_succeeds(self, monkeypatch):
+        mock_resp = _mock_response_with_headers(
+            200, json_body={"skills": []},
+            response_headers={"Content-Length": "1024"},
+        )
+        monkeypatch.setattr(
+            "apm_cli.marketplace.client.requests.get",
+            lambda *a, **kw: mock_resp,
+        )
+        result = _fetch_url_direct("https://example.com/index.json")
+        assert isinstance(result, FetchResult)
+
+    def test_body_over_limit_without_content_length_raises(self, monkeypatch):
+        import unittest.mock as mock
+
+        oversized_body = b"x" * (11 * 1024 * 1024)
+        mock_resp = mock.MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.url = "https://example.com/index.json"
+        mock_resp.headers = {}
+        mock_resp.content = oversized_body
+        mock_resp.raise_for_status.return_value = None
+        monkeypatch.setattr(
+            "apm_cli.marketplace.client.requests.get",
+            lambda *a, **kw: mock_resp,
+        )
+        with pytest.raises(MarketplaceFetchError, match="size limit"):
+            _fetch_url_direct("https://example.com/index.json")

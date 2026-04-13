@@ -87,8 +87,10 @@ def _resolve_url_source(source: dict) -> str:
             if len(parts) >= 2:
                 return f"{parts[0]}/{parts[1]}"
 
-    # Non-GitHub HTTPS URL — return as-is (CDN, arbitrary HTTPS host, etc.)
-    if url.startswith("https://"):
+    # Non-GitHub HTTPS URL -- return as-is (CDN, arbitrary HTTPS host, etc.)
+    from urllib.parse import urlparse as _urlparse
+
+    if _urlparse(url).scheme.lower() == "https":
         return url
 
     raise ValueError(
@@ -203,7 +205,7 @@ def resolve_plugin_source(
     if source_type == "github":
         return _resolve_github_source(source)
     elif source_type in ("skill-md", "archive"):
-        # Agent Skills RFC types — the canonical reference is the download URL
+        # Agent Skills RFC types -- the canonical reference is the download URL
         url = source.get("url", "")
         if not url:
             raise ValueError(
