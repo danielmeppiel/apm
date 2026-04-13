@@ -11,10 +11,10 @@ APM checks these sources in order, using the first valid token found:
 | 3 | `GITHUB_TOKEN` | Global | Shared with GitHub Actions |
 | 4 | `GH_TOKEN` | Global | Set by `gh auth login` |
 | 5 | `gh auth token --hostname <host>` | GitHub-like hosts | Active `gh auth login` account |
-| 6 | `git credential fill` | Per-host and repo-path | System credential manager |
+| 6 | `git credential fill` | Per-host | System credential manager |
 | -- | None | -- | Unauthenticated (public GitHub repos only) |
 
-When APM knows the repository URL, it includes the repo path in the credential-helper query. APM also checks the active `gh` CLI account before invoking OS credential helpers. This reduces ambiguous multi-account prompts on hosts like github.com.
+APM checks the active `gh` CLI account before invoking OS credential helpers. This reduces ambiguous multi-account prompts on hosts like github.com.
 
 ## Per-org setup
 

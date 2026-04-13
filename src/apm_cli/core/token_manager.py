@@ -57,7 +57,7 @@ class GitHubTokenManager:
             preserve_existing: If True, never overwrite existing environment variables
         """
         self.preserve_existing = preserve_existing
-        self._credential_cache: Dict[tuple[str, str, str], Optional[str]] = {}
+        self._credential_cache: Dict[str, Optional[str]] = {}
     
     @staticmethod
     def _is_valid_credential_token(token: str) -> bool:
@@ -76,11 +76,6 @@ class GitHubTokenManager:
         if any(fragment in token for fragment in prompt_fragments):
             return False
         return True
-
-    @staticmethod
-    def _has_control_chars(value: str) -> bool:
-        """Return True when *value* contains credential protocol control chars."""
-        return any(ord(char) < 32 for char in value)
 
     @staticmethod
     def _supports_gh_cli_host(host: Optional[str]) -> bool:
@@ -122,11 +117,7 @@ class GitHubTokenManager:
         return max(1, min(val, cls.MAX_CREDENTIAL_TIMEOUT))
 
     @staticmethod
-    def resolve_credential_from_git(
-        host: str,
-        path: Optional[str] = None,
-        username: Optional[str] = None,
-    ) -> Optional[str]:
+    def resolve_credential_from_git(host: str) -> Optional[str]:
         """Resolve a credential from the git credential store.
         
         Uses `git credential fill` to query the user's configured credential
@@ -135,30 +126,12 @@ class GitHubTokenManager:
         
         Args:
             host: The git host to resolve credentials for (e.g., "github.com")
-            path: Optional repository path (e.g., "owner/repo.git") used to
-                disambiguate multi-account credential helpers.
-            username: Optional username hint for credential helpers.
-            
+
         Returns:
             The password/token from the credential store, or None if unavailable
         """
         try:
-            fields = [host]
-            if path:
-                fields.append(path)
-            if username:
-                fields.append(username)
-            if any(GitHubTokenManager._has_control_chars(field) for field in fields):
-                return None
-
-            request_lines = ['protocol=https', f'host={host}']
-            if path:
-                normalized_path = path.lstrip('/')
-                if normalized_path:
-                    request_lines.append(f'path={normalized_path}')
-            if username:
-                request_lines.append(f'username={username}')
-            request = '\n'.join(request_lines) + '\n\n'
+            request = f'protocol=https\nhost={host}\n\n'
 
             result = subprocess.run(
                 ['git', '-c', 'credential.useHttpPath=true', 'credential', 'fill'],
@@ -257,8 +230,6 @@ class GitHubTokenManager:
         self,
         purpose: str,
         host: str,
-        path: Optional[str] = None,
-        username: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
     ) -> Optional[str]:
         """Get token for a purpose, falling back to git credential helpers.
@@ -271,8 +242,6 @@ class GitHubTokenManager:
         Args:
             purpose: Token purpose ('modules', etc.)
             host: Git host to resolve credentials for (e.g., "github.com")
-            path: Optional repository path for credential-helper disambiguation
-            username: Optional username hint for credential helpers
             env: Environment to check (defaults to os.environ)
             
         Returns:
@@ -282,8 +251,7 @@ class GitHubTokenManager:
         if token:
             return token
         
-        normalized_host = host.lower() if host else host
-        cache_key = (normalized_host, path or '', username or '')
+        cache_key = host.lower() if host else host
         if cache_key in self._credential_cache:
             return self._credential_cache[cache_key]
 
@@ -294,7 +262,7 @@ class GitHubTokenManager:
             self._credential_cache[cache_key] = gh_token
             return gh_token
         
-        credential = self.resolve_credential_from_git(host, path=path, username=username)
+        credential = self.resolve_credential_from_git(host)
         self._credential_cache[cache_key] = credential
         return credential
     

@@ -125,33 +125,6 @@ class TestResolveCredentialFromGit:
             assert call_kwargs.kwargs['input'] == "protocol=https\nhost=github.com\n\n"
             assert call_kwargs.args[0] == ['git', '-c', 'credential.useHttpPath=true', 'credential', 'fill']
 
-    def test_path_and_username_are_sent_when_provided(self):
-        """Verifies repo path and username are sent to disambiguate helpers."""
-        mock_result = MagicMock(returncode=0, stdout="password=tok\n")
-        with patch('subprocess.run', return_value=mock_result) as mock_run:
-            GitHubTokenManager.resolve_credential_from_git(
-                'github.com',
-                path='Devolutions/RDM.git',
-                username='mamoreau-devolutions',
-            )
-            call_kwargs = mock_run.call_args
-            assert call_kwargs.kwargs['input'] == (
-                "protocol=https\n"
-                "host=github.com\n"
-                "path=Devolutions/RDM.git\n"
-                "username=mamoreau-devolutions\n\n"
-            )
-
-    def test_control_characters_in_request_fields_return_none(self):
-        """Reject malformed git credential protocol fields before spawning git."""
-        with patch('subprocess.run') as mock_run:
-            token = GitHubTokenManager.resolve_credential_from_git(
-                'github.com',
-                path='Devolutions/RDM.git\npassword=oops',
-            )
-            assert token is None
-            mock_run.assert_not_called()
-
     def test_git_terminal_prompt_disabled(self):
         """GIT_TERMINAL_PROMPT=0 is set in the subprocess env."""
         mock_result = MagicMock(returncode=0, stdout="password=tok\n")
@@ -365,25 +338,7 @@ class TestGetTokenWithCredentialFallback:
                 token = manager.get_token_with_credential_fallback('modules', 'github.com')
                 assert token == 'cred-token'
                 mock_gh.assert_called_once_with('github.com')
-                mock_cred.assert_called_once_with('github.com', path=None, username=None)
-
-    def test_falls_back_to_credential_fill_with_path_context(self):
-        """Repo path is threaded into credential-helper fallback and cache key."""
-        with patch.dict(os.environ, {}, clear=True):
-            manager = GitHubTokenManager()
-            with patch.object(GitHubTokenManager, 'resolve_credential_from_gh_cli', return_value=None), \
-                 patch.object(GitHubTokenManager, 'resolve_credential_from_git', return_value='cred-token') as mock_cred:
-                token = manager.get_token_with_credential_fallback(
-                    'modules',
-                    'github.com',
-                    path='Devolutions/RDM.git',
-                )
-                assert token == 'cred-token'
-                mock_cred.assert_called_once_with(
-                    'github.com',
-                    path='Devolutions/RDM.git',
-                    username=None,
-                )
+                mock_cred.assert_called_once_with('github.com')
 
     def test_caches_credential_result(self):
         """Second call uses cache, subprocess not invoked again."""
@@ -436,25 +391,4 @@ class TestGetTokenWithCredentialFallback:
                 token = manager.get_token_with_credential_fallback('modules', 'gitlab.com')
                 assert token == 'cred-token'
                 mock_gh.assert_not_called()
-                mock_cred.assert_called_once_with('gitlab.com', path=None, username=None)
-
-    def test_different_paths_separate_cache(self):
-        """Different repo paths should not share a credential-helper cache entry."""
-        with patch.dict(os.environ, {}, clear=True):
-            manager = GitHubTokenManager()
-            with patch.object(GitHubTokenManager, 'resolve_credential_from_gh_cli', return_value=None) as mock_gh, \
-                 patch.object(
-                    GitHubTokenManager,
-                    'resolve_credential_from_git',
-                    side_effect=lambda host, path=None, username=None: f'{host}:{path}',
-                ) as mock_cred:
-                tok1 = manager.get_token_with_credential_fallback(
-                    'modules', 'github.com', path='Devolutions/RDM.git'
-                )
-                tok2 = manager.get_token_with_credential_fallback(
-                    'modules', 'github.com', path='Devolutions/RDM-Mobile.git'
-                )
-                assert tok1 == 'github.com:Devolutions/RDM.git'
-                assert tok2 == 'github.com:Devolutions/RDM-Mobile.git'
-                assert mock_gh.call_count == 2
-                assert mock_cred.call_count == 2
+                mock_cred.assert_called_once_with('gitlab.com')
