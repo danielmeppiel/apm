@@ -821,3 +821,34 @@ class TestFetchMarketplaceStaleDigestPreservation:
         )
         manifest = fetch_marketplace(url_source)
         assert manifest.source_url == url_source.url
+
+
+# ---------------------------------------------------------------------------
+# S1: HTTPS redirect bypass
+# ---------------------------------------------------------------------------
+
+
+class TestFetchUrlDirectRedirectEnforcement:
+    """_fetch_url_direct must reject responses redirected to non-HTTPS URLs."""
+
+    def test_redirect_to_http_raises(self, monkeypatch):
+        """An HTTPS→HTTP redirect must be caught after the request completes."""
+        mock_resp = _mock_response(200, json_body=_AGENT_SKILLS_INDEX)
+        mock_resp.url = "http://evil.com/index.json"
+        monkeypatch.setattr(
+            "apm_cli.marketplace.client.requests.get",
+            lambda *a, **kw: mock_resp,
+        )
+        with pytest.raises(MarketplaceFetchError, match="non-HTTPS"):
+            _fetch_url_direct("https://example.com/index.json")
+
+    def test_redirect_to_https_accepted(self, monkeypatch):
+        """HTTPS→HTTPS redirect is fine."""
+        mock_resp = _mock_response(200, json_body=_AGENT_SKILLS_INDEX)
+        mock_resp.url = "https://cdn.example.com/index.json"
+        monkeypatch.setattr(
+            "apm_cli.marketplace.client.requests.get",
+            lambda *a, **kw: mock_resp,
+        )
+        result = _fetch_url_direct("https://example.com/index.json")
+        assert isinstance(result, FetchResult)

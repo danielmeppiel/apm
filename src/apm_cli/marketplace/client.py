@@ -22,7 +22,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -47,6 +47,7 @@ class FetchResult:
     digest: str
     etag: str = ""
     last_modified: str = ""
+
 
 _CACHE_TTL_SECONDS = 3600  # 1 hour
 _CACHE_DIR_NAME = os.path.join("cache", "marketplace")
@@ -108,7 +109,7 @@ def _cache_meta_path(name: str) -> str:
     return os.path.join(_cache_dir(), f"{_sanitize_cache_name(name)}.meta.json")
 
 
-def _read_cache(name: str):
+def _read_cache(name: str) -> Optional[Tuple[Dict, str]]:
     """Read cached marketplace data if valid (not expired).
 
     Returns:
@@ -267,6 +268,12 @@ def _fetch_url_direct(url: str, *, etag: str = "", last_modified: str = "",
         if last_modified:
             headers["If-Modified-Since"] = last_modified
         resp = requests.get(url, headers=headers, timeout=30)
+        # Guard against HTTPS→HTTP redirect (S1)
+        final_url = getattr(resp, "url", None)
+        if isinstance(final_url, str) and urlparse(final_url).scheme != "https":
+            raise MarketplaceFetchError(
+                url, "Redirect to non-HTTPS URL rejected"
+            )
         if resp.status_code == 304:
             return None
         if resp.status_code == 404:
@@ -409,7 +416,9 @@ def _parse_manifest(
 
     For URL sources the index format is auto-detected via
     ``_detect_index_format`` and dispatched to the appropriate parser.
-    For GitHub sources ``parse_marketplace_json`` is used directly.
+    For GitHub sources ``parse_marketplace_json`` is used directly
+    (``source_url`` and ``source_digest`` are ignored — GitHub sources
+    have no URL provenance).
 
     Args:
         data: Parsed JSON dict from the marketplace index.

@@ -100,6 +100,20 @@ class TestURLDetection:
         assert result.exit_code != 0
         assert "https" in result.output.lower()
 
+    @pytest.mark.parametrize("url", [
+        "HTTPS://EXAMPLE.COM",
+        "Https://example.com",
+        "HTTP://example.com",
+    ])
+    def test_mixed_case_scheme_detected_as_url(self, runner, url):
+        """URL detection must be case-insensitive per RFC 3986 §3.1."""
+        from apm_cli.commands.marketplace import marketplace
+
+        result = runner.invoke(marketplace, ["add", url])
+        # Should NOT produce "Invalid format ... OWNER/REPO" —
+        # it should enter the URL path (may fail on http or succeed on https)
+        assert "OWNER/REPO" not in result.output
+
 
 # ---------------------------------------------------------------------------
 # .well-known auto-resolution
@@ -120,6 +134,8 @@ class TestWellKnownResolution:
          "https://example.com/.well-known/agent-skills/index.json"),
         ("https://example.com/.well-known/agent-skills",
          "https://example.com/.well-known/agent-skills/index.json"),
+        ("https://example.com?token=abc",
+         "https://example.com/.well-known/agent-skills/index.json?token=abc"),
     ])
     @patch("apm_cli.marketplace.registry.add_marketplace")
     @patch("apm_cli.marketplace.client.fetch_marketplace")

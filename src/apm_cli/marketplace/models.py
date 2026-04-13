@@ -77,6 +77,8 @@ class MarketplaceSource:
                 source_type="url",
                 url=data.get("url", ""),
             )
+        if source_type != "github":
+            raise ValueError(f"Unsupported marketplace source_type: {source_type!r}")
         return cls(
             name=data["name"],
             owner=data.get("owner", ""),

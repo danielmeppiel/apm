@@ -129,6 +129,12 @@ class TestMarketplaceSourceURL:
         assert src.source_type == "github"
         assert src.owner == "acme-org"
 
+    def test_unknown_source_type_raises(self):
+        """from_dict with unrecognised source_type must raise ValueError."""
+        d = {"name": "x", "source_type": "artifactory", "url": "https://art.corp.com/index.json"}
+        with pytest.raises(ValueError, match="artifactory"):
+            MarketplaceSource.from_dict(d)
+
     def test_url_source_to_dict_omits_github_only_fields(self):
         """URL to_dict must not include host, branch, or path."""
         src = MarketplaceSource(

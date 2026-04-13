@@ -39,7 +39,10 @@ def _resolve_index_url(raw_url: str) -> str:
     if not path or path == "/.well-known/agent-skills":
         # Bare origin or just the .well-known dir — append full path
         base = f"{parsed.scheme}://{parsed.netloc}"
-        return base + _WELL_KNOWN_PATH
+        resolved = base + _WELL_KNOWN_PATH
+        if parsed.query:
+            resolved += "?" + parsed.query
+        return resolved
     return raw_url
 
 
@@ -71,8 +74,9 @@ def add(repo, name, branch, host, verbose):
         from ..marketplace.registry import add_marketplace
 
         # URL-based path (Agent Skills discovery)
-        if repo.startswith("https://") or repo.startswith("http://"):
-            if repo.startswith("http://"):
+        repo_lower = repo.lower()
+        if repo_lower.startswith("https://") or repo_lower.startswith("http://"):
+            if repo_lower.startswith("http://"):
                 logger.error(
                     "URL marketplaces must use HTTPS. "
                     "Please provide an https:// URL."
