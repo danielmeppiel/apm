@@ -269,7 +269,7 @@ def _fetch_url_direct(url: str, *, etag: str = "", last_modified: str = "",
         if last_modified:
             headers["If-Modified-Since"] = last_modified
         resp = requests.get(url, headers=headers, timeout=30)
-        # Guard against HTTPS→HTTP redirect (S1)
+        # Guard against HTTPS->HTTP redirect (S1)
         final_url = getattr(resp, "url", None)
         if isinstance(final_url, str) and urlparse(final_url).scheme.lower() != "https":
             raise MarketplaceFetchError(

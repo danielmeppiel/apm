@@ -833,7 +833,7 @@ class TestFetchUrlDirectRedirectEnforcement:
     """_fetch_url_direct must reject responses redirected to non-HTTPS URLs."""
 
     def test_redirect_to_http_raises(self, monkeypatch):
-        """An HTTPS→HTTP redirect must be caught after the request completes."""
+        """An HTTPS->HTTP redirect must be caught after the request completes."""
         mock_resp = _mock_response(200, json_body=_AGENT_SKILLS_INDEX)
         mock_resp.url = "http://evil.com/index.json"
         monkeypatch.setattr(
@@ -844,7 +844,7 @@ class TestFetchUrlDirectRedirectEnforcement:
             _fetch_url_direct("https://example.com/index.json")
 
     def test_redirect_to_https_accepted(self, monkeypatch):
-        """HTTPS→HTTPS redirect is fine."""
+        """HTTPS->HTTPS redirect is fine."""
         mock_resp = _mock_response(200, json_body=_AGENT_SKILLS_INDEX)
         mock_resp.url = "https://cdn.example.com/index.json"
         monkeypatch.setattr(

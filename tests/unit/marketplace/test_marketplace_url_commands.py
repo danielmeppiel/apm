@@ -106,7 +106,7 @@ class TestURLDetection:
         "HTTP://example.com",
     ])
     def test_mixed_case_scheme_detected_as_url(self, runner, url):
-        """URL detection must be case-insensitive per RFC 3986 §3.1."""
+        """URL detection must be case-insensitive per RFC 3986 Section 3.1."""
         from apm_cli.commands.marketplace import marketplace
 
         result = runner.invoke(marketplace, ["add", url])
@@ -438,7 +438,7 @@ class TestAddCommandErrorMessages:
 
     @patch("apm_cli.marketplace.client.fetch_marketplace")
     def test_schema_error_shows_invalid_index_format(self, mock_fetch, runner):
-        """T9: wrong $schema → 'Invalid index format', not generic 'Failed to register'."""
+        """T9: wrong $schema -> 'Invalid index format', not generic 'Failed to register'."""
         from apm_cli.commands.marketplace import marketplace
 
         mock_fetch.side_effect = ValueError(
