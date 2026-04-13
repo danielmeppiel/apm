@@ -18,7 +18,12 @@ from typing import Dict, List, Optional
 import requests
 
 from .errors import MarketplaceFetchError
-from .models import MarketplaceManifest, MarketplacePlugin, MarketplaceSource, parse_marketplace_json
+from .models import (
+    MarketplaceManifest,
+    MarketplacePlugin,
+    MarketplaceSource,
+    parse_marketplace_json,
+)
 from .registry import get_registered_marketplaces
 
 logger = logging.getLogger(__name__)
@@ -173,7 +178,9 @@ def _try_proxy_fetch(
     except (json.JSONDecodeError, ValueError):
         logger.debug(
             "Proxy returned non-JSON for %s/%s %s",
-            source.owner, source.repo, file_path,
+            source.owner,
+            source.repo,
+            file_path,
         )
         return None
 
@@ -213,7 +220,9 @@ def _fetch_file(
     if cfg is not None and cfg.enforce_only:
         logger.debug(
             "PROXY_REGISTRY_ONLY blocks direct GitHub fetch for %s/%s %s",
-            source.owner, source.repo, file_path,
+            source.owner,
+            source.repo,
+            file_path,
         )
         return None
 
@@ -229,6 +238,12 @@ def _fetch_file(
             headers["Authorization"] = f"token {token}"
         resp = requests.get(url, headers=headers, timeout=30)
         if resp.status_code == 404:
+            if not token:
+                # Unauthenticated 404 is ambiguous: could be a genuinely
+                # missing file *or* a private repo hiding its existence.
+                # Raise so that ``try_with_fallback`` retries with a token.
+                resp.raise_for_status()
+            # Authenticated 404 means the file genuinely does not exist.
             return None
         resp.raise_for_status()
         return resp.json()
