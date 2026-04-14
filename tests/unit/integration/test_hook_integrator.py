@@ -646,6 +646,7 @@ class TestClaudeIntegration:
             "_apm_source": "ralph-loop",
         }
         settings_path = temp_project / ".claude" / "settings.json"
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text(json.dumps({
             "hooks": {
                 "Stop": [
@@ -673,6 +674,52 @@ class TestClaudeIntegration:
         assert "stop-hook.sh" in apm_entries[0]["hooks"][0]["command"]
         assert len(user_entries) == 1
         assert user_entries[0]["hooks"][0]["command"] == "user-owned"
+
+    def test_reinstall_preserves_multiple_hook_files_same_event(self, temp_project):
+        """A package can contribute to one event from several hook files.
+
+        The idempotent-upsert must only strip prior-owned entries once per
+        event per install run — otherwise the second hook file's iteration
+        wipes the first file's fresh entries before extending. Also verifies
+        the combined output is stable across re-runs.
+        """
+        pkg_dir = temp_project / "multi-stop-pkg"
+        hooks_dir = pkg_dir / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+
+        def stop_hook(script: str) -> dict:
+            return {"hooks": {"Stop": [{"hooks": [
+                {"type": "command", "command": f"${{CLAUDE_PLUGIN_ROOT}}/hooks/{script}"}
+            ]}]}}
+
+        (hooks_dir / "hooks-a.json").write_text(json.dumps(stop_hook("stop-a.sh")))
+        (hooks_dir / "hooks-b.json").write_text(json.dumps(stop_hook("stop-b.sh")))
+        (hooks_dir / "stop-a.sh").write_text("#!/bin/bash\nexit 0")
+        (hooks_dir / "stop-b.sh").write_text("#!/bin/bash\nexit 0")
+
+        pkg_info = _make_package_info(pkg_dir, "multi-stop-pkg")
+        integrator = HookIntegrator()
+        integrator.integrate_package_hooks_claude(pkg_info, temp_project)
+
+        settings_path = temp_project / ".claude" / "settings.json"
+        first = settings_path.read_text()
+
+        def extract_commands(text: str) -> set:
+            stop = json.loads(text)["hooks"]["Stop"]
+            assert all(e["_apm_source"] == "multi-stop-pkg" for e in stop)
+            return {h["command"] for entry in stop for h in entry["hooks"]}
+
+        assert extract_commands(first) == {
+            ".claude/hooks/multi-stop-pkg/hooks/stop-a.sh",
+            ".claude/hooks/multi-stop-pkg/hooks/stop-b.sh",
+        }
+
+        # Re-run twice more — both entries must survive and the file must
+        # be byte-identical each time (idempotent across hook files too).
+        for _ in range(2):
+            integrator.integrate_package_hooks_claude(pkg_info, temp_project)
+
+        assert settings_path.read_text() == first
 
     def test_no_hooks_returns_empty_result(self, temp_project):
         """Test Claude integration with no hook files returns empty result."""
