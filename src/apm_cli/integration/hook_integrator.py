@@ -531,6 +531,14 @@ class HookIntegrator(BaseIntegrator):
                     if isinstance(entry, dict):
                         entry["_apm_source"] = package_name
 
+                # Idempotent upsert: drop any prior entries owned by this
+                # package before appending fresh ones. Without this, every
+                # `apm install` re-run duplicates the package's hooks
+                # because `.extend()` is unconditional. See microsoft/apm#708.
+                json_config["hooks"][event_name] = [
+                    e for e in json_config["hooks"][event_name]
+                    if not (isinstance(e, dict) and e.get("_apm_source") == package_name)
+                ]
                 json_config["hooks"][event_name].extend(entries)
 
             hooks_integrated += 1
