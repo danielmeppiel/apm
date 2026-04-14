@@ -315,6 +315,7 @@ class TestProxyAwareFetch:
         assert manifest.plugins[0].name == "p1"
 
 
+@patch("apm_cli.marketplace.client._try_proxy_fetch", return_value=None)
 class TestPrivateRepoAuth:
     """Verify unauth_first=False so private repos get credentials before unauthenticated fallback.
 
@@ -326,7 +327,7 @@ class TestPrivateRepoAuth:
 
     _MARKETPLACE_JSON = {"name": "Private Plugins", "plugins": []}
 
-    def test_fetch_file_private_repo_auth_first(self):
+    def test_fetch_file_private_repo_auth_first(self, _proxy):
         """_fetch_file passes unauth_first=False so private repos are reached via auth first."""
         source = _make_source()
         with patch("apm_cli.deps.registry_proxy.RegistryConfig.from_env", return_value=None):
@@ -343,7 +344,7 @@ class TestPrivateRepoAuth:
             "unauth_first must be False -- private repos respond 404 to unauthenticated requests"
         )
 
-    def test_fetch_file_no_proxy_passes_unauth_first_false(self):
+    def test_fetch_file_no_proxy_passes_unauth_first_false(self, _proxy):
         """With no proxy, try_with_fallback is explicitly called with unauth_first=False (not True)."""
         source = _make_source()
         with patch("apm_cli.deps.registry_proxy.RegistryConfig.from_env", return_value=None):
@@ -363,7 +364,7 @@ class TestPrivateRepoAuth:
             f"Expected unauth_first=False, got {call_kwargs['unauth_first']!r}"
         )
 
-    def test_auto_detect_private_repo_succeeds_with_auth(self):
+    def test_auto_detect_private_repo_succeeds_with_auth(self, _proxy):
         """_auto_detect_path finds a private repo's manifest via auth on the third candidate path."""
         source = _make_source()
         call_count = [0]
