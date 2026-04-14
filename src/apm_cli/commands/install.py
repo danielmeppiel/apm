@@ -62,7 +62,53 @@ except ImportError as e:
 # ---------------------------------------------------------------------------
 
 
-def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None, auth_resolver=None, scope=None):
+def _check_insecure_dependencies(
+    deps, allow_insecure_flag: bool, logger=None
+) -> None:
+    """Check APM dependencies for HTTP (insecure) URLs and enforce security policy.
+
+    Two conditions must BOTH be true for an HTTP dep to be allowed:
+    1. The dep entry in apm.yml must have allow_insecure: true
+    2. Either --allow-insecure flag is set OR apm config allow-insecure is true
+
+    Args:
+        deps: List of DependencyReference objects to check.
+        allow_insecure_flag: True if --allow-insecure was passed on the command line.
+    """
+    from ..config import get_allow_insecure
+    config_allow_insecure = get_allow_insecure()
+
+    for dep in deps:
+        dep_is_insecure = getattr(dep, "is_insecure", False) is True
+        if not dep_is_insecure:
+            continue
+        identity = dep.get_identity()
+        dep_allow_insecure = getattr(dep, "allow_insecure", False) is True
+        if not dep_allow_insecure:
+            message = (
+                f"Dependency '{identity}' uses HTTP (insecure) but "
+                f"'allow_insecure: true' is not set in its apm.yml entry. "
+                f"Add 'allow_insecure: true' to the dependency, or use a HTTPS URL instead."
+            )
+            if logger:
+                logger.error(message)
+            else:
+                _rich_error(message)
+            sys.exit(1)
+        if not (allow_insecure_flag or config_allow_insecure):
+            message = (
+                f"Dependency '{identity}' uses HTTP (insecure). "
+                f"Pass '--allow-insecure' to apm install, or run "
+                f"'apm config set allow-insecure true' to allow HTTP dependencies globally."
+            )
+            if logger:
+                logger.error(message)
+            else:
+                _rich_error(message)
+            sys.exit(1)
+
+
+def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, logger=None, manifest_path=None, auth_resolver=None, scope=None, allow_insecure=False):
     """Validate packages exist and can be accessed, then add to apm.yml dependencies section.
 
     Implements normalize-on-write: any input form (HTTPS URL, SSH URL, FQDN, shorthand)
@@ -126,6 +172,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     valid_outcomes = []  # (canonical, already_present) tuples
     invalid_outcomes = []  # (package, reason) tuples
     _marketplace_provenance = {}  # canonical -> {discovered_via, marketplace_plugin_name}
+    _apm_yml_entries = {}  # canonical -> apm.yml entry (str or dict for HTTP deps)
 
     if logger:
         logger.validation_start(len(packages))
@@ -196,6 +243,19 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 logger.validation_fail(package, reason)
             continue
 
+        # Reject HTTP deps unless --allow-insecure is set
+        if dep_ref.is_insecure:
+            if not allow_insecure:
+                reason = (
+                    f"'{canonical}' uses HTTP (insecure). "
+                    f"Pass '--allow-insecure' to allow HTTP dependencies."
+                )
+                invalid_outcomes.append((package, reason))
+                if logger:
+                    logger.validation_fail(package, reason)
+                continue
+            dep_ref.allow_insecure = True
+
         # Reject local packages at user scope -- relative paths resolve
         # against cwd during validation but against $HOME during copy,
         # causing silent failures.
@@ -223,6 +283,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
             if not already_in_deps:
                 validated_packages.append(canonical)
+                _apm_yml_entries[canonical] = dep_ref.to_apm_yml_entry()
                 existing_identities.add(identity)  # prevent duplicates within batch
             if marketplace_provenance:
                 _marketplace_provenance[identity] = marketplace_provenance
@@ -267,7 +328,8 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     # Add validated packages to dependencies (already canonical)
     dep_label = "devDependencies" if dev else "apm.yml"
     for package in validated_packages:
-        current_deps.append(package)
+        entry = _apm_yml_entries.get(package, package)
+        current_deps.append(entry)
         if logger:
             logger.verbose_detail(f"Added {package} to {dep_label}")
 
@@ -622,8 +684,15 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
     default=False,
     help="Install to user scope (~/.apm/) instead of the current project",
 )
+@click.option(
+    "--allow-insecure",
+    "allow_insecure",
+    is_flag=True,
+    default=False,
+    help="Allow HTTP (insecure) dependencies. Required when dependencies use http:// URLs.",
+)
 @click.pass_context
-def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target, global_):
+def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbose, trust_transitive_mcp, parallel_downloads, dev, target, global_, allow_insecure):
     """Install APM and MCP dependencies from apm.yml (like npm install).
 
     This command automatically detects AI runtimes from your apm.yml scripts and installs
@@ -643,6 +712,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         apm install --update                    # Update dependencies to latest Git refs
         apm install --dry-run                   # Show what would be installed
         apm install -g org/pkg1                 # Install to user scope (~/.apm/)
+        apm install --allow-insecure http://my-server.example.com/owner/repo
     """
     try:
         # Create structured logger for install output early so exception
@@ -702,7 +772,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             validated_packages, outcome = _validate_and_add_packages_to_apm_yml(
                 packages, dry_run, dev=dev, logger=logger,
                 manifest_path=manifest_path, auth_resolver=auth_resolver,
-                scope=scope,
+                scope=scope, allow_insecure=allow_insecure,
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
@@ -734,6 +804,12 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         dev_apm_deps = apm_package.get_dev_apm_dependencies()
         has_any_apm_deps = bool(apm_deps) or bool(dev_apm_deps)
         mcp_deps = apm_package.get_mcp_dependencies()
+
+        # Enforce HTTP security policy before any installation proceeds
+        all_apm_deps = list(apm_deps) + list(dev_apm_deps)
+        _check_insecure_dependencies(
+            all_apm_deps, allow_insecure, logger=logger
+        )
 
         # Convert --only string to InstallMode enum
         if only is None:
@@ -2700,7 +2776,5 @@ def _install_apm_dependencies(
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
-
-
 
 

@@ -96,6 +96,7 @@ apm install [PACKAGES...] [OPTIONS]
 - `--trust-transitive-mcp` - Trust self-defined MCP servers from transitive packages (skip re-declaration requirement)
 - `--dev` - Add packages to [`devDependencies`](../manifest-schema/#5-devdependencies) instead of `dependencies`. Dev deps are installed locally but excluded from `apm pack --format plugin` bundles
 - `-g, --global` - Install to user scope (`~/.apm/`) instead of the current project. Primitives deploy to `~/.copilot/`, `~/.claude/`, etc.
+- `--allow-insecure` - Allow HTTP (insecure) dependencies. Required when adding or installing dependencies that use an `http://` URL.
 
 **Behavior:**
 - `apm install` (no args): Installs **all** packages from `apm.yml` and deploys the project's own `.apm/` content
@@ -1363,6 +1364,7 @@ apm config get [KEY]
 **Arguments:**
 - `KEY` (optional) - Configuration key to retrieve. Supported keys:
   - `auto-integrate` - Whether to automatically integrate `.prompt.md` files into AGENTS.md
+  - `allow-insecure` - Whether HTTP (insecure) dependencies are allowed globally
 
 If `KEY` is omitted, displays all configuration values.
 
@@ -1370,6 +1372,9 @@ If `KEY` is omitted, displays all configuration values.
 ```bash
 # Get auto-integrate setting
 apm config get auto-integrate
+
+# Get allow-insecure setting
+apm config get allow-insecure
 
 # Show all configuration
 apm config get
@@ -1386,6 +1391,7 @@ apm config set KEY VALUE
 **Arguments:**
 - `KEY` - Configuration key to set. Supported keys:
   - `auto-integrate` - Enable/disable automatic integration of `.prompt.md` files
+  - `allow-insecure` - Allow HTTP (insecure) dependencies globally
 - `VALUE` - Value to set. For boolean keys, use: `true`, `false`, `yes`, `no`, `1`, `0`
 
 **Configuration Keys:**
@@ -1398,6 +1404,11 @@ apm config set KEY VALUE
   - Set to `false` if you want to manually manage which prompts are compiled
   - Set to `true` to ensure all prompts are always included in the context
 
+**`allow-insecure`** - Allow HTTP (insecure) dependencies globally
+- **Type:** Boolean
+- **Default:** `false`
+- **Description:** When enabled, APM skips the requirement to pass `--allow-insecure` at install time for HTTP dependencies. The per-dependency `allow_insecure: true` field in apm.yml is still required. Use this for private network environments where all servers use HTTP.
+
 **Examples:**
 ```bash
 # Enable auto-integration (default)
@@ -1406,9 +1417,11 @@ apm config set auto-integrate true
 # Disable auto-integration
 apm config set auto-integrate false
 
-# Using alternative boolean values
-apm config set auto-integrate yes
-apm config set auto-integrate 1
+# Allow HTTP dependencies globally (skips --allow-insecure flag requirement)
+apm config set allow-insecure true
+
+# Disable globally (default)
+apm config set allow-insecure false
 ```
 
 ## Runtime Management (Experimental)

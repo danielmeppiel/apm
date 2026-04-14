@@ -619,11 +619,18 @@ class GitHubPackageDownloader:
         else:
             # Determine if this host should receive a GitHub token
             is_github = is_github_hostname(host)
+            # Use http:// only for dependencies explicitly marked as insecure.
+            is_insecure = False
+            if dep_ref is not None:
+                is_insecure = bool(getattr(dep_ref, "is_insecure", False))
             if use_ssh:
                 return build_ssh_url(host, repo_ref)
-            elif is_github and github_token:
-                # Only send GitHub tokens to GitHub hosts
+            elif is_github and github_token and not is_insecure:
+                # Only send GitHub tokens to GitHub HTTPS hosts
                 return build_https_clone_url(host, repo_ref, token=github_token)
+            elif is_insecure:
+                # HTTP (insecure) dep: build plain http:// URL
+                return f"http://{host}/{repo_ref}"
             else:
                 # Generic hosts: plain HTTPS, let git credential helpers handle auth
                 return build_https_clone_url(host, repo_ref, token=None)
