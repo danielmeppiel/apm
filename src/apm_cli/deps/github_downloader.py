@@ -626,7 +626,7 @@ class GitHubPackageDownloader:
             if use_ssh:
                 return build_ssh_url(host, repo_ref)
             elif is_github and github_token:
-                # # Only send GitHub tokens to GitHub hosts
+                # Only send GitHub tokens to GitHub hosts
                 return build_https_clone_url(host, repo_ref, token=github_token)
             elif is_insecure:
                 # HTTP direct only: _clone_with_fallback() returns.
