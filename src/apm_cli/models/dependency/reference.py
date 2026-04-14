@@ -540,7 +540,7 @@ class DependencyReference:
         virtual_path = None
         validated_host = None
 
-        if temp_str.startswith(("git@", "https://", "http://")):
+        if temp_str.lower().startswith(("git@", "https://", "http://")):
             return is_virtual_package, virtual_path, validated_host
 
         check_str = temp_str
@@ -690,7 +690,9 @@ class DependencyReference:
         repo_url = repo_part.strip()
 
         # For virtual packages, extract just the owner/repo part (or org/project/repo for ADO)
-        if is_virtual_package and not repo_url.startswith(("https://", "http://")):
+        repo_url_lower = repo_url.lower()
+
+        if is_virtual_package and not repo_url_lower.startswith(("https://", "http://")):
             parts = repo_url.split("/")
 
             if "_git" in parts:
@@ -724,7 +726,7 @@ class DependencyReference:
                     repo_url = "/".join(parts[:2])
 
         # Normalize to URL format for secure parsing
-        if repo_url.startswith(("https://", "http://")):
+        if repo_url_lower.startswith(("https://", "http://")):
             parsed_url = urllib.parse.urlparse(repo_url)
             host = parsed_url.hostname or ""
         else:
