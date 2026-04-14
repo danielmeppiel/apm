@@ -211,6 +211,13 @@ class TestConfigSet:
         assert result.exit_code == 0
         mock_set.assert_called_once_with(False)
 
+    def test_set_allow_insecure_strips_whitespace(self):
+        """Allow surrounding whitespace in boolean config values."""
+        with patch("apm_cli.config.set_allow_insecure") as mock_set:
+            result = self.runner.invoke(config, ["set", "allow-insecure", " true "])
+        assert result.exit_code == 0
+        mock_set.assert_called_once_with(True)
+
 
 class TestConfigGet:
     """Tests for `apm config get [key]`."""
