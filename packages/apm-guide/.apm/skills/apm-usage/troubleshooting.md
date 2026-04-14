@@ -2,6 +2,7 @@
 
 | Problem | Fix |
 |---------|-----|
+| `apm install` hangs or stalls (SSH blocked by firewall) | APM now times out SSH after 30 seconds and retries over HTTPS automatically. To force HTTPS always, prefix the dependency URL with `https://` in `apm.yml`. Use `APM_DEBUG=1` for clone diagnostics. |
 | `apm: command not found` | Install APM: `curl -sSL https://aka.ms/apm-unix \| sh` (macOS/Linux) or `irm https://aka.ms/apm-windows \| iex` (Windows). Ensure `/usr/local/bin` is in `$PATH`. |
 | Authentication errors (401/403) | Set the correct token. Run `apm install --verbose` to see which token source is used. See [Authentication](./authentication.md). |
 | File collision on install | A local file conflicts with a dependency file. Use `--force` to overwrite, or rename the local file. |

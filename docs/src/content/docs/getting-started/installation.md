@@ -149,6 +149,24 @@ mkdir -p ~/bin
 
 See [Authentication -- Troubleshooting](../authentication/#troubleshooting) for token setup, SSO authorization, and diagnosing auth failures.
 
+### `apm install` hangs or times out on corporate networks (SSH blocked)
+
+Some corporate firewalls silently drop SSH packets, causing `apm install` to stall indefinitely when APM tries to clone a dependency over SSH.
+
+APM automatically sets a 30-second SSH connection timeout (`GIT_SSH_COMMAND` with `-o ConnectTimeout=30`) and falls back to HTTPS when the SSH attempt fails. If installs are still slow, you can force HTTPS clones by prepending the dependency URL with `https://`:
+
+```yaml
+# apm.yml
+dependencies:
+  - https://github.com/org/repo
+```
+
+If the problem persists, set `APM_DEBUG=1` for detailed clone diagnostics:
+
+```bash
+APM_DEBUG=1 apm install
+```
+
 ### File access errors on Windows (antivirus / endpoint protection)
 
 If `apm install` fails with `The process cannot access the file because it is being used by another process`, your antivirus or endpoint protection software is likely scanning temp files during installation.
