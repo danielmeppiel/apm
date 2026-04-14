@@ -1656,5 +1656,103 @@ class TestRawContentCDNDownload:
             assert result == b'hello world'
 
 
+class TestVirtualFilePackageYamlGeneration:
+    """Tests that apm.yml for virtual packages is always valid YAML."""
+
+    def setup_method(self):
+        self.downloader = GitHubPackageDownloader()
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def teardown_method(self):
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_dep_ref(self, virtual_path):
+        """Helper: build a minimal DependencyReference for a virtual file."""
+        from apm_cli.models.apm_package import DependencyReference
+        dep_ref = Mock(spec=DependencyReference)
+        dep_ref.is_virtual = True
+        dep_ref.virtual_path = virtual_path
+        dep_ref.reference = "main"
+        dep_ref.repo_url = "github/awesome-copilot"
+        dep_ref.get_virtual_package_name.return_value = "awesome-copilot-swe-subagent"
+        dep_ref.to_github_url.return_value = f"https://github.com/github/awesome-copilot/blob/main/{virtual_path}"
+        dep_ref.is_virtual_file.return_value = True
+        dep_ref.VIRTUAL_FILE_EXTENSIONS = [".prompt.md", ".instructions.md", ".chatmode.md", ".agent.md"]
+        return dep_ref
+
+    def test_yaml_with_colon_in_description(self):
+        """apm.yml must be valid when the agent description contains a colon."""
+        import yaml
+
+        agent_content = (
+            b"---\n"
+            b"name: 'SWE'\n"
+            b"description: 'Senior software engineer subagent for implementation tasks:"
+            b" feature development, debugging, refactoring, and testing.'\n"
+            b"tools: ['vscode']\n"
+            b"---\n\n## Body\n"
+        )
+
+        dep_ref = self._make_dep_ref("agents/swe-subagent.agent.md")
+        target_path = self.temp_dir / "pkg"
+
+        with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
+            with patch.object(self.downloader, "download_raw_file", return_value=agent_content):
+                pkg_info = self.downloader.download_virtual_file_package(dep_ref, target_path)
+
+        apm_yml_path = target_path / "apm.yml"
+        assert apm_yml_path.exists(), "apm.yml was not created"
+
+        content = apm_yml_path.read_text(encoding="utf-8")
+        parsed = yaml.safe_load(content)   # must not raise
+
+        expected = (
+            "Senior software engineer subagent for implementation tasks:"
+            " feature development, debugging, refactoring, and testing."
+        )
+        assert parsed["description"] == expected
+
+    def test_yaml_with_colon_in_name(self):
+        """apm.yml must be valid even when the package name contains a colon."""
+        import yaml
+
+        dep_ref = self._make_dep_ref("agents/my-agent.agent.md")
+        dep_ref.get_virtual_package_name.return_value = "org-name: special"
+
+        agent_content = b"---\nname: 'plain'\ndescription: 'plain'\n---\n"
+        target_path = self.temp_dir / "pkg2"
+
+        with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
+            with patch.object(self.downloader, "download_raw_file", return_value=agent_content):
+                self.downloader.download_virtual_file_package(dep_ref, target_path)
+
+        content = (target_path / "apm.yml").read_text(encoding="utf-8")
+        parsed = yaml.safe_load(content)
+        assert parsed["name"] == "org-name: special"
+
+    def test_yaml_without_special_characters_still_valid(self):
+        """apm.yml generation must still work for ordinary descriptions."""
+        import yaml
+
+        agent_content = (
+            b"---\n"
+            b"name: 'Simple Agent'\n"
+            b"description: 'A simple agent without special chars'\n"
+            b"---\n"
+        )
+
+        dep_ref = self._make_dep_ref("agents/simple.agent.md")
+        target_path = self.temp_dir / "pkg3"
+
+        with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
+            with patch.object(self.downloader, "download_raw_file", return_value=agent_content):
+                self.downloader.download_virtual_file_package(dep_ref, target_path)
+
+        content = (target_path / "apm.yml").read_text(encoding="utf-8")
+        parsed = yaml.safe_load(content)
+        assert parsed["description"] == "A simple agent without special chars"
+
+
 if __name__ == '__main__':
     pytest.main([__file__])
