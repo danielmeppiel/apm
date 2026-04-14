@@ -624,16 +624,15 @@ class GitHubPackageDownloader:
             if dep_ref is not None:
                 is_insecure = bool(getattr(dep_ref, "is_insecure", False))
             if use_ssh:
-                # Method 2: SSH fallback
                 return build_ssh_url(host, repo_ref)
-            elif is_github and github_token and not is_insecure:
-                # Method 1: Only send GitHub tokens to GitHub HTTPS hosts
+            elif is_github and github_token:
+                # # Only send GitHub tokens to GitHub hosts
                 return build_https_clone_url(host, repo_ref, token=github_token)
             elif is_insecure:
-                # HTTP direct only: _clone_with_fallback() returns before Method 1/2/3.
+                # HTTP direct only: _clone_with_fallback() returns.
                 return f"http://{host}/{repo_ref}.git"
             else:
-                # Method 3: Plain HTTPS, let git credential helpers handle auth
+                # Generic hosts: plain HTTPS, let git credential helpers handle auth
                 return build_https_clone_url(host, repo_ref, token=None)
 
     def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, verbose_callback=None, **clone_kwargs) -> Repo:
