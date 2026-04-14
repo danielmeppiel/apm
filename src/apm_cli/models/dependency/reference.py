@@ -1024,7 +1024,7 @@ class DependencyReference:
                 entry["ref"] = self.reference
             if self.alias:
                 entry["alias"] = self.alias
-            entry["allow_insecure"] = True
+            entry["allow_insecure"] = self.allow_insecure
             return entry
         return self.to_canonical()
 
