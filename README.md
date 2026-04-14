@@ -78,7 +78,7 @@ pip install apm-cli
 
 ```powershell
 # Scoop
-scoop bucket add apm https://github.com/microsoft/scoop-apm
+scoop bucket add apm https://github.com/microsoft/apm
 scoop install apm
 # pip
 pip install apm-cli
