@@ -131,7 +131,10 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
     import tempfile
     from pathlib import Path
 
+    from ..config import get_allow_insecure
+
     apm_yml_path = manifest_path or Path(APM_YML_FILENAME)
+    config_allow_insecure = get_allow_insecure()
 
     # Read current apm.yml
     try:
@@ -245,15 +248,18 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
 
         # Reject HTTP deps unless --allow-insecure is set
         if dep_ref.is_insecure:
-            if not allow_insecure:
+            if not (allow_insecure or config_allow_insecure):
                 reason = (
                     f"'{canonical}' uses HTTP (insecure). "
-                    f"Pass '--allow-insecure' to allow HTTP dependencies."
+                    f"Pass '--allow-insecure' or run "
+                    f"'apm config set allow-insecure true' to allow HTTP dependencies."
                 )
                 invalid_outcomes.append((package, reason))
                 if logger:
                     logger.validation_fail(package, reason)
                 continue
+            # Persist the HTTP allowance in apm.yml so future installs can pass
+            # _check_insecure_dependencies() before the lockfile is consulted.
             dep_ref.allow_insecure = True
 
         # Reject local packages at user scope -- relative paths resolve
@@ -631,7 +637,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
 
 
 @click.command(
-    help="Install APM and MCP dependencies (auto-creates apm.yml when installing packages)"
+    help="Install APM and MCP dependencies (auto-creates apm.yml; use --allow-insecure for http:// packages)"
 )
 @click.argument("packages", nargs=-1)
 @click.option("--runtime", help="Target specific runtime only (copilot, codex, vscode)")
@@ -698,6 +704,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
     This command automatically detects AI runtimes from your apm.yml scripts and installs
     MCP servers for all detected and available runtimes. It also installs APM package
     dependencies from GitHub repositories.
+
+    HTTP dependencies require `allow_insecure: true` in apm.yml and either
+    `--allow-insecure` or `apm config set allow-insecure true`.
 
     The --only flag filters by dependency type (apm or mcp). Internally converted
     to an InstallMode enum for type-safe dispatch.
@@ -776,7 +785,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
-                return
+                sys.exit(1)
             # Note: Empty validated_packages is OK if packages are already in apm.yml
             # We'll proceed with installation from apm.yml to ensure everything is synced
 
@@ -2776,5 +2785,3 @@ def _install_apm_dependencies(
 
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")
-
-

@@ -74,7 +74,7 @@ apm init my-plugin --plugin
 
 ### `apm install` - Install dependencies and deploy local content
 
-Install APM package and MCP server dependencies from `apm.yml` and deploy the project's own `.apm/` content to target directories (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists.
+Install APM package and MCP server dependencies from `apm.yml` and deploy the project's own `.apm/` content to target directories (like `npm install`). Auto-creates minimal `apm.yml` when packages are specified but no manifest exists. For `http://` dependencies, use `--allow-insecure` or enable the global `allow-insecure` config.
 
 ```bash
 apm install [PACKAGES...] [OPTIONS]

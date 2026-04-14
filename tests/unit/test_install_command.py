@@ -869,16 +869,73 @@ class TestAllowInsecureFlag:
 
     def setup_method(self):
         self.runner = CliRunner()
+        try:
+            self.original_dir = os.getcwd()
+        except FileNotFoundError:
+            self.original_dir = str(Path(__file__).parent.parent.parent)
+            os.chdir(self.original_dir)
 
     def test_http_dep_rejected_without_allow_insecure_flag(self):
         """Adding http:// package without --allow-insecure is rejected."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            os.chdir(tmp_dir)
-            with patch("apm_cli.commands.install._validate_package_exists", return_value=True):
-                result = self.runner.invoke(
-                    cli, ["install", "http://my-server.example.com/owner/repo"]
+            try:
+                os.chdir(tmp_dir)
+                with patch("apm_cli.commands.install._validate_package_exists", return_value=True), \
+                     patch("apm_cli.config.get_allow_insecure", return_value=False):
+                    result = self.runner.invoke(
+                        cli, ["install", "http://my-server.example.com/owner/repo"]
+                    )
+            finally:
+                os.chdir(self.original_dir)
+            assert result.exit_code != 0
+            assert "allow-insecure" in result.output or "insecure" in result.output.lower()
+
+    def test_install_help_mentions_allow_insecure_for_http_deps(self):
+        """Install help should mention the HTTP allow-insecure flow."""
+        result = self.runner.invoke(cli, ["install", "--help"])
+
+        assert result.exit_code == 0
+        normalized = " ".join(result.output.split())
+        assert "use --allow-insecure for http:// packages" in normalized
+
+    @patch("apm_cli.commands.install._validate_package_exists", return_value=True)
+    @patch("apm_cli.commands.install.APM_DEPS_AVAILABLE", True)
+    @patch("apm_cli.commands.install.APMPackage")
+    @patch("apm_cli.commands.install._install_apm_dependencies")
+    def test_http_dep_addition_passes_with_config_allow_insecure(
+        self, mock_install_apm, mock_apm_package, mock_validate
+    ):
+        """Global config allows adding an HTTP dependency without the CLI flag."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            try:
+                os.chdir(tmp_dir)
+                mock_pkg_instance = MagicMock()
+                mock_pkg_instance.get_apm_dependencies.return_value = []
+                mock_pkg_instance.get_mcp_dependencies.return_value = []
+                mock_apm_package.from_apm_yml.return_value = mock_pkg_instance
+                mock_install_apm.return_value = InstallResult(
+                    diagnostics=MagicMock(
+                        has_diagnostics=False, has_critical_security=False
+                    )
                 )
-            assert result.exit_code != 0 or "allow-insecure" in result.output.lower() or "HTTP" in result.output
+
+                with patch("apm_cli.config.get_allow_insecure", return_value=True):
+                    result = self.runner.invoke(
+                        cli, ["install", "http://my-server.example.com/owner/repo"]
+                    )
+
+                assert result.exit_code == 0
+                with open("apm.yml", encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+
+                assert config["dependencies"]["apm"] == [
+                    {
+                        "git": "http://my-server.example.com/owner/repo",
+                        "allow_insecure": True,
+                    }
+                ]
+            finally:
+                os.chdir(self.original_dir)
 
     def test_http_dep_validation_check(self):
         """_check_insecure_dependencies blocks HTTP dep without allow_insecure flag."""
