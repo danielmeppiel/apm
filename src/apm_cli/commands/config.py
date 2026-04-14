@@ -24,7 +24,7 @@ _CONFIG_KEY_DISPLAY_NAMES = {
 
 def _parse_bool_value(value: str) -> bool:
     """Parse a CLI boolean value."""
-    normalized = value.lower()
+    normalized = value.strip().lower()
     if normalized in _BOOLEAN_TRUE_VALUES:
         return True
     if normalized in _BOOLEAN_FALSE_VALUES:
