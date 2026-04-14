@@ -483,7 +483,9 @@ class DependencyReference:
         sub_path = entry.get("path")
         ref_override = entry.get("ref")
         alias_override = entry.get("alias")
-        allow_insecure = bool(entry.get("allow_insecure", False))
+        allow_insecure = entry.get("allow_insecure", False)
+        if not isinstance(allow_insecure, bool):
+            raise ValueError("'allow_insecure' field must be a boolean")
 
         # Validate sub_path if provided
         if sub_path is not None:
