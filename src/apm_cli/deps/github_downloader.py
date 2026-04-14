@@ -42,6 +42,7 @@ from ..utils.github_host import (
     is_azure_devops_hostname,
     is_github_hostname
 )
+from ..utils.yaml_io import yaml_to_str
 
 
 def normalize_collection_path(virtual_path: str) -> str:
@@ -1515,7 +1516,6 @@ class GitHubPackageDownloader:
             # If frontmatter parsing fails, use default description
             pass
 
-        from ..utils.yaml_io import yaml_to_str
         apm_yml_data = {
             "name": package_name,
             "version": "1.0.0",
@@ -1658,7 +1658,6 @@ class GitHubPackageDownloader:
         # Generate apm.yml with collection metadata
         package_name = dep_ref.get_virtual_package_name()
 
-        from ..utils.yaml_io import yaml_to_str
         apm_yml_data = {
             "name": package_name,
             "version": "1.0.0",
