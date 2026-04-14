@@ -1005,7 +1005,7 @@ class DependencyReference:
             ado_project=ado_project,
             ado_repo=ado_repo,
             artifactory_prefix=artifactory_prefix,
-            is_insecure=dependency_str.startswith("http://"),
+            is_insecure=urllib.parse.urlparse(dependency_str).scheme.lower() == "http",
         )
 
     def to_apm_yml_entry(self):
