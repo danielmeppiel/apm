@@ -131,6 +131,10 @@ def _collect_bare_skill(
     # Derive a slug: prefer virtual_path (e.g. "frontend-design"), else last
     # segment of repo_url (e.g. "my-skill" from "owner/my-skill")
     slug = (getattr(dep, "virtual_path", "") or "").strip("/")
+    # Strip leading "skills/" to avoid double nesting (skills/skills/…)
+    # when virtual_path already contains the skills/ prefix.
+    if slug.startswith("skills/"):
+        slug = slug[len("skills/"):]
     if not slug:
         slug = dep.repo_url.rsplit("/", 1)[-1] if dep.repo_url else "skill"
     for f in sorted(install_path.iterdir()):
