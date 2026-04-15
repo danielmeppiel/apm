@@ -197,6 +197,27 @@ class TestConfigSet:
         assert result.exit_code == 0
         mock_set.assert_called_once_with(True)
 
+    def test_set_allow_insecure_true(self):
+        """Enable allow-insecure."""
+        with patch("apm_cli.config.set_allow_insecure") as mock_set:
+            result = self.runner.invoke(config, ["set", "allow-insecure", "true"])
+        assert result.exit_code == 0
+        mock_set.assert_called_once_with(True)
+
+    def test_set_allow_insecure_false(self):
+        """Disable allow-insecure."""
+        with patch("apm_cli.config.set_allow_insecure") as mock_set:
+            result = self.runner.invoke(config, ["set", "allow-insecure", "false"])
+        assert result.exit_code == 0
+        mock_set.assert_called_once_with(False)
+
+    def test_set_allow_insecure_strips_whitespace(self):
+        """Allow surrounding whitespace in boolean config values."""
+        with patch("apm_cli.config.set_allow_insecure") as mock_set:
+            result = self.runner.invoke(config, ["set", "allow-insecure", " true "])
+        assert result.exit_code == 0
+        mock_set.assert_called_once_with(True)
+
 
 class TestConfigGet:
     """Tests for `apm config get [key]`."""
@@ -217,6 +238,13 @@ class TestConfigGet:
             result = self.runner.invoke(config, ["get", "auto-integrate"])
         assert result.exit_code == 0
         assert "auto-integrate: False" in result.output
+
+    def test_get_allow_insecure(self):
+        """Get the allow-insecure setting."""
+        with patch("apm_cli.config.get_allow_insecure", return_value=True):
+            result = self.runner.invoke(config, ["get", "allow-insecure"])
+        assert result.exit_code == 0
+        assert "allow-insecure: True" in result.output
 
     def test_get_unknown_key(self):
         """Reject an unknown key."""
@@ -274,3 +302,36 @@ class TestAutoIntegrateFunctions:
         with patch.object(cfg_module, "update_config") as mock_update:
             cfg_module.set_auto_integrate(False)
             mock_update.assert_called_once_with({"auto_integrate": False})
+
+class TestAllowInsecureFunctions:
+    """Unit tests for get_allow_insecure / set_allow_insecure in config.py."""
+
+    def test_get_allow_insecure_default_false(self):
+        """get_allow_insecure() returns False when not configured."""
+        import apm_cli.config as cfg_module
+
+        with patch.object(cfg_module, "get_config", return_value={}):
+            assert cfg_module.get_allow_insecure() is False
+
+    def test_get_allow_insecure_true(self):
+        """get_allow_insecure() returns True when configured."""
+        import apm_cli.config as cfg_module
+
+        with patch.object(cfg_module, "get_config", return_value={"allow_insecure": True}):
+            assert cfg_module.get_allow_insecure() is True
+
+    def test_set_allow_insecure_calls_update_config(self):
+        """set_allow_insecure() delegates to update_config."""
+        import apm_cli.config as cfg_module
+
+        with patch.object(cfg_module, "update_config") as mock_update:
+            cfg_module.set_allow_insecure(True)
+            mock_update.assert_called_once_with({"allow_insecure": True})
+
+    def test_set_allow_insecure_false_calls_update_config(self):
+        """set_allow_insecure(False) passes False to update_config."""
+        import apm_cli.config as cfg_module
+
+        with patch.object(cfg_module, "update_config") as mock_update:
+            cfg_module.set_allow_insecure(False)
+            mock_update.assert_called_once_with({"allow_insecure": False})

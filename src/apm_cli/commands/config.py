@@ -14,6 +14,48 @@ from ._helpers import HIGHLIGHT, RESET, _get_console, _load_apm_config
 # Restore builtin since a subcommand is named ``set``
 set = builtins.set
 
+_BOOLEAN_TRUE_VALUES = {"true", "1", "yes"}
+_BOOLEAN_FALSE_VALUES = {"false", "0", "no"}
+_CONFIG_KEY_DISPLAY_NAMES = {
+    "auto_integrate": "auto-integrate",
+    "allow_insecure": "allow-insecure",
+}
+
+
+def _parse_bool_value(value: str) -> bool:
+    """Parse a CLI boolean value."""
+    normalized = value.strip().lower()
+    if normalized in _BOOLEAN_TRUE_VALUES:
+        return True
+    if normalized in _BOOLEAN_FALSE_VALUES:
+        return False
+    raise ValueError(f"Invalid value '{value}'. Use 'true' or 'false'.")
+
+
+def _get_config_setters():
+    """Return config setters keyed by CLI option name."""
+    from ..config import set_auto_integrate, set_allow_insecure
+
+    return {
+        "auto-integrate": (set_auto_integrate, "Auto-integration"),
+        "allow-insecure": (set_allow_insecure, "Allow-insecure"),
+    }
+
+
+def _get_config_getters():
+    """Return config getters keyed by CLI option name."""
+    from ..config import get_auto_integrate, get_allow_insecure
+
+    return {
+        "auto-integrate": get_auto_integrate,
+        "allow-insecure": get_allow_insecure,
+    }
+
+
+def _valid_config_keys() -> str:
+    """Return valid config keys for messages."""
+    return ", ".join(_get_config_getters().keys())
+
 
 @click.group(help="Configure APM CLI", invoke_without_command=True)
 @click.pass_context
@@ -115,27 +157,31 @@ def set(key, value):
     Examples:
         apm config set auto-integrate false
         apm config set auto-integrate true
+        apm config set allow-insecure true
     """
-    from ..config import set_auto_integrate
-
     logger = CommandLogger("config set")
-    if key == "auto-integrate":
-        if value.lower() in ["true", "1", "yes"]:
-            set_auto_integrate(True)
-            logger.success("Auto-integration enabled")
-        elif value.lower() in ["false", "0", "no"]:
-            set_auto_integrate(False)
-            logger.success("Auto-integration disabled")
-        else:
-            logger.error(f"Invalid value '{value}'. Use 'true' or 'false'.")
-            sys.exit(1)
-    else:
+    setters = _get_config_setters()
+    config_entry = setters.get(key)
+    if config_entry is None:
         logger.error(f"Unknown configuration key: '{key}'")
-        logger.progress("Valid keys: auto-integrate")
+        logger.progress(f"Valid keys: {_valid_config_keys()}")
         logger.progress(
             "This error may indicate a bug in command routing. Please report this issue."
         )
         sys.exit(1)
+
+    try:
+        enabled = _parse_bool_value(value)
+    except ValueError as exc:
+        logger.error(str(exc))
+        sys.exit(1)
+
+    setter, label = config_entry
+    setter(enabled)
+    if enabled:
+        logger.success(f"{label} enabled")
+    else:
+        logger.success(f"{label} disabled")
 
 
 @config.command(help="Get a configuration value")
@@ -145,29 +191,28 @@ def get(key):
 
     Examples:
         apm config get auto-integrate
+        apm config get allow-insecure
         apm config get
     """
-    from ..config import get_config, get_auto_integrate
+    from ..config import get_config
 
     logger = CommandLogger("config get")
+    getters = _get_config_getters()
     if key:
-        if key == "auto-integrate":
-            value = get_auto_integrate()
-            click.echo(f"auto-integrate: {value}")
-        else:
+        getter = getters.get(key)
+        if getter is None:
             logger.error(f"Unknown configuration key: '{key}'")
-            logger.progress("Valid keys: auto-integrate")
+            logger.progress(f"Valid keys: {_valid_config_keys()}")
             logger.progress(
                 "This error may indicate a bug in command routing. Please report this issue."
             )
             sys.exit(1)
+        value = getter()
+        click.echo(f"{key}: {value}")
     else:
         # Show all config
         config_data = get_config()
         logger.progress("APM Configuration:")
         for k, v in config_data.items():
-            # Map internal keys to user-friendly names
-            if k == "auto_integrate":
-                click.echo(f"  auto-integrate: {v}")
-            else:
-                click.echo(f"  {k}: {v}")
+            display_key = _CONFIG_KEY_DISPLAY_NAMES.get(k, k)
+            click.echo(f"  {display_key}: {v}")

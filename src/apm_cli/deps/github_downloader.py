@@ -619,11 +619,18 @@ class GitHubPackageDownloader:
         else:
             # Determine if this host should receive a GitHub token
             is_github = is_github_hostname(host)
+            # Use http:// only for dependencies explicitly marked as insecure.
+            is_insecure = False
+            if dep_ref is not None:
+                is_insecure = bool(getattr(dep_ref, "is_insecure", False))
             if use_ssh:
                 return build_ssh_url(host, repo_ref)
             elif is_github and github_token:
                 # Only send GitHub tokens to GitHub hosts
                 return build_https_clone_url(host, repo_ref, token=github_token)
+            elif is_insecure:
+                # HTTP direct only: _clone_with_fallback() returns.
+                return f"http://{host}/{repo_ref}.git"
             else:
                 # Generic hosts: plain HTTPS, let git credential helpers handle auth
                 return build_https_clone_url(host, repo_ref, token=None)
@@ -666,6 +673,36 @@ class GitHubPackageDownloader:
         has_token = dep_token
 
         _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, is_generic={is_generic}, has_token={has_token is not None}")
+
+        # HTTP direct only: return before Method 1/2/3 and keep credential helpers enabled.
+        if dep_ref and getattr(dep_ref, "is_insecure", False):
+            insecure_env = {
+                k: v
+                for k, v in self.git_env.items()
+                if k not in ("GIT_ASKPASS", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
+            }
+            insecure_env["GIT_TERMINAL_PROMPT"] = "0"
+            try:
+                http_url = self._build_repo_url(
+                    repo_url_base, use_ssh=False, dep_ref=dep_ref
+                )
+                repo = Repo.clone_from(
+                    http_url,
+                    target_path,
+                    env=insecure_env,
+                    progress=progress_reporter,
+                    **clone_kwargs,
+                )
+                if verbose_callback:
+                    verbose_callback(f"Cloned from: {http_url}")
+                return repo
+            except GitCommandError as e:
+                sanitized_error = self._sanitize_git_error(str(e))
+                raise RuntimeError(
+                    f"Failed to clone insecure HTTP repository {repo_url_base}. "
+                    f"HTTP dependencies do not fall back to SSH or HTTPS. "
+                    f"Last error: {sanitized_error}"
+                ) from e
 
         # When APM has a token for this host, use the locked-down env (APM manages auth).
         # When no token is available, relax the env so git credential helpers (gh auth,
