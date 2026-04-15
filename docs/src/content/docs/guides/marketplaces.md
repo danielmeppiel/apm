@@ -161,6 +161,21 @@ apm marketplace update acme-plugins
 apm marketplace update
 ```
 
+## Private marketplace repositories
+
+Private marketplace repositories work without extra configuration. APM uses the same credential resolution as `apm install`: `GITHUB_APM_PAT`, per-org `GITHUB_APM_PAT_{ORG}` env vars, and git credential helpers are all tried automatically before falling back to unauthenticated access.
+
+```bash
+export GITHUB_APM_PAT=github_pat_your_token
+
+# Registers a private marketplace — credentials applied automatically
+apm marketplace add your-org/private-marketplace
+```
+
+Previously, `apm marketplace add` would silently fail for private repos because the credential check happened after the initial probe. The fix ensures credentials are used from the first request, so 404s from auth failures are no longer confused with missing `marketplace.json` files.
+
+See [Authentication](../../getting-started/authentication/) for the full credential priority order.
+
 ## Registry proxy support
 
 When `PROXY_REGISTRY_URL` is set, marketplace commands (`add`, `browse`, `search`, `update`) fetch `marketplace.json` through the registry proxy (Artifactory Archive Entry Download) before falling back to the GitHub Contents API. When `PROXY_REGISTRY_ONLY=1` is also set, the GitHub API fallback is blocked entirely, enabling fully air-gapped marketplace discovery.
