@@ -358,6 +358,255 @@ class TestViewCommand(_InfoCmdBase):
         assert "traversal" in result.output.lower()
 
 
+class TestViewCommandRichDisplay(_InfoCmdBase):
+    """Tests for Rich rendering paths in ``apm view``."""
+
+    def test_view_rich_panel_display(self):
+        """``apm view`` renders a Rich panel when Rich is available."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(
+                tmp, "richorg", "richrepo", version="3.0.0",
+                description="Rich panel test", author="Carol",
+            )
+            os.chdir(tmp)
+            # No _force_rich_fallback -- let Rich render
+            result = self.runner.invoke(cli, ["view", "richorg/richrepo"])
+        assert result.exit_code == 0
+        assert "3.0.0" in result.output
+        assert "Rich panel test" in result.output
+        assert "Carol" in result.output
+
+    def test_view_rich_panel_with_hooks(self):
+        """``apm view`` Rich panel includes hook count when hooks exist."""
+        with self._chdir_tmp() as tmp:
+            pkg_dir = self._make_package(tmp, "hookorg", "hookrepo")
+            hooks_dir = pkg_dir / "hooks"
+            hooks_dir.mkdir()
+            (hooks_dir / "pre-commit.json").write_text('{"hooks": []}')
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["view", "hookorg/hookrepo"])
+        assert result.exit_code == 0
+        assert "hook" in result.output.lower()
+
+    def test_view_rich_panel_with_context_files(self):
+        """``apm view`` Rich panel shows context file count when present."""
+        with self._chdir_tmp() as tmp:
+            pkg_dir = self._make_package(tmp, "ctxorg", "ctxrepo")
+            instr_dir = pkg_dir / ".apm" / "instructions"
+            instr_dir.mkdir(parents=True)
+            (instr_dir / "coding-style.md").write_text("# Style guide")
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["view", "ctxorg/ctxrepo"])
+        assert result.exit_code == 0
+        assert "instructions" in result.output.lower() or "context" in result.output.lower()
+
+    def test_view_rich_panel_with_workflows(self):
+        """``apm view`` Rich panel shows workflow count when present."""
+        with self._chdir_tmp() as tmp:
+            pkg_dir = self._make_package(tmp, "wforg2", "wfrepo2")
+            prompts_dir = pkg_dir / ".apm" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            (prompts_dir / "build.prompt.md").write_text("# Build workflow")
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["view", "wforg2/wfrepo2"])
+        assert result.exit_code == 0
+        assert "workflow" in result.output.lower() or "1" in result.output
+
+    def test_view_rich_versions_table(self):
+        """``apm view org/repo versions`` renders a Rich table when Rich is available."""
+        mock_refs = [
+            RemoteRef(name="v1.0.0", ref_type=GitReferenceType.TAG,
+                      commit_sha="aabbccdd11223344"),
+            RemoteRef(name="main", ref_type=GitReferenceType.BRANCH,
+                      commit_sha="deadbeef12345678"),
+        ]
+        with patch(
+            "apm_cli.commands.view.GitHubPackageDownloader"
+        ) as mock_cls, patch("apm_cli.commands.view.AuthResolver"):
+            mock_cls.return_value.list_remote_refs.return_value = mock_refs
+            # No _force_rich_fallback -- let Rich render
+            result = self.runner.invoke(
+                cli, ["view", "richorg/richrepo", "versions"]
+            )
+        assert result.exit_code == 0
+        assert "v1.0.0" in result.output
+        assert "main" in result.output
+
+
+class TestViewLockfileRef(_InfoCmdBase):
+    """Tests for lockfile ref/commit display in ``apm view``."""
+
+    def _write_lockfile(self, project_root: Path, repo_url: str,
+                        resolved_ref: str, resolved_commit: str) -> None:
+        """Write a minimal apm.lock.yaml for testing."""
+        import yaml
+
+        lockfile_data = {
+            "lockfile_version": "1",
+            "generated_at": "2026-01-01T00:00:00Z",
+            "dependencies": [
+                {
+                    "repo_url": repo_url,
+                    "host": "github.com",
+                    "resolved_ref": resolved_ref,
+                    "resolved_commit": resolved_commit,
+                    "depth": 0,
+                    "resolved_by": "direct",
+                }
+            ],
+        }
+        lockfile_path = project_root / "apm.lock.yaml"
+        lockfile_path.write_text(yaml.safe_dump(lockfile_data), encoding="utf-8")
+
+    def test_view_shows_lockfile_ref(self):
+        """``apm view`` displays resolved ref from apm.lock.yaml."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "lockorg", "lockrepo")
+            self._write_lockfile(
+                tmp,
+                repo_url="https://github.com/lockorg/lockrepo",
+                resolved_ref="v2.5.0",
+                resolved_commit="abc123def456abc1",
+            )
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["view", "lockorg/lockrepo"])
+        assert result.exit_code == 0
+        assert "v2.5.0" in result.output
+
+    def test_view_shows_lockfile_commit(self):
+        """``apm view`` displays truncated commit SHA from apm.lock.yaml."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "lockorg2", "lockrepo2")
+            self._write_lockfile(
+                tmp,
+                repo_url="https://github.com/lockorg2/lockrepo2",
+                resolved_ref="main",
+                resolved_commit="deadbeef12345678abcdef",
+            )
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["view", "lockorg2/lockrepo2"])
+        assert result.exit_code == 0
+        assert "deadbeef" in result.output  # first 12 chars of commit
+
+    def test_view_no_lockfile_shows_no_ref(self):
+        """``apm view`` works fine when no lockfile exists."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "nolock", "nolockpkg")
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["view", "nolock/nolockpkg"])
+        assert result.exit_code == 0
+        # No ref/commit info, but metadata is still shown
+        assert "nolockpkg" in result.output
+
+    def test_view_rich_shows_lockfile_ref(self):
+        """``apm view`` Rich panel shows resolved ref from apm.lock.yaml."""
+        with self._chdir_tmp() as tmp:
+            self._make_package(tmp, "richlockorg", "richlockrepo")
+            self._write_lockfile(
+                tmp,
+                repo_url="https://github.com/richlockorg/richlockrepo",
+                resolved_ref="v3.1.4",
+                resolved_commit="cafebabe12345678",
+            )
+            os.chdir(tmp)
+            result = self.runner.invoke(cli, ["view", "richlockorg/richlockrepo"])
+        assert result.exit_code == 0
+        assert "v3.1.4" in result.output
+
+
+class TestViewHooks(_InfoCmdBase):
+    """Tests for hook display in ``apm view``."""
+
+    def test_view_plain_text_shows_hooks(self):
+        """``apm view`` plain-text fallback shows hook count."""
+        with self._chdir_tmp() as tmp:
+            pkg_dir = self._make_package(tmp, "hkorg", "hkrepo")
+            hooks_dir = pkg_dir / "hooks"
+            hooks_dir.mkdir()
+            (hooks_dir / "commit-msg.json").write_text('{"hooks": []}')
+            (hooks_dir / "pre-push.json").write_text('{"hooks": []}')
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["view", "hkorg/hkrepo"])
+        assert result.exit_code == 0
+        assert "hook" in result.output.lower()
+        assert "2" in result.output
+
+    def test_view_plain_text_shows_context_files(self):
+        """``apm view`` plain-text fallback shows context file count."""
+        with self._chdir_tmp() as tmp:
+            pkg_dir = self._make_package(tmp, "ctxorg2", "ctxrepo2")
+            instr_dir = pkg_dir / ".apm" / "instructions"
+            instr_dir.mkdir(parents=True)
+            (instr_dir / "guide.md").write_text("# Guide")
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["view", "ctxorg2/ctxrepo2"])
+        assert result.exit_code == 0
+        assert "instructions" in result.output.lower() or "1" in result.output
+
+    def test_view_plain_text_shows_workflows(self):
+        """``apm view`` plain-text fallback shows workflow count when present."""
+        with self._chdir_tmp() as tmp:
+            pkg_dir = self._make_package(tmp, "wforg3", "wfrepo3")
+            prompts_dir = pkg_dir / ".apm" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            (prompts_dir / "build.prompt.md").write_text("# Build")
+            os.chdir(tmp)
+            with _force_rich_fallback():
+                result = self.runner.invoke(cli, ["view", "wforg3/wfrepo3"])
+        assert result.exit_code == 0
+        assert "workflow" in result.output.lower() or "executable" in result.output.lower()
+
+
+class TestViewGlobalScope(_InfoCmdBase):
+    """Tests for ``apm view --global`` scope handling."""
+
+    def test_view_global_flag_uses_user_scope(self):
+        """``apm view --global`` resolves packages from user scope."""
+        import tempfile as _tempfile
+
+        with _tempfile.TemporaryDirectory() as user_apm_dir:
+            user_apm_path = Path(user_apm_dir)
+            # Create a package in the simulated user APM dir
+            pkg_dir = user_apm_path / "apm_modules" / "globalorg" / "globalrepo"
+            pkg_dir.mkdir(parents=True)
+            (pkg_dir / "apm.yml").write_text(
+                "name: globalrepo\nversion: 9.9.9\n"
+                "description: Global pkg\nauthor: Eve\n"
+            )
+            with patch(
+                "apm_cli.core.scope.get_apm_dir",
+                return_value=user_apm_path,
+            ):
+                with _force_rich_fallback():
+                    result = self.runner.invoke(
+                        cli, ["view", "globalorg/globalrepo", "--global"]
+                    )
+        assert result.exit_code == 0
+        assert "9.9.9" in result.output
+        assert "Global pkg" in result.output
+
+    def test_view_global_flag_missing_apm_modules(self):
+        """``apm view --global`` exits with error when user scope has no apm_modules/."""
+        import tempfile as _tempfile
+
+        with _tempfile.TemporaryDirectory() as user_apm_dir:
+            user_apm_path = Path(user_apm_dir)
+            # No apm_modules/ in user scope
+            with patch(
+                "apm_cli.core.scope.get_apm_dir",
+                return_value=user_apm_path,
+            ):
+                result = self.runner.invoke(
+                    cli, ["view", "missing/pkg", "--global"]
+                )
+        assert result.exit_code == 1
+
+
 class TestInfoAlias(_InfoCmdBase):
     """Verify ``apm info`` still works as a hidden backward-compatible alias."""
 
