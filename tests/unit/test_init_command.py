@@ -319,3 +319,87 @@ class TestPluginNameValidation:
         assert _validate_plugin_name("-plugin") is False
         assert _validate_plugin_name("a" * 65) is False
         assert _validate_plugin_name("My-Plugin") is False
+
+
+class TestProjectNameValidation:
+    """Unit tests for _validate_project_name helper."""
+
+    def test_valid_names(self):
+        from apm_cli.commands._helpers import _validate_project_name
+
+        assert _validate_project_name("myproject") is True
+        assert _validate_project_name("my-project") is True
+        assert _validate_project_name("my_project") is True
+        assert _validate_project_name("Project123") is True
+        assert _validate_project_name("4") is True
+        assert _validate_project_name(".") is True
+
+    def test_invalid_forward_slash(self):
+        from apm_cli.commands._helpers import _validate_project_name
+
+        assert _validate_project_name("4/15") is False
+        assert _validate_project_name("a/b") is False
+        assert _validate_project_name("/leading") is False
+        assert _validate_project_name("trailing/") is False
+
+    def test_invalid_backslash(self):
+        from apm_cli.commands._helpers import _validate_project_name
+
+        assert _validate_project_name("a\\b") is False
+        assert _validate_project_name("\\leading") is False
+        assert _validate_project_name("trailing\\") is False
+
+
+class TestInitProjectNameValidation:
+    """Integration tests: apm init rejects project names with path separators."""
+
+    def setup_method(self):
+        self.runner = CliRunner()
+        try:
+            self.original_dir = os.getcwd()
+        except FileNotFoundError:
+            self.original_dir = str(Path(__file__).parent.parent.parent)
+            os.chdir(self.original_dir)
+
+    def teardown_method(self):
+        try:
+            os.chdir(self.original_dir)
+        except (FileNotFoundError, OSError):
+            os.chdir(str(Path(__file__).parent.parent.parent))
+
+    def test_init_rejects_forward_slash_in_name(self):
+        """apm init 4/15 must fail with a clear error, not a WinError."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                result = self.runner.invoke(cli, ["init", "4/15", "--yes"])
+                assert result.exit_code != 0
+                assert "Invalid project name" in result.output
+                assert "4/15" in result.output
+                # No directory should be created
+                assert not Path("4").exists()
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_init_rejects_backslash_in_name(self):
+        """apm init with a backslash in the name must fail with a clear error."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                result = self.runner.invoke(cli, ["init", "a\\b", "--yes"])
+                assert result.exit_code != 0
+                assert "Invalid project name" in result.output
+                assert "a\\b" in result.output
+            finally:
+                os.chdir(self.original_dir)
+
+    def test_init_accepts_plain_name(self):
+        """apm init with a simple name still works normally."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                result = self.runner.invoke(cli, ["init", "my-project", "--yes"])
+                assert result.exit_code == 0
+                assert (Path(tmp_dir) / "my-project" / "apm.yml").exists()
+            finally:
+                os.chdir(self.original_dir)

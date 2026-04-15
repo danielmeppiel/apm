@@ -414,6 +414,17 @@ def _validate_plugin_name(name):
     return bool(re.match(r"^[a-z][a-z0-9-]{0,63}$", name))
 
 
+def _validate_project_name(name):
+    """Validate that a project name does not contain path separators.
+
+    Project names are used directly as directory names and must not contain
+    '/' or '\\' to prevent unintended filesystem path traversal.
+
+    Returns True if valid, False otherwise.
+    """
+    return "/" not in name and "\\" not in name
+
+
 def _create_plugin_json(config):
     """Create plugin.json file with package metadata.
 
