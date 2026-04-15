@@ -40,21 +40,22 @@ A conforming manifest MUST be a YAML mapping at the top level with the following
 
 ```yaml
 # apm.yml
-name:          <string>                  # REQUIRED
-version:       <string>                  # REQUIRED
-description:   <string>
-author:        <string>
-license:       <string>
-target:        <enum>
-type:          <enum>
-scripts:       <map<string, string>>
+name: <string> # REQUIRED
+version: <string> # REQUIRED
+description: <string>
+author: <string>
+license: <string>
+target: <enum>
+type: <enum>
+scripts: <map<string, string>>
+variables: <map<string, Variable>>
 dependencies:
-  apm:         <list<ApmDependency>>
-  mcp:         <list<McpDependency>>
+  apm: <list<ApmDependency>>
+  mcp: <list<McpDependency>>
 devDependencies:
-  apm:         <list<ApmDependency>>
-  mcp:         <list<McpDependency>>
-compilation:   <CompilationConfig>
+  apm: <list<ApmDependency>>
+  mcp: <list<McpDependency>>
+compilation: <CompilationConfig>
 ```
 
 ---
@@ -63,101 +64,165 @@ compilation:   <CompilationConfig>
 
 ### 3.1. `name`
 
-| | |
-|---|---|
-| **Type** | `string` |
-| **Required** | MUST be present |
+|                 |                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**        | `string`                                                                                                                        |
+| **Required**    | MUST be present                                                                                                                 |
 | **Description** | Package identifier. Free-form string (no pattern enforced at parse time). Convention: alphanumeric, dots, hyphens, underscores. |
 
 ### 3.2. `version`
 
-| | |
-|---|---|
-| **Type** | `string` |
-| **Required** | MUST be present |
-| **Pattern** | `^\d+\.\d+\.\d+` (semver; pre-release/build suffixes allowed) |
+|                 |                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Type**        | `string`                                                                                                      |
+| **Required**    | MUST be present                                                                                               |
+| **Pattern**     | `^\d+\.\d+\.\d+` (semver; pre-release/build suffixes allowed)                                                 |
 | **Description** | Semantic version. A value that does not match the pattern SHOULD produce a validation warning (non-blocking). |
 
 ### 3.3. `description`
 
-| | |
-|---|---|
-| **Type** | `string` |
-| **Required** | OPTIONAL |
+|                 |                                   |
+| --------------- | --------------------------------- |
+| **Type**        | `string`                          |
+| **Required**    | OPTIONAL                          |
 | **Description** | Brief human-readable description. |
 
 ### 3.4. `author`
 
-| | |
-|---|---|
-| **Type** | `string` |
-| **Required** | OPTIONAL |
+|                 |                                 |
+| --------------- | ------------------------------- |
+| **Type**        | `string`                        |
+| **Required**    | OPTIONAL                        |
 | **Description** | Package author or organization. |
 
 ### 3.5. `license`
 
-| | |
-|---|---|
-| **Type** | `string` |
-| **Required** | OPTIONAL |
+|                 |                                                     |
+| --------------- | --------------------------------------------------- |
+| **Type**        | `string`                                            |
+| **Required**    | OPTIONAL                                            |
 | **Description** | SPDX license identifier (e.g. `MIT`, `Apache-2.0`). |
 
 ### 3.6. `target`
 
-| | |
-|---|---|
-| **Type** | `enum<string>` |
-| **Required** | OPTIONAL |
-| **Default** | Auto-detect: `vscode` if `.github/` exists, `claude` if `.claude/` exists, `codex` if `.codex/` exists, `all` if both `.github/` and `.claude/`, `minimal` if neither |
-| **Allowed values** | `vscode` · `agents` · `claude` · `codex` · `all` |
+|                    |                                                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**           | `enum<string>`                                                                                                                                                        |
+| **Required**       | OPTIONAL                                                                                                                                                              |
+| **Default**        | Auto-detect: `vscode` if `.github/` exists, `claude` if `.claude/` exists, `codex` if `.codex/` exists, `all` if both `.github/` and `.claude/`, `minimal` if neither |
+| **Allowed values** | `vscode` · `agents` · `claude` · `codex` · `all`                                                                                                                      |
 
 Controls which output targets are generated during compilation. When unset, a conforming resolver SHOULD auto-detect based on `.github/`, `.claude/`, and `.codex/` folder presence. Unknown values MUST be silently ignored (auto-detection takes over).
 
-| Value | Effect |
-|---|---|
-| `vscode` | Emits `AGENTS.md` at the project root (and per-directory files in distributed mode) |
-| `agents` | Alias for `vscode` |
-| `claude` | Emits `CLAUDE.md` at the project root |
-| `codex` | Emits `AGENTS.md` and deploys skills to `.agents/skills/`, agents to `.codex/agents/` |
-| `all` | Both `vscode` and `claude` targets |
+| Value     | Effect                                                                                                                                                                                       |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vscode`  | Emits `AGENTS.md` at the project root (and per-directory files in distributed mode)                                                                                                          |
+| `agents`  | Alias for `vscode`                                                                                                                                                                           |
+| `claude`  | Emits `CLAUDE.md` at the project root                                                                                                                                                        |
+| `codex`   | Emits `AGENTS.md` and deploys skills to `.agents/skills/`, agents to `.codex/agents/`                                                                                                        |
+| `all`     | Both `vscode` and `claude` targets                                                                                                                                                           |
 | `minimal` | AGENTS.md only at project root. **Auto-detected only** — this value MUST NOT be set explicitly in manifests; it is an internal fallback when no `.github/` or `.claude/` folder is detected. |
 
 ### 3.7. `type`
 
-| | |
-|---|---|
-| **Type** | `enum<string>` |
-| **Required** | OPTIONAL |
-| **Default** | None (behaviour driven by package content; synthesized plugin manifests use `hybrid`) |
-| **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts` |
+|                    |                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| **Type**           | `enum<string>`                                                                        |
+| **Required**       | OPTIONAL                                                                              |
+| **Default**        | None (behaviour driven by package content; synthesized plugin manifests use `hybrid`) |
+| **Allowed values** | `instructions` · `skill` · `hybrid` · `prompts`                                       |
 
 Declares how the package's content is processed during install and compile. Currently behaviour is driven by package content (presence of `SKILL.md`, component directories, etc.); this field is reserved for future explicit overrides.
 
-| Value | Behaviour |
-|---|---|
+| Value          | Behaviour                                                 |
+| -------------- | --------------------------------------------------------- |
 | `instructions` | Compiled into AGENTS.md only. No skill directory created. |
-| `skill` | Installed as a native skill only. No AGENTS.md output. |
-| `hybrid` | Both AGENTS.md compilation and skill installation. |
-| `prompts` | Commands/prompts only. No instructions or skills. |
+| `skill`        | Installed as a native skill only. No AGENTS.md output.    |
+| `hybrid`       | Both AGENTS.md compilation and skill installation.        |
+| `prompts`      | Commands/prompts only. No instructions or skills.         |
 
 ### 3.8. `scripts`
 
-| | |
-|---|---|
-| **Type** | `map<string, string>` |
-| **Required** | OPTIONAL |
-| **Key pattern** | Script name (free-form string) |
-| **Value** | Shell command string |
+|                 |                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| **Type**        | `map<string, string>`                                                                        |
+| **Required**    | OPTIONAL                                                                                     |
+| **Key pattern** | Script name (free-form string)                                                               |
+| **Value**       | Shell command string                                                                         |
 | **Description** | Named commands executed via `apm run <name>`. MUST support `--param key=value` substitution. |
 
 ---
 
-## 4. Dependencies
+## 4. Variables
 
-| | |
-|---|---|
-| **Type** | `object` |
-| **Required** | OPTIONAL |
+|                 |                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| **Type**        | `map<string, Variable>`                                                                                 |
+| **Required**    | OPTIONAL                                                                                                |
+| **Description** | Declares install-time variables substituted in deployed primitive files via `${var:name}` placeholders. |
+
+Variables let package authors create parameterized templates. Consumers override values in their own `apm.yml` to customize deployed content without editing package files.
+
+### 4.1. Package author syntax
+
+Each key is a variable name (`[a-zA-Z0-9_-]+`). The value is either a string shorthand (treated as the default) or an object:
+
+```yaml
+variables:
+  stack-profile: stack-react-featureapp # shorthand: default value only
+
+  test-runner: # full form
+    description: "Test runner command"
+    default: "pytest"
+
+  api-key: # required, no default
+    description: "API key for the service"
+    required: true
+```
+
+| Field         | Type      | Required    | Description                                                                                                      |
+| ------------- | --------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `description` | `string`  | OPTIONAL    | Human-readable purpose of the variable.                                                                          |
+| `default`     | `string`  | Conditional | Default value. MUST be present if `required` is false or omitted.                                                |
+| `required`    | `boolean` | OPTIONAL    | When `true` and no `default` is set, consumers MUST provide a value or `apm install` fails. Defaults to `false`. |
+
+### 4.2. Consumer override syntax
+
+Consumers override package variables keyed by package name:
+
+```yaml
+# Consumer's apm.yml
+variables:
+  tdd-development:
+    stack-profile: stack-ios-swift
+```
+
+### 4.3. Resolution order
+
+1. Consumer's `variables.<package-name>.<var-name>` (highest priority)
+2. Package's `variables.<var-name>.default`
+3. Unresolved -- placeholder left as-is with a warning
+
+### 4.4. Substitution syntax
+
+Placeholders use `${var:name}` in any deployed text file (`.md`, `.yml`, `.yaml`, `.json`, `.toml`, `.txt`):
+
+```markdown
+Skills:
+
+- Invoke skill: `${var:stack-profile}`
+```
+
+The `var:` namespace is distinct from `${input:...}` (runtime prompts). `${var:...}` is resolved at install time; `${input:...}` is resolved at runtime by the IDE.
+
+---
+
+## 5. Dependencies
+
+|                |              |
+| -------------- | ------------ |
+| **Type**       | `object`     |
+| **Required**   | OPTIONAL     |
 | **Known keys** | `apm`, `mcp` |
 
 Contains two OPTIONAL lists: `apm` for agent primitive packages and `mcp` for MCP servers. Each list entry is either a string shorthand or a typed object. Additional keys MAY be present for future dependency types; conforming resolvers MUST ignore unknown keys for resolution but MUST preserve them when reading and rewriting manifests, to allow forward compatibility.
@@ -179,12 +244,12 @@ shorthand_form = [host "/"] owner "/" repo ["/" virtual_path] ["#" ref]
 local_path_form = ("./" / "../" / "/" / "~/" / ".\\" / "..\\" / "~\\") path
 ```
 
-| Segment | Required | Pattern | Description |
-|---|---|---|---|
-| `host` | OPTIONAL | FQDN (e.g. `gitlab.com`) | Git host. Defaults to `github.com`. |
-| `owner/repo` | REQUIRED | 2+ path segments of `[a-zA-Z0-9._-]+` | Repository path. GitHub uses exactly 2 segments (`owner/repo`). Non-GitHub hosts MAY use nested groups (e.g. `gitlab.com/group/sub/repo`). |
-| `virtual_path` | OPTIONAL | Path segments after repo | Subdirectory, file, or collection within the repo. See §4.1.3. |
-| `ref` | OPTIONAL | Branch, tag, or commit SHA | Git reference. Commit SHAs matched by `^[a-f0-9]{7,40}$`. Semver tags matched by `^v?\d+\.\d+\.\d+`. |
+| Segment        | Required | Pattern                               | Description                                                                                                                                |
+| -------------- | -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `host`         | OPTIONAL | FQDN (e.g. `gitlab.com`)              | Git host. Defaults to `github.com`.                                                                                                        |
+| `owner/repo`   | REQUIRED | 2+ path segments of `[a-zA-Z0-9._-]+` | Repository path. GitHub uses exactly 2 segments (`owner/repo`). Non-GitHub hosts MAY use nested groups (e.g. `gitlab.com/group/sub/repo`). |
+| `virtual_path` | OPTIONAL | Path segments after repo              | Subdirectory, file, or collection within the repo. See §4.1.3.                                                                             |
+| `ref`          | OPTIONAL | Branch, tag, or commit SHA            | Git reference. Commit SHAs matched by `^[a-f0-9]{7,40}$`. Semver tags matched by `^v?\d+\.\d+\.\d+`.                                       |
 
 **Examples:**
 
@@ -192,9 +257,9 @@ local_path_form = ("./" / "../" / "/" / "~/" / ".\\" / "..\\" / "~\\") path
 dependencies:
   apm:
     # GitHub shorthand (default host) — each line shows a syntax variant
-    - microsoft/apm-sample-package                # latest (lockfile pins commit SHA)
-    - microsoft/apm-sample-package#v1.0.0         # pinned to tag (immutable)
-    - microsoft/apm-sample-package#main           # branch ref (may change over time)
+    - microsoft/apm-sample-package # latest (lockfile pins commit SHA)
+    - microsoft/apm-sample-package#v1.0.0 # pinned to tag (immutable)
+    - microsoft/apm-sample-package#main # branch ref (may change over time)
 
     # Non-GitHub hosts (FQDN preserved)
     - gitlab.com/acme/coding-standards
@@ -207,27 +272,27 @@ dependencies:
     - ssh://git@github.com/microsoft/apm-sample-package.git
 
     # Virtual packages
-    - ComposioHQ/awesome-claude-skills/brand-guidelines   # subdirectory
-    - contoso/prompts/review.prompt.md                    # single file
+    - ComposioHQ/awesome-claude-skills/brand-guidelines # subdirectory
+    - contoso/prompts/review.prompt.md # single file
 
     # Azure DevOps
     - dev.azure.com/org/project/_git/repo
 
     # Local path (development only)
-    - ./packages/my-shared-skills          # relative to project root
-    - ../sibling-repo/my-package           # parent directory
+    - ./packages/my-shared-skills # relative to project root
+    - ../sibling-repo/my-package # parent directory
 ```
 
 #### 4.1.2. Object Form
 
 REQUIRED when the shorthand is ambiguous (e.g. nested-group repos with virtual paths).
 
-| Field | Type | Required | Pattern / Constraint | Description |
-|---|---|---|---|---|
-| `git` | `string` | REQUIRED (remote) | HTTPS URL, SSH URL, or FQDN shorthand | Clone URL of the repository. Required for remote dependencies. |
-| `path` | `string` | OPTIONAL / REQUIRED (local) | Relative path within the repo, or local filesystem path | When `git` is present: subdirectory, file, or collection (virtual package). When `git` is absent: local filesystem path (must start with `./`, `../`, `/`, or `~/`). |
-| `ref` | `string` | OPTIONAL | Branch, tag, or commit SHA | Git reference to checkout. |
-| `alias` | `string` | OPTIONAL | `^[a-zA-Z0-9._-]+$` | Local alias. |
+| Field   | Type     | Required                    | Pattern / Constraint                                    | Description                                                                                                                                                          |
+| ------- | -------- | --------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git`   | `string` | REQUIRED (remote)           | HTTPS URL, SSH URL, or FQDN shorthand                   | Clone URL of the repository. Required for remote dependencies.                                                                                                       |
+| `path`  | `string` | OPTIONAL / REQUIRED (local) | Relative path within the repo, or local filesystem path | When `git` is present: subdirectory, file, or collection (virtual package). When `git` is absent: local filesystem path (must start with `./`, `../`, `/`, or `~/`). |
+| `ref`   | `string` | OPTIONAL                    | Branch, tag, or commit SHA                              | Git reference to checkout.                                                                                                                                           |
+| `alias` | `string` | OPTIONAL                    | `^[a-zA-Z0-9._-]+$`                                     | Local alias.                                                                                                                                                         |
 
 Remote dependency (git URL + sub-path):
 
@@ -248,22 +313,22 @@ Local path dependency (development only):
 
 A dependency MAY target a subdirectory, file, or collection within a repository rather than the whole repo. Conforming resolvers MUST classify virtual packages using the following rules, evaluated in order:
 
-| Kind | Detection rule | Example |
-|---|---|---|
-| **File** | `virtual_path` ends in `.prompt.md`, `.instructions.md`, `.agent.md`, or `.chatmode.md` | `owner/repo/prompts/review.prompt.md` |
-| **Collection (dir)** | `virtual_path` contains `/collections/` (no collection extension) | `owner/repo/collections/security` |
+| Kind                      | Detection rule                                                                                | Example                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **File**                  | `virtual_path` ends in `.prompt.md`, `.instructions.md`, `.agent.md`, or `.chatmode.md`       | `owner/repo/prompts/review.prompt.md`            |
+| **Collection (dir)**      | `virtual_path` contains `/collections/` (no collection extension)                             | `owner/repo/collections/security`                |
 | **Collection (manifest)** | `virtual_path` contains `/collections/` and ends with `.collection.yml` or `.collection.yaml` | `owner/repo/collections/security.collection.yml` |
-| **Subdirectory** | `virtual_path` does not match any file, collection, or extension rule above | `owner/repo/skills/security` |
+| **Subdirectory**          | `virtual_path` does not match any file, collection, or extension rule above                   | `owner/repo/skills/security`                     |
 
 #### 4.1.4. Canonical Normalisation
 
 Conforming writers MUST normalise entries to canonical form on write. `github.com` is the default host and MUST be stripped; all other hosts MUST be preserved as FQDN.
 
-| Input | Canonical form |
-|---|---|
+| Input                                                 | Canonical form                 |
+| ----------------------------------------------------- | ------------------------------ |
 | `https://github.com/microsoft/apm-sample-package.git` | `microsoft/apm-sample-package` |
-| `git@github.com:microsoft/apm-sample-package.git` | `microsoft/apm-sample-package` |
-| `gitlab.com/acme/repo` | `gitlab.com/acme/repo` |
+| `git@github.com:microsoft/apm-sample-package.git`     | `microsoft/apm-sample-package` |
+| `gitlab.com/acme/repo`                                | `gitlab.com/acme/repo`         |
 
 ---
 
@@ -277,19 +342,19 @@ A plain registry reference: `io.github.github/github-mcp-server`
 
 #### 4.2.2. Object Form
 
-| Field | Type | Required | Constraint | Description |
-|---|---|---|---|---|
-| `name` | `string` | REQUIRED | Non-empty | Server identifier (registry name or custom name). |
-| `transport` | `enum<string>` | Conditional | `stdio` · `sse` · `http` · `streamable-http` | Transport protocol. REQUIRED when `registry: false`. |
-| `env` | `map<string, string>` | OPTIONAL | | Environment variable overrides. Values may contain `${input:<id>}` references (VS Code only — see §4.2.4). |
-| `args` | `dict` or `list` | OPTIONAL | | Dict for overlay variable overrides (registry), list for positional args (self-defined). |
-| `version` | `string` | OPTIONAL | | Pin to a specific server version. |
-| `registry` | `bool` or `string` | OPTIONAL | Default: `true` (public registry) | `false` = self-defined (private) server. String = custom registry URL. |
-| `package` | `enum<string>` | OPTIONAL | `npm` · `pypi` · `oci` | Package manager type hint. |
-| `headers` | `map<string, string>` | OPTIONAL | | Custom HTTP headers for remote endpoints. Values may contain `${input:<id>}` references (VS Code only — see §4.2.4). |
-| `tools` | `list<string>` | OPTIONAL | Default: `["*"]` | Restrict which tools are exposed. |
-| `url` | `string` | Conditional | | Endpoint URL. REQUIRED when `registry: false` and `transport` is `http`, `sse`, or `streamable-http`. |
-| `command` | `string` | Conditional | | Binary path. REQUIRED when `registry: false` and `transport` is `stdio`. |
+| Field       | Type                  | Required    | Constraint                                   | Description                                                                                                          |
+| ----------- | --------------------- | ----------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `name`      | `string`              | REQUIRED    | Non-empty                                    | Server identifier (registry name or custom name).                                                                    |
+| `transport` | `enum<string>`        | Conditional | `stdio` · `sse` · `http` · `streamable-http` | Transport protocol. REQUIRED when `registry: false`.                                                                 |
+| `env`       | `map<string, string>` | OPTIONAL    |                                              | Environment variable overrides. Values may contain `${input:<id>}` references (VS Code only — see §4.2.4).           |
+| `args`      | `dict` or `list`      | OPTIONAL    |                                              | Dict for overlay variable overrides (registry), list for positional args (self-defined).                             |
+| `version`   | `string`              | OPTIONAL    |                                              | Pin to a specific server version.                                                                                    |
+| `registry`  | `bool` or `string`    | OPTIONAL    | Default: `true` (public registry)            | `false` = self-defined (private) server. String = custom registry URL.                                               |
+| `package`   | `enum<string>`        | OPTIONAL    | `npm` · `pypi` · `oci`                       | Package manager type hint.                                                                                           |
+| `headers`   | `map<string, string>` | OPTIONAL    |                                              | Custom HTTP headers for remote endpoints. Values may contain `${input:<id>}` references (VS Code only — see §4.2.4). |
+| `tools`     | `list<string>`        | OPTIONAL    | Default: `["*"]`                             | Restrict which tools are exposed.                                                                                    |
+| `url`       | `string`              | Conditional |                                              | Endpoint URL. REQUIRED when `registry: false` and `transport` is `http`, `sse`, or `streamable-http`.                |
+| `command`   | `string`              | Conditional |                                              | Binary path. REQUIRED when `registry: false` and `transport` is `stdio`.                                             |
 
 #### 4.2.3. Validation Rules for Self-Defined Servers
 
@@ -340,20 +405,20 @@ dependencies:
         X-Project: "${input:my-server-project}"
 ```
 
-| Runtime | `${input:...}` support |
-|---------|----------------------|
-| VS Code | Yes — prompts user at runtime |
+| Runtime     | `${input:...}` support         |
+| ----------- | ------------------------------ |
+| VS Code     | Yes — prompts user at runtime  |
 | Copilot CLI | No — use environment variables |
-| Codex | No — use environment variables |
+| Codex       | No — use environment variables |
 
 ---
 
-## 5. devDependencies
+## 6. devDependencies
 
-| | |
-|---|---|
-| **Type** | `object` |
-| **Required** | OPTIONAL |
+|                |              |
+| -------------- | ------------ |
+| **Type**       | `object`     |
+| **Required**   | OPTIONAL     |
 | **Known keys** | `apm`, `mcp` |
 
 Development-only dependencies installed locally but excluded from plugin bundles (`apm pack --format plugin`). Uses the same structure as [`dependencies`](#4-dependencies).
@@ -373,27 +438,27 @@ apm install --dev owner/test-helpers
 
 ---
 
-## 6. Compilation
+## 7. Compilation
 
 The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fields have sensible defaults; omitting the entire section is valid.
 
-| Field | Type | Default | Constraint | Description |
-|---|---|---|---|---|
-| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `codex` · `all` | Output target (same values as §3.6). Defaults to `all` when set explicitly in compilation config. |
-| `strategy` | `enum<string>` | `distributed` | `distributed` · `single-file` | `distributed` generates per-directory AGENTS.md files. `single-file` generates one monolithic file. |
-| `single_file` | `bool` | `false` | | Legacy alias. When `true`, overrides `strategy` to `single-file`. |
-| `output` | `string` | `AGENTS.md` | File path | Custom output path for the compiled file. |
-| `chatmode` | `string` | — | | Chatmode filter for compilation. |
-| `resolve_links` | `bool` | `true` | | Resolve relative Markdown links in primitives. |
-| `source_attribution` | `bool` | `true` | | Include source-file origin comments in compiled output. |
-| `exclude` | `list<string>` or `string` | `[]` | Glob patterns | Directories to skip during compilation (e.g. `apm_modules/**`). |
-| `placement` | `object` | — | | Placement tuning. See §6.1. |
+| Field                | Type                       | Default       | Constraint                                       | Description                                                                                         |
+| -------------------- | -------------------------- | ------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `target`             | `enum<string>`             | `all`         | `vscode` · `agents` · `claude` · `codex` · `all` | Output target (same values as §3.6). Defaults to `all` when set explicitly in compilation config.   |
+| `strategy`           | `enum<string>`             | `distributed` | `distributed` · `single-file`                    | `distributed` generates per-directory AGENTS.md files. `single-file` generates one monolithic file. |
+| `single_file`        | `bool`                     | `false`       |                                                  | Legacy alias. When `true`, overrides `strategy` to `single-file`.                                   |
+| `output`             | `string`                   | `AGENTS.md`   | File path                                        | Custom output path for the compiled file.                                                           |
+| `chatmode`           | `string`                   | —             |                                                  | Chatmode filter for compilation.                                                                    |
+| `resolve_links`      | `bool`                     | `true`        |                                                  | Resolve relative Markdown links in primitives.                                                      |
+| `source_attribution` | `bool`                     | `true`        |                                                  | Include source-file origin comments in compiled output.                                             |
+| `exclude`            | `list<string>` or `string` | `[]`          | Glob patterns                                    | Directories to skip during compilation (e.g. `apm_modules/**`).                                     |
+| `placement`          | `object`                   | —             |                                                  | Placement tuning. See §6.1.                                                                         |
 
 ### 6.1. `compilation.placement`
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `min_instructions_per_file` | `int` | `1` | Minimum instruction count to warrant a separate AGENTS.md file. |
+| Field                       | Type  | Default | Description                                                     |
+| --------------------------- | ----- | ------- | --------------------------------------------------------------- |
+| `min_instructions_per_file` | `int` | `1`     | Minimum instruction count to warrant a separate AGENTS.md file. |
 
 ```yaml
 compilation:
@@ -409,34 +474,35 @@ compilation:
 
 ---
 
-## 7. Lockfile (`apm.lock.yaml`)
+## 8. Lockfile (`apm.lock.yaml`)
 
 After successful dependency resolution, a conforming resolver MUST write a lockfile capturing the exact resolved state. The lockfile MUST be a YAML file named `apm.lock.yaml` at the project root. It SHOULD be committed to version control.
 
-### 7.1. Structure
+### 8.1. Structure
 
 ```yaml
 lockfile_version: "1"
-generated_at:     <ISO 8601 timestamp>
-apm_version:      <string>
-dependencies:                              # YAML list (not a map)
-  - repo_url:        <string>              # Resolved clone URL
-    host:            <string>              # Git host (OPTIONAL, e.g. "gitlab.com")
-    resolved_commit: <string>              # Full commit SHA
-    resolved_ref:    <string>              # Branch/tag that was resolved
-    version:         <string>              # Package version from its apm.yml
-    virtual_path:    <string>              # Virtual package path (if applicable)
-    is_virtual:      <bool>                # True for virtual (file/subdirectory) packages
-    depth:           <int>                 # 1 = direct, 2+ = transitive
-    resolved_by:     <string>              # Parent dependency (transitive only)
-    package_type:    <string>              # Package type (e.g. "apm_package", "marketplace_plugin")
-    content_hash:    <string>              # SHA-256 of package file tree (e.g. "sha256:a1b2c3...")
-    is_dev:          <bool>                # True for devDependencies
-    deployed_files:  <list<string>>        # Workspace-relative paths of installed files
-mcp_servers:       <list<string>>          # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
+generated_at: <ISO 8601 timestamp>
+apm_version: <string>
+dependencies: # YAML list (not a map)
+  - repo_url: <string> # Resolved clone URL
+    host: <string> # Git host (OPTIONAL, e.g. "gitlab.com")
+    resolved_commit: <string> # Full commit SHA
+    resolved_ref: <string> # Branch/tag that was resolved
+    version: <string> # Package version from its apm.yml
+    virtual_path: <string> # Virtual package path (if applicable)
+    is_virtual: <bool> # True for virtual (file/subdirectory) packages
+    depth: <int> # 1 = direct, 2+ = transitive
+    resolved_by: <string> # Parent dependency (transitive only)
+    package_type: <string> # Package type (e.g. "apm_package", "marketplace_plugin")
+    content_hash: <string> # SHA-256 of package file tree (e.g. "sha256:a1b2c3...")
+    is_dev: <bool> # True for devDependencies
+    deployed_files: <list<string>> # Workspace-relative paths of installed files
+    resolved_variables: <map<string,string>> # Resolved ${var:...} values (OPTIONAL)
+mcp_servers: <list<string>> # MCP dependency references managed by APM (OPTIONAL, e.g. "io.github.github/github-mcp-server")
 ```
 
-### 7.2. Resolver Behaviour
+### 8.2. Resolver Behaviour
 
 1. **First install** — Resolve all dependencies, write `apm.lock.yaml`.
 2. **Subsequent installs** — Read `apm.lock.yaml`, use locked commit SHAs. A resolver SHOULD skip download if local checkout already matches.
@@ -444,7 +510,7 @@ mcp_servers:       <list<string>>          # MCP dependency references managed b
 
 ---
 
-## 8. Integrator Contract
+## 9. Integrator Contract
 
 Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDEs) MUST implement these steps:
 
@@ -465,11 +531,11 @@ description: AI-native web application
 author: Contoso
 license: MIT
 target: all
-type: hybrid              # instructions | skill | hybrid | prompts
+type: hybrid # instructions | skill | hybrid | prompts
 
 scripts:
   review: "copilot -p 'code-review.prompt.md'"
-  impl:   "copilot -p 'implement-feature.prompt.md'"
+  impl: "copilot -p 'implement-feature.prompt.md'"
 
 dependencies:
   apm:
@@ -504,6 +570,6 @@ compilation:
 
 ## Appendix B. Revision History
 
-| Version | Date | Changes |
-|---|---|---|
-| 0.1 | 2026-03-06 | Initial Working Draft. |
+| Version | Date       | Changes                |
+| ------- | ---------- | ---------------------- |
+| 0.1     | 2026-03-06 | Initial Working Draft. |

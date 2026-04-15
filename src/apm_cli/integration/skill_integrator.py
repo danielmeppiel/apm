@@ -253,6 +253,7 @@ def copy_skill_to_target(
     source_path: Path,
     target_base: Path,
     targets=None,
+    variables: dict[str, str] | None = None,
 ) -> list[Path]:
     """Copy skill directory to all active target skills/ directories.
     
@@ -328,6 +329,10 @@ def copy_skill_to_target(
         if skill_dir.exists():
             shutil.rmtree(skill_dir)
         shutil.copytree(source_path, skill_dir)
+        # Apply ${var:...} substitution to copied text files
+        if variables:
+            from apm_cli.utils.variables import substitute_variables_in_directory
+            substitute_variables_in_directory(skill_dir, variables)
         deployed.append(skill_dir)
     
     return deployed
@@ -344,6 +349,7 @@ class SkillIntegrator(BaseIntegrator):
     """
 
     def __init__(self) -> None:
+        super().__init__()
         # In-memory map of skill_name -> dep.get_unique_key() updated as each native
         # skill is deployed in the current install run.  Complements the lockfile-based
         # map so that same-manifest collisions are detected before the lockfile is written.
@@ -466,7 +472,7 @@ class SkillIntegrator(BaseIntegrator):
         return True
 
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None, managed_files=None, force: bool = False, project_root: Path | None = None, logger=None) -> tuple[int, list[Path]]:
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None, managed_files=None, force: bool = False, project_root: Path | None = None, logger=None, variables: dict[str, str] | None = None) -> tuple[int, list[Path]]:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -566,6 +572,10 @@ class SkillIntegrator(BaseIntegrator):
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
             shutil.copytree(sub_skill_path, target, dirs_exist_ok=True)
+            # Apply ${var:...} substitution to copied text files
+            if variables:
+                from apm_cli.utils.variables import substitute_variables_in_directory
+                substitute_variables_in_directory(target, variables)
             promoted += 1
             deployed.append(target)
         return promoted, deployed
@@ -672,6 +682,7 @@ class SkillIntegrator(BaseIntegrator):
                 managed_files=managed_files if is_primary else None,
                 force=force,
                 project_root=project_root,
+                variables=self._variables or None,
             )
             if is_primary:
                 count = n
@@ -817,6 +828,10 @@ class SkillIntegrator(BaseIntegrator):
             target_skill_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(package_path, target_skill_dir,
                             ignore=shutil.ignore_patterns('.apm'))
+            # Apply ${var:...} substitution to copied text files
+            if self._variables:
+                from apm_cli.utils.variables import substitute_variables_in_directory
+                substitute_variables_in_directory(target_skill_dir, self._variables)
             all_target_paths.append(target_skill_dir)
 
             if is_primary:
@@ -833,6 +848,7 @@ class SkillIntegrator(BaseIntegrator):
                 force=force,
                 project_root=project_root,
                 logger=logger if is_primary else None,
+                variables=self._variables or None,
             )
             all_target_paths.extend(sub_deployed)
 

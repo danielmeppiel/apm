@@ -38,6 +38,7 @@ class LockedDependency:
     is_dev: bool = False  # True for devDependencies
     discovered_via: Optional[str] = None  # Marketplace name (provenance)
     marketplace_plugin_name: Optional[str] = None  # Plugin name in marketplace
+    resolved_variables: Optional[Dict[str, str]] = None  # Resolved ${var:...} variables
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
@@ -84,6 +85,8 @@ class LockedDependency:
             result["discovered_via"] = self.discovered_via
         if self.marketplace_plugin_name:
             result["marketplace_plugin_name"] = self.marketplace_plugin_name
+        if self.resolved_variables:
+            result["resolved_variables"] = dict(sorted(self.resolved_variables.items()))
         return result
 
     @classmethod
@@ -122,6 +125,7 @@ class LockedDependency:
             is_dev=data.get("is_dev", False),
             discovered_via=data.get("discovered_via"),
             marketplace_plugin_name=data.get("marketplace_plugin_name"),
+            resolved_variables=data.get("resolved_variables"),
         )
 
     @classmethod

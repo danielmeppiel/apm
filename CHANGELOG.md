@@ -5,11 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
 ## [Unreleased]
 
 ### Added
 
+- Package variables (`${var:...}`) for deployed primitives -- package authors declare variables in `apm.yml`, consumers override values, and placeholders are substituted at install time in `.agent.md`, `.instructions.md`, `SKILL.md`, and other text files
 - `apm install` now automatically discovers and deploys local `.apm/` primitives (skills, instructions, agents, prompts, hooks, commands) to target directories, with local content taking priority over dependencies on collision (#626, #644)
 
 ### Fixed
@@ -426,7 +426,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added missing `version` field in the apm.yml README example (#108)
 - Slim PR pipelines to Linux-only, auto-approve integration tests, added agentic workflows for maintenance (#98, #103, #104, #119)
 
-
 ## [0.7.3] - 2025-02-15
 
 ### Added
@@ -520,9 +519,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Neither folder → generates `AGENTS.md` only (universal format)
 
 - **`target` field in apm.yml**: Persistent target configuration
+
   ```yaml
-  target: vscode  # or claude, or all
+  target: vscode # or claude, or all
   ```
+
   Applies to both `apm compile` and `apm install`
 
 - **`--target` flag**: Override auto-detection
@@ -585,6 +586,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.5] - 2025-11-17
 
 ### Added
+
 - **Context Link Resolution**: Automatic markdown link resolution for `.context.md` files across installation and compilation
   - Links in prompts/agents automatically resolve to actual source locations (`apm_modules/` or `.apm/context/`)
   - Works everywhere: IDE, GitHub, all coding agents supporting AGENTS.md
@@ -593,9 +595,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.4] - 2025-11-17
 
 ### Added
+
 - **Agent Integration**: Automatic sync of `.agent.md` files to `.github/agents/` with `-apm` suffix (same pattern as prompt integration)
 
 ### Fixed
+
 - `sync_integration` URL normalization bug that caused ALL integrated files to be removed during uninstall instead of only the uninstalled package's files
   - Root cause: Metadata stored full URLs (`https://github.com/owner/repo`) while dependency list used short form (`owner/repo`)
   - Impact: Uninstalling one package would incorrectly remove prompts/agents from ALL other packages
@@ -606,38 +610,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.3] - 2025-11-16
 
 ### Changed
+
 - **Prompt Naming Pattern**: Migrated from `@` prefix to `-apm` suffix for integrated prompts
 - **GitIgnore Pattern**: Updated from `.github/prompts/@*.prompt.md` to `.github/prompts/*-apm.prompt.md`
 
 ### Migration Notes
+
 - **Existing Users**: Old `@`-prefixed files will not be automatically removed
 - **Action Required**: Manually delete old `@*.prompt.md` files from `.github/prompts/` after upgrading
 
 ## [0.5.2] - 2025-11-14
 
 ### Added
+
 - **Prompt Integration with GitHub** - Automatically sync downloaded prompts to `.github/prompts/` for GitHub Copilot
 
 ### Changed
+
 - Improved installer UX and console output
 
 ## [0.5.1] - 2025-11-09
 
 ### Added
+
 - Package FQDN support - install from any Git host using fully qualified domain names (thanks @richgo for PR #25)
 
 ### Fixed
+
 - **Security**: CWE-20 URL validation vulnerability - proper hostname validation using `urllib.parse` prevents malicious URL bypass attacks
 - Package validation HTTPS URL construction for git ls-remote checks
 - Virtual package orphan detection in `apm deps list` command
 
 ### Changed
+
 - GitHub Enterprise support via `GITHUB_HOST` environment variable (thanks @richgo for PR #25)
 - Build pipeline updates for macOS compatibility
 
 ## [0.5.0] - 2025-10-30
 
 ### Added - Virtual Packages
+
 - **Virtual Package Support**: Install individual files directly from any repository without requiring full APM package structure
   - Individual file packages: `apm install owner/repo/path/to/file.prompt.md`
 - **Collection Support**: Install curated collections of primitives from [Awesome Copilot](https://github.com/github/awesome-copilot): `apm install github/awesome-copilot/collections/collection-name`
@@ -646,6 +658,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integration with github/awesome-copilot collections
 
 ### Added - Runnable Prompts
+
 - **Auto-Discovery of Prompts**: Run installed prompts without manual script configuration
   - `apm run <prompt-name>` automatically discovers and executes prompts without having to wire a script in `apm.yml`
   - Search priority: local root → .apm/prompts → .github/prompts → dependencies
@@ -656,12 +669,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Zero-Configuration Execution**: Install and run prompts immediately without apm.yml scripts section
 
 ### Changed
+
 - Enhanced dependency resolution to support virtual package unique keys
 - Improved GitHub downloader with virtual file and collection package support
 - Extended `DependencyReference.parse()` to detect and validate virtual packages (3+ path segments)
 - Script runner now falls back to prompt discovery when script not found in apm.yml
 
 ### Developer Experience
+
 - Streamlined workflow: `apm install <file>` → `apm run <name>` works immediately
 - No manual script configuration needed for simple use cases
 - Power users retain full control via explicit scripts in apm.yml
@@ -670,15 +685,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.3] - 2025-10-29
 
 ### Added
+
 - Auto-bootstrap `apm.yml` when running `apm install <package>` without existing config
 - GitHub Enterprise Server and Data Residency Cloud support via `GITHUB_HOST` environment variable
 - ARM64 Linux support
 
 ### Changed
+
 - Refactored `apm init` to initialize projects minimally without templated prompts and instructions
 - Improved next steps formatting in project initialization output
 
 ### Fixed
+
 - GitHub token fallback handling for Codex runtime setup
 - Environment variable passing to subprocess in smoke tests and runtime setup
 
@@ -689,6 +707,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.1] - 2025-09-18
 
 ### Fixed
+
 - Fix prompt file resolution for dependencies in org/repo directory structure
 - APM dependency prompt files now correctly resolve from `apm_modules/org/repo/` paths
 - `apm run` commands can now find and execute prompt files from installed dependencies

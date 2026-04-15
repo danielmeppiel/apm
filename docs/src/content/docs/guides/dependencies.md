@@ -21,16 +21,16 @@ APM supports any git-accessible host — GitHub, GitLab, Bitbucket, self-hosted 
 
 APM supports multiple dependency types:
 
-| Type | Detection | Example |
-|------|-----------|---------|
-| **APM Package** | Has `apm.yml` | `microsoft/apm-sample-package` |
-| **Marketplace Plugin** | Has `plugin.json` (no `apm.yml`) | `github/awesome-copilot/plugins/context-engineering` |
-| **Claude Skill** | Has `SKILL.md` (no `apm.yml`) | `ComposioHQ/awesome-claude-skills/brand-guidelines` |
-| **Hook Package** | Has `hooks/*.json` (no `apm.yml` or `SKILL.md`) | `anthropics/claude-plugins-official/plugins/hookify` |
-| **Virtual Subdirectory Package** | Folder path in monorepo | `ComposioHQ/awesome-claude-skills/mcp-builder` |
-| **Virtual Subdirectory Package** | Folder path in repo | `github/awesome-copilot/skills/review-and-refactor` |
-| **Local Path Package** | Path starts with `./`, `../`, or `/` | `./packages/my-shared-skills` |
-| **ADO Package** | Azure DevOps repo | `dev.azure.com/org/project/_git/repo` or `dev.azure.com/org/My%20Project/_git/My%20Repo` |
+| Type                             | Detection                                       | Example                                                                                  |
+| -------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **APM Package**                  | Has `apm.yml`                                   | `microsoft/apm-sample-package`                                                           |
+| **Marketplace Plugin**           | Has `plugin.json` (no `apm.yml`)                | `github/awesome-copilot/plugins/context-engineering`                                     |
+| **Claude Skill**                 | Has `SKILL.md` (no `apm.yml`)                   | `ComposioHQ/awesome-claude-skills/brand-guidelines`                                      |
+| **Hook Package**                 | Has `hooks/*.json` (no `apm.yml` or `SKILL.md`) | `anthropics/claude-plugins-official/plugins/hookify`                                     |
+| **Virtual Subdirectory Package** | Folder path in monorepo                         | `ComposioHQ/awesome-claude-skills/mcp-builder`                                           |
+| **Virtual Subdirectory Package** | Folder path in repo                             | `github/awesome-copilot/skills/review-and-refactor`                                      |
+| **Local Path Package**           | Path starts with `./`, `../`, or `/`            | `./packages/my-shared-skills`                                                            |
+| **ADO Package**                  | Azure DevOps repo                               | `dev.azure.com/org/project/_git/repo` or `dev.azure.com/org/My%20Project/_git/My%20Repo` |
 
 **Virtual Subdirectory Packages** are skill folders from monorepos - they download an entire folder and may contain a SKILL.md plus resources.
 
@@ -52,10 +52,10 @@ apm install ComposioHQ/awesome-claude-skills/brand-guidelines
 
 Skills are integrated to `.github/skills/`:
 
-| Source | Result |
-|--------|--------|
-| Package with `SKILL.md` | Skill folder copied to `.github/skills/{folder-name}/` |
-| Package without `SKILL.md` | No skill folder created |
+| Source                     | Result                                                 |
+| -------------------------- | ------------------------------------------------------ |
+| Package with `SKILL.md`    | Skill folder copied to `.github/skills/{folder-name}/` |
+| Package without `SKILL.md` | No skill folder created                                |
 
 #### Skill Folder Naming
 
@@ -96,19 +96,19 @@ dependencies:
     - gitlab.com/acme/repo/prompts/code-review.prompt.md
 
     # Local path (for development / monorepo workflows)
-    - ./packages/my-shared-skills          # relative to project root
-    - /home/user/repos/my-ai-package       # absolute path
+    - ./packages/my-shared-skills # relative to project root
+    - /home/user/repos/my-ai-package # absolute path
 
     # Object format: git URL + sub-path / ref / alias
     - git: https://gitlab.com/acme/coding-standards.git
       path: instructions/security
       ref: v2.0
   mcp:
-    - io.github.github/github-mcp-server          # Registry reference (string)
-    - name: io.github.github/github-mcp-server      # Registry with overlays
+    - io.github.github/github-mcp-server # Registry reference (string)
+    - name: io.github.github/github-mcp-server # Registry with overlays
       transport: stdio
       tools: ["repos", "issues"]
-    - name: internal-knowledge-base                  # Self-defined (private server)
+    - name: internal-knowledge-base # Self-defined (private server)
       registry: false
       transport: http
       url: "${KNOWLEDGE_BASE_URL}"
@@ -119,6 +119,7 @@ dependencies:
 APM accepts dependencies in two forms:
 
 **String format** (simple cases):
+
 - **Shorthand** (`owner/repo`) — defaults to GitHub
 - **HTTPS URL** (`https://host/owner/repo.git`) — any git host, whole repo
 - **SSH URL** (`git@host:owner/repo.git`) — any git host, whole repo
@@ -134,11 +135,11 @@ APM accepts dependencies in two forms:
 dependencies:
   apm:
     - git: https://gitlab.com/acme/coding-standards.git
-      path: instructions/security        # virtual sub-path inside the repo
-      ref: v2.0                          # pin to a tag, branch, or commit
+      path: instructions/security # virtual sub-path inside the repo
+      ref: v2.0 # pin to a tag, branch, or commit
     - git: git@bitbucket.org:team/rules.git
       path: prompts/review.prompt.md
-      alias: review                      # local alias (controls install directory name)
+      alias: review # local alias (controls install directory name)
 ```
 
 Fields: `git` (required), `path`, `ref`, `alias` (all optional). The `git` value is any HTTPS or SSH clone URL.
@@ -162,27 +163,28 @@ APM normalizes every dependency entry on write — no matter how you specify a p
 - **GitHub** is the default registry. The `github.com` host is stripped, leaving just `owner/repo`.
 - **Non-default hosts** (GitLab, Bitbucket, self-hosted) keep their FQDN: `gitlab.com/owner/repo`.
 
-| You type | Stored in apm.yml |
-|----------|-------------------|
-| `microsoft/apm-sample-package` | `microsoft/apm-sample-package` |
-| `https://github.com/microsoft/apm-sample-package.git` | `microsoft/apm-sample-package` |
-| `git@github.com:microsoft/apm-sample-package.git` | `microsoft/apm-sample-package` |
-| `github.com/microsoft/apm-sample-package` | `microsoft/apm-sample-package` |
-| `https://gitlab.com/acme/rules.git` | `gitlab.com/acme/rules` |
-| `gitlab.com/group/subgroup/repo` | `gitlab.com/group/subgroup/repo` |
-| `git@gitlab.com:group/subgroup/repo.git` | `gitlab.com/group/subgroup/repo` |
-| `git@bitbucket.org:team/standards.git` | `bitbucket.org/team/standards` |
-| `./packages/my-skills` | `./packages/my-skills` |
-| `/home/user/repos/my-pkg` | `/home/user/repos/my-pkg` |
+| You type                                              | Stored in apm.yml                |
+| ----------------------------------------------------- | -------------------------------- |
+| `microsoft/apm-sample-package`                        | `microsoft/apm-sample-package`   |
+| `https://github.com/microsoft/apm-sample-package.git` | `microsoft/apm-sample-package`   |
+| `git@github.com:microsoft/apm-sample-package.git`     | `microsoft/apm-sample-package`   |
+| `github.com/microsoft/apm-sample-package`             | `microsoft/apm-sample-package`   |
+| `https://gitlab.com/acme/rules.git`                   | `gitlab.com/acme/rules`          |
+| `gitlab.com/group/subgroup/repo`                      | `gitlab.com/group/subgroup/repo` |
+| `git@gitlab.com:group/subgroup/repo.git`              | `gitlab.com/group/subgroup/repo` |
+| `git@bitbucket.org:team/standards.git`                | `bitbucket.org/team/standards`   |
+| `./packages/my-skills`                                | `./packages/my-skills`           |
+| `/home/user/repos/my-pkg`                             | `/home/user/repos/my-pkg`        |
 
 Virtual paths and refs are preserved:
 
-| You type | Stored in apm.yml |
-|----------|-------------------|
-| `github.com/org/repo/skills/review#v2` | `org/repo/skills/review#v2` |
+| You type                                                      | Stored in apm.yml                |
+| ------------------------------------------------------------- | -------------------------------- |
+| `github.com/org/repo/skills/review#v2`                        | `org/repo/skills/review#v2`      |
 | `https://gitlab.com/acme/repo.git` + path `docs` + ref `main` | `gitlab.com/acme/repo/docs#main` |
 
 This normalization means:
+
 - **Duplicate detection works** across input forms — you can't accidentally install the same package twice using different URL formats.
 - **`apm uninstall` accepts any form** — shorthand, HTTPS URL, or SSH URL all resolve to the same canonical identity.
 - **`apm.yml` stays clean** and readable regardless of how packages were added.
@@ -264,12 +266,13 @@ Or declare them in `apm.yml`:
 ```yaml
 dependencies:
   apm:
-    - ./packages/my-shared-skills          # relative to project root
-    - /home/user/repos/my-ai-package       # absolute path
-    - microsoft/apm-sample-package         # remote (can be mixed)
+    - ./packages/my-shared-skills # relative to project root
+    - /home/user/repos/my-ai-package # absolute path
+    - microsoft/apm-sample-package # remote (can be mixed)
 ```
 
 **How it works:**
+
 - Files are **copied** (not symlinked) to `apm_modules/_local/<package-name>/`
 - Local packages are validated the same as remote packages (must have `apm.yml` or `SKILL.md`)
 - `apm compile` works identically regardless of dependency source
@@ -298,35 +301,35 @@ apm deps list -g       # user-scope packages only
 apm deps list --all    # project + user-scope packages
 ```
 
-| Item | Project scope (default) | User scope (`-g`) |
-|------|------------------------|-------------------|
-| Manifest | `./apm.yml` | `~/.apm/apm.yml` |
-| Modules | `./apm_modules/` | `~/.apm/apm_modules/` |
-| Lockfile | `./apm.lock.yaml` | `~/.apm/apm.lock.yaml` |
+| Item                | Project scope (default)         | User scope (`-g`)                                                |
+| ------------------- | ------------------------------- | ---------------------------------------------------------------- |
+| Manifest            | `./apm.yml`                     | `~/.apm/apm.yml`                                                 |
+| Modules             | `./apm_modules/`                | `~/.apm/apm_modules/`                                            |
+| Lockfile            | `./apm.lock.yaml`               | `~/.apm/apm.lock.yaml`                                           |
 | Deployed primitives | `./.github/`, `./.claude/`, ... | `~/.copilot/`, `~/.claude/`, `~/.cursor/`, `~/.config/opencode/` |
 
 ### Per-target support
 
 Coverage varies by target and primitive type:
 
-| Target | Status | User-level dir | Primitives | Not supported |
-|--------|--------|---------------|------------|---------------|
-| Claude Code | Supported | `~/.claude/` | Skills, agents, commands, hooks, instructions | -- |
-| Copilot CLI | Partial | `~/.copilot/` | Skills, agents, hooks | Prompts, instructions |
-| Cursor | Partial | `~/.cursor/` | Skills, agents, hooks | Rules |
-| OpenCode | Partial | `~/.config/opencode/` | Skills, agents, commands | Hooks |
+| Target      | Status    | User-level dir        | Primitives                                    | Not supported         |
+| ----------- | --------- | --------------------- | --------------------------------------------- | --------------------- |
+| Claude Code | Supported | `~/.claude/`          | Skills, agents, commands, hooks, instructions | --                    |
+| Copilot CLI | Partial   | `~/.copilot/`         | Skills, agents, hooks                         | Prompts, instructions |
+| Cursor      | Partial   | `~/.cursor/`          | Skills, agents, hooks                         | Rules                 |
+| OpenCode    | Partial   | `~/.config/opencode/` | Skills, agents, commands                      | Hooks                 |
 
 Target detection mirrors project scope: APM auto-detects by `~/.<target>/` directory presence,
 falling back to Copilot. Security scanning runs for global installs.
 
 ### When to use each scope
 
-| Use case | Scope |
-|----------|-------|
+| Use case                             | Scope                   |
+| ------------------------------------ | ----------------------- |
 | Team-shared instructions and prompts | Project (`apm install`) |
 | Personal commands, agents, or skills | User (`apm install -g`) |
-| CI/CD reproducible setup | Project |
-| Cross-project coding standards | User |
+| CI/CD reproducible setup             | Project                 |
+| Cross-project coding standards       | User                    |
 
 :::note
 MCP servers are not supported at user scope. Each target uses a different MCP configuration format; user-scope MCP support is planned for a future release.
@@ -356,25 +359,25 @@ Customize a registry-resolved server with project-specific preferences:
 ```yaml
 mcp:
   - name: io.github.github/github-mcp-server
-    transport: stdio          # Prefer stdio over remote
-    env:                      # Pre-populate environment variables
+    transport: stdio # Prefer stdio over remote
+    env: # Pre-populate environment variables
       GITHUB_TOKEN: "${MY_TOKEN}"
-    tools: ["repos", "issues"]  # Restrict exposed tools
-    headers:                  # Custom HTTP headers (remote transports)
+    tools: ["repos", "issues"] # Restrict exposed tools
+    headers: # Custom HTTP headers (remote transports)
       X-Custom: "value"
-    package: npm              # Select package type (npm, pypi, oci)
+    package: npm # Select package type (npm, pypi, oci)
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Server reference (required) |
-| `transport` | string | `stdio`, `sse`, `http`, or `streamable-http` |
-| `env` | dict | Environment variable overrides |
-| `args` | list or dict | Runtime argument overrides |
-| `version` | string | Pin server version |
-| `package` | string | Select package type (`npm`, `pypi`, `oci`) |
-| `headers` | dict | HTTP headers for remote transports |
-| `tools` | list | Restrict exposed tool names |
+| Field       | Type         | Description                                  |
+| ----------- | ------------ | -------------------------------------------- |
+| `name`      | string       | Server reference (required)                  |
+| `transport` | string       | `stdio`, `sse`, `http`, or `streamable-http` |
+| `env`       | dict         | Environment variable overrides               |
+| `args`      | list or dict | Runtime argument overrides                   |
+| `version`   | string       | Pin server version                           |
+| `package`   | string       | Select package type (`npm`, `pypi`, `oci`)   |
+| `headers`   | dict         | HTTP headers for remote transports           |
+| `tools`     | list         | Restrict exposed tool names                  |
 
 Overlay fields are merged on top of registry metadata — they augment, never replace, the registry-first model.
 
@@ -408,6 +411,7 @@ mcp:
 ```
 
 **Required fields when `registry: false`:**
+
 - `transport` — always required
 - `url` — required for `http`, `sse`, `streamable-http` transports
 - `command` — required for `stdio` transport
@@ -431,7 +435,7 @@ For GitHub and GitHub Enterprise repositories, set up a personal access token:
 Create a fine-grained personal access token at [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
 
 - **Repository access**: Select specific repositories or "All repositories"
-- **Permissions**: 
+- **Permissions**:
   - Contents: Read (to access repository files)
   - Metadata: Read (to access basic repository information)
 
@@ -493,7 +497,7 @@ dependencies:
         KB_TOKEN: "${KB_TOKEN}"
 
 scripts:
-  # Design workflows  
+  # Design workflows
   design-review: "codex --skip-git-repo-check design-review.prompt.md"
   accessibility: "codex --skip-git-repo-check accessibility-audit.prompt.md"
 ```
@@ -503,17 +507,20 @@ scripts:
 The combined packages provide comprehensive coverage:
 
 **[apm-sample-package](https://github.com/microsoft/apm-sample-package) contributes:**
+
 - **Agent Workflows**: `.apm/prompts/design-review.prompt.md`, `.apm/prompts/accessibility-audit.prompt.md`
 - **Instructions**: `.apm/instructions/design-standards.instructions.md` - Design guidelines
 - **Agents**: `.apm/agents/design-reviewer.agent.md` - Design review persona
 - **Skills**: `.apm/skills/style-checker/SKILL.md` - Style checking capability
 
 **[github/awesome-copilot](https://github.com/github/awesome-copilot) virtual packages contribute:**
+
 - **Prompts**: Individual prompt files installed via virtual package references
 
 ### Compounding Benefits
 
 When both packages are installed, your project gains:
+
 - **Accessibility audit** capabilities for web components
 - **Design system enforcement** with automated style checking
 - **Code review** workflows from community prompts
@@ -555,6 +562,7 @@ my-project/
 ```
 
 During compilation, APM merges instruction content by `applyTo` patterns:
+
 1. **Pattern-Based Grouping**: Instructions are grouped by their `applyTo` patterns, not by filename
 2. **Content Merging**: All instructions matching the same pattern are concatenated in the final AGENTS.md
 3. **Source Attribution**: Each instruction includes source file attribution when compiled
@@ -603,9 +611,9 @@ Specify specific branches, tags, or commits for dependency versions:
 ```yaml
 dependencies:
   apm:
-    - github/awesome-copilot/skills/review-and-refactor#v2.1.0    # Specific tag
-    - microsoft/apm-sample-package#main     # Specific branch  
-    - company/internal-standards#abc123        # Specific commit
+    - github/awesome-copilot/skills/review-and-refactor#v2.1.0 # Specific tag
+    - microsoft/apm-sample-package#main # Specific branch
+    - company/internal-standards#abc123 # Specific commit
 ```
 
 ### Updating Dependencies
@@ -701,6 +709,7 @@ apm install contoso/package-a
 ```
 
 Result:
+
 - Downloads A, B, and C
 - Records all three in `apm.lock.yaml` with depth information
 - `depth: 1` = direct dependency
@@ -726,6 +735,59 @@ apm deps clean
 # Use with caution - requires reinstallation
 ```
 
+## Package Variables
+
+Package authors can declare variables in `apm.yml` that consumers override to customize deployed content. Variables use `${var:name}` syntax and are resolved at install time.
+
+### Declaring variables (package author)
+
+```yaml
+# Package's apm.yml
+name: tdd-development
+version: 0.5.0
+
+variables:
+  stack-profile:
+    description: "Stack profile skill for test framework and conventions"
+    default: stack-react-featureapp
+```
+
+Reference variables in primitive files:
+
+```markdown
+<!-- .apm/agents/tdd-orchestrator.agent.md -->
+
+Skills:
+
+- Invoke skill: `${var:stack-profile}`
+```
+
+### Overriding variables (consumer)
+
+```yaml
+# Consumer's apm.yml
+name: my-ios-app
+version: 1.0.0
+
+dependencies:
+  apm:
+    - acme/tdd-development#v0.5.0
+
+variables:
+  tdd-development:
+    stack-profile: stack-ios-swift
+```
+
+After `apm install`, the deployed agent file contains `stack-ios-swift` instead of the default.
+
+### Resolution order
+
+1. Consumer override (`variables.<package-name>.<var-name>`)
+2. Package default (`variables.<var-name>.default`)
+3. Unresolved -- `${var:...}` left as-is with a warning
+
+See the [manifest schema reference](../../reference/manifest-schema/#4-variables) for the full specification.
+
 ## Best Practices
 
 ### Package Structure
@@ -736,7 +798,7 @@ Create well-structured APM packages for maximum reusability:
 your-package/
 ├── .apm/
 │   ├── instructions/        # Context for AI behavior
-│   ├── contexts/           # Domain knowledge and facts  
+│   ├── contexts/           # Domain knowledge and facts
 │   ├── chatmodes/          # Interactive chat configurations
 │   └── prompts/            # Agent workflows
 ├── apm.yml                 # Package metadata
@@ -766,9 +828,11 @@ your-package/
 
 ### Common Issues
 
-#### "Authentication failed" 
+#### "Authentication failed"
+
 **Problem**: GitHub token is missing or invalid
-**Solution**: 
+**Solution**:
+
 ```bash
 # Verify token is set
 echo $GITHUB_CLI_PAT
@@ -778,24 +842,30 @@ curl -H "Authorization: token $GITHUB_CLI_PAT" https://api.github.com/user
 ```
 
 #### "Package validation failed"
+
 **Problem**: Repository doesn't have valid APM package structure
-**Solution**: 
+**Solution**:
+
 - Ensure target repository has `.apm/` directory
 - Check that `apm.yml` exists and is valid
 - Verify repository is accessible with your token
 
 #### "Circular dependency detected"
+
 **Problem**: Packages depend on each other in a loop
 **Solution**:
+
 - Review your dependency chain
 - Remove circular references
 - Consider merging closely related packages
 
 #### "File conflicts during installation"
+
 **Problem**: Local files collide with package files during `apm install`
 **Resolution**: APM skips files that exist locally and aren't managed by APM. The diagnostic summary at the end of install shows how many files were skipped. Use `--verbose` to see which files, or `--force` to overwrite.
 
 #### "File conflicts during compilation"
+
 **Problem**: Multiple packages or local files have same names
 **Resolution**: Local files automatically override dependency files with same names
 

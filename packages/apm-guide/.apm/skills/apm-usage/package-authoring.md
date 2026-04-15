@@ -150,3 +150,23 @@ dependencies:
 This ensures consistent instructions, agents, and policies across the org.
 Local `.apm/` primitives in each repo can extend or override the shared ones
 (local always takes priority over dependencies).
+
+## Package variables
+
+Declare variables in `apm.yml` so consumers can customize deployed content:
+
+```yaml
+# Package apm.yml
+variables:
+  stack-profile:
+    description: "Stack profile skill"
+    default: stack-react-featureapp
+```
+
+Use `${var:name}` in any primitive file. Consumers override in their `apm.yml`:
+
+```yaml
+variables:
+  my-package:
+    stack-profile: stack-ios-swift
+```

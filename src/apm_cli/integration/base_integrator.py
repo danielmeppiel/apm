@@ -45,6 +45,21 @@ class BaseIntegrator:
 
     def __init__(self):
         self.link_resolver: Optional[UnifiedLinkResolver] = None
+        self._variables: Dict[str, str] = {}
+
+    def set_variables(self, variables: Dict[str, str]) -> None:
+        """Set package variables for ``${var:...}`` substitution.
+
+        Called before integration runs for each package.
+        """
+        self._variables = variables or {}
+
+    def apply_variable_substitution(self, content: str) -> str:
+        """Apply ``${var:...}`` substitution using the current variable set."""
+        if not self._variables:
+            return content
+        from apm_cli.utils.variables import substitute_variables
+        return substitute_variables(content, self._variables)
 
     # ------------------------------------------------------------------
     # Common behaviour  -- subclasses inherit directly

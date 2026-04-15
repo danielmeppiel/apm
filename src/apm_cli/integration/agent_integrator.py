@@ -143,7 +143,7 @@ class AgentIntegrator(BaseIntegrator):
                 continue
 
             if mapping.format_id == "codex_agent":
-                self._write_codex_agent(source_file, target_path)
+                self._write_codex_agent(source_file, target_path, variables=self._variables)
                 links_resolved = 0
             else:
                 links_resolved = self.copy_agent(source_file, target_path)
@@ -215,6 +215,7 @@ class AgentIntegrator(BaseIntegrator):
         """
         content = source.read_text(encoding='utf-8')
         content, links_resolved = self.resolve_links(content, source, target)
+        content = self.apply_variable_substitution(content)
         target.write_text(content, encoding='utf-8')
         return links_resolved
 
@@ -228,7 +229,7 @@ class AgentIntegrator(BaseIntegrator):
     )
 
     @staticmethod
-    def _write_codex_agent(source: Path, target: Path) -> None:
+    def _write_codex_agent(source: Path, target: Path, variables: Dict[str, str] = None) -> None:
         """Transform an ``.agent.md`` file to Codex ``.toml`` format.
 
         Parses YAML frontmatter for ``name`` and ``description``, uses
@@ -237,6 +238,10 @@ class AgentIntegrator(BaseIntegrator):
         import toml as _toml
 
         content = source.read_text(encoding="utf-8")
+
+        if variables:
+            from apm_cli.utils.variables import substitute_variables
+            content = substitute_variables(content, variables)
 
         name = source.stem
         if name.endswith(".agent"):

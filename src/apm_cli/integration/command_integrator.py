@@ -97,6 +97,9 @@ class CommandIntegrator(BaseIntegrator):
         # Resolve context links in content
         post.content, links_resolved = self.resolve_links(post.content, source, target)
         
+        # Apply variable substitution
+        post.content = self.apply_variable_substitution(post.content)
+        
         # Ensure target directory exists
         target.parent.mkdir(parents=True, exist_ok=True)
         

@@ -1123,6 +1123,7 @@ def _integrate_package_primitives(
     package_name="",
     logger=None,
     scope=None,
+    variables=None,
 ):
     """Run the full integration pipeline for a single package.
 
@@ -1139,6 +1140,15 @@ def _integrate_package_primitives(
     from apm_cli.integration.dispatch import get_dispatch_table
 
     _dispatch = get_dispatch_table()
+
+    # Set package variables on all integrators for ${var:...} substitution
+    _all_integrators = [
+        prompt_integrator, agent_integrator, skill_integrator,
+        instruction_integrator, command_integrator, hook_integrator,
+    ]
+    for _integ in _all_integrators:
+        _integ.set_variables(variables or {})
+
     result = {
         "prompts": 0,
         "agents": 0,
@@ -1361,6 +1371,62 @@ def _copy_local_package(dep_ref, install_path, project_root):
 
     shutil.copytree(local, install_path, dirs_exist_ok=False, symlinks=True)
     return install_path
+
+
+def _resolve_variables_for_package(
+    package_info, consumer_apm_package, diagnostics=None, logger=None,
+):
+    """Resolve ${var:...} variables for a single package.
+
+    Reads the package's own apm.yml for variable definitions, then merges
+    with consumer overrides from the top-level apm.yml.
+
+    Returns:
+        dict mapping variable name to resolved value (may be empty).
+    """
+    from apm_cli.utils.variables import (
+        parse_package_variables,
+        parse_consumer_overrides,
+        resolve_package_variables,
+    )
+
+    # Read the package's own apm.yml for variable definitions
+    pkg_apm_yml = package_info.install_path / "apm.yml"
+    pkg_variables_raw = None
+    if pkg_apm_yml.exists():
+        try:
+            pkg = package_info.package
+            pkg_variables_raw = pkg.variables
+        except Exception:
+            pass
+
+    package_vars = parse_package_variables(pkg_variables_raw)
+    if not package_vars and not (consumer_apm_package.variables or {}):
+        return {}
+
+    consumer_overrides = parse_consumer_overrides(consumer_apm_package.variables)
+    pkg_name = package_info.package.name
+
+    resolved, warnings, errors = resolve_package_variables(
+        pkg_name, package_vars, consumer_overrides,
+    )
+
+    for warn_msg in warnings:
+        if diagnostics:
+            diagnostics.warn(warn_msg, package=pkg_name)
+        elif logger:
+            logger.verbose_detail(f"  [!] {warn_msg}")
+
+    for err_msg in errors:
+        if diagnostics:
+            diagnostics.error(err_msg, package=pkg_name)
+        elif logger:
+            logger.error(err_msg)
+
+    if errors:
+        return {}
+
+    return resolved
 
 
 def _install_apm_dependencies(
@@ -1724,6 +1790,7 @@ def _install_apm_dependencies(
         package_deployed_files: builtins.dict = {}  # dep_key → list of relative deployed paths
         package_types: builtins.dict = {}  # dep_key → package type string
         _package_hashes: builtins.dict = {}  # dep_key → sha256 hash (captured at download/verify time)
+        _package_resolved_vars: builtins.dict = {}  # dep_key → resolved variables dict
 
         # Resolve registry proxy configuration once for this install session.
         registry_config = RegistryConfig.from_env()
@@ -2031,6 +2098,14 @@ def _install_apm_dependencies(
                             package_deployed_files[dep_key] = []
                             continue
 
+                        # Resolve ${var:...} variables for this package
+                        _pkg_vars = _resolve_variables_for_package(
+                            package_info, apm_package,
+                            diagnostics=diagnostics, logger=logger,
+                        )
+                        if _pkg_vars:
+                            _package_resolved_vars[dep_key] = _pkg_vars
+
                         int_result = _integrate_package_primitives(
                             package_info, project_root,
                             targets=_targets,
@@ -2046,6 +2121,7 @@ def _install_apm_dependencies(
                             package_name=dep_key,
                             logger=logger,
                             scope=scope,
+                            variables=_pkg_vars,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -2295,6 +2371,14 @@ def _install_apm_dependencies(
                             package_deployed_files[dep_key] = []
                             continue
 
+                        # Resolve ${var:...} variables for this package
+                        _cached_pkg_vars = _resolve_variables_for_package(
+                            cached_package_info, apm_package,
+                            diagnostics=diagnostics, logger=logger,
+                        )
+                        if _cached_pkg_vars:
+                            _package_resolved_vars[dep_key] = _cached_pkg_vars
+
                         int_result = _integrate_package_primitives(
                             cached_package_info, project_root,
                             targets=_targets,
@@ -2310,6 +2394,7 @@ def _install_apm_dependencies(
                             package_name=dep_key,
                             logger=logger,
                             scope=scope,
+                            variables=_cached_pkg_vars,
                         )
                         total_prompts_integrated += int_result["prompts"]
                         total_agents_integrated += int_result["agents"]
@@ -2490,6 +2575,14 @@ def _install_apm_dependencies(
 
                     if _targets:
                         try:
+                            # Resolve ${var:...} variables for this package
+                            _fresh_pkg_vars = _resolve_variables_for_package(
+                                package_info, apm_package,
+                                diagnostics=diagnostics, logger=logger,
+                            )
+                            if _fresh_pkg_vars:
+                                _package_resolved_vars[dep_ref.get_unique_key()] = _fresh_pkg_vars
+
                             int_result = _integrate_package_primitives(
                                 package_info, project_root,
                                 targets=_targets,
@@ -2505,6 +2598,7 @@ def _install_apm_dependencies(
                                 package_name=dep_ref.get_unique_key(),
                                 logger=logger,
                                 scope=scope,
+                                variables=_fresh_pkg_vars,
                             )
                             total_prompts_integrated += int_result["prompts"]
                             total_agents_integrated += int_result["agents"]
@@ -2615,6 +2709,10 @@ def _install_apm_dependencies(
                 for dep_key, locked_dep in lockfile.dependencies.items():
                     if dep_key in _package_hashes:
                         locked_dep.content_hash = _package_hashes[dep_key]
+                # Attach resolved ${var:...} variables for reproducible installs
+                for dep_key, resolved_vars in _package_resolved_vars.items():
+                    if dep_key in lockfile.dependencies:
+                        lockfile.dependencies[dep_key].resolved_variables = resolved_vars
                 # Attach marketplace provenance if available
                 if marketplace_provenance:
                     for dep_key, prov in marketplace_provenance.items():

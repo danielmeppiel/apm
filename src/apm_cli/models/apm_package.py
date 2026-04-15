@@ -9,7 +9,7 @@ compatibility.
 import yaml
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Dict, Union
+from typing import Any, Optional, List, Dict, Union
 
 from .dependency import (
     DependencyReference,
@@ -75,6 +75,7 @@ class APMPackage:
     package_path: Optional[Path] = None  # Local path to package
     target: Optional[str] = None  # Target agent: vscode, claude, or all (applies to compile and install)
     type: Optional[PackageContentType] = None  # Package content type: instructions, skill, hybrid, or prompts
+    variables: Optional[Dict[str, Any]] = None  # Package variables (${var:...} substitution)
     
     @classmethod
     def from_apm_yml(cls, apm_yml_path: Path) -> "APMPackage":
@@ -208,6 +209,7 @@ class APMPackage:
             package_path=apm_yml_path.parent,
             target=data.get('target'),
             type=pkg_type,
+            variables=data.get('variables'),
         )
         _apm_yml_cache[resolved] = result
         return result

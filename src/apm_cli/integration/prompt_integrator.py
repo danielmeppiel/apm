@@ -53,6 +53,7 @@ class PromptIntegrator(BaseIntegrator):
         """
         content = source.read_text(encoding='utf-8')
         content, links_resolved = self.resolve_links(content, source, target)
+        content = self.apply_variable_substitution(content)
         target.write_text(content, encoding='utf-8')
         return links_resolved
     
