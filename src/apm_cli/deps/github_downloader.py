@@ -8,7 +8,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List
 import random
 import re
 from typing import Union
@@ -20,9 +20,10 @@ from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from ..core.auth import AuthResolver
 from ..models.apm_package import (
-    DependencyReference, 
-    PackageInfo, 
-    ResolvedReference, 
+    DependencyReference,
+    PackageInfo,
+    RemoteRef,
+    ResolvedReference,
     GitReferenceType,
     PackageType,
     validate_apm_package,
@@ -45,14 +46,14 @@ from ..utils.github_host import (
 
 def normalize_collection_path(virtual_path: str) -> str:
     """Normalize a collection virtual path by stripping any existing extension.
-    
+
     This allows users to specify collection dependencies with or without the extension:
       - owner/repo/collections/name (without extension)
       - owner/repo/collections/name.collection.yml (with extension)
-    
+
     Args:
         virtual_path: The virtual path from the dependency reference
-        
+
     Returns:
         str: The normalized path without .collection.yml/.collection.yaml suffix
     """
@@ -94,7 +95,7 @@ def _rmtree(path) -> None:
 
 class GitProgressReporter(RemoteProgress):
     """Report git clone progress to Rich Progress."""
-    
+
     def __init__(self, progress_task_id=None, progress_obj=None, package_name=None):
         super().__init__()
         self.task_id = progress_task_id
@@ -102,15 +103,15 @@ class GitProgressReporter(RemoteProgress):
         self.package_name = package_name  # Keep consistent name throughout download
         self.last_op = None
         self.disabled = False  # Flag to stop updates after download completes
-    
+
     def update(self, op_code, cur_count, max_count=None, message=''):
         """Called by GitPython during clone operations."""
         if not self.progress or self.task_id is None or self.disabled:
             return
-        
+
         # Keep the package name consistent - don't change description to git operations
         # This keeps the UI clean and scannable
-        
+
         # Update progress bar naturally - let it reach 100%
         if max_count and max_count > 0:
             # Determinate progress (we have total count)
@@ -128,13 +129,13 @@ class GitProgressReporter(RemoteProgress):
                 completed=min(cur_count, 100) if cur_count else 0
                 # Note: We don't update description - keep the original package name
             )
-        
+
         self.last_op = cur_count
-    
+
     def _get_op_name(self, op_code):
         """Convert git operation code to human-readable name."""
         from git import RemoteProgress
-        
+
         # Extract operation type from op_code
         if op_code & RemoteProgress.COUNTING:
             return "Counting objects"
@@ -156,17 +157,17 @@ class GitProgressReporter(RemoteProgress):
 
 class GitHubPackageDownloader:
     """Downloads and validates APM packages from GitHub repositories."""
-    
+
     def __init__(self, auth_resolver=None):
         """Initialize the GitHub package downloader."""
         from apm_cli.core.auth import AuthResolver
         self.auth_resolver = auth_resolver or AuthResolver()
         self.token_manager = self.auth_resolver._token_manager  # Backward compat
         self.git_env = self._setup_git_environment()
-    
+
     def _setup_git_environment(self) -> Dict[str, Any]:
         """Set up Git environment with authentication using centralized token manager.
-        
+
         Returns:
             Dict containing environment variables for Git operations
         """
@@ -176,6 +177,20 @@ class GitHubPackageDownloader:
         env['GIT_TERMINAL_PROMPT'] = '0'
         env['GIT_ASKPASS'] = 'echo'  # Prevent interactive credential prompts
         env['GIT_CONFIG_NOSYSTEM'] = '1'
+
+        # Ensure SSH connections fail fast instead of hanging indefinitely when
+        # a firewall silently drops packets (common on corporate/VPN networks).
+        # If the user already set GIT_SSH_COMMAND we merge our option in;
+        # otherwise we create a minimal command with ConnectTimeout.
+        _ssh_timeout = '-o ConnectTimeout=30'
+        existing_ssh_cmd = os.environ.get('GIT_SSH_COMMAND', '').strip()
+        if existing_ssh_cmd:
+            if 'connecttimeout' not in existing_ssh_cmd.lower():
+                env['GIT_SSH_COMMAND'] = f'{existing_ssh_cmd} {_ssh_timeout}'
+            else:
+                env['GIT_SSH_COMMAND'] = existing_ssh_cmd
+        else:
+            env['GIT_SSH_COMMAND'] = f'ssh {_ssh_timeout}'
         if sys.platform == 'win32':
             # 'NUL' fails on some Windows git versions; use an empty temp file.
             import tempfile
@@ -205,7 +220,7 @@ class GitHubPackageDownloader:
 
         _debug(f"Token setup: has_github_token={self.has_github_token}, has_ado_token={self.has_ado_token}, has_artifactory_token={self.has_artifactory_token}"
                f"{', source=credential_helper' if self._github_token_from_credential_fill else ''}")
-        
+
         return env
 
     # --- Registry proxy support ---
@@ -441,16 +456,16 @@ class GitHubPackageDownloader:
 
     def _resilient_get(self, url: str, headers: Dict[str, str], timeout: int = 30, max_retries: int = 3) -> requests.Response:
         """HTTP GET with retry on 429/503 and rate-limit header awareness (#171).
-        
+
         Args:
             url: Request URL
             headers: HTTP headers
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts for transient failures
-            
+
         Returns:
             requests.Response (caller should call .raise_for_status() as needed)
-            
+
         Raises:
             requests.exceptions.RequestException: After all retries exhausted
         """
@@ -459,7 +474,7 @@ class GitHubPackageDownloader:
         for attempt in range(max_retries):
             try:
                 response = requests.get(url, headers=headers, timeout=timeout)
-                
+
                 # Handle rate limiting — GitHub returns 429 for secondary limits
                 # and 403 with X-RateLimit-Remaining: 0 for primary limits.
                 is_rate_limited = response.status_code in (429, 503)
@@ -491,7 +506,7 @@ class GitHubPackageDownloader:
                     _debug(f"Rate limited ({response.status_code}), retry in {wait:.1f}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(wait)
                     continue
-                
+
                 # Log rate limit proximity
                 remaining = response.headers.get("X-RateLimit-Remaining")
                 try:
@@ -499,7 +514,7 @@ class GitHubPackageDownloader:
                         _debug(f"GitHub API rate limit low: {remaining} requests remaining")
                 except (TypeError, ValueError):
                     pass
-                
+
                 return response
             except requests.exceptions.ConnectionError as e:
                 last_exc = e
@@ -511,7 +526,7 @@ class GitHubPackageDownloader:
                 last_exc = e
                 if attempt < max_retries - 1:
                     _debug(f"Timeout, retrying (attempt {attempt + 1}/{max_retries})")
-        
+
         # If rate limiting exhausted all retries, return the last response so
         # callers can inspect headers (e.g. X-RateLimit-Remaining) and raise
         # an appropriate user-facing error.
@@ -521,48 +536,48 @@ class GitHubPackageDownloader:
         if last_exc:
             raise last_exc
         raise requests.exceptions.RequestException(f"All {max_retries} attempts failed for {url}")
-    
+
     def _sanitize_git_error(self, error_message: str) -> str:
         """Sanitize Git error messages to remove potentially sensitive authentication information.
-        
+
         Args:
             error_message: Raw error message from Git operations
-            
+
         Returns:
             str: Sanitized error message with sensitive data removed
         """
         import re
-        
+
         # Remove any tokens that might appear in URLs for github hosts (format: https://token@host)
         # Sanitize for default host and common enterprise hosts via helper
         sanitized = sanitize_token_url_in_message(error_message, host=default_host())
-        
+
         # Sanitize Azure DevOps URLs - both cloud (dev.azure.com) and any on-prem server
         # Use a generic pattern to catch https://token@anyhost format for all hosts
         # This catches: dev.azure.com, ado.company.com, tfs.internal.corp, etc.
         sanitized = re.sub(r'https://[^@\s]+@([^\s/]+)', r'https://***@\1', sanitized)
-        
+
         # Remove any tokens that might appear as standalone values
         sanitized = re.sub(r'(ghp_|gho_|ghu_|ghs_|ghr_)[a-zA-Z0-9_]+', '***', sanitized)
-        
+
         # Remove environment variable values that might contain tokens
         sanitized = re.sub(r'(GITHUB_TOKEN|GITHUB_APM_PAT|ADO_APM_PAT|GH_TOKEN|GITHUB_COPILOT_PAT)=[^\s]+', r'\1=***', sanitized)
-        
+
         return sanitized
 
     def _build_repo_url(self, repo_ref: str, use_ssh: bool = False, dep_ref: DependencyReference = None, token: Optional[str] = None) -> str:
         """Build the appropriate repository URL for cloning.
-        
+
         Supports both GitHub and Azure DevOps URL formats:
         - GitHub: https://github.com/owner/repo.git
         - ADO: https://dev.azure.com/org/project/_git/repo
-        
+
         Args:
             repo_ref: Repository reference in format "owner/repo" or "org/project/repo" for ADO
             use_ssh: Whether to use SSH URL for git operations
             dep_ref: Optional DependencyReference for ADO-specific URL building
             token: Optional per-dependency token override
-            
+
         Returns:
             str: Repository URL suitable for git clone operations
         """
@@ -571,33 +586,33 @@ class GitHubPackageDownloader:
             host = dep_ref.host
         else:
             host = getattr(self, 'github_host', None) or default_host()
-        
+
         # Check if this is Azure DevOps (either via dep_ref or host detection)
         is_ado = (dep_ref and dep_ref.is_azure_devops()) or is_azure_devops_hostname(host)
-        
+
         # Use provided token or fall back to instance default
         github_token = token if token is not None else self.github_token
         ado_token = token if (token is not None and is_ado) else self.ado_token
-        
+
         _debug(f"_build_repo_url: host={host}, is_ado={is_ado}, dep_ref={'present' if dep_ref else 'None'}, "
                f"ado_org={dep_ref.ado_organization if dep_ref else None}")
-        
+
         if is_ado and dep_ref and dep_ref.ado_organization:
             # Use Azure DevOps URL builders with ADO-specific token
             if use_ssh:
                 return build_ado_ssh_url(dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo)
             elif ado_token:
                 return build_ado_https_clone_url(
-                    dep_ref.ado_organization, 
-                    dep_ref.ado_project, 
-                    dep_ref.ado_repo, 
+                    dep_ref.ado_organization,
+                    dep_ref.ado_project,
+                    dep_ref.ado_repo,
                     token=ado_token,
                     host=host
                 )
             else:
                 return build_ado_https_clone_url(
-                    dep_ref.ado_organization, 
-                    dep_ref.ado_project, 
+                    dep_ref.ado_organization,
+                    dep_ref.ado_project,
                     dep_ref.ado_repo,
                     host=host
                 )
@@ -612,14 +627,14 @@ class GitHubPackageDownloader:
             else:
                 # Generic hosts: plain HTTPS, let git credential helpers handle auth
                 return build_https_clone_url(host, repo_ref, token=None)
-    
+
     def _clone_with_fallback(self, repo_url_base: str, target_path: Path, progress_reporter=None, dep_ref: DependencyReference = None, verbose_callback=None, **clone_kwargs) -> Repo:
         """Attempt to clone a repository with fallback authentication methods.
-        
+
         Uses authentication patterns appropriate for the platform:
         - GitHub: x-access-token format for private repos, SSH, or HTTPS
         - Azure DevOps: PAT-based authentication
-        
+
         Args:
             repo_url_base: Base repository reference (owner/repo)
             target_path: Target path for cloning
@@ -627,16 +642,16 @@ class GitHubPackageDownloader:
             dep_ref: Optional DependencyReference for platform-specific URL building
             verbose_callback: Optional callable for verbose logging (receives str messages)
             **clone_kwargs: Additional arguments for Repo.clone_from
-            
+
         Returns:
             Repo: Successfully cloned repository
-            
+
         Raises:
             RuntimeError: If all authentication methods fail
         """
         last_error = None
         is_ado = dep_ref and dep_ref.is_azure_devops()
-        
+
         # Determine host type for auth decisions
         dep_host = dep_ref.host if dep_ref else None
         if dep_host:
@@ -645,13 +660,13 @@ class GitHubPackageDownloader:
             # When no host is specified, default to GitHub behavior
             is_github = True
         is_generic = not is_ado and not is_github
-        
+
         # Resolve per-dependency token via AuthResolver.
         dep_token = self._resolve_dep_token(dep_ref)
         has_token = dep_token
-        
+
         _debug(f"_clone_with_fallback: repo={repo_url_base}, is_ado={is_ado}, is_generic={is_generic}, has_token={has_token is not None}")
-        
+
         # When APM has a token for this host, use the locked-down env (APM manages auth).
         # When no token is available, relax the env so git credential helpers (gh auth,
         # macOS Keychain, etc.) can provide credentials  -- regardless of host.
@@ -661,7 +676,7 @@ class GitHubPackageDownloader:
             clone_env = {k: v for k, v in self.git_env.items()
                          if k not in ('GIT_ASKPASS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM')}
             clone_env['GIT_TERMINAL_PROMPT'] = '0'  # Still prevent interactive prompts
-        
+
         # Method 1: Try authenticated HTTPS if token is available (GitHub/ADO only)
         if has_token:
             try:
@@ -675,7 +690,7 @@ class GitHubPackageDownloader:
             except GitCommandError as e:
                 last_error = e
                 # Continue to next method
-        
+
         # Method 2: Try SSH (works with SSH keys for any host)
         try:
             ssh_url = self._build_repo_url(repo_url_base, use_ssh=True, dep_ref=dep_ref)
@@ -686,7 +701,7 @@ class GitHubPackageDownloader:
         except GitCommandError as e:
             last_error = e
             # Continue to next method
-        
+
         # Method 3: Try standard HTTPS (public repos, or git credential helper for generic hosts)
         try:
             https_url = self._build_repo_url(repo_url_base, use_ssh=False, dep_ref=dep_ref)
@@ -696,7 +711,7 @@ class GitHubPackageDownloader:
             return repo
         except GitCommandError as e:
             last_error = e
-        
+
         # All methods failed
         error_msg = f"Failed to clone repository {repo_url_base} using all available methods. "
         configured_host = os.environ.get("GITHUB_HOST", "")
@@ -727,24 +742,178 @@ class GitHubPackageDownloader:
             error_msg += self.auth_resolver.build_error_context(host, "clone", org=org)
         else:
             error_msg += "Please check repository access permissions and authentication setup."
-        
+
         if last_error:
             sanitized_error = self._sanitize_git_error(str(last_error))
             error_msg += f" Last error: {sanitized_error}"
-        
+
         raise RuntimeError(error_msg)
-    
+
+    # ------------------------------------------------------------------
+    # Remote ref enumeration (no clone required)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_ls_remote_output(output: str) -> List[RemoteRef]:
+        """Parse ``git ls-remote --tags --heads`` output into RemoteRef objects.
+
+        Format per line: ``<sha>\\t<refname>``
+
+        For annotated tags git emits two lines::
+
+            <tag-object-sha>   refs/tags/v1.0.0
+            <commit-sha>       refs/tags/v1.0.0^{}
+
+        We want the commit SHA (from the ``^{}`` line) and skip the
+        tag-object-only line.
+
+        Args:
+            output: Raw stdout from ``git ls-remote``.
+
+        Returns:
+            Unsorted list of RemoteRef.
+        """
+        tags: Dict[str, str] = {}       # tag name -> commit sha
+        branches: List[RemoteRef] = []
+
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t", 1)
+            if len(parts) != 2:
+                continue
+            sha, refname = parts[0].strip(), parts[1].strip()
+
+            if refname.startswith("refs/tags/"):
+                tag_name = refname[len("refs/tags/"):]
+                if tag_name.endswith("^{}"):
+                    # Dereferenced commit -- overwrite with the real commit SHA
+                    tag_name = tag_name[:-3]
+                    tags[tag_name] = sha
+                else:
+                    # Only store if we haven't seen the deref line yet
+                    tags.setdefault(tag_name, sha)
+
+            elif refname.startswith("refs/heads/"):
+                branch_name = refname[len("refs/heads/"):]
+                branches.append(RemoteRef(
+                    name=branch_name,
+                    ref_type=GitReferenceType.BRANCH,
+                    commit_sha=sha,
+                ))
+
+        tag_refs = [
+            RemoteRef(name=name, ref_type=GitReferenceType.TAG, commit_sha=sha)
+            for name, sha in tags.items()
+        ]
+        return tag_refs + branches
+
+    @staticmethod
+    def _semver_sort_key(name: str):
+        """Return a sort key for semver-like tag names (descending).
+
+        Non-semver tags sort after all semver tags, alphabetically.
+        """
+        clean = name.lstrip("vV")
+        m = re.match(r"^(\d+)\.(\d+)\.(\d+)(.*)", clean)
+        if m:
+            # Negate for descending order within the first group
+            return (0, -int(m.group(1)), -int(m.group(2)), -int(m.group(3)), m.group(4))
+        return (1, name)
+
+    @classmethod
+    def _sort_remote_refs(cls, refs: List[RemoteRef]) -> List[RemoteRef]:
+        """Sort refs: tags first (semver descending), then branches alphabetically."""
+        tags = [r for r in refs if r.ref_type == GitReferenceType.TAG]
+        branches = [r for r in refs if r.ref_type == GitReferenceType.BRANCH]
+        tags.sort(key=lambda r: cls._semver_sort_key(r.name))
+        branches.sort(key=lambda r: r.name)
+        return tags + branches
+
+    def list_remote_refs(self, dep_ref: DependencyReference) -> List[RemoteRef]:
+        """Enumerate remote tags and branches without cloning.
+
+        Uses ``git ls-remote --tags --heads`` for all git hosts (GitHub,
+        Azure DevOps, GitLab, generic).  Artifactory dependencies return
+        an empty list (no git repo).
+
+        Args:
+            dep_ref: Dependency reference describing the remote repo.
+
+        Returns:
+            Sorted list of RemoteRef -- tags first (semver descending),
+            then branches (alphabetically ascending).
+
+        Raises:
+            RuntimeError: If the git command fails.
+        """
+        # Artifactory: no git repo to query
+        if dep_ref.is_artifactory():
+            return []
+
+        is_ado = dep_ref.is_azure_devops()
+        dep_token = self._resolve_dep_token(dep_ref)
+
+        # All git hosts: git ls-remote
+        repo_url_base = dep_ref.repo_url
+
+        # Build the env -- mirror _clone_with_fallback logic
+        if dep_token:
+            ls_env = self.git_env
+        else:
+            ls_env = {
+                k: v for k, v in self.git_env.items()
+                if k not in ("GIT_ASKPASS", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
+            }
+            ls_env["GIT_TERMINAL_PROMPT"] = "0"
+
+        # Build authenticated URL
+        remote_url = self._build_repo_url(
+            repo_url_base, use_ssh=False, dep_ref=dep_ref, token=dep_token,
+        )
+
+        try:
+            g = git.cmd.Git()
+            output = g.ls_remote("--tags", "--heads", remote_url, env=ls_env)
+            refs = self._parse_ls_remote_output(output)
+            return self._sort_remote_refs(refs)
+        except GitCommandError as e:
+            dep_host = dep_ref.host
+            if dep_host:
+                is_github = is_github_hostname(dep_host)
+            else:
+                is_github = True
+            is_generic = not is_ado and not is_github
+
+            error_msg = f"Failed to list remote refs for {repo_url_base}. "
+            if is_generic:
+                host_name = dep_host or "the target host"
+                error_msg += (
+                    f"For private repositories on {host_name}, configure SSH keys "
+                    f"or a git credential helper. "
+                    f"APM delegates authentication to git for non-GitHub/ADO hosts."
+                )
+            else:
+                host = dep_host or default_host()
+                org = repo_url_base.split("/")[0] if repo_url_base else None
+                error_msg += self.auth_resolver.build_error_context(host, "list refs", org=org)
+
+            sanitized = self._sanitize_git_error(str(e))
+            error_msg += f" Last error: {sanitized}"
+            raise RuntimeError(error_msg) from e
+
     def resolve_git_reference(self, repo_ref: Union[str, "DependencyReference"]) -> ResolvedReference:
         """Resolve a Git reference (branch/tag/commit) to a specific commit SHA.
-        
+
         Args:
             repo_ref: Repository reference — either a DependencyReference object
                 or a string (e.g., "user/repo#branch"). Passing the object
                 directly avoids a lossy parse round-trip for generic git hosts.
-            
+
         Returns:
             ResolvedReference: Resolved reference with commit SHA
-            
+
         Raises:
             ValueError: If the reference format is invalid
             RuntimeError: If Git operations fail
@@ -757,7 +926,7 @@ class GitHubPackageDownloader:
                 dep_ref = DependencyReference.parse(repo_ref)
             except ValueError as e:
                 raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
-        
+
         # Use user-specified ref; None means "use the remote's default branch"
         ref = dep_ref.reference or None
 
@@ -854,30 +1023,30 @@ class GitHubPackageDownloader:
                         else:
                             sanitized_error = self._sanitize_git_error(str(e))
                             raise RuntimeError(f"Failed to clone repository {dep_ref.repo_url}: {sanitized_error}")
-                    
+
         finally:
             if temp_dir and temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
-        
+
         return ResolvedReference(
             original_ref=original_ref_str,
             ref_type=ref_type,
             resolved_commit=resolved_commit,
             ref_name=ref_name
         )
-    
+
     def download_raw_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main", verbose_callback=None) -> bytes:
         """Download a single file from repository (GitHub or Azure DevOps).
-        
+
         Args:
             dep_ref: Parsed dependency reference
             file_path: Path to file within the repository (e.g., "prompts/code-review.prompt.md")
             ref: Git reference (branch, tag, or commit SHA). Defaults to "main"
             verbose_callback: Optional callable for verbose logging (receives str messages)
-            
+
         Returns:
             bytes: File content
-            
+
         Raises:
             RuntimeError: If download fails or file not found
         """
@@ -908,27 +1077,27 @@ class GitHubPackageDownloader:
 
         # GitHub API
         return self._download_github_file(dep_ref, file_path, ref, verbose_callback=verbose_callback)
-    
+
     def _download_ado_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main") -> bytes:
         """Download a file from Azure DevOps repository.
-        
+
         Args:
             dep_ref: Parsed dependency reference with ADO-specific fields
             file_path: Path to file within the repository
             ref: Git reference (branch, tag, or commit SHA)
-            
+
         Returns:
             bytes: File content
         """
         import base64
-        
+
         # Validate required ADO fields before proceeding
         if not all([dep_ref.ado_organization, dep_ref.ado_project, dep_ref.ado_repo]):
             raise ValueError(
                 f"Invalid Azure DevOps dependency reference: missing organization, project, or repo. "
                 f"Got: org={dep_ref.ado_organization}, project={dep_ref.ado_project}, repo={dep_ref.ado_repo}"
             )
-        
+
         host = dep_ref.host or "dev.azure.com"
         api_url = build_ado_api_url(
             dep_ref.ado_organization,
@@ -938,14 +1107,14 @@ class GitHubPackageDownloader:
             ref,
             host
         )
-        
+
         # Set up authentication headers - ADO uses Basic auth with PAT
         headers = {}
         if self.ado_token:
             # ADO uses Basic auth: username can be empty, password is the PAT
             auth = base64.b64encode(f":{self.ado_token}".encode()).decode()
             headers['Authorization'] = f'Basic {auth}'
-        
+
         try:
             response = self._resilient_get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
@@ -955,7 +1124,7 @@ class GitHubPackageDownloader:
                 # Try fallback branches
                 if ref not in ["main", "master"]:
                     raise RuntimeError(f"File not found: {file_path} at ref '{ref}' in {dep_ref.repo_url}")
-                
+
                 fallback_ref = "master" if ref == "main" else "main"
                 fallback_url = build_ado_api_url(
                     dep_ref.ado_organization,
@@ -965,7 +1134,7 @@ class GitHubPackageDownloader:
                     fallback_ref,
                     host
                 )
-                
+
                 try:
                     response = self._resilient_get(fallback_url, headers=headers, timeout=30)
                     response.raise_for_status()
@@ -986,7 +1155,7 @@ class GitHubPackageDownloader:
                 raise RuntimeError(f"Failed to download {file_path}: HTTP {e.response.status_code}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
-    
+
     def _try_raw_download(self, owner: str, repo: str, ref: str, file_path: str) -> Optional[bytes]:
         """Attempt to fetch a file via raw.githubusercontent.com (CDN).
 
@@ -1006,25 +1175,25 @@ class GitHubPackageDownloader:
 
     def _download_github_file(self, dep_ref: DependencyReference, file_path: str, ref: str = "main", verbose_callback=None) -> bytes:
         """Download a file from GitHub repository.
-        
+
         For github.com without a token, tries raw.githubusercontent.com first
         (CDN, no rate limit) before falling back to the Contents API.  Authenticated
         requests and non-github.com hosts always use the Contents API directly.
-        
+
         Args:
             dep_ref: Parsed dependency reference
             file_path: Path to file within the repository
             ref: Git reference (branch, tag, or commit SHA)
             verbose_callback: Optional callable for verbose logging (receives str messages)
-            
+
         Returns:
             bytes: File content
         """
         host = dep_ref.host or default_host()
-        
+
         # Parse owner/repo from repo_url
         owner, repo = dep_ref.repo_url.split('/', 1)
-        
+
         # Resolve token via AuthResolver for CDN fast-path decision
         org = None
         if dep_ref and dep_ref.repo_url:
@@ -1055,7 +1224,7 @@ class GitHubPackageDownloader:
                     return content
             # All raw attempts failed — fall through to API path which
             # handles private repos, rate-limit messaging, and SAML errors.
-        
+
         # --- Contents API path (authenticated, enterprise, or raw fallback) ---
         # Build GitHub API URL - format differs by host type
         if host == "github.com":
@@ -1064,14 +1233,14 @@ class GitHubPackageDownloader:
             api_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
         else:
             api_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
-        
+
         # Set up authentication headers
         headers = {
             'Accept': 'application/vnd.github.v3.raw'  # Returns raw content directly
         }
         if token:
             headers['Authorization'] = f'token {token}'
-        
+
         # Try to download with the specified ref
         try:
             response = self._resilient_get(api_url, headers=headers, timeout=30)
@@ -1085,10 +1254,10 @@ class GitHubPackageDownloader:
                 if ref not in ["main", "master"]:
                     # If original ref failed, don't try fallbacks - it might be a specific version
                     raise RuntimeError(f"File not found: {file_path} at ref '{ref}' in {dep_ref.repo_url}")
-                
+
                 # Try the other default branch
                 fallback_ref = "master" if ref == "main" else "main"
-                
+
                 # Build fallback API URL
                 if host == "github.com":
                     fallback_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
@@ -1096,7 +1265,7 @@ class GitHubPackageDownloader:
                     fallback_url = f"https://api.{host}/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
                 else:
                     fallback_url = f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}?ref={fallback_ref}"
-                
+
                 try:
                     response = self._resilient_get(fallback_url, headers=headers, timeout=30)
                     response.raise_for_status()
@@ -1165,27 +1334,27 @@ class GitHubPackageDownloader:
                 raise RuntimeError(f"Failed to download {file_path}: HTTP {e.response.status_code}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Network error downloading {file_path}: {e}")
-    
+
     def validate_virtual_package_exists(self, dep_ref: DependencyReference) -> bool:
         """Validate that a virtual package (file, collection, or subdirectory) exists on GitHub.
-        
+
         Supports:
         - Virtual files: owner/repo/path/file.prompt.md
         - Collections: owner/repo/collections/name (checks for .collection.yml)
         - Subdirectory packages: owner/repo/path/subdir (checks for apm.yml, SKILL.md, or plugin.json)
-        
+
         Args:
             dep_ref: Parsed dependency reference for virtual package
-            
+
         Returns:
             bool: True if the package exists and is accessible, False otherwise
         """
         if not dep_ref.is_virtual:
             raise ValueError("Can only validate virtual packages with this method")
-        
+
         ref = dep_ref.reference or "main"
         file_path = dep_ref.virtual_path
-        
+
         # For collections, check for .collection.yml file
         if dep_ref.is_virtual_collection():
             file_path = f"{dep_ref.virtual_path}.collection.yml"
@@ -1194,7 +1363,7 @@ class GitHubPackageDownloader:
                 return True
             except RuntimeError:
                 return False
-        
+
         # For virtual files, check the file directly
         if dep_ref.is_virtual_file():
             try:
@@ -1202,7 +1371,7 @@ class GitHubPackageDownloader:
                 return True
             except RuntimeError:
                 return False
-        
+
         # For subdirectory packages: apm.yml or SKILL.md confirm the type;
         # plugin.json confirms a Claude plugin; README.md is a last-resort
         # signal that the directory exists (any directory that follows the
@@ -1214,14 +1383,14 @@ class GitHubPackageDownloader:
                 return True
             except RuntimeError:
                 pass
-            
+
             # Try SKILL.md
             try:
                 self.download_raw_file(dep_ref, f"{dep_ref.virtual_path}/SKILL.md", ref)
                 return True
             except RuntimeError:
                 pass
-            
+
             # Try plugin.json at various plugin locations
             plugin_locations = [
                 f"{dep_ref.virtual_path}/plugin.json",                                    # Root
@@ -1245,60 +1414,60 @@ class GitHubPackageDownloader:
                 return True
             except RuntimeError:
                 pass
-        
+
         # Fallback: try to download the file directly
         try:
             self.download_raw_file(dep_ref, file_path, ref)
             return True
         except RuntimeError:
             return False
-    
+
     def download_virtual_file_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a single file as a virtual APM package.
-        
+
         Creates a minimal APM package structure with the file placed in the appropriate
         .apm/ subdirectory based on its extension.
-        
+
         Args:
             dep_ref: Dependency reference with virtual_path set
             target_path: Local path where virtual package should be created
             progress_task_id: Rich Progress task ID for progress updates
             progress_obj: Rich Progress object for progress updates
-            
+
         Returns:
             PackageInfo: Information about the created virtual package
-            
+
         Raises:
             ValueError: If the dependency is not a valid virtual file package
             RuntimeError: If download fails
         """
         if not dep_ref.is_virtual or not dep_ref.virtual_path:
             raise ValueError("Dependency must be a virtual file package")
-        
+
         if not dep_ref.is_virtual_file():
             raise ValueError(f"Path '{dep_ref.virtual_path}' is not a valid individual file. "
                            f"Must end with one of: {', '.join(DependencyReference.VIRTUAL_FILE_EXTENSIONS)}")
-        
+
         # Determine the ref to use
         ref = dep_ref.reference or "main"
-        
+
         # Update progress - downloading
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=50, total=100)
-        
+
         # Download the file content
         try:
             file_content = self.download_raw_file(dep_ref, dep_ref.virtual_path, ref)
         except RuntimeError as e:
             raise RuntimeError(f"Failed to download virtual package: {e}")
-        
+
         # Update progress - processing
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=90, total=100)
-        
+
         # Create target directory structure
         target_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Determine the subdirectory based on file extension
         subdirs = {
             '.prompt.md': 'prompts',
@@ -1306,28 +1475,28 @@ class GitHubPackageDownloader:
             '.chatmode.md': 'chatmodes',
             '.agent.md': 'agents'
         }
-        
+
         subdir = None
         filename = dep_ref.virtual_path.split('/')[-1]
         for ext, dir_name in subdirs.items():
             if dep_ref.virtual_path.endswith(ext):
                 subdir = dir_name
                 break
-        
+
         if not subdir:
             raise ValueError(f"Unknown file extension for {dep_ref.virtual_path}")
-        
+
         # Create .apm structure
         apm_dir = target_path / ".apm" / subdir
         apm_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Write the file
         file_path = apm_dir / filename
         file_path.write_bytes(file_content)
-        
+
         # Generate minimal apm.yml
         package_name = dep_ref.get_virtual_package_name()
-        
+
         # Try to extract description from file frontmatter
         description = f"Virtual package containing {filename}"
         try:
@@ -1345,16 +1514,16 @@ class GitHubPackageDownloader:
         except Exception:
             # If frontmatter parsing fails, use default description
             pass
-        
+
         apm_yml_content = f"""name: {package_name}
 version: 1.0.0
 description: {description}
 author: {dep_ref.repo_url.split('/')[0]}
 """
-        
+
         apm_yml_path = target_path / "apm.yml"
         apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
-        
+
         # Create APMPackage object
         package = APMPackage(
             name=package_name,
@@ -1364,7 +1533,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             source=dep_ref.to_github_url(),
             package_path=target_path
         )
-        
+
         # Return PackageInfo
         return PackageInfo(
             package=package,
@@ -1372,51 +1541,51 @@ author: {dep_ref.repo_url.split('/')[0]}
             installed_at=datetime.now().isoformat(),
             dependency_ref=dep_ref  # Store for canonical dependency string
         )
-    
+
     def download_collection_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a collection as a virtual APM package.
-        
+
         Downloads the collection manifest, then fetches all referenced files and
         organizes them into the appropriate .apm/ subdirectories.
-        
+
         Args:
             dep_ref: Dependency reference with virtual_path pointing to collection
             target_path: Local path where virtual package should be created
             progress_task_id: Rich Progress task ID for progress updates
             progress_obj: Rich Progress object for progress updates
-            
+
         Returns:
             PackageInfo: Information about the created virtual package
-            
+
         Raises:
             ValueError: If the dependency is not a valid collection package
             RuntimeError: If download fails
         """
         if not dep_ref.is_virtual or not dep_ref.virtual_path:
             raise ValueError("Dependency must be a virtual collection package")
-        
+
         if not dep_ref.is_virtual_collection():
             raise ValueError(f"Path '{dep_ref.virtual_path}' is not a valid collection path")
-        
+
         # Determine the ref to use
         ref = dep_ref.reference or "main"
-        
+
         # Update progress - starting
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=10, total=100)
-        
+
         # Normalize virtual_path by stripping .collection.yml/.yaml suffix if already present
         # This allows users to specify either:
         #   - owner/repo/collections/name (without extension)
         #   - owner/repo/collections/name.collection.yml (with extension)
         virtual_path_base = normalize_collection_path(dep_ref.virtual_path)
-        
+
         # Extract collection name from normalized path (e.g., "collections/project-planning" -> "project-planning")
         collection_name = virtual_path_base.split('/')[-1]
-        
+
         # Build collection manifest path - try .yml first, then .yaml as fallback
         collection_manifest_path = f"{virtual_path_base}.collection.yml"
-        
+
         # Download the collection manifest
         try:
             manifest_content = self.download_raw_file(dep_ref, collection_manifest_path, ref)
@@ -1430,77 +1599,77 @@ author: {dep_ref.repo_url.split('/')[0]}
                     raise RuntimeError(f"Collection manifest not found: {virtual_path_base}.collection.yml (also tried .yaml)")
             else:
                 raise RuntimeError(f"Failed to download collection manifest: {e}")
-        
+
         # Parse the collection manifest
         from .collection_parser import parse_collection_yml
-        
+
         try:
             manifest = parse_collection_yml(manifest_content)
         except (ValueError, Exception) as e:
             raise RuntimeError(f"Invalid collection manifest '{collection_name}': {e}")
-        
+
         # Create target directory structure
         target_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Download all items from the collection
         downloaded_count = 0
         failed_items = []
         total_items = len(manifest.items)
-        
+
         for idx, item in enumerate(manifest.items):
             # Update progress for each item
             if progress_obj and progress_task_id is not None:
                 progress_percent = 20 + int((idx / total_items) * 70)  # 20% to 90%
                 progress_obj.update(progress_task_id, completed=progress_percent, total=100)
-            
+
             try:
                 # Download the file
                 item_content = self.download_raw_file(dep_ref, item.path, ref)
-                
+
                 # Determine subdirectory based on item kind
                 subdir = item.subdirectory
-                
+
                 # Create the subdirectory
                 apm_subdir = target_path / ".apm" / subdir
                 apm_subdir.mkdir(parents=True, exist_ok=True)
-                
+
                 # Write the file
                 filename = item.path.split('/')[-1]
                 file_path = apm_subdir / filename
                 file_path.write_bytes(item_content)
-                
+
                 downloaded_count += 1
-                
+
             except RuntimeError as e:
                 # Log the failure but continue with other items
                 failed_items.append(f"{item.path} ({e})")
                 continue
-        
+
         # Check if we downloaded at least some items
         if downloaded_count == 0:
             error_msg = f"Failed to download any items from collection '{collection_name}'"
             if failed_items:
                 error_msg += f". Failures:\n  - " + "\n  - ".join(failed_items)
             raise RuntimeError(error_msg)
-        
+
         # Generate apm.yml with collection metadata
         package_name = dep_ref.get_virtual_package_name()
-        
+
         apm_yml_content = f"""name: {package_name}
 version: 1.0.0
 description: {manifest.description}
 author: {dep_ref.repo_url.split('/')[0]}
 """
-        
+
         # Add tags if present
         if manifest.tags:
             apm_yml_content += f"\ntags:\n"
             for tag in manifest.tags:
                 apm_yml_content += f"  - {tag}\n"
-        
+
         apm_yml_path = target_path / "apm.yml"
         apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
-        
+
         # Create APMPackage object
         package = APMPackage(
             name=package_name,
@@ -1510,7 +1679,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             source=dep_ref.to_github_url(),
             package_path=target_path
         )
-        
+
         # Log warnings for failed items if any
         if failed_items:
             import warnings
@@ -1518,7 +1687,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                 f"Collection '{collection_name}' installed with {downloaded_count}/{manifest.item_count} items. "
                 f"Failed items: {len(failed_items)}"
             )
-        
+
         # Return PackageInfo
         return PackageInfo(
             package=package,
@@ -1526,7 +1695,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             installed_at=datetime.now().isoformat(),
             dependency_ref=dep_ref  # Store for canonical dependency string
         )
-    
+
     def _try_sparse_checkout(self, dep_ref: DependencyReference, temp_clone_path: Path, subdir_path: str, ref: str = None) -> bool:
         """Attempt sparse-checkout to download only a subdirectory (git 2.25+).
 
@@ -1570,37 +1739,37 @@ author: {dep_ref.repo_url.split('/')[0]}
 
     def download_subdirectory_package(self, dep_ref: DependencyReference, target_path: Path, progress_task_id=None, progress_obj=None) -> PackageInfo:
         """Download a subdirectory from a repo as an APM package.
-        
+
         Used for Claude Skills or APM packages nested in monorepos.
         Clones the repo, extracts the subdirectory, and cleans up.
-        
+
         Args:
             dep_ref: Dependency reference with virtual_path set to subdirectory
             target_path: Local path where package should be created
             progress_task_id: Rich Progress task ID for progress updates
             progress_obj: Rich Progress object for progress updates
-            
+
         Returns:
             PackageInfo: Information about the downloaded package
-            
+
         Raises:
             ValueError: If the dependency is not a valid subdirectory package
             RuntimeError: If download or validation fails
         """
         if not dep_ref.is_virtual or not dep_ref.virtual_path:
             raise ValueError("Dependency must be a virtual subdirectory package")
-        
+
         if not dep_ref.is_virtual_subdirectory():
             raise ValueError(f"Path '{dep_ref.virtual_path}' is not a valid subdirectory package")
-        
+
         # Use user-specified ref, or None to use repo's default branch
         ref = dep_ref.reference  # None if not specified
         subdir_path = dep_ref.virtual_path
-        
+
         # Update progress - starting
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=10, total=100)
-        
+
         # Use mkdtemp + explicit cleanup so we control when rmtree runs.
         # tempfile.TemporaryDirectory().__exit__ calls shutil.rmtree without our
         # retry logic, which raises WinError 32 when git processes still hold
@@ -1718,13 +1887,13 @@ author: {dep_ref.repo_url.split('/')[0]}
 
         finally:
             _rmtree(temp_dir)
-        
+
         # Validate the extracted package (after temp dir is cleaned up)
         validation_result = validate_apm_package(target_path)
         if not validation_result.is_valid:
             error_msgs = "; ".join(validation_result.errors)
             raise RuntimeError(f"Subdirectory is not a valid APM package or Claude Skill: {error_msgs}")
-        
+
         # Get the resolved reference for metadata
         resolved_ref = ResolvedReference(
             original_ref=ref or "default",
@@ -1748,11 +1917,11 @@ author: {dep_ref.repo_url.split('/')[0]}
                 _data = load_yaml(apm_yml_path) or {}
                 _data["version"] = short_sha
                 dump_yaml(_data, apm_yml_path)
-        
+
         # Update progress - complete
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=100, total=100)
-        
+
         return PackageInfo(
             package=package,
             install_path=target_path,
@@ -1761,7 +1930,7 @@ author: {dep_ref.repo_url.split('/')[0]}
             dependency_ref=dep_ref,
             package_type=validation_result.package_type
         )
-    
+
     def _download_subdirectory_from_artifactory(
         self, dep_ref: 'DependencyReference', target_path: Path,
         proxy_info: tuple, progress_task_id=None, progress_obj=None,
@@ -1875,18 +2044,18 @@ author: {dep_ref.repo_url.split('/')[0]}
         )
 
     def download_package(
-        self, 
-        repo_ref: Union[str, "DependencyReference"], 
+        self,
+        repo_ref: Union[str, "DependencyReference"],
         target_path: Path,
         progress_task_id=None,
         progress_obj=None,
         verbose_callback=None
     ) -> PackageInfo:
         """Download a GitHub repository and validate it as an APM package.
-        
+
         For virtual packages (individual files or collections), creates a minimal
         package structure instead of cloning the full repository.
-        
+
         Args:
             repo_ref: Repository reference — either a DependencyReference object
                 or a string (e.g., "user/repo#branch"). Passing the object
@@ -1895,10 +2064,10 @@ author: {dep_ref.repo_url.split('/')[0]}
             progress_task_id: Rich Progress task ID for progress updates
             progress_obj: Rich Progress object for progress updates
             verbose_callback: Optional callable for verbose logging (receives str messages)
-            
+
         Returns:
             PackageInfo: Information about the downloaded package
-            
+
         Raises:
             ValueError: If the repository reference is invalid
             RuntimeError: If download or validation fails
@@ -1911,7 +2080,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                 dep_ref = DependencyReference.parse(repo_ref)
             except ValueError as e:
                 raise ValueError(f"Invalid repository reference '{repo_ref}': {e}")
-        
+
         # Handle virtual packages differently
         if dep_ref.is_virtual:
             art_proxy = self._parse_artifactory_base_url()
@@ -1957,19 +2126,19 @@ author: {dep_ref.repo_url.split('/')[0]}
 
         # Regular package download (existing logic)
         resolved_ref = self.resolve_git_reference(dep_ref)
-        
+
         # Create target directory if it doesn't exist
         target_path.mkdir(parents=True, exist_ok=True)
-        
+
         # If directory already exists and has content, remove it
         if target_path.exists() and any(target_path.iterdir()):
             _rmtree(target_path)
             target_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Store progress reporter so we can disable it after clone
         progress_reporter = None
         package_display_name = dep_ref.repo_url.split('/')[-1] if '/' in dep_ref.repo_url else dep_ref.repo_url
-        
+
         try:
             # Clone the repository using fallback authentication methods
             # Use shallow clone for performance if we have a specific commit
@@ -1977,8 +2146,8 @@ author: {dep_ref.repo_url.split('/')[0]}
                 # For commits, we need to clone and checkout the specific commit
                 progress_reporter = GitProgressReporter(progress_task_id, progress_obj, package_display_name) if progress_task_id and progress_obj else None
                 repo = self._clone_with_fallback(
-                    dep_ref.repo_url, 
-                    target_path, 
+                    dep_ref.repo_url,
+                    target_path,
                     progress_reporter=progress_reporter,
                     dep_ref=dep_ref,
                     verbose_callback=verbose_callback
@@ -1996,16 +2165,16 @@ author: {dep_ref.repo_url.split('/')[0]}
                     depth=1,
                     branch=resolved_ref.ref_name
                 )
-            
+
             # Disable progress reporter to prevent late git updates
             if progress_reporter:
                 progress_reporter.disabled = True
-            
+
             # Remove .git directory to save space and prevent treating as a Git repository
             git_dir = target_path / ".git"
             if git_dir.exists():
                 shutil.rmtree(git_dir, ignore_errors=True)
-                
+
         except GitCommandError as e:
             # Check if this might be a private repository access issue
             if "Authentication failed" in str(e) or "remote: Repository not found" in str(e):
@@ -2020,23 +2189,23 @@ author: {dep_ref.repo_url.split('/')[0]}
         except RuntimeError:
             # Re-raise RuntimeError from _clone_with_fallback
             raise
-        
+
         # Validate the downloaded package
         validation_result = validate_apm_package(target_path)
         if not validation_result.is_valid:
             # Clean up on validation failure
             if target_path.exists():
                 shutil.rmtree(target_path, ignore_errors=True)
-            
+
             error_msg = f"Invalid APM package {dep_ref.repo_url}:\n"
             for error in validation_result.errors:
                 error_msg += f"  - {error}\n"
             raise RuntimeError(error_msg.strip())
-        
+
         # Load the APM package metadata
         if not validation_result.package:
             raise RuntimeError(f"Package validation succeeded but no package metadata found for {dep_ref.repo_url}")
-        
+
         package = validation_result.package
         package.source = dep_ref.to_github_url()
         package.resolved_commit = resolved_ref.resolved_commit
@@ -2057,7 +2226,7 @@ author: {dep_ref.repo_url.split('/')[0]}
                 _data = load_yaml(apm_yml_path) or {}
                 _data["version"] = short_sha
                 dump_yaml(_data, apm_yml_path)
-        
+
         # Create and return PackageInfo
         return PackageInfo(
             package=package,
@@ -2067,10 +2236,10 @@ author: {dep_ref.repo_url.split('/')[0]}
             dependency_ref=dep_ref,  # Store for canonical dependency string
             package_type=validation_result.package_type  # Track if APM, Claude Skill, or Hybrid
         )
-    
+
     def _get_clone_progress_callback(self):
         """Get a progress callback for Git clone operations.
-        
+
         Returns:
             Callable that can be used as progress callback for GitPython
         """
@@ -2081,5 +2250,5 @@ author: {dep_ref.repo_url.split('/')[0]}
                 print(f"\r Cloning: {percentage}% ({cur_count}/{max_count}) {message}", end='', flush=True)
             else:
                 print(f"\r Cloning: {message} ({cur_count})", end='', flush=True)
-        
+
         return progress_callback

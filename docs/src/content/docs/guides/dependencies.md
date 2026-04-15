@@ -204,6 +204,8 @@ apm install --only=apm
 apm install --dry-run
 ```
 
+`apm install` also deploys the project's own `.apm/` content (instructions, prompts, agents, skills, hooks, commands) to target directories alongside dependency content. Local content takes priority over dependencies on collision. This works even with zero dependencies -- just `apm.yml` and a `.apm/` directory is enough. See the [CLI reference](../../reference/cli-commands/#apm-install---install-dependencies-and-deploy-local-content) for details and exceptions.
+
 ### 3. Verify Installation
 
 ```bash
@@ -214,7 +216,7 @@ apm deps list
 apm deps tree
 
 # Get package details
-apm deps info apm-sample-package
+apm view apm-sample-package
 ```
 
 ### 4. Use Dependencies in Compilation
@@ -801,7 +803,7 @@ curl -H "Authorization: token $GITHUB_CLI_PAT" https://api.github.com/user
 
 ```bash
 # Show detailed package information
-apm deps info package-name
+apm view package-name
 
 # Show full dependency tree
 apm deps tree
