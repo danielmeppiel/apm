@@ -791,8 +791,20 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             old_mcp_servers = builtins.set(_existing_lock.mcp_servers)
             old_mcp_configs = builtins.dict(_existing_lock.mcp_configs)
 
+        # Also enter the APM install path when the project root has local .apm/
+        # primitives, even if there are no external APM dependencies (#714).
+        from apm_cli.core.scope import get_deploy_root as _get_deploy_root
+        _cli_project_root = _get_deploy_root(scope)
+        _cli_root_apm = _cli_project_root / ".apm"
+        _LOCAL_PRIM_SUBDIRS = ('instructions', 'agents', 'chatmodes', 'context', 'memory', 'prompts')
+        _cli_has_root_primitives = (
+            _cli_root_apm.exists() and _cli_root_apm.is_dir() and any(
+                (_cli_root_apm / d).is_dir() for d in _LOCAL_PRIM_SUBDIRS
+            )
+        ) or (_cli_project_root / "SKILL.md").exists()
+
         apm_diagnostics = None
-        if should_install_apm and has_any_apm_deps:
+        if should_install_apm and (has_any_apm_deps or _cli_has_root_primitives):
             if not APM_DEPS_AVAILABLE:
                 logger.error("APM dependency system not available")
                 logger.progress(f"Import error: {_APM_IMPORT_ERROR}")
@@ -1160,11 +1172,23 @@ def _install_apm_dependencies(
     apm_deps = apm_package.get_apm_dependencies()
     dev_apm_deps = apm_package.get_dev_apm_dependencies()
     all_apm_deps = apm_deps + dev_apm_deps
-    if not all_apm_deps:
-        return InstallResult()
 
     project_root = get_deploy_root(scope)
     apm_dir = get_apm_dir(scope)
+
+    # Check whether the project root itself has local .apm/ primitives (#714).
+    # Users should be able to keep root-level .apm/ rules alongside their apm.yml
+    # without creating a dummy sub-package stub.
+    _root_apm_dir = project_root / ".apm"
+    _LOCAL_PRIM_SUBDIRS = ('instructions', 'agents', 'chatmodes', 'context', 'memory', 'prompts')
+    _root_has_local_primitives = (
+        _root_apm_dir.exists() and _root_apm_dir.is_dir() and any(
+            (_root_apm_dir / d).is_dir() for d in _LOCAL_PRIM_SUBDIRS
+        )
+    ) or (project_root / "SKILL.md").exists()
+
+    if not all_apm_deps and not _root_has_local_primitives:
+        return InstallResult()
 
     # T5: Check for existing lockfile - use locked versions for reproducible installs
     from apm_cli.deps.lockfile import LockFile, get_lockfile_path
@@ -1373,7 +1397,7 @@ def _install_apm_dependencies(
                 if dep.get_identity() in only_identities
             ]
 
-        if not deps_to_install:
+        if not deps_to_install and not _root_has_local_primitives:
             if logger:
                 logger.nothing_to_install()
             return InstallResult()
@@ -2308,6 +2332,53 @@ def _install_apm_dependencies(
                     )
                     # Continue with other packages instead of failing completely
                     continue
+
+        # ------------------------------------------------------------------
+        # Integrate root project's own .apm/ primitives (#714).
+        #
+        # Users should not need a dummy "./agent/apm.yml" stub to get their
+        # root-level .apm/ rules deployed alongside external dependencies.
+        # Treat the project root as an implicit local package: any primitives
+        # found in <project_root>/.apm/ are integrated after all declared
+        # dependency packages have been processed.
+        # ------------------------------------------------------------------
+        if _root_has_local_primitives and _targets:
+            from apm_cli.models.apm_package import PackageInfo as _PackageInfo
+            _root_pkg_info = _PackageInfo(
+                package=apm_package,
+                install_path=project_root,
+            )
+            if logger:
+                logger.download_complete("<project root>", ref_suffix="local")
+            try:
+                _root_result = _integrate_package_primitives(
+                    _root_pkg_info, project_root,
+                    targets=_targets,
+                    prompt_integrator=prompt_integrator,
+                    agent_integrator=agent_integrator,
+                    skill_integrator=skill_integrator,
+                    instruction_integrator=instruction_integrator,
+                    command_integrator=command_integrator,
+                    hook_integrator=hook_integrator,
+                    force=force,
+                    managed_files=managed_files,
+                    diagnostics=diagnostics,
+                    package_name="<root>",
+                    logger=logger,
+                    scope=scope,
+                )
+                total_prompts_integrated += _root_result["prompts"]
+                total_agents_integrated += _root_result["agents"]
+                total_instructions_integrated += _root_result["instructions"]
+                total_commands_integrated += _root_result["commands"]
+                total_hooks_integrated += _root_result["hooks"]
+                total_links_resolved += _root_result["links_resolved"]
+                installed_count += 1
+            except Exception as e:
+                diagnostics.error(
+                    f"Failed to integrate root project primitives: {e}",
+                    package="<root>",
+                )
 
         # Update .gitignore
         _update_gitignore_for_apm_modules(logger=logger)
