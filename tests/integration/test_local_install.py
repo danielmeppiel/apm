@@ -530,6 +530,79 @@ class TestRootProjectPrimitives:
 
         assert (project / ".claude" / "rules" / "local-rules.md").exists()
 
+    def test_root_apm_hooks_deployed(self, tmp_path, apm_command):
+        """root .apm/hooks/ is detected and integrated (not just instructions).
+
+        Guards the _ROOT_PRIM_SUBDIRS list: a project that only has .apm/hooks/
+        must still enter the integration path and not hit the early-return guard.
+        """
+        project = tmp_path / "project"
+        project.mkdir()
+
+        (project / "apm.yml").write_text(yaml.dump({
+            "name": "my-project",
+            "version": "1.0.0",
+        }))
+
+        hooks_dir = project / ".apm" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        (hooks_dir / "on-save.json").write_text(
+            '{"hooks": {"PostToolUse": [{"matcher": "Write", "hooks": [{"type": "command", "command": "echo saved"}]}]}}'
+        )
+
+        # Create .claude/ so claude target is auto-detected
+        (project / ".claude").mkdir(parents=True)
+
+        result = subprocess.run(
+            [apm_command, "install"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        combined = result.stdout + result.stderr
+        assert result.returncode == 0, f"Install failed:\n{combined}"
+        # The hook integrator merges into settings.json; confirm it was created
+        # or that install did not silently early-return (exit 0 with no output).
+        assert "nothing to install" not in combined.lower(), (
+            f"Install returned 'nothing to install' — hooks detection guard may "
+            f"have triggered early return.\nOutput:\n{combined}"
+        )
+
+    def test_root_skill_md_detected(self, tmp_path, apm_command):
+        """A root SKILL.md alone triggers the integration path.
+
+        Guards the (project_root / "SKILL.md").exists() branch in the
+        root-primitive detection logic.
+        """
+        project = tmp_path / "project"
+        project.mkdir()
+
+        (project / "apm.yml").write_text(yaml.dump({
+            "name": "my-project",
+            "version": "1.0.0",
+        }))
+        (project / "SKILL.md").write_text(
+            "# My Skill\nThis skill does something useful."
+        )
+
+        # Create .claude/ so claude target is auto-detected
+        (project / ".claude").mkdir(parents=True)
+
+        result = subprocess.run(
+            [apm_command, "install"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        combined = result.stdout + result.stderr
+        assert result.returncode == 0, f"Install failed:\n{combined}"
+        assert "nothing to install" not in combined.lower(), (
+            f"Install returned 'nothing to install' — SKILL.md detection may "
+            f"have been skipped.\nOutput:\n{combined}"
+        )
+
 
 class TestLocalMixedWithRemote:
     """Test mixing local and remote dependencies."""

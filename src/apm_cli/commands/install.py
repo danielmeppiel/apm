@@ -802,11 +802,8 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         from apm_cli.core.scope import get_deploy_root as _get_deploy_root
         _cli_project_root = _get_deploy_root(scope)
         _cli_root_apm = _cli_project_root / ".apm"
-        _LOCAL_PRIM_SUBDIRS = ('instructions', 'agents', 'chatmodes', 'context', 'memory', 'prompts')
         _cli_has_root_primitives = (
-            _cli_root_apm.exists() and _cli_root_apm.is_dir() and any(
-                (_cli_root_apm / d).is_dir() for d in _LOCAL_PRIM_SUBDIRS
-            )
+            _cli_root_apm.exists() and _cli_root_apm.is_dir()
         ) or (_cli_project_root / "SKILL.md").exists()
 
         apm_diagnostics = None
@@ -1420,11 +1417,8 @@ def _install_apm_dependencies(
     # Users should be able to keep root-level .apm/ rules alongside their apm.yml
     # without creating a dummy sub-package stub.
     _root_apm_dir = project_root / ".apm"
-    _LOCAL_PRIM_SUBDIRS = ('instructions', 'agents', 'chatmodes', 'context', 'memory', 'prompts')
     _root_has_local_primitives = (
-        _root_apm_dir.exists() and _root_apm_dir.is_dir() and any(
-            (_root_apm_dir / d).is_dir() for d in _LOCAL_PRIM_SUBDIRS
-        )
+        _root_apm_dir.exists() and _root_apm_dir.is_dir()
     ) or (project_root / "SKILL.md").exists()
 
     if not all_apm_deps and not _root_has_local_primitives:
@@ -2615,10 +2609,18 @@ def _install_apm_dependencies(
                 total_links_resolved += _root_result["links_resolved"]
                 installed_count += 1
             except Exception as e:
+                import traceback as _tb
                 diagnostics.error(
                     f"Failed to integrate root project primitives: {e}",
                     package="<root>",
+                    detail=_tb.format_exc(),
                 )
+                # When root integration is the *only* action (no external deps),
+                # a failure means nothing was deployed — surface it clearly.
+                if not all_apm_deps and logger:
+                    logger.error(
+                        f"Root project primitives could not be integrated: {e}"
+                    )
 
         # Update .gitignore
         _update_gitignore_for_apm_modules(logger=logger)
