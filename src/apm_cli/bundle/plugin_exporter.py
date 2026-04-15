@@ -133,8 +133,9 @@ def _collect_bare_skill(
     slug = (getattr(dep, "virtual_path", "") or "").strip("/")
     # Strip leading "skills/" to avoid double nesting (skills/skills/…)
     # when virtual_path already contains the skills/ prefix.
+    # Also strip any extra leading slashes (e.g. "skills//foo" → "foo").
     if slug.startswith("skills/"):
-        slug = slug[len("skills/"):]
+        slug = slug[len("skills/"):].lstrip("/")
     if not slug:
         slug = dep.repo_url.rsplit("/", 1)[-1] if dep.repo_url else "skill"
     for f in sorted(install_path.iterdir()):

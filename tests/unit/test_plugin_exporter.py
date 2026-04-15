@@ -308,7 +308,8 @@ class TestCollectBareSkill:
         )
         out: list = []
         _collect_bare_skill(tmp_path, dep, out)
-        assert any(r.startswith("skills/frontend-design/") for _, r in out)
+        rel_paths = [r for _, r in out]
+        assert rel_paths == ["skills/frontend-design/SKILL.md"]
 
     def test_virtual_path_with_skills_prefix_no_double_nesting(self, tmp_path):
         """virtual_path starting with skills/ should not produce skills/skills/."""
@@ -326,8 +327,25 @@ class TestCollectBareSkill:
         _collect_bare_skill(tmp_path, dep, out)
         rel_paths = [r for _, r in out]
         # Should be skills/javascript-typescript-jest/SKILL.md, NOT skills/skills/...
-        assert any(r.startswith("skills/javascript-typescript-jest/") for r in rel_paths)
-        assert not any("skills/skills/" in r for r in rel_paths)
+        assert rel_paths == ["skills/javascript-typescript-jest/SKILL.md"]
+
+    def test_virtual_path_with_skills_double_slash_no_leading_slash(self, tmp_path):
+        """virtual_path like 'skills//foo' should produce skills/foo/..., not skills//foo/..."""
+        from apm_cli.bundle.plugin_exporter import _collect_bare_skill
+
+        (tmp_path / "SKILL.md").write_text("# Foo")
+        dep = LockedDependency(
+            repo_url="github/awesome-copilot",
+            resolved_commit="abc123",
+            depth=1,
+            virtual_path="skills//foo",
+            is_virtual=True,
+        )
+        out: list = []
+        _collect_bare_skill(tmp_path, dep, out)
+        rel_paths = [r for _, r in out]
+        assert rel_paths == ["skills/foo/SKILL.md"]
+        assert not any("//" in r for r in rel_paths)
 
     def test_skips_when_no_skill_md(self, tmp_path):
         """No SKILL.md at root means nothing collected."""
