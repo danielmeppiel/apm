@@ -310,6 +310,25 @@ class TestCollectBareSkill:
         _collect_bare_skill(tmp_path, dep, out)
         assert any(r.startswith("skills/frontend-design/") for _, r in out)
 
+    def test_virtual_path_with_skills_prefix_no_double_nesting(self, tmp_path):
+        """virtual_path prefixed with 'skills/' does not produce 'skills/skills/...'."""
+        from apm_cli.bundle.plugin_exporter import _collect_bare_skill
+
+        (tmp_path / "SKILL.md").write_text("# Jest Typescript")
+        dep = LockedDependency(
+            repo_url="github/awesome-copilot",
+            resolved_commit="abc123",
+            depth=1,
+            virtual_path="skills/javascript-typescript-jest",
+            is_virtual=True,
+        )
+        out: list = []
+        _collect_bare_skill(tmp_path, dep, out)
+        rel_paths = [r for _, r in out]
+        # Must be skills/javascript-typescript-jest/SKILL.md, NOT skills/skills/javascript-typescript-jest/SKILL.md
+        assert "skills/javascript-typescript-jest/SKILL.md" in rel_paths
+        assert not any(r.startswith("skills/skills/") for r in rel_paths)
+
     def test_skips_when_no_skill_md(self, tmp_path):
         """No SKILL.md at root means nothing collected."""
         from apm_cli.bundle.plugin_exporter import _collect_bare_skill

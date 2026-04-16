@@ -133,6 +133,9 @@ def _collect_bare_skill(
     slug = (getattr(dep, "virtual_path", "") or "").strip("/")
     if not slug:
         slug = dep.repo_url.rsplit("/", 1)[-1] if dep.repo_url else "skill"
+    # Strip "skills/" prefix to avoid double nesting like "skills/skills/..."
+    if slug.startswith("skills/"):
+        slug = slug[len("skills/"):]
     for f in sorted(install_path.iterdir()):
         if f.is_file() and not f.is_symlink() and f.name not in (
             "apm.yml", "apm.lock.yaml", "plugin.json",
