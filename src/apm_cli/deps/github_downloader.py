@@ -42,6 +42,7 @@ from ..utils.github_host import (
     is_azure_devops_hostname,
     is_github_hostname
 )
+from ..utils.yaml_io import yaml_to_str
 
 
 def normalize_collection_path(virtual_path: str) -> str:
@@ -1520,11 +1521,13 @@ class GitHubPackageDownloader:
             # If frontmatter parsing fails, use default description
             pass
 
-        apm_yml_content = f"""name: {package_name}
-version: 1.0.0
-description: {description}
-author: {dep_ref.repo_url.split('/')[0]}
-"""
+        apm_yml_data = {
+            "name": package_name,
+            "version": "1.0.0",
+            "description": description,
+            "author": dep_ref.repo_url.split('/')[0],
+        }
+        apm_yml_content = yaml_to_str(apm_yml_data)
 
         apm_yml_path = target_path / "apm.yml"
         apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
@@ -1660,17 +1663,15 @@ author: {dep_ref.repo_url.split('/')[0]}
         # Generate apm.yml with collection metadata
         package_name = dep_ref.get_virtual_package_name()
 
-        apm_yml_content = f"""name: {package_name}
-version: 1.0.0
-description: {manifest.description}
-author: {dep_ref.repo_url.split('/')[0]}
-"""
-
-        # Add tags if present
+        apm_yml_data = {
+            "name": package_name,
+            "version": "1.0.0",
+            "description": manifest.description,
+            "author": dep_ref.repo_url.split('/')[0],
+        }
         if manifest.tags:
-            apm_yml_content += f"\ntags:\n"
-            for tag in manifest.tags:
-                apm_yml_content += f"  - {tag}\n"
+            apm_yml_data["tags"] = list(manifest.tags)
+        apm_yml_content = yaml_to_str(apm_yml_data)
 
         apm_yml_path = target_path / "apm.yml"
         apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
