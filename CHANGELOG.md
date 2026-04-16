@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `apm install` now automatically discovers and deploys local `.apm/` primitives (skills, instructions, agents, prompts, hooks, commands) to target directories, with local content taking priority over dependencies on collision (#626, #644)
+- Marketplace-based version management: plugins can declare `versions[]` arrays with semver version-to-ref mappings (#514)
+- Semver range resolution for marketplace installs: `apm install plugin@marketplace#^2.0.0` supports `^`, `~`, `>=`, `>`, `<`, `<=`, `!=`, exact, and compound ranges (#514)
+- `apm view plugin@marketplace` displays available marketplace versions with their refs (#514)
+- `apm outdated` checks marketplace versions and shows a "Source" column distinguishing marketplace vs git updates (#514)
+- `apm marketplace publish` command to add version entries to `marketplace.json` from `apm.yml` defaults and git HEAD (#514)
+- `apm marketplace validate` command with schema validation, semver format checks, and duplicate detection (#514)
+- Version immutability advisory: caches version-to-ref pins and warns when a previously pinned version's ref changes (#514)
+- Multi-marketplace shadow detection: warns when the same plugin name appears in multiple registered marketplaces (#514)
 
 ### Fixed
 

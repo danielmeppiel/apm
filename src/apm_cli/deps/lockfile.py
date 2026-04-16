@@ -38,6 +38,8 @@ class LockedDependency:
     is_dev: bool = False  # True for devDependencies
     discovered_via: Optional[str] = None  # Marketplace name (provenance)
     marketplace_plugin_name: Optional[str] = None  # Plugin name in marketplace
+    version_spec: Optional[str] = None  # Original user semver range, e.g., "^2.0.0"
+    resolved_version: Optional[str] = None  # Resolved semver (e.g., "1.2.0")
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
@@ -84,6 +86,10 @@ class LockedDependency:
             result["discovered_via"] = self.discovered_via
         if self.marketplace_plugin_name:
             result["marketplace_plugin_name"] = self.marketplace_plugin_name
+        if self.version_spec:
+            result["version_spec"] = self.version_spec
+        if self.resolved_version:
+            result["resolved_version"] = self.resolved_version
         return result
 
     @classmethod
@@ -122,6 +128,8 @@ class LockedDependency:
             is_dev=data.get("is_dev", False),
             discovered_via=data.get("discovered_via"),
             marketplace_plugin_name=data.get("marketplace_plugin_name"),
+            version_spec=data.get("version_spec"),
+            resolved_version=data.get("resolved_version"),
         )
 
     @classmethod

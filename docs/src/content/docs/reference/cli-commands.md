@@ -81,7 +81,7 @@ apm install [PACKAGES...] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, FQDN shorthand (`host/owner/repo`), local filesystem paths (`./path`, `../path`, `/absolute/path`, `~/path`), or marketplace references (`NAME@MARKETPLACE`). All forms are normalized to canonical format in `apm.yml`.
+- `PACKAGES` - Optional APM packages to add and install. Accepts shorthand (`owner/repo`), HTTPS URLs, SSH URLs, FQDN shorthand (`host/owner/repo`), local filesystem paths (`./path`, `../path`, `/absolute/path`, `~/path`), or marketplace references (`NAME@MARKETPLACE[#version_spec]`). All forms are normalized to canonical format in `apm.yml`.
 
 **Options:**
 - `--runtime TEXT` - Target specific runtime only (copilot, codex, vscode)
@@ -167,6 +167,9 @@ apm install -g microsoft/apm-sample-package
 
 # Install a plugin from a registered marketplace
 apm install code-review@acme-plugins
+
+# Install a specific version from a marketplace
+apm install code-review@acme-plugins#^2.0.0
 ```
 
 **Auto-Bootstrap Behavior:**
@@ -621,7 +624,7 @@ apm view PACKAGE [FIELD] [OPTIONS]
 ```
 
 **Arguments:**
-- `PACKAGE` - Package name, usually `owner/repo` or a short repo name
+- `PACKAGE` - Package name: `owner/repo`, short repo name, or `NAME@MARKETPLACE` for marketplace plugins
 - `FIELD` - Optional field selector. Supported value: `versions`
 
 **Options:**
@@ -638,6 +641,9 @@ apm view apm-sample-package
 # List remote tags and branches without cloning
 apm view microsoft/apm-sample-package versions
 
+# View available versions for a marketplace plugin
+apm view code-review@acme-plugins
+
 # Inspect a package from user scope
 apm view microsoft/apm-sample-package -g
 ```
@@ -647,6 +653,7 @@ apm view microsoft/apm-sample-package -g
 - Shows package name, version, description, source, install path, context files, workflows, and hooks
 - `versions` lists remote tags and branches without cloning the repository
 - `versions` does not require the package to be installed locally
+- `NAME@MARKETPLACE` syntax shows the plugin's declared `versions` array sorted newest-first; plugins without `versions` show no version history
 
 ### `apm outdated` - Check locked dependencies for updates
 
@@ -680,8 +687,10 @@ apm outdated -j 8
 - Reads the current lockfile (`apm.lock.yaml`; legacy `apm.lock` is migrated automatically)
 - For tag-pinned deps: compares the locked semver tag against the latest available remote tag
 - For branch-pinned deps: compares the locked commit SHA against the remote branch tip SHA
+- For marketplace deps with `versions`: compares against the latest version in the marketplace (respects `version_spec` range when set)
 - For deps with no ref: compares against the default branch (main/master) tip SHA
-- Displays `Package`, `Current`, `Latest`, and `Status` columns
+- Displays `Package`, `Current`, `Latest`, `Status`, and `Source` columns
+- `Source` shows `marketplace: <name>` for marketplace-sourced deps
 - Status values are `up-to-date`, `outdated`, and `unknown`
 - Local dependencies and Artifactory dependencies are skipped
 
@@ -1058,6 +1067,61 @@ apm marketplace remove acme-plugins
 
 # Remove without confirmation
 apm marketplace remove acme-plugins --yes
+```
+
+#### `apm marketplace publish` - Publish a version entry
+
+Add a version entry to a plugin's `versions` array in `marketplace.json`. Reads defaults from `apm.yml` and resolves the current Git HEAD.
+
+```bash
+apm marketplace publish [OPTIONS]
+```
+
+**Options:**
+- `-m, --marketplace TEXT` - Target marketplace name
+- `--plugin TEXT` - Plugin name in the marketplace (default: `name` from `apm.yml`)
+- `--version TEXT` - Version to publish as semver `X.Y.Z` (default: `version` from `apm.yml`)
+- `--ref TEXT` - Git ref or commit SHA (default: current HEAD)
+- `--force` - Overwrite existing version entry with a different ref
+- `--dry-run` - Show what would be published without making changes
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Publish current version (reads apm.yml + git HEAD)
+apm marketplace publish --marketplace acme-plugins
+
+# Publish with explicit values
+apm marketplace publish -m acme-plugins --plugin code-review --version 2.1.0 --ref abc123
+
+# Preview without writing
+apm marketplace publish -m acme-plugins --dry-run
+```
+
+See the [Marketplaces guide](../../guides/marketplaces/) for version schema details.
+
+#### `apm marketplace validate` - Validate a marketplace manifest
+
+Validate `marketplace.json` for schema errors, invalid semver formats, duplicate versions, and duplicate plugin names.
+
+```bash
+apm marketplace validate NAME [OPTIONS]
+```
+
+**Arguments:**
+- `NAME` - Name of the marketplace to validate
+
+**Options:**
+- `--check-refs` - Verify version refs are reachable (network). *Not yet implemented.*
+- `-v, --verbose` - Show detailed output
+
+**Examples:**
+```bash
+# Validate a marketplace
+apm marketplace validate acme-plugins
+
+# Verbose output
+apm marketplace validate acme-plugins --verbose
 ```
 
 ### `apm search` - Search plugins in a marketplace

@@ -150,25 +150,41 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
                 mkt_ref = None
 
             if mkt_ref is not None:
-                plugin_name, marketplace_name = mkt_ref
+                plugin_name, marketplace_name, version_spec = mkt_ref
                 try:
                     if logger:
                         logger.verbose_detail(
                             f"    Resolving {plugin_name}@{marketplace_name} via marketplace..."
                         )
-                    canonical_str, resolved_plugin = resolve_marketplace_plugin(
+                    canonical_str, resolved_plugin, resolved_version = resolve_marketplace_plugin(
                         plugin_name,
                         marketplace_name,
+                        version_spec=version_spec,
                         auth_resolver=auth_resolver,
+                        warning_handler=logger.warning if logger else None,
                     )
                     if logger:
                         logger.verbose_detail(
                             f"    Resolved to: {canonical_str}"
                         )
+                    # Show resolved version when available (marketplace installs)
+                    # resolved_version is added to provenance by Bug B1; use
+                    # safe .get() so this works before and after B1 lands.
+                    # Security-critical: record marketplace provenance so
+                    # the lockfile tracks where each dependency was
+                    # discovered.  These fields enable supply-chain audits
+                    # and prevent silent marketplace source confusion.
                     marketplace_provenance = {
                         "discovered_via": marketplace_name,
                         "marketplace_plugin_name": plugin_name,
+                        "version_spec": version_spec,
+                        "resolved_version": resolved_version,
                     }
+                    resolved_ver = marketplace_provenance.get("resolved_version")
+                    if resolved_ver and logger:
+                        logger.verbose_detail(
+                            f"    Resolved version: {resolved_ver}"
+                        )
                     package = canonical_str
                 except Exception as mkt_err:
                     reason = str(mkt_err)
@@ -706,7 +722,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
             )
             # Short-circuit: all packages failed validation — nothing to install
             if outcome.all_failed:
-                return
+                sys.exit(1)
             # Note: Empty validated_packages is OK if packages are already in apm.yml
             # We'll proceed with installation from apm.yml to ensure everything is synced
 
@@ -2616,11 +2632,18 @@ def _install_apm_dependencies(
                     if dep_key in _package_hashes:
                         locked_dep.content_hash = _package_hashes[dep_key]
                 # Attach marketplace provenance if available
+                # Security-critical: discovered_via and marketplace_plugin_name
+                # MUST be set for every marketplace-sourced dependency so the
+                # lockfile records supply-chain origin.  Missing provenance
+                # would leave marketplace deps indistinguishable from direct
+                # Git refs, defeating audit and shadow-detection checks.
                 if marketplace_provenance:
                     for dep_key, prov in marketplace_provenance.items():
                         if dep_key in lockfile.dependencies:
                             lockfile.dependencies[dep_key].discovered_via = prov.get("discovered_via")
                             lockfile.dependencies[dep_key].marketplace_plugin_name = prov.get("marketplace_plugin_name")
+                            lockfile.dependencies[dep_key].version_spec = prov.get("version_spec")
+                            lockfile.dependencies[dep_key].resolved_version = prov.get("resolved_version")
                 # Selectively merge entries from the existing lockfile:
                 #   - For partial installs (only_packages): preserve all old entries
                 #     (sequential install — only the specified package was processed).
