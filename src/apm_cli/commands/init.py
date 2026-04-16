@@ -52,7 +52,7 @@ def init(ctx, project_name, yes, plugin, verbose):
         if project_name and not _validate_project_name(project_name):
             logger.error(
                 f"Invalid project name '{project_name}': "
-                "project names must not contain path separators ('/' or '\\\\')."
+                "project names must not contain path separators ('/' or '\\\\') or be '..'."
             )
             sys.exit(1)
 
@@ -194,7 +194,7 @@ def _interactive_project_setup(default_name, logger):
                 break
             console.print(
                 f"[error]Invalid project name '{name}': "
-                "project names must not contain path separators ('/' or '\\\\').[/error]"
+                "project names must not contain path separators ('/' or '\\\\') or be '..'.[/error]"
             )
 
         version = Prompt.ask("Version", default="1.0.0").strip()
@@ -224,7 +224,7 @@ author: {author}"""
                 break
             click.echo(
                 f"{ERROR}Invalid project name '{name}': "
-                "project names must not contain path separators ('/' or '\\\\').{RESET}"
+                f"project names must not contain path separators ('/' or '\\\\') or be '..'.{RESET}"
             )
 
         version = click.prompt("Version", default="1.0.0").strip()

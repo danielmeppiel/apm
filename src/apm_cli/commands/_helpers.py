@@ -415,15 +415,19 @@ def _validate_plugin_name(name):
 
 
 def _validate_project_name(name):
-    """Validate that a project name does not contain path separators.
+    """Validate that a project name is safe to use as a directory name.
 
     Project names are used directly as directory names and must not contain
-    '/' or '\\' to prevent unintended filesystem path traversal.
+    '/' or '\' so the name is not interpreted as a filesystem path,
+    and must not be '..' to prevent directory traversal.
 
     Returns True if valid, False otherwise.
     """
-    return "/" not in name and "\\" not in name
-
+    if "/" in name or "\\" in name:
+        return False
+    if name == "..":
+        return False
+    return True
 
 def _create_plugin_json(config):
     """Create plugin.json file with package metadata.
