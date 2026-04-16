@@ -147,7 +147,7 @@ def get(key):
         apm config get auto-integrate
         apm config get
     """
-    from ..config import get_config, get_auto_integrate
+    from ..config import get_auto_integrate
 
     logger = CommandLogger("config get")
     if key:
@@ -162,12 +162,8 @@ def get(key):
             )
             sys.exit(1)
     else:
-        # Show all config
-        config_data = get_config()
+        # Show all user-settable keys with their effective values (including
+        # defaults).  Iterating raw config keys would hide settings that
+        # have not been written yet (e.g. auto_integrate on a fresh install).
         logger.progress("APM Configuration:")
-        for k, v in config_data.items():
-            # Map internal keys to user-friendly names
-            if k == "auto_integrate":
-                click.echo(f"  auto-integrate: {v}")
-            else:
-                click.echo(f"  {k}: {v}")
+        click.echo(f"  auto-integrate: {get_auto_integrate()}")

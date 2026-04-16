@@ -13,6 +13,15 @@ class GitReferenceType(Enum):
     COMMIT = "commit"
 
 
+@dataclass
+class RemoteRef:
+    """A single remote Git reference (tag or branch) with its commit SHA."""
+
+    name: str
+    ref_type: GitReferenceType
+    commit_sha: str
+
+
 class VirtualPackageType(Enum):
     """Type of virtual package."""
     FILE = "file"                 # Individual file (*.prompt.md, etc.)
