@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix hook install losing entries from earlier hook files when a package contributes multiple hook files to the same event (#709)
 - Fix `apm marketplace add` silently failing for private repos by using credentials when probing `marketplace.json` (#701)
 - Pin codex setup to `rust-v0.118.0` for security and reproducibility; update config to `wire_api = "responses"` (#663)
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
