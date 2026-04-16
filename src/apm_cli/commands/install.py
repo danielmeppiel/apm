@@ -58,6 +58,23 @@ except ImportError as e:
 
 
 # ---------------------------------------------------------------------------
+# Root primitive detection helper
+# ---------------------------------------------------------------------------
+
+def _project_has_root_primitives(project_root) -> bool:
+    """Return True when *project_root* has a .apm/ directory of its own.
+
+    Used to decide whether ``apm install`` should enter the integration
+    pipeline even when no external APM dependencies are declared (#714).
+    The integrators themselves determine whether the directory contains
+    anything actionable, so we only check for the directory's existence.
+    """
+    from pathlib import Path as _Path
+    root = _Path(project_root)
+    return (root / ".apm").is_dir()
+
+
+# ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
@@ -801,13 +818,9 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
         # primitives, even if there are no external APM dependencies (#714).
         from apm_cli.core.scope import get_deploy_root as _get_deploy_root
         _cli_project_root = _get_deploy_root(scope)
-        _cli_root_apm = _cli_project_root / ".apm"
-        _cli_has_root_primitives = (
-            _cli_root_apm.exists() and _cli_root_apm.is_dir()
-        ) or (_cli_project_root / "SKILL.md").exists()
 
         apm_diagnostics = None
-        if should_install_apm and (has_any_apm_deps or _cli_has_root_primitives):
+        if should_install_apm and (has_any_apm_deps or _project_has_root_primitives(_cli_project_root)):
             if not APM_DEPS_AVAILABLE:
                 logger.error("APM dependency system not available")
                 logger.progress(f"Import error: {_APM_IMPORT_ERROR}")
@@ -1416,10 +1429,7 @@ def _install_apm_dependencies(
     # Check whether the project root itself has local .apm/ primitives (#714).
     # Users should be able to keep root-level .apm/ rules alongside their apm.yml
     # without creating a dummy sub-package stub.
-    _root_apm_dir = project_root / ".apm"
-    _root_has_local_primitives = (
-        _root_apm_dir.exists() and _root_apm_dir.is_dir()
-    ) or (project_root / "SKILL.md").exists()
+    _root_has_local_primitives = _project_has_root_primitives(project_root)
 
     if not all_apm_deps and not _root_has_local_primitives:
         return InstallResult()
