@@ -1025,18 +1025,28 @@ class PromptCompiler:
         """
         prompt_path = Path(prompt_file)
 
+        def _check_and_return(path: Path) -> Path:
+            """Validate containment and return path, converting traversal errors to FileNotFoundError."""
+            try:
+                ensure_path_within(path, Path.cwd())
+            except PathTraversalError:
+                raise FileNotFoundError(
+                    f"Prompt file '{path}' is a symlink that resolves outside the "
+                    f"project directory. Symlinks pointing outside the project are "
+                    f"not allowed for security reasons."
+                )
+            return path
+
         # First check if it exists in current directory (local)
         if prompt_path.exists():
-            ensure_path_within(prompt_path, Path.cwd())
-            return prompt_path
+            return _check_and_return(prompt_path)
 
         # Check in common project directories
         common_dirs = [".github/prompts", ".apm/prompts"]
         for common_dir in common_dirs:
             common_path = Path(common_dir) / prompt_file
             if common_path.exists():
-                ensure_path_within(common_path, Path.cwd())
-                return common_path
+                return _check_and_return(common_path)
 
         # If not found locally, search in dependency modules
         apm_modules_dir = Path("apm_modules")
@@ -1051,15 +1061,13 @@ class PromptCompiler:
                             # Check in the root of the repository
                             dep_prompt_path = repo_dir / prompt_file
                             if dep_prompt_path.exists():
-                                ensure_path_within(dep_prompt_path, Path.cwd())
-                                return dep_prompt_path
+                                return _check_and_return(dep_prompt_path)
 
                             # Also check in common subdirectories
                             for subdir in ["prompts", ".", "workflows"]:
                                 sub_prompt_path = repo_dir / subdir / prompt_file
                                 if sub_prompt_path.exists():
-                                    ensure_path_within(sub_prompt_path, Path.cwd())
-                                    return sub_prompt_path
+                                    return _check_and_return(sub_prompt_path)
 
         # If still not found, raise an error with helpful message
         searched_locations = [
