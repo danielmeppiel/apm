@@ -197,6 +197,7 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
         """remove_stale drops named servers from project .mcp.json at workspace_root."""
         from apm_cli.integration.mcp_integrator import MCPIntegrator
 
+        (self.root / ".claude").mkdir()
         mcp = self.root / ".mcp.json"
         mcp.write_text(
             json.dumps(
@@ -213,6 +214,39 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
         data = json.loads(mcp.read_text(encoding="utf-8"))
         self.assertIn("keep", data["mcpServers"])
         self.assertNotIn("stale", data["mcpServers"])
+
+    def test_remove_stale_claude_project_skips_without_claude_dir(self):
+        """Project cleanup does not touch .mcp.json when .claude/ is absent (opt-in)."""
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        mcp = self.root / ".mcp.json"
+        raw = json.dumps(
+            {"mcpServers": {"keep": {"command": "k"}, "stale": {"command": "s"}}}
+        )
+        mcp.write_text(raw, encoding="utf-8")
+        MCPIntegrator.remove_stale(
+            {"stale"},
+            runtime="claude",
+            workspace_root=self.root,
+            install_scope=InstallScope.PROJECT,
+        )
+        self.assertEqual(mcp.read_text(encoding="utf-8"), raw)
+
+    def test_remove_stale_user_scope_skips_vscode_mcp_json(self):
+        """USER-scope stale cleanup does not modify .vscode/mcp.json (CWD-based)."""
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        vscode_dir = self.root / ".vscode"
+        vscode_dir.mkdir(parents=True)
+        mcp_path = vscode_dir / "mcp.json"
+        raw = json.dumps({"servers": {"stale": {"command": "x"}}})
+        mcp_path.write_text(raw, encoding="utf-8")
+        MCPIntegrator.remove_stale(
+            {"stale"},
+            workspace_root=self.root,
+            install_scope=InstallScope.USER,
+        )
+        self.assertEqual(mcp_path.read_text(encoding="utf-8"), raw)
 
     def test_remove_stale_claude_user_claude_json(self):
         """remove_stale drops named servers from ~/.claude.json mcpServers."""
@@ -237,6 +271,21 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
             data = json.loads(cfg.read_text(encoding="utf-8"))
             self.assertIn("keep", data["mcpServers"])
             self.assertNotIn("stale", data["mcpServers"])
+
+
+class TestMCPIntegratorUserScopeInstall(unittest.TestCase):
+    """USER-scope install rejects workspace-based --runtime."""
+
+    def test_install_global_rejects_vscode_runtime(self):
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        with self.assertRaises(RuntimeError) as ctx:
+            MCPIntegrator.install(
+                ["ghcr.io/example/server"],
+                runtime="vscode",
+                install_scope=InstallScope.USER,
+            )
+        self.assertIn("Global MCP install", str(ctx.exception))
 
 
 if __name__ == "__main__":
