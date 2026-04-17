@@ -19,7 +19,7 @@ Four kinds of drift are detected:
   differs from the baseline stored in the lockfile.  (Currently only MCP
   servers; extendable to other integrator types.)
 
-* **Stale-file drift** — files previously deployed for a still-present
+* **Stale-file drift** -- files previously deployed for a still-present
   package that are no longer produced by the current install (e.g. a
   rename or removal inside the package).  The now-unused paths should be
   removed.  See :func:`detect_stale_files`.

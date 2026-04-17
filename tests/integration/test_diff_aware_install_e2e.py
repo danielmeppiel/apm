@@ -334,7 +334,7 @@ class TestFullInstallIdempotent:
 
 
 # ---------------------------------------------------------------------------
-# Scenario 4: File renamed/removed inside a still-present package — cleanup (#666)
+# Scenario 4: File renamed/removed inside a still-present package -- cleanup (#666)
 # ---------------------------------------------------------------------------
 
 
@@ -398,7 +398,7 @@ class TestFileRenamedWithinPackage:
     ):
         """Rename a source primitive, re-install, assert old files gone and
         lockfile deployed_files no longer lists the stale paths."""
-        # ── Step 1: initial install ──
+        # -- Step 1: initial install --
         _write_apm_yml_local(temp_project, local_pkg_root)
         result1 = _run_apm(apm_command, ["install"], temp_project)
         assert result1.returncode == 0, (
@@ -413,27 +413,27 @@ class TestFileRenamedWithinPackage:
             f for f in (dep_before.get("deployed_files") or [])
             if (temp_project / f).exists()
         ]
-        assert deployed_before, "No deployed files found — cannot verify cleanup"
+        assert deployed_before, "No deployed files found -- cannot verify cleanup"
         old_files = list(deployed_before)
 
-        # ── Step 2: rename the source primitive in place ──
+        # -- Step 2: rename the source primitive in place --
         src = local_pkg_root / ".apm" / "prompts" / "my-command.prompt.md"
         new = local_pkg_root / ".apm" / "prompts" / "my-new-command.prompt.md"
         src.rename(new)
 
-        # ── Step 3: re-install ──
+        # -- Step 3: re-install --
         result2 = _run_apm(apm_command, ["install"], temp_project)
         assert result2.returncode == 0, (
             f"Re-install failed:\nSTDOUT: {result2.stdout}\nSTDERR: {result2.stderr}"
         )
 
-        # ── Step 4: old deployed files must be gone ──
+        # -- Step 4: old deployed files must be gone --
         for rel_path in old_files:
             assert not (temp_project / rel_path).exists(), (
                 f"Stale file {rel_path} was NOT cleaned up after rename"
             )
 
-        # ── Step 5: lockfile deployed_files must not include the stale paths ──
+        # -- Step 5: lockfile deployed_files must not include the stale paths --
         lockfile_after = _read_lockfile(temp_project)
         dep_after = _find_local_dep(lockfile_after)
         assert dep_after is not None, "Local package disappeared from lockfile"
@@ -449,9 +449,9 @@ class TestFileRenamedWithinPackage:
         """`apm install --only=apm` on a package with a renamed file still cleans up.
 
         Verifies that partial installs clean files for the packages they touch
-        — a deliberate departure from detect_orphans (package-level), which
+        -- a deliberate departure from detect_orphans (package-level), which
         no-ops on partial installs."""
-        # ── Step 1: initial install ──
+        # -- Step 1: initial install --
         _write_apm_yml_local(temp_project, local_pkg_root)
         result1 = _run_apm(apm_command, ["install"], temp_project)
         assert result1.returncode == 0, f"Initial install failed: {result1.stderr}"
@@ -465,22 +465,22 @@ class TestFileRenamedWithinPackage:
         ]
         assert old_files
 
-        # ── Step 2: rename the source primitive in place ──
+        # -- Step 2: rename the source primitive in place --
         src = local_pkg_root / ".apm" / "prompts" / "my-command.prompt.md"
         new = local_pkg_root / ".apm" / "prompts" / "my-new-command.prompt.md"
         src.rename(new)
 
-        # ── Step 3: partial install ──
+        # -- Step 3: partial install --
         result2 = _run_apm(apm_command, ["install", "--only=apm"], temp_project)
         assert result2.returncode == 0, f"Partial re-install failed: {result2.stderr}"
 
-        # ── Step 4: old deployed files must be gone ──
+        # -- Step 4: old deployed files must be gone --
         for rel_path in old_files:
             assert not (temp_project / rel_path).exists(), (
                 f"Stale file {rel_path} survived partial install"
             )
 
-        # ── Step 5: lockfile deployed_files must not include the stale paths ──
+        # -- Step 5: lockfile deployed_files must not include the stale paths --
         lockfile_after = _read_lockfile(temp_project)
         dep_after = _find_local_dep(lockfile_after)
         assert dep_after is not None, "Local package disappeared from lockfile"

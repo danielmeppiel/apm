@@ -2,7 +2,7 @@
 
 The helper returns the set of deployed-file paths that were produced by a
 previous install but are no longer produced by the current install, for a
-single package.  It is purely set-difference semantics — the caller owns
+single package.  It is purely set-difference semantics -- the caller owns
 filesystem side effects.
 """
 

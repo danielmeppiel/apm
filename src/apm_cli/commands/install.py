@@ -2719,7 +2719,7 @@ def _install_apm_dependencies(
                 _validation_targets = {**_default_targets, **_validation_targets}
 
             for dep_key, new_deployed in package_deployed_files.items():
-                # Skip packages whose integration reported errors this run —
+                # Skip packages whose integration reported errors this run --
                 # a file that failed to re-deploy would look stale and get
                 # wrongly deleted.
                 if diagnostics.count_for_package(dep_key, "error") > 0:
@@ -2727,7 +2727,7 @@ def _install_apm_dependencies(
 
                 prev_dep = existing_lockfile.get_dependency(dep_key)
                 if not prev_dep:
-                    continue  # new package this install — nothing stale yet
+                    continue  # new package this install -- nothing stale yet
                 old_deployed = builtins.list(prev_dep.deployed_files)
 
                 stale = detect_stale_files(old_deployed, new_deployed)
