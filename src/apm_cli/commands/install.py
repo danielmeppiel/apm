@@ -431,15 +431,30 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
             if verbose_log:
                 verbose_log(f"Trying git ls-remote for {dep_ref.host}")
 
-            cmd = ["git", "ls-remote", "--heads", "--exit-code", package_url]
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=30,
-                env=validate_env,
-            )
+            # For generic hosts, try SSH first (no credentials needed when SSH
+            # keys are configured) before falling back to HTTPS.
+            urls_to_try = []
+            if is_generic:
+                ssh_url = ado_downloader._build_repo_url(
+                    dep_ref.repo_url, use_ssh=True, dep_ref=dep_ref
+                )
+                urls_to_try = [ssh_url, package_url]
+            else:
+                urls_to_try = [package_url]
+
+            result = None
+            for probe_url in urls_to_try:
+                cmd = ["git", "ls-remote", "--heads", "--exit-code", probe_url]
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=30,
+                    env=validate_env,
+                )
+                if result.returncode == 0:
+                    break
 
             if verbose_log:
                 if result.returncode == 0:
