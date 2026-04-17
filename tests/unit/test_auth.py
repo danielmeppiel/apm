@@ -475,7 +475,7 @@ class TestBuildErrorContextADO:
     """
 
     def test_ado_no_token_mentions_ado_pat(self):
-        """No ADO_APM_PAT → error message must mention ADO_APM_PAT."""
+        """No ADO_APM_PAT -> error message must mention ADO_APM_PAT."""
         with patch.dict(os.environ, {}, clear=True):
             with patch.object(
                 GitHubTokenManager, "resolve_credential_from_git", return_value=None
@@ -514,7 +514,7 @@ class TestBuildErrorContextADO:
                 )
 
     def test_ado_no_org_no_token_mentions_ado_pat(self):
-        """No org argument, no ADO_APM_PAT → error message must still mention ADO_APM_PAT."""
+        """No org argument, no ADO_APM_PAT -> error message must still mention ADO_APM_PAT."""
         with patch.dict(os.environ, {}, clear=True):
             with patch.object(
                 GitHubTokenManager, "resolve_credential_from_git", return_value=None
@@ -535,4 +535,31 @@ class TestBuildErrorContextADO:
                 msg = resolver.build_error_context("dev.azure.com", "clone", org="myorg")
                 assert "ADO_APM_PAT" in msg, (
                     f"Expected token source 'ADO_APM_PAT' in error message, got:\n{msg}"
+                )
+
+    def test_ado_with_token_mentions_scope_guidance(self):
+        """When an ADO token is present but auth fails, PAT validity/scope hint is shown."""
+        with patch.dict(os.environ, {"ADO_APM_PAT": "mypat"}, clear=True):
+            with patch.object(
+                GitHubTokenManager, "resolve_credential_from_git", return_value=None
+            ):
+                resolver = AuthResolver()
+                msg = resolver.build_error_context("dev.azure.com", "clone", org="myorg")
+                assert "Code (Read)" in msg, (
+                    f"Expected Code (Read) scope guidance in error message, got:\n{msg}"
+                )
+
+    def test_ado_with_token_does_not_suggest_github_remediation(self):
+        """When an ADO token is present but auth fails, GitHub SAML guidance must not appear."""
+        with patch.dict(os.environ, {"ADO_APM_PAT": "mypat"}, clear=True):
+            with patch.object(
+                GitHubTokenManager, "resolve_credential_from_git", return_value=None
+            ):
+                resolver = AuthResolver()
+                msg = resolver.build_error_context("dev.azure.com", "clone", org="myorg")
+                assert "SAML" not in msg, (
+                    f"ADO error should not mention SAML, got:\n{msg}"
+                )
+                assert "github.com/settings/tokens" not in msg, (
+                    f"ADO error should not mention github.com/settings/tokens, got:\n{msg}"
                 )
