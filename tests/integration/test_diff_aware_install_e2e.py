@@ -20,13 +20,6 @@ import yaml
 from pathlib import Path
 
 
-# Skip all tests if no GitHub token is available
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("GITHUB_APM_PAT") and not os.environ.get("GITHUB_TOKEN"),
-    reason="GITHUB_APM_PAT or GITHUB_TOKEN required for GitHub API access",
-)
-
-
 @pytest.fixture
 def apm_command():
     """Get the path to the APM CLI executable."""
@@ -109,6 +102,11 @@ def _collect_deployed_files(project_dir, dep_entry):
 class TestPackageRemovedFromManifest:
     """When a package is removed from apm.yml, apm install should clean up
     its deployed files and remove it from the lockfile."""
+
+    pytestmark = pytest.mark.skipif(
+        not os.environ.get("GITHUB_APM_PAT") and not os.environ.get("GITHUB_TOKEN"),
+        reason="GITHUB_APM_PAT or GITHUB_TOKEN required for GitHub API access",
+    )
 
     def test_removed_package_files_cleaned_on_install(self, temp_project, apm_command):
         """Files deployed by a removed package disappear on the next apm install."""
@@ -210,6 +208,11 @@ class TestPackageRemovedFromManifest:
 class TestPackageRefChangedInManifest:
     """When the ref in apm.yml changes, apm install re-downloads without --update."""
 
+    pytestmark = pytest.mark.skipif(
+        not os.environ.get("GITHUB_APM_PAT") and not os.environ.get("GITHUB_TOKEN"),
+        reason="GITHUB_APM_PAT or GITHUB_TOKEN required for GitHub API access",
+    )
+
     def test_ref_change_triggers_re_download(self, temp_project, apm_command):
         """Changing the ref in apm.yml from one value to another causes re-download."""
         # ── Step 1: install with an explicit commit-pinned ref ──
@@ -295,6 +298,11 @@ class TestPackageRefChangedInManifest:
 class TestFullInstallIdempotent:
     """Running apm install multiple times without manifest changes is safe."""
 
+    pytestmark = pytest.mark.skipif(
+        not os.environ.get("GITHUB_APM_PAT") and not os.environ.get("GITHUB_TOKEN"),
+        reason="GITHUB_APM_PAT or GITHUB_TOKEN required for GitHub API access",
+    )
+
     def test_repeated_install_does_not_remove_files(self, temp_project, apm_command):
         """Repeated apm install with same manifest preserves deployed files."""
         _write_apm_yml(temp_project, ["microsoft/apm-sample-package"])
@@ -323,3 +331,161 @@ class TestFullInstallIdempotent:
         lockfile2 = _read_lockfile(temp_project)
         dep2 = _get_locked_dep(lockfile2, "microsoft/apm-sample-package")
         assert dep2 is not None, "Package missing from lockfile after idempotent re-install"
+
+
+# ---------------------------------------------------------------------------
+# Scenario 4: File renamed/removed inside a still-present package — cleanup (#666)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def local_pkg_root(tmp_path):
+    """A throwaway APM package on disk with one prompt primitive."""
+    pkg = tmp_path / "local-pkg"
+    (pkg / ".apm" / "prompts").mkdir(parents=True)
+    (pkg / "apm.yml").write_text(
+        yaml.dump(
+            {"name": "local-pkg", "version": "0.0.1"},
+            default_flow_style=False,
+        ),
+        encoding="utf-8",
+    )
+    (pkg / ".apm" / "prompts" / "my-command.prompt.md").write_text(
+        "---\ndescription: smoke\n---\nhello\n",
+        encoding="utf-8",
+    )
+    return pkg
+
+
+def _write_apm_yml_local(project_dir, local_pkg_path):
+    """Write apm.yml with a single local-path package dependency."""
+    config = {
+        "name": "diff-aware-test",
+        "version": "1.0.0",
+        "dependencies": {
+            "apm": [{"path": str(local_pkg_path)}],
+            "mcp": [],
+        },
+    }
+    (project_dir / "apm.yml").write_text(
+        yaml.dump(config, default_flow_style=False), encoding="utf-8"
+    )
+
+
+def _find_local_dep(lockfile):
+    """Return the locked-dep entry that represents a local-path package, or None.
+
+    The lockfile stores dependencies either as a dict keyed by unique_key or
+    as a list of entries. We tolerate either shape (matching _get_locked_dep)
+    and identify the local dep by its `source == "local"` marker.
+    """
+    if not lockfile:
+        return None
+    deps = lockfile.get("dependencies") or {}
+    entries = deps if isinstance(deps, list) else deps.values()
+    for entry in entries:
+        if entry and entry.get("source") == "local":
+            return entry
+    return None
+
+
+class TestFileRenamedWithinPackage:
+    """Regression tests for issue #666: renaming a file inside a still-present
+    package must delete the stale deployed artifacts on the next apm install."""
+
+    def test_renamed_file_cleanup_on_install(
+        self, temp_project, apm_command, local_pkg_root
+    ):
+        """Rename a source primitive, re-install, assert old files gone and
+        lockfile deployed_files no longer lists the stale paths."""
+        # ── Step 1: initial install ──
+        _write_apm_yml_local(temp_project, local_pkg_root)
+        result1 = _run_apm(apm_command, ["install"], temp_project)
+        assert result1.returncode == 0, (
+            f"Initial install failed:\nSTDOUT: {result1.stdout}\nSTDERR: {result1.stderr}"
+        )
+
+        lockfile_before = _read_lockfile(temp_project)
+        assert lockfile_before is not None, "apm.lock was not created"
+        dep_before = _find_local_dep(lockfile_before)
+        assert dep_before is not None, "Local package not in lockfile"
+        deployed_before = [
+            f for f in (dep_before.get("deployed_files") or [])
+            if (temp_project / f).exists()
+        ]
+        assert deployed_before, "No deployed files found — cannot verify cleanup"
+        old_files = list(deployed_before)
+
+        # ── Step 2: rename the source primitive in place ──
+        src = local_pkg_root / ".apm" / "prompts" / "my-command.prompt.md"
+        new = local_pkg_root / ".apm" / "prompts" / "my-new-command.prompt.md"
+        src.rename(new)
+
+        # ── Step 3: re-install ──
+        result2 = _run_apm(apm_command, ["install"], temp_project)
+        assert result2.returncode == 0, (
+            f"Re-install failed:\nSTDOUT: {result2.stdout}\nSTDERR: {result2.stderr}"
+        )
+
+        # ── Step 4: old deployed files must be gone ──
+        for rel_path in old_files:
+            assert not (temp_project / rel_path).exists(), (
+                f"Stale file {rel_path} was NOT cleaned up after rename"
+            )
+
+        # ── Step 5: lockfile deployed_files must not include the stale paths ──
+        lockfile_after = _read_lockfile(temp_project)
+        dep_after = _find_local_dep(lockfile_after)
+        assert dep_after is not None, "Local package disappeared from lockfile"
+        deployed_after = dep_after.get("deployed_files") or []
+        for stale in old_files:
+            assert stale not in deployed_after, (
+                f"Stale path {stale} still in lockfile deployed_files after cleanup"
+            )
+
+    def test_partial_install_cleans_renamed_file(
+        self, temp_project, apm_command, local_pkg_root
+    ):
+        """`apm install --only=apm` on a package with a renamed file still cleans up.
+
+        Verifies that partial installs clean files for the packages they touch
+        — a deliberate departure from detect_orphans (package-level), which
+        no-ops on partial installs."""
+        # ── Step 1: initial install ──
+        _write_apm_yml_local(temp_project, local_pkg_root)
+        result1 = _run_apm(apm_command, ["install"], temp_project)
+        assert result1.returncode == 0, f"Initial install failed: {result1.stderr}"
+
+        lockfile_before = _read_lockfile(temp_project)
+        dep_before = _find_local_dep(lockfile_before)
+        assert dep_before is not None
+        old_files = [
+            f for f in (dep_before.get("deployed_files") or [])
+            if (temp_project / f).exists()
+        ]
+        assert old_files
+
+        # ── Step 2: rename the source primitive in place ──
+        src = local_pkg_root / ".apm" / "prompts" / "my-command.prompt.md"
+        new = local_pkg_root / ".apm" / "prompts" / "my-new-command.prompt.md"
+        src.rename(new)
+
+        # ── Step 3: partial install ──
+        result2 = _run_apm(apm_command, ["install", "--only=apm"], temp_project)
+        assert result2.returncode == 0, f"Partial re-install failed: {result2.stderr}"
+
+        # ── Step 4: old deployed files must be gone ──
+        for rel_path in old_files:
+            assert not (temp_project / rel_path).exists(), (
+                f"Stale file {rel_path} survived partial install"
+            )
+
+        # ── Step 5: lockfile deployed_files must not include the stale paths ──
+        lockfile_after = _read_lockfile(temp_project)
+        dep_after = _find_local_dep(lockfile_after)
+        assert dep_after is not None, "Local package disappeared from lockfile"
+        deployed_after = dep_after.get("deployed_files") or []
+        for stale in old_files:
+            assert stale not in deployed_after, (
+                f"Stale path {stale} still in lockfile deployed_files after partial install"
+            )
