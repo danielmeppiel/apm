@@ -31,6 +31,12 @@ from apm_cli.utils.console import (
 
 _log = logging.getLogger(__name__)
 
+# MCP configs for these runtimes are resolved from the process working directory,
+# not from ``workspace_root``. ``InstallScope.USER`` (``apm install -g``) must not
+# target them — see ``install()`` and ``remove_stale()``.
+WORKSPACE_SCOPED_MCP_RUNTIMES = frozenset({"vscode", "cursor", "opencode"})
+HOME_SCOPED_MCP_RUNTIMES = frozenset({"copilot", "codex", "claude"})
+
 
 def _is_vscode_available() -> bool:
     """Return True when VS Code can be targeted for MCP configuration.
@@ -469,7 +475,17 @@ class MCPIntegrator:
         wr = workspace_root if workspace_root is not None else Path.cwd()
 
         # Determine which runtimes to clean, mirroring install-time logic.
-        all_runtimes = {"vscode", "copilot", "codex", "cursor", "opencode", "claude"}
+        if install_scope is InstallScope.USER and not runtime:
+            all_runtimes = set(HOME_SCOPED_MCP_RUNTIMES)
+        else:
+            all_runtimes = {
+                "vscode",
+                "copilot",
+                "codex",
+                "cursor",
+                "opencode",
+                "claude",
+            }
         if runtime:
             target_runtimes = {runtime}
         else:
@@ -981,6 +997,14 @@ class MCPIntegrator:
 
         wr = workspace_root if workspace_root is not None else Path.cwd()
 
+        if install_scope is InstallScope.USER and runtime in WORKSPACE_SCOPED_MCP_RUNTIMES:
+            raise RuntimeError(
+                "Global MCP install (--global) does not support workspace-based "
+                f"runtimes ({', '.join(sorted(WORKSPACE_SCOPED_MCP_RUNTIMES))}). "
+                "Run `apm install` from your project (without --global) to configure "
+                "those clients."
+            )
+
         # Runtime detection and multi-runtime installation
         if runtime:
             # Single runtime mode
@@ -1070,6 +1094,13 @@ class MCPIntegrator:
                         installed_runtimes.append("claude")
                     except (ValueError, ImportError):
                         pass
+
+            if install_scope is InstallScope.USER:
+                installed_runtimes = [
+                    r
+                    for r in installed_runtimes
+                    if r not in WORKSPACE_SCOPED_MCP_RUNTIMES
+                ]
 
             # Step 2: Get runtimes referenced in apm.yml scripts
             script_runtimes = MCPIntegrator._detect_runtimes(
@@ -1173,13 +1204,38 @@ class MCPIntegrator:
                     )
                 return 0
 
-            # Fall back to VS Code only if no runtimes are installed at all
+            # Fall back to VS Code only if no runtimes are installed at all (project scope).
             if not target_runtimes and not installed_runtimes:
-                target_runtimes = ["vscode"]
-                if logger:
-                    logger.progress("No runtimes installed, using VS Code as fallback")
+                if install_scope is InstallScope.USER:
+                    if logger:
+                        logger.warning(
+                            "No home-scoped MCP runtimes (Copilot CLI, Codex, "
+                            "Claude Code) found for global install."
+                        )
+                        logger.progress(
+                            "Install one with: apm runtime setup copilot"
+                        )
+                    else:
+                        _rich_warning(
+                            "No home-scoped MCP runtimes (Copilot CLI, Codex, "
+                            "Claude Code) found for global install."
+                        )
+                        _rich_info(
+                            "Install one with: apm runtime setup copilot"
+                        )
                 else:
-                    _rich_info("No runtimes installed, using VS Code as fallback")
+                    target_runtimes = ["vscode"]
+                    if logger:
+                        logger.progress(
+                            "No runtimes installed, using VS Code as fallback"
+                        )
+                    else:
+                        _rich_info(
+                            "No runtimes installed, using VS Code as fallback"
+                        )
+
+        if install_scope is InstallScope.USER and not target_runtimes:
+            return 0
 
         # Use the new registry operations module for better server detection
         configured_count = 0
