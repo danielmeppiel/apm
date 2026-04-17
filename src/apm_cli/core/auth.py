@@ -336,12 +336,19 @@ class AuthResolver:
                     "authorize your token at https://github.com/settings/tokens"
                 )
         else:
-            lines.append("No token available.")
-            lines.append(
-                "Set GITHUB_APM_PAT or GITHUB_TOKEN, or run 'gh auth login'."
-            )
+            host_info = self.classify_host(host)
+            if host_info.kind == "ado":
+                lines.append("Azure DevOps authentication required.")
+                lines.append(
+                    "Set the ADO_APM_PAT environment variable with a PAT that has Code (Read) scope."
+                )
+            else:
+                lines.append("No token available.")
+                lines.append(
+                    "Set GITHUB_APM_PAT or GITHUB_TOKEN, or run 'gh auth login'."
+                )
 
-        if org:
+        if org and self.classify_host(host).kind != "ado":
             lines.append(
                 f"If packages span multiple organizations, set per-org tokens: "
                 f"GITHUB_APM_PAT_{_org_to_env_suffix(org)}"
