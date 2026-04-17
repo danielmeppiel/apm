@@ -65,10 +65,13 @@ class SafeMCPInstaller:
         Args:
             runtime: Target runtime (copilot, codex, vscode, claude, ...).
             logger: Optional CommandLogger for structured output.
-            workspace_root: Reserved for API compatibility; repo-local adapters
-                use the process working directory (same as Cursor/VS Code paths).
+            workspace_root: Reserved for forward-compatible API; MCP client
+                adapters still resolve repo-local paths from the process working
+                directory. ``InstallScope.USER`` installs exclude CWD-based
+                runtimes so ``apm install -g`` does not write arbitrary project dirs.
             install_scope: ``InstallScope`` for user vs project MCP paths (Claude).
         """
+        # Adapters use cwd for VS Code/Cursor/OpenCode paths; not workspace_root.
         _ = workspace_root
         self.runtime = runtime
         self.adapter = ClientFactory.create_client(runtime)

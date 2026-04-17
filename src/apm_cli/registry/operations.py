@@ -39,7 +39,9 @@ class MCPServerOperations:
         Args:
             target_runtimes: List of target runtimes to check
             server_references: List of MCP server references (names or IDs)
-            
+            workspace_root: Reserved for API compatibility; adapters use cwd.
+            install_scope: Optional; forwarded to clients for scope-aware paths.
+
         Returns:
             List of server references that need installation in at least one runtime
         """
@@ -91,10 +93,11 @@ class MCPServerOperations:
         install_scope=None,
     ) -> Set[str]:
         """Get all installed server IDs across target runtimes.
-        
+
         Args:
             target_runtimes: List of runtimes to check
-            
+            workspace_root: Reserved for API compatibility; adapters use cwd.
+
         Returns:
             Set of server IDs that are currently installed
         """
@@ -106,6 +109,8 @@ class MCPServerOperations:
         except ImportError:
             return installed_ids
 
+        # Client adapters read MCP config relative to cwd; workspace_root is API
+        # compatibility. USER-scope MCP install filters CWD-based runtimes upstream.
         _ = workspace_root
 
         for runtime in target_runtimes:

@@ -417,6 +417,11 @@ class MCPIntegrator:
         Self-defined servers have no registry UUID, so installation checks use
         the runtime config keys directly. Runtime config reads are cached per
         runtime to avoid repeating the same client setup for every dependency.
+
+        *workspace_root* is reserved for API compatibility; adapters read
+        repo-local MCP paths from the process working directory. USER-scope
+        installs pass a filtered *target_runtimes* list so CWD-based clients
+        are not queried.
         """
         _ = workspace_root
         try:
