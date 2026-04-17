@@ -617,7 +617,7 @@ class MCPIntegrator:
             else:
                 clean_claude_user = clean_claude_project = True
 
-            if clean_claude_project:
+            if clean_claude_project and (wr / ".claude").is_dir():
                 claude_proj = wr / ".mcp.json"
                 if claude_proj.exists():
                     try:
