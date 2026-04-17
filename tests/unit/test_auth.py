@@ -500,6 +500,10 @@ class TestBuildErrorContextADO:
                 assert "GITHUB_TOKEN" not in msg, (
                     f"ADO error message should not mention 'GITHUB_TOKEN', got:\n{msg}"
                 )
+                assert "GITHUB_APM_PAT_MYORG" not in msg, (
+                    "ADO error message should not mention per-org GitHub PAT hint "
+                    f"'GITHUB_APM_PAT_MYORG', got:\n{msg}"
+                )
 
     def test_ado_no_token_mentions_code_read_scope(self):
         """ADO error must mention Code (Read) scope so user knows what PAT scope to set."""
@@ -562,4 +566,22 @@ class TestBuildErrorContextADO:
                 )
                 assert "github.com/settings/tokens" not in msg, (
                     f"ADO error should not mention github.com/settings/tokens, got:\n{msg}"
+                )
+
+    def test_visualstudio_com_gets_ado_remediation(self):
+        """Legacy *.visualstudio.com hosts are also ADO and must get ADO-specific guidance."""
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(
+                GitHubTokenManager, "resolve_credential_from_git", return_value=None
+            ):
+                resolver = AuthResolver()
+                msg = resolver.build_error_context("myorg.visualstudio.com", "clone")
+                assert "ADO_APM_PAT" in msg, (
+                    f"Expected 'ADO_APM_PAT' in error message, got:\n{msg}"
+                )
+                assert "gh auth login" not in msg, (
+                    f"ADO error should not mention 'gh auth login', got:\n{msg}"
+                )
+                assert "SAML" not in msg, (
+                    f"ADO error should not mention SAML, got:\n{msg}"
                 )
