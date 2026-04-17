@@ -21,8 +21,8 @@ from ..constants import (
     GITIGNORE_FILENAME,
 )
 from ..utils.console import _rich_echo, _rich_info, _rich_warning
-from ..version import get_build_sha, get_version
 from ..utils.version_checker import check_for_updates
+from ..version import get_build_sha, get_version
 
 # CRITICAL: Shadow Click commands at module level to prevent namespace collision
 # When Click commands like 'config set' are defined, calling set() can invoke the command
@@ -114,7 +114,10 @@ def _lazy_confirm():
 # Shared orphan-detection helpers
 # ------------------------------------------------------------------
 
-def _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir: Path) -> set:
+
+def _build_expected_install_paths(
+    declared_deps, lockfile, apm_modules_dir: Path
+) -> set:
     """Build expected package paths under *apm_modules_dir*.
 
     Combines direct deps (from ``apm.yml``) with transitive deps
@@ -165,7 +168,9 @@ def _scan_installed_packages(apm_modules_dir: Path) -> list:
     for candidate in apm_modules_dir.rglob("*"):
         if not candidate.is_dir() or candidate.name.startswith("."):
             continue
-        if not ((candidate / APM_YML_FILENAME).exists() or (candidate / APM_DIR).exists()):
+        if not (
+            (candidate / APM_YML_FILENAME).exists() or (candidate / APM_DIR).exists()
+        ):
             continue
         rel_parts = candidate.relative_to(apm_modules_dir).parts
         if len(rel_parts) >= 2:
@@ -192,13 +197,15 @@ def _check_orphaned_packages():
             return []
 
         try:
-            from ..models.apm_package import APMPackage
             from ..deps.lockfile import LockFile, get_lockfile_path
+            from ..models.apm_package import APMPackage
 
             apm_package = APMPackage.from_apm_yml(Path(APM_YML_FILENAME))
             declared_deps = apm_package.get_apm_dependencies()
             lockfile = LockFile.read(get_lockfile_path(Path.cwd()))
-            expected = _build_expected_install_paths(declared_deps, lockfile, apm_modules_dir)
+            expected = _build_expected_install_paths(
+                declared_deps, lockfile, apm_modules_dir
+            )
         except Exception:
             return []
 
@@ -329,10 +336,12 @@ def _update_gitignore_for_apm_modules(logger=None):
 # Script / config helpers (shared by run, list, config commands)
 # ------------------------------------------------------------------
 
+
 def _load_apm_config():
     """Load configuration from apm.yml."""
     if Path(APM_YML_FILENAME).exists():
         from ..utils.yaml_io import load_yaml
+
         return load_yaml(APM_YML_FILENAME)
     return None
 
@@ -357,13 +366,18 @@ def _list_available_scripts():
 # Init helpers (shared by init and install commands)
 # ------------------------------------------------------------------
 
+
 def _auto_detect_author():
     """Auto-detect author from git config."""
     import subprocess
 
     try:
         result = subprocess.run(
-            ["git", "config", "user.name"], capture_output=True, text=True, encoding="utf-8", timeout=5
+            ["git", "config", "user.name"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -458,5 +472,22 @@ def _create_minimal_apm_yml(config, plugin=False, target_path=None):
 
     # Write apm.yml
     from ..utils.yaml_io import dump_yaml
+
     out_path = target_path or APM_YML_FILENAME
     dump_yaml(apm_yml_data, out_path)
+
+    if not plugin:
+        prompt_path = (
+            Path(out_path).parent / "start.prompt.md"
+            if target_path
+            else Path("start.prompt.md")
+        )
+        if not prompt_path.exists():
+            prompt_path.write_text(
+                "# Start\n\n"
+                "Write your agent instructions here.\n\n"
+                "## Parameters\n\n"
+                "You can pass parameters with `${input:param_name}` syntax.\n"
+                "Example: Hello, ${input:name}!\n",
+                encoding="utf-8",
+            )

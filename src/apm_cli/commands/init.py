@@ -19,7 +19,6 @@ from ._helpers import (
     _create_plugin_json,
     _get_console,
     _get_default_config,
-    _lazy_confirm,
     _rich_blank_line,
     _validate_plugin_name,
 )
@@ -28,10 +27,15 @@ from ._helpers import (
 @click.command(help="Initialize a new APM project")
 @click.argument("project_name", required=False)
 @click.option(
-    "--yes", "-y", is_flag=True, help="Skip interactive prompts and use auto-detected defaults"
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip interactive prompts and use auto-detected defaults",
 )
 @click.option(
-    "--plugin", is_flag=True, help="Initialize as plugin author (creates plugin.json + apm.yml)"
+    "--plugin",
+    is_flag=True,
+    help="Initialize as plugin author (creates plugin.json + apm.yml)",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.pass_context
@@ -52,7 +56,9 @@ def init(ctx, project_name, yes, plugin, verbose):
             project_dir = Path(project_name)
             project_dir.mkdir(exist_ok=True)
             os.chdir(project_dir)
-            logger.progress(f"Created project directory: {project_name}", symbol="folder")
+            logger.progress(
+                f"Created project directory: {project_name}", symbol="folder"
+            )
             final_project_name = project_name
         else:
             project_dir = Path.cwd()
@@ -75,16 +81,7 @@ def init(ctx, project_name, yes, plugin, verbose):
             logger.warning("apm.yml already exists")
 
             if not yes:
-                Confirm = _lazy_confirm()
-                if Confirm:
-                    try:
-                        confirm = Confirm.ask("Continue and overwrite?")
-                    except Exception:
-                        confirm = click.confirm("Continue and overwrite?")
-                else:
-                    confirm = click.confirm("Continue and overwrite?")
-
-                if not confirm:
+                if not click.confirm("Continue and overwrite?"):
                     logger.progress("Initialization cancelled.")
                     return
             else:
@@ -121,6 +118,14 @@ def init(ctx, project_name, yes, plugin, verbose):
                 ]
                 if plugin:
                     files_data.append(("*", "plugin.json", "Plugin metadata"))
+                else:
+                    files_data.append(
+                        (
+                            "*",
+                            "start.prompt.md",
+                            "Starter prompt -- edit with your instructions",
+                        )
+                    )
                 table = _create_files_table(files_data, title="Created Files")
                 console.print(table)
         except (ImportError, NameError):
@@ -128,6 +133,10 @@ def init(ctx, project_name, yes, plugin, verbose):
             click.echo("  * apm.yml - Project configuration")
             if plugin:
                 click.echo("  * plugin.json - Plugin metadata")
+            else:
+                click.echo(
+                    "  * start.prompt.md - Starter prompt -- edit with your instructions"
+                )
 
         _rich_blank_line()
 
@@ -140,8 +149,7 @@ def init(ctx, project_name, yes, plugin, verbose):
         else:
             next_steps = [
                 "Install a runtime:       apm runtime setup copilot",
-                "Add APM dependencies:    apm install <owner>/<repo>",
-                "Compile agent context:   apm compile",
+                "Edit your prompt:        open start.prompt.md and write your instructions",
                 "Run your first workflow: apm run start",
             ]
 
