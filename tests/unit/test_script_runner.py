@@ -162,7 +162,8 @@ class TestScriptRunner:
     @patch('subprocess.run')
     @patch('apm_cli.core.script_runner.shutil.which', return_value=None)
     @patch('apm_cli.core.script_runner.setup_runtime_environment')
-    def test_execute_runtime_command_with_env_vars(self, mock_setup_env, mock_which, mock_subprocess):
+    @patch('apm_cli.core.script_runner.Path.home', return_value=Path('/nonexistent/home'))
+    def test_execute_runtime_command_with_env_vars(self, mock_home, mock_setup_env, mock_which, mock_subprocess):
         """Test runtime command execution with environment variables."""
         mock_setup_env.return_value = {'EXISTING_VAR': 'value'}
         mock_subprocess.return_value.returncode = 0
@@ -190,7 +191,8 @@ class TestScriptRunner:
     @patch('subprocess.run')
     @patch('apm_cli.core.script_runner.shutil.which', return_value=None)
     @patch('apm_cli.core.script_runner.setup_runtime_environment')
-    def test_execute_runtime_command_multiple_env_vars(self, mock_setup_env, mock_which, mock_subprocess):
+    @patch('apm_cli.core.script_runner.Path.home', return_value=Path('/nonexistent/home'))
+    def test_execute_runtime_command_multiple_env_vars(self, mock_home, mock_setup_env, mock_which, mock_subprocess):
         """Test runtime command execution with multiple environment variables."""
         mock_setup_env.return_value = {}
         mock_subprocess.return_value.returncode = 0
