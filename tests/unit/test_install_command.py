@@ -863,3 +863,134 @@ class TestInstallGlobalFlag:
                 assert "not supported at user scope" in result.output
             finally:
                 os.chdir(self.original_dir)
+
+# ---------------------------------------------------------------------------
+# Generic-host SSH-first validation tests
+# ---------------------------------------------------------------------------
+
+class TestGenericHostSshFirstValidation:
+    """Tests for the SSH-first ls-remote logic added for generic (non-GitHub/ADO) hosts."""
+
+    def _make_completed_process(self, returncode, stderr=""):
+        """Return a minimal subprocess.CompletedProcess-like mock."""
+        mock = MagicMock()
+        mock.returncode = returncode
+        mock.stderr = stderr
+        mock.stdout = ""
+        return mock
+
+    @patch("subprocess.run")
+    def test_generic_host_tries_ssh_first_and_succeeds(self, mock_run):
+        """SSH URL is tried first for generic hosts and used when it succeeds."""
+        from apm_cli.commands.install import _validate_package_exists
+
+        # SSH probe succeeds on the first call
+        mock_run.return_value = self._make_completed_process(returncode=0)
+
+        result = _validate_package_exists(
+            "git@git.example.org:org/group/repo.git", verbose=False
+        )
+
+        assert result is True
+        # subprocess.run must have been called at least once
+        assert mock_run.call_count >= 1
+        # First call must use the SSH URL
+        first_call_cmd = mock_run.call_args_list[0][0][0]
+        assert any("git@git.example.org" in arg for arg in first_call_cmd), (
+            f"Expected SSH URL in first ls-remote call, got: {first_call_cmd}"
+        )
+
+    @patch("subprocess.run")
+    def test_generic_host_falls_back_to_https_when_ssh_fails(self, mock_run):
+        """HTTPS fallback is used for generic hosts when SSH ls-remote fails."""
+        from apm_cli.commands.install import _validate_package_exists
+
+        # SSH probe fails, HTTPS succeeds
+        mock_run.side_effect = [
+            self._make_completed_process(returncode=128, stderr="ssh: connect to host"),
+            self._make_completed_process(returncode=0),
+        ]
+
+        result = _validate_package_exists(
+            "git@git.example.org:org/group/repo.git", verbose=False
+        )
+
+        assert result is True
+        assert mock_run.call_count == 2
+        # First call: SSH
+        first_cmd = mock_run.call_args_list[0][0][0]
+        assert any("git@git.example.org" in arg for arg in first_cmd), (
+            f"Expected SSH URL in first call, got: {first_cmd}"
+        )
+        # Second call: HTTPS
+        second_cmd = mock_run.call_args_list[1][0][0]
+        assert any("https://git.example.org" in arg for arg in second_cmd), (
+            f"Expected HTTPS URL in second call, got: {second_cmd}"
+        )
+
+    @patch("subprocess.run")
+    def test_generic_host_returns_false_when_both_transports_fail(self, mock_run):
+        """Validation returns False when both SSH and HTTPS fail for a generic host."""
+        from apm_cli.commands.install import _validate_package_exists
+
+        mock_run.return_value = self._make_completed_process(
+            returncode=128, stderr="fatal: could not read Username"
+        )
+
+        result = _validate_package_exists(
+            "git@git.example.org:org/group/repo.git", verbose=False
+        )
+
+        assert result is False
+        assert mock_run.call_count == 2  # tried SSH then HTTPS
+
+    @patch("subprocess.run")
+    def test_github_host_skips_ssh_attempt(self, mock_run):
+        """GitHub.com repositories do NOT go through the SSH-first ls-remote path."""
+      
+        import urllib.request
+        import urllib.error
+
+        from apm_cli.commands.install import _validate_package_exists
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.side_effect = urllib.error.HTTPError(
+                url="https://api.github.com/repos/owner/repo",
+                code=404, msg="Not Found", hdrs={}, fp=None,
+            )
+            result = _validate_package_exists("owner/repo", verbose=False)
+
+        assert result is False
+        # No ls-remote call should have been made for a github.com host
+        ls_remote_calls = [
+            call for call in mock_run.call_args_list
+            if "ls-remote" in (call[0][0] if call[0] else [])
+        ]
+        assert len(ls_remote_calls) == 0, (
+            f"Expected no ls-remote calls for github.com, got: {ls_remote_calls}"
+        )
+
+    @patch("subprocess.run")
+    def test_ghes_host_skips_ssh_attempt(self, mock_run):
+        """A GHES host is treated as GitHub, not generic SSH probe is skipped."""
+        from apm_cli.commands.install import _validate_package_exists
+
+        mock_run.return_value = self._make_completed_process(returncode=0)
+
+        result = _validate_package_exists(
+            "company.ghe.com/team/internal-repo", verbose=False
+        )
+
+        assert result is True
+        ls_remote_calls = [
+            call for call in mock_run.call_args_list
+            if "ls-remote" in (call[0][0] if call[0] else [])
+        ]
+        assert len(ls_remote_calls) == 1, (
+            f"Expected exactly 1 ls-remote call for GHES host, got: {ls_remote_calls}"
+        )
+        only_cmd = ls_remote_calls[0][0][0]
+        # Must use HTTPS, not SSH
+        assert all("git@" not in arg for arg in only_cmd), (
+            f"Expected HTTPS-only URL for GHES host, got: {only_cmd}"
+        )
