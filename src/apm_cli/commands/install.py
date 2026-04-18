@@ -19,6 +19,7 @@ from ..constants import (
 from ..drift import build_download_ref, detect_orphans, detect_ref_change
 from ..models.results import InstallResult
 from ..core.command_logger import InstallLogger, _ValidationOutcome
+from ..core.target_detection import TargetParamType
 from ..utils.console import _rich_echo, _rich_error, _rich_info, _rich_success
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.github_host import default_host, is_valid_fqdn
@@ -641,12 +642,9 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
     "--target",
     "-t",
     "target",
-    type=click.Choice(
-        ["copilot", "claude", "cursor", "opencode", "codex", "vscode", "agents", "all"],
-        case_sensitive=False,
-    ),
+    type=TargetParamType(),
     default=None,
-    help="Force deployment to a specific target (overrides auto-detection)",
+    help="Target platform (comma-separated for multiple, e.g. claude,copilot). Use 'all' for every target. Overrides auto-detection.",
 )
 @click.option(
     "--global", "-g", "global_",
@@ -1674,12 +1672,6 @@ def _install_apm_dependencies(
 
         # apm_modules directory already created above
 
-        # Auto-detect target for integration (same logic as compile)
-        from apm_cli.core.target_detection import (
-            detect_target,
-            get_target_description,
-        )
-
         # Get config target from apm.yml if available
         config_target = apm_package.target
 
@@ -1724,12 +1716,6 @@ def _install_apm_dependencies(
                     logger.verbose_detail(
                         f"Created {_root}/ ({_t.name} target)"
                     )
-
-        detected_target, detection_reason = detect_target(
-            project_root=project_root,
-            explicit_target=_explicit,
-            config_target=config_target,
-        )
 
         # Initialize integrators
         prompt_integrator = PromptIntegrator()
