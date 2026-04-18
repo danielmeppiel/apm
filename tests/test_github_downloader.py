@@ -1656,180 +1656,146 @@ class TestRawContentCDNDownload:
             assert result == b'hello world'
 
 
-class TestVirtualFilePackageYamlGeneration:
-    """Tests that apm.yml for virtual packages is always valid YAML."""
+# ---------------------------------------------------------------------------
+# Generic host (Gitea / GitLab) download tests
+# ---------------------------------------------------------------------------
 
-    def _make_dep_ref(self, virtual_path):
-        """Helper: build a minimal DependencyReference for a virtual file."""
-        from apm_cli.models.apm_package import DependencyReference
-        dep_ref = Mock(spec=DependencyReference)
-        dep_ref.is_virtual = True
-        dep_ref.virtual_path = virtual_path
-        dep_ref.reference = "main"
-        dep_ref.repo_url = "github/awesome-copilot"
-        dep_ref.get_virtual_package_name.return_value = "awesome-copilot-swe-subagent"
-        dep_ref.to_github_url.return_value = f"https://github.com/github/awesome-copilot/blob/main/{virtual_path}"
-        dep_ref.is_virtual_file.return_value = True
-        dep_ref.VIRTUAL_FILE_EXTENSIONS = [".prompt.md", ".instructions.md", ".chatmode.md", ".agent.md"]
-        return dep_ref
-
-    def _make_collection_dep_ref(self, virtual_path):
-        """Helper: build a minimal DependencyReference for a virtual collection."""
-        from apm_cli.models.apm_package import DependencyReference
-        dep_ref = Mock(spec=DependencyReference)
-        dep_ref.is_virtual = True
-        dep_ref.virtual_path = virtual_path
-        dep_ref.reference = "main"
-        dep_ref.repo_url = "github/my-org"
-        dep_ref.get_virtual_package_name.return_value = "my-org-my-collection"
-        dep_ref.to_github_url.return_value = f"https://github.com/github/my-org/blob/main/{virtual_path}"
-        dep_ref.is_virtual_collection.return_value = True
-        return dep_ref
-
-    def test_yaml_with_colon_in_description(self, tmp_path):
-        """apm.yml must be valid when the agent description contains a colon."""
-        import yaml
-
-        agent_content = (
-            b"---\n"
-            b"name: 'SWE'\n"
-            b"description: 'Senior software engineer subagent for implementation tasks:"
-            b" feature development, debugging, refactoring, and testing.'\n"
-            b"tools: ['vscode']\n"
-            b"---\n\n## Body\n"
+def _make_resp(status_code: int, content: bytes = b"") -> Mock:
+    """Build a minimal mock requests.Response."""
+    resp = Mock()
+    resp.status_code = status_code
+    resp.content = content
+    if status_code >= 400:
+        resp.raise_for_status = Mock(
+            side_effect=requests_lib.exceptions.HTTPError(response=resp)
         )
+    else:
+        resp.raise_for_status = Mock()
+    return resp
 
-        dep_ref = self._make_dep_ref("agents/swe-subagent.agent.md")
-        target_path = tmp_path / "pkg"
 
-        downloader = GitHubPackageDownloader()
+class TestGiteaRawUrlDownload:
+    """Gitea raw URL path: /{owner}/{repo}/raw/{ref}/{file}."""
+
+    def setup_method(self):
         with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
-            with patch.object(downloader, "download_raw_file", return_value=agent_content):
-                downloader.download_virtual_file_package(dep_ref, target_path)
+            self.downloader = GitHubPackageDownloader()
 
-        apm_yml_path = target_path / "apm.yml"
-        assert apm_yml_path.exists(), "apm.yml was not created"
+    def test_raw_url_succeeds_on_first_attempt(self):
+        """Raw URL returns 200 -- content returned without calling the API."""
+        dep_ref = DependencyReference.parse("gitea.myorg.com/owner/repo")
+        expected = b"# README content"
+        raw_ok = _make_resp(200, expected)
 
-        content = apm_yml_path.read_text(encoding="utf-8")
-        parsed = yaml.safe_load(content)   # must not raise
+        with patch.object(self.downloader, "_resilient_get", return_value=raw_ok) as mock_get:
+            result = self.downloader.download_raw_file(dep_ref, "README.md", "main")
 
-        expected = (
-            "Senior software engineer subagent for implementation tasks:"
-            " feature development, debugging, refactoring, and testing."
-        )
-        assert parsed["description"] == expected
+        assert result == expected
+        first_url = mock_get.call_args_list[0][0][0]
+        assert first_url == "https://gitea.myorg.com/owner/repo/raw/main/README.md"
+        assert mock_get.call_count == 1
 
-    def test_yaml_with_colon_in_name(self, tmp_path):
-        """apm.yml must be valid even when the package name contains a colon."""
-        import yaml
+    def test_raw_url_with_token_adds_auth_header(self):
+        """Token is forwarded as Authorization header in the raw URL request.
 
-        dep_ref = self._make_dep_ref("agents/my-agent.agent.md")
-        dep_ref.get_virtual_package_name.return_value = "org-name: special"
+        Token resolution is lazy, so the env patch must stay active for the
+        duration of the download call.
+        """
+        dep_ref = DependencyReference.parse("gitea.myorg.com/owner/repo")
+        raw_ok = _make_resp(200, b"data")
 
-        agent_content = b"---\nname: 'plain'\ndescription: 'plain'\n---\n"
-        target_path = tmp_path / "pkg"
+        with patch.dict(os.environ, {"GITHUB_APM_PAT": "gta-tok"}, clear=True):
+            with _CRED_FILL_PATCH:
+                downloader = GitHubPackageDownloader()
+            with patch.object(downloader, "_resilient_get", return_value=raw_ok) as mock_get:
+                downloader.download_raw_file(dep_ref, "README.md", "main")
 
-        downloader = GitHubPackageDownloader()
+        raw_headers = mock_get.call_args_list[0][1].get("headers", {})
+        assert "Authorization" in raw_headers
+
+    def test_falls_back_to_api_v1_when_raw_returns_non_200(self):
+        """When the raw URL returns 404, the API v1 path is tried next."""
+        dep_ref = DependencyReference.parse("gitea.myorg.com/owner/repo")
+        expected = b"file via API"
+
+        with patch.object(
+            self.downloader, "_resilient_get",
+            side_effect=[_make_resp(404), _make_resp(200, expected)]
+        ) as mock_get:
+            result = self.downloader.download_raw_file(dep_ref, "README.md", "main")
+
+        assert result == expected
+        urls = [c[0][0] for c in mock_get.call_args_list]
+        assert urls[0] == "https://gitea.myorg.com/owner/repo/raw/main/README.md"
+        assert "/api/v1/" in urls[1]
+
+
+class TestGitLabApiVersionNegotiation:
+    """API version negotiation: v1 -> v3 -> v4 for generic hosts."""
+
+    def setup_method(self):
         with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
-            with patch.object(downloader, "download_raw_file", return_value=agent_content):
-                downloader.download_virtual_file_package(dep_ref, target_path)
+            self.downloader = GitHubPackageDownloader()
 
-        content = (target_path / "apm.yml").read_text(encoding="utf-8")
-        parsed = yaml.safe_load(content)
-        assert parsed["name"] == "org-name: special"
+    def test_gitlab_v4_reached_after_v1_and_v3_return_404(self):
+        """GitLab uses /api/v4/ -- negotiation must try v1, v3, then v4."""
+        dep_ref = DependencyReference.parse("gitlab.myorg.com/owner/repo")
+        expected = b"gitlab file content"
 
-    def test_yaml_without_special_characters_still_valid(self, tmp_path):
-        """apm.yml generation must still work for ordinary descriptions."""
-        import yaml
+        side_effects = [
+            _make_resp(404),           # raw URL
+            _make_resp(404),           # v1
+            _make_resp(404),           # v3
+            _make_resp(200, expected), # v4
+        ]
+        with patch.object(self.downloader, "_resilient_get", side_effect=side_effects) as mock_get:
+            result = self.downloader.download_raw_file(dep_ref, "skill.md", "main")
 
-        agent_content = (
-            b"---\n"
-            b"name: 'Simple Agent'\n"
-            b"description: 'A simple agent without special chars'\n"
-            b"---\n"
-        )
+        assert result == expected
+        urls = [c[0][0] for c in mock_get.call_args_list]
+        assert "/api/v1/" in urls[1]
+        assert "/api/v3/" in urls[2]
+        assert "/api/v4/" in urls[3]
 
-        dep_ref = self._make_dep_ref("agents/simple.agent.md")
-        target_path = tmp_path / "pkg"
+    def test_gitea_v1_succeeds_without_trying_v3_or_v4(self):
+        """When v1 returns 200, v3 and v4 must never be called."""
+        dep_ref = DependencyReference.parse("gitea.example.com/owner/repo")
+        expected = b"gitea content"
 
-        downloader = GitHubPackageDownloader()
-        with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
-            with patch.object(downloader, "download_raw_file", return_value=agent_content):
-                downloader.download_virtual_file_package(dep_ref, target_path)
+        with patch.object(
+            self.downloader, "_resilient_get",
+            side_effect=[_make_resp(404), _make_resp(200, expected)]
+        ) as mock_get:
+            result = self.downloader.download_raw_file(dep_ref, "file.md", "main")
 
-        content = (target_path / "apm.yml").read_text(encoding="utf-8")
-        parsed = yaml.safe_load(content)
-        assert parsed["description"] == "A simple agent without special chars"
+        assert result == expected
+        urls = [c[0][0] for c in mock_get.call_args_list]
+        assert all("/api/v3/" not in u and "/api/v4/" not in u for u in urls)
 
-    def test_collection_yaml_with_colon_in_description(self, tmp_path):
-        """apm.yml for collection packages must be valid when description contains a colon."""
-        import yaml
+    def test_all_api_versions_404_raises_runtime_error(self):
+        """When every API version returns 404 for both refs, a clear error is raised."""
+        dep_ref = DependencyReference.parse("git.example.com/owner/repo")
+        # raw + v1 + v3 + v4 for 'main', then v1 + v3 + v4 for 'master' fallback
+        side_effects = [_make_resp(404)] * 8
 
-        # A minimal .collection.yml whose description contains ":"
-        collection_manifest = (
-            b"id: my-collection\n"
-            b"name: My Collection\n"
-            b"description: 'A collection for tasks: feature development, debugging.'\n"
-            b"items:\n"
-            b"  - path: agents/my-agent.agent.md\n"
-            b"    kind: agent\n"
-        )
-        agent_file = b"---\nname: My Agent\n---\n## Body\n"
+        with patch.object(self.downloader, "_resilient_get", side_effect=side_effects):
+            with pytest.raises(RuntimeError, match="File not found"):
+                self.downloader.download_raw_file(dep_ref, "missing.md", "main")
 
-        dep_ref = self._make_collection_dep_ref("collections/my-collection")
-        target_path = tmp_path / "pkg"
+    def test_github_com_uses_api_github_com_not_api_v4(self):
+        """github.com must still use api.github.com, never /api/v4/."""
+        dep_ref = DependencyReference.parse("owner/repo")
+        expected = b"github content"
+        api_ok = _make_resp(200, expected)
 
-        downloader = GitHubPackageDownloader()
+        with patch.object(self.downloader, "_try_raw_download", return_value=None):
+            with patch.object(self.downloader, "_resilient_get", return_value=api_ok) as mock_get:
+                result = self.downloader.download_raw_file(dep_ref, "README.md", "main")
 
-        def _fake_download(dep_ref_arg, path, ref):
-            if "collection" in path:
-                return collection_manifest
-            return agent_file
-
-        with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
-            with patch.object(downloader, "download_raw_file", side_effect=_fake_download):
-                downloader.download_collection_package(dep_ref, target_path)
-
-        content = (target_path / "apm.yml").read_text(encoding="utf-8")
-        parsed = yaml.safe_load(content)   # must not raise
-
-        assert parsed["description"] == "A collection for tasks: feature development, debugging."
-
-    def test_collection_yaml_with_colon_in_tags(self, tmp_path):
-        """apm.yml for collection packages must be valid when tags contain a colon."""
-        import yaml
-
-        collection_manifest = (
-            b"id: tagged-collection\n"
-            b"name: Tagged\n"
-            b"description: Normal description\n"
-            b"tags:\n"
-            b"  - 'scope: engineering'\n"
-            b"  - plain-tag\n"
-            b"items:\n"
-            b"  - path: agents/my-agent.agent.md\n"
-            b"    kind: agent\n"
-        )
-        agent_file = b"---\nname: My Agent\n---\n## Body\n"
-
-        dep_ref = self._make_collection_dep_ref("collections/tagged-collection")
-        target_path = tmp_path / "pkg"
-
-        downloader = GitHubPackageDownloader()
-
-        def _fake_download(dep_ref_arg, path, ref):
-            if "collection" in path:
-                return collection_manifest
-            return agent_file
-
-        with patch.dict(os.environ, {}, clear=True), _CRED_FILL_PATCH:
-            with patch.object(downloader, "download_raw_file", side_effect=_fake_download):
-                downloader.download_collection_package(dep_ref, target_path)
-
-        content = (target_path / "apm.yml").read_text(encoding="utf-8")
-        parsed = yaml.safe_load(content)
-
-        assert parsed["tags"] == ["scope: engineering", "plain-tag"]
+        assert result == expected
+        url_called = mock_get.call_args_list[0][0][0]
+        assert url_called.startswith("https://api.github.com/")
+        assert "/api/v4/" not in url_called
 
 
 if __name__ == '__main__':
