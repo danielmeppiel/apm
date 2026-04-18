@@ -83,4 +83,4 @@
 | `apm config` | Show current configuration | -- |
 | `apm config get [KEY]` | Get a config value (`auto-integrate`, `temp-dir`) | -- |
 | `apm config set KEY VALUE` | Set a config value (`auto-integrate`, `temp-dir`) | -- |
-| `apm update` | Update APM itself | `--check` only check |
+| `apm update` | Update APM itself (or show distributor guidance when self-update is disabled at build time) | `--check` only check |

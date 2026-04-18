@@ -586,6 +586,9 @@ apm update
 - Downloads and runs the official platform installer (`install.sh` on macOS/Linux, `install.ps1` on Windows)
 - Preserves existing configuration and projects
 - Shows progress and success/failure status
+- Some package-manager distributions can disable self-update at build time. 
+  In those builds, `apm update` prints a distributor-defined guidance message
+  (for example, a `brew upgrade` command) and exits without running the installer.
 
 **Version Checking:**
 APM automatically checks for updates (at most once per day) when running any command. If a newer version is available, you'll see a yellow warning:
@@ -596,6 +599,8 @@ Run apm update to upgrade
 ```
 
 This check is non-blocking and cached to avoid slowing down the CLI.
+
+In distributions that disable self-update at build time, this startup update notification is skipped.
 
 **Manual Update:**
 If the automatic update fails, you can always update manually:
