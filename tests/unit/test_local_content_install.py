@@ -183,6 +183,20 @@ class TestIntegrateLocalContent:
         assert package_info.install_path == tmp_path
 
     @patch("apm_cli.commands.install._integrate_package_primitives")
+    def test_project_namespace_is_carried_into_local_package(self, mock_integrate, tmp_path):
+        """Project-local .apm/ skills inherit the manifest namespace."""
+        mock_integrate.return_value = _zero_counters()
+
+        _integrate_local_content(
+            tmp_path,
+            project_namespace="acme.design",
+            **_make_integrators(),
+        )
+
+        package_info = mock_integrate.call_args[0][0]
+        assert package_info.package.namespace == "acme.design"
+
+    @patch("apm_cli.commands.install._integrate_package_primitives")
     def test_returns_zero_counters_when_nothing_deployed(self, mock_integrate, tmp_path):
         """When nothing is deployed the result counters are all zero."""
         mock_integrate.return_value = _zero_counters()

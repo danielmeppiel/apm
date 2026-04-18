@@ -25,9 +25,15 @@ def apm_command():
     apm_on_path = shutil.which("apm")
     if apm_on_path:
         return apm_on_path
-    venv_apm = Path(__file__).parent.parent.parent / ".venv" / "bin" / "apm"
-    if venv_apm.exists():
-        return str(venv_apm)
+    repo_root = Path(__file__).parent.parent.parent
+    candidates = [
+        repo_root / ".venv" / "Scripts" / "apm.exe",
+        repo_root / ".venv" / "Scripts" / "apm",
+        repo_root / ".venv" / "bin" / "apm",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
     return "apm"
 
 
@@ -567,6 +573,39 @@ class TestRootProjectPrimitives:
         assert "nothing to install" not in combined.lower(), (
             f"Install returned 'nothing to install' — hooks detection guard may "
             f"have triggered early return.\nOutput:\n{combined}"
+        )
+
+    def test_root_apm_skills_use_project_namespace(self, tmp_path, apm_command):
+        """Project-local .apm/skills inherit the namespace from apm.yml."""
+        project = tmp_path / "project"
+        project.mkdir()
+
+        (project / "apm.yml").write_text(yaml.dump({
+            "name": "my-project",
+            "version": "1.0.0",
+            "namespace": "acme.design",
+        }))
+
+        skill_dir = project / ".apm" / "skills" / "linting"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Linting\nUse the shared lint rules.\n")
+
+        # Create .github so the primary skill target exists.
+        (project / ".github").mkdir(parents=True)
+
+        result = subprocess.run(
+            [apm_command, "install"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        combined = result.stdout + result.stderr
+        assert result.returncode == 0, f"Install failed:\n{combined}"
+
+        deployed = project / ".github" / "skills" / "acme.design.linting" / "SKILL.md"
+        assert deployed.exists(), (
+            f"Namespaced local skill was NOT deployed.\nOutput:\n{combined}"
         )
 
     def test_root_skill_md_detected(self, tmp_path, apm_command):

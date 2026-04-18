@@ -54,19 +54,24 @@ Skills are integrated to `.github/skills/`:
 
 | Source | Result |
 |--------|--------|
-| Package with `SKILL.md` | Skill folder copied to `.github/skills/{folder-name}/` |
+| Package with `SKILL.md` | Skill folder copied to `.github/skills/{deployed-skill-name}/` |
 | Package without `SKILL.md` | No skill folder created |
 
 #### Skill Folder Naming
 
-Skill folders use the **source folder name directly** (not flattened paths):
+Skill folders use the normalized source folder name, with an optional
+`namespace` prefix from the package manifest:
 
 ```
 .github/skills/
-├── brand-guidelines/      # From ComposioHQ/awesome-claude-skills/brand-guidelines
-├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
-└── apm-sample-package/     # From microsoft/apm-sample-package
+├── brand-guidelines/             # From ComposioHQ/awesome-claude-skills/brand-guidelines
+├── mcp-builder/                  # From ComposioHQ/awesome-claude-skills/mcp-builder
+├── acme.design.apm-sample-package/ # From a package with namespace: acme.design
+└── acme.design.linting/          # From .apm/skills/linting in that package
 ```
+
+This same prefixing also applies to the project's own local `.apm/skills/`
+entries when the root `apm.yml` defines `namespace`.
 
 → See [Skills Guide](../skills/) for complete documentation.
 
