@@ -976,6 +976,7 @@ def install(ctx, packages, runtime, exclude, only, update, dry_run, force, verbo
 
                     local_int_result = _integrate_local_content(
                         project_root,
+                        project_namespace=apm_package.namespace,
                         targets=_local_targets,
                         prompt_integrator=_local_prompt_int,
                         agent_integrator=_local_agent_int,
@@ -1293,6 +1294,7 @@ def _has_local_apm_content(project_root):
 def _integrate_local_content(
     project_root,
     *,
+    project_namespace=None,
     targets,
     prompt_integrator,
     agent_integrator,
@@ -1311,6 +1313,9 @@ def _integrate_local_content(
     This treats the project root as a synthetic package so that local
     skills, instructions, agents, prompts, hooks, and commands in .apm/
     are deployed to target directories exactly like dependency primitives.
+    When the project's manifest defines ``namespace``, locally promoted
+    skills inherit that prefix so project-authored skills can be
+    distinguished from dependency skills after install.
 
     Only .apm/ sub-directories are processed.  A root-level SKILL.md is
     intentionally ignored (it describes the project itself, not a
@@ -1327,6 +1332,7 @@ def _integrate_local_content(
     local_pkg = APMPackage(
         name="_local",
         version="0.0.0",
+        namespace=project_namespace,
         package_path=project_root,
         source="local",
     )

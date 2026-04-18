@@ -64,6 +64,7 @@ class APMPackage:
     """Represents an APM package with metadata."""
     name: str
     version: str
+    namespace: Optional[str] = None
     description: Optional[str] = None
     author: Optional[str] = None
     license: Optional[str] = None
@@ -199,6 +200,7 @@ class APMPackage:
         result = cls(
             name=data['name'],
             version=data['version'],
+            namespace=data.get('namespace'),
             description=data.get('description'),
             author=data.get('author'),
             license=data.get('license'),

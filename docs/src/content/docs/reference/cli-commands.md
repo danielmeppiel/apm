@@ -260,8 +260,13 @@ APM also integrates with Claude Code when `.claude/` directory exists:
 
 Skills are copied directly to target directories:
 
-- **Primary**: `.github/skills/{skill-name}/` — Entire skill folder copied
-- **Compatibility**: `.claude/skills/{skill-name}/` — Also copied if `.claude/` folder exists
+- **Primary**: `.github/skills/{deployed-skill-name}/` — Entire skill folder copied
+- **Compatibility**: `.claude/skills/{deployed-skill-name}/` — Also copied if `.claude/` folder exists
+
+If a package manifest defines `namespace`, APM prefixes the deployed skill
+directory with that namespace, for example `acme.design.brand-guidelines`.
+Promoted sub-skills and the project's own local `.apm/skills/` entries use
+the same naming rule.
 
 **Example Integration Output**:
 ```
@@ -316,16 +321,16 @@ apm uninstall -g microsoft/apm-sample-package
 | Integrated agents | `.github/agents/*.agent.md` |
 | Integrated chatmodes | `.github/agents/*.agent.md` |
 | Claude commands | `.claude/commands/*.md` |
-| Skill folders | `.github/skills/{folder-name}/` |
+| Skill folders | `.github/skills/{deployed-skill-name}/` |
 | Integrated hooks | `.github/hooks/*.json` |
 | Claude hook settings | `.claude/settings.json` (hooks key cleaned) |
 | Cursor rules | `.cursor/rules/*.mdc` |
 | Cursor agents | `.cursor/agents/*.md` |
-| Cursor skills | `.cursor/skills/{folder-name}/` |
+| Cursor skills | `.cursor/skills/{deployed-skill-name}/` |
 | Cursor hooks | `.cursor/hooks.json` (hooks key cleaned) |
 | OpenCode agents | `.opencode/agents/*.md` |
 | OpenCode commands | `.opencode/commands/*.md` |
-| OpenCode skills | `.opencode/skills/{folder-name}/` |
+| OpenCode skills | `.opencode/skills/{deployed-skill-name}/` |
 | Lockfile entries | `apm.lock.yaml` (removed packages + orphaned transitives) |
 
 **Behavior:**

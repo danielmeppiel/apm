@@ -42,6 +42,7 @@ A conforming manifest MUST be a YAML mapping at the top level with the following
 # apm.yml
 name:          <string>                  # REQUIRED
 version:       <string>                  # REQUIRED
+namespace:     <string>
 description:   <string>
 author:        <string>
 license:       <string>
@@ -78,7 +79,16 @@ compilation:   <CompilationConfig>
 | **Pattern** | `^\d+\.\d+\.\d+` (semver; pre-release/build suffixes allowed) |
 | **Description** | Semantic version. A value that does not match the pattern SHOULD produce a validation warning (non-blocking). |
 
-### 3.3. `description`
+### 3.3. `namespace`
+
+| | |
+|---|---|
+| **Type** | `string` |
+| **Required** | OPTIONAL |
+| **Pattern** | Lowercase alphanumeric segments separated by `.` or `-` (for example `acme.design`) |
+| **Description** | Optional prefix applied to deployed skill directory names. When set, packages with `SKILL.md` and promoted `.apm/skills/*` entries deploy as `namespace.skill-name`. The same rule applies to the project's own local `.apm/skills/` content during `apm install`. |
+
+### 3.4. `description`
 
 | | |
 |---|---|
@@ -86,7 +96,7 @@ compilation:   <CompilationConfig>
 | **Required** | OPTIONAL |
 | **Description** | Brief human-readable description. |
 
-### 3.4. `author`
+### 3.5. `author`
 
 | | |
 |---|---|
@@ -94,7 +104,7 @@ compilation:   <CompilationConfig>
 | **Required** | OPTIONAL |
 | **Description** | Package author or organization. |
 
-### 3.5. `license`
+### 3.6. `license`
 
 | | |
 |---|---|
@@ -102,7 +112,7 @@ compilation:   <CompilationConfig>
 | **Required** | OPTIONAL |
 | **Description** | SPDX license identifier (e.g. `MIT`, `Apache-2.0`). |
 
-### 3.6. `target`
+### 3.7. `target`
 
 | | |
 |---|---|
@@ -122,7 +132,7 @@ Controls which output targets are generated during compilation. When unset, a co
 | `all` | Both `vscode` and `claude` targets |
 | `minimal` | AGENTS.md only at project root. **Auto-detected only** — this value MUST NOT be set explicitly in manifests; it is an internal fallback when no `.github/` or `.claude/` folder is detected. |
 
-### 3.7. `type`
+### 3.8. `type`
 
 | | |
 |---|---|
@@ -140,7 +150,7 @@ Declares how the package's content is processed during install and compile. Curr
 | `hybrid` | Both AGENTS.md compilation and skill installation. |
 | `prompts` | Commands/prompts only. No instructions or skills. |
 
-### 3.8. `scripts`
+### 3.9. `scripts`
 
 | | |
 |---|---|
@@ -379,7 +389,7 @@ The `compilation` key is OPTIONAL. It controls `apm compile` behaviour. All fiel
 
 | Field | Type | Default | Constraint | Description |
 |---|---|---|---|---|
-| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `codex` · `all` | Output target (same values as §3.6). Defaults to `all` when set explicitly in compilation config. |
+| `target` | `enum<string>` | `all` | `vscode` · `agents` · `claude` · `codex` · `all` | Output target (same values as §3.7). Defaults to `all` when set explicitly in compilation config. |
 | `strategy` | `enum<string>` | `distributed` | `distributed` · `single-file` | `distributed` generates per-directory AGENTS.md files. `single-file` generates one monolithic file. |
 | `single_file` | `bool` | `false` | | Legacy alias. When `true`, overrides `strategy` to `single-file`. |
 | `output` | `string` | `AGENTS.md` | File path | Custom output path for the compiled file. |
@@ -461,6 +471,7 @@ Any runtime adopting this format (e.g. GitHub Agentic Workflows, CI systems, IDE
 ```yaml
 name: my-project
 version: 1.0.0
+namespace: contoso.platform
 description: AI-native web application
 author: Contoso
 license: MIT

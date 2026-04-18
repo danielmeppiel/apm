@@ -275,13 +275,15 @@ apm install ComposioHQ/awesome-claude-skills/mcp-builder
 # .github/skills/mcp-builder/...      -- Full skill folder copied
 ```
 
-**Skill Folder Naming**: Uses the source folder name directly (e.g., `mcp-builder`, `design-guidelines`), not flattened paths.
+**Skill Folder Naming**: Uses the normalized source folder name, optionally
+prefixed by the package manifest's `namespace` (for example,
+`acme.design.mcp-builder`).
 
 **How skill integration works:**
 1. `apm install` checks if the package contains a `SKILL.md` file
-2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{folder-name}/` (primary location)
-3. If a `.claude/` directory exists: also copies to `.claude/skills/{folder-name}/` for Claude compatibility
-4. Sub-skills inside `.apm/skills/` are promoted to top-level `.github/skills/` entries
+2. If `SKILL.md` exists: copies the entire skill folder to `.github/skills/{deployed-skill-name}/` (primary location)
+3. If a `.claude/` directory exists: also copies to `.claude/skills/{deployed-skill-name}/` for Claude compatibility
+4. Sub-skills inside `.apm/skills/` are promoted to top-level `.github/skills/` entries using the same optional namespace prefix
 5. `apm uninstall` removes the skill folder from both locations
 
 ### Automatic Hook Integration

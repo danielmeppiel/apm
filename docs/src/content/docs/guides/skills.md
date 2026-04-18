@@ -46,8 +46,8 @@ APM copies skills to every detected target directory:
 
 | Package Type | Behavior |
 |--------------|----------|
-| **Has existing SKILL.md** | Entire skill folder copied to `{target}/skills/{skill-name}/` |
-| **Has sub-skills in `.apm/skills/`** | Each `.apm/skills/*/SKILL.md` also promoted to `{target}/skills/{sub-skill-name}/` |
+| **Has existing SKILL.md** | Entire skill folder copied to `{target}/skills/{deployed-skill-name}/` |
+| **Has sub-skills in `.apm/skills/`** | Each `.apm/skills/*/SKILL.md` also promoted to `{target}/skills/{deployed-sub-skill-name}/` |
 | **No SKILL.md and no primitives** | No skill folder created |
 
 **Target Detection:**
@@ -64,10 +64,22 @@ Skill names are validated per the [agentskills.io](https://agentskills.io/) spec
 - No consecutive hyphens (`--`)
 - Cannot start/end with hyphen
 
+If the package manifest defines a `namespace`, APM prefixes the deployed
+skill directory with that namespace. This applies to both root `SKILL.md`
+packages and promoted `.apm/skills/*` entries, including the project's own
+local `.apm/skills/` content.
+
+```yaml
+name: design-system
+version: 1.0.0
+namespace: acme.design
+```
+
 ```
 .github/skills/
-├── mcp-builder/           # From ComposioHQ/awesome-claude-skills/mcp-builder
-└── apm-sample-package/    # From microsoft/apm-sample-package
+├── mcp-builder/                  # From ComposioHQ/awesome-claude-skills/mcp-builder
+├── acme.design.brand-guidelines/ # From a package with namespace: acme.design
+└── acme.design.linting/          # From .apm/skills/linting in that package
 ```
 
 ### Step 3: Primitive Integration
@@ -274,7 +286,7 @@ apm_modules/org/repo/my-package/
     └── SKILL.md
 ```
 
-The same promotion applies to the project's own `.apm/skills/` directory. When you run `apm install`, skills in your local `.apm/skills/*/` are deployed to `.github/skills/` (and other detected targets) alongside dependency skills. Local skills take priority on collision. The root `SKILL.md` is not treated as a local skill -- it describes the project itself.
+The same promotion applies to the project's own `.apm/skills/` directory. When you run `apm install`, skills in your local `.apm/skills/*/` are deployed to `.github/skills/` (and other detected targets) alongside dependency skills. If your project manifest sets `namespace`, those local skills are deployed with the same prefix. Local skills take priority on collision. The root `SKILL.md` is not treated as a local skill -- it describes the project itself.
 
 ## Package Detection
 
