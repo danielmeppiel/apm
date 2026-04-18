@@ -52,7 +52,7 @@
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `apm marketplace add OWNER/REPO` | Register a marketplace | `-n NAME`, `-b BRANCH` |
+| `apm marketplace add OWNER/REPO` | Register a marketplace | `-n NAME`, `-b BRANCH`, `--host HOST` |
 | `apm marketplace list` | List registered marketplaces | -- |
 | `apm marketplace browse NAME` | Browse marketplace packages | -- |
 | `apm marketplace update [NAME]` | Update marketplace index | -- |
@@ -81,6 +81,6 @@
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
 | `apm config` | Show current configuration | -- |
-| `apm config get [KEY]` | Get a config value | -- |
-| `apm config set KEY VALUE` | Set a config value | -- |
+| `apm config get [KEY]` | Get a config value (`auto-integrate`, `temp-dir`) | -- |
+| `apm config set KEY VALUE` | Set a config value (`auto-integrate`, `temp-dir`) | -- |
 | `apm update` | Update APM itself | `--check` only check |
