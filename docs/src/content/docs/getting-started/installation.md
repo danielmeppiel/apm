@@ -160,6 +160,29 @@ $env:APM_DEBUG = "1"
 apm install <package>
 ```
 
+### Access denied errors on Windows (corporate endpoint security)
+
+If `apm install` fails with `[WinError 5] Access is denied` or `Access denied in temporary directory`, your corporate endpoint security software may restrict writes to the default `%TEMP%` directory.
+
+Configure a writable directory for APM's temporary files:
+
+```powershell
+# Create a writable temp directory and configure APM to use it
+New-Item -ItemType Directory -Force -Path C:\apm-temp
+apm config set temp-dir C:\apm-temp
+```
+
+You can also set the `APM_TEMP_DIR` environment variable for a per-session override (useful in CI pipelines):
+
+```powershell
+$env:APM_TEMP_DIR = "C:\apm-temp"
+apm install <package>
+```
+
+The resolution order is: `APM_TEMP_DIR` environment variable > `temp_dir` in `~/.apm/config.json` > system default.
+
+See [`apm config set temp-dir`](../../reference/cli-commands/#apm-config-set---set-a-configuration-value) for full details.
+
 ## Next steps
 
 See the [Quick Start](../quick-start/) to set up your first project.
