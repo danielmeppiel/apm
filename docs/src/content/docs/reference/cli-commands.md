@@ -1345,6 +1345,7 @@ apm config
 - Global configuration
   - APM CLI version
   - `auto-integrate` setting
+  - `temp-dir` setting (when configured)
 
 **Examples:**
 ```bash
@@ -1363,6 +1364,7 @@ apm config get [KEY]
 **Arguments:**
 - `KEY` (optional) - Configuration key to retrieve. Supported keys:
   - `auto-integrate` - Whether to automatically integrate `.prompt.md` files into AGENTS.md
+  - `temp-dir` - Custom temporary directory for clone/download operations
 
 If `KEY` is omitted, displays all configuration values.
 
@@ -1386,6 +1388,7 @@ apm config set KEY VALUE
 **Arguments:**
 - `KEY` - Configuration key to set. Supported keys:
   - `auto-integrate` - Enable/disable automatic integration of `.prompt.md` files
+  - `temp-dir` - Set a custom temporary directory path
 - `VALUE` - Value to set. For boolean keys, use: `true`, `false`, `yes`, `no`, `1`, `0`
 
 **Configuration Keys:**
@@ -1409,6 +1412,30 @@ apm config set auto-integrate false
 # Using alternative boolean values
 apm config set auto-integrate yes
 apm config set auto-integrate 1
+```
+
+**`temp-dir`** - Override the system temporary directory
+- **Type:** String (directory path)
+- **Default:** System temp directory (not stored)
+- **Description:** Set a custom temporary directory for clone and download operations. Useful in corporate Windows environments where endpoint security software restricts access to `%TEMP%`, causing `[WinError 5] Access is denied`.
+- **Resolution order:** `APM_TEMP_DIR` environment variable > `temp_dir` in `~/.apm/config.json` > system default.
+- **Use Cases:**
+  - Set when the default system temp directory is restricted or unavailable
+  - Use the `APM_TEMP_DIR` environment variable for CI pipelines or per-session overrides
+
+**Examples:**
+```bash
+# Set a custom temp directory (Windows)
+apm config set temp-dir C:\apm-temp
+
+# Set a custom temp directory (macOS/Linux)
+apm config set temp-dir /tmp/apm-work
+
+# Check the current temp-dir setting
+apm config get temp-dir
+
+# Or use the environment variable instead
+export APM_TEMP_DIR=/tmp/apm-work
 ```
 
 ## Runtime Management (Experimental)
