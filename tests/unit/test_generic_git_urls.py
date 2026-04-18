@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from src.apm_cli.models.apm_package import DependencyReference
+from src.apm_cli.deps.lockfile import LockedDependency
 from src.apm_cli.utils.github_host import (
     build_https_clone_url,
     build_ssh_url,
@@ -290,6 +291,28 @@ class TestBitbucketDatacenterSSH:
         """git@ SSH shorthand does not go through ssh:// normalisation."""
         dep = DependencyReference.parse("git@bitbucket.org:acme/rules.git")
         assert dep.original_ssh_url is None
+
+    def test_lockfile_records_original_ssh_url_with_port(self):
+        """LockedDependency must carry original_ssh_url so lockfile tracks provenance with port."""
+        url = "ssh://git@bitbucket.domain.ext:7999/project/repo.git"
+        dep = DependencyReference.parse(url)
+        locked = LockedDependency.from_dependency_ref(dep, resolved_commit="abc123", depth=1, resolved_by=None)
+        assert locked.original_ssh_url == url
+
+    def test_lockfile_roundtrip_preserves_original_ssh_url(self):
+        """original_ssh_url survives to_dict() → from_dict() round-trip."""
+        url = "ssh://git@bitbucket.domain.ext:7999/project/repo.git"
+        dep = DependencyReference.parse(url)
+        locked = LockedDependency.from_dependency_ref(dep, resolved_commit="abc123", depth=1, resolved_by=None)
+        restored = LockedDependency.from_dict(locked.to_dict())
+        assert restored.original_ssh_url == url
+
+    def test_lockfile_https_dep_has_no_original_ssh_url(self):
+        """HTTPS deps must not write original_ssh_url into the lockfile."""
+        dep = DependencyReference.parse("https://bitbucket.domain.ext/scm/project/repo.git")
+        locked = LockedDependency.from_dependency_ref(dep, resolved_commit="abc123", depth=1, resolved_by=None)
+        assert locked.original_ssh_url is None
+        assert "original_ssh_url" not in locked.to_dict()
 
 
 class TestCloneURLBuilding:
