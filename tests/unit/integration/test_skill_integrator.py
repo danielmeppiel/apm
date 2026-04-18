@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from datetime import datetime
 
-from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case, validate_skill_name, normalize_skill_name, copy_skill_to_target
+from apm_cli.integration.skill_integrator import SkillIntegrator, SkillIntegrationResult, to_hyphen_case, validate_skill_name, normalize_skill_name, copy_skill_to_target, build_deployed_skill_name
 from apm_cli.models.apm_package import PackageInfo, APMPackage, ResolvedReference, GitReferenceType, DependencyReference, PackageType, PackageContentType
 
 
@@ -411,6 +411,44 @@ class TestSkillIntegrator:
         assert result.skill_path is not None
         # Skill directory should be created
         assert result.skill_path.exists()
+
+    def test_integrate_package_skill_applies_namespace(self):
+        """Native skill deployment uses the package namespace as a prefix."""
+        package_dir = self.project_root / "brand-guidelines"
+        package_dir.mkdir()
+        (package_dir / "SKILL.md").write_text("# Brand Guidelines\n")
+
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            name="brand-guidelines",
+            package_type=PackageType.CLAUDE_SKILL
+        )
+        package_info.package.namespace = "acme.design"
+
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        expected = self.project_root / ".github" / "skills" / "acme.design.brand-guidelines" / "SKILL.md"
+        assert result.skill_path == expected
+        assert expected.exists()
+
+    def test_integrate_package_skill_namespaces_sub_skills(self):
+        """Promoted sub-skills inherit the parent package namespace."""
+        package_dir = self.project_root / "package"
+        sub_skill_dir = package_dir / ".apm" / "skills" / "linting"
+        sub_skill_dir.mkdir(parents=True)
+        (sub_skill_dir / "SKILL.md").write_text("# Linting\n")
+
+        package_info = self._create_package_info(
+            install_path=package_dir,
+            package_type=PackageType.APM_PACKAGE,
+            content_type=PackageContentType.INSTRUCTIONS
+        )
+        package_info.package.namespace = "acme.tools"
+
+        result = self.integrator.integrate_package_skill(package_info, self.project_root)
+
+        assert result.sub_skills_promoted == 1
+        assert (self.project_root / ".github" / "skills" / "acme.tools.linting" / "SKILL.md").exists()
     
     def test_integrate_package_skill_multiple_virtual_file_packages_no_collision(self):
         """Test that multiple virtual FILE packages from same repo don't create conflicting Skills.
@@ -544,6 +582,25 @@ metadata:
         # Skill should NOT be removed
         assert result['files_removed'] == 0
         assert skill_dir.exists()
+
+    def test_sync_integration_keeps_namespaced_skill(self):
+        """Legacy cleanup keeps namespaced skill directories for installed packages."""
+        pkg_root = self.project_root / "apm_modules" / "acme" / "pkg"
+        pkg_root.mkdir(parents=True)
+        (pkg_root / "apm.yml").write_text("name: pkg\nversion: 1.0.0\nnamespace: acme.design\n")
+
+        skill_dir = self.project_root / ".github" / "skills" / "acme.design.pkg"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: acme.design.pkg\n---\n# Skill\n")
+
+        dep_ref = DependencyReference.parse("acme/pkg")
+        apm_package = Mock()
+        apm_package.get_apm_dependencies.return_value = [dep_ref]
+
+        result = self.integrator.sync_integration(apm_package, self.project_root)
+
+        assert result['files_removed'] == 0
+        assert skill_dir.exists()
     
 class TestSkillIntegrationResult:
     """Test SkillIntegrationResult dataclass."""
@@ -599,6 +656,20 @@ class TestValidateSkillName:
         is_valid, error = validate_skill_name("my-awesome-package")
         assert is_valid is True
         assert error == ""
+
+
+class TestBuildDeployedSkillName:
+    """Tests for skill deployment naming."""
+
+    def test_build_deployed_skill_name_without_namespace(self):
+        skill_name, warning = build_deployed_skill_name("brand-guidelines")
+        assert skill_name == "brand-guidelines"
+        assert warning is None
+
+    def test_build_deployed_skill_name_with_namespace(self):
+        skill_name, warning = build_deployed_skill_name("brand-guidelines", "acme.design")
+        assert skill_name == "acme.design.brand-guidelines"
+        assert warning is None
     
     def test_valid_with_numbers(self):
         """Test valid name with numbers."""

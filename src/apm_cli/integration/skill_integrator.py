@@ -127,6 +127,73 @@ def validate_skill_name(name: str) -> tuple[bool, str]:
     return (True, "")
 
 
+def validate_skill_namespace(namespace: str) -> tuple[bool, str]:
+    """Validate a dot-delimited namespace used to prefix deployed skills."""
+    if len(namespace) < 1:
+        return (False, "Skill namespace cannot be empty")
+
+    if len(namespace) > 64:
+        return (False, f"Skill namespace must be 1-64 characters (got {len(namespace)})")
+
+    if namespace.startswith('.'):
+        return (False, "Skill namespace cannot start with a dot")
+
+    if namespace.endswith('.'):
+        return (False, "Skill namespace cannot end with a dot")
+
+    if '..' in namespace:
+        return (False, "Skill namespace cannot contain consecutive dots (..)")
+
+    pattern = r'^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'
+    if not re.match(pattern, namespace):
+        if any(c.isupper() for c in namespace):
+            return (False, "Skill namespace must be lowercase (no uppercase letters)")
+
+        if '_' in namespace:
+            return (False, "Skill namespace cannot contain underscores (use hyphens instead)")
+
+        invalid_chars = set(re.findall(r'[^a-z0-9.-]', namespace))
+        if invalid_chars:
+            return (False, f"Skill namespace contains invalid characters: {', '.join(sorted(invalid_chars))}")
+
+        return (False, "Skill namespace must be lowercase alphanumeric with dots and hyphens only")
+
+    return (True, "")
+
+
+def normalize_skill_namespace(namespace: str) -> str:
+    """Normalize a namespace into lowercase dotted segments."""
+    segments = []
+    for segment in namespace.split('.'):
+        normalized = normalize_skill_name(segment)
+        if normalized:
+            segments.append(normalized)
+    return '.'.join(segments)[:64]
+
+
+def build_deployed_skill_name(raw_skill_name: str, namespace: str | None = None) -> tuple[str, str | None]:
+    """Build the deployed skill directory name, optionally prefixing a namespace."""
+    is_valid, error_msg = validate_skill_name(raw_skill_name)
+    skill_name = raw_skill_name if is_valid else normalize_skill_name(raw_skill_name)
+    warnings = []
+    if not is_valid:
+        warnings.append(
+            f"Skill name '{raw_skill_name}' normalized to '{skill_name}' ({error_msg})"
+        )
+
+    if namespace:
+        ns_valid, ns_error = validate_skill_namespace(namespace)
+        normalized_namespace = namespace if ns_valid else normalize_skill_namespace(namespace)
+        if not ns_valid:
+            warnings.append(
+                f"Skill namespace '{namespace}' normalized to '{normalized_namespace}' ({ns_error})"
+            )
+        if normalized_namespace:
+            skill_name = f"{normalized_namespace}.{skill_name}"
+
+    return skill_name, " ".join(warnings) if warnings else None
+
+
 def normalize_skill_name(name: str) -> str:
     """Convert any package name to a valid skill name per agentskills.io spec.
     
@@ -466,7 +533,7 @@ class SkillIntegrator(BaseIntegrator):
         return True
 
     @staticmethod
-    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None, managed_files=None, force: bool = False, project_root: Path | None = None, logger=None) -> tuple[int, list[Path]]:
+    def _promote_sub_skills(sub_skills_dir: Path, target_skills_root: Path, parent_name: str, *, namespace: str | None = None, warn: bool = True, owned_by: dict[str, str] | None = None, diagnostics=None, managed_files=None, force: bool = False, project_root: Path | None = None, logger=None) -> tuple[int, list[Path]]:
         """Promote sub-skills from .apm/skills/ to top-level skill entries.
 
         Args:
@@ -502,8 +569,12 @@ class SkillIntegrator(BaseIntegrator):
             if not (sub_skill_path / "SKILL.md").exists():
                 continue
             raw_sub_name = sub_skill_path.name
-            is_valid, _ = validate_skill_name(raw_sub_name)
-            sub_name = raw_sub_name if is_valid else normalize_skill_name(raw_sub_name)
+            sub_name, warning = build_deployed_skill_name(raw_sub_name, namespace)
+            if warning:
+                if diagnostics is not None:
+                    diagnostics.warn(warning, package=parent_name)
+                elif logger:
+                    logger.warning(warning)
             target = target_skills_root / sub_name
             rel_path = f"{rel_prefix}/{sub_name}"
             if target.exists():
@@ -666,6 +737,7 @@ class SkillIntegrator(BaseIntegrator):
 
             n, deployed = self._promote_sub_skills(
                 sub_skills_dir, target_skills_root, parent_name,
+                namespace=package_info.package.namespace,
                 warn=is_primary,
                 owned_by=owned_by if is_primary else None,
                 diagnostics=diagnostics if is_primary else None,
@@ -717,28 +789,22 @@ class SkillIntegrator(BaseIntegrator):
         # e.g., apm_modules/ComposioHQ/awesome-claude-skills/mcp-builder -> mcp-builder
         raw_skill_name = package_path.name
         
-        # Validate skill name per agentskills.io spec
-        is_valid, error_msg = validate_skill_name(raw_skill_name)
-        if is_valid:
-            skill_name = raw_skill_name
-        else:
-            # Normalize the name if validation fails
-            skill_name = normalize_skill_name(raw_skill_name)
+        skill_name, warning = build_deployed_skill_name(
+            raw_skill_name,
+            package_info.package.namespace,
+        )
+        if warning:
             if diagnostics is not None:
                 diagnostics.warn(
-                    f"Skill name '{raw_skill_name}' normalized to '{skill_name}' ({error_msg})",
+                    warning,
                     package=raw_skill_name,
                 )
             elif logger:
-                logger.warning(
-                    f"Skill name '{raw_skill_name}' normalized to '{skill_name}' ({error_msg})"
-                )
+                logger.warning(warning)
             else:
                 try:
                     from apm_cli.utils.console import _rich_warning
-                    _rich_warning(
-                        f"Skill name '{raw_skill_name}' normalized to '{skill_name}' ({error_msg})"
-                    )
+                    _rich_warning(warning)
                 except ImportError:
                     pass  # CLI not available in tests
         
@@ -826,6 +892,7 @@ class SkillIntegrator(BaseIntegrator):
             target_skills_root = project_root / effective_root / "skills"
             _, sub_deployed = self._promote_sub_skills(
                 sub_skills_dir, target_skills_root, skill_name,
+                namespace=package_info.package.namespace,
                 warn=is_primary,
                 owned_by=owned_by if is_primary else None,
                 diagnostics=diagnostics if is_primary else None,
@@ -1003,19 +1070,26 @@ class SkillIntegrator(BaseIntegrator):
             raw_name = dep.repo_url.split('/')[-1]
             if dep.is_virtual and dep.virtual_path:
                 raw_name = dep.virtual_path.split('/')[-1]
-            is_valid, _ = validate_skill_name(raw_name)
-            skill_name = raw_name if is_valid else normalize_skill_name(raw_name)
+            install_path = dep.get_install_path(project_root / "apm_modules")
+            namespace = None
+            apm_yml_path = install_path / "apm.yml"
+            if apm_yml_path.exists():
+                try:
+                    from apm_cli.models.apm_package import APMPackage
+                    namespace = APMPackage.from_apm_yml(apm_yml_path).namespace
+                except Exception:
+                    namespace = None
+            skill_name, _ = build_deployed_skill_name(raw_name, namespace)
             installed_skill_names.add(skill_name)
 
             # Also include promoted sub-skills from installed packages
-            install_path = dep.get_install_path(project_root / "apm_modules")
             sub_skills_dir = install_path / ".apm" / "skills"
             if sub_skills_dir.is_dir():
                 for sub_skill_path in sub_skills_dir.iterdir():
                     if sub_skill_path.is_dir() and (sub_skill_path / "SKILL.md").exists():
                         raw_sub = sub_skill_path.name
-                        is_valid, _ = validate_skill_name(raw_sub)
-                        installed_skill_names.add(raw_sub if is_valid else normalize_skill_name(raw_sub))
+                        sub_name, _ = build_deployed_skill_name(raw_sub, namespace)
+                        installed_skill_names.add(sub_name)
 
         # Clean all target skill directories dynamically
         for t in source:

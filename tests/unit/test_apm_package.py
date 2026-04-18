@@ -39,6 +39,18 @@ class TestDevDependencies:
         assert pkg.dev_dependencies is not None
         assert "apm" in pkg.dev_dependencies
 
+    def test_parse_namespace(self, tmp_path):
+        """namespace is parsed from apm.yml."""
+        yml = _write_apm_yml(tmp_path, {
+            "name": "test-pkg",
+            "version": "1.0.0",
+            "namespace": "acme.design",
+        })
+
+        pkg = APMPackage.from_apm_yml(yml)
+
+        assert pkg.namespace == "acme.design"
+
     def test_get_dev_apm_dependencies(self, tmp_path):
         """get_dev_apm_dependencies returns DependencyReference objects."""
         yml = _write_apm_yml(tmp_path, {
