@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AGENTS.md` at repository root -- single entry point for AI coding agents with CI-enforced rules (#695)
+
 ### Fixed
 
 - Propagate headers and environment variables through OpenCode MCP adapter with defensive copies to prevent mutation (#622)
