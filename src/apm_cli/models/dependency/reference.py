@@ -56,6 +56,11 @@ class DependencyReference:
         None  # e.g., "artifactory/github" (repo key path)
     )
 
+    # Preserved verbatim when the user supplied an explicit ssh:// URL in apm.yml.
+    # Used by the downloader to clone with the exact URL (including any custom port)
+    # instead of the reconstructed https:// fallback URL.
+    original_ssh_url: Optional[str] = None
+
     # Supported file extensions for virtual packages
     VIRTUAL_FILE_EXTENSIONS = (
         ".prompt.md",
@@ -904,6 +909,24 @@ class DependencyReference:
                 )
             )
 
+        # Preserve the original ssh:// URL before normalization so the downloader can
+        # clone with the exact user-supplied URL (e.g. custom port for Bitbucket DC).
+        # Strip #ref and @alias suffixes — git clone does not accept these; the ref
+        # is already passed separately via clone_kwargs.
+        if dependency_str.startswith("ssh://"):
+            _clone_url = dependency_str.strip()
+            if "#" in _clone_url:
+                _clone_url = _clone_url.split("#")[0]
+            # @alias appears only in the path portion (after scheme://user@host:port/).
+            # Split on the first three slashes to isolate the path, then strip trailing @alias.
+            _parts = _clone_url.split("/", 3)
+            if len(_parts) == 4 and "@" in _parts[3]:
+                _parts[3] = _parts[3].rsplit("@", 1)[0]
+                _clone_url = "/".join(_parts)
+            original_ssh_url = _clone_url
+        else:
+            original_ssh_url = None
+
         dependency_str = cls._normalize_ssh_protocol_url(dependency_str)
 
         # Phase 1: detect virtual packages
@@ -986,6 +1009,7 @@ class DependencyReference:
             ado_project=ado_project,
             ado_repo=ado_repo,
             artifactory_prefix=artifactory_prefix,
+            original_ssh_url=original_ssh_url,
         )
 
     def to_github_url(self) -> str:

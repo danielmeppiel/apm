@@ -694,9 +694,14 @@ class GitHubPackageDownloader:
                 last_error = e
                 # Continue to next method
 
-        # Method 2: Try SSH (works with SSH keys for any host)
+        # Method 2: Try SSH (works with SSH keys for any host).
+        # When the user supplied an explicit ssh:// URL (e.g. with a custom port for
+        # Bitbucket Datacenter), use it verbatim so the port is not silently dropped.
         try:
-            ssh_url = self._build_repo_url(repo_url_base, use_ssh=True, dep_ref=dep_ref)
+            if dep_ref and dep_ref.original_ssh_url:
+                ssh_url = dep_ref.original_ssh_url
+            else:
+                ssh_url = self._build_repo_url(repo_url_base, use_ssh=True, dep_ref=dep_ref)
             repo = Repo.clone_from(ssh_url, target_path, env=clone_env, progress=progress_reporter, **clone_kwargs)
             if verbose_callback:
                 verbose_callback(f"Cloned from: {ssh_url}")

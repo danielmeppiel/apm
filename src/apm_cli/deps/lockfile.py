@@ -38,6 +38,7 @@ class LockedDependency:
     is_dev: bool = False  # True for devDependencies
     discovered_via: Optional[str] = None  # Marketplace name (provenance)
     marketplace_plugin_name: Optional[str] = None  # Plugin name in marketplace
+    original_ssh_url: Optional[str] = None  # Verbatim ssh:// URL supplied by user (preserves custom port)
 
     def get_unique_key(self) -> str:
         """Returns unique key for this dependency."""
@@ -84,6 +85,8 @@ class LockedDependency:
             result["discovered_via"] = self.discovered_via
         if self.marketplace_plugin_name:
             result["marketplace_plugin_name"] = self.marketplace_plugin_name
+        if self.original_ssh_url:
+            result["original_ssh_url"] = self.original_ssh_url
         return result
 
     @classmethod
@@ -122,6 +125,7 @@ class LockedDependency:
             is_dev=data.get("is_dev", False),
             discovered_via=data.get("discovered_via"),
             marketplace_plugin_name=data.get("marketplace_plugin_name"),
+            original_ssh_url=data.get("original_ssh_url"),
         )
 
     @classmethod
@@ -167,6 +171,7 @@ class LockedDependency:
             source="local" if dep_ref.is_local else None,
             local_path=dep_ref.local_path if dep_ref.is_local else None,
             is_dev=is_dev,
+            original_ssh_url=dep_ref.original_ssh_url,
         )
 
 

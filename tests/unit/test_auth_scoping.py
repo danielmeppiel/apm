@@ -270,6 +270,84 @@ class TestCloneWithFallbackEnv:
 
 
 # ===========================================================================
+# Regression: ssh:// URLs with custom ports (issue #661)
+# ===========================================================================
+
+class TestCloneWithFallbackSshUrl:
+    """Verify that an explicit ssh:// URL is passed verbatim to git clone.
+
+    Regression for #661: Bitbucket Datacenter uses custom SSH ports (e.g.
+    7999). APM was stripping the port during normalisation and then falling
+    back to https://.  The fix stores the original url in
+    DependencyReference.original_ssh_url and uses it in Method 2 of
+    _clone_with_fallback so the port is never silently dropped.
+    """
+
+    def _run_clone_capture_urls(self, dep):
+        """Run _clone_with_fallback and return every URL passed to clone_from."""
+        mock_repo = Mock()
+        mock_repo.head.commit.hexsha = "abc123"
+        dl = _make_downloader()
+        dl.auth_resolver._cache.clear()
+
+        called_urls = []
+
+        def _fake_clone(url, *a, **kw):
+            called_urls.append(url)
+            return mock_repo
+
+        with patch.dict(os.environ, {}, clear=True), \
+             patch(
+                 "apm_cli.core.token_manager.GitHubTokenManager.resolve_credential_from_git",
+                 return_value=None,
+             ), \
+             patch('apm_cli.deps.github_downloader.Repo') as MockRepo:
+            MockRepo.clone_from.side_effect = _fake_clone
+            target = Path(tempfile.mkdtemp())
+            try:
+                dl._clone_with_fallback(dep.repo_url, target, dep_ref=dep)
+            except (RuntimeError, GitCommandError):
+                pass
+            finally:
+                import shutil
+                shutil.rmtree(target, ignore_errors=True)
+        return called_urls
+
+    def test_bitbucket_datacenter_ssh_with_port_used_verbatim(self):
+        """The first clone attempt must use the exact ssh:// URL including port."""
+        original = "ssh://git@bitbucket.domain.ext:7999/project/repo.git"
+        dep = _dep(original)
+
+        assert dep.original_ssh_url == original, "original_ssh_url not stored"
+
+        urls = self._run_clone_capture_urls(dep)
+        assert len(urls) >= 1
+        assert urls[0] == original, (
+            f"Expected first clone URL to be the original ssh:// URL, got: {urls[0]!r}"
+        )
+
+    def test_bitbucket_datacenter_ssh_no_https_attempted_first(self):
+        """APM must not attempt https:// before the explicit ssh:// URL."""
+        original = "ssh://git@bitbucket.domain.ext:7999/project/repo.git"
+        dep = _dep(original)
+
+        urls = self._run_clone_capture_urls(dep)
+        assert len(urls) >= 1
+        assert not urls[0].startswith("https://"), (
+            f"First clone attempt must not be https://, got: {urls[0]!r}"
+        )
+
+    def test_standard_ssh_url_without_port_also_preserved(self):
+        """ssh:// without a custom port is also used verbatim."""
+        original = "ssh://git@github.com/org/repo.git"
+        dep = _dep(original)
+
+        urls = self._run_clone_capture_urls(dep)
+        assert len(urls) >= 1
+        assert urls[0] == original
+
+
+# ===========================================================================
 # Object-style dependency entries (parse_from_dict)
 # ===========================================================================
 
