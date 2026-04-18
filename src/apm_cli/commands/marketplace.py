@@ -31,17 +31,17 @@ def marketplace():
 @click.argument("repo", required=True)
 @click.option("--name", "-n", default=None, help="Display name (defaults to repo name)")
 @click.option("--branch", "-b", default="main", show_default=True, help="Branch to use")
+@click.option("--host", default=None, help="Git host FQDN (default: github.com)")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
-def add(repo, name, branch, verbose):
-    """Register a marketplace from OWNER/REPO."""
+def add(repo, name, branch, host, verbose):
+    """Register a marketplace from OWNER/REPO or HOST/OWNER/REPO."""
     logger = CommandLogger("marketplace-add", verbose=verbose)
     try:
         from ..marketplace.client import _auto_detect_path, fetch_marketplace
         from ..marketplace.models import MarketplaceSource
         from ..marketplace.registry import add_marketplace
-        from ..utils.github_host import default_host
 
-        # Parse OWNER/REPO
+        # Parse OWNER/REPO or HOST/OWNER/REPO
         if "/" not in repo:
             logger.error(
                 f"Invalid format: '{repo}'. Use 'OWNER/REPO' "
@@ -49,12 +49,40 @@ def add(repo, name, branch, verbose):
             )
             sys.exit(1)
 
+        from ..utils.github_host import default_host, is_valid_fqdn
+
         parts = repo.split("/")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
+        if len(parts) == 3 and parts[0] and parts[1] and parts[2]:
+            if not is_valid_fqdn(parts[0]):
+                logger.error(
+                    f"Invalid host: '{parts[0]}'. "
+                    f"Use 'OWNER/REPO' or 'HOST/OWNER/REPO' format."
+                )
+                sys.exit(1)
+            if host and host != parts[0]:
+                logger.error(
+                    f"Conflicting host: --host '{host}' vs '{parts[0]}' in argument."
+                )
+                sys.exit(1)
+            host = parts[0]
+            owner, repo_name = parts[1], parts[2]
+        elif len(parts) == 2 and parts[0] and parts[1]:
+            owner, repo_name = parts[0], parts[1]
+        else:
             logger.error(f"Invalid format: '{repo}'. Expected 'OWNER/REPO'")
             sys.exit(1)
 
-        owner, repo_name = parts[0], parts[1]
+        if host is not None:
+            normalized_host = host.strip().lower()
+            if not is_valid_fqdn(normalized_host):
+                logger.error(
+                    f"Invalid host: '{host}'. Expected a valid host FQDN "
+                    f"(for example, 'github.com')."
+                )
+                sys.exit(1)
+            resolved_host = normalized_host
+        else:
+            resolved_host = default_host()
         display_name = name or repo_name
 
         # Validate name is identifier-compatible for NAME@MARKETPLACE syntax
@@ -71,15 +99,16 @@ def add(repo, name, branch, verbose):
         logger.start(f"Registering marketplace '{display_name}'...", symbol="gear")
         logger.verbose_detail(f"    Repository: {owner}/{repo_name}")
         logger.verbose_detail(f"    Branch: {branch}")
+        if resolved_host != "github.com":
+            logger.verbose_detail(f"    Host: {resolved_host}")
 
         # Auto-detect marketplace.json location
-        host = default_host()
         probe_source = MarketplaceSource(
             name=display_name,
             owner=owner,
             repo=repo_name,
             branch=branch,
-            host=host,
+            host=resolved_host,
         )
         detected_path = _auto_detect_path(probe_source)
 
@@ -99,7 +128,7 @@ def add(repo, name, branch, verbose):
             owner=owner,
             repo=repo_name,
             branch=branch,
-            host=host,
+            host=resolved_host,
             path=detected_path,
         )
 
@@ -270,7 +299,7 @@ def update(name, verbose):
         if name:
             source = get_marketplace_by_name(name)
             logger.start(f"Refreshing marketplace '{name}'...", symbol="gear")
-            clear_marketplace_cache(name)
+            clear_marketplace_cache(name, host=source.host)
             manifest = fetch_marketplace(source, force_refresh=True)
             logger.success(
                 f"Marketplace '{name}' updated ({len(manifest.plugins)} plugins)",
@@ -288,7 +317,7 @@ def update(name, verbose):
             )
             for s in sources:
                 try:
-                    clear_marketplace_cache(s.name)
+                    clear_marketplace_cache(s.name, host=s.host)
                     manifest = fetch_marketplace(s, force_refresh=True)
                     logger.tree_item(
                         f"  {s.name} ({len(manifest.plugins)} plugins)"
@@ -331,7 +360,7 @@ def remove(name, yes, verbose):
                 return
 
         remove_marketplace(name)
-        clear_marketplace_cache(name)
+        clear_marketplace_cache(name, host=source.host)
         logger.success(f"Marketplace '{name}' removed", symbol="check")
 
     except Exception as e:
