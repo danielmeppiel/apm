@@ -117,7 +117,7 @@ def synthesize_apm_yml_from_plugin(plugin_path: Path, manifest: Dict[str, Any]) 
 
     # Generate apm.yml from plugin metadata
     apm_yml_content = _generate_apm_yml(manifest)
-    apm_yml_path = plugin_path / "apm.yml"
+    apm_yml_path = plugin_path / "apm.yaml"
 
     with open(apm_yml_path, 'w', encoding='utf-8') as f:
         f.write(apm_yml_content)

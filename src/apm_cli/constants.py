@@ -18,7 +18,7 @@ class InstallMode(Enum):
 # ---------------------------------------------------------------------------
 # File and directory names
 # ---------------------------------------------------------------------------
-APM_YML_FILENAME = "apm.yml"
+APM_YML_FILENAME = "apm.yaml"
 APM_LOCK_FILENAME = "apm.lock"
 APM_MODULES_DIR = "apm_modules"
 APM_DIR = ".apm"

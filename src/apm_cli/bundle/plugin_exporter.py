@@ -145,7 +145,7 @@ def _collect_bare_skill(
         slug = dep.repo_url.rsplit("/", 1)[-1] if dep.repo_url else "skill"
     for f in sorted(install_path.iterdir()):
         if f.is_file() and not f.is_symlink() and f.name not in (
-            "apm.yml", "apm.lock.yaml", "plugin.json",
+            "apm.yaml", "apm.lock.yaml", "plugin.json",
         ):
             out.append((f, f"skills/{slug}/{f.name}"))
 
@@ -443,7 +443,7 @@ def export_plugin_bundle(
     lockfile = LockFile.read(lockfile_path)
 
     # 2. Read apm.yml
-    apm_yml_path = project_root / "apm.yml"
+    apm_yml_path = project_root / "apm.yaml"
     package = APMPackage.from_apm_yml(apm_yml_path)
     pkg_name = package.name
     pkg_version = package.version or "0.0.0"

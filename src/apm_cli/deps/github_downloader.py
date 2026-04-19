@@ -1527,7 +1527,7 @@ class GitHubPackageDownloader:
         }
         apm_yml_content = yaml_to_str(apm_yml_data)
 
-        apm_yml_path = target_path / "apm.yml"
+        apm_yml_path = target_path / "apm.yaml"
         apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
 
         # Create APMPackage object
@@ -1671,7 +1671,7 @@ class GitHubPackageDownloader:
             apm_yml_data["tags"] = list(manifest.tags)
         apm_yml_content = yaml_to_str(apm_yml_data)
 
-        apm_yml_path = target_path / "apm.yml"
+        apm_yml_path = target_path / "apm.yaml"
         apm_yml_path.write_text(apm_yml_content, encoding='utf-8')
 
         # Create APMPackage object
@@ -1941,7 +1941,7 @@ class GitHubPackageDownloader:
         ):
             short_sha = resolved_commit[:7]
             package.version = short_sha
-            apm_yml_path = target_path / "apm.yml"
+            apm_yml_path = target_path / "apm.yaml"
             if apm_yml_path.exists():
                 from ..utils.yaml_io import load_yaml, dump_yaml
                 _data = load_yaml(apm_yml_path) or {}
@@ -2251,7 +2251,7 @@ class GitHubPackageDownloader:
             short_sha = resolved_ref.resolved_commit[:7]
             package.version = short_sha
             # Keep the synthesized apm.yml in sync
-            apm_yml_path = target_path / "apm.yml"
+            apm_yml_path = target_path / "apm.yaml"
             if apm_yml_path.exists():
                 from ..utils.yaml_io import load_yaml, dump_yaml
                 _data = load_yaml(apm_yml_path) or {}

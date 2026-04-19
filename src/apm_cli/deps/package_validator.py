@@ -53,7 +53,7 @@ class PackageValidator:
             return result
         
         # Check for apm.yml
-        apm_yml = package_path / "apm.yml"
+        apm_yml = package_path / "apm.yaml"
         if not apm_yml.exists():
             result.add_error("Missing required file: apm.yml")
             return result

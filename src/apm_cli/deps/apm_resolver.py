@@ -65,7 +65,7 @@ class APMDependencyResolver:
             self._apm_modules_dir = project_root / "apm_modules"
         
         # Load the root package
-        apm_yml_path = project_root / "apm.yml"
+        apm_yml_path = project_root / "apm.yaml"
         if not apm_yml_path.exists():
             # Create empty dependency graph for projects without apm.yml
             empty_package = APMPackage(name="unknown", version="0.0.0", package_path=project_root)
@@ -409,7 +409,7 @@ class APMDependencyResolver:
                 return None
         
         # Look for apm.yml in the install path
-        apm_yml_path = install_path / "apm.yml"
+        apm_yml_path = install_path / "apm.yaml"
         if not apm_yml_path.exists():
             # Package exists but has no apm.yml (e.g., Claude Skill)
             # Check for SKILL.md and create minimal package

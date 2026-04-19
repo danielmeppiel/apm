@@ -20,7 +20,7 @@ def _load_raw_apm_yml(project_root: Path) -> Optional[dict]:
     """Load raw apm.yml as a dict for policy checks that inspect raw fields."""
     import yaml
 
-    apm_yml_path = project_root / "apm.yml"
+    apm_yml_path = project_root / "apm.yaml"
     if not apm_yml_path.exists():
         return None
     try:
@@ -712,7 +712,7 @@ def run_policy_checks(
     result = CIAuditResult()
 
     # Load manifest
-    apm_yml_path = project_root / "apm.yml"
+    apm_yml_path = project_root / "apm.yaml"
     if not apm_yml_path.exists():
         return result
 
