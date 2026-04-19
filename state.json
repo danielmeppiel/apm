@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-04-10T01:08:52Z",
-  "last_run_tasks": ["task3", "task7"],
+  "last_updated": "2026-04-19T01:11:37Z",
+  "last_run_tasks": ["task1", "task2", "task7"],
   "validated_commands": {
     "test": "python3 -m uv run pytest tests/unit tests/test_console.py -x -q",
     "test_full": "python3 -m uv run pytest tests/unit tests/test_console.py -x -q",
@@ -10,14 +10,14 @@
   },
   "coverage_baseline": {
     "total": "61%+",
-    "run_date": "2026-04-10",
-    "test_count": 3811,
-    "passing": 3811,
+    "run_date": "2026-04-19",
+    "test_count": 3933,
+    "passing": 3933,
     "pre_existing_failures": 0,
-    "notes": "All 3811 tests pass as of 2026-04-10 (branch). Main has 3790. +21 update command tests this run."
+    "notes": "All 3933 tests pass as of 2026-04-19 main. Up from 3811 on 2026-04-10."
   },
   "monthly_activity_issue": "open-2026-04",
-  "monthly_activity_issue_number": "created-2026-04-10",
+  "monthly_activity_issue_number": 749,
   "yaml_pollution_note": "Running tests with --cov causes PyYAML global state corruption from some earlier test. Tests pass without --cov.",
   "ansi_strip_note": "7 ANSI failures fully resolved as of 2026-03-16. No longer a concern.",
   "config_bug_note": "set_auto_integrate/get_auto_integrate were missing from apm_cli/config.py - fixed in PR 2026-03-19.",
@@ -36,15 +36,15 @@
     {"id": "base-integrator", "file": "src/apm_cli/integration/base_integrator.py", "coverage_before": "~0%", "coverage_after": "~90%+", "priority": "done", "notes": "PR created 2026-04-08. 69 tests. Branch: test-assist/base-integrator-coverage-24112158713."},
     {"id": "mcp-integrator", "file": "src/apm_cli/integration/mcp_integrator.py", "coverage_before": "~0%", "coverage_after": "~75%", "priority": "done", "notes": "PR created 2026-04-09. 70 tests. Branch: test-assist/mcp-integrator-coverage-24166967264."},
     {"id": "update-command", "file": "src/apm_cli/commands/update.py", "coverage_before": "64%", "coverage_after": "~95%", "priority": "done", "notes": "PR created 2026-04-10. 21 tests. Branch: test-assist/update-command-coverage-24221207307."},
-    {"id": "install-command", "file": "src/apm_cli/commands/install.py", "coverage": "43%", "priority": "high", "notes": "Large complex file ~1250 stmts. Core install logic. High risk."},
+    {"id": "install-command", "file": "src/apm_cli/commands/install.py", "coverage": "43%", "priority": "high", "notes": "Large complex file ~2804 lines. Core install logic. High risk. Next target."},
+    {"id": "deps-utils-missing", "file": "src/apm_cli/commands/deps/_utils.py", "coverage": "~75%", "priority": "medium", "notes": "_is_nested_under_package and _count_primitives have no direct tests. Discovered 2026-04-19."},
     {"id": "compile-cli-full", "file": "src/apm_cli/commands/compile/cli.py", "coverage": "38%", "priority": "medium", "notes": "Display helpers covered in PR; main command logic still sparse."},
     {"id": "deps-cli", "file": "src/apm_cli/commands/deps/cli.py", "coverage": "71%", "priority": "medium", "notes": "list/tree/info now covered. Main update() orchestration still complex."},
-    {"id": "deps-utils", "file": "src/apm_cli/commands/deps/_utils.py", "coverage": "50%", "priority": "medium", "notes": "Pure utility functions; easy wins. Scan packages, count primitives."},
     {"id": "uninstall-engine", "file": "src/apm_cli/commands/uninstall/engine.py", "coverage": "71%", "priority": "medium", "notes": "Uninstall orchestration logic."},
     {"id": "view-command", "file": "src/apm_cli/commands/view.py", "coverage": "66%", "priority": "medium", "notes": "View command has missing paths."},
     {"id": "hook-integrator", "file": "src/apm_cli/integration/hook_integrator.py", "coverage": "93%", "priority": "low", "notes": "Already well-covered. Only 23 lines uncovered."}
   ],
-  "backlog_cursor": "install-command",
+  "backlog_cursor": "deps-utils-missing",
   "open_test_assist_prs": [
     {"number": 221, "title": "test: add unit tests for AgentsCompiler (65%->82%)", "branch": "test-assist/agents-compiler-coverage-1773105017-70450d4bafccea6d", "ci": "passing"},
     {"number": 291, "title": "fix(tests): strip ANSI codes before plain-text assertions", "branch": "test-assist/fix-ansi-failures-2026-03-14-4cae0cad88219467", "ci": "passing", "note": "may be superseded"},
@@ -62,6 +62,12 @@
   ],
   "completed_work": [
     {
+      "run": "2026-04-19T01:11:37Z",
+      "tasks": ["task1", "task2", "task7"],
+      "pr_status": "no_pr_created",
+      "description": "Task1: 3933 tests pass. Task2: Identified _is_nested_under_package and _count_primitives as untested in _utils.py. Skipped Task3 due to 10+ open PRs."
+    },
+    {
       "run": "2026-04-10T01:08:52Z",
       "tasks": ["task3", "task7"],
       "branch": "test-assist/update-command-coverage-24221207307",
@@ -78,15 +84,6 @@
       "description": "Task3: 70 new tests for mcp_integrator.py (0%->~75%). 3818 total tests passing.",
       "coverage_before": {"mcp_integrator": "~0%"},
       "coverage_after": {"mcp_integrator": "~75%"}
-    },
-    {
-      "run": "2026-04-08T01:08:10Z",
-      "tasks": ["task2", "task3", "task7"],
-      "branch": "test-assist/base-integrator-coverage-24112158713",
-      "pr_status": "pr_created",
-      "description": "Task3: 69 new tests for base_integrator.py (0%->~90%+). 3743 total tests passing.",
-      "coverage_before": {"base_integrator": "~0%"},
-      "coverage_after": {"base_integrator": "~90%+"}
     }
   ]
 }
