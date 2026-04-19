@@ -90,9 +90,9 @@ class MCPIntegrator:
                 for dep in lockfile.get_all_dependencies():
                     if dep.repo_url:
                         yml = (
-                            apm_modules_dir / dep.repo_url / dep.virtual_path / "apm.yml"
+                            apm_modules_dir / dep.repo_url / dep.virtual_path / "apm.yaml"
                             if dep.virtual_path
-                            else apm_modules_dir / dep.repo_url / "apm.yml"
+                            else apm_modules_dir / dep.repo_url / "apm.yaml"
                         )
                         locked_paths.add(yml.resolve())
                         if dep.depth == 1:
@@ -103,7 +103,7 @@ class MCPIntegrator:
         if locked_paths is not None:
             apm_yml_paths = [path for path in sorted(locked_paths) if path.exists()]
         else:
-            apm_yml_paths = apm_modules_dir.rglob("apm.yml")
+            apm_yml_paths = apm_modules_dir.rglob("apm.yaml")
 
         collected = []
         for apm_yml_path in apm_yml_paths:
@@ -891,7 +891,7 @@ class MCPIntegrator:
             if apm_config is None:
                 # Lazy load  -- only when the caller doesn't provide it
                 try:
-                    apm_yml = Path("apm.yml")
+                    apm_yml = Path("apm.yaml")
                     if apm_yml.exists():
                         from apm_cli.utils.yaml_io import load_yaml
                         apm_config = load_yaml(apm_yml)

@@ -25,7 +25,7 @@ def _check_lockfile_exists(project_root: Path) -> CheckResult:
     """Check that ``apm.lock.yaml`` is present when ``apm.yml`` has deps."""
     from ..deps.lockfile import get_lockfile_path
 
-    apm_yml_path = project_root / "apm.yml"
+    apm_yml_path = project_root / "apm.yaml"
     if not apm_yml_path.exists():
         return CheckResult(
             name="lockfile-exists",
@@ -277,7 +277,7 @@ def run_baseline_checks(
     if not result.checks[0].passed:
         return result
 
-    apm_yml_path = project_root / "apm.yml"
+    apm_yml_path = project_root / "apm.yaml"
     lockfile_path = get_lockfile_path(project_root)
 
     # If there's no apm.yml or no lockfile, the first check already passed

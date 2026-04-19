@@ -40,11 +40,11 @@ def scan_workflows_for_dependencies():
     return all_servers
 
 
-def sync_workflow_dependencies(output_file="apm.yml"):
+def sync_workflow_dependencies(output_file="apm.yaml"):
     """Extract all MCP servers from workflows into apm.yml.
     
     Args:
-        output_file (str, optional): Path to the output file. Defaults to "apm.yml".
+        output_file (str, optional): Path to the output file. Defaults to "apm.yaml".
         
     Returns:
         tuple: (bool, list) - Success status and list of servers added

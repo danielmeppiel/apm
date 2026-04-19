@@ -249,7 +249,7 @@ def get_dependency_declaration_order(base_dir: str) -> List[str]:
         List[str]: List of dependency installed paths in declaration order.
     """
     try:
-        apm_yml_path = Path(base_dir) / "apm.yml"
+        apm_yml_path = Path(base_dir) / "apm.yaml"
         if not apm_yml_path.exists():
             return []
         

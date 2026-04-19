@@ -6,11 +6,11 @@ import yaml
 from ..factory import PackageManagerFactory, ClientFactory
 
 
-def load_apm_config(config_file="apm.yml"):
+def load_apm_config(config_file="apm.yaml"):
     """Load the APM configuration file.
     
     Args:
-        config_file (str, optional): Path to the configuration file. Defaults to "apm.yml".
+        config_file (str, optional): Path to the configuration file. Defaults to "apm.yaml".
         
     Returns:
         dict: The configuration, or None if loading failed.
@@ -30,11 +30,11 @@ def load_apm_config(config_file="apm.yml"):
         return None
 
 
-def verify_dependencies(config_file="apm.yml"):
+def verify_dependencies(config_file="apm.yaml"):
     """Check if apm.yml servers are installed.
     
     Args:
-        config_file (str, optional): Path to the configuration file. Defaults to "apm.yml".
+        config_file (str, optional): Path to the configuration file. Defaults to "apm.yaml".
         
     Returns:
         tuple: (bool, list, list) - All installed status, list of installed, list of missing
@@ -60,11 +60,11 @@ def verify_dependencies(config_file="apm.yml"):
         return False, [], []
 
 
-def install_missing_dependencies(config_file="apm.yml", client_type="vscode"):
+def install_missing_dependencies(config_file="apm.yaml", client_type="vscode"):
     """Install missing dependencies from apm.yml for specified client.
     
     Args:
-        config_file (str, optional): Path to the configuration file. Defaults to "apm.yml".
+        config_file (str, optional): Path to the configuration file. Defaults to "apm.yaml".
         client_type (str, optional): Type of client to configure. Defaults to "vscode".
         
     Returns:

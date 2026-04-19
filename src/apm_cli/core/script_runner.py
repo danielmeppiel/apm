@@ -225,7 +225,7 @@ class ScriptRunner:
 
     def _load_config(self) -> Optional[Dict]:
         """Load apm.yml from current directory."""
-        config_path = Path("apm.yml")
+        config_path = Path("apm.yaml")
         if not config_path.exists():
             return None
 
@@ -803,7 +803,7 @@ class ScriptRunner:
         Args:
             package_ref: Virtual package reference to add
         """
-        config_path = Path("apm.yml")
+        config_path = Path("apm.yaml")
 
         # Skip if apm.yml doesn't exist (e.g., in test environments)
         if not config_path.exists():
@@ -840,7 +840,7 @@ class ScriptRunner:
         }
 
         from ..utils.yaml_io import dump_yaml
-        dump_yaml(minimal_config, "apm.yml")
+        dump_yaml(minimal_config, "apm.yaml")
 
         print(f"  [i]  Created minimal apm.yml for zero-config execution")
 

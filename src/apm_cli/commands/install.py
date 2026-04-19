@@ -282,7 +282,7 @@ def _validate_and_add_packages_to_apm_yml(packages, dry_run=False, dev=False, lo
         return validated_packages, outcome
 
     # Add validated packages to dependencies (already canonical)
-    dep_label = "devDependencies" if dev else "apm.yml"
+    dep_label = "devDependencies" if dev else "apm.yaml"
     for package in validated_packages:
         current_deps.append(package)
         if logger:
@@ -327,7 +327,7 @@ def _local_path_no_markers_hint(local_dir, verbose_log=None):
     """Scan two levels for sub-packages and print a hint if any are found."""
     from apm_cli.utils.helpers import find_plugin_json
 
-    markers = ("apm.yml", "SKILL.md")
+    markers = ("apm.yaml", "SKILL.md")
     found = []
     for child in sorted(local_dir.iterdir()):
         if not child.is_dir():
@@ -379,7 +379,7 @@ def _validate_package_exists(package, verbose=False, auth_resolver=None):
             if not local.is_dir():
                 return False
             # Must contain apm.yml, SKILL.md, or plugin.json
-            if (local / "apm.yml").exists() or (local / "SKILL.md").exists():
+            if (local / "apm.yaml").exists() or (local / "SKILL.md").exists():
                 return True
             from apm_cli.utils.helpers import find_plugin_json
             if find_plugin_json(local) is not None:
@@ -1379,7 +1379,7 @@ def _copy_local_package(dep_ref, install_path, project_root):
         return None
     from apm_cli.utils.helpers import find_plugin_json
     if (
-        not (local / "apm.yml").exists()
+        not (local / "apm.yaml").exists()
         and not (local / "SKILL.md").exists()
         and find_plugin_json(local) is None
     ):
@@ -2005,7 +2005,7 @@ def _install_apm_dependencies(
                     )
                     from datetime import datetime
 
-                    local_apm_yml = install_path / "apm.yml"
+                    local_apm_yml = install_path / "apm.yaml"
                     if local_apm_yml.exists():
                         local_pkg = APMPackage.from_apm_yml(local_apm_yml)
                         if not local_pkg.source:

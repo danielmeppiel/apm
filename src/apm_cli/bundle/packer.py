@@ -78,7 +78,7 @@ def pack_bundle(
         )
 
     # 2. Read apm.yml for name / version / config target
-    apm_yml_path = project_root / "apm.yml"
+    apm_yml_path = project_root / "apm.yaml"
     try:
         package = APMPackage.from_apm_yml(apm_yml_path)
         pkg_name = package.name
