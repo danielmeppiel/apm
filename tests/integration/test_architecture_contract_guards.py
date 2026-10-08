@@ -119,6 +119,111 @@ def test_codex_native_edge_preserves_nested_entries() -> None:
     assert _to_codex_hook_entries(source) == source
 
 
+_NESTED_HOOK_METADATA = {
+    "env": {"APM_TEST": "value", "PATHS": ["a", "b"]},
+    "x-extension": {"tags": [{"name": "t"}], "enabled": True, "weight": 1.5, "note": None},
+}
+
+
+def _rendered_handler(target: str) -> tuple[object, dict]:
+    """Render one portable handler carrying nested metadata for one native edge."""
+    from apm_cli.integration.hook_native_formats import (
+        _to_antigravity_hook_entries,
+        _to_claude_hook_entries,
+        _to_codex_hook_entries,
+        _to_gemini_hook_entries,
+    )
+
+    source = [{"command": "echo ok", "timeoutSec": 3, **_NESTED_HOOK_METADATA}]
+    if target == "antigravity-flat":
+        rendered = _to_antigravity_hook_entries(source, "PreInvocation")
+        return rendered, rendered[0]
+    renderers = {
+        "claude": _to_claude_hook_entries,
+        "codex": _to_codex_hook_entries,
+        "gemini": _to_gemini_hook_entries,
+        "antigravity-nested": lambda entries: _to_antigravity_hook_entries(entries, "PreToolUse"),
+    }
+    rendered = renderers[target](source)
+    return rendered, rendered[0]["hooks"][0]
+
+
+@pytest.mark.parametrize(
+    ("target", "timeout"),
+    [
+        ("claude", 3),
+        ("codex", 3),
+        ("gemini", 3000),
+        ("antigravity-nested", 3),
+        ("antigravity-flat", 3),
+    ],
+)
+def test_native_edges_render_nested_hook_metadata_as_json(target: str, timeout: int) -> None:
+    """Nested hook metadata must reach native JSON documents intact (#3167)."""
+    rendered, handler = _rendered_handler(target)
+
+    assert json.loads(json.dumps(rendered)) == rendered
+    assert handler["command"] == "echo ok"
+    assert handler["timeout"] == timeout
+    assert handler["env"] == _NESTED_HOOK_METADATA["env"]
+    assert handler["x-extension"] == _NESTED_HOOK_METADATA["x-extension"]
+
+
+def test_native_edges_render_nested_binding_metadata_and_raw_entries_as_json() -> None:
+    """Matcher-group metadata and raw entries must round-trip through JSON."""
+    from apm_cli.integration.hook_native_formats import (
+        _to_antigravity_hook_entries,
+        _to_codex_hook_entries,
+    )
+
+    nested = [
+        {
+            "matcher": "Bash",
+            "x-group": {"labels": ["a", {"b": 1}]},
+            "hooks": [{"type": "command", "command": "echo check", "env": {"K": "v"}}],
+        }
+    ]
+    raw = [["opaque", {"inner": {"value": 1}}]]
+
+    for rendered, expected in (
+        (_to_codex_hook_entries(nested), nested),
+        (_to_codex_hook_entries(raw), raw),
+        (_to_antigravity_hook_entries(raw, "PreInvocation"), raw),
+    ):
+        assert json.loads(json.dumps(rendered)) == expected
+
+
+def test_rendered_hook_metadata_is_independent_of_the_frozen_ir() -> None:
+    """Mutating native output must not reach the immutable hook IR."""
+    from apm_cli.hook_contract import _entries_to_ir
+    from apm_cli.integration.hook_native_formats import _handler_from_ir
+
+    document = _entries_to_ir([{"command": "echo ok", **_NESTED_HOOK_METADATA}])
+    handler = document.bindings[0].handlers[0]
+
+    rendered = _handler_from_ir(handler, timeout_milliseconds=False)
+    rendered["env"]["APM_TEST"] = "changed"
+    rendered["env"]["PATHS"].append("c")
+
+    assert handler.metadata["env"]["APM_TEST"] == "value"
+    assert tuple(handler.metadata["env"]["PATHS"]) == ("a", "b")
+    assert (
+        _handler_from_ir(handler, timeout_milliseconds=False)["env"] == _NESTED_HOOK_METADATA["env"]
+    )
+
+
+def test_gemini_compatibility_conversion_preserves_nested_env() -> None:
+    """The in-place Gemini key conversion must keep nested env as plain JSON."""
+    from apm_cli.integration.hook_native_formats import _copilot_keys_to_gemini
+
+    hook = {"bash": "echo ok", "timeoutSec": 2, "env": {"APM_TEST": "value"}}
+    _copilot_keys_to_gemini(hook)
+
+    assert hook["env"] == {"APM_TEST": "value"}
+    assert hook["timeout"] == 2000
+    assert json.loads(json.dumps(hook)) == hook
+
+
 def test_claude_edge_nests_flat_portable_hook_entries(tmp_path: Path) -> None:
     """Claude output must wrap portable handlers in matcher/hooks entries."""
     from apm_cli.integration.hook_integrator import HookIntegrator
