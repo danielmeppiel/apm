@@ -37,6 +37,7 @@ from .local_bundle_paths import bundle_pack_files as _bundle_pack_files
 from .local_bundle_paths import bundle_slug_validation_error as _bundle_slug_error
 from .local_bundle_paths import known_bundle_deploy_prefixes as _known_bundle_prefixes
 from .local_bundle_paths import target_bundle_deploy_prefixes as _target_bundle_prefixes
+from .project_package import build_project_local_package_info
 from .target_filter import (
     log_package_target_restriction as _log_package_target_restriction,
 )
@@ -741,22 +742,11 @@ def integrate_local_content(
     same shape as ``integrate_package_primitives()``.
     """
     from ..integration.canvas_integrator import CanvasIntegrator
-    from ..models.apm_package import APMPackage, PackageInfo, PackageType
 
     if source_root is None:
         source_root = project_root
 
-    local_pkg = APMPackage(
-        name="_local",
-        version="0.0.0",
-        package_path=source_root,
-        source="local",
-    )
-    local_info = PackageInfo(
-        package=local_pkg,
-        install_path=source_root,
-        package_type=PackageType.APM_PACKAGE,
-    )
+    local_info = build_project_local_package_info(source_root)
 
     return integrate_package_primitives(
         local_info,
