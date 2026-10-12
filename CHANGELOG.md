@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Agent primitives (`*.agent.md`) accept an optional `user-invocable: false` frontmatter field (default `true`; `visibility: internal` is an accepted alias) to mark an agent as programmatic-only, reachable via another agent's `handoffs:` but hidden from the user-facing picker. Verbatim-copy targets preserve the field; Codex and Kiro warn instead of silently dropping it. -- by @richard-fowles-epam (#3132)
+- New `grok-bot` install target deploys skill packages to `agent-data/workflows/<skill-name>/` for Grok Bot at project and user (`--global`) scope; the `grok-bot` target accepts packages declaring `agent-skills`, and an explicit `--target` fails only when no dependency in the install has a compatible target or a package named on the command line (and its whole subtree) has none; other filtered dependencies warn. (#3106)
 
 ### Changed
 
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Codex agent conversion preserves native `model` and `model_reasoning_effort` settings and warns about dropped metadata instead of silently losing it. (#3150)
+- Cursor hooks use native v1 events and flat handlers; unsupported input and overlapping Claude imports now fail explicitly. Choose one hook route per dependency; see the [supported mappings](docs/src/content/docs/producer/author-primitives/hooks-and-commands.md#cursor-native-hooks-and-claude-import) and `openapm-v0.1.md` requirements `req-tg-016/017`. (#3149)
 
 ## [0.33.0] - 2026-10-02
 
