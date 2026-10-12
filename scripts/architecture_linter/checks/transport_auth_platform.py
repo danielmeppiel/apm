@@ -598,6 +598,11 @@ def _check_marketplace_package_remote(provider: FactsProvider) -> tuple[Violatio
                 "resolver_kwargs['port'] = port",
             ),
         ),
+        (
+            "src/apm_cli/install/validation.py",
+            "_uses_clone_root_probe",
+            ("initial_transport_scheme(dep_ref) == 'ssh'",),
+        ),
     )
     findings: list[Violation] = []
     for path, function, required in contracts:

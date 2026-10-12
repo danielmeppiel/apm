@@ -34,12 +34,12 @@ SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 @pytest.fixture(autouse=True)
-def _no_fallback_env(monkeypatch):
+def _no_fallback_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in ("APM_ALLOW_PROTOCOL_FALLBACK", "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_APM_PAT"):
         monkeypatch.delenv(name, raising=False)
 
 
-def _resolve(url: str):
+def _resolve(url: str) -> DependencyReference:
     source = MarketplaceSource(name="mkt", url=url)
     manifest = MarketplaceManifest(
         name="mkt",
@@ -57,7 +57,7 @@ def _resolve(url: str):
     return dep_ref
 
 
-def _resolver_without_token():
+def _resolver_without_token() -> MagicMock:
     resolver = MagicMock()
     host_info = MagicMock(kind="github", display_name="github.com", host="github.com", port=None)
     resolver.classify_host.return_value = host_info
@@ -70,12 +70,12 @@ def _resolver_without_token():
     return resolver
 
 
-def _run_result(returncode: int, stderr: str = ""):
+def _run_result(returncode: int, stderr: str = "") -> subprocess.CompletedProcess[str]:
     stdout = f"{SHA}\tHEAD\n" if returncode == 0 else ""
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-def _probe_urls(mock_run) -> list[str]:
+def _probe_urls(mock_run: MagicMock) -> list[str]:
     return [call.args[0][-1] for call in mock_run.call_args_list]
 
 
@@ -87,7 +87,7 @@ def _probe_urls(mock_run) -> list[str]:
     ],
     ids=["ssh_url", "scp_shorthand"],
 )
-def test_ssh_github_marketplace_subdir_probes_over_ssh_only(registered_url) -> None:
+def test_ssh_github_marketplace_subdir_probes_over_ssh_only(registered_url: str) -> None:
     dep_ref = _resolve(registered_url)
     assert dep_ref.host == "github.com"
     assert dep_ref.explicit_scheme == "ssh"
@@ -177,3 +177,15 @@ def test_https_github_marketplace_subdir_keeps_downloader_probe() -> None:
     assert ok is True
     https_probe.assert_called_once()
     git_probe.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("registered_url", "expected"),
+    [
+        ("ssh://git@github.com/org/private-mkt.git", True),
+        ("https://github.com/org/private-mkt.git", False),
+    ],
+    ids=["ssh", "https"],
+)
+def test_clone_root_probe_follows_initial_transport(registered_url: str, expected: bool) -> None:
+    assert validation._uses_clone_root_probe(_resolve(registered_url)) is expected

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RULE = "transport-platform-marketplace-package-remote"
 RESOLVER = "src/apm_cli/marketplace/resolver.py"
 VERSION = "src/apm_cli/marketplace/version_resolver.py"
+VALIDATION = "src/apm_cli/install/validation.py"
 
 
 def test_marketplace_remote_owner_is_compliant() -> None:
@@ -49,6 +50,11 @@ def test_marketplace_remote_owner_is_compliant() -> None:
             "return DependencyReference.parse(source.url)",
         ),
         (RESOLVER, 'elif source_type in {"github", "git-subdir", "gitlab"}:', "elif False:"),
+        (
+            VALIDATION,
+            'initial_transport_scheme(dep_ref) == "ssh"',
+            '(getattr(dep_ref, "explicit_scheme", None) or "") == "ssh"',
+        ),
     ],
     ids=[
         "catalog-instead-of-package",
@@ -61,6 +67,7 @@ def test_marketplace_remote_owner_is_compliant() -> None:
         "lookup-return-handoff",
         "bare-source-authority",
         "explicit-source-validation",
+        "validation-probe-scheme-owner",
     ],
 )
 def test_marketplace_remote_owner_rejects_mutation(path: str, old: str, new: str) -> None:
