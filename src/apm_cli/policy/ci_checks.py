@@ -113,6 +113,44 @@ def _check_ref_consistency(
             mismatches.append(f"{key}: not found in lockfile")
             requires_update = requires_update or bool(lock.dependencies)
             continue
+        if dep_ref.is_marketplace:
+            if dep_ref.marketplace_version_spec:
+                from ..marketplace.semver import parse_semver, satisfies_range
+                from ..marketplace.version_resolver import is_version_constraint
+
+                spec = dep_ref.marketplace_version_spec
+                if is_version_constraint(spec):
+                    parsed_ver = parse_semver(locked_dep.version) if locked_dep.version else None
+                    matches_constraint = bool(
+                        locked_dep.constraint and locked_dep.constraint == spec
+                    )
+                    matches_semver = bool(
+                        parsed_ver is not None and satisfies_range(parsed_ver, spec)
+                    )
+                    if not (matches_constraint or matches_semver):
+                        mismatches.append(
+                            f"{key}: manifest version '{spec}' != "
+                            f"lockfile '{locked_dep.version or locked_dep.constraint or locked_dep.resolved_ref or '(missing)'}'"
+                        )
+                        requires_update = True
+                elif is_full_revision_pin(spec):
+                    if locked_dep.resolved_commit != spec:
+                        mismatches.append(
+                            f"{key}: manifest commit '{spec}' != "
+                            f"lockfile resolved_commit '{locked_dep.resolved_commit or '(missing)'}'"
+                        )
+                        requires_update = True
+                elif spec not in (
+                    locked_dep.resolved_ref,
+                    locked_dep.resolved_tag,
+                    locked_dep.version,
+                ):
+                    mismatches.append(
+                        f"{key}: manifest ref '{spec}' != "
+                        f"lockfile ref '{locked_dep.resolved_ref or locked_dep.resolved_tag or '(missing)'}'"
+                    )
+                    requires_update = True
+            continue
         if is_full_revision_pin(dep_ref.reference) and (
             locked_dep.resolved_commit != dep_ref.reference
         ):
@@ -321,7 +359,15 @@ def _check_no_orphans(
     orphaned = [
         dep_key
         for dep_key, locked_dep in lock.dependencies.items()
-        if dep_key not in manifest_keys and dep_key != _SELF_KEY and locked_dep.resolved_by is None
+        if dep_key not in manifest_keys
+        and dep_key != _SELF_KEY
+        and locked_dep.resolved_by is None
+        and not (
+            locked_dep.discovered_via
+            and locked_dep.marketplace_plugin_name
+            and f"_marketplace/{locked_dep.discovered_via}/{locked_dep.marketplace_plugin_name}"
+            in manifest_keys
+        )
     ]
     if not orphaned:
         return CheckResult(
