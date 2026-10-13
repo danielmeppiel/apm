@@ -33,6 +33,17 @@ SUPPORTED_LOCKFILE_VERSIONS = frozenset({"1", "2"})
 _REPRODUCIBLE_EPOCH = "1970-01-01T00:00:00+00:00"
 
 
+def _copy_extension_map(value: object) -> dict[str, Any]:
+    """Copy a vendor-extension mapping, or return {} for empty/invalid input.
+
+    Non-mapping values (corrupt lockfiles) become an empty map so readers do
+    not raise. String-coerced keys keep declaration order.
+    """
+    if not isinstance(value, dict) or not value:
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
 class _ExistingLockfileUnset:
     """Sentinel for callers that have not already read the destination."""
 
@@ -277,6 +288,10 @@ class LockedDependency:
     # spec. Omitted from the serialized entry when absent.
     name: str | None = None
     alias: str | None = None
+    # Vendor extension keys (x-*) from the dependency's own apm.yml, in
+    # declaration order. Omitted from YAML when empty so lockfiles that
+    # declare no extensions stay byte-identical. Values are not interpreted.
+    extensions: dict[str, Any] = field(default_factory=dict)
     # Forward-compat carrier: keys we don't recognise are preserved
     # through a from_dict / to_dict round-trip so an older APM build
     # reading a lockfile written by a newer build doesn't silently drop
@@ -425,6 +440,8 @@ class LockedDependency:
             result["resolved_at"] = self.resolved_at
         if self.declared_license:
             result["declared_license"] = self.declared_license
+        if self.extensions:
+            result["extensions"] = dict(self.extensions)
         if self.exec_status:
             result["exec_status"] = self.exec_status
         # Replay forward-compat unknown fields LAST so they never shadow a
@@ -506,6 +523,7 @@ class LockedDependency:
             "resolved_tag",
             "resolved_at",
             "declared_license",
+            "extensions",
             "exec_status",
             "name",
             # legacy migration key handled above
@@ -557,6 +575,7 @@ class LockedDependency:
             declared_license=data.get("declared_license"),
             exec_status=exec_status,
             name=data.get("name"),
+            extensions=_copy_extension_map(data.get("extensions")),
             _unknown_fields=unknown_fields,
         )
 
@@ -573,6 +592,7 @@ class LockedDependency:
         git_semver_resolution=None,
         package_name: str | None = None,
         package_version: str | None = None,
+        extensions: dict[str, Any] | None = None,
     ) -> LockedDependency:
         """Create from a DependencyReference with resolution info.
 
@@ -710,6 +730,7 @@ class LockedDependency:
                 git_semver_resolution.resolved_at if git_semver_resolution is not None else None
             ),
             name=package_name,
+            extensions=_copy_extension_map(extensions),
         )
 
     def to_dependency_ref(self) -> DependencyReference:
@@ -1100,6 +1121,7 @@ class LockFile:
                 git_semver_resolution=git_semver_resolution,
                 package_name=getattr(entry, "package_name", None),
                 package_version=getattr(entry, "package_version", None),
+                extensions=getattr(entry, "extensions", None),
             )
             lock.add_dependency(locked_dep)
 

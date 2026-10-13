@@ -8,7 +8,7 @@ compatibility.
 
 import logging
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +17,7 @@ import yaml
 from ..core.apm_yml import parse_targets_field
 from ..core.target_catalog import normalize_target_name
 from ..core.target_detection import parse_target_field
+from ..utils.console import _rich_warning
 from .dependency import (
     DependencyReference,
     GitReferenceType,
@@ -270,6 +271,94 @@ def _route_unscoped_to_default_registry(
                 )
 
 
+# Top-level apm.yml keys this client understands. A key in this set must
+# not produce an unknown-key warning. Includes fields parsed by sibling
+# owners (policy, compilation, marketplace, lifecycle, executables) rather
+# than stored on APMPackage. ``x-*`` keys are extensions, not members.
+_KNOWN_TOP_LEVEL_KEYS = frozenset(
+    {
+        "$schema",
+        "name",
+        "version",
+        "description",
+        "author",
+        "license",
+        "default_host",
+        "source",
+        "target",
+        "targets",
+        "type",
+        "scripts",
+        "includes",
+        "registries",
+        "dependencies",
+        "devDependencies",
+        "compilation",
+        "policy",
+        "marketplace",
+        "allowExecutables",
+        "executables",
+        "lifecycle",
+        # Consumed by plugin synthesis / Agent Plugin projection, not stored
+        # as first-class APMPackage fields. Still known, so they must not warn.
+        "homepage",
+        "repository",
+        "keywords",
+        "build",
+        "manifestVersion",
+        "schemaVersion",
+    }
+)
+_EXTENSION_PREFIX = "x-"
+
+
+def _is_extension_key(key: object) -> bool:
+    """True for vendor-extension keys (any string starting with ``x-``)."""
+    return isinstance(key, str) and key.startswith(_EXTENSION_PREFIX)
+
+
+def _ascii_token(value: object) -> str:
+    """Render a diagnostic token as printable ASCII."""
+    text = value if isinstance(value, str) else str(value)
+    return ascii(text)[1:-1]
+
+
+def _warn_unknown_manifest_keys(keys: list[str], manifest_path: Path) -> None:
+    """Warn once, naming every ignored top-level key."""
+    safe_keys = ", ".join(_ascii_token(key) for key in keys)
+    safe_path = _ascii_token(manifest_path)
+    _rich_warning(
+        f"Unknown top-level key(s) in {safe_path}: {safe_keys}. "
+        "These keys were ignored. Rename each to an x-* extension key "
+        "(for example x-custom-field) to keep it in the parsed manifest "
+        "and the dependency lock entry, or remove it.",
+        symbol="warning",
+    )
+
+
+def _collect_manifest_extensions(
+    data: Mapping[str, Any],
+    manifest_path: Path,
+) -> dict[str, Any]:
+    """Return ``x-*`` keys in declaration order and warn on other unknown keys.
+
+    Extension values are not validated. Non-string keys are unknown, not
+    extensions, and must not raise.
+    """
+    extensions: dict[str, Any] = {}
+    unknown: list[str] = []
+    for key, value in data.items():
+        if _is_extension_key(key):
+            extensions[str(key)] = value
+            continue
+        if isinstance(key, str) and key in _KNOWN_TOP_LEVEL_KEYS:
+            continue
+        unknown.append(key if isinstance(key, str) else str(key))
+    if unknown:
+        _warn_unknown_manifest_keys(unknown, manifest_path)
+    return extensions
+
+
 def _iter_apm_dependency_lists(
     dependencies: dict[str, Any] | None,
     dev_dependencies: dict[str, Any] | None,
@@ -344,6 +433,9 @@ class APMPackage:
     # to boolean (e.g. ``{"owner/repo#v1.0": {"hooks": true}}``).
     allow_executables: dict[str, dict[str, bool]] | None = None
     agent_plugin: "AgentPlugin | None" = None
+    # Vendor extension keys (``x-*``) from apm.yml, in declaration order.
+    # Empty when the manifest declares none. Values are not interpreted.
+    extensions: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Derive the canonical target projection for compatibility callers."""
@@ -598,6 +690,8 @@ class APMPackage:
                 for name in parsed_target_values
             )
 
+        extensions = _collect_manifest_extensions(data, source_manifest)
+
         result = cls(
             name=data["name"],
             version=data["version"],
@@ -618,6 +712,7 @@ class APMPackage:
             default_registry=default_registry,
             manifest_contract=manifest_contract.value,
             allow_executables=allow_executables,
+            extensions=extensions,
         )
         return result
 

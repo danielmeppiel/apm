@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm.yml` keys starting with `x-` are kept on the parsed manifest and recorded on that dependency's `apm.lock.yaml` entry; any other unknown top-level key warns by name instead of being dropped silently. (#3219)
 - Codex agent conversion preserves native `model` and `model_reasoning_effort` settings and warns about dropped metadata instead of silently losing it. (#3150)
 - Cursor hooks use native v1 events and flat handlers; unsupported input and overlapping Claude imports now fail explicitly. Choose one hook route per dependency; see the [supported mappings](docs/src/content/docs/producer/author-primitives/hooks-and-commands.md#cursor-native-hooks-and-claude-import) and `openapm-v0.1.md` requirements `req-tg-016/017`. (#3149)
 
