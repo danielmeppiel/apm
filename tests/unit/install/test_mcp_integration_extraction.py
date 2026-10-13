@@ -160,6 +160,61 @@ class TestRunMcpIntegrationInstallBranch:
         assert mock_mcp.remove_stale.call_args.args[1] == "claude"
 
     @patch(_PATCH_TARGET)
+    def test_ownerless_lockfile_cleans_stale_servers_from_explicit_runtime(
+        self, mock_mcp, tmp_path: Path
+    ):
+        """--runtime vscode prunes VS Code, not the runtime the target decision names."""
+        dep = MCPDependency(name="io.github.acme/new-server", transport="stdio")
+        mock_mcp.deduplicate.side_effect = lambda x: x
+        mock_mcp.install.return_value = 1
+        mock_mcp.get_server_names.return_value = {"io.github.acme/new-server"}
+        mock_mcp.get_server_configs.return_value = {}
+        mock_mcp.get_server_provenance.return_value = {}
+
+        run_mcp_integration(
+            **_base_kwargs(
+                mcp_deps=[dep],
+                old_mcp_servers={"io.github.acme/orphan-server"},
+                old_mcp_target_servers={},
+                old_mcp_target_servers_present=False,
+                runtime="vscode",
+                target_decision=EffectiveTargetDecision("copilot", "apm config target"),
+                project_root=tmp_path,
+            )
+        )
+
+        mock_mcp.remove_stale.assert_called_once()
+        assert mock_mcp.remove_stale.call_args.args[0] == {"io.github.acme/orphan-server"}
+        assert mock_mcp.remove_stale.call_args.args[1] == "vscode"
+
+    @patch(_PATCH_TARGET)
+    def test_ownerless_lockfile_without_target_cleans_stale_servers_from_every_runtime(
+        self, mock_mcp, tmp_path: Path
+    ):
+        """With no target and no --runtime, cleanup spans every runtime, as before ownership."""
+        dep = MCPDependency(name="io.github.acme/new-server", transport="stdio")
+        mock_mcp.deduplicate.side_effect = lambda x: x
+        mock_mcp.install.return_value = 1
+        mock_mcp.get_server_names.return_value = {"io.github.acme/new-server"}
+        mock_mcp.get_server_configs.return_value = {}
+        mock_mcp.get_server_provenance.return_value = {}
+
+        run_mcp_integration(
+            **_base_kwargs(
+                mcp_deps=[dep],
+                old_mcp_servers={"io.github.acme/orphan-server"},
+                old_mcp_target_servers={},
+                old_mcp_target_servers_present=False,
+                target_decision=EffectiveTargetDecision(None, "auto-detect"),
+                project_root=tmp_path,
+            )
+        )
+
+        mock_mcp.remove_stale.assert_called_once()
+        assert mock_mcp.remove_stale.call_args.args[0] == {"io.github.acme/orphan-server"}
+        assert mock_mcp.remove_stale.call_args.args[1] is None
+
+    @patch(_PATCH_TARGET)
     def test_ownerless_user_scope_lockfile_keeps_unowned_servers(self, mock_mcp, tmp_path: Path):
         """User-level configs hold entries APM never wrote, so cleanup needs recorded ownership."""
         dep = MCPDependency(name="io.github.acme/new-server", transport="stdio")
