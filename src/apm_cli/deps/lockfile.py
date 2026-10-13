@@ -288,8 +288,8 @@ class LockedDependency:
     # spec. Omitted from the serialized entry when absent.
     name: str | None = None
     alias: str | None = None
-    # Vendor extension keys (x-*) from the dependency's own apm.yml, in
-    # declaration order. Omitted from YAML when empty so lockfiles that
+    # req-ext-003: vendor extension keys (x-*) from the dependency manifest,
+    # in declaration order. Omitted from YAML when empty so lockfiles that
     # declare no extensions stay byte-identical. Values are not interpreted.
     extensions: dict[str, Any] = field(default_factory=dict)
     # Forward-compat carrier: keys we don't recognise are preserved

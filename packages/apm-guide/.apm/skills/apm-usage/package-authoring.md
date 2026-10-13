@@ -345,10 +345,12 @@ prevent installation.
 
 ## Manifest fields: `x-*` extension keys
 
-Top-level keys that start with `x-` are vendor extensions. APM keeps them on
-the parsed manifest and records a dependency's extensions on that dependency's
-`apm.lock.yaml` entry (`extensions`). Values are not validated. The lockfile
-field is omitted when the dependency declares none.
+Top-level keys that start with `x-` are vendor extensions (OpenAPM
+`req-ext-003`). APM keeps them on the parsed manifest and records a
+dependency's extensions on that dependency's `apm.lock.yaml` entry
+(`extensions`). Values are not validated. The lockfile field is omitted when
+the dependency declares none. Writers still preserve other unknown top-level
+keys on rewrite.
 
 Any other unknown top-level key is ignored with one warning that names the
 key. The command does not fail. Rename the key so it starts with `x-` to keep

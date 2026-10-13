@@ -347,7 +347,7 @@ For full client semantics - auth, lockfile fields, and routing rules - see the [
 
 ### 3.12. Extension keys
 
-Any top-level key that starts with `x-` is a vendor extension. The CLI keeps these keys, in declaration order, on the parsed package. It does not validate or interpret the values.
+Any top-level key that starts with `x-` is a vendor extension. The CLI keeps these keys, in declaration order, on the parsed package. It does not validate or interpret the values. Normative contract: [req-ext-003](../../specs/openapm-v01/#req-ext-003).
 
 When a dependency's `apm.yml` declares `x-*` keys, `apm lock` records them on that dependency's entry in `apm.lock.yaml` under `extensions`. The field is omitted when the dependency declares none, so existing lockfiles stay unchanged.
 

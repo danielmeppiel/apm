@@ -1,4 +1,7 @@
-"""x-* manifest extensions are kept and other unknown keys warn (#3219)."""
+"""x-* manifest extensions are kept and other unknown keys warn (#3219).
+
+Spec bind: tests/spec_conformance/test_manifest_extension_reqs.py (req-ext-003).
+"""
 
 from __future__ import annotations
 

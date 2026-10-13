@@ -131,6 +131,11 @@ requirements:
     keyword: MUST
     section: "4.1"
     conformance_class: producer
+  - id: req-ext-003
+    keyword: MUST
+    section: "4.6.2"
+    conformance_class: consumer
+    notes: "top-level x-* keys are preserved without value checks and recorded on the dependency lock entry under extensions; other unknown top-level keys warn and do not fail; rewrite preservation remains req-mf-006"
   - id: req-lk-001
     keyword: MUST
     section: "5.1"

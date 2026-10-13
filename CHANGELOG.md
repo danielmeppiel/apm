@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `docs/src/content/docs/specs/openapm-v0.1.md` adds proposed `req-tg-015` for Codex-native `model`/`model_reasoning_effort` preservation and bounded dropped-metadata diagnostics. (#3150)
+- OpenAPM v0.1 adds proposed `req-ext-003`: top-level `x-*` manifest keys are preserved without value checks, recorded on each dependency lock entry under `extensions` (omitted when empty), and other unknown top-level keys warn without failing. (#3219)
 
 ### Fixed
 

@@ -230,7 +230,7 @@ Each item in `dependencies` describes one resolved package.
 | `resolved_tag` | string | git-source semver or SHA-pin updates | The concrete annotated git tag (`v1.5.3`, `widget--v1.5.3`) that satisfied `constraint` or justified the latest full-SHA revision-pin update. |
 | `resolved_at` | string | git-source semver only | RFC 3339 timestamp of the resolution. Surfaces "how stale is this pin?" in `apm why`. |
 | `declared_license` | string | no | The license the package *manifest declares* (`license:` in `apm.yml`, or `license` in a `plugin.json`), recorded verbatim at resolve time and syntax-validated offline against the bundled SPDX id set. An author **claim**, not a conclusion from `LICENSE` text -- APM never reads the license file. Omitted when undeclared (absence means unknown; no sentinel is stored). Surfaced by `apm lock export`. |
-| `extensions` | map | no | Vendor extension keys (`x-*`) from the dependency's own `apm.yml`, in declaration order. Values are recorded as declared and are not interpreted. Omitted when the dependency declares none. |
+| `extensions` | map | no | Vendor extension keys (`x-*`) from the dependency's own `apm.yml`, in declaration order. Values are recorded as declared and are not interpreted. Omitted when the dependency declares none. See [req-ext-003](../../specs/openapm-v01/#req-ext-003). |
 
 Fields are emitted only when set. A minimal entry is just `repo_url` plus
 `resolved_commit`.

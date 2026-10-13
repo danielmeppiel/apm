@@ -342,8 +342,9 @@ def _collect_manifest_extensions(
 ) -> dict[str, Any]:
     """Return ``x-*`` keys in declaration order and warn on other unknown keys.
 
-    Extension values are not validated. Non-string keys are unknown, not
-    extensions, and must not raise.
+    req-ext-003: extension values are not validated. Non-string keys are
+    unknown, not extensions, and must not raise. The warning does not fail
+    parse and does not relax manifest rewrite preservation (req-mf-006).
     """
     extensions: dict[str, Any] = {}
     unknown: list[str] = []

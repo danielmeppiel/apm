@@ -264,6 +264,7 @@ class LocalDependencySource(DependencySource):
                 registry_config=None,
                 package_name=local_info.package.name if local_info.package else None,
                 package_version=local_info.package.version if local_info.package else None,
+                # req-ext-003: copy the dependency manifest's x-* keys.
                 extensions=extensions_from_resolved_package(local_info.package),
             )
         )
@@ -556,6 +557,7 @@ class CachedDependencySource(DependencySource):
                 package_version=cached_package_info.package.version
                 if cached_package_info.package
                 else None,
+                # req-ext-003: copy the dependency manifest's x-* keys.
                 extensions=extensions_from_resolved_package(cached_package_info.package),
             )
         )
@@ -806,6 +808,7 @@ class FreshDependencySource(DependencySource):
                     package_version=package_info.package.version
                     if package_info and package_info.package
                     else None,
+                    # req-ext-003: copy the dependency manifest's x-* keys.
                     extensions=extensions_from_resolved_package(
                         package_info.package if package_info else None
                     ),
