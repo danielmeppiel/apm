@@ -296,3 +296,27 @@ class TestLockFileMarketplaceLookup:
         not_found = lockfile.get_dependency("_marketplace/awesome-copilot/unknown")
         assert not_found is None
         assert not lockfile.has_dependency("_marketplace/awesome-copilot/unknown")
+
+    def test_duplicate_marketplace_provenance_fails_closed(self):
+        dep1 = LockedDependency(
+            repo_url="github/awesome-copilot",
+            virtual_path="plugins/accessibility-kanban",
+            discovered_via="awesome-copilot",
+            marketplace_plugin_name="accessibility-kanban",
+        )
+        dep2 = LockedDependency(
+            repo_url="github/rogue-copilot",
+            virtual_path="plugins/accessibility-kanban",
+            discovered_via="awesome-copilot",
+            marketplace_plugin_name="accessibility-kanban",
+        )
+        lockfile = LockFile(
+            dependencies={
+                dep1.get_unique_key(): dep1,
+                dep2.get_unique_key(): dep2,
+            }
+        )
+
+        assert lockfile.get_dependency_by_marketplace("awesome-copilot", "accessibility-kanban") is None
+        assert lockfile.get_dependency("_marketplace/awesome-copilot/accessibility-kanban") is None
+

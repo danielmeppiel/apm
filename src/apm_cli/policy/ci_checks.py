@@ -120,17 +120,37 @@ def _check_ref_consistency(
 
                 spec = dep_ref.marketplace_version_spec
                 if is_version_constraint(spec):
-                    parsed_ver = parse_semver(locked_dep.version) if locked_dep.version else None
                     matches_constraint = bool(
                         locked_dep.constraint and locked_dep.constraint == spec
                     )
-                    matches_semver = bool(
-                        parsed_ver is not None and satisfies_range(parsed_ver, spec)
-                    )
+                    candidates: list[str] = []
+                    if locked_dep.resolved_tag:
+                        candidates.append(locked_dep.resolved_tag)
+                    if locked_dep.resolved_ref:
+                        candidates.append(locked_dep.resolved_ref)
+                    if locked_dep.version:
+                        candidates.append(locked_dep.version)
+
+                    matches_semver = False
+                    for cand in candidates:
+                        parsed = parse_semver(cand)
+                        if parsed is None and cand.startswith("v"):
+                            parsed = parse_semver(cand[1:])
+                        if parsed is None:
+                            for sep in ("--v", "-v", "--", "-"):
+                                if sep in cand:
+                                    part = cand.split(sep)[-1]
+                                    parsed = parse_semver(part.lstrip("v"))
+                                    if parsed is not None:
+                                        break
+                        if parsed is not None and satisfies_range(parsed, spec):
+                            matches_semver = True
+                            break
+
                     if not (matches_constraint or matches_semver):
                         mismatches.append(
                             f"{key}: manifest version '{spec}' != "
-                            f"lockfile '{locked_dep.version or locked_dep.constraint or locked_dep.resolved_ref or '(missing)'}'"
+                            f"lockfile '{locked_dep.constraint or locked_dep.resolved_tag or locked_dep.resolved_ref or locked_dep.version or '(missing)'}'"
                         )
                         requires_update = True
                 elif is_full_revision_pin(spec):
@@ -355,19 +375,21 @@ def _check_no_orphans(
     sub-package's manifest, not the root manifest, so the root manifest
     cannot make them go away by editing its dependency lists.
     """
-    manifest_keys = {dep.get_unique_key() for dep in manifest.get_all_apm_dependencies()}
+    declared_lock_keys: set[str] = set()
+    for dep in manifest.get_all_apm_dependencies():
+        key = dep.get_unique_key()
+        declared_lock_keys.add(key)
+        if dep.is_marketplace or key.startswith("_marketplace/"):
+            locked_dep = lock.get_dependency(key)
+            if locked_dep is not None:
+                declared_lock_keys.add(locked_dep.get_unique_key())
+
     orphaned = [
         dep_key
         for dep_key, locked_dep in lock.dependencies.items()
-        if dep_key not in manifest_keys
+        if dep_key not in declared_lock_keys
         and dep_key != _SELF_KEY
         and locked_dep.resolved_by is None
-        and not (
-            locked_dep.discovered_via
-            and locked_dep.marketplace_plugin_name
-            and f"_marketplace/{locked_dep.discovered_via}/{locked_dep.marketplace_plugin_name}"
-            in manifest_keys
-        )
     ]
     if not orphaned:
         return CheckResult(

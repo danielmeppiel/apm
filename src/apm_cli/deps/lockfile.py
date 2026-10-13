@@ -812,13 +812,21 @@ class LockFile:
     def get_dependency_by_marketplace(
         self, marketplace_name: str, plugin_name: str
     ) -> LockedDependency | None:
-        """Find a locked dependency by its marketplace provenance."""
-        for dep in self.dependencies.values():
+        """Find a locked dependency by its marketplace provenance.
+
+        Fails closed (returns None) if no matching dependency is found or if
+        multiple rows share the same marketplace provenance.
+        """
+        matches = [
+            dep
+            for dep in self.dependencies.values()
             if (
                 dep.discovered_via == marketplace_name
                 and dep.marketplace_plugin_name == plugin_name
-            ):
-                return dep
+            )
+        ]
+        if len(matches) == 1:
+            return matches[0]
         return None
 
     def rename_local_deployed_path(self, old_value: str, new_value: str) -> None:

@@ -351,6 +351,152 @@ class TestRefConsistency:
         assert "run 'apm install --update'" in result.message
         assert any("^2.0.0" in d for d in result.details)
 
+    def test_pass_marketplace_dependency_with_literal_branch_ref(self, tmp_path):
+        (tmp_path / "apm.yml").write_text(
+            textwrap.dedent("""\
+                name: repro
+                version: 0.0.0
+                dependencies:
+                  apm:
+                    - name: accessibility-kanban
+                      marketplace: awesome-copilot
+                      version: "main"
+            """),
+            encoding="utf-8",
+        )
+        _write_lockfile(
+            tmp_path,
+            textwrap.dedent("""\
+                lockfile_version: '2'
+                generated_at: '2026-10-13T00:00:00Z'
+                dependencies:
+                  - repo_url: github/awesome-copilot
+                    virtual_path: plugins/accessibility-kanban
+                    discovered_via: awesome-copilot
+                    marketplace_plugin_name: accessibility-kanban
+                    resolved_ref: main
+                    resolved_commit: abc123def456
+                    deployed_files: []
+            """),
+        )
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
+
+        manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+        lock = LockFile.read(get_lockfile_path(tmp_path))
+        result = _check_ref_consistency(manifest, lock)
+        assert result.passed
+
+    def test_pass_marketplace_dependency_with_literal_tag_ref(self, tmp_path):
+        (tmp_path / "apm.yml").write_text(
+            textwrap.dedent("""\
+                name: repro
+                version: 0.0.0
+                dependencies:
+                  apm:
+                    - name: accessibility-kanban
+                      marketplace: awesome-copilot
+                      version: "v1.2.0"
+            """),
+            encoding="utf-8",
+        )
+        _write_lockfile(
+            tmp_path,
+            textwrap.dedent("""\
+                lockfile_version: '2'
+                generated_at: '2026-10-13T00:00:00Z'
+                dependencies:
+                  - repo_url: github/awesome-copilot
+                    virtual_path: plugins/accessibility-kanban
+                    discovered_via: awesome-copilot
+                    marketplace_plugin_name: accessibility-kanban
+                    resolved_ref: v1.2.0
+                    resolved_commit: abc123def456
+                    deployed_files: []
+            """),
+        )
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
+
+        manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+        lock = LockFile.read(get_lockfile_path(tmp_path))
+        result = _check_ref_consistency(manifest, lock)
+        assert result.passed
+
+    def test_fail_marketplace_dependency_raw_ref_mismatch(self, tmp_path):
+        (tmp_path / "apm.yml").write_text(
+            textwrap.dedent("""\
+                name: repro
+                version: 0.0.0
+                dependencies:
+                  apm:
+                    - name: accessibility-kanban
+                      marketplace: awesome-copilot
+                      version: "feature-branch"
+            """),
+            encoding="utf-8",
+        )
+        _write_lockfile(
+            tmp_path,
+            textwrap.dedent("""\
+                lockfile_version: '2'
+                generated_at: '2026-10-13T00:00:00Z'
+                dependencies:
+                  - repo_url: github/awesome-copilot
+                    virtual_path: plugins/accessibility-kanban
+                    discovered_via: awesome-copilot
+                    marketplace_plugin_name: accessibility-kanban
+                    resolved_ref: main
+                    resolved_commit: abc123def456
+                    deployed_files: []
+            """),
+        )
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
+
+        manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+        lock = LockFile.read(get_lockfile_path(tmp_path))
+        result = _check_ref_consistency(manifest, lock)
+        assert not result.passed
+        assert "run 'apm install --update'" in result.message
+        assert any("manifest ref 'feature-branch' != lockfile ref 'main'" in d for d in result.details)
+
+    def test_pass_marketplace_semver_constraint_with_resolved_tag_only(self, tmp_path):
+        (tmp_path / "apm.yml").write_text(
+            textwrap.dedent("""\
+                name: repro
+                version: 0.0.0
+                dependencies:
+                  apm:
+                    - name: accessibility-kanban
+                      marketplace: awesome-copilot
+                      version: "^1.0.0"
+            """),
+            encoding="utf-8",
+        )
+        _write_lockfile(
+            tmp_path,
+            textwrap.dedent("""\
+                lockfile_version: '2'
+                generated_at: '2026-10-13T00:00:00Z'
+                dependencies:
+                  - repo_url: github/awesome-copilot
+                    virtual_path: plugins/accessibility-kanban
+                    discovered_via: awesome-copilot
+                    marketplace_plugin_name: accessibility-kanban
+                    resolved_tag: accessibility-kanban-v1.2.3
+                    resolved_commit: abc123def456
+                    deployed_files: []
+            """),
+        )
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
+
+        manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+        lock = LockFile.read(get_lockfile_path(tmp_path))
+        result = _check_ref_consistency(manifest, lock)
+        assert result.passed
+
 
 # -- Deployed files present -----------------------------------------
 
@@ -730,6 +876,46 @@ class TestNoOrphans:
         result = _check_no_orphans(manifest, lock)
         assert not result.passed
         assert "1 orphaned package(s)" in result.message
+
+    def test_fail_marketplace_duplicate_provenance_orphans(self, tmp_path):
+        (tmp_path / "apm.yml").write_text(
+            textwrap.dedent("""\
+                name: repro
+                version: 0.0.0
+                dependencies:
+                  apm:
+                    - name: accessibility-kanban
+                      marketplace: awesome-copilot
+            """),
+            encoding="utf-8",
+        )
+        _write_lockfile(
+            tmp_path,
+            textwrap.dedent("""\
+                lockfile_version: '2'
+                generated_at: '2026-10-13T00:00:00Z'
+                dependencies:
+                  - repo_url: github/awesome-copilot
+                    virtual_path: plugins/accessibility-kanban
+                    discovered_via: awesome-copilot
+                    marketplace_plugin_name: accessibility-kanban
+                    deployed_files: []
+                  - repo_url: github/rogue-copilot
+                    virtual_path: plugins/accessibility-kanban
+                    discovered_via: awesome-copilot
+                    marketplace_plugin_name: accessibility-kanban
+                    deployed_files: []
+            """),
+        )
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+        from apm_cli.models.apm_package import APMPackage
+
+        manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
+        lock = LockFile.read(get_lockfile_path(tmp_path))
+        result = _check_no_orphans(manifest, lock)
+        assert not result.passed
+        assert "2 orphaned package(s)" in result.message
+
 
 
 # -- Config consistency ---------------------------------------------
