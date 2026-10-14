@@ -71,6 +71,15 @@ fallback requires an exhausted plan with an executed same-origin effective
 HTTPS attempt. Path containment rejects symlink or traversal escapes.
 See [GitLab authentication and fetch policy](authentication.md#gitlab-saas-or-self-managed).
 
+### Git symlink checkout fallback
+
+APM preserves Git's detected `core.symlinks` setting and explicit command-scope
+overrides without changing global Git configuration, so a successful checkout
+is not proof that a package requiring real symlinks works (common on non-admin
+Windows accounts). See [Install packages: symlink checkout
+fallback](https://microsoft.github.io/apm/consumer/install-packages/#when-things-go-wrong)
+for the full behavior and troubleshooting steps.
+
 ### Custom git ports
 
 Non-default git ports are preserved on `https://`, `http://`, and `ssh://` URLs
@@ -418,7 +427,7 @@ dependency's target-scoped primitives. They compose via intersection. See
 
 - Type: list of target keys. Stable targets are `copilot`, `claude`, `grok-build`,
   `cursor`, `codex`, `gemini`, `antigravity`, `windsurf`, `kiro`,
-  `opencode`, `agent-skills`, and `hermes`. Experimental targets are `openclaw`,
+  `opencode`, `agent-skills`, `hermes`, and `grok-bot`. Experimental targets are `openclaw`,
   `copilot-cowork`, `copilot-app`, and `grok-cloud`. Use `copilot`, not the
   target alias `vscode`, for Copilot-family dependency routing.
 - Default: omitted means all active install targets.
