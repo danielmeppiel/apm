@@ -82,6 +82,8 @@ class TestParsedExtensions:
             "repository: https://example.com/repo\n"
             "keywords:\n"
             "  - one\n"
+            "tags:\n"
+            "  - alpha\n"
             "build: {}\n"
             "manifestVersion: '1'\n"
             "schemaVersion: '1'\n"
@@ -93,6 +95,58 @@ class TestParsedExtensions:
 
         mock_warn.assert_not_called()
         assert pkg.extensions == {}
+
+    def test_tags_metadata_does_not_warn(self, tmp_path: Path) -> None:
+        path = _write(
+            tmp_path / "apm.yml",
+            "name: pkg\nversion: 1.0.0\ntags:\n  - alpha\n  - beta\n",
+        )
+
+        with patch(_WARN_PATH) as mock_warn:
+            pkg = APMPackage.from_apm_yml(path, create_config=False)
+
+        mock_warn.assert_not_called()
+        assert pkg.extensions == {}
+        assert "tags" in _KNOWN_TOP_LEVEL_KEYS
+
+    def test_top_level_source_warns_as_unknown(self, tmp_path: Path) -> None:
+        path = _write(
+            tmp_path / "apm.yml",
+            "name: pkg\nversion: 1.0.0\nsource: owner/repo\n",
+        )
+
+        with patch(_WARN_PATH) as mock_warn:
+            pkg = APMPackage.from_apm_yml(path, create_config=False)
+
+        assert pkg.source is None
+        assert pkg.extensions == {}
+        assert "source" not in _KNOWN_TOP_LEVEL_KEYS
+        mock_warn.assert_called_once()
+        message = mock_warn.call_args[0][0]
+        assert ": source. These keys were ignored." in message
+
+    def test_invalid_x_prefix_forms_warn_and_are_not_kept(self, tmp_path: Path) -> None:
+        data = {
+            "name": "pkg",
+            "version": "1.0.0",
+            "x-": 1,
+            "x-Foo": 2,
+            "x-a_b": 3,
+            "x-keep": "kept",
+        }
+
+        with patch(_WARN_PATH) as mock_warn:
+            pkg = APMPackage.from_mapping(
+                data,
+                package_path=tmp_path,
+                create_config=False,
+            )
+
+        assert pkg.extensions == {"x-keep": "kept"}
+        mock_warn.assert_called_once()
+        message = mock_warn.call_args[0][0]
+        assert "x-, x-Foo, x-a_b" in message
+        assert "x-keep" not in message
 
     def test_non_string_key_warns_without_raising(self, tmp_path: Path) -> None:
         data: dict[object, object] = {True: 1, "name": "pkg", "version": "1.0.0"}

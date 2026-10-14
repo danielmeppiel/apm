@@ -65,10 +65,10 @@ devDependencies:
 compilation:   <CompilationConfig>
 policy:        <PolicyConfig>
 marketplace:   <MarketplaceConfig>       # OPTIONAL; marketplace authoring
-x-*:           <any>                     # OPTIONAL vendor extensions
+x-[a-z][a-z0-9-]*: <any>             # OPTIONAL vendor extensions
 ```
 
-Two fields are REQUIRED at parse time: `name` and `version`. All other fields are OPTIONAL. Unknown top-level keys MUST be preserved by writers. The CLI keeps keys that start with `x-` and warns, without failing, on any other unknown top-level key. See [Extension keys](#312-extension-keys).
+Two fields are REQUIRED at parse time: `name` and `version`. All other fields are OPTIONAL. Unknown top-level keys MUST be preserved by writers. The CLI keeps keys matching `x-[a-z][a-z0-9-]*` and warns, without failing, on any other unknown top-level key. See [Extension keys](#312-extension-keys).
 
 The standard `$schema` key selects the manifest contract; omission selects
 APM's current working draft. Amendment 0.1.41 selects
@@ -347,11 +347,11 @@ For full client semantics - auth, lockfile fields, and routing rules - see the [
 
 ### 3.12. Extension keys
 
-Any top-level key that starts with `x-` is a vendor extension. The CLI keeps these keys, in declaration order, on the parsed package. It does not validate or interpret the values. Normative contract: [req-ext-003](../../specs/openapm-v01/#req-ext-003).
+Any top-level key matching `x-[a-z][a-z0-9-]*` is a vendor extension. The CLI keeps these keys, in declaration order, on the parsed package. It does not validate or interpret the values. Normative contract: [req-ext-001](../../specs/openapm-v01/#req-ext-001) and [req-ext-003](../../specs/openapm-v01/#req-ext-003).
 
-When a dependency's `apm.yml` declares `x-*` keys, `apm lock` records them on that dependency's entry in `apm.lock.yaml` under `extensions`. The field is omitted when the dependency declares none, so existing lockfiles stay unchanged.
+When a dependency's `apm.yml` declares keys matching `x-[a-z][a-z0-9-]*`, `apm lock` records them on that dependency's entry in `apm.lock.yaml` under `extensions`. The field is omitted when the dependency declares none, so existing lockfiles stay unchanged.
 
-Any other unknown top-level key is ignored. The CLI prints one warning that names each ignored key and does not fail. Rename the key so it starts with `x-` to keep it, or remove it.
+Any other unknown top-level key is ignored. The CLI prints one warning that names each ignored key and does not fail. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or remove it.
 
 ```yaml
 name: my-package

@@ -7,6 +7,7 @@ compatibility.
 """
 
 import logging
+import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -274,7 +275,8 @@ def _route_unscoped_to_default_registry(
 # Top-level apm.yml keys this client understands. A key in this set must
 # not produce an unknown-key warning. Includes fields parsed by sibling
 # owners (policy, compilation, marketplace, lifecycle, executables) rather
-# than stored on APMPackage. ``x-*`` keys are extensions, not members.
+# than stored on APMPackage. Keys matching ``x-[a-z][a-z0-9-]*`` are
+# extensions, not members. ``source`` is a runtime field, not a manifest key.
 _KNOWN_TOP_LEVEL_KEYS = frozenset(
     {
         "$schema",
@@ -284,7 +286,6 @@ _KNOWN_TOP_LEVEL_KEYS = frozenset(
         "author",
         "license",
         "default_host",
-        "source",
         "target",
         "targets",
         "type",
@@ -304,17 +305,19 @@ _KNOWN_TOP_LEVEL_KEYS = frozenset(
         "homepage",
         "repository",
         "keywords",
+        "tags",
         "build",
         "manifestVersion",
         "schemaVersion",
     }
 )
-_EXTENSION_PREFIX = "x-"
+# OpenAPM req-ext-001. A bare ``x-`` prefix is not an extension.
+_EXTENSION_KEY_RE = re.compile(r"^x-[a-z][a-z0-9-]*$")
 
 
 def _is_extension_key(key: object) -> bool:
-    """True for vendor-extension keys (any string starting with ``x-``)."""
-    return isinstance(key, str) and key.startswith(_EXTENSION_PREFIX)
+    """True when *key* matches OpenAPM req-ext-001 (``x-[a-z][a-z0-9-]*``)."""
+    return isinstance(key, str) and _EXTENSION_KEY_RE.fullmatch(key) is not None
 
 
 def _ascii_token(value: object) -> str:
@@ -329,7 +332,7 @@ def _warn_unknown_manifest_keys(keys: list[str], manifest_path: Path) -> None:
     safe_path = _ascii_token(manifest_path)
     _rich_warning(
         f"Unknown top-level key(s) in {safe_path}: {safe_keys}. "
-        "These keys were ignored. Rename each to an x-* extension key "
+        "These keys were ignored. Rename each to match x-[a-z][a-z0-9-]* "
         "(for example x-custom-field) to keep it in the parsed manifest "
         "and the dependency lock entry, or remove it.",
         symbol="warning",
@@ -340,7 +343,7 @@ def _collect_manifest_extensions(
     data: Mapping[str, Any],
     manifest_path: Path,
 ) -> dict[str, Any]:
-    """Return ``x-*`` keys in declaration order and warn on other unknown keys.
+    """Return req-ext-001 keys in declaration order and warn on other unknown keys.
 
     req-ext-003: extension values are not validated. Non-string keys are
     unknown, not extensions, and must not raise. The warning does not fail
