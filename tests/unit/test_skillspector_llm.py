@@ -210,3 +210,27 @@ class TestBaselinePassthrough:
         monkeypatch.chdir(tmp_path)
         mod.SkillSpectorAdapter().scan([Path(".")], options=ScannerOptions())
         assert list(captured["cmd"])[1:] == ["scan", "--format", "sarif", "--no-llm", "."]
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--baseline", ".skillspector-baseline.yaml"),
+            ("--baseline=.skillspector-baseline.yaml",),
+        ],
+        ids=["separate", "inline"],
+    )
+    def test_baseline_symlink_escape_never_invokes_scanner(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, args: tuple[str, ...]
+    ) -> None:
+        """Reject an escaping baseline through the adapter before subprocess I/O."""
+        captured = _capture_run(monkeypatch)
+        scan_root = tmp_path / "scan"
+        scan_root.mkdir()
+        outside = tmp_path / "outside.yaml"
+        outside.write_text("suppressions: []\n", encoding="utf-8")
+        (scan_root / ".skillspector-baseline.yaml").symlink_to(outside)
+        monkeypatch.chdir(scan_root)
+
+        with pytest.raises(ExternalScanError, match=r"resolves outside the scan directory"):
+            mod.SkillSpectorAdapter().scan([Path(".")], options=ScannerOptions(extra_args=args))
+        assert captured == {}

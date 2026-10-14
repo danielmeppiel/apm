@@ -330,6 +330,26 @@ def test_arity_inline_escaping_value_rejected(tmp_path):
         )
 
 
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("--baseline", ".skillspector-baseline.yaml"),
+        ("--baseline=.skillspector-baseline.yaml",),
+    ],
+    ids=["separate", "inline"],
+)
+def test_arity_baseline_symlink_escape_rejected(tmp_path: Path, args: tuple[str, ...]) -> None:
+    """Resolve separator-free baseline symlinks before accepting either spelling."""
+    scan_root = tmp_path / "scan"
+    scan_root.mkdir()
+    outside = tmp_path / "outside.yaml"
+    outside.write_text("suppressions: []\n", encoding="utf-8")
+    (scan_root / ".skillspector-baseline.yaml").symlink_to(outside)
+
+    with pytest.raises(ExternalScanError, match=r"resolves outside the scan directory"):
+        validate_value_arity("skillspector", args, _VALUE_REQUIRED, base_dir=scan_root)
+
+
 # ---------------------------------------------------------------------------
 # ScannerOptions value object
 # ---------------------------------------------------------------------------
