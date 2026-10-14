@@ -172,8 +172,9 @@ supported. Resolution order:
 
 1. `ADO_APM_PAT` env var if set
 2. AAD bearer from `az account get-access-token` if `az` is installed and signed in
-3. Path-scoped `git credential fill` (Git Credential Manager)
-4. Otherwise: auth-failed error with actionable diagnostic
+3. After an operation's HTTP 401/403 or recognized Git authentication failure:
+   path-scoped `git credential fill` (Git Credential Manager)
+4. If the helper is empty or rejected: an error naming the attempted steps
 
 ```bash
 # Recommended: bearer mode (no env var needed)
@@ -193,8 +194,9 @@ ADO marketplace URL authoring.
 **Finding your tenant ID:** visit `https://dev.azure.com/{org}/_settings/organizationAad`,
 or run `az login` and inspect `az account show --query tenantId -o tsv`.
 
-If `ADO_APM_PAT` is set but ADO returns 401, APM silently retries with the `az`
-bearer for clone, preflight, semver tag, and marketplace ref resolution, then warns:
+If `ADO_APM_PAT` is rejected with HTTP 401/403 or a recognized Git authentication
+failure, APM tries an available `az` bearer for clone, preflight, semver tag,
+and marketplace ref resolution. A successful bearer retry warns:
 `[!] ADO_APM_PAT was rejected for {host}; fell back to az cli bearer.`
 
 When auth fails entirely, APM prints a targeted diagnostic (not a generic "not accessible"
@@ -237,13 +239,17 @@ need to unset `GITHUB_HOST`.
 
 ### ADO auth troubleshooting
 
+Initial PAT/bearer diagnostics describe those sources, not the later helper
+retry. Git credential fill runs only after an operation reports an auth failure;
+DNS, TLS, and timeout errors do not trigger it.
+
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Azure DevOps requires authentication. You have two options` | No PAT and no az session | Install `az` from https://aka.ms/installazurecli and run `az login --tenant <tenant>`, set `ADO_APM_PAT`, or store a Git Credential Manager credential |
+| `Azure DevOps requires authentication. You have two options` | No PAT and no az session | Install `az` from https://aka.ms/installazurecli and run `az login --tenant <tenant>`, or set `ADO_APM_PAT` |
 | `ADO_APM_PAT is set, but the Azure DevOps request failed` | Stale or wrong-org PAT, no az | Rotate the PAT, run `az login --tenant <tenant>`, or store a Git Credential Manager credential |
 | `ADO_APM_PAT was rejected; az cli bearer was also rejected` | PAT and az both failed | `unset ADO_APM_PAT`, run `az login --tenant <correct-tenant>`, or store a Git Credential Manager credential |
 | `Azure DevOps Server requires ADO_APM_PAT or a Git credential helper` | On-prem Server, no PAT or fill | Set `ADO_APM_PAT` or store a repository credential in Git Credential Manager (`az` does not apply) |
-| `Authentication failed ... git credential fill was rejected` | PAT / `az` / fill chain exhausted | Refresh `ADO_APM_PAT`, run `az login` on Services, or store a Git Credential Manager credential |
+| `Authentication failed for <host>: <attempted steps> ... rejected` | Helper empty or rejected after an auth failure | Refresh `ADO_APM_PAT`, run `az login` on Services, or store a repository credential in Git Credential Manager |
 | On-prem host classified as GHES / GitHub credentials selected | `GITHUB_HOST` set without an ADO host configuration | Add `ADO_HOST=your-ado-server.example.com` (or list it in `APM_ADO_HOSTS`); ADO takes precedence |
 
 ## GitHub Enterprise Server (GHES)

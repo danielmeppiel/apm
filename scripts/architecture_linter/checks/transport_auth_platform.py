@@ -332,13 +332,7 @@ def _check_host_credential_resolution(provider: FactsProvider) -> tuple[Violatio
         ("src/apm_cli/install/helpers/ref_reuse.py", ("hardened_git_env_for_context",)),
         (
             "src/apm_cli/marketplace/client.py",
-            (
-                "resolve_for_remote",
-                "git_env_for_remote",
-                "validate_git_url_rewrite_safety",
-                "try_with_fallback",
-                "except AdoAuthChainExhaustedError as exc:",
-            ),
+            ("resolve_for_remote", "git_env_for_remote"),
         ),
         ("src/apm_cli/marketplace/builder.py", ("hardened_git_env_for_context",)),
         ("src/apm_cli/marketplace/auth_helpers.py", ('ctx.token or ctx.host_info.kind == "ado"',)),
@@ -508,7 +502,39 @@ def _check_host_credential_resolution(provider: FactsProvider) -> tuple[Violatio
             exempt=True,
         )
     )
+    findings.extend(_check_marketplace_ado_auth_handoffs(provider))
     return tuple(findings)
+
+
+def _check_marketplace_ado_auth_handoffs(provider: FactsProvider) -> tuple[Violation, ...]:
+    """Check executable handoffs, not names retained in imports or docstrings."""
+    path = "src/apm_cli/marketplace/client.py"
+    facts, failures = checked_facts(provider, path, _RID_HOST_CRED, require_python=True)
+    if failures:
+        return failures
+    index = facts.tree_index
+    definition = effective_definition(index, "_fetch_git") if index is not None else None
+    nodes = tuple(index.own_scope(definition)) if definition is not None else ()
+    calls = {ast.unparse(node) for node in nodes if isinstance(node, ast.Call)}
+    required = {
+        "validate_git_url_rewrite_safety(source.url, ado_base_env)",
+        "auth_resolver.try_with_fallback(host_info.host, _checkout, **fallback_kwargs)",
+    }
+    preserves_chain_error = any(
+        isinstance(node, ast.ExceptHandler)
+        and isinstance(node.type, ast.Name)
+        and node.type.id == "AdoAuthChainExhaustedError"
+        for node in nodes
+    )
+    if required <= calls and preserves_chain_error:
+        return ()
+    return (
+        violation(
+            _RID_HOST_CRED,
+            path,
+            "_fetch_git must delegate ADO fallback and rewrite safety and preserve chain errors",
+        ),
+    )
 
 
 def _check_host_reference_coordinates(provider: FactsProvider) -> tuple[Violation, ...]:

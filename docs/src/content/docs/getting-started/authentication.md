@@ -340,16 +340,18 @@ apm install dev.azure.com/myorg/myproject/myrepo
 1. `ADO_APM_PAT` env var if set
 2. AAD bearer via `az account get-access-token` if `az` is installed and signed in
 3. Path-scoped `git credential fill` (Git Credential Manager / OS keychain)
-4. Otherwise: auth-failed error naming PAT, `az`, and fill
+4. If the helper is empty or rejected: an auth-failed error naming the attempted steps
 
 `apm marketplace check` uses this same chain for an ADO `marketplace.sourceBase`.
 Azure CLI credentials are passed to `git ls-remote` as a bearer Authorization
-header, never embedded in the repository URL. A rejected PAT or bearer
-(HTTP 401/403 or Git auth failure) retries path-scoped `git credential fill`
-with the repository path so GCM can select a stored account. DNS, TLS, and
-timeout failures do not unlock fill.
+header, never embedded in the repository URL. Initial resolution selects the
+PAT or bearer; the helper is an operation-time retry after HTTP 401/403 or a
+recognized Git authentication failure. The repository path lets GCM select
+a stored account. DNS, TLS, and timeout failures do not unlock fill.
 
-**Stale-PAT fallback:** if `ADO_APM_PAT` is set but rejected (HTTP 401), APM silently retries with the `az` bearer and emits:
+**Stale-PAT fallback:** if `ADO_APM_PAT` is rejected with HTTP 401/403 or a
+recognized Git authentication failure, APM tries an available `az` bearer.
+A successful bearer retry emits:
 
 ```
 [!] ADO_APM_PAT was rejected for dev.azure.com; fell back to az cli bearer.
@@ -361,8 +363,8 @@ marketplace version resolution, and `apm install --update`. If you have a stale
 `ADO_APM_PAT` but an active `az login` session, the ref lookup succeeds
 transparently via the bearer retry.
 
-If `ADO_APM_PAT`, the `az` bearer, and git credential fill all fail, the
-diagnostic names the three attempts. Refresh the PAT, run `az login`, or
+If the helper retry is exhausted, the diagnostic names only the attempted
+steps. Refresh the PAT, run `az login`, or
 store a repository credential in Git Credential Manager, then retry.
 
 **Verbose output** (`--verbose`) shows which source was used per host:
