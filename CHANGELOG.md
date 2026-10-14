@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - New `grok-bot` install target deploys skill packages to `agent-data/workflows/<skill-name>/` for Grok Bot at project and user (`--global`) scope; the `grok-bot` target accepts packages declaring `agent-skills`, and an explicit `--target` fails only when no dependency in the install has a compatible target or a package named on the command line (and its whole subtree) has none; other filtered dependencies warn. (#3106)
+- Experimental policy keys let one `apm-policy.yml` govern agent factories: `security.integrity.deny_hashes` revokes specific content and fails `apm install` and `apm audit --ci` (`content-hash-denylist`) closed, `factories` (`allow`, `require_signed`, `signers`) is validated and merged tighten-only for consumers such as apmx, and `apm policy status --json` now emits the resolved `effective_policy`. (#3232)
 
 ### Changed
 
