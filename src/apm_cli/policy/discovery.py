@@ -752,8 +752,13 @@ def discover_policy(
         if path.exists() and path.is_file():
             return _load_from_file(path, expected_hash=expected_hash)
         if _is_unambiguous_local_policy_path(policy_override):
+            reason = (
+                f"Policy path is not a file: {policy_override}"
+                if path.exists()
+                else f"Policy file not found: {policy_override}"
+            )
             return PolicyFetchResult(
-                error=f"Policy file not found: {policy_override}",
+                error=reason,
                 source=f"file:{policy_override}",
                 outcome="absent",
                 not_found=True,
@@ -807,7 +812,7 @@ def _is_unambiguous_local_policy_path(ref: str) -> bool:
         return False
     if ref.startswith((".", "/", "~")) or "\\" in ref or Path(ref).is_absolute():
         return True
-    return "/" not in ref and ref.endswith((".yml", ".yaml"))
+    return "/" not in ref and ref.lower().endswith((".yml", ".yaml"))
 
 
 def _load_from_file(path: Path, *, expected_hash: str | None = None) -> PolicyFetchResult:

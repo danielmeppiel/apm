@@ -737,12 +737,22 @@ class TestDiscoverPolicy(unittest.TestCase):
                 "../policies/apm-policy.yml",
                 str(Path(tmpdir) / "missing.yml"),
                 "missing.yaml",
+                "missing.YML",
             ):
                 result = discover_policy(Path(tmpdir), policy_override=ref, no_cache=True)
                 self.assertFalse(result.found)
                 self.assertEqual(result.outcome, "absent")
                 self.assertEqual(result.source, f"file:{ref}")
                 self.assertEqual(result.error, f"Policy file not found: {ref}")
+        mock_fetch.assert_not_called()
+
+    @patch("apm_cli.policy.discovery._fetch_github_contents")
+    def test_override_existing_directory_reports_not_a_file(self, mock_fetch):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = discover_policy(Path(tmpdir), policy_override=tmpdir, no_cache=True)
+            self.assertFalse(result.found)
+            self.assertEqual(result.outcome, "absent")
+            self.assertEqual(result.error, f"Policy path is not a file: {tmpdir}")
         mock_fetch.assert_not_called()
 
     @patch("apm_cli.policy.discovery._fetch_github_contents")

@@ -298,8 +298,22 @@ def _invoke_ci(runner, *args: str):
 
 
 def _assert_explicit_load_failure(result, source: str) -> None:
+    import re
+    from urllib.parse import urlparse
+
     assert result.exit_code == 1, result.output
-    assert f"[x] Policy '{source}' could not be loaded:" in result.stderr
+    match = re.search(r"^\[x\] Policy '([^']+)' could not be loaded:", result.stderr, re.M)
+    assert match is not None, result.stderr
+    printed = match.group(1)
+    if "://" in source:
+        expected, actual = urlparse(source), urlparse(printed)
+        assert (actual.scheme, actual.hostname, actual.path) == (
+            expected.scheme,
+            expected.hostname,
+            expected.path,
+        )
+    else:
+        assert printed == source
     assert "--policy was passed explicitly" in result.stderr
     assert "enforcement skipped" not in result.stderr
     # Fail-closed exits before any report; stdout must not claim a pass.
