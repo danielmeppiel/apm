@@ -642,9 +642,9 @@ _ = waive  # keep import for any future structural waiver
 _DENIED = "sha256:" + "e" * 64
 
 
-@pytest.mark.req("req-pl-021")
+@pytest.mark.req("req-pl-022")
 def test_policy_deny_hashes_fail_closed_on_install_and_ci_audit(tmp_path):
-    """req-pl-021: a recorded hash on ``security.integrity.deny_hashes``
+    """req-pl-022: a recorded hash on ``security.integrity.deny_hashes``
     fails install and CI audit closed, also under ``enforcement: warn``.
 
     Binds the spec MUST to the single integrity owner

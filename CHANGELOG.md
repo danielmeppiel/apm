@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `docs/src/content/docs/specs/openapm-v0.1.md` adds proposed `req-tg-015` for Codex-native `model`/`model_reasoning_effort` preservation and bounded dropped-metadata diagnostics. (#3150)
-- `docs/src/content/docs/specs/openapm-v0.1.md` adds proposed `req-pl-021` (fail-closed `security.integrity.deny_hashes`), an informative `factories` field reference, and their merge-table rows. (#3232)
+- `docs/src/content/docs/specs/openapm-v0.1.md` adds proposed `req-pl-022` (fail-closed `security.integrity.deny_hashes`), an informative `factories` field reference, and their merge-table rows. (#3232)
 
 ### Fixed
 

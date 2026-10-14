@@ -1611,7 +1611,7 @@ behaves exactly as it did before these keys existed.
   default empty): content-level revocation. Matched against every
   package `content_hash` and every `deployed_file_hashes` value
   recorded in `apm.lock.yaml`. Normative behaviour:
-  [req-pl-021](#req-pl-021). Merges by union.
+  [req-pl-022](#req-pl-022). Merges by union.
 
 The normative behaviour for both keys is specified in
 [Section 6.8](#68-integrity-controls-governance). Both merge by
@@ -1780,8 +1780,8 @@ miss, does not by itself alter the exit status. When
 `security.audit.fail_on_drift` is absent or `false`, detected drift
 MUST be reported without, by itself, altering the audit exit status.
 
-<a id="req-pl-021"></a>
-**[req-pl-021]** A conforming **governance** implementation that
+<a id="req-pl-022"></a>
+**[req-pl-022]** A conforming **governance** implementation that
 honours a non-empty `security.integrity.deny_hashes` MUST fail the
 install operation, and MUST cause the CI audit operation to terminate
 with a non-zero exit status, when any package `content_hash` or any
@@ -1910,7 +1910,7 @@ This section's normative statements are:
   [req-pl-015](#req-pl-015), [req-pl-016](#req-pl-016),
   [req-pl-017](#req-pl-017), [req-pl-018](#req-pl-018),
   [req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020),
-  [req-pl-021](#req-pl-021).
+  [req-pl-022](#req-pl-022).
 
 ---
 
@@ -3824,7 +3824,7 @@ v0.2 will formalise the surrounding HTTP wire envelope.
 [req-pl-015](#req-pl-015), [req-pl-016](#req-pl-016),
 [req-pl-017](#req-pl-017), [req-pl-018](#req-pl-018),
 [req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020),
-[req-pl-021](#req-pl-021).
+[req-pl-022](#req-pl-022).
 
 ### 11.4 Worked conformance examples (informative)
 
@@ -4208,7 +4208,7 @@ renumbering of conformance classes.
 | [req-pl-018](#req-pl-018)                | MUST    | 6.3.1   | governance  |
 | [req-pl-019](#req-pl-019)                | MUST    | 6.8.1   | governance  |
 | [req-pl-020](#req-pl-020)                | MUST    | 6.8.1   | governance  |
-| [req-pl-021](#req-pl-021)                | MUST    | 6.8     | governance  |
+| [req-pl-022](#req-pl-022)                | MUST    | 6.8     | governance  |
 | [req-rs-001](#req-rs-001)                | MUST    | 7.2     | consumer    |
 | [req-rs-002](#req-rs-002)                | MUST    | 7.3     | consumer    |
 | [req-rs-003](#req-rs-003)                | MUST    | 7.3     | consumer    |
@@ -4324,7 +4324,7 @@ renumbering of conformance classes.
 | 0.1.43 (proposed) | 2026-10-03 | Codex-native agent model preservation and bounded dropped-metadata diagnostic for PR #3150 (closes #3126). Added [req-tg-015] (Section 8.5.1, consumer MUST): a conforming consumer providing the Codex-native agent conversion capability MUST preserve a source-declared `model` or `model_reasoning_effort` string value in its native top-level placement, MUST leave either field absent when absent from the source, MUST diagnose a non-string value by field name without including that value, and MUST emit a diagnostic bounded on both dropped-field count and per-field name length (never the value) for any other dropped, non-capability-restriction frontmatter field. Under Section 9.2 this is a new opt-in conformance capability scoped to consumers providing the Codex-native agent conversion capability, not behavior-neutral errata: it does not require or imply preservation of any other `config.toml`-native key and does not define behavior for any other conversion target. Implementations not providing Codex-native agent conversion acquire no new required feature. No schema, lockfile version, existing mandatory feature, drift-policy or ownership rule changes. Section 9.3 reviewer approvals and public comment period remain pending; this proposal is not evidence of adoption. Section 8.7, Section 11.3.2, and Appendix C updated. Statement count: 125 -> 126 (121 MUST, 5 SHOULD). |
 | 0.1.44 (proposed) | 2026-10-03 | PR #3149 adds two consumer MUSTs in Section 8.5.9: [req-tg-016](#req-tg-016) rejects unsupported Cursor hook vocabulary; [req-tg-017](#req-tg-017) detects overlap with Claude imports before either install order writes, preserving import settings. These cite the accepted Cursor capability, not universal translation or a new mandatory feature (Section 9.2). Section 8.7, Section 11.3.2 and Appendix C are updated. Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. Statement count: 126 -> 128 (123 MUST, 5 SHOULD). |
 | 0.1.45 (proposed) | 2026-10-09 | Editorial fold for PR #3106 (closes #3083 Mode-B silent-extension gate; no new normative statement, count remains 128 (123 MUST, 5 SHOULD)). Section 4.2.1 and [req-tg-001] (Section 8.4): the explicit-only target enumeration now names `agent-skills`, `antigravity`, `hermes`, and `grok-bot`, reflecting the already-registered `hermes` target and the new stable explicit-only `grok-bot` target (skills deploy to `agent-data/workflows/`, per the OpenAPM Target Registry v0.1 companion). |
-| 0.1.46 (proposed) | 2026-10-14 | Spec-citation fold for PR #3232 (closes #3231 Mode-B silent-extension gate). Added [req-pl-021] (Section 6.8, governance MUST): a non-empty `security.integrity.deny_hashes` fails install and CI audit closed, including under `enforcement: warn` and on an absent or unreadable lockfile, when any recorded package `content_hash` or `deployed_file_hashes` value matches a listed `sha256:` digest; malformed entries are rejected at parse time. Added the informative Section 6.3.7 `factories` field reference (validated and merged by governance, enforced by receipt verifiers) and four Section 6.4 merge-table rows under [req-pl-006]. Under Section 9.2 this is an additive opt-in control: policies that omit the keys are unaffected. Section 6.3.6, Section 6.9, Section 11.3.4, Section 1.3, and Appendix C updated. Statement count: 128 -> 129 (124 MUST, 5 SHOULD). |
+| 0.1.47 (proposed) | 2026-10-14 | Spec-citation fold for PR #3232 (closes #3231 Mode-B silent-extension gate). Added [req-pl-022] (Section 6.8, governance MUST): a non-empty `security.integrity.deny_hashes` fails install and CI audit closed, including under `enforcement: warn` and on an absent or unreadable lockfile, when any recorded package `content_hash` or `deployed_file_hashes` value matches a listed `sha256:` digest; malformed entries are rejected at parse time. Added the informative Section 6.3.7 `factories` field reference (validated and merged by governance, enforced by receipt verifiers) and four Section 6.4 merge-table rows under [req-pl-006]. Under Section 9.2 this is an additive opt-in control: policies that omit the keys are unaffected. Section 6.3.6, Section 6.9, Section 11.3.4, Section 1.3, and Appendix C updated. Statement count: 128 -> 129 (124 MUST, 5 SHOULD). NOTE: concurrent PR #3230 adds [req-pl-021] and revision 0.1.46 at the same count sites; whichever lands second reconciles the cumulative total to 130 (125 MUST, 5 SHOULD), keeps both Appendix C and enumeration rows in ID order, and keeps both revision rows. |
 
 Errata (none at publication).
 
