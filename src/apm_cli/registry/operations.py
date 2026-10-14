@@ -299,6 +299,9 @@ class MCPServerOperations:
         Each registry lookup is independent. Lookups run in a bounded
         ThreadPoolExecutor (same pattern as ``check_servers_needing_installation``)
         and results are collected in submission order via ``executor.map``.
+        The shared registry client's ``find_server_by_reference`` must support
+        concurrent calls. Callers must not change the client's configuration
+        until the batch completes.
 
         Args:
             server_references: List of MCP server references
