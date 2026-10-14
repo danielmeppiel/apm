@@ -9,11 +9,16 @@ two sources of truth. They serve different roles:
 - **The package repository is canonical.** Authors edit primitives in the Git
   repository where the package is maintained.
 - **The installed copy is materialized consumer content.** `apm install`
-  resolves the declared dependency and stages the pinned package under
-  `apm_modules/` before integrating its primitives into the selected targets.
+  resolves the declared dependency and stages the pinned package under the
+  install scope's `apm_modules/` directory: `<project>/apm_modules/` for project
+  installs, or `~/.apm/apm_modules/` by default for global installs
+  (`apm install -g <package>`). It then integrates the primitives into the
+  selected targets.
 
 Treat the installed copy the same way you would treat `node_modules/`: do not
 edit it and do not commit it as the authoritative package source.
+For global installation options, see
+[Install packages](../../consumer/install-packages/#useful-flags).
 
 ## Recommended author/consumer workflow
 
