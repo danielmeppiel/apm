@@ -100,6 +100,8 @@ A normal project install creates or updates `apm.lock.yaml` when the manifest de
 
 `apm install --frozen` validates package and MCP lock state before lockfile, target config, deployment, or cache mutation. A missing or stale MCP-only lock exits nonzero without writing; run normal `apm install` to repair it. `--only=mcp` follows the same guard. Add-style `--mcp NAME` is incompatible with `--frozen` because it mutates `apm.yml`.
 
+`apm install --frozen` never writes `apm.lock.yaml`. Deployment still runs, and one check comes after it: if the install deploys files the committed lockfile does not record, frozen mode exits `1` and names those paths. Those files are already on disk -- only the lockfile write is withheld. Rerun the same command without `--frozen` (keeping `--root DIR` or `--global`) and commit the updated lockfile; see the [install reference](https://microsoft.github.io/apm/reference/cli/install/#behavior) for recovery details.
+
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching
