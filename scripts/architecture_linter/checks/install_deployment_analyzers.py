@@ -63,15 +63,33 @@ from scripts.architecture_linter.checks.install_request_and_source import (
     check_request_defaults,
     check_source_plan,
 )
+from scripts.architecture_linter.checks.install_skills_root_derivation import (
+    _GUARD_SKILLS_ROOT,
+    check_skills_root_derivation,
+)
 from scripts.architecture_linter.checks.install_uninstall_and_resolution import (
+    _GUARD_IMMUTABLE_REQUIREMENTS,
+    _GUARD_ORPHAN_SELECTION,
     _GUARD_RESOLUTION_REPLACEMENT,
     _GUARD_UNINSTALL_SELECTION,
+    check_immutable_requirements,
+    check_orphan_selection,
     check_resolution_replacement,
     check_uninstall_selection,
 )
 from scripts.architecture_linter.models import Rule
 
 RULES: tuple[Rule, ...] = (
+    _rule(
+        _GUARD_ORPHAN_SELECTION,
+        "Prune and orphan warnings share declaration-aware package selection.",
+        check_orphan_selection,
+    ),
+    _rule(
+        _GUARD_IMMUTABLE_REQUIREMENTS,
+        "Immutable dependency compatibility is checked by one owner before hoisting.",
+        check_immutable_requirements,
+    ),
     _rule(
         _GUARD_PACKAGE_TARGET,
         "Restriction-only package target authorization has one owner (install/target_filter.py).",
@@ -171,6 +189,11 @@ RULES: tuple[Rule, ...] = (
         _GUARD_UNINSTALL_SELECTION,
         "Dependency CLI parsing + uninstall selection route through dependency/selection.py.",
         check_uninstall_selection,
+    ),
+    _rule(
+        _GUARD_SKILLS_ROOT,
+        "Skills roots come from TargetProfile.skills_rel_root, not open-coded <root>/skills.",
+        check_skills_root_derivation,
     ),
     *EXTRA_RULES,
 )

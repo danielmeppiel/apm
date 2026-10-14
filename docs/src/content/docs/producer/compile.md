@@ -95,10 +95,11 @@ apm compile --all                            # default stable target set
 ```
 
 Canonical targets are `copilot`, `claude`, `grok-build`, `cursor`, `opencode`,
-`codex`, `gemini`, `antigravity`, `windsurf`, `kiro`, `agent-skills`, and `hermes`.
-The `all` selector is not a target; it expands to every canonical target except
-the explicit-only `antigravity`, `agent-skills`, and `hermes` targets. Compiling for
-`agent-skills` is a successful no-op because `apm install` deploys skills.
+`codex`, `gemini`, `antigravity`, `windsurf`, `kiro`, `agent-skills`, `hermes`,
+and `grok-bot`. The `all` selector is not a target; it expands to every
+canonical target except the explicit-only `antigravity`, `agent-skills`,
+`hermes`, and `grok-bot` targets. Compiling for `agent-skills` or `grok-bot`
+is a successful no-op because `apm install` deploys skills.
 
 The accepted `intellij` entry is MCP-only, not a canonical target, and excluded
 from `all`. Compile uses the Copilot profile for its file primitives and produces
@@ -195,6 +196,14 @@ run -- both write per-file instruction rules into `.claude/rules/`.
 dependency `@import` paths. If `.claude/rules/` is later removed,
 re-running `apm compile` restores the instructions section to
 `CLAUDE.md`.
+
+When instructions are folded into `CLAUDE.md`, plain inline Markdown
+links to local or dependency `.context.md` and `.memory.md` files are
+rebased so they resolve from each generated `CLAUDE.md`'s directory
+(for example, to `apm_modules/<pkg>/.apm/context/...`). The referenced
+files are not copied, and other relative links are left as written --
+this is distinct from the install-time rewriting described in
+[Package-relative links](../package-relative-links/).
 
 To opt out of the deduplication and always include the instructions
 section in `CLAUDE.md` (for debugging or when you intentionally want
@@ -298,6 +307,11 @@ root-context targets:
 
 OpenCode is the exception: its generated `~/.config/opencode/AGENTS.md`
 retains explicit sections for `applyTo` instructions as well.
+
+Claude omits each unconditional instruction already delivered by an equivalent
+native user rule, while preserving unmatched fallback and other targets.
+See the [global compilation reference](../../reference/cli/compile/#global-compilation)
+for matching rules, explicit `--clean` cleanup, and file-preservation conditions.
 
 ### Overwrite protection
 
