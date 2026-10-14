@@ -12,64 +12,111 @@ update check).
 
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
+from tests.integration.test_required_lifecycle_state_machine import (
+    _INSTALL_ARGS,
+    _new_scenario,
+    _result_evidence,
+    _run_success,
+    _Scenario,
+)
+from tests.utils.artifact_snapshot import ArtifactSnapshotSet, assert_snapshot_set_unchanged
+from tests.utils.local_package import LocalPackage
+
 pytestmark = [
+    pytest.mark.integration,
     pytest.mark.e2e,
+    pytest.mark.lifecycle_smoke,
     pytest.mark.requires_apm_binary,
+    pytest.mark.requires_e2e_mode,
 ]
 
 
-def _add_skill(project: Path, name: str) -> None:
+def _add_skill(project: Path, name: str) -> Path:
+    """Add local source content without refreshing the installed lockfile."""
     skill_dir = project / ".apm" / "skills" / name
     skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(
+    source = skill_dir / "SKILL.md"
+    source.write_text(
         f"---\nname: {name}\ndescription: Frozen fixture\n---\n# {name}\n",
-        encoding="utf-8",
+        encoding="ascii",
     )
+    return source
 
 
-def _install(apm_binary_path: Path, project: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [str(apm_binary_path), "install", *args],
-        cwd=project,
-        capture_output=True,
-        text=True,
-        timeout=180,
+def _assert_frozen_refusal_and_recovery(
+    scenario: _Scenario,
+    project: LocalPackage,
+    environment: dict[str, str],
+    deployed_path: PurePosixPath,
+) -> None:
+    """Refuse new claims, repair normally, then prove repeated frozen convergence."""
+    lockfile = project.root / "apm.lock.yaml"
+    locked = lockfile.read_bytes()
+    manifest = project.manifest_path.read_bytes()
+    frozen = scenario.runner.run(
+        (*_INSTALL_ARGS, "--frozen"),
+        scenario_id="frozen-unrecorded-skill",
+        cwd=project.root,
+        env=environment,
     )
+    assert frozen.returncode == 1, _result_evidence(frozen)
+    # Rich wraps long lines; the diagnostic still has to name the missing claim.
+    flat = " ".join((frozen.stdout + frozen.stderr).split())
+    assert f"{deployed_path} is deployed by this install but not recorded in apm.lock.yaml" in flat
+    assert lockfile.read_bytes() == locked
+    assert project.manifest_path.read_bytes() == manifest
+    assert (project.root / deployed_path / "SKILL.md").is_file()
+
+    _run_success(
+        scenario,
+        project,
+        _INSTALL_ARGS,
+        environment=environment,
+        scenario_id="repair-unrecorded-skill",
+    )
+    assert lockfile.read_bytes() != locked
+    _assert_frozen_replays(scenario, project, environment)
+
+
+def _assert_frozen_replays(
+    scenario: _Scenario, project: LocalPackage, environment: dict[str, str]
+) -> None:
+    """Require converged frozen installs to preserve project and user bytes."""
+    roots = {"project": project.root, "user": scenario.isolated.home}
+    repaired = ArtifactSnapshotSet.capture(roots)
+    for replay in range(2):
+        _run_success(
+            scenario,
+            project,
+            (*_INSTALL_ARGS, "--frozen"),
+            environment=environment,
+            scenario_id=f"repaired-frozen-replay-{replay}",
+        )
+        assert_snapshot_set_unchanged(repaired, ArtifactSnapshotSet.capture(roots))
 
 
 def test_frozen_install_fails_on_unrecorded_skill_without_rewriting_lockfile(
     tmp_path: Path, apm_binary_path: Path
 ) -> None:
-    project = tmp_path / "frozen-project"
-    project.mkdir()
-    (project / "apm.yml").write_text(
-        "name: frozen-project\nversion: 1.0.0\ntarget: claude\n", encoding="utf-8"
+    scenario = _new_scenario(tmp_path / "frozen", apm_binary_path)
+    project = scenario.consumers.create("frozen-project", targets=("claude",))
+    _add_skill(project.root, "alpha")
+    _run_success(
+        scenario,
+        project,
+        _INSTALL_ARGS,
+        environment=scenario.environment,
+        scenario_id="initial-install",
     )
-    _add_skill(project, "alpha")
-    lockfile = project / "apm.lock.yaml"
-
-    first = _install(apm_binary_path, project)
-    assert first.returncode == 0, first.stdout + first.stderr
-    locked = lockfile.read_bytes()
-
-    healthy = _install(apm_binary_path, project, "--frozen")
-    assert healthy.returncode == 0, healthy.stdout + healthy.stderr
-    assert lockfile.read_bytes() == locked
-
-    _add_skill(project, "beta")
-    frozen = _install(apm_binary_path, project, "--frozen")
-    output = frozen.stdout + frozen.stderr
-
-    assert frozen.returncode == 1, output
-    # Rich wraps long lines at the terminal width; compare with whitespace collapsed.
-    flat = " ".join(output.split())
-    assert (
-        ".claude/skills/beta is deployed by this install but not recorded in apm.lock.yaml" in flat
+    _assert_frozen_replays(scenario, project, scenario.environment)
+    _add_skill(project.root, "beta")
+    _assert_frozen_refusal_and_recovery(
+        scenario,
+        project,
+        scenario.environment,
+        PurePosixPath(".claude/skills/beta"),
     )
-    assert lockfile.read_bytes() == locked
-    assert (project / ".claude" / "skills" / "beta" / "SKILL.md").is_file()
