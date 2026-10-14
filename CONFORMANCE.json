@@ -709,9 +709,10 @@
       "keyword": "MUST",
       "section": "6.4",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
-        "tests/spec_conformance/test_policy_reqs.py::test_policy_extends_resolves_relative_to_policy_root"
+        "tests/spec_conformance/test_policy_reqs.py::test_policy_extends_resolves_relative_to_policy_root",
+        "tests/spec_conformance/test_policy_reqs.py::test_policy_merge_rows_for_deny_hashes_and_factories"
       ]
     },
     {
@@ -882,6 +883,17 @@
         "tests/spec_conformance/test_policy_reqs.py::test_deployed_prompt_protected_remediation_is_atomic",
         "tests/spec_conformance/test_policy_reqs.py::test_static_user_scope_refuses_automatic_strip_in_real_cli[False]",
         "tests/spec_conformance/test_policy_reqs.py::test_static_user_scope_refuses_automatic_strip_in_real_cli[True]"
+      ]
+    },
+    {
+      "conformance_class": "governance",
+      "id": "req-pl-021",
+      "keyword": "MUST",
+      "section": "6.8",
+      "status": "active",
+      "test_count": 1,
+      "tests": [
+        "tests/spec_conformance/test_policy_reqs.py::test_policy_deny_hashes_fail_closed_on_install_and_ci_audit"
       ]
     },
     {
@@ -1592,7 +1604,7 @@
       "xfail": 0
     },
     "governance": {
-      "active": 20,
+      "active": 21,
       "skipped": 0,
       "unbound": 0,
       "xfail": 0
@@ -1610,5 +1622,5 @@
       "xfail": 0
     }
   },
-  "total_requirements": 128
+  "total_requirements": 129
 }

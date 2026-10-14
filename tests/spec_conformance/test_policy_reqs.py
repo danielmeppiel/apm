@@ -637,3 +637,96 @@ def test_ado_policy_coordinate_fallback_is_404_only():
 
 
 _ = waive  # keep import for any future structural waiver
+
+
+_DENIED = "sha256:" + "e" * 64
+
+
+@pytest.mark.req("req-pl-021")
+def test_policy_deny_hashes_fail_closed_on_install_and_ci_audit(tmp_path):
+    """req-pl-021: a recorded hash on ``security.integrity.deny_hashes``
+    fails install and CI audit closed, also under ``enforcement: warn``.
+
+    Binds the spec MUST to the single integrity owner
+    (``install/integrity.py``) and its two callers: the install gate and
+    the fail-closed ``content-hash-denylist`` audit check. The CLI exit
+    path is exercised by
+    ``tests/unit/test_audit_policy_command.py::TestCiWithPolicyFlag::test_deny_hashes_fails_closed_in_warn_mode``.
+    """
+    from types import SimpleNamespace
+
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
+    from apm_cli.install.integrity import enforce_installed_deny_hashes
+    from apm_cli.install.phases.policy_gate import PolicyViolationError
+    from apm_cli.policy.parser import PolicyValidationError, load_policy
+    from apm_cli.policy.policy_checks import (
+        FAIL_CLOSED_POLICY_CHECKS,
+        _check_content_hash_denylist,
+    )
+
+    policy, _ = load_policy(
+        "enforcement: warn\nsecurity:\n  integrity:\n"
+        f"    deny_hashes: ['sha256:{_DENIED[7:].upper()}']\n"
+    )
+    lock = LockFile()
+    lock.add_dependency(
+        LockedDependency(
+            repo_url="https://example.com/acme/pkg.git",
+            resolved_commit="a" * 40,
+            deployed_files=[".github/skills/x/SKILL.md"],
+            deployed_file_hashes={".github/skills/x/SKILL.md": _DENIED},
+        )
+    )
+    lock.write(tmp_path / "apm.lock.yaml")
+    ctx = SimpleNamespace(
+        no_policy=False, policy_fetch=SimpleNamespace(policy=policy), apm_dir=tmp_path
+    )
+
+    with pytest.raises(PolicyViolationError, match=r"SKILL\.md"):
+        enforce_installed_deny_hashes(ctx)
+    (tmp_path / "apm.lock.yaml").unlink()
+    with pytest.raises(PolicyViolationError, match="could not be read"):
+        enforce_installed_deny_hashes(ctx)
+
+    check = _check_content_hash_denylist(lock, policy.security.integrity)
+    assert check.passed is False
+    assert check.name in FAIL_CLOSED_POLICY_CHECKS
+
+    with pytest.raises(PolicyValidationError):
+        load_policy("security:\n  integrity:\n    deny_hashes: ['sha256:abc']\n")
+    assert_spec_contains(
+        "honours a non-empty `security.integrity.deny_hashes` MUST fail the",
+        "The failure MUST hold\nunder `enforcement: warn`",
+    )
+
+
+@pytest.mark.req("req-pl-006")
+def test_policy_merge_rows_for_deny_hashes_and_factories():
+    """req-pl-006: deny_hashes unions; factories allow/signers intersect
+    (null transparent); require_signed is logical OR."""
+    from apm_cli.policy.inheritance import merge_policies
+    from apm_cli.policy.parser import load_policy
+
+    other = "sha256:" + "f" * 64
+    parent, _ = load_policy(
+        f"security:\n  integrity:\n    deny_hashes: ['{_DENIED}']\n"
+        "factories:\n  allow: [acme/*, other/x]\n  require_signed: true\n"
+        "  signers:\n    - workflow: acme/f/.github/workflows/run.yml\n"
+        "    - workflow: acme/g/.github/workflows/run.yml\n"
+    )
+    child, _ = load_policy(
+        f"security:\n  integrity:\n    deny_hashes: ['{other}']\n"
+        "factories:\n  allow: [acme/*]\n"
+        "  signers:\n    - workflow: acme/g/.github/workflows/run.yml\n"
+    )
+    merged = merge_policies(parent, child)
+    assert merged.security.integrity.deny_hashes == (_DENIED, other)
+    assert merged.factories.allow == ("acme/*",)
+    assert [s.workflow for s in merged.factories.signers] == ["acme/g/.github/workflows/run.yml"]
+    assert merged.factories.require_signed is True
+    silent, _ = load_policy("name: child\n")
+    assert merge_policies(parent, silent).factories == parent.factories
+    assert_spec_contains(
+        "| `security.integrity.deny_hashes`      | Union",
+        "| `factories.require_signed`            | Logical OR",
+    )

@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **128 normative statements (123 MUST, 5 SHOULD)** indexed in
+- OpenAPM v0.1 carries **129 normative statements (124 MUST, 5 SHOULD)** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -1607,12 +1607,34 @@ behaves exactly as it did before these keys existed.
 - `security.audit.fail_on_drift` (boolean, default `false`): when
   `true`, a bare `apm audit` exits non-zero if lockfile drift is
   detected or the drift check cannot complete.
+- `security.integrity.deny_hashes` (list of `sha256:<64 hex>` strings,
+  default empty): content-level revocation. Matched against every
+  package `content_hash` and every `deployed_file_hashes` value
+  recorded in `apm.lock.yaml`. Normative behaviour:
+  [req-pl-021](#req-pl-021). Merges by union.
 
 The normative behaviour for both keys is specified in
 [Section 6.8](#68-integrity-controls-governance). Both merge by
 logical OR across an `extends:` chain (see
 [Section 6.4](#64-inheritance-and-merge-rules)): once any ancestor
 sets a key to `true`, a descendant cannot relax it back to `false`.
+
+#### 6.3.7 `factories` (informative)
+
+The OPTIONAL `factories` block declares rules for agent factory runs.
+A Governance implementation parses, validates, and merges it per
+[Section 6.4](#64-inheritance-and-merge-rules); enforcement against
+factory run receipts is the responsibility of the consuming verifier.
+
+- `factories.allow` (allow-list, tri-state per [Section 6.5](#65-allow-list--deny-list-tri-state-semantics)):
+  package patterns, each optionally pinned to one definition digest as
+  `<pattern>@sha256:<64 hex>`.
+- `factories.require_signed` (boolean, default `false`): receipts must
+  be signed.
+- `factories.signers` (allow-list of mappings, tri-state): trusted
+  signer identities; each entry carries
+  `workflow: <owner>/<repo>/.github/workflows/<file>.yml`, optionally
+  suffixed `@<ref>`.
 
 ### 6.4 Inheritance and merge rules
 
@@ -1652,6 +1674,10 @@ merge a policy chain per the following table:
 | `unmanaged_files.exclude`             | Union, deduplicated (byte-exact on each pattern's UTF-8 string), parent order preserved (additive: a child adds exclusions and cannot clear a parent's; `null` and `[]` both preserve the parent list). |
 | `security.integrity.require_hashes`   | Logical OR (once `true`, stays `true`).                                |
 | `security.audit.fail_on_drift`        | Logical OR (once `true`, stays `true`).                                |
+| `security.integrity.deny_hashes`      | Union, deduplicated byte-exact, parent order preserved.                |
+| `factories.allow`                     | Set intersection, byte-exact. `null` is transparent.                   |
+| `factories.signers`                   | Set intersection by `workflow`, byte-exact. `null` is transparent.     |
+| `factories.require_signed`            | Logical OR (once `true`, stays `true`).                                |
 
 These merge operations compare authored entries before dependency
 evaluation. Case-variant entries remain distinct during union and
@@ -1753,6 +1779,18 @@ check that is merely skipped for an advisory reason, such as a cache
 miss, does not by itself alter the exit status. When
 `security.audit.fail_on_drift` is absent or `false`, detected drift
 MUST be reported without, by itself, altering the audit exit status.
+
+<a id="req-pl-021"></a>
+**[req-pl-021]** A conforming **governance** implementation that
+honours a non-empty `security.integrity.deny_hashes` MUST fail the
+install operation, and MUST cause the CI audit operation to terminate
+with a non-zero exit status, when any package `content_hash` or any
+`deployed_file_hashes` value recorded in `apm.lock.yaml` matches a
+listed digest (hex comparison case-insensitive). The failure MUST hold
+under `enforcement: warn` and MUST hold when the lockfile is absent or
+unreadable at the point of the install check. The diagnostic MUST name
+each matching dependency and path. An entry that is not `sha256:`
+followed by 64 hexadecimal characters MUST be rejected at parse time.
 
 <a id="req-pl-016"></a>
 **[req-pl-016]** A conforming **governance** implementation MUST treat
@@ -1871,7 +1909,8 @@ This section's normative statements are:
   [req-pl-013](#req-pl-013), [req-pl-014](#req-pl-014),
   [req-pl-015](#req-pl-015), [req-pl-016](#req-pl-016),
   [req-pl-017](#req-pl-017), [req-pl-018](#req-pl-018),
-  [req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020).
+  [req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020),
+  [req-pl-021](#req-pl-021).
 
 ---
 
@@ -3784,7 +3823,8 @@ v0.2 will formalise the surrounding HTTP wire envelope.
 [req-pl-013](#req-pl-013), [req-pl-014](#req-pl-014),
 [req-pl-015](#req-pl-015), [req-pl-016](#req-pl-016),
 [req-pl-017](#req-pl-017), [req-pl-018](#req-pl-018),
-[req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020).
+[req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020),
+[req-pl-021](#req-pl-021).
 
 ### 11.4 Worked conformance examples (informative)
 
@@ -4168,6 +4208,7 @@ renumbering of conformance classes.
 | [req-pl-018](#req-pl-018)                | MUST    | 6.3.1   | governance  |
 | [req-pl-019](#req-pl-019)                | MUST    | 6.8.1   | governance  |
 | [req-pl-020](#req-pl-020)                | MUST    | 6.8.1   | governance  |
+| [req-pl-021](#req-pl-021)                | MUST    | 6.8     | governance  |
 | [req-rs-001](#req-rs-001)                | MUST    | 7.2     | consumer    |
 | [req-rs-002](#req-rs-002)                | MUST    | 7.3     | consumer    |
 | [req-rs-003](#req-rs-003)                | MUST    | 7.3     | consumer    |
@@ -4228,7 +4269,7 @@ renumbering of conformance classes.
 | [req-cf-001](#req-cf-001)                | MUST    | 12.5    | consumer    |
 | [req-cf-002](#req-cf-002)                | MUST    | 12.3    | consumer    |
 
-**Total normative statements: 128** (123 MUST, 5 SHOULD).
+**Total normative statements: 129** (124 MUST, 5 SHOULD).
 
 ---
 
@@ -4283,6 +4324,7 @@ renumbering of conformance classes.
 | 0.1.43 (proposed) | 2026-10-03 | Codex-native agent model preservation and bounded dropped-metadata diagnostic for PR #3150 (closes #3126). Added [req-tg-015] (Section 8.5.1, consumer MUST): a conforming consumer providing the Codex-native agent conversion capability MUST preserve a source-declared `model` or `model_reasoning_effort` string value in its native top-level placement, MUST leave either field absent when absent from the source, MUST diagnose a non-string value by field name without including that value, and MUST emit a diagnostic bounded on both dropped-field count and per-field name length (never the value) for any other dropped, non-capability-restriction frontmatter field. Under Section 9.2 this is a new opt-in conformance capability scoped to consumers providing the Codex-native agent conversion capability, not behavior-neutral errata: it does not require or imply preservation of any other `config.toml`-native key and does not define behavior for any other conversion target. Implementations not providing Codex-native agent conversion acquire no new required feature. No schema, lockfile version, existing mandatory feature, drift-policy or ownership rule changes. Section 9.3 reviewer approvals and public comment period remain pending; this proposal is not evidence of adoption. Section 8.7, Section 11.3.2, and Appendix C updated. Statement count: 125 -> 126 (121 MUST, 5 SHOULD). |
 | 0.1.44 (proposed) | 2026-10-03 | PR #3149 adds two consumer MUSTs in Section 8.5.9: [req-tg-016](#req-tg-016) rejects unsupported Cursor hook vocabulary; [req-tg-017](#req-tg-017) detects overlap with Claude imports before either install order writes, preserving import settings. These cite the accepted Cursor capability, not universal translation or a new mandatory feature (Section 9.2). Section 8.7, Section 11.3.2 and Appendix C are updated. Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. Statement count: 126 -> 128 (123 MUST, 5 SHOULD). |
 | 0.1.45 (proposed) | 2026-10-09 | Editorial fold for PR #3106 (closes #3083 Mode-B silent-extension gate; no new normative statement, count remains 128 (123 MUST, 5 SHOULD)). Section 4.2.1 and [req-tg-001] (Section 8.4): the explicit-only target enumeration now names `agent-skills`, `antigravity`, `hermes`, and `grok-bot`, reflecting the already-registered `hermes` target and the new stable explicit-only `grok-bot` target (skills deploy to `agent-data/workflows/`, per the OpenAPM Target Registry v0.1 companion). |
+| 0.1.46 (proposed) | 2026-10-14 | Spec-citation fold for PR #3232 (closes #3231 Mode-B silent-extension gate). Added [req-pl-021] (Section 6.8, governance MUST): a non-empty `security.integrity.deny_hashes` fails install and CI audit closed, including under `enforcement: warn` and on an absent or unreadable lockfile, when any recorded package `content_hash` or `deployed_file_hashes` value matches a listed `sha256:` digest; malformed entries are rejected at parse time. Added the informative Section 6.3.7 `factories` field reference (validated and merged by governance, enforced by receipt verifiers) and four Section 6.4 merge-table rows under [req-pl-006]. Under Section 9.2 this is an additive opt-in control: policies that omit the keys are unaffected. Section 6.3.6, Section 6.9, Section 11.3.4, Section 1.3, and Appendix C updated. Statement count: 128 -> 129 (124 MUST, 5 SHOULD). |
 
 Errata (none at publication).
 

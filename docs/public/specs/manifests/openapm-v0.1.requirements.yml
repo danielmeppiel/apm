@@ -309,6 +309,11 @@ requirements:
     keyword: MUST
     section: "6.8.1"
     conformance_class: governance
+  - id: req-pl-021
+    keyword: MUST
+    section: "6.8"
+    conformance_class: governance
+    notes: "a non-empty security.integrity.deny_hashes fails install and CI audit closed (also under enforcement warn and on an absent or unreadable lockfile) when any recorded content_hash or deployed_file_hashes value matches; malformed digests are rejected at parse time"
   - id: req-rs-001
     keyword: MUST
     section: "7.2"

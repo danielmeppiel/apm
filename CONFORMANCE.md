@@ -35,7 +35,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | Producer | 12 | 0 | 0 | 0 |
 | Consumer | 94 | 1 | 0 | 0 |
 | Registry | 1 | 0 | 0 | 0 |
-| Governance | 20 | 0 | 0 | 0 |
+| Governance | 21 | 0 | 0 | 0 |
 
 ## Per-requirement coverage
 
@@ -97,7 +97,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-pl-003](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-003) | MUST | 6.4 | governance | active | 1 | - |
 | [req-pl-004](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-004) | MUST | 6.4 | governance | active | 1 | - |
 | [req-pl-005](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-005) | MUST | 6.5 | governance | active | 1 | - |
-| [req-pl-006](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-006) | MUST | 6.4 | governance | active | 1 | - |
+| [req-pl-006](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-006) | MUST | 6.4 | governance | active | 2 | - |
 | [req-pl-007](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-007) | MUST | 6.3.1 | governance | active | 1 | - |
 | [req-pl-008](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-008) | MUST | 6.3.1 | governance | active | 1 | - |
 | [req-pl-009](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-009) | MUST | 6.6 | governance | active | 1 | - |
@@ -112,6 +112,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-pl-018](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-018) | MUST | 6.3.1 | governance | active | 1 | - |
 | [req-pl-019](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-019) | MUST | 6.8.1 | governance | active | 14 | - |
 | [req-pl-020](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-020) | MUST | 6.8.1 | governance | active | 3 | - |
+| [req-pl-021](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-021) | MUST | 6.8 | governance | active | 1 | - |
 | [req-pr-001](docs/src/content/docs/specs/openapm-v0.1.md#req-pr-001) | MUST | 8.2 | consumer | active | 1 | - |
 | [req-pr-002](docs/src/content/docs/specs/openapm-v0.1.md#req-pr-002) | MUST | 8.3 | consumer | active | 2 | - |
 | [req-pr-003](docs/src/content/docs/specs/openapm-v0.1.md#req-pr-003) | MUST | 8.3 | consumer | active | 1 | - |
