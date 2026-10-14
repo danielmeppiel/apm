@@ -108,7 +108,7 @@ EXTRA_RULES: tuple[Rule, ...] = (
     ),
     _semantic_rule(
         RULE_REQUIRE_HASHES,
-        "require_hashes enforcement routes through install/integrity.py.",
+        "Integrity policy (require/deny_hashes) routes through install/integrity.py.",
         check_require_hashes_enforcement,
     ),
     _semantic_rule(

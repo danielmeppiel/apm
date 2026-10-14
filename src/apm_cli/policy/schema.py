@@ -209,9 +209,15 @@ class IntegrityPolicy:
     download without detection. Default off preserves today's behavior. The key
     only asserts hash-presence on the lockfile entry; it does not add a second
     filesystem hash pass (the install pipeline already computes+records hashes).
+
+    ``deny_hashes``: content-level revocation. ``sha256:<hex>`` digests that
+    MUST NOT appear as any locked package ``content_hash`` or any recorded
+    ``deployed_file_hashes`` value. A match fails install and ``apm audit --ci``
+    closed. Union-merged like other deny lists.
     """
 
     require_hashes: bool = False
+    deny_hashes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -272,6 +278,40 @@ class ExecutablesPolicy:
 
 
 @dataclass(frozen=True)
+class FactorySigner:
+    """A trusted factory-receipt signer identity.
+
+    ``workflow`` is a GitHub OIDC workflow identity of the form
+    ``owner/repo/.github/workflows/<file>.yml``, optionally suffixed with
+    ``@<ref>`` to pin the ref the workflow ran from.
+    """
+
+    workflow: str
+
+
+@dataclass(frozen=True)
+class FactoriesPolicy:
+    """Rules governing agent factory runs (experimental).
+
+    APM does not run factories: it parses, validates, merges, and exposes
+    this block (``apm policy status --json``) so receipt verifiers such as
+    apmx enforce it.
+
+      * ``allow`` -- approved factory definitions: a package pattern,
+        optionally pinned with ``@sha256:<hex>`` to one definition digest.
+        Allow-list tri-state; intersected on merge.
+      * ``require_signed`` -- receipts must be signed (OR-merged).
+      * ``signers`` -- trusted signer identities. Allow-list tri-state
+        (``None`` = no opinion, ``()`` = no signer trusted); intersected on
+        merge by identity.
+    """
+
+    allow: tuple[str, ...] | None = None
+    require_signed: bool = False
+    signers: tuple[FactorySigner, ...] | None = None
+
+
+@dataclass(frozen=True)
 class ApmPolicy:
     """Top-level APM policy model."""
 
@@ -294,3 +334,4 @@ class ApmPolicy:
     # ``executables:`` instead.
     bin_deploy: BinDeployPolicy = field(default_factory=BinDeployPolicy)
     executables: ExecutablesPolicy = field(default_factory=ExecutablesPolicy)
+    factories: FactoriesPolicy = field(default_factory=FactoriesPolicy)

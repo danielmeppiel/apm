@@ -37,6 +37,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -66,6 +71,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -111,6 +117,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -140,6 +151,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -187,6 +199,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -216,6 +233,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -261,6 +279,11 @@
       "require": []
     },
     "extends": "nonexistent-org/nonexistent-policy-repo",
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -290,6 +313,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -335,6 +359,11 @@
       "require": []
     },
     "extends": "cycle-policy-a",
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -364,6 +393,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -411,6 +441,11 @@
       "require": []
     },
     "extends": "cycle-policy-b",
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -440,6 +475,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -487,6 +523,11 @@
       "require": []
     },
     "extends": "contoso-depth-5/policy",
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -516,6 +557,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -561,6 +603,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -590,6 +637,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -635,6 +683,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -664,6 +717,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -709,6 +763,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -738,6 +797,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": true
       }
     },
@@ -783,6 +843,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -820,6 +885,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -865,6 +931,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -894,6 +965,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -939,6 +1011,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -968,6 +1045,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1013,6 +1091,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1042,6 +1125,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": true
       }
     },
@@ -1089,6 +1173,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1118,6 +1207,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1165,6 +1255,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1194,6 +1289,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1241,6 +1337,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1270,6 +1371,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1315,6 +1417,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1344,6 +1451,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1398,6 +1506,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1427,6 +1540,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1472,6 +1586,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1501,6 +1620,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1558,6 +1678,11 @@
       "require": []
     },
     "extends": null,
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": {
@@ -1603,6 +1728,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },
@@ -1650,6 +1776,11 @@
       "require": []
     },
     "extends": "org",
+    "factories": {
+      "allow": null,
+      "require_signed": false,
+      "signers": null
+    },
     "fetch_failure": "warn",
     "manifest": {
       "content_types": null,
@@ -1679,6 +1810,7 @@
         "scanners": null
       },
       "integrity": {
+        "deny_hashes": [],
         "require_hashes": false
       }
     },

@@ -1723,6 +1723,7 @@ def _policy_to_dict(policy: ApmPolicy) -> dict:
             },
             "integrity": {
                 "require_hashes": policy.security.integrity.require_hashes,
+                "deny_hashes": list(policy.security.integrity.deny_hashes),
             },
         },
         "executables": {
@@ -1731,6 +1732,13 @@ def _policy_to_dict(policy: ApmPolicy) -> dict:
             "require": list(policy.executables.require),
             "recommend": list(policy.executables.recommend),
             "enforce": list(policy.executables.enforce),
+        },
+        "factories": {
+            "allow": _opt_list(policy.factories.allow),
+            "require_signed": policy.factories.require_signed,
+            "signers": None
+            if policy.factories.signers is None
+            else [{"workflow": signer.workflow} for signer in policy.factories.signers],
         },
     }
     if policy.bin_deploy.deny_all or policy.bin_deploy.deny:
@@ -1787,6 +1795,10 @@ def _is_policy_empty(policy: ApmPolicy) -> bool:
             policy.security.audit.scanners is not None,
             policy.security.audit.fail_on_drift,
             policy.security.integrity.require_hashes,
+            policy.security.integrity.deny_hashes,
+            policy.factories.allow is not None,
+            policy.factories.require_signed,
+            policy.factories.signers is not None,
             policy.bin_deploy.deny_all,
             policy.bin_deploy.deny,
             policy.executables.deny_all,

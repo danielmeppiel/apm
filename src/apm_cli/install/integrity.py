@@ -1,4 +1,9 @@
-"""Fail-closed enforcement for ``security.integrity.require_hashes``.
+"""Fail-closed enforcement for ``security.integrity`` policy.
+
+This module is the single owner of both integrity decisions:
+``require_hashes`` (below) and ``deny_hashes`` (content-level revocation:
+any locked package ``content_hash`` or recorded ``deployed_file_hashes``
+value matching a denied digest fails closed).
 
 When the policy enables ``require_hashes``, every non-local lockfile entry MUST
 carry a content hash. A missing or empty hash is treated as a FAILURE, never a
@@ -92,5 +97,72 @@ def enforce_installed_hash_policy(ctx: InstallContext) -> None:
         )
     try:
         enforce_require_hashes(lockfile.get_package_dependencies(), enabled=True)
+    except RuntimeError as exc:
+        raise PolicyViolationError(str(exc)) from exc
+
+
+def denied_hash_matches(deps: list[LockedDependency], deny_hashes: tuple[str, ...]) -> list[str]:
+    """Return a sorted description of every lockfile hash on the deny list.
+
+    Matches package ``content_hash`` values and every ``deployed_file_hashes``
+    value (local content included, via the lockfile self-entry). Digests are
+    compared case-insensitively on the hex part.
+    """
+    denied = {h.lower() for h in deny_hashes}
+    if not denied:
+        return []
+    from .mcp.registry import _redact_url_credentials
+
+    matches: list[str] = []
+    for dep in deps:
+        name = "<project>" if dep.local_path == "." else _redact_url_credentials(dep.repo_url)
+        if dep.content_hash and dep.content_hash.lower() in denied:
+            matches.append(f"{name}: package content_hash {dep.content_hash}")
+        for path, file_hash in sorted(dep.deployed_file_hashes.items()):
+            if isinstance(file_hash, str) and file_hash.lower() in denied:
+                matches.append(f"{name}: {path} ({file_hash})")
+    return sorted(matches)
+
+
+def enforce_deny_hashes(deps: list[LockedDependency], policy: IntegrityPolicy | None) -> None:
+    """Fail closed when any lockfile hash matches ``deny_hashes``.
+
+    No-op when the policy declares no denied digests. Raises
+    :class:`RuntimeError` naming every revoked hash otherwise.
+    """
+    if policy is None or not policy.deny_hashes:
+        return
+    matches = denied_hash_matches(deps, policy.deny_hashes)
+    if not matches:
+        return
+    raise RuntimeError(
+        "security.integrity.deny_hashes revokes content present in the lockfile "
+        f"(fail-closed): {'; '.join(matches)}. Remove or update the affected "
+        "dependency, then re-run 'apm install'."
+    )
+
+
+def enforce_installed_deny_hashes(ctx: InstallContext) -> None:
+    """Enforce ``deny_hashes`` against the lockfile written by this install."""
+    if ctx.no_policy:
+        return
+    policy_fetch = getattr(ctx, "policy_fetch", None)
+    policy = getattr(policy_fetch, "policy", None) if policy_fetch else None
+    if policy is None or not policy.security.integrity.deny_hashes:
+        return
+
+    from ..deps.lockfile import LockFile, get_lockfile_path
+    from .phases.policy_gate import PolicyViolationError
+
+    lockfile_path = get_lockfile_path(ctx.apm_dir)
+    lockfile = LockFile.read(lockfile_path)
+    if lockfile is None:
+        raise PolicyViolationError(
+            "security.integrity.deny_hashes is set but the lockfile at "
+            f"{lockfile_path} could not be read (missing or corrupt); "
+            "failing closed. Re-run 'apm install' to regenerate it."
+        )
+    try:
+        enforce_deny_hashes(lockfile.get_all_dependencies(), policy.security.integrity)
     except RuntimeError as exc:
         raise PolicyViolationError(str(exc)) from exc

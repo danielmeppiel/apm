@@ -136,7 +136,7 @@ graph TD
 
     DryRun["apm install --dry-run"] --> DryPre["[*] Preview only<br/>install_preflight dry_run=True<br/>'Would be blocked' lines, no raise"]
 
-    Audit["apm audit --ci<br/>--policy &lt;scope&gt;"] --> AuditRun["[*] Enforcement point 4<br/>8 baseline + 21 policy checks<br/>(only enforcer of audit-only fields)"]
+    Audit["apm audit --ci<br/>--policy &lt;scope&gt;"] --> AuditRun["[*] Enforcement point 4<br/>8 baseline + 22 policy checks<br/>(only enforcer of audit-only fields)"]
 
     style Start fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
     style Gate fill:#f3e5f5,stroke:#7b1fa2,stroke-width:3px,color:#000
@@ -165,7 +165,7 @@ When you install an APM package that itself declares MCP dependencies, those MCP
 
 ### 5d. `apm audit --ci --policy <scope>`
 
-The only enforcer of the audit-only checks (`compilation-strategy`, `source-attribution`, `required-manifest-fields`, `scripts-policy`, `explicit-includes`, `unmanaged-files`). Runs the 8 baseline lockfile checks unconditionally, then -- if a policy is discovered or supplied -- runs the 21 policy checks. This is the check you wire into branch protection.
+The only enforcer of the audit-only checks (`compilation-strategy`, `source-attribution`, `required-manifest-fields`, `scripts-policy`, `explicit-includes`, `unmanaged-files`). Runs the 8 baseline lockfile checks unconditionally, then -- if a policy is discovered or supplied -- runs the 22 policy checks. This is the check you wire into branch protection.
 
 ---
 
@@ -282,12 +282,12 @@ This is the certitude section. Read it twice if you are deciding whether `apm au
 | Fork repo to a personal org | Org policy auto-discovery (resolves to fork's `.github`) | Whatever your CI requires on the canonical repo | branch protection on canonical repo |
 | `--trust-transitive-mcp` CLI flag | The transitive MCP preflight (second pass) | Direct MCP preflight; baseline content scan; audit MCP checks | CI command lines and Actions logs |
 | `--allow-insecure` CLI flag | The HTTP-MCP refusal (lets a `http://` MCP through) | All `mcp.*` policy rules; audit MCP checks | CI command lines and Actions logs |
-| `apm install --force` | On-disk collision detection AND content-scan blocks | The 21 policy checks; baseline checks at next audit | CI command lines; PR diff of overwritten files |
+| `apm install --force` | On-disk collision detection AND content-scan blocks | The 22 policy checks; baseline checks at next audit | CI command lines; PR diff of overwritten files |
 
 Notes on specific rows:
 
 - **`apm install --no-policy`** also bypasses the `apm install --mcp` preflight, the transitive-MCP preflight, and any project-side `policy.hash` pin.
-- **`APM_POLICY_DISABLE=1`** short-circuits discovery to `outcome="disabled"` everywhere -- including `apm audit --ci`, where the 21 policy checks are skipped (the 8 baseline checks and integration drift detection still run).
+- **`APM_POLICY_DISABLE=1`** short-circuits discovery to `outcome="disabled"` everywhere -- including `apm audit --ci`, where the 22 policy checks are skipped (the 8 baseline checks and integration drift detection still run).
 - **Manual lockfile edits**: `content_hash` mismatch on registry-proxy deps is caught at the next install when downloads resume.
 - **Direct `git clone`**: `unmanaged-files` only flags governed dirs and only when configured to `warn` / `deny`.
 - **Fork-to-personal-org**: discovery resolves via `git remote get-url origin`; branch protection on the upstream repo is the trust boundary.
@@ -507,7 +507,7 @@ These are the sharp edges. Plan around them; do not assume they are solved.
 - **Plain git remotes are not auto-discovered.** GitHub and GitHub Enterprise use the `.github` cascade, Azure DevOps uses the org `apm` project and `apm-policy` repository (with `_apm/_apm` as a legacy fallback), and GitLab uses `<top-level-group>/apm-policy/apm-policy.yml`, where the top-level group is the first path segment of the remote. Nested subgroup scopes are not searched. Configure self-managed GitLab with `GITLAB_HOST` or `APM_GITLAB_HOSTS`. For unsupported remotes, pass `apm audit --ci --policy <path-or-url>` explicitly.
 - **Trust anchor is `git remote get-url origin`.** A developer who pushes the project to a personal org will have policy discovery resolve `<their-org>/.github/apm-policy.yml` -- which they control. Operational mitigation: branch protection on the canonical repo is the trust boundary; nothing about a personal fork can bypass what your CI requires before merge.
 - **`apm install --dry-run` silently downgrades hash-mismatch.** In dry-run, `raise_blocking_errors=False` (outcome_routing.py:104-119) causes the mismatch to surface as `discovery_miss` with no "Would be blocked" line and exit 0. Operational mitigation: rely on `apm audit --ci` in CI for hash-pin verification, not on `apm install --dry-run`.
-- **`apm audit --ci --no-policy` and `APM_POLICY_DISABLE=1` skip policy checks.** The 21 policy checks are bypassed in audit, but the 8 baseline lockfile checks still run. Operational mitigation: keep bypass flags out of required CI workflows; the bypass contract in section 7 is authoritative.
+- **`apm audit --ci --no-policy` and `APM_POLICY_DISABLE=1` skip policy checks.** The 22 policy checks are bypassed in audit, but the 8 baseline lockfile checks still run. Operational mitigation: keep bypass flags out of required CI workflows; the bypass contract in section 7 is authoritative.
 - **Gate + transitive-MCP preflight may double-emit the same MCP violation.** A single bad transitive MCP can produce two SARIF alerts with the same rule and different code paths. Operational mitigation: dedupe by `(rule_id, server_name)` when aggregating alerts in your SIEM or dashboard.
 - **No signed attestation that the gate ran.** APM does not currently produce a signed (e.g. SLSA / sigstore) attestation for the install gate or the audit run. Non-repudiation depends on the GitHub Actions audit log plus branch-protection enforcement of the required check. Operational mitigation: pair APM with branch protection requiring `apm audit --ci` as a status check; rely on GitHub's audit log for auditor evidence.
 

@@ -46,6 +46,13 @@ PACKAGE_VALUES = (
 )
 TARGET_VALUES = ("claude", "copilot", "vscode")
 CONTENT_TYPE_VALUES = ("agents", "instructions", "prompts", "skills")
+DIGEST_VALUES = tuple(f"sha256:{c * 64}" for c in "abc")
+FACTORY_VALUES = ("acme/*", f"acme/checkout@sha256:{'d' * 64}", "contoso/factory")
+WORKFLOW_VALUES = (
+    "acme/factories/.github/workflows/run.yml",
+    "acme/factories/.github/workflows/run.yml@refs/heads/main",
+    "contoso/ci/.github/workflows/sign.yaml",
+)
 PATH_VALUES = (".agents", ".github/instructions", ".github/prompts", ".github/skills")
 INVALID_CASES = (
     ("enforcement", ("enforcement",), "invalid"),
@@ -57,6 +64,8 @@ INVALID_CASES = (
     ("unmanaged-action", ("unmanaged_files", "action"), "allow"),
     ("audit-on-install", ("security", "audit", "on_install"), "allow"),
     ("integrity-hashes", ("security", "integrity", "require_hashes"), "yes"),
+    ("integrity-deny-hashes", ("security", "integrity", "deny_hashes"), ["sha256:bad"]),
+    ("factories-require-signed", ("factories", "require_signed"), "yes"),
     ("executables-deny-all", ("executables", "deny_all"), "yes"),
 )
 
@@ -141,7 +150,10 @@ def enforceable_policy_data(draw: st.DrawFn) -> dict[str, Any]:
                 },
                 "fail_on_drift": True,
             },
-            "integrity": {"require_hashes": True},
+            "integrity": {
+                "require_hashes": True,
+                "deny_hashes": draw(_non_empty_unique(DIGEST_VALUES)),
+            },
         },
         "bin_deploy": {
             "deny_all": True,
@@ -153,6 +165,11 @@ def enforceable_policy_data(draw: st.DrawFn) -> dict[str, Any]:
             "require": draw(package_list),
             "recommend": draw(package_list),
             "enforce": draw(package_list),
+        },
+        "factories": {
+            "allow": draw(_non_empty_unique(FACTORY_VALUES)),
+            "require_signed": True,
+            "signers": [{"workflow": w} for w in draw(_non_empty_unique(WORKFLOW_VALUES))],
         },
         "future_govern_key": "preserve-authored-warning",
     }
@@ -198,6 +215,7 @@ def _enforceable_fields(policy: ApmPolicy) -> dict[str, Any]:
         "security.audit.scanners": policy.security.audit.scanners,
         "security.audit.fail_on_drift": policy.security.audit.fail_on_drift,
         "security.integrity.require_hashes": policy.security.integrity.require_hashes,
+        "security.integrity.deny_hashes": policy.security.integrity.deny_hashes,
         "bin_deploy.deny_all": policy.bin_deploy.deny_all,
         "bin_deploy.deny": policy.bin_deploy.deny,
         "executables.deny_all": policy.executables.deny_all,
@@ -205,6 +223,9 @@ def _enforceable_fields(policy: ApmPolicy) -> dict[str, Any]:
         "executables.require": policy.executables.require,
         "executables.recommend": policy.executables.recommend,
         "executables.enforce": policy.executables.enforce,
+        "factories.allow": policy.factories.allow,
+        "factories.require_signed": policy.factories.require_signed,
+        "factories.signers": policy.factories.signers,
     }
 
 
@@ -299,7 +320,7 @@ def test_effective_policy_cache_serialization_is_lossless_and_canonical(
     effective = resolve_policy_chain([parsed])
 
     assert set(_enforceable_fields(effective)) == _schema_enforceable_field_paths(effective)
-    assert len(_enforceable_fields(effective)) == 39
+    assert len(_enforceable_fields(effective)) == 43
     _assert_cache_round_trip(effective)
 
 

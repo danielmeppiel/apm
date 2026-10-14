@@ -217,11 +217,11 @@ _INSTALL_PIPELINE = "src/apm_cli/install/pipeline.py"
 _POLICY_CHECKS = "src/apm_cli/policy/policy_checks.py"
 
 
-_REQUIRE_HASHES = re.compile(r"policy(\.security\.integrity)?\.require_hashes")
+_REQUIRE_HASHES = re.compile(r"policy(\.security\.integrity)?\.(require_hashes|deny_hashes)")
 
 
 def check_require_hashes_enforcement(provider: FactsProvider) -> tuple[Violation, ...]:
-    """require_hashes enforcement must route through install/integrity.py."""
+    """Integrity policy (require_hashes, deny_hashes) must route through install/integrity.py."""
     return tuple(
         _banned(
             provider,
@@ -229,7 +229,8 @@ def check_require_hashes_enforcement(provider: FactsProvider) -> tuple[Violation
             paths=(_INSTALL_PIPELINE, _LOCAL_BUNDLE_HANDLER, _POLICY_CHECKS),
             pattern=_REQUIRE_HASHES,
             message=(
-                "require_hashes enforcement must route through install/integrity.py, "
+                "integrity policy (require_hashes, deny_hashes) enforcement must route "
+                "through install/integrity.py, "
                 "not be re-read from policy here"
             ),
             respect_exempt=True,

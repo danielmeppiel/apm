@@ -24,6 +24,7 @@ from ..policy._help_text import POLICY_SOURCE_FORMS_HELP
 from ..policy.discovery import (
     MAX_STALE_TTL,
     PolicyFetchResult,
+    _policy_to_dict,
     _read_cache_entry,
     _redact_policy_ref,
     discover_policy_with_chain,
@@ -93,6 +94,9 @@ def _count_rules(policy: ApmPolicy | None) -> dict[str, int]:
         "compilation_targets_allowed": _allow_count(policy.compilation.target.allow),
         "manifest_required_fields": len(policy.manifest.required_fields),
         "unmanaged_files_directories": len(policy.unmanaged_files.directories or ()),
+        "integrity_deny_hashes": len(policy.security.integrity.deny_hashes),
+        "factories_allow": _allow_count(policy.factories.allow),
+        "factories_signers": _allow_count(policy.factories.signers),
     }
 
 
@@ -114,6 +118,9 @@ def _summarize_rules(counts: dict[str, int]) -> list[str]:
         ("compilation_targets_allowed", "compilation target restrictions"),
         ("manifest_required_fields", "required manifest fields"),
         ("unmanaged_files_directories", "unmanaged-file directories"),
+        ("integrity_deny_hashes", "revoked content hashes"),
+        ("factories_allow", "factory allow patterns"),
+        ("factories_signers", "factory signers"),
     ]
     summary: list[str] = []
     for key, label in labels:
@@ -208,6 +215,9 @@ def _build_report(
         "extends_chain": chain,
         "rule_counts": counts,
         "rule_summary": _summarize_rules(counts),
+        # Fully resolved (merged) policy for machine consumers such as apmx;
+        # None when no policy was resolved.
+        "effective_policy": _policy_to_dict(result.policy) if result.policy else None,
     }
 
 

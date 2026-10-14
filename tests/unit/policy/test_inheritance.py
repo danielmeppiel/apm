@@ -23,6 +23,7 @@ from apm_cli.policy.schema import (
     CompilationTargetPolicy,
     DependencyPolicy,
     ExecutablesPolicy,
+    FactoriesPolicy,
     ManifestPolicy,
     McpPolicy,
     McpTransportPolicy,
@@ -936,6 +937,7 @@ class TestMergeFieldCoverageGuard(unittest.TestCase):
             security=SecurityPolicy(audit=AuditPolicy(on_install="block")),
             bin_deploy=BinDeployPolicy(deny_all=True),
             executables=ExecutablesPolicy(deny_all=True),
+            factories=FactoriesPolicy(require_signed=True),
         )
 
     def test_sample_covers_every_mergeable_field(self):

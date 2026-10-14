@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ from .schema import (
     CompilationTargetPolicy,
     DependencyPolicy,
     ExecutablesPolicy,
+    FactoriesPolicy,
+    FactorySigner,
     IntegrityPolicy,
     ManifestPolicy,
     McpPolicy,
@@ -38,6 +41,14 @@ _VALID_SCRIPTS = {"allow", "deny"}
 _VALID_UNMANAGED_ACTION = {"ignore", "warn", "deny"}
 _VALID_AUDIT_ON_INSTALL = {"off", "warn", "block"}
 
+_SHA256_DIGEST_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
+_FACTORY_ALLOW_RE = re.compile(r"^[^\s@]+(@sha256:[0-9a-fA-F]{64})?$")
+_SIGNER_WORKFLOW_RE = re.compile(
+    r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml(@[^\s@]+)?$"
+)
+_KNOWN_FACTORIES_KEYS = {"allow", "require_signed", "signers"}
+_KNOWN_SIGNER_KEYS = {"workflow"}
+
 # YAML 1.1 treats "off"/"on" as booleans — map them back to strings
 _YAML_BOOL_COERCE = {False: "off", True: "on"}
 
@@ -57,6 +68,7 @@ _KNOWN_TOP_LEVEL_KEYS = {
     "registry_source",
     "bin_deploy",
     "executables",
+    "factories",
 }
 
 
@@ -229,11 +241,86 @@ def validate_policy(data: dict) -> tuple[list[str], list[str]]:
                 errors.append(
                     f"security.integrity.require_hashes must be a boolean, got '{require_hashes}'"
                 )
+            _validate_deny_hashes(integrity.get("deny_hashes"), errors)
 
     # executables (issue #1873, Gap A): org grant/deny trust block.
     _validate_executables(data, errors, warnings)
 
+    # factories (experimental): parsed/merged here, enforced by consumers.
+    _validate_factories(data.get("factories"), errors, warnings)
+
     return errors, warnings
+
+
+def _validate_deny_hashes(value: Any, errors: list[str]) -> None:
+    """Validate ``security.integrity.deny_hashes`` (``sha256:<64 hex>`` digests)."""
+    if value is None:
+        return
+    if not isinstance(value, list):
+        errors.append(
+            "security.integrity.deny_hashes must be a YAML list of 'sha256:<hex>' digests "
+            f"(got {type(value).__name__})"
+        )
+        return
+    for item in value:
+        if not isinstance(item, str) or not _SHA256_DIGEST_RE.match(item):
+            errors.append(
+                "security.integrity.deny_hashes entries must be 'sha256:' followed by "
+                f"64 hex characters, got {item!r}"
+            )
+
+
+def _validate_factories(factories: Any, errors: list[str], warnings: list[str]) -> None:
+    """Validate the experimental ``factories:`` block."""
+    if factories is None:
+        return
+    if not isinstance(factories, dict):
+        errors.append("factories must be a YAML mapping")
+        return
+    for key in sorted(set(factories) - _KNOWN_FACTORIES_KEYS, key=str):
+        warnings.append(f"Unknown factories policy key: '{key}'")
+
+    allow = factories.get("allow")
+    if allow is not None:
+        if not isinstance(allow, list):
+            errors.append(
+                f"factories.allow must be a YAML list of factory patterns "
+                f"(got {type(allow).__name__})"
+            )
+        else:
+            for item in allow:
+                if not isinstance(item, str) or not _FACTORY_ALLOW_RE.match(item):
+                    errors.append(
+                        "factories.allow entries must be a package pattern, optionally "
+                        f"pinned as '<pattern>@sha256:<64 hex>', got {item!r}"
+                    )
+
+    require_signed = factories.get("require_signed")
+    if require_signed is not None and not isinstance(require_signed, bool):
+        errors.append(f"factories.require_signed must be a boolean, got '{require_signed}'")
+
+    signers = factories.get("signers")
+    if signers is None:
+        return
+    if not isinstance(signers, list):
+        errors.append(
+            f"factories.signers must be a YAML list of signer mappings "
+            f"(got {type(signers).__name__})"
+        )
+        return
+    for index, signer in enumerate(signers):
+        where = f"factories.signers[{index}]"
+        if not isinstance(signer, dict):
+            errors.append(f"{where} must be a mapping with a 'workflow' key")
+            continue
+        for key in sorted(set(signer) - _KNOWN_SIGNER_KEYS, key=str):
+            warnings.append(f"Unknown {where} key: '{key}'")
+        workflow = signer.get("workflow")
+        if not isinstance(workflow, str) or not _SIGNER_WORKFLOW_RE.match(workflow):
+            errors.append(
+                f"{where}.workflow must be 'owner/repo/.github/workflows/<file>.yml' "
+                f"(optionally '@<ref>'), got {workflow!r}"
+            )
 
 
 def _validate_executables(data: dict, errors: list[str], warnings: list[str]) -> None:
@@ -377,6 +464,7 @@ def _build_policy(data: dict) -> ApmPolicy:
         ),
         integrity=IntegrityPolicy(
             require_hashes=bool(integrity_data.get("require_hashes", False)),
+            deny_hashes=_parse_tuple(integrity_data.get("deny_hashes")),
         ),
     )
 
@@ -397,6 +485,17 @@ def _build_policy(data: dict) -> ApmPolicy:
         enforce=_parse_tuple(ex_data.get("enforce")) if ex_data.get("enforce") is not None else (),
     )
 
+    raw_factories = data.get("factories")
+    fac_data = raw_factories if isinstance(raw_factories, dict) else {}
+    raw_signers = fac_data.get("signers")
+    factories = FactoriesPolicy(
+        allow=_parse_allow(fac_data.get("allow")),
+        require_signed=bool(fac_data.get("require_signed", False)),
+        signers=None
+        if not isinstance(raw_signers, list)
+        else tuple(FactorySigner(workflow=str(s["workflow"])) for s in raw_signers),
+    )
+
     return ApmPolicy(
         name=data.get("name", "") or "",
         version=data.get("version", "") or "",
@@ -413,6 +512,7 @@ def _build_policy(data: dict) -> ApmPolicy:
         security=security,
         bin_deploy=bin_deploy,
         executables=executables,
+        factories=factories,
     )
 
 

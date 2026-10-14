@@ -20,6 +20,8 @@ from .schema import (
     CompilationTargetPolicy,
     DependencyPolicy,
     ExecutablesPolicy,
+    FactoriesPolicy,
+    FactorySigner,
     IntegrityPolicy,
     ManifestPolicy,
     McpPolicy,
@@ -75,6 +77,7 @@ def merge_policies(parent: ApmPolicy, child: ApmPolicy) -> ApmPolicy:
         security=_merge_security(parent.security, child.security),
         bin_deploy=_merge_bin_deploy(parent.bin_deploy, child.bin_deploy),
         executables=_merge_executables(parent.executables, child.executables),
+        factories=_merge_factories(parent.factories, child.factories),
     )
 
 
@@ -192,6 +195,26 @@ def _merge_executables(parent: ExecutablesPolicy, child: ExecutablesPolicy) -> E
         require=_union(parent.require, child.require),
         recommend=_union(parent.recommend, child.recommend),
         enforce=_union(parent.enforce, child.enforce),
+    )
+
+
+def _merge_factories(parent: FactoriesPolicy, child: FactoriesPolicy) -> FactoriesPolicy:
+    """Merge the factories block: tighten-only.
+
+    ``allow`` and ``signers`` are allow-lists (intersection, ``None`` is
+    transparent); signers intersect by identity. ``require_signed`` OR-merges.
+    """
+    if parent.signers is None:
+        signers: tuple[FactorySigner, ...] | None = child.signers
+    elif child.signers is None:
+        signers = parent.signers
+    else:
+        child_ids = {s.workflow for s in child.signers}
+        signers = tuple(s for s in parent.signers if s.workflow in child_ids)
+    return FactoriesPolicy(
+        allow=_intersect_allow(parent.allow, child.allow),
+        require_signed=parent.require_signed or child.require_signed,
+        signers=signers,
     )
 
 
@@ -333,6 +356,7 @@ def _merge_security(parent: SecurityPolicy, child: SecurityPolicy) -> SecurityPo
         ),
         integrity=IntegrityPolicy(
             require_hashes=parent.integrity.require_hashes or child.integrity.require_hashes,
+            deny_hashes=_union(parent.integrity.deny_hashes, child.integrity.deny_hashes),
         ),
     )
 

@@ -170,6 +170,48 @@ class TestCiWithPolicyFlag:
         )
         assert hash_check["passed"] is False
 
+    @pytest.mark.parametrize(("revoked", "expected_exit"), [(True, 1), (False, 0)])
+    def test_deny_hashes_fails_closed_in_warn_mode(
+        self,
+        runner,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        revoked: bool,
+        expected_exit: int,
+    ) -> None:
+        """A revoked deployed-file hash fails audit even under warn enforcement."""
+        import yaml
+
+        from apm_cli.utils.content_hash import compute_file_hash
+
+        monkeypatch.chdir(tmp_path)
+        _setup_clean_project(tmp_path)
+        deployed = ".github/prompts/test.md"
+        file_hash = compute_file_hash(tmp_path / deployed)
+        lock_path = tmp_path / "apm.lock.yaml"
+        lock_data = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
+        lock_data["dependencies"][0]["deployed_file_hashes"] = {deployed: file_hash}
+        lock_path.write_text(yaml.safe_dump(lock_data), encoding="utf-8")
+        denied = file_hash if revoked else "sha256:" + "0" * 64
+        policy_path = _write_policy_file(
+            tmp_path,
+            enforcement="warn",
+            security={"integrity": {"deny_hashes": [denied]}},
+        )
+
+        result = runner.invoke(
+            audit,
+            ["--ci", "--no-drift", "--no-fail-fast", "--policy", str(policy_path), "-f", "json"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == expected_exit, result.output
+        payload = json.loads(result.output)
+        check = next(c for c in payload["checks"] if c["name"] == "content-hash-denylist")
+        assert check["passed"] is (not revoked)
+        integrity = next(c for c in payload["checks"] if c["name"] == "content-integrity")
+        assert integrity["passed"] is True
+
 
 class TestCiWithPolicyOrg:
     def test_ci_policy_org_discovery(self, runner, tmp_path, monkeypatch):

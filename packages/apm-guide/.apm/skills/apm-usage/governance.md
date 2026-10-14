@@ -89,6 +89,11 @@ executables:                            # org ceiling for executable-primitive t
   deny: []                              # packages whose executables must not deploy (deny is the ceiling)
   require: []                           # packages whose executables MUST be present and trusted
   recommend: []                         # org-vetted set; default-allow unless locally denied
+
+factories:                              # experimental; APM validates/merges, consumers (apmx) enforce
+  allow: null                           # "<package-pattern>[@sha256:<64 hex>]"; null = no opinion
+  require_signed: false                 # reject unsigned factory receipts
+  signers: null                         # - workflow: owner/repo/.github/workflows/run.yml[@ref]
 ```
 
 ## Registry source governance (experimental)
@@ -123,6 +128,8 @@ namespace, both backed by enforcement that exists today.
 security:
   integrity:
     require_hashes: true    # fail install/audit closed when a non-local dep lacks a hash
+    deny_hashes:            # revoke specific content by hash (sha256:<64 hex>)
+      - "sha256:3f7c...e91a"
   audit:
     fail_on_drift: true     # `apm audit` exits non-zero on workspace drift
 ```
@@ -130,6 +137,7 @@ security:
 | Field | Default | Behavior |
 |-------|---------|----------|
 | `integrity.require_hashes` | `false` | When `true`, every non-local lockfile entry MUST carry a content hash. Missing or empty hashes fail closed at install time and surface in `apm audit --ci --policy` as `dependency-content-hashes`. Local deps are exempt. A local bundle with cached policy but no embedded `apm.lock.yaml` fails closed; a bundle with a lock receives full `pack.bundle_files` verification. Bundle installs never fetch policy from the network. Logical OR on inheritance. |
+| `integrity.deny_hashes` | `[]` | Content-level revocation. When any locked package `content_hash` or recorded `deployed_file_hashes` value (project-local content included) matches, `apm install` fails closed and `apm audit --ci --policy` fails the `content-hash-denylist` check, even under `enforcement: warn`. Malformed entries are a parse error. Local bundle installs are not covered. Union on inheritance. |
 | `audit.fail_on_drift` | `false` | When `true`, a bare `apm audit` exits non-zero when workspace content drifts from the lockfile (default-off keeps drift advisory at exit 0). Only changes the exit code; `apm audit --ci` already gates on drift. Logical OR on inheritance. |
 
 Canonical deployment ownership is an always-on integrity boundary, not a
@@ -618,7 +626,12 @@ time. MD5 / SHA-1 not accepted.
 `apm policy status` prints discovery outcome, source, enforcement, cache
 age, `extends` chain, and rule counts (table or `--json`). Always exits 0
 so it is safe for CI / SIEM ingestion. Supports `--policy-source` and
-`--no-cache`.
+`--no-cache`. `--json` also emits `effective_policy`: the fully merged
+policy (`null` when none resolved). Tools such as apmx read `factories`
+from it rather than re-implementing discovery or inheritance.
+
+`factories` merge rules: `allow` and `signers` intersect (signers by
+`workflow`; `null` is transparent); `require_signed` is logical OR.
 
 ### 9.8. `apm audit --ci` auto-discovery
 

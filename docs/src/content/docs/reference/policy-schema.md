@@ -213,6 +213,7 @@ experimental flag to take effect; ignored otherwise.
 | `audit.scanners`     | mapping or null | `null`  | Per-scanner governance, keyed by scanner name. Each value accepts `allow_args` (boolean). **Restrict-only**: see below. Unknown scanner names are a warning, not an error (forward-compat). |
 | `audit.fail_on_drift` | boolean        | `false` | When `true`, a bare `apm audit` exits non-zero if the workspace content has drifted from the lockfile. Default-off keeps drift advisory (rendered, exit 0). Only changes the exit code -- the drift scan itself is unchanged. `apm audit --ci` already gates on drift regardless of this key. |
 | `integrity.require_hashes` | boolean   | `false` | When `true`, every non-local lockfile entry MUST carry a content hash; a missing or empty hash **fails the install closed**. Default-off preserves current behavior. Asserts hash-presence on the lockfile entry (no second hashing pass). Local dependencies are exempt (verified via deployed-file hashes). |
+| `integrity.deny_hashes` | list of strings | `[]` | Content-level revocation. Each entry is `sha256:<64 hex>`. When any locked package `content_hash` or any recorded `deployed_file_hashes` value (project-local content included) matches, `apm install` and `apm audit --ci` **fail closed**. Malformed entries are a parse error. |
 
 ### Per-scanner governance (`audit.scanners`)
 
@@ -262,6 +263,21 @@ enforced by `apm audit`: when drift is detected it escalates the exit code to
 `1`. Both keys only ever tighten -- a child policy cannot relax a parent that
 turned them on.
 
+`deny_hashes` revokes specific content, not packages. Use it when a known-bad
+file body ships under a package that `dependencies.deny` cannot block:
+
+```yaml
+security:
+  integrity:
+    deny_hashes:
+      - "sha256:3f7c...e91a"   # 64 hex characters
+```
+
+Hashes use the same format APM records in `apm.lock.yaml`. `apm install` fails
+after writing the lockfile when a match is found, and `apm audit --ci` reports
+it as the `content-hash-denylist` check. Both fail even under
+`enforcement: warn`. Local bundle installs are not covered.
+
 ## Inheritance
 
 `extends:` resolves a parent policy. Maximum chain depth is **5**; cycles are rejected.
@@ -303,6 +319,9 @@ inherited list (see the tri-state table below).
 | `security.audit.scanners`   | Union of scanner names; per scanner `allow_args` is AND-merged (any ancestor `false` wins -- tightening). `null` is transparent.                  |
 | `security.audit.fail_on_drift` | Logical OR -- once a parent enables it, a child cannot relax.                  |
 | `security.integrity.require_hashes` | Logical OR -- once a parent enables it, a child cannot relax.             |
+| `security.integrity.deny_hashes` | Union, deduplicated. A child adds hashes but never drops a parent's.        |
+| `factories.allow` / `factories.signers` | Set intersection (signers by `workflow` identity). `null` is transparent. |
+| `factories.require_signed`  | Logical OR -- once a parent enables it, a child cannot relax.                     |
 | `executables.deny_all`      | Logical OR -- any ancestor kill-switch (`true`) sticks.                           |
 | `executables.deny` / `require` / `recommend` / `enforce` | Union, deduplicated. A child adds packages but never drops a parent's. |
 | `compilation.*.enforce`     | First non-null wins (parent precedence).                                         |
@@ -470,6 +489,36 @@ an `executables.enforce` rung is accepted in policy but fail-safe degrades to
 remain package-scoped. Local bundle MCP, LSP, and canvas grants use the exact
 SHA-256 content key printed by `apm install`; changed bundle content requires a
 new grant.
+
+## factories
+
+:::caution[Experimental]
+APM validates, merges, and publishes this block but does **not** enforce it.
+Factory receipt verifiers such as [apmx](https://github.com/danielmeppiel/apmx)
+read it from the resolved policy and enforce it.
+:::
+
+Governs which agent factory definitions may run and who may sign their
+receipts.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `allow` | `list<string>` or null | `null` | Approved factory definitions. Each entry is a package pattern (same grammar as `dependencies.allow`), optionally pinned to one definition digest: `<pattern>@sha256:<64 hex>`. `null` = no opinion; `[]` = no factory approved. |
+| `require_signed` | `bool` | `false` | When `true`, unsigned receipts are rejected. |
+| `signers` | `list<mapping>` or null | `null` | Trusted signer identities. Each entry has `workflow: owner/repo/.github/workflows/<file>.yml`, with an optional `@<ref>` suffix to pin a ref. `null` = no opinion; `[]` = no signer trusted. |
+
+```yaml
+factories:
+  allow:
+    - "acme/checkout-factory@sha256:0311...c27f"
+  require_signed: true
+  signers:
+    - workflow: acme/factories/.github/workflows/run.yml
+```
+
+Malformed entries are a parse error. Unknown keys inside `factories` warn.
+Consumers read the merged result from `apm policy status --json` under
+`effective_policy.factories`.
 
 ## bin_deploy
 

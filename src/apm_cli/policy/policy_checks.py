@@ -14,7 +14,7 @@ from pathlib import Path
 from .models import CheckResult, CIAuditResult
 
 _logger = logging.getLogger(__name__)
-FAIL_CLOSED_POLICY_CHECKS = frozenset({"dependency-content-hashes"})
+FAIL_CLOSED_POLICY_CHECKS = frozenset({"dependency-content-hashes", "content-hash-denylist"})
 
 
 # -- Helpers -------------------------------------------------------
@@ -1176,6 +1176,38 @@ def _check_dependency_content_hashes(
     )
 
 
+def _check_content_hash_denylist(lockfile, policy: IntegrityPolicy) -> CheckResult:
+    """Check that no locked or deployed content hash is revoked by policy.
+
+    The revocation decision is owned by
+    :func:`apm_cli.install.integrity.enforce_deny_hashes`; this adapter only
+    translates its fail-closed result into the audit check vocabulary.
+    """
+    check_name = "content-hash-denylist"
+    from apm_cli.install.integrity import enforce_deny_hashes
+
+    if lockfile is None:
+        return CheckResult(
+            name=check_name,
+            passed=True,
+            message="No lockfile available -- see lockfile-exists for required remediation",
+        )
+    try:
+        enforce_deny_hashes(lockfile.get_all_dependencies(), policy)
+    except RuntimeError as exc:
+        return CheckResult(
+            name=check_name,
+            passed=False,
+            message="Lockfile records content revoked by security.integrity.deny_hashes",
+            details=[str(exc)],
+        )
+    return CheckResult(
+        name=check_name,
+        passed=True,
+        message="No locked content matches a revoked hash",
+    )
+
+
 # -- Aggregate runners ---------------------------------------------
 
 
@@ -1413,6 +1445,11 @@ def run_policy_checks(
     )
     result.checks.append(hash_check)
     if fail_fast and not hash_check.passed:
+        return result
+
+    deny_hash_check = _check_content_hash_denylist(lock, policy.security.integrity)
+    result.checks.append(deny_hash_check)
+    if fail_fast and not deny_hash_check.passed:
         return result
 
     def _run(check: CheckResult) -> bool:

@@ -64,7 +64,7 @@ registry_source:
 
 security:
   audit: {on_install: null, fail_on_drift: false}
-  integrity: {require_hashes: false}
+  integrity: {require_hashes: false, deny_hashes: []}
 
 executables:
   deny_all: false
@@ -72,6 +72,11 @@ executables:
   require: []
   recommend: []
   enforce: []                   # accepted but inert in v1
+
+factories:                      # experimental; enforced by consumers such as apmx
+  allow: null                   # "<package-pattern>[@sha256:<hex>]"
+  require_signed: false
+  signers: null                 # - workflow: owner/repo/.github/workflows/run.yml
 ```
 
 ## Top-level fields
@@ -417,7 +422,7 @@ Deny patterns are evaluated first. If a reference matches any deny pattern, it f
 
 ### Policy checks (run with `--ci --policy`)
 
-There are 21 policy checks.
+There are 22 policy checks.
 
 **Dependencies:**
 
@@ -438,6 +443,9 @@ There are 21 policy checks.
 | Check | Validates |
 |-------|-----------|
 | `dependency-content-hashes` | Every non-local locked dependency has `content_hash` when `security.integrity.require_hashes: true`; local dependencies are exempt |
+| `content-hash-denylist` | No locked package `content_hash` or recorded `deployed_file_hashes` value matches `security.integrity.deny_hashes` |
+
+Both integrity checks fail closed: `enforcement: warn` does not downgrade them.
 
 **MCP:**
 
@@ -498,6 +506,9 @@ A child policy can only tighten constraints — never relax them:
 | `require_resolution` | Escalates: `project-wins` < `policy-wins` < `block` |
 | `max_depth` | `min(parent, child)` |
 | `require_pinned_constraint` | OR -- once parent sets `true`, child cannot relax |
+| `security.integrity.deny_hashes` | Union -- child adds revoked hashes |
+| `factories.allow` / `factories.signers` | Intersection (signers by `workflow`) |
+| `factories.require_signed` | OR -- once parent sets `true`, child cannot relax |
 | `mcp.self_defined` | Escalates: `allow` < `warn` < `deny` |
 | `manifest.scripts` | Escalates: `allow` < `deny` |
 | `unmanaged_files.action` | Escalates: `ignore` < `warn` < `deny` |
@@ -895,9 +906,16 @@ $ apm policy status --json
   "cache_age_seconds": 720,
   "extends_chain": [],
   "rule_counts": { ... },
-  "rule_summary": ["3 dependency denies", "2 mcp denies"]
+  "rule_summary": ["3 dependency denies", "2 mcp denies"],
+  "effective_policy": { "dependencies": { ... }, "factories": { ... }, ... }
 }
 ```
+
+`effective_policy` is the fully resolved policy after `extends:` merging
+(`null` when no policy resolved). Tools that consume APM policy, such as apmx
+for `factories`, should read it instead of re-implementing discovery or
+inheritance. Treat `outcome` values other than `found`, `absent`,
+`no_git_remote`, `empty`, and `disabled` as an unusable policy.
 
 Flags:
 

@@ -54,6 +54,7 @@ from ..utils.console import _rich_error
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.path_security import PathTraversalError
 from .errors import AuthenticationError, DirectDependencyError, InstallFailureAlreadyRendered
+from .integrity import enforce_installed_deny_hashes as _enforce_deny_hashes
 from .integrity import enforce_installed_hash_policy as _enforce_require_hashes
 from .transaction import InstallTransaction
 
@@ -918,6 +919,11 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
             from .phases import post_deps_local as _post_deps_local_phase
 
             _run_phase("post_deps_local", _post_deps_local_phase, ctx)
+
+        # Fail-closed revocation gate (security.integrity.deny_hashes): runs
+        # after local content hashes are persisted so both dependency and
+        # project-local hashes are covered, and before plugin registration.
+        _enforce_deny_hashes(ctx)
 
         # ------------------------------------------------------------------
         # Phase: Optional install-time content audit (external_scanners flag).
