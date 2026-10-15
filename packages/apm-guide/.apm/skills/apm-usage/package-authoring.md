@@ -486,6 +486,18 @@ instructions: |
 ---
 ```
 
+Optional `user-invocable: false` (boolean, default `true`) records that the
+agent is intended to be reachable programmatically only, for example via
+another agent's `handoffs:` or a subagent call. APM only preserves the
+metadata. Exclusion from the user-facing agent picker, and programmatic-only
+reachability, take effect only when the receiving harness supports them.
+APM does not filter the picker itself. `visibility: internal` is an accepted
+alias (the canonical field wins if both are set). Verbatim targets (Copilot,
+Claude, Cursor, OpenCode, Grok Build) carry the field through unchanged.
+Codex and Kiro cannot represent it, so APM emits an install-time warning
+naming the agent instead of silently dropping it -- the APM source stays the
+authority for the preserved metadata.
+
 #### Codex target: native model settings
 
 Codex agents deploy to `.codex/agents/<name>.toml`. APM writes `name`,
