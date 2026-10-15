@@ -131,6 +131,11 @@ requirements:
     keyword: MUST
     section: "4.1"
     conformance_class: producer
+  - id: req-ext-003
+    keyword: MUST
+    section: "4.6.2"
+    conformance_class: consumer
+    notes: "top-level keys matching x-[a-z][a-z0-9-]* are preserved without value checks and recorded in declaration order under dependency extensions; other unknown keys warn without causing failure solely for being unknown; independent validation and req-mf-006 rewrite preservation remain"
   - id: req-lk-001
     keyword: MUST
     section: "5.1"
