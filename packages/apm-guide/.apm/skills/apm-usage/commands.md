@@ -10,6 +10,11 @@
 
 ## Dependency management
 
+During install or uninstall, `Cleaned N stale deployed files for DEPENDENCY`
+names the affected dependency, not a deletion location. A local source path in
+that message identifies the package; cleanup removes deployed files, not source
+files.
+
 `apm install` rejects incompatible immutable requirements for one package
 identity and reports both dependency paths and refs. Equivalent tag/SHA
 spellings are accepted. `--frozen` verifies transitive immutable requirements
@@ -283,7 +288,7 @@ descendants, are skipped.
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `apm run SCRIPT` | Execute a named script | `-p name=value` (repeatable) |
+| `apm run SCRIPT` | Execute a named script (experimental; the interface may change, so do not depend on it in automation) | `-p name=value` (repeatable) |
 | `apm preview SCRIPT` | Preview script without running | `-p name=value` |
 | `apm list` | List available scripts | -- |
 
