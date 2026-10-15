@@ -494,9 +494,33 @@ MUTATIONS: tuple[CompoundMutation, ...] = (
         "audit-replay-subset-keyword",
         AUDIT_RULE,
         "src/apm_cli/install/drift.py",
+        _replace("skill_subset=(", "subset=("),
+    ),
+    CompoundMutation(
+        "audit-replay-project-package-factory",
+        AUDIT_RULE,
+        "src/apm_cli/install/project_package.py",
         _replace(
-            "skill_subset=tuple(package_info.dependency_ref.skill_subset or ()) or None,",
-            "subset=tuple(package_info.dependency_ref.skill_subset or ()) or None,",
+            "def build_project_local_package_info(",
+            "def build_project_local_package_info_disabled(",
+        ),
+    ),
+    CompoundMutation(
+        "audit-replay-project-package-install",
+        AUDIT_RULE,
+        "src/apm_cli/install/services.py",
+        _replace(
+            "local_info = build_project_local_package_info(",
+            "local_info = build_project_local_package_info_disabled(",
+        ),
+    ),
+    CompoundMutation(
+        "audit-replay-project-package-replay",
+        AUDIT_RULE,
+        "src/apm_cli/install/drift.py",
+        _replace(
+            "package_info = build_project_local_package_info(",
+            "package_info = build_project_local_package_info_disabled(",
         ),
     ),
     CompoundMutation(
