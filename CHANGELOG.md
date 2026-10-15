@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent primitives (`*.agent.md`) accept an optional `user-invocable: false` frontmatter field (default `true`; `visibility: internal` is an accepted alias). APM preserves the metadata so the agent is intended to be reachable programmatically only (for example via `handoffs:` or subagent calls); picker exclusion and that reachability take effect only when the receiving harness supports them. Verbatim-copy targets preserve the field; Codex and Kiro warn instead of silently dropping it. -- by @richard-fowles-epam (#3132)
 - New `grok-bot` install target deploys skill packages to `agent-data/workflows/<skill-name>/` for Grok Bot at project and user (`--global`) scope; the `grok-bot` target accepts packages declaring `agent-skills`, and an explicit `--target` fails only when no dependency in the install has a compatible target or a package named on the command line (and its whole subtree) has none; other filtered dependencies warn. (#3106)
 
 ### Changed
 
+- `batch_fetch_server_info` now looks up independent MCP registry documents concurrently with a bounded `ThreadPoolExecutor` (max 4 workers), matching the existing install-check fan-out. Closes #2981. (#2983)
 - `docs/src/content/docs/specs/openapm-v0.1.md` adds proposed `req-tg-015` for Codex-native `model`/`model_reasoning_effort` preservation and bounded dropped-metadata diagnostics. (#3150)
 
 ### Fixed
@@ -20,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm install -g` (including `--mcp`) now configures MCP servers for Cursor in `~/.cursor/mcp.json` and OpenCode in `~/.config/opencode/opencode.json`, and `apm uninstall -g` removes them; existing configs APM cannot parse, such as OpenCode JSONC, are left untouched. (by @alvedder, #3100)
 - Codex agent conversion preserves native `model` and `model_reasoning_effort` settings and warns about dropped metadata instead of silently losing it. (#3150)
 - Cursor hooks use native v1 events and flat handlers; unsupported input and overlapping Claude imports now fail explicitly. Choose one hook route per dependency; see the [supported mappings](docs/src/content/docs/producer/author-primitives/hooks-and-commands.md#cursor-native-hooks-and-claude-import) and `openapm-v0.1.md` requirements `req-tg-016/017`. (#3149)
+- `apm install --frozen` no longer writes `apm.lock.yaml`, which req-lk-006
+  requires it to leave untouched. It previously deployed files and rewrote the
+  lockfile to claim them, so a committed lockfile that under-recorded the
+  deployed set was silently repaired in CI instead of being reported -- and the
+  files it omitted stayed outside `content-integrity`'s hash and hidden-Unicode
+  scanners. Frozen installs now fail and name the unrecorded paths. The check is
+  one-directional -- claims the install would drop (a `--target` filter,
+  `--only`, a removed dependency) are tolerated, as removed deps already were --
+  and `generated_at` / `apm_version` are excluded, so a newer CLI reading an
+  older lockfile is not treated as a rewrite. (#2379)
+  If CI starts failing on `--frozen` after upgrading, run `apm install`
+  locally and commit the updated `apm.lock.yaml`.
 
 ## [0.33.0] - 2026-10-02
 
@@ -67,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm install` shortens dependency-staging paths by 68 characters to avoid Windows `MAX_PATH` failures in deep checkouts. This does not guarantee arbitrary long-path support. (by @MohammedAlkindi, closes #2896, #2941)
 - Dependency updates preserve marketplace provenance so `plugin@marketplace` uninstall aliases keep working in project and global scope. (by @mfroembgen, #2949)
 - `apm audit` drift replay now discovers root-local primitives with the same source scope as a normal install, rather than treating the scratch deployment directory as the project root. (#3021)
+- Azure DevOps Git clones now retry path-scoped `git credential fill` (Git Credential Manager) after `ADO_APM_PAT` and `az` bearer fail, so Windows GCM-backed marketplace and package installs can succeed without a PAT. Auth-failure detection reads git stderr on wrapped clone errors and does not treat Azure DevOps `TF401xxx` codes as HTTP 401. - by @mheeaxa (#2610)
 
 ### Security
 
