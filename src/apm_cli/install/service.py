@@ -366,6 +366,41 @@ class InstallService:
                 reasons=reasons,
             )
 
+        local_dependencies = [
+            dependency
+            for dependency in lockfile.get_package_dependencies()
+            if dependency.source == "local"
+        ]
+        if local_dependencies:
+            from apm_cli.deps.path_anchoring import resolve_local_dep_dirs
+            from apm_cli.install.errors import FrozenInstallError
+            from apm_cli.utils.content_hash import compute_package_hash
+
+            package_root = Path(request.apm_package.package_path).resolve()
+            source_dirs = resolve_local_dep_dirs(lockfile, package_root)
+            for dependency in local_dependencies:
+                expected = dependency.content_hash
+                if expected is None:
+                    reasons.append(
+                        f"  - local dependency {dependency.repo_url!r} has no locked content hash"
+                    )
+                    continue
+                actual = compute_package_hash(source_dirs[dependency.get_unique_key()])
+                if actual != expected:
+                    reasons.append(
+                        f"  - local dependency {dependency.repo_url!r} content differs "
+                        "from its locked snapshot"
+                    )
+            if reasons:
+                raise FrozenInstallError(
+                    "--frozen: local dependency content does not match apm.lock.yaml.",
+                    reasons=reasons,
+                    tip=(
+                        "Restore the locked local content, or run 'apm install' without "
+                        "--frozen to explicitly accept and record the change."
+                    ),
+                )
+
     @staticmethod
     def _enforce_frozen_no_rewrite(request: InstallRequest, withheld: list[str]) -> None:
         """Raise when a withheld write claims paths the committed lockfile omits.

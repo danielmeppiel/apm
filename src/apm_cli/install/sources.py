@@ -263,8 +263,10 @@ class LocalDependencySource(DependencySource):
                 package_version=local_info.package.version if local_info.package else None,
             )
         )
-        if install_path.is_dir() and not dep_ref.is_local:
-            ctx.package_hashes[dep_key] = _compute_hash(install_path)
+        if install_path.is_dir():
+            ctx.package_hashes[dep_key] = _compute_hash(
+                original_src if dep_ref.is_local else install_path
+            )
 
         if local_info.package_type:
             ctx.package_types[dep_key] = local_info.package_type.value
