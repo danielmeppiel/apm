@@ -11,7 +11,12 @@ from apm_cli.commands._helpers import _build_expected_install_paths
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.models.apm_package import clear_apm_yml_cache
 from apm_cli.models.dependency.reference import DependencyReference
-from tests.helpers.prune_casing import _project
+from tests.helpers.prune_casing import (
+    CaseSensitiveMaterializationReader,
+    _prefix_project,
+    _project,
+    _snapshot,
+)
 
 pytestmark = pytest.mark.component
 
@@ -141,14 +146,10 @@ def test_prune_ambiguous_casing_fails_before_cleanup(
     manifest = (tmp_path / "apm.yml").read_bytes()
     lock = (tmp_path / "apm.lock.yaml").read_bytes()
     monkeypatch.chdir(tmp_path)
-    # Windows cannot create distinct case-only siblings. Supply a directory
-    # listing with both spellings to the real matching algorithm instead.
-    with patch("apm_cli.commands._helpers.CachedMaterializationPathReader") as reader:
-        reader.return_value.is_dir.return_value = True
-        reader.return_value.iterdir.return_value = [
-            Path("apm_modules/microsoft"),
-            Path("apm_modules/Microsoft"),
-        ]
+    reader = CaseSensitiveMaterializationReader(
+        Path("apm_modules"), ("microsoft/apm", "Microsoft/APM")
+    )
+    with patch("apm_cli.commands._helpers.CachedMaterializationPathReader", return_value=reader):
         try:
             result = CliRunner().invoke(cli, ["prune", *(["--dry-run"] if dry_run else [])])
         finally:
@@ -162,3 +163,59 @@ def test_prune_ambiguous_casing_fails_before_cleanup(
     assert (package / "notes.txt").read_bytes() == b"user content\n"
     assert (tmp_path / "apm.yml").read_bytes() == manifest
     assert (tmp_path / "apm.lock.yaml").read_bytes() == lock
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+@pytest.mark.parametrize("duplicate", [False, True], ids=["different-repos", "same-repo"])
+def test_prune_complete_paths_with_portable_reader_seam(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dry_run: bool, duplicate: bool
+) -> None:
+    """A simulated case-sensitive reader proves command behavior on every OS."""
+    orphan, relatives = _prefix_project(tmp_path, duplicate=duplicate)
+    modules = tmp_path / "apm_modules"
+    before = _snapshot(modules)
+    manifest = (tmp_path / "apm.yml").read_bytes()
+    reader = CaseSensitiveMaterializationReader(modules, relatives)
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("apm_cli.commands._helpers.CachedMaterializationPathReader", return_value=reader),
+        patch("apm_cli.commands.prune._scan_installed_packages", return_value=list(relatives)),
+    ):
+        try:
+            result = CliRunner().invoke(cli, ["prune", *(["--dry-run"] if dry_run else [])])
+        finally:
+            clear_apm_yml_cache()
+    assert result.exit_code == (1 if duplicate else 0), result.output
+    assert orphan.exists() is (dry_run or duplicate)
+    expected = {
+        name: content
+        for name, content in before.items()
+        if dry_run or duplicate or not name.startswith("other/orphan/")
+    }
+    assert _snapshot(modules) == expected
+    assert (tmp_path / "apm.yml").read_bytes() == manifest
+    if duplicate:
+        assert "Found multiple package directories for one dependency:" in " ".join(
+            result.output.split()
+        )
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        DependencyReference(repo_url="other/source", host="github.com", alias="Microsoft"),
+        DependencyReference(repo_url="Microsoft/Other", host="gitlab.com"),
+    ],
+    ids=["alias-owner-prefix", "case-sensitive-host"],
+)
+def test_prune_distinguishes_unrelated_owner_prefixes(
+    tmp_path: Path, other: DependencyReference
+) -> None:
+    """Aliases and other hosts cannot make a GitHub owner prefix ambiguous."""
+    github = DependencyReference.parse("microsoft/apm")
+    relatives = ("microsoft/apm", other.get_install_path(tmp_path).relative_to(tmp_path).as_posix())
+    reader = CaseSensitiveMaterializationReader(tmp_path, relatives)
+    with patch("apm_cli.commands._helpers.CachedMaterializationPathReader", return_value=reader):
+        assert _build_expected_install_paths(
+            [github, other], None, tmp_path, preserve_installed_case=True
+        ) == set(relatives)

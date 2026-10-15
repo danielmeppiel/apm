@@ -163,7 +163,11 @@ def _build_expected_install_paths(
             and dependency.has_case_insensitive_repo_identity
         ):
             existing = find_case_equivalent_materialization_path(
-                desired, apm_modules_dir, dependency=dependency, reader=reader
+                desired,
+                apm_modules_dir,
+                dependency=dependency,
+                reader=reader,
+                match_complete_path=True,
             )
             if existing is not None:
                 return existing

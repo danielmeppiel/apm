@@ -40,9 +40,11 @@ GitHub owner and repository names are compared case-insensitively: changing
 `microsoft/apm` to `Microsoft/APM` does not orphan the installed package.
 Prune preserves its existing directory spelling; it does not rename packages.
 Case-sensitive hosts, local paths, aliases, and paths inside repositories
-retain their existing casing rules. Ambiguous case-equivalent directories
-stop cleanup with an error naming the conflicting paths under `apm_modules/`;
-inspect the duplicates and run `apm install` after keeping the intended package.
+retain their existing casing rules. Distinct repositories such as
+`Microsoft/APM` and `microsoft/Other` can coexist. Multiple case-equivalent
+paths for the same package stop cleanup with an error naming the conflicting
+paths under `apm_modules/`; inspect the duplicates and run `apm install` after
+keeping the intended package.
 
 Recognized roots under `apm_modules/`, including manifestless `SKILL.md`
 packages, are managed installation content. Pruning an eligible root removes
