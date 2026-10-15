@@ -8,10 +8,10 @@ from ..models.apm_package import APMPackage, PackageInfo, PackageType
 
 
 def build_project_local_package_info(source_root: Path) -> PackageInfo:
-    """Build the package install and audit replay integrate the project itself through.
+    """Build the PackageInfo that install and audit replay use for the project itself.
 
-    It is always an ``APM_PACKAGE``, so only the project's ``.apm/`` content is deployed and a
-    sibling ``skills/`` folder or a root ``SKILL.md`` is not promoted as a skill.
+    Preserve install's ``APM_PACKAGE`` interpretation instead of detecting a dependency
+    package type that could promote a sibling ``skills/`` folder or root ``SKILL.md``.
     """
     local_pkg = APMPackage(
         name="_local",
