@@ -2546,9 +2546,15 @@ class TestFetchRemoteMetadataGHEHost:
         assert outcome.status == "failed"
         assert outcome.cause == "HTTP 404"
 
+    @pytest.mark.parametrize(
+        "host_info_available", [True, False], ids=["classified", "unclassified"]
+    )
+    @pytest.mark.parametrize("manifestless", [False, True], ids=["manifest", "skill"])
     def test_metadata_fetch_github_com_falls_back_to_rest_api_on_raw_404(
         self,
         tmp_path: Path,
+        host_info_available: bool,
+        manifestless: bool,
     ) -> None:
         """github.com raw 404 falls back to REST API for INTERNAL/private repos."""
         import urllib.error
@@ -2557,9 +2563,10 @@ class TestFetchRemoteMetadataGHEHost:
         builder = self._make_builder(tmp_path)
         builder._host = "github.com"
         builder._github_token = "ghp_test_token"
-        builder._host_info = SimpleNamespace(
-            kind="github",
-            api_base="https://api.github.com",
+        builder._host_info = (
+            SimpleNamespace(kind="github", api_base="https://api.github.com")
+            if host_info_available
+            else None
         )
         raw_404 = urllib.error.HTTPError(
             url="https://raw.githubusercontent.com/acme/private-tools/sha/plugins/core/apm.yml",
@@ -2575,14 +2582,25 @@ class TestFetchRemoteMetadataGHEHost:
             hdrs=None,
             fp=None,  # type: ignore[arg-type]
         )
-        yaml_body = b"description: Private tool\nversion: 2.1.0\n"
-        mock_resp = _FakeHTTPResponse(yaml_body)
+        responses = [raw_404, raw_skill_404]
+        if manifestless:
+            responses.extend(
+                [
+                    raw_404,
+                    _FakeHTTPResponse(b"---\nname: core\ndescription: Private skill\n---\n"),
+                ]
+            )
+        else:
+            responses.append(_FakeHTTPResponse(b"description: Private tool\nversion: 2.1.0\n"))
         with patch(
             "apm_cli.marketplace.builder.urllib.request.urlopen",
-            side_effect=[raw_404, raw_skill_404, mock_resp],
+            side_effect=responses,
         ) as mock_open:
-            result = builder._fetch_remote_metadata(pkg)
-        assert result == {"description": "Private tool", "version": "2.1.0"}
+            outcome = builder._fetch_remote_metadata_outcome(pkg)
+        assert outcome.status == ("manifestless" if manifestless else "fetched")
+        assert outcome.metadata == (
+            {} if manifestless else {"description": "Private tool", "version": "2.1.0"}
+        )
         raw_req = mock_open.call_args_list[0][0][0]
         raw_parsed = urllib.parse.urlparse(raw_req.full_url)
         assert raw_parsed.hostname == "raw.githubusercontent.com"
@@ -2602,6 +2620,14 @@ class TestFetchRemoteMetadataGHEHost:
         assert rest_parsed.query == f"ref={_SHA_A}"
         assert rest_req.get_header("Accept") == "application/vnd.github.raw"
         assert rest_req.get_header("Authorization") == "token ghp_test_token"
+        if manifestless:
+            skill_req = mock_open.call_args_list[3][0][0]
+            skill_parsed = urllib.parse.urlparse(skill_req.full_url)
+            assert skill_parsed.hostname == "api.github.com"
+            assert skill_parsed.path == "/repos/acme/private-tools/contents/plugins/core/SKILL.md"
+            assert skill_parsed.query == f"ref={_SHA_A}"
+            assert skill_req.get_header("Accept") == "application/vnd.github.raw"
+            assert skill_req.get_header("Authorization") == "token ghp_test_token"
 
     def test_metadata_fetch_github_com_non_404_does_not_fallback(
         self,

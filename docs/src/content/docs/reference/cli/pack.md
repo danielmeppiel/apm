@@ -99,6 +99,8 @@ certifiable when its frontmatter has non-empty string `name` and `description`
 fields. Malformed frontmatter, missing fields, non-string values, and
 whitespace-only values remain `failed` and make `--check-clean` exit `4`, as do
 a missing repository, ref, or package path.
+For private GitHub sources, authenticated fallback checks both files through
+the `api.github.com` Contents API.
 For GitLab, Azure DevOps, and other hosts, set fixed `description` and `version`
 fields on the marketplace package entry so strict checks can certify without a
 GitHub metadata request.

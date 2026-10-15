@@ -1264,9 +1264,11 @@ class MarketplaceBuilder:
 
                 def _rest_url(file_path: str) -> str:
                     """Build a Contents API URL for the resolved package path."""
-                    api_base = (
-                        host_info.api_base if host_info else None
-                    ) or f"https://{effective_host}/api/v3"
+                    api_base = (host_info.api_base if host_info else None) or (
+                        "https://api.github.com"
+                        if effective_host == "github.com"
+                        else f"https://{effective_host}/api/v3"
+                    )
                     return f"{api_base}/repos/{pkg.source_repo}/contents/{file_path}?ref={pkg.sha}"
 
                 if effective_host == "github.com":

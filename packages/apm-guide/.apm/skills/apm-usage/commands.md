@@ -357,7 +357,9 @@ regeneration is not certifiable. With `--json`, inspect
 `SKILL.md` with non-empty string `name` and `description` frontmatter was
 verified at the same resolved repository, ref, and subdirectory. Malformed
 frontmatter, missing fields, non-string values, and whitespace-only values stay
-`failed` and make `--check-clean` exit `4`. GitLab, Azure DevOps, and other
+`failed` and make `--check-clean` exit `4`. Authenticated fallback for private
+GitHub sources checks both files through the `api.github.com` Contents API.
+GitLab, Azure DevOps, and other
 non-GitHub packages need fixed `description` and `version` fields for strict
 certification.
 
