@@ -548,10 +548,15 @@ def test_remove_stale_claude_honors_claude_config_dir_and_isolates_profiles(tmp_
     claude_dir_a.mkdir()
     cfg_a = claude_dir_a / ".claude.json"
     cfg_a.write_text(
-        json.dumps({
-            "projects": {"/repo": {"allowedTools": ["Write"]}},
-            "mcpServers": {"server-a": {"command": "run-a"}, "server-shared": {"command": "shared"}},
-        }),
+        json.dumps(
+            {
+                "projects": {"/repo": {"allowedTools": ["Write"]}},
+                "mcpServers": {
+                    "server-a": {"command": "run-a"},
+                    "server-shared": {"command": "shared"},
+                },
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -559,9 +564,11 @@ def test_remove_stale_claude_honors_claude_config_dir_and_isolates_profiles(tmp_
     home_dir.mkdir()
     cfg_default = home_dir / ".claude.json"
     cfg_default.write_text(
-        json.dumps({
-            "mcpServers": {"server-shared": {"command": "default-shared"}},
-        }),
+        json.dumps(
+            {
+                "mcpServers": {"server-shared": {"command": "default-shared"}},
+            }
+        ),
         encoding="utf-8",
     )
 

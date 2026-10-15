@@ -192,25 +192,24 @@ class ClaudeClientAdapter(CopilotClientAdapter):
         """
         config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
         if config_dir:
-            return Path(config_dir).expanduser() / ".claude.json"
-        return Path.home() / ".claude.json"
-
-    @classmethod
-    def resolve_user_claude_json_path(cls) -> Path:
-        """Resolve the user-scope Claude Code configuration path.
-
-        Honors ``CLAUDE_CONFIG_DIR`` when set, falling back to ``~/.claude.json``.
-        """
-        config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
-        if config_dir:
             config_path = Path(config_dir).expanduser()
             if not config_path.is_absolute():
                 raise PathTraversalError(
                     "CLAUDE_CONFIG_DIR must be an absolute path for user-scope MCP "
                     "config; set an absolute path or unset it to use ~/.claude.json."
                 )
-            return config_path.resolve(strict=False) / ".claude.json"
+            return config_path / ".claude.json"
         return Path.home() / ".claude.json"
+
+    @classmethod
+    def resolve_user_claude_json_path(cls, unresolved_path: Path | None = None) -> Path:
+        """Resolve the selected destination, optionally reusing a checked path."""
+        path = (
+            unresolved_path
+            if unresolved_path is not None
+            else cls.resolve_user_claude_unresolved_path()
+        )
+        return path.parent.resolve(strict=False) / path.name
 
     def _user_claude_json_path(self) -> Path:
         return self.resolve_user_claude_json_path()

@@ -318,13 +318,7 @@ def _clean_claude_config(
         Number of entries removed.
     """
     if label is None:
-        if is_user_scope:
-            try:
-                label = "~/.claude.json" if config_path == Path.home() / ".claude.json" else str(config_path)
-            except Exception:
-                label = str(config_path)
-        else:
-            label = ".mcp.json"
+        label = str(config_path) if is_user_scope else ".mcp.json"
     if (
         _reject_symlink_config(
             config_path,
@@ -771,7 +765,9 @@ class MCPIntegrator:
         # config only -- never touch user config on the user's behalf without
         # an explicit USER scope, since that file is shared across all Claude
         # Code projects on the host.
-        clean_claude_user = "claude" in target_runtimes and (scope is InstallScope.USER or user_scope)
+        clean_claude_user = "claude" in target_runtimes and (
+            scope is InstallScope.USER or user_scope
+        )
         clean_claude_project = "claude" in target_runtimes and not clean_claude_user
         if "claude" in target_runtimes and scope is None and not user_scope:
             logger.progress(
@@ -978,33 +974,27 @@ class MCPIntegrator:
         # Clean Claude Code user ~/.claude.json or $CLAUDE_CONFIG_DIR/.claude.json (USER scope only)
         if clean_claude_user:
             from apm_cli.adapters.client.claude import ClaudeClientAdapter
-            from apm_cli.factory import ClientFactory
 
-            unresolved_cfg = ClaudeClientAdapter.resolve_user_claude_unresolved_path()
-            claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
-            claude_label = str(unresolved_cfg) if claude_config_dir else "~/.claude.json"
-
-            if _reject_symlink_config(
-                unresolved_cfg,
-                claude_label,
-                logger,
-                fail_on_write_error=fail_on_write_error,
-            ):
-                return
-
+            claude_label = "Claude user config"
             try:
-                claude_client = ClientFactory.create_client(
-                    "claude",
-                    project_root=project_root_path,
-                    user_scope=True,
-                )
-                claude_cfg = Path(claude_client.get_config_path())
+                unresolved_cfg = ClaudeClientAdapter.resolve_user_claude_unresolved_path()
+                claude_label = str(unresolved_cfg)
+                if _reject_symlink_config(
+                    unresolved_cfg,
+                    claude_label,
+                    logger,
+                    fail_on_write_error=fail_on_write_error,
+                ):
+                    return
+                claude_cfg = ClaudeClientAdapter.resolve_user_claude_json_path(unresolved_cfg)
             except Exception as exc:
                 _log.debug("Failed to resolve Claude user-scope config path", exc_info=True)
                 if fail_on_write_error:
                     from apm_cli.install.errors import RequiredIntegrationError
 
-                    raise RequiredIntegrationError(_cleanup_failure_message(claude_label, exc)) from exc
+                    raise RequiredIntegrationError(
+                        _cleanup_failure_message(claude_label, exc)
+                    ) from exc
                 return
 
             _clean_claude_config(

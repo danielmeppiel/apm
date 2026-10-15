@@ -533,7 +533,10 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
     def test_remove_stale_claude_user_claude_json(self):
         from apm_cli.integration.mcp_integrator import MCPIntegrator
 
-        with patch.object(Path, "home", return_value=self.root):
+        with (
+            patch.object(Path, "home", return_value=self.root),
+            patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": ""}),
+        ):
             cfg = self.root / ".claude.json"
             cfg.write_text(
                 json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": {"command": "s"}}}),
@@ -578,14 +581,16 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
         custom_claude_dir.mkdir()
         custom_cfg = custom_claude_dir / ".claude.json"
         custom_cfg.write_text(
-            json.dumps({
-                "projects": {"/path/to/project": {"allowedTools": ["Bash"]}},
-                "mcpServers": {
-                    "keep": {"command": "k"},
-                    "stale": {"command": "s"},
-                },
-                "theme": "dark",
-            }),
+            json.dumps(
+                {
+                    "projects": {"/path/to/project": {"allowedTools": ["Bash"]}},
+                    "mcpServers": {
+                        "keep": {"command": "k"},
+                        "stale": {"command": "s"},
+                    },
+                    "theme": "dark",
+                }
+            ),
             encoding="utf-8",
         )
 
