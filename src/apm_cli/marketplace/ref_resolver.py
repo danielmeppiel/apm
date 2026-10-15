@@ -192,6 +192,7 @@ def _parse_ls_remote_output(output: str) -> list[RemoteRef]:
         records.append((sha, refname))
     commits, _annotated = tag_commit_shas(records)
     refs: list[RemoteRef] = []
+    # Preserve record order; the owner's keys exclude peeled-only refnames.
     for sha, refname in records:
         if refname.startswith("refs/tags/"):
             if refname not in commits:

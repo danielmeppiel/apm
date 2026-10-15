@@ -164,6 +164,9 @@ def test_pack_records_the_commit_a_checkout_of_the_ref_lands_on(
               - name: lightweight-ref
                 source: {_SOURCE}
                 ref: v1.1.0
+              - name: sha-pinned
+                source: {_SOURCE}
+                ref: {tagged.commits["v1.0.0"]}
             """
         ),
         encoding="utf-8",
@@ -178,6 +181,7 @@ def test_pack_records_the_commit_a_checkout_of_the_ref_lands_on(
         "annotated-ref": ("v1.0.0", tagged.commits["v1.0.0"]),
         "annotated-range": ("v1.0.0", tagged.commits["v1.0.0"]),
         "lightweight-ref": ("v1.1.0", tagged.commits["v1.1.0"]),
+        "sha-pinned": (tagged.commits["v1.0.0"], tagged.commits["v1.0.0"]),
     }
 
     # What an installer does with the entry: clone, check out the ref, compare.

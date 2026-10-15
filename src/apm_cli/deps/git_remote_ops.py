@@ -19,6 +19,11 @@ _REMOTE_SHA_RE = re.compile(r"^[a-fA-F0-9]{40}$")
 _INVALID_REF_CHARS = frozenset(" ~^:?*[\\")
 
 
+def _is_peeled_ref(refname: str) -> bool:
+    """Return whether an ls-remote record is a peeled tag reference."""
+    return refname.endswith("^{}")
+
+
 def _is_valid_tag_refname(refname: str) -> bool:
     """Return whether *refname* follows Git's tag refname restrictions."""
     if not refname.startswith("refs/tags/"):
@@ -64,7 +69,7 @@ def validate_ls_remote_tag_output(output: str) -> None:
         if not _REMOTE_SHA_RE.fullmatch(sha) or sha == "0" * 40 or refname in records:
             raise RemoteRefParseError("Malformed git ls-remote tag output.")
         records[refname] = sha
-        is_peeled = refname.endswith("^{}")
+        is_peeled = _is_peeled_ref(refname)
         base_refname = refname[:-3] if is_peeled else refname
         if not _is_valid_tag_refname(base_refname):
             raise RemoteRefParseError("Malformed git ls-remote tag output.")
@@ -102,7 +107,7 @@ def tag_commit_shas(
     for sha, refname in records:
         if not refname.startswith("refs/tags/"):
             continue
-        if refname.endswith("^{}"):
+        if _is_peeled_ref(refname):
             # Dereferenced commit -- overwrite with the real commit SHA.
             #
             # SECURITY INVARIANT (load-bearing, do not weaken): only

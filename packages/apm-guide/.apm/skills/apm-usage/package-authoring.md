@@ -963,9 +963,10 @@ is a hard error -- run `migrate` to consolidate.
 
 ### Full guide
 
-See [docs/guides/marketplace-authoring](../../../../../docs/src/content/docs/guides/marketplace-authoring.md)
-for the complete maintainer workflow (quickstart, version ranges, `check`,
-`doctor`, and `outdated`).
+For annotated or signed tags, `source.sha` records the checkout commit,
+while `source.ref` keeps the selected tag. See
+[Publish to a marketplace](../../../../../docs/src/content/docs/producer/publish-to-a-marketplace.md#author-the-registry)
+for repacking older indexes, signature limitations, and the maintainer workflow.
 
 ## Org-wide packages
 
