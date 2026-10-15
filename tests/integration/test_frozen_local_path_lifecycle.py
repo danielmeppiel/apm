@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from apm_cli.utils.yaml_io import dump_yaml, load_yaml
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.local_package import LocalPackageFactory
@@ -22,19 +23,26 @@ def _runner() -> ApmLifecycleRunner:
         (
             sys.executable,
             "-c",
-            f"import sys; sys.path.insert(0, {str(source)!r}); "
-            "from apm_cli.cli import cli; cli()",
+            f"import sys; sys.path.insert(0, {str(source)!r}); from apm_cli.cli import cli; cli()",
         )
     )
 
 
-def test_frozen_local_path_refuses_changed_snapshot_without_mutation(tmp_path: Path) -> None:
+@pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
+    tmp_path: Path, transitive: bool
+) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "local-frozen", base_env=dict(os.environ))
     factory = LocalPackageFactory(isolated.work_root)
     provider = factory.create("provider", targets=("agent-skills",))
-    original = factory.add_skill(provider, "review", "---\nname: review\ndescription: fixture\n---\noriginal\n")
+    original = factory.add_skill(
+        provider, "review", "---\nname: review\ndescription: fixture\n---\noriginal\n"
+    )
+    factory.create("parent", dependencies=("../provider",))
     consumer = factory.create(
-        "consumer", dependencies=("../provider",), targets=("agent-skills",)
+        "consumer",
+        dependencies=("../parent" if transitive else "../provider",),
+        targets=("agent-skills",),
     )
     cold_consumer = isolated.work_root / "cold-consumer"
     cold_consumer.mkdir()
@@ -56,16 +64,21 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(tmp_path: P
     shutil.copy2(lockfile, cold_consumer / "apm.lock.yaml")
     cold = run(cold_consumer, "install", "--frozen", "--no-policy")
     assert cold.returncode == 0, cold.stdout + cold.stderr
-    assert (cold_consumer / ".agents" / "skills" / "review" / "SKILL.md").read_bytes() == deployed_bytes
+    assert (
+        cold_consumer / ".agents" / "skills" / "review" / "SKILL.md"
+    ).read_bytes() == deployed_bytes
 
     before_deployment = deployed.read_bytes()
+    before_files = _snapshot(consumer.root)
 
     def assert_rejected_without_mutation() -> None:
         rejected = run(consumer.root, "install", "--frozen", "--no-policy")
         assert rejected.returncode != 0, rejected.stdout + rejected.stderr
         assert "local dependency" in rejected.stdout.lower() + rejected.stderr.lower()
+        assert "provider" in rejected.stdout + rejected.stderr
         assert lockfile.read_bytes() == locked_bytes
         assert deployed.read_bytes() == before_deployment == deployed_bytes
+        assert _snapshot(consumer.root) == before_files
 
     original.write_text("---\nname: review\ndescription: fixture\n---\nchanged\n", encoding="utf-8")
     assert_rejected_without_mutation()
@@ -80,6 +93,7 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(tmp_path: P
     assert not (changed_cold / ".agents").exists()
     assert (changed_cold / "apm.lock.yaml").read_bytes() == locked_bytes
 
+    original.write_bytes(b"---\nname: review\ndescription: fixture\n---\noriginal\n")
     added = provider.root / "references" / "new.md"
     added.parent.mkdir()
     added.write_text("new local content\n", encoding="utf-8")
@@ -95,3 +109,124 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(tmp_path: P
     assert recovered.returncode == 0, recovered.stdout + recovered.stderr
     assert lockfile.read_bytes() == locked_bytes
     assert deployed.read_bytes() == deployed_bytes
+
+
+def _snapshot(root: Path) -> dict[str, bytes]:
+    """Read independent byte evidence for all managed files and cached packages."""
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file() and path != root / "apm.yml"
+    }
+
+
+@pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+@pytest.mark.parametrize("baseline", ["missing-entry", "legacy-hash"])
+def test_frozen_local_requires_selected_lock_evidence(
+    tmp_path: Path, transitive: bool, baseline: str
+) -> None:
+    isolated = IsolatedApmEnvironment.create(tmp_path / "evidence", base_env=dict(os.environ))
+    factory = LocalPackageFactory(isolated.work_root)
+    provider = factory.create("provider", targets=("agent-skills",))
+    original = factory.add_skill(
+        provider, "review", "---\nname: review\ndescription: fixture\n---\noriginal\n"
+    )
+    factory.create("parent", dependencies=("../provider",))
+    consumer = factory.create(
+        "consumer",
+        dependencies=("../parent" if transitive else "../provider",),
+        targets=("agent-skills",),
+    )
+    runner = _runner()
+    env = isolated.subprocess_env()
+    installed = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    lock_path = consumer.root / "apm.lock.yaml"
+    lock = load_yaml(lock_path)
+    provider_entry = next(d for d in lock["dependencies"] if d.get("local_path") == "../provider")
+    if baseline == "missing-entry":
+        lock["dependencies"].remove(provider_entry)
+        original.write_bytes(original.read_bytes().replace(b"original", b"changed"))
+    else:
+        provider_entry.pop("content_hash")
+    dump_yaml(lock, lock_path)
+    before = _snapshot(consumer.root)
+    result = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "provider" in result.stdout + result.stderr
+    assert _snapshot(consumer.root) == before
+
+
+@pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+def test_frozen_local_ignores_removed_dependency_source(tmp_path: Path, transitive: bool) -> None:
+    isolated = IsolatedApmEnvironment.create(tmp_path / "orphan", base_env=dict(os.environ))
+    factory = LocalPackageFactory(isolated.work_root)
+    provider = factory.create("provider", targets=("agent-skills",))
+    factory.add_skill(
+        provider, "review", "---\nname: review\ndescription: fixture\n---\noriginal\n"
+    )
+    parent = factory.create("parent", dependencies=("../provider",))
+    survivor = factory.create("survivor", targets=("agent-skills",))
+    factory.add_skill(survivor, "kept", "---\nname: kept\ndescription: fixture\n---\nkept\n")
+    consumer = factory.create(
+        "consumer",
+        dependencies=("../parent" if transitive else "../provider", "../survivor"),
+        targets=("agent-skills",),
+    )
+    runner = _runner()
+    env = isolated.subprocess_env()
+    initial = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
+    assert initial.returncode == 0, initial.stdout + initial.stderr
+    locked = (consumer.root / "apm.lock.yaml").read_bytes()
+    manifest = load_yaml(consumer.manifest_path)
+    manifest["dependencies"]["apm"] = [{"path": "../survivor"}]
+    dump_yaml(manifest, consumer.manifest_path)
+    shutil.rmtree(provider.root)
+    shutil.rmtree(parent.root)
+    result = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (consumer.root / "apm.lock.yaml").read_bytes() == locked
+    assert (consumer.root / ".agents/skills/kept/SKILL.md").is_file()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Requires unprivileged POSIX symlink creation")
+@pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+def test_frozen_local_refuses_symlink_retarget_without_mutation(
+    tmp_path: Path, transitive: bool
+) -> None:
+    isolated = IsolatedApmEnvironment.create(tmp_path / "symlink", base_env=dict(os.environ))
+    factory = LocalPackageFactory(isolated.work_root)
+    provider = factory.create("provider", targets=("agent-skills",))
+    original = factory.add_skill(
+        provider, "review", "---\nname: review\ndescription: fixture\n---\noriginal\n"
+    )
+    first = provider.root / "first.md"
+    second = provider.root / "second.md"
+    original.rename(first)
+    second.write_bytes(first.read_bytes().replace(b"original", b"changed"))
+    original.symlink_to(first)
+    factory.create("parent", dependencies=("../provider",))
+    consumer = factory.create(
+        "consumer",
+        dependencies=("../parent" if transitive else "../provider",),
+        targets=("agent-skills",),
+    )
+    runner = _runner()
+    env = isolated.subprocess_env()
+    initial = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
+    assert initial.returncode == 0, initial.stdout + initial.stderr
+    replay = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert replay.returncode == 0, replay.stdout + replay.stderr
+    before = _snapshot(consumer.root)
+    original.unlink()
+    original.symlink_to(second)
+    refused = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "provider" in refused.stdout + refused.stderr
+    assert _snapshot(consumer.root) == before
+
+    accepted = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    replay = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert replay.returncode == 0, replay.stdout + replay.stderr
+    assert b"changed" in (consumer.root / ".agents/skills/review/SKILL.md").read_bytes()

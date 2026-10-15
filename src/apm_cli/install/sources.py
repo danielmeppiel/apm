@@ -206,6 +206,9 @@ class LocalDependencySource(DependencySource):
         if logger:
             logger.download_complete(dep_ref.local_path, ref_suffix="local")
 
+        # Capture the validated copy before manifest synthesis or integration
+        # transforms it. Frozen preflight hashes this same materialization.
+        local_content_hash = _compute_hash(install_path)
         materialize_marketplace_manifest(dep_ref, install_path)
         validation = validate_apm_package(
             install_path,
@@ -264,9 +267,7 @@ class LocalDependencySource(DependencySource):
             )
         )
         if install_path.is_dir():
-            ctx.package_hashes[dep_key] = _compute_hash(
-                original_src if dep_ref.is_local else install_path
-            )
+            ctx.package_hashes[dep_key] = local_content_hash
 
         if local_info.package_type:
             ctx.package_types[dep_key] = local_info.package_type.value
