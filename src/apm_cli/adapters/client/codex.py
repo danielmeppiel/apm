@@ -34,6 +34,7 @@ _log = logging.getLogger(__name__)
 # See https://learn.chatgpt.com/docs/extend/mcp?surface=cli
 _CODEX_BEARER_HEADER = "authorization"
 _CODEX_REGISTRY_ID_COMMENT = "# apm-registry-id: "
+_JSON_DECODER = json.JSONDecoder()
 # Reuse the canonical placeholder syntax so the two spellings APM accepts
 # (``${VAR}`` and ``${env:VAR}``) cannot drift apart here. The auth scheme is
 # case-insensitive per RFC 7235; Codex always writes it as ``Bearer``.
@@ -139,9 +140,7 @@ class CodexClientAdapter(MCPClientAdapter):
         if not comment.startswith(_CODEX_REGISTRY_ID_COMMENT):
             return None
         try:
-            registry_id, _ = json.JSONDecoder().raw_decode(
-                comment[len(_CODEX_REGISTRY_ID_COMMENT) :]
-            )
+            registry_id, _ = _JSON_DECODER.raw_decode(comment[len(_CODEX_REGISTRY_ID_COMMENT) :])
         except ValueError:
             return None
         return registry_id if isinstance(registry_id, str) and registry_id else None

@@ -307,19 +307,26 @@ apm install --target codex --mcp local-dev --url http://localhost:3000/mcp
 
 This writes the endpoint to the Codex MCP configuration.
 
-Codex MCP entries use its [native configuration schema](https://developers.openai.com/codex/config-schema.json).
-APM keeps registry IDs in TOML comments on `command`, `url`, or the whole
-inline entry for duplicate detection, not in an unsupported `id` setting. Keep those comments when editing generated entries.
-After upgrading APM, run `apm install --only mcp --target codex` to remove old
-`id` settings from entries recorded as APM-owned in `apm.lock.yaml`; add
-`--global` for user-scope configuration. Other settings and user-owned entries
-are preserved. Inline MCP containers being written, and owned inline entries
-being repaired, may expand into regular TOML tables; their values and comments
-are retained. A legacy lockfile without per-target ownership can adopt only
-self-defined entries that exactly match its saved baseline. Missing ownership
-records, edited legacy entries, and unrelated user entries require manual
-review; regeneration does not clean every `id` in the file or change Codex's
-project trust settings.
+Codex's [native configuration schema](https://developers.openai.com/codex/config-schema.json)
+does not accept an MCP `id` setting. After upgrading APM, repair older generated
+entries with:
+
+```sh
+apm install --only mcp --target codex
+```
+
+Add `--global` for user-scope configuration. APM reports how many entries it
+repairs and preserves other settings. It changes only entries recorded as
+APM-owned in `apm.lock.yaml`, or unchanged self-defined entries matching an
+older lockfile's saved configuration. Entries without that evidence, including
+edited legacy entries and entries you added yourself, stay untouched.
+
+If Codex still reports an unsupported `id` on an entry you maintain yourself,
+back up `.codex/config.toml` (or the user-scope file) and remove only that
+entry's `id = ...` setting. Keep generated comments such as
+`# apm-registry-id: "registry-uuid"`: APM uses them to prevent duplicate
+registry installs. Regeneration may expand inline TOML tables while retaining
+their values and comments; it does not change Codex's project trust settings.
 
 `--transport` is inferred when omitted: a `--url` implies a remote
 transport, a post-`--` command implies `stdio`. The mutually-exclusive

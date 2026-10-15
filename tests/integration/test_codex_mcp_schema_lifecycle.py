@@ -44,6 +44,7 @@ def test_codex_install_repairs_owned_legacy_ids_and_converges(
 
     result = runner.run(args, cwd=isolated.work_root, env=environment)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "Repaired" not in result.stdout
     native = tomlkit.parse(config_path.read_text(encoding="utf-8"))
     for name in ("managed-stdio", "managed-http"):
         assert "id" not in native["mcp_servers"][name]
@@ -56,6 +57,7 @@ def test_codex_install_repairs_owned_legacy_ids_and_converges(
 
     result = runner.run(args, cwd=isolated.work_root, env=environment)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.count("Repaired 2 Codex MCP entries") == 1
     corrected = config_path.read_text(encoding="utf-8")
     native = tomlkit.parse(corrected)
     assert unrelated in corrected
@@ -65,5 +67,6 @@ def test_codex_install_repairs_owned_legacy_ids_and_converges(
 
     result = runner.run(args, cwd=isolated.work_root, env=environment)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "Repaired" not in result.stdout
     assert config_path.read_text(encoding="utf-8") == corrected
     assert load_yaml(lockfile)["mcp_target_servers"] == ownership
