@@ -343,6 +343,28 @@ decoded from metadata also prevent installation by default; `--force`
 overrides only that critical finding, while warning-level findings do not
 prevent installation.
 
+## Manifest fields: `x-[a-z][a-z0-9-]*` extension keys
+
+Top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions (OpenAPM
+`req-ext-001`, `req-ext-003`). APM keeps them on the parsed manifest and
+records a dependency's extensions on that dependency's `apm.lock.yaml` entry
+(`extensions`). Values are not validated. The lockfile field is omitted when
+the dependency declares none. Writers still preserve other unknown top-level
+keys on rewrite.
+
+Any other unknown top-level key is ignored with one warning that names the
+key. The command does not fail solely because that key is unknown; independent
+policy and security failures still apply. Install dry-runs warn once for the
+source manifest, not again for the prospective edit. Warning paths use forward
+slashes on Windows. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or
+remove it.
+
+```yaml
+name: my-package
+version: 1.0.0
+x-team: platform
+```
+
 ## The 7 primitive types
 
 ### 1. Instruction (`*.instructions.md`)
