@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **128 normative statements (123 MUST, 5 SHOULD)** indexed in
+- OpenAPM v0.1 carries **129 normative statements (124 MUST, 5 SHOULD)** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -1237,6 +1237,44 @@ locked commit. This optimisation MUST NOT change observable
 behaviour; the post-install workspace state MUST be identical to a
 fresh install.
 
+#### 5.5.1 Frozen local-path content (proposed)
+
+> **Proposed amendment 0.1.46.** The following requirement records the
+> bounded behavior accepted in
+> [issue #3194](https://github.com/microsoft/apm/issues/3194#issuecomment-6169567910).
+> Product-scope acceptance is not specification adoption. The non-author
+> review and public comment period in [Section 9.3](#93-amendment-process)
+> remain pending; this proposal does not claim they have completed.
+
+<a id="req-lk-023"></a>
+**[req-lk-023]** A conforming **consumer** that supports local-path
+dependencies MUST, during frozen installation, compare every selected
+declared direct or transitive local dependency with its existing locked
+`content_hash` before lifecycle execution or persistent lockfile, target
+configuration, deployment, or resolver/materializer-cache mutation.
+Selection and transitive path anchoring retain the existing dependency
+identity, trust, and containment rules. Unselected orphan lock entries
+MUST NOT cause their local sources to be inspected by this check.
+
+The comparison MUST use the existing package content-hash algorithm
+over the validated local-copy image, including contained symlinks after
+dereferencing, before integration transforms that image. Deployed-file
+hashes are not substitutes for this source-content evidence. A missing
+lock entry, missing baseline hash (including a legacy local lock),
+unreadable or invalid source, or content mismatch MUST fail with a
+diagnostic identifying the dependency, without changing the lockfile or
+accepting or deploying the changed snapshot. Frozen verification MUST
+NOT create or replace the baseline to make that verification succeed.
+Unchanged content passes this check without rewriting the lockfile.
+
+Ordinary non-frozen installation continues to support local development
+and explicitly establishes or refreshes the baseline. Restoring the
+accepted source, or explicitly accepting it through a non-frozen install,
+permits a later frozen verification, subject to other install checks.
+This requirement introduces neither a new hash policy nor a lockfile
+format change; it does not promise rollback of arbitrary external
+lifecycle effects.
+
 ### 5.6 git-semver fields (constraint, resolved_tag, resolved_at)
 
 When the resolver picks a git tag from a semver range (see
@@ -1333,7 +1371,8 @@ This section's normative statements are:
   [req-lk-014](#req-lk-014), [req-lk-015](#req-lk-015),
   [req-lk-016](#req-lk-016), [req-lk-017](#req-lk-017),
   [req-lk-019](#req-lk-019), [req-lk-020](#req-lk-020),
-  [req-lk-021](#req-lk-021), [req-lk-022](#req-lk-022).
+  [req-lk-021](#req-lk-021), [req-lk-022](#req-lk-022),
+  [req-lk-023](#req-lk-023) (proposed).
 - Consumer (SHOULD): [req-lk-007](#req-lk-007),
   [req-lk-018](#req-lk-018).
 
@@ -3724,6 +3763,7 @@ conformance statement identifying:
 [req-lk-017](#req-lk-017), [req-lk-018](#req-lk-018) (SHOULD),
 [req-lk-019](#req-lk-019), [req-lk-020](#req-lk-020),
 [req-lk-021](#req-lk-021), [req-lk-022](#req-lk-022),
+[req-lk-023](#req-lk-023) (proposed),
 [req-rs-001](#req-rs-001), [req-rs-002](#req-rs-002),
 [req-rs-003](#req-rs-003), [req-rs-004](#req-rs-004),
 [req-rs-005](#req-rs-005), [req-rs-006](#req-rs-006),
@@ -4148,6 +4188,7 @@ renumbering of conformance classes.
 | [req-lk-020](#req-lk-020)                | MUST    | 5.2     | consumer    |
 | [req-lk-021](#req-lk-021)                | MUST    | 5.2     | consumer    |
 | [req-lk-022](#req-lk-022)                | MUST    | 5.2     | consumer    |
+| [req-lk-023](#req-lk-023)                | MUST    | 5.5.1   | consumer    |
 | [req-pl-001](#req-pl-001)                | MUST    | 6.1     | governance  |
 | [req-pl-002](#req-pl-002)                | MUST    | 6.2     | governance  |
 | [req-pl-003](#req-pl-003)                | MUST    | 6.4     | governance  |
@@ -4228,11 +4269,26 @@ renumbering of conformance classes.
 | [req-cf-001](#req-cf-001)                | MUST    | 12.5    | consumer    |
 | [req-cf-002](#req-cf-002)                | MUST    | 12.3    | consumer    |
 
-**Total normative statements: 128** (123 MUST, 5 SHOULD).
+**Total normative statements: 129** (124 MUST, 5 SHOULD), including
+the proposed requirements identified in the body.
 
 ---
 
 ## Appendix D. Revision history
+
+**Proposed 0.1.46 (2026-10-15, PR #3236).** Adds
+[req-lk-023](#req-lk-023) for the accepted #3194 frozen local-content
+behavior, its enumerations, requirements manifest, and real-CLI
+conformance coverage. Statement count: 128 -> 129 (124 MUST, 5 SHOULD).
+Previously successful frozen local installs with changed content or
+missing baseline evidence now fail; unchanged accepted content and
+ordinary non-frozen local development remain supported. Migration:
+review the local sources and explicitly run non-frozen `apm install`
+to establish missing baseline hashes before retrying frozen installation.
+This is a proposed behavioral strengthening, not errata or an adopted
+revision. The Section 9.3 review/comment process and any applicable
+Section 9.2/9.5 release and migration requirements remain pending; this
+entry records neither approval nor a completed migration window.
 
 | Version | Date       | Changes                                                  |
 |---------|------------|----------------------------------------------------------|
