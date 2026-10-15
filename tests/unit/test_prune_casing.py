@@ -133,7 +133,10 @@ def test_prune_preserves_virtual_path_case(tmp_path, virtual_path):
     ) == {expected}
 
 
-def test_prune_ambiguous_casing_fails_before_cleanup(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_prune_ambiguous_casing_fails_before_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dry_run: bool
+) -> None:
     package, orphan = _project(tmp_path, "Microsoft/APM", "microsoft/apm", with_lock=True)
     manifest = (tmp_path / "apm.yml").read_bytes()
     lock = (tmp_path / "apm.lock.yaml").read_bytes()
@@ -147,11 +150,14 @@ def test_prune_ambiguous_casing_fails_before_cleanup(tmp_path, monkeypatch):
             Path("apm_modules/Microsoft"),
         ]
         try:
-            result = CliRunner().invoke(cli, ["prune"])
+            result = CliRunner().invoke(cli, ["prune", *(["--dry-run"] if dry_run else [])])
         finally:
             clear_apm_yml_cache()
     assert result.exit_code == 1
-    assert "multiple package directories" in result.output
+    output = " ".join(result.output.split())
+    assert "Found multiple package directories for one dependency:" in output
+    assert "Failed to parse" not in output
+    assert "Inspect the duplicates under apm_modules/" in output
     assert orphan.exists()
     assert (package / "notes.txt").read_bytes() == b"user content\n"
     assert (tmp_path / "apm.yml").read_bytes() == manifest
