@@ -13,6 +13,7 @@ from click.testing import CliRunner
 from jsonschema import Draft7Validator
 
 from apm_cli.commands.pack import pack_cmd
+from apm_cli.marketplace.builder import MarketplaceBuilder, MetadataEnrichmentOutcome
 from apm_cli.marketplace.ref_resolver import RefResolver, RemoteRef
 from apm_cli.utils import git_env
 from apm_cli.utils.yaml_io import dump_yaml
@@ -283,3 +284,31 @@ def test_pack_rejects_unrepresentable_commit_without_output(
     assert payload["ok"] is False
     assert any("full 40-character commit SHA" in error["message"] for error in payload["errors"])
     assert not (tmp_path / DEFAULT_OUTPUT).exists()
+
+
+@pytest.mark.parametrize("curator_description", [None, "Curated description"])
+def test_pack_copilot_remote_metadata_is_certifiable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, curator_description: str | None
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    package = {"name": "demo", "source": "acme/demo", "ref": "a" * 40}
+    if curator_description:
+        package["description"] = curator_description
+    _manifest(tmp_path, packages=[package])
+    monkeypatch.setattr(
+        MarketplaceBuilder,
+        "_fetch_remote_metadata_outcome",
+        lambda self, pkg: MetadataEnrichmentOutcome(
+            pkg.name,
+            "fetched",
+            values=(("description", "Remote description"), ("version", "2.0.0")),
+        ),
+    )
+    result = CliRunner().invoke(pack_cmd, ["--json", "--strict-metadata"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["metadata_enrichment"]["certifiable"] is True
+    assert payload["metadata_enrichment"]["outcomes"][0]["status"] == "fetched"
+    plugin = _read_output(tmp_path)["plugins"][0]
+    assert plugin["description"] == (curator_description or "Remote description")
+    assert plugin["version"] == "2.0.0"

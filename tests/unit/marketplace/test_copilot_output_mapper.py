@@ -11,7 +11,13 @@ from apm_cli.marketplace.builder import ResolvedPackage
 from apm_cli.marketplace.errors import BuildError
 from apm_cli.marketplace.output_mappers import CopilotMarketplaceMapper
 from apm_cli.marketplace.output_profiles import MARKETPLACE_OUTPUTS
-from apm_cli.marketplace.yml_schema import MarketplaceConfig, MarketplaceOwner, PackageEntry
+from apm_cli.marketplace.yml_schema import (
+    MarketplaceConfig,
+    MarketplaceOwner,
+    MarketplaceYmlError,
+    PackageEntry,
+    _parse_copilot,
+)
 
 pytestmark = pytest.mark.unit
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -24,7 +30,9 @@ def _resolved(**overrides: object) -> ResolvedPackage:
     )
 
 
-def _compose(entry: PackageEntry, pkg: ResolvedPackage) -> dict:
+def _compose(
+    entry: PackageEntry, pkg: ResolvedPackage, remote_metadata: dict | None = None
+) -> dict:
     config = MarketplaceConfig(
         name="my-marketplace",
         description="Curated plugins",
@@ -33,7 +41,11 @@ def _compose(entry: PackageEntry, pkg: ResolvedPackage) -> dict:
         outputs=("copilot",),
         packages=(entry,),
     )
-    return CopilotMarketplaceMapper().compose(config=config, resolved=(pkg,)).document
+    return (
+        CopilotMarketplaceMapper()
+        .compose(config=config, resolved=(pkg,), remote_metadata=remote_metadata)
+        .document
+    )
 
 
 def test_copilot_profile_uses_default_discovery_path() -> None:
@@ -179,3 +191,53 @@ def test_copilot_missing_configured_package_fails() -> None:
             PackageEntry(name="other", source="./plugins/other", is_local=True),
             _resolved(),
         )
+
+
+@pytest.mark.parametrize(
+    ("config", "error"),
+    [
+        ("bad", "must be a mapping"),
+        ({"extra": True}, r"Unknown key\(s\) in copilot"),
+        ({"output": "   "}, "must be a non-empty string"),
+        ({"output": 42}, "must be a non-empty string"),
+        ({"output": "../escape.json"}, "traversal"),
+    ],
+)
+def test_copilot_config_rejects_invalid_output(config: object, error: str) -> None:
+    with pytest.raises(MarketplaceYmlError, match=error):
+        _parse_copilot(config)
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (None, ".github/plugin/marketplace.json"),
+        ({}, ".github/plugin/marketplace.json"),
+        ({"output": " dist/copilot.json "}, "dist/copilot.json"),
+    ],
+)
+def test_copilot_config_valid_output(config: dict | None, expected: str) -> None:
+    assert _parse_copilot(config).output == expected
+
+
+@pytest.mark.parametrize(
+    ("description", "version", "expected_description", "expected_version"),
+    [
+        (None, None, "Remote description", "2.0.0"),
+        ("Curator description", "3.0.0", "Curator description", "3.0.0"),
+        (None, "^2.0.0", "Remote description", "2.0.0"),
+    ],
+)
+def test_copilot_remote_metadata_precedence(
+    description: str | None,
+    version: str | None,
+    expected_description: str,
+    expected_version: str,
+) -> None:
+    plugin = _compose(
+        PackageEntry(name="demo", source="acme/demo", description=description, version=version),
+        _resolved(),
+        {"demo": {"description": "Remote description", "version": "2.0.0"}},
+    )["plugins"][0]
+    assert plugin["description"] == expected_description
+    assert plugin["version"] == expected_version
