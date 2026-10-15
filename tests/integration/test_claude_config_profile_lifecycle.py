@@ -47,8 +47,7 @@ def test_claude_user_profile_installation_is_independent_and_idempotent(
         (
             sys.executable,
             "-c",
-            f"import sys; sys.path.insert(0, {str(source)!r}); "
-            "from apm_cli.cli import cli; cli()",
+            f"import sys; sys.path.insert(0, {str(source)!r}); from apm_cli.cli import cli; cli()",
         )
     )
     profiles = {name: isolated.root / "claude" / name for name in ("a", "b")}

@@ -1,10 +1,11 @@
 """Neutral-hook-contract and hook-command-vocabulary mutation analyzers.
 
-Ports three of the owner guards recorded in
+Ports the owner guards recorded in
 ``.apm/architecture/owners/hooks-integrations.json``:
 
 * ``hooks-integrations-copilot-cli-mcp-paths`` -- AC1 Copilot CLI MCP paths
   owner.
+* ``hooks-integrations-claude-mcp-paths`` -- Claude user MCP path owner.
 * ``hooks-integrations-neutral-hook-contract`` -- AC2/AC6/AC15c/AC4 hook
   grammar, per-target shape, validate-before-write ordering, drift
   projection (incl. ``check_hook_file_routing_owner`` and
@@ -331,6 +332,38 @@ def _check_copilot_cli_mcp_paths(provider: FactsProvider) -> Iterable[Violation]
         )
     )
     return findings
+
+
+def _check_claude_mcp_paths(provider: FactsProvider) -> Iterable[Violation]:
+    """Claude user cleanup must use the adapter's selected profile path."""
+    rule_id = "mutation_writes.claude_mcp_paths"
+    owner = "src/apm_cli/adapters/client/claude.py"
+    facts_by_path, failures = _read_required(provider, rule_id, (owner, _MCP_INTEGRATOR))
+    if failures:
+        return failures
+    consumer = facts_by_path[_MCP_INTEGRATOR]
+    delegated = any(
+        call.scope == "remove_stale" and call.qualname == "claude_client.get_config_path"
+        for call in consumer.calls
+    )
+    hardcoded = any(
+        literal.scope == "remove_stale" and literal.value_repr == repr(".claude.json")
+        for literal in consumer.literals
+    )
+    return (
+        *_require(
+            _has_fixed(facts_by_path[owner], "CLAUDE_CONFIG_DIR"),
+            rule_id,
+            owner,
+            "Claude adapter must own the CLAUDE_CONFIG_DIR MCP config root",
+        ),
+        *_require(
+            delegated and not hardcoded,
+            rule_id,
+            _MCP_INTEGRATOR,
+            "Claude user cleanup must resolve its config path through the Claude adapter",
+        ),
+    )
 
 
 def _check_neutral_hook_contract(provider: FactsProvider) -> Iterable[Violation]:
@@ -854,6 +887,13 @@ def _check_hook_command_vocabulary(provider: FactsProvider) -> Iterable[Violatio
 
 
 RULES: tuple[Rule, ...] = (
+    Rule(
+        id="mutation_writes.claude_mcp_paths",
+        group=GROUP,
+        guard_ids=("hooks-integrations-claude-mcp-paths",),
+        description="Claude user MCP config paths must come from the Claude adapter.",
+        check=_check_claude_mcp_paths,
+    ),
     Rule(
         id="mutation_writes.copilot_cli_mcp_paths",
         group=GROUP,
