@@ -63,6 +63,25 @@
     },
     {
       "conformance_class": "consumer",
+      "id": "req-ext-003",
+      "keyword": "MUST",
+      "section": "4.6.2",
+      "status": "active",
+      "test_count": 9,
+      "tests": [
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[unknown]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-Foo]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-a_b]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-valid\\n]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_preserves_previous_contract",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_lock_entry_records_extensions_and_omits_when_empty",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_parser_keeps_x_extensions_and_warns_without_failing",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_req_ext_003_keeps_rewrite_preservation"
+      ]
+    },
+    {
+      "conformance_class": "consumer",
       "id": "req-lk-001",
       "keyword": "MUST",
       "section": "5.1",
@@ -799,9 +818,11 @@
       "keyword": "MUST",
       "section": "6.8",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
-        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified"
+        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[False]",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[True]"
       ]
     },
     {
@@ -1588,7 +1609,7 @@
   "spec_version": "v0.1.1",
   "summary_by_class": {
     "consumer": {
-      "active": 94,
+      "active": 95,
       "skipped": 1,
       "unbound": 0,
       "xfail": 0
@@ -1612,5 +1633,5 @@
       "xfail": 0
     }
   },
-  "total_requirements": 128
+  "total_requirements": 129
 }

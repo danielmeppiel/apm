@@ -42,6 +42,8 @@ _GUARD_UNINSTALL_REACHABILITY = "install-deployment-uninstall-reachability"
 
 
 _GUARD_AUDIT_REPLAY = "install-deployment-audit-replay"
+_INSTALL_SERVICES = "src/apm_cli/install/services.py"
+_PROJECT_PACKAGE_OWNER = "src/apm_cli/install/project_package.py"
 _GUARD_LIFECYCLE_SERIALIZATION = "install-deployment-lifecycle-serialization"
 
 
@@ -276,6 +278,30 @@ def check_audit_replay(provider: FactsProvider) -> tuple[Violation, ...]:
                 rule_id,
                 "src/apm_cli/install/drift.py",
                 "Audit replay must preserve locked skill subset intent",
+            )
+        )
+
+    services, services_fail = _facts_for(provider, _INSTALL_SERVICES, rule_id)
+    project_package, project_package_fail = _facts_for(provider, _PROJECT_PACKAGE_OWNER, rule_id)
+    if services_fail or project_package_fail:
+        return tuple(services_fail) + tuple(project_package_fail)
+    local_content_body = _awk_body(
+        services,
+        re.compile(r"^def integrate_local_content\("),
+        re.compile(r"^def "),
+        keep=re.compile(r"integrate_local_content"),
+    )
+    if not (
+        _present_re(project_package, re.compile(r"^def build_project_local_package_info\("))
+        and _body_has(local_content_body, "build_project_local_package_info(")
+        and _body_has(run_replay_body, "build_project_local_package_info(")
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                _PROJECT_PACKAGE_OWNER,
+                "Install and audit replay must build the project's own package through "
+                "build_project_local_package_info",
             )
         )
 
