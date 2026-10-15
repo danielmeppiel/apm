@@ -55,7 +55,7 @@ def adopt_legacy_mcp_target_servers(
     from apm_cli.core.conflict_detector import MCPConflictDetector
     from apm_cli.factory import ClientFactory
     from apm_cli.integration.mcp_integrator import MCPIntegrator
-    from apm_cli.models.dependency.mcp import MCPDependency
+    from apm_cli.models.dependency.mcp import MCPDependency, opencode_enabled_matches
 
     baselines: dict[str, Any] = {}
     for name in sorted(server_names):
@@ -119,6 +119,10 @@ def adopt_legacy_mcp_target_servers(
                     for entry in candidates
                     if isinstance(entry, dict) and not CodexClientAdapter.get_registry_id(entry)
                 ]
-            if any(entry in native_baselines for entry in candidates):
+            if any(
+                entry in native_baselines
+                and (runtime != "opencode" or opencode_enabled_matches(entry, expected))
+                for entry in candidates
+            ):
                 adopted.setdefault(runtime, set()).add(name)
     return adopted
