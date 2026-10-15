@@ -50,6 +50,42 @@ def test_cursor_native_edge_boundary_rejects_bypass_and_second_owner(
     assert any(finding.rule_id == rule.id for finding in result.violations)
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("result = _thaw(handler.metadata)", "result = dict(handler.metadata)"),
+        ("outer = _thaw(binding.metadata)", "outer = dict(binding.metadata)"),
+        (
+            'result.append(_thaw(binding.metadata["raw_entry"]))',
+            'result.append(binding.metadata["raw_entry"])',
+        ),
+        (
+            'flat.append(_thaw(binding.metadata["raw_entry"]))',
+            'flat.append(binding.metadata["raw_entry"])',
+        ),
+    ],
+)
+def test_native_hook_renderers_reject_shallow_metadata_copies(old: str, new: str) -> None:
+    """Restoring a shallow metadata copy at a render boundary must fail the guard (#3167)."""
+    root = Path(__file__).parents[2]
+    path = "src/apm_cli/integration/hook_native_formats.py"
+    source = (root / path).read_text(encoding="utf-8")
+    assert old in source
+    rule = _RULES_BY_ID["mutation_writes.neutral_hook_contract"]
+    result = run_selected_rules(
+        root, (rule.id,), source_overrides={path: source.replace(old, new, 1)}
+    )
+    assert any(finding.rule_id == rule.id for finding in result.violations)
+
+
+def test_neutral_hook_contract_passes_on_current_sources() -> None:
+    """The unmodified tree satisfies the neutral hook contract rule."""
+    root = Path(__file__).parents[2]
+    rule = _RULES_BY_ID["mutation_writes.neutral_hook_contract"]
+    result = run_selected_rules(root, (rule.id,))
+    assert [finding for finding in result.violations if finding.rule_id == rule.id] == []
+
+
 def _write_portable_hook_package(tmp_path: Path) -> object:
     """Create one package carrying the flat portable hook shape."""
     from apm_cli.models.apm_package import APMPackage, PackageInfo
