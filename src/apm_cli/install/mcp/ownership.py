@@ -3,9 +3,31 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_mcp_target_servers(
+    *,
+    recorded_target_servers: dict[str, set[str]],
+    ownership_present: bool,
+    server_names: set[str],
+    stored_configs: dict[str, dict],
+    project_root: Path | None,
+    user_scope: bool,
+) -> dict[str, set[str]]:
+    """Return recorded ownership, adopting exact legacy baselines only when absent."""
+    target_servers = {runtime: set(servers) for runtime, servers in recorded_target_servers.items()}
+    if target_servers or ownership_present:
+        return target_servers
+    return adopt_legacy_mcp_target_servers(
+        server_names=server_names,
+        stored_configs=stored_configs,
+        project_root=project_root,
+        user_scope=user_scope,
+    )
 
 
 def migrate_legacy_project_target_servers(
@@ -14,26 +36,26 @@ def migrate_legacy_project_target_servers(
     active_runtimes: set[str],
     user_scope: bool,
 ) -> None:
-    """Move legacy project Copilot ownership to the VS Code runtime key."""
-    if user_scope or "vscode" not in active_runtimes or "copilot" in active_runtimes:
+    """Move legacy project VS Code ownership to the Copilot runtime key."""
+    if user_scope or "copilot" not in active_runtimes or "vscode" in active_runtimes:
         return
-    legacy_servers = target_servers.pop("copilot", set())
+    legacy_servers = target_servers.pop("vscode", set())
     if legacy_servers:
-        target_servers.setdefault("vscode", set()).update(legacy_servers)
+        target_servers.setdefault("copilot", set()).update(legacy_servers)
 
 
 def adopt_legacy_mcp_target_servers(
     *,
     server_names: set[str],
     stored_configs: dict[str, dict],
-    project_root,
+    project_root: Path | None,
     user_scope: bool,
 ) -> dict[str, set[str]]:
     """Adopt legacy native entries only when they exactly match their baseline."""
     from apm_cli.core.conflict_detector import MCPConflictDetector
     from apm_cli.factory import ClientFactory
     from apm_cli.integration.mcp_integrator import MCPIntegrator
-    from apm_cli.models.dependency.mcp import MCPDependency
+    from apm_cli.models.dependency.mcp import MCPDependency, opencode_enabled_matches
 
     baselines: dict[str, Any] = {}
     for name in sorted(server_names):
@@ -83,6 +105,10 @@ def adopt_legacy_mcp_target_servers(
                     exc_info=True,
                 )
                 continue
-            if any(existing.get(name) == expected for existing in existing_configs):
+            if any(
+                existing.get(name) == expected
+                and (runtime != "opencode" or opencode_enabled_matches(existing[name], expected))
+                for existing in existing_configs
+            ):
                 adopted.setdefault(runtime, set()).add(name)
     return adopted

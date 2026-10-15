@@ -38,6 +38,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from apm_cli.security.gate import is_python_bytecode_cache_path
+
 from .base_integrator import BaseIntegrator
 
 
@@ -81,25 +83,28 @@ class CleanupResult:
 def _is_skill_directory_entry(rel_path: str) -> bool:
     """Return True when *rel_path* matches a skill directory pattern.
 
-    Skill directories are deployed under ``<prefix>/skills/<name>`` where
-    ``<prefix>`` is a target root or deploy_root (e.g. ``.agents``,
-    ``.github``, ``.claude``, ``.cursor``).  The path must have exactly
-    one component after ``skills/`` (the skill name) to qualify -- deeper
-    entries or ``skills/`` itself do not match.
+    Skill directories are deployed under ``<skills root>/<name>`` where the
+    skills root is a target's ``<root>/<subdir>`` (e.g. ``.github/skills``,
+    ``agent-data/workflows``).  The path must have exactly one component after
+    the skills root (the skill name) to qualify -- deeper entries or the
+    skills root itself do not match.
     """
+    from apm_cli.integration.targets import skills_root_prefixes
+
+    normalized = rel_path.replace("\\", "/")
+    parent, _, name = normalized.rpartition("/")
+    if not name:
+        return False
+    if parent in skills_root_prefixes():
+        return True
+    # Legacy/foreign roots (cowork URIs, bespoke prefixes): ``<prefix>/skills/<name>``.
     parts = Path(rel_path).parts
-    # Minimum: prefix, "skills", name -> 3 parts (e.g. ".agents/skills/my-skill")
     if len(parts) < 3:
         return False
-    # The second-to-last component must be "skills" and the last is the
-    # skill name.  We require exactly one component after skills/ so that
-    # we only match the top-level skill directory, not subdirectories
-    # within a skill bundle.
     try:
         skills_idx = parts.index("skills")
     except ValueError:
         return False
-    # Exactly one component after "skills" (the skill name)
     return skills_idx == len(parts) - 2 and skills_idx >= 1
 
 
@@ -169,6 +174,9 @@ def _safe_remove_skill_directory(
             except ValueError:
                 child_rel = str(child.name)
             blocking.append(child_rel)
+            continue
+        relative_child = child.relative_to(skill_dir)
+        if is_python_bytecode_cache_path(relative_child):
             continue
         if child.is_dir():
             continue
@@ -268,6 +276,7 @@ def remove_stale_deployed_files(
     recorded_hashes: dict[str, str] | None = None,
     failed_path_retained: bool = True,
     user_scope: bool = False,
+    allow_final_symlink: bool = False,
 ) -> CleanupResult:
     """Remove APM-deployed files that are no longer produced by *dep_key*.
 
@@ -386,12 +395,13 @@ def remove_stale_deployed_files(
                 project_root,
                 targets=targets,
                 user_scope=user_scope,
+                allow_final_symlink=allow_final_symlink,
             ):
                 result.skipped_unmanaged.append(stale_path)
                 continue
             stale_target = project_root / stale_path
 
-        if not stale_target.exists():
+        if not stale_target.exists() and not (allow_final_symlink and stale_target.is_symlink()):
             # File already gone -- treat as cleaned (no-op success).
             continue
 
@@ -426,6 +436,17 @@ def remove_stale_deployed_files(
         # etc.) we keep it rather than risk destroying user work.
         expected_hash = recorded_hashes.get(stale_path)
         if expected_hash:
+            if allow_final_symlink and stale_target.is_symlink():
+                result.skipped_user_edit.append(stale_path)
+                diagnostics.warn(
+                    (
+                        f"Skipped removing {stale_path}: the deployed file was "
+                        "replaced by a symlink. Inspect the link and delete it "
+                        "manually if no longer needed."
+                    ),
+                    package=dep_key,
+                )
+                continue
             try:
                 from ..utils.content_hash import compute_file_hash
 

@@ -5,21 +5,29 @@ import logging
 import os
 import threading
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import fields, is_dataclass, replace
 from pathlib import Path, PureWindowsPath
-from typing import TYPE_CHECKING, Optional, Protocol
+from typing import TYPE_CHECKING, NoReturn, Optional, Protocol
 
+from ..bundle.local_bundle import route_agent_plugin_package
 from ..models.apm_package import APMPackage, DependencyReference
+from ..models.validation import PackageType, detect_package_type, validate_apm_package
 from ..utils.path_security import PathTraversalError, ensure_path_within, validate_path_segments
 from ..utils.paths import portable_relpath
+from ._shared import MarketplaceManifestMaterializationError, materialize_marketplace_manifest
 from .dependency_graph import (
     CircularRef,
     DependencyGraph,
     DependencyNode,
     DependencyTree,
     FlatDependencyMap,
+)
+from .immutable_requirements import (
+    ImmutableRequirementError,
+    ImmutableRequirements,
+    ReferenceResolver,
 )
 
 if TYPE_CHECKING:
@@ -73,6 +81,16 @@ class DownloadCallback(Protocol):
     ) -> Path | None: ...
 
 
+class ActivationCallback(Protocol):
+    """Publish a validated download candidate and return its live path."""
+
+    def __call__(self, candidate_path: Path) -> Path: ...
+
+
+class DownloadedPackageError(RuntimeError):
+    """A downloaded candidate could not be validated or activated."""
+
+
 class APMDependencyResolver:
     """Handles recursive APM dependency resolution similar to NPM."""
 
@@ -85,6 +103,10 @@ class APMDependencyResolver:
         auth_resolver: object | None = None,
         update_refs: bool = False,
         existing_lockfile: "LockFile | None" = None,
+        activation_callback: ActivationCallback | None = None,
+        cache_validation_callback: Callable[[Path, str], Path | None] | None = None,
+        reference_resolver: ReferenceResolver | None = None,
+        frozen: bool = False,
     ):
         """Initialize the resolver with maximum recursion depth.
 
@@ -111,13 +133,21 @@ class APMDependencyResolver:
             existing_lockfile: Existing resolved dependency state used by the
                 canonical ref-drift owner to decide whether a plain install
                 must re-enter the download callback.
+            activation_callback: Optional callback that publishes a downloaded
+                candidate only after this resolver validates it.
+            cache_validation_callback: Optional read-only admission check for reused
+                bytes, after the fetch decision and before package normalization.
         """
         self.max_depth = max_depth
         self._apm_modules_dir: Path | None = apm_modules_dir
         self._project_root: Path | None = None
         self._download_callback = download_callback
+        self._activation_callback = activation_callback
+        self._cache_validation_callback = cache_validation_callback
         self._update_refs = update_refs
         self._existing_lockfile = existing_lockfile
+        self._reference_resolver = reference_resolver
+        self._frozen = frozen
         # Whether ``download_callback`` accepts ``parent_pkg`` (added in #857).
         # Detected once via signature inspection so legacy callbacks that
         # predate the field still work without raising a silent TypeError
@@ -204,12 +234,19 @@ class APMDependencyResolver:
                 return True
         return False
 
-    def resolve_dependencies(self, project_root: Path) -> DependencyGraph:
+    def resolve_dependencies(
+        self,
+        project_root: Path,
+        *,
+        root_package: APMPackage | None = None,
+    ) -> DependencyGraph:
         """
         Resolve all APM dependencies recursively.
 
         Args:
-            project_root: Path to the project root containing apm.yml
+            project_root: Path to the project root containing apm.yml.
+            root_package: Optional parsed root package. A caller can supply
+                staged dependency refs without writing the manifest first.
 
         Returns:
             DependencyGraph: Complete resolved dependency graph
@@ -221,7 +258,7 @@ class APMDependencyResolver:
 
         # Load the root package
         apm_yml_path = project_root / "apm.yml"
-        if not apm_yml_path.exists():
+        if not apm_yml_path.exists() and root_package is None:
             # Create empty dependency graph for projects without apm.yml
             empty_package = APMPackage(name="unknown", version="0.0.0", package_path=project_root)
             empty_tree = DependencyTree(root_package=empty_package)
@@ -232,23 +269,32 @@ class APMDependencyResolver:
                 flattened_dependencies=empty_flat,
             )
 
-        try:
-            root_package = APMPackage.from_apm_yml(apm_yml_path, source_path=project_root.resolve())
-        except (ValueError, FileNotFoundError) as e:
-            # Create error graph
-            empty_package = APMPackage(name="error", version="0.0.0", package_path=project_root)
-            empty_tree = DependencyTree(root_package=empty_package)
-            empty_flat = FlatDependencyMap()
-            graph = DependencyGraph(
-                root_package=empty_package,
-                dependency_tree=empty_tree,
-                flattened_dependencies=empty_flat,
-            )
-            graph.add_error(f"Failed to load root apm.yml: {e}")
-            return graph
+        if root_package is None:
+            try:
+                root_package = APMPackage.from_apm_yml(
+                    apm_yml_path,
+                    source_path=project_root.resolve(),
+                )
+            except (ValueError, FileNotFoundError) as e:
+                # Create error graph
+                empty_package = APMPackage(name="error", version="0.0.0", package_path=project_root)
+                empty_tree = DependencyTree(root_package=empty_package)
+                empty_flat = FlatDependencyMap()
+                graph = DependencyGraph(
+                    root_package=empty_package,
+                    dependency_tree=empty_tree,
+                    flattened_dependencies=empty_flat,
+                )
+                graph.add_error(f"Failed to load root apm.yml: {e}")
+                return graph
+        elif root_package.source_path is None:
+            root_package = replace(root_package, source_path=project_root.resolve())
 
         # Build the complete dependency tree
-        dependency_tree = self.build_dependency_tree(apm_yml_path)
+        dependency_tree = self.build_dependency_tree(
+            apm_yml_path,
+            root_package=root_package,
+        )
 
         # Detect circular dependencies
         circular_deps = self.detect_circular_dependencies(dependency_tree)
@@ -372,24 +418,30 @@ class APMDependencyResolver:
             return anchored.resolve().as_posix()
         return portable_relpath(anchored, base)
 
-    def _remote_repo_root_for_parent(
+    def _remote_source_paths_for_parent(
         self,
         parent_dep: DependencyReference,
         parent_pkg: APMPackage,
-    ) -> Path:
-        """Return the on-disk clone root for a remote parent package."""
+    ) -> tuple[Path, Path]:
+        """Return contained repository and package source-coordinate anchors."""
         if self._apm_modules_dir is None or parent_pkg.source_path is None:
             raise PathTraversalError(
                 "remote parent package has no source path to anchor local path"
             )
         source_path = ensure_path_within(parent_pkg.source_path, self._apm_modules_dir)
+        if parent_dep.alias:
+            # Aliases flatten materialization, not authenticated repository coordinates.
+            source_path = ensure_path_within(
+                replace(parent_dep, alias=None).get_install_path(self._apm_modules_dir),
+                self._apm_modules_dir,
+            )
         repo_root = source_path
         if parent_dep.virtual_path:
             validate_path_segments(parent_dep.virtual_path, context="virtual_path")
             for _segment in parent_dep.virtual_path.replace("\\", "/").split("/"):
                 if _segment:
                     repo_root = repo_root.parent
-        return ensure_path_within(repo_root, self._apm_modules_dir)
+        return ensure_path_within(repo_root, self._apm_modules_dir), source_path
 
     def _expand_remote_parent_local_path(
         self,
@@ -415,8 +467,8 @@ class APMDependencyResolver:
         if self._is_absolute_local_path(local_str):
             raise PathTraversalError("absolute paths inside remote packages are not allowed")
 
-        repo_root = self._remote_repo_root_for_parent(parent_dep, parent_pkg)
-        parent_source = ensure_path_within(parent_pkg.source_path, repo_root)
+        repo_root, parent_source = self._remote_source_paths_for_parent(parent_dep, parent_pkg)
+        parent_source = ensure_path_within(parent_source, repo_root)
         local_path = Path(local_str.replace("\\", "/"))
         resolved = ensure_path_within(parent_source / local_path, repo_root)
         virtual_path = resolved.relative_to(repo_root).as_posix()
@@ -510,6 +562,11 @@ class APMDependencyResolver:
             if resolution.dependency_reference is not None
             else DependencyReference.parse(resolution.canonical)
         )
+        manifest = getattr(resolution.plugin, "manifest", None)
+        if isinstance(manifest, dict) and manifest:
+            resolved.marketplace_manifest = dict(manifest)
+            resolved.marketplace_name = dep_ref.marketplace_name
+            resolved.marketplace_plugin_name = dep_ref.marketplace_plugin_name
         self._marketplace_provenance[resolved.get_unique_key()] = resolution.provenance(
             dep_ref.marketplace_name,
             dep_ref.marketplace_plugin_name,
@@ -567,7 +624,12 @@ class APMDependencyResolver:
             )
             return None
 
-    def build_dependency_tree(self, root_apm_yml: Path) -> DependencyTree:
+    def build_dependency_tree(
+        self,
+        root_apm_yml: Path,
+        *,
+        root_package: APMPackage | None = None,
+    ) -> DependencyTree:
         """
         Build complete tree of all dependencies and sub-dependencies.
 
@@ -575,28 +637,38 @@ class APMDependencyResolver:
         This allows for early conflict detection and clearer error reporting.
 
         Args:
-            root_apm_yml: Path to the root apm.yml file
+            root_apm_yml: Path to the root apm.yml file.
+            root_package: Optional parsed root package to use instead of
+                reading the file again.
 
         Returns:
             DependencyTree: Hierarchical dependency tree
         """
-        # Load root package. Anchor source_path on the project root so direct
-        # dep relative paths resolve from there (#857).
-        try:
-            root_package = APMPackage.from_apm_yml(
-                root_apm_yml,
-                source_path=self._project_root.resolve()
-                if self._project_root is not None
-                else root_apm_yml.parent.resolve(),
-            )
-        except (ValueError, FileNotFoundError) as e:
-            _logger.warning("Failed to parse root apm.yml: %s", e)
-            empty_package = APMPackage(name="error", version="0.0.0")
-            tree = DependencyTree(root_package=empty_package)
-            return tree
+        # Load the root unless the caller has staged in-memory refs that must
+        # remain unwritten until a consent gate.
+        if root_package is None:
+            try:
+                root_package = APMPackage.from_apm_yml(
+                    root_apm_yml,
+                    source_path=self._project_root.resolve()
+                    if self._project_root is not None
+                    else root_apm_yml.parent.resolve(),
+                )
+            except (ValueError, FileNotFoundError) as e:
+                _logger.warning("Failed to parse root apm.yml: %s", e)
+                empty_package = APMPackage(name="error", version="0.0.0")
+                tree = DependencyTree(root_package=empty_package)
+                return tree
 
         # Initialize the tree
         tree = DependencyTree(root_package=root_package)
+        requirements = ImmutableRequirements(
+            root_package.name,
+            self._reference_resolver,
+            self._existing_lockfile,
+            frozen=self._frozen,
+            update_refs=self._update_refs,
+        )
 
         # Queue for breadth-first traversal: (dependency_ref, depth, parent_node, is_dev)
         processing_queue: deque[tuple[DependencyReference, int, DependencyNode | None, bool]] = (
@@ -726,6 +798,12 @@ class APMDependencyResolver:
                 work_items.append((node, dep_ref, parent_node, is_dev))
 
             winner_candidates.extend(item[0] for item in work_items)
+            for node, _, _, _ in work_items:
+                try:
+                    requirements.add(node)
+                except ImmutableRequirementError as exc:
+                    tree.resolution_errors.append(str(exc))
+                    return tree
             _, winner_ids = _select_dependency_winners(winner_candidates)
             work_items = [
                 item
@@ -760,7 +838,13 @@ class APMDependencyResolver:
             # --- Phase C (main thread): integrate results, enqueue sub-deps ---
             for (node, dep_ref, _parent_node, is_dev), loaded_package, exc in results:
                 if exc is not None:
-                    if isinstance(exc, ValueError):
+                    if isinstance(exc, MarketplaceManifestMaterializationError):
+                        message = f"Marketplace package materialization failed: {exc}"
+                        _logger.warning(message)
+                        tree.resolution_errors.append(message)
+                    elif isinstance(exc, DownloadedPackageError):
+                        tree.resolution_errors.append(str(exc))
+                    elif isinstance(exc, ValueError):
                         _logger.warning(
                             "Invalid transitive apm.yml for %s: %s",
                             dep_ref.get_display_name(),
@@ -1055,6 +1139,9 @@ class APMDependencyResolver:
         # Get the canonical install path for this dependency
         install_path = dep_ref.get_install_path(self._apm_modules_dir)
 
+        downloaded_candidate: Path | None = None
+        had_existing_install = install_path.exists()
+
         # If package doesn't exist locally, try to download it. Also fall
         # through for a forced semver re-check (see _should_force_recheck).
         if dep_ref.is_local or not install_path.exists() or self._should_force_recheck(dep_ref):
@@ -1091,15 +1178,23 @@ class APMDependencyResolver:
                                 dep_ref, self._apm_modules_dir, parent_chain
                             )
                         if downloaded_path and downloaded_path.exists():
+                            original_install_path = install_path
                             install_path = downloaded_path
+                            if downloaded_path != original_install_path:
+                                downloaded_candidate = downloaded_path
                         else:
                             # Fetch produced no usable path -- release the
                             # reservation so a subsequent retry (or a
                             # different anchor with the same key) can try
-                            # again rather than silently treating the dep
-                            # as already-downloaded.
+                            # again rather than silently treating either the
+                            # old materialization or the dep as downloaded.
                             with self._download_lock:
                                 self._downloaded_packages.discard(unique_key)
+                            return None
+                    except MarketplaceManifestMaterializationError:
+                        with self._download_lock:
+                            self._downloaded_packages.discard(unique_key)
+                        raise
                     except Exception as exc:
                         # Surface the failure at default verbosity AND log a
                         # traceback at debug. Previously this branch silently
@@ -1122,10 +1217,80 @@ class APMDependencyResolver:
                             dep_ref.get_display_name(),
                             exc_info=True,
                         )
+                        return None
 
             # Still doesn't exist after download attempt
             if not install_path.exists():
                 return None
+
+        if (
+            self._cache_validation_callback is not None
+            and self._download_dedup_key(dep_ref, parent_pkg) not in self._downloaded_packages
+        ):
+            self._cache_validation_callback(install_path, dep_ref.get_unique_key())
+
+        materialize_marketplace_manifest(dep_ref, install_path)
+
+        # Native Agent Plugins must retain their projected compatibility package
+        # so recursive resolution can see APM-only dependencies without requiring
+        # or synthesizing an apm.yml compatibility manifest.
+        dep_source_path = self._compute_dep_source_path(dep_ref, parent_pkg, install_path)
+        native_detection = route_agent_plugin_package(install_path)
+        if native_detection is not None:
+            validation = validate_apm_package(
+                install_path,
+                source_path=dep_source_path,
+                agent_plugin_detection=native_detection,
+            )
+            if not validation.is_valid:
+                self._raise_downloaded_package_error(
+                    downloaded_candidate,
+                    dep_ref,
+                    "; ".join(validation.errors),
+                    had_existing_install,
+                )
+            if validation.package is None:
+                self._raise_downloaded_package_error(
+                    downloaded_candidate,
+                    dep_ref,
+                    f"Agent Plugin validation produced no package metadata: {install_path}",
+                    had_existing_install,
+                )
+            if not validation.package.source:
+                validation.package.source = dep_ref.repo_url
+            return self._activate_validated_package(
+                validation.package,
+                downloaded_candidate,
+                had_existing_install,
+            )
+
+        package_type, _ = detect_package_type(install_path)
+        if package_type in (PackageType.MARKETPLACE_PLUGIN, PackageType.SKILL_BUNDLE):
+            validation = validate_apm_package(
+                install_path,
+                source_path=dep_source_path,
+            )
+            if not validation.is_valid:
+                self._raise_downloaded_package_error(
+                    downloaded_candidate,
+                    dep_ref,
+                    "; ".join(validation.errors),
+                    had_existing_install,
+                )
+            if validation.package is None:
+                self._raise_downloaded_package_error(
+                    downloaded_candidate,
+                    dep_ref,
+                    f"Marketplace Plugin validation produced no package metadata: {install_path}",
+                    had_existing_install,
+                )
+            if not validation.package.source:
+                validation.package.source = dep_ref.repo_url
+            return self._activate_validated_package(
+                validation.package,
+                downloaded_candidate,
+                had_existing_install,
+            )
 
         # Look for apm.yml in the install path
         apm_yml_path = install_path / "apm.yml"
@@ -1135,34 +1300,146 @@ class APMDependencyResolver:
             skill_md_path = install_path / "SKILL.md"
             if skill_md_path.exists():
                 # Claude Skill without apm.yml - no transitive deps
-                return APMPackage(
+                package = APMPackage(
                     name=dep_ref.get_display_name(),
                     version="1.0.0",
                     source=dep_ref.repo_url,
                     package_path=install_path,
                     source_path=self._compute_dep_source_path(dep_ref, parent_pkg, install_path),
                 )
+                return self._activate_validated_package(
+                    package,
+                    downloaded_candidate,
+                    had_existing_install,
+                )
             # No manifest found
-            return None
+            self._raise_downloaded_package_error(
+                downloaded_candidate,
+                dep_ref,
+                f"Downloaded package has no apm.yml or SKILL.md: {install_path}",
+                had_existing_install,
+            )
 
         # Load and return the package, anchoring relative ``local_path`` deps
         # on the declaring package's source dir (#857). For local deps this
         # is the *original* user source; for remote deps it is the clone in
         # apm_modules.
-        dep_source_path = self._compute_dep_source_path(dep_ref, parent_pkg, install_path)
         try:
             package = APMPackage.from_apm_yml(apm_yml_path, source_path=dep_source_path)
-            # Ensure source is set for tracking. TODO(#940): the cache key
-            # already considers source_path; this post-construction mutation
-            # of ``source`` (a separate field) is safe today but has the same
-            # shape as the bug we just fixed -- review when refactoring.
-            if not package.source:
-                package.source = dep_ref.repo_url
-            return package
         except FileNotFoundError:
+            self._raise_downloaded_package_error(
+                downloaded_candidate,
+                dep_ref,
+                f"Downloaded package manifest disappeared: {apm_yml_path}",
+                had_existing_install,
+            )
+        except ValueError as exc:
+            self._raise_downloaded_package_error(
+                downloaded_candidate,
+                dep_ref,
+                str(exc),
+                had_existing_install,
+            )
+        # Ensure source is set for tracking. TODO(#940): the cache key
+        # already considers source_path; this post-construction mutation
+        # of ``source`` (a separate field) is safe today but has the same
+        # shape as the bug we just fixed -- review when refactoring.
+        if not package.source:
+            package.source = dep_ref.repo_url
+        return self._activate_validated_package(
+            package,
+            downloaded_candidate,
+            had_existing_install,
+        )
+
+    def _activate_validated_package(
+        self,
+        package: APMPackage,
+        downloaded_candidate: Path | None,
+        had_existing_install: bool,
+    ) -> APMPackage:
+        """Publish one validated candidate and remap its package paths."""
+        if downloaded_candidate is None or self._activation_callback is None:
+            return package
+        try:
+            live_path = self._activation_callback(downloaded_candidate)
+        except Exception as exc:
+            raise DownloadedPackageError(
+                f"Failed to activate downloaded dependency "
+                f"'{package.name}': {exc}. "
+                f"{self._replacement_failure_hint(had_existing_install)}"
+            ) from exc
+        if not live_path.exists():
+            raise FileNotFoundError(f"Validated package was not published: {live_path}")
+        package.package_path = self._remap_candidate_path(
+            package.package_path,
+            downloaded_candidate,
+            live_path,
+        )
+        package.source_path = self._remap_candidate_path(
+            package.source_path,
+            downloaded_candidate,
+            live_path,
+        )
+        self._remap_dependency_configs(package, downloaded_candidate, live_path)
+        return package
+
+    @staticmethod
+    def _remap_dependency_configs(
+        package: APMPackage,
+        candidate: Path,
+        live_path: Path,
+    ) -> None:
+        """Repoint plugin-root paths that were substituted while staged."""
+        from apm_cli.deps.plugin_parser import rebase_plugin_root_paths
+
+        for group in (package.dependencies, package.dev_dependencies):
+            for entries in (group or {}).values():
+                for entry in entries or ():
+                    if not is_dataclass(entry) or isinstance(entry, type):
+                        continue
+                    for spec in fields(entry):
+                        current = getattr(entry, spec.name, None)
+                        rebased = rebase_plugin_root_paths(current, candidate, live_path)
+                        if rebased != current:
+                            setattr(entry, spec.name, rebased)
+
+    @staticmethod
+    def _raise_downloaded_package_error(
+        downloaded_candidate: Path | None,
+        dep_ref: DependencyReference,
+        detail: str,
+        had_existing_install: bool,
+    ) -> NoReturn:
+        """Raise a specific fail-closed error for newly downloaded candidates."""
+        if downloaded_candidate is None:
+            raise ValueError(detail)
+        raise DownloadedPackageError(
+            f"Downloaded dependency '{dep_ref.get_display_name()}' is invalid: "
+            f"{detail}. {APMDependencyResolver._replacement_failure_hint(had_existing_install)}"
+        )
+
+    @staticmethod
+    def _replacement_failure_hint(had_existing_install: bool) -> str:
+        """Return recovery guidance accurate for fresh and replacement installs."""
+        if had_existing_install:
+            return "The existing installation remains active; fix the cause and retry the install."
+        return "The downloaded candidate was not activated; fix the cause and retry the install."
+
+    @staticmethod
+    def _remap_candidate_path(
+        path: Path | None,
+        candidate: Path,
+        live_path: Path,
+    ) -> Path | None:
+        """Map a path inside a staged candidate to the published tree."""
+        if path is None:
             return None
+        try:
+            relative = path.relative_to(candidate)
         except ValueError:
-            raise
+            return path
+        return live_path / relative
 
     @staticmethod
     def _is_remote_parent(parent_pkg: APMPackage | None) -> bool:
@@ -1206,7 +1483,8 @@ class APMDependencyResolver:
         For LOCAL deps we return the *original* user source directory so that
         transitive ``../sibling`` references inside its apm.yml resolve as a
         developer reading the file expects (#857). For REMOTE deps we return
-        the clone location under apm_modules.
+        the materialized package location; repository-relative expansion derives
+        separate source-coordinate anchors.
         """
         if dep_ref.is_local and dep_ref.local_path:
             local = Path(dep_ref.local_path).expanduser()

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -12,11 +13,36 @@ from ...registry.client import SimpleRegistryClient
 from ...registry.integration import RegistryIntegration
 from ...utils.atomic_io import atomic_write_text
 from ...utils.console import _rich_success, _rich_warning
+from ...utils.net import is_loopback_host
 from ...utils.path_security import PathTraversalError
 from ._mcp_runtime_args import process_v01_value_hint_arg
-from .base import MCPClientAdapter
+from .base import _ENV_VAR_RE, MCPClientAdapter
 
 _log = logging.getLogger(__name__)
+
+# Codex documents ``http_headers`` as a map of header names to STATIC values,
+# so a ``${VAR}`` written there reaches the server as that literal text. An
+# environment-sourced header has two dedicated fields instead:
+# ``env_http_headers`` maps a header name to the variable holding its whole
+# value, and ``bearer_token_env_var`` names the variable holding an
+# Authorization bearer token. Codex resolves both at server start, which is
+# what the declared ``${VAR}`` asks for -- this adapter does not support
+# runtime substitution itself, so the placeholder survives
+# ``_resolve_variable_placeholders`` untouched.
+# See https://learn.chatgpt.com/docs/extend/mcp?surface=cli
+_CODEX_BEARER_HEADER = "authorization"
+# Reuse the canonical placeholder syntax so the two spellings APM accepts
+# (``${VAR}`` and ``${env:VAR}``) cannot drift apart here. The auth scheme is
+# case-insensitive per RFC 7235; Codex always writes it as ``Bearer``.
+_CODEX_BEARER_VALUE_RE = re.compile(rf"(?i:Bearer) +{_ENV_VAR_RE.pattern}")
+# Any reference still standing in a resolved value, deliberately wider than the
+# canonical parser: a spelling it does not model, such as the shell default in
+# ``${VAR:-}``, is no more static than a ``${VAR}`` Codex could resolve, and
+# writing it to ``http_headers`` sends the braces to the server. Widening the
+# report here, rather than the parser, keeps every other adapter's placeholder
+# semantics untouched. ``${input:...}`` is excluded: input variables are
+# collected elsewhere and carry their own warning.
+_CODEX_UNSUPPORTED_REFERENCE_RE = re.compile(r"\$\{(?!input:)")
 
 
 class CodexClientAdapter(MCPClientAdapter):
@@ -41,8 +67,9 @@ class CodexClientAdapter(MCPClientAdapter):
 
         Args:
             registry_url (str, optional): URL of the MCP registry.
-                If not provided, uses the MCP_REGISTRY_URL environment variable
-                or falls back to the default GitHub registry.
+                If not provided, resolves the MCP_REGISTRY_URL env var,
+                then ``apm config set mcp-registry-url``, then the public
+                default (see ``registry.client.resolve_mcp_registry_url``).
             project_root: Project root used to resolve project-local Codex
                 config paths.
             user_scope: Whether the adapter should resolve user-scope Codex
@@ -216,6 +243,8 @@ class CodexClientAdapter(MCPClientAdapter):
         raw = server_info.get("_raw_stdio")
         if raw:
             config["command"] = raw["command"]
+            if raw.get("cwd") is not None:
+                config["cwd"] = raw["cwd"]
             resolved_env_for_args: dict = {}
             if raw.get("env"):
                 resolved_env_for_args = self._resolve_environment_variables(
@@ -239,7 +268,8 @@ class CodexClientAdapter(MCPClientAdapter):
         # Precedence on Codex when a server publishes BOTH a remote and a stdio
         # package: prefer the stdio package (falls through to the packages branch
         # below). The remote-only branch here handles the streamable-http path
-        # and rejects SSE / non-https / empty-url remotes with explicit warnings.
+        # and rejects SSE / non-https (except loopback http) / empty-url remotes
+        # with explicit warnings.
         remotes = server_info.get("remotes", [])
         packages = server_info.get("packages", [])
         if remotes and not packages:
@@ -263,11 +293,22 @@ class CodexClientAdapter(MCPClientAdapter):
                 )
                 return None
 
-            scheme = urlparse(remote_url).scheme.lower()
-            if scheme != "https":
+            try:
+                parsed_remote = urlparse(remote_url)
+                scheme = parsed_remote.scheme.lower()
+                insecure_loopback = scheme == "http" and is_loopback_host(parsed_remote.hostname)
+            except ValueError:
+                scheme = ""
+                insecure_loopback = False
+            # Codex CLI itself accepts plain-http loopback URLs (its docs use
+            # http://localhost examples), and local dev servers rarely carry
+            # certs -- so loopback http is allowed. Any other non-https host is
+            # still rejected to avoid cleartext bearer tokens in transit.
+            if scheme != "https" and not insecure_loopback:
                 _rich_warning(
                     f"Skipping MCP server '{server_name}' for Codex CLI: remote URL "
-                    f"must use https:// (got {scheme or 'no scheme'}).",
+                    f"must use https:// (got {scheme or 'no scheme'}). "
+                    "Plain http is allowed for loopback addresses only.",
                     symbol="warning",
                 )
                 return None
@@ -277,16 +318,49 @@ class CodexClientAdapter(MCPClientAdapter):
                 "id": server_info.get("id", ""),
             }
             http_headers: dict[str, str] = {}
+            env_http_headers: dict[str, str] = {}
+            bearer_token_env_var = ""
+            unsupported_headers: list[str] = []
             for header in remote.get("headers", []):
                 h_name = header.get("name", "")
                 h_value = header.get("value", "")
-                if h_name and h_value:
-                    http_headers[h_name] = self._resolve_variable_placeholders(
-                        h_value, env_overrides or {}, runtime_vars or {}
-                    )
+                if not (h_name and h_value):
+                    continue
+                resolved = self._resolve_variable_placeholders(
+                    h_value, env_overrides or {}, runtime_vars or {}
+                )
+                bearer = _CODEX_BEARER_VALUE_RE.fullmatch(resolved)
+                if bearer and h_name.lower() == _CODEX_BEARER_HEADER:
+                    bearer_token_env_var = bearer.group(1)
+                    continue
+                env_header = _ENV_VAR_RE.fullmatch(resolved)
+                if env_header:
+                    env_http_headers[h_name] = env_header.group(1)
+                    continue
+                if _CODEX_UNSUPPORTED_REFERENCE_RE.search(resolved):
+                    unsupported_headers.append(h_name)
+                    continue
+                http_headers[h_name] = resolved
+            if unsupported_headers:
+                safe_headers = ", ".join(ascii(name)[1:-1] for name in unsupported_headers)
+                safe_server = ascii(server_name)[1:-1]
+                _rich_warning(
+                    f"Skipping header(s) {safe_headers} of MCP server "
+                    f"'{safe_server}' for Codex CLI: Codex reads a header from the "
+                    "environment only when the value is exactly ${VAR} or, for "
+                    "Authorization, `Bearer ${VAR}`. Literal text around the "
+                    "reference, or a shell-style default such as ${VAR:-}, has no "
+                    "Codex equivalent; export the whole header value as one variable.",
+                    symbol="warning",
+                )
+            # Scalars precede the sub-tables tomlkit renders for the dict values.
+            if bearer_token_env_var:
+                remote_config["bearer_token_env_var"] = bearer_token_env_var
             if http_headers:
                 remote_config["http_headers"] = http_headers
                 self._warn_input_variables(http_headers, server_name, "Codex CLI")
+            if env_http_headers:
+                remote_config["env_http_headers"] = env_http_headers
             self._merge_extra(remote_config, server_info)
             return remote_config
 

@@ -21,12 +21,17 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from apm_cli.install.errors import DirectDependencyError
 from apm_cli.install.phases._redownload import _should_skip_redownload
 from apm_cli.install.phases._skip_logic import _compute_skip_download
 from apm_cli.install.phases.heal import run_heal_chain
-from apm_cli.install.services import integrate_local_content
+from apm_cli.install.services import _targets_explicitly_requested, integrate_local_content
 from apm_cli.install.sources import make_dependency_source
-from apm_cli.install.template import run_integration_template
+from apm_cli.install.template import (
+    preflight_agent_plugin_materializations,
+    prepare_integration_materialization,
+    run_integration_template,
+)
 
 if TYPE_CHECKING:
     from apm_cli.install.context import InstallContext
@@ -562,6 +567,32 @@ def _decl_fully_trusted(allow: dict, decl) -> bool:
 # ======================================================================
 
 
+def _fail_explicit_target_without_deploy(ctx: InstallContext) -> None:
+    """Abort before any write when an explicit ``--target`` would deploy nothing."""
+    tree = getattr(ctx.dependency_graph, "dependency_tree", None)
+    if not _targets_explicitly_requested(ctx) or tree is None:
+        return
+    if ctx.root_has_local_primitives and not ctx.only_packages:
+        return
+    from apm_cli.install.target_filter import explicit_target_failure
+    from apm_cli.models.apm_package import DependencyReference
+
+    skipped = ctx.callback_failures
+    nodes = [n for n in tree.nodes.values() if n.dependency_ref.get_unique_key() not in skipped]
+    roots: list = []
+    if ctx.only_packages:
+        identities = builtins.set()
+        for spec in ctx.only_packages:
+            try:
+                identities.add(DependencyReference.parse(spec).get_identity())
+            except Exception:
+                identities.add(spec)
+        roots = [n for n in nodes if n.dependency_ref.get_identity() in identities]
+    message = explicit_target_failure(list(ctx.targets), nodes, roots)
+    if message:
+        raise DirectDependencyError(message)
+
+
 def run(ctx: InstallContext) -> None:
     """Execute the sequential integration phase.
 
@@ -581,6 +612,8 @@ def run(ctx: InstallContext) -> None:
     # ------------------------------------------------------------------
     deps_to_install = ctx.deps_to_install
     apm_modules_dir = ctx.apm_modules_dir
+    if apm_modules_dir is None:
+        raise RuntimeError("Resolution must set apm_modules_dir before integration")
 
     # Direct dep keys: used to distinguish direct vs transitive failures
     # so direct failures can be surfaced immediately.
@@ -604,17 +637,13 @@ def run(ctx: InstallContext) -> None:
     # routed through ``ctx.tui`` (workstream B, #1116); when the TUI is
     # disabled every method is a no-op.
     # ------------------------------------------------------------------
+    prepared_integrations = []
     for dep_ref in deps_to_install:
         # Determine installation directory using namespaced structure
         # e.g., microsoft/apm-sample-package -> apm_modules/microsoft/apm-sample-package/
         # For virtual packages: owner/repo/prompts/file.prompt.md -> apm_modules/owner/repo-file/
         # For subdirectory packages: owner/repo/subdir -> apm_modules/owner/repo/subdir/
-        if dep_ref.alias:
-            # If alias is provided, use it directly (assume user handles namespacing)
-            install_path = apm_modules_dir / dep_ref.alias
-        else:
-            # Use the canonical install path from DependencyReference
-            install_path = dep_ref.get_install_path(apm_modules_dir)
+        install_path = dep_ref.get_install_path(apm_modules_dir)
 
         # Skip deps that already failed during BFS resolution callback
         # to avoid a duplicate error entry in diagnostics.
@@ -638,12 +667,9 @@ def run(ctx: InstallContext) -> None:
             resolved_ref, skip_download, dep_locked_chk, ref_changed = _resolve_download_strategy(
                 ctx, dep_ref, install_path
             )
-            # F2 (#1116): when the resolver callback already
-            # downloaded this package during the parallel resolve
-            # phase, ``skip_download`` will be True but the bytes
-            # arrived in this run. Tell the cached source so it
-            # does not falsely tag the line ``(cached)``.
-            _fetched_now = dep_key in ctx.callback_downloaded
+            # A callback or pre-download can materialize bytes before
+            # this loop while still selecting CachedDependencySource.
+            _fetched_now = dep_key in ctx.callback_downloaded or dep_key in ctx.pre_downloaded_keys
             source = make_dependency_source(
                 ctx,
                 dep_ref,
@@ -656,7 +682,24 @@ def run(ctx: InstallContext) -> None:
                 fetched_this_run=_fetched_now,
             )
 
-        deltas = run_integration_template(source)
+        materialization, terminal_deltas = prepare_integration_materialization(source)
+        prepared_integrations.append(
+            (dep_key, install_path, source, materialization, terminal_deltas)
+        )
+
+    materialized = [
+        (source, materialization)
+        for _, _, source, materialization, _ in prepared_integrations
+        if materialization is not None
+    ]
+    preflight_agent_plugin_materializations(materialized)
+    _fail_explicit_target_without_deploy(ctx)
+
+    for dep_key, install_path, source, materialization, terminal_deltas in prepared_integrations:
+        if terminal_deltas is not None:
+            deltas = terminal_deltas
+        else:
+            deltas = run_integration_template(source, materialization=materialization)
 
         if deltas is None:
             # Direct dependency failure: surface a single concise

@@ -308,6 +308,60 @@ def test_codec_reconciles_owners_through_canonical_reconciler(tmp_path: Path) ->
     assert lockfile.deployment_ledger.records[shared.key].active_owner == "beta"
 
 
+def test_dependency_merge_retains_canonical_locators_and_surviving_owners(tmp_path: Path) -> None:
+    """Partial replacement keeps opaque locators and removes only replaced ownership."""
+    prior = LockFile(
+        dependencies={
+            "alpha": LockedDependency(repo_url="alpha", resolved_commit="old-alpha"),
+            "beta": LockedDependency(repo_url="beta", resolved_commit="old-beta"),
+        }
+    )
+    shared = _locator(".agents/skills/shared/SKILL.md")
+    stale = _locator(".agents/skills/removed/SKILL.md")
+    copilot = _locator(".agents/skills/untouched/SKILL.md")
+    cursor = replace(copilot, target="cursor")
+    external = replace(copilot, kind=LocatorKind.TARGET_RELATIVE, value="skills/untouched")
+    service = replace(copilot, kind=LocatorKind.URI, target="mcp", value="server", runtime="vscode")
+    untouched = {
+        locator.key: _record(locator, owners=("beta",), active="beta")
+        for locator in (copilot, cursor, external)
+    }
+    untouched[service.key] = _record(service, owners=(".",), active=".")
+    DeploymentLedgerCodec.apply_to_lockfile(
+        DeploymentLedger(
+            records={
+                **untouched,
+                shared.key: _record(shared, owners=("beta", "alpha"), active="alpha"),
+                stale.key: _record(stale, owners=("alpha",), active="alpha"),
+            }
+        ),
+        prior,
+    )
+    updated = LockFile(
+        dependencies={"alpha": LockedDependency(repo_url="alpha", resolved_commit="new-alpha")}
+    )
+    added = _locator(".agents/skills/new/reference.md")
+    current_record = _record(added, owners=("alpha",), active="alpha")
+    DeploymentLedgerCodec.apply_to_lockfile(
+        DeploymentLedger(records={added.key: current_record}), updated
+    )
+
+    DeploymentLedgerCodec.merge_dependencies(
+        prior, updated, project_root=tmp_path, diagnostics=DiagnosticCollector()
+    )
+
+    assert prior.deployment_ledger.records == {
+        **untouched,
+        shared.key: _record(shared, owners=("beta",), active="beta"),
+        added.key: current_record,
+    }
+    assert prior.dependencies["alpha"].resolved_commit == "new-alpha"
+    assert prior.dependencies["beta"].resolved_commit == "old-beta"
+    assert prior.dependencies["alpha"].deployed_files == [".agents/skills/new/reference.md"]
+    assert prior.mcp_target_servers == {"vscode": ["server"]}
+    assert LockFile.from_yaml(prior.to_yaml()).deployment_ledger == prior.deployment_ledger
+
+
 def test_deployment_record_rejects_active_owner_outside_owners() -> None:
     with pytest.raises(ValueError, match="active_owner must be present in owners"):
         _record(_locator(), owners=("survivor",), active="removed")
@@ -555,6 +609,13 @@ def test_legacy_import_and_dual_write_are_semantically_equivalent() -> None:
     assert rebuilt.is_semantically_equivalent(lockfile)
 
 
+def test_legacy_shared_agents_path_has_unattributable_target() -> None:
+    """A shared .agents root must not be attributed to the deprecated alias."""
+    locator = DeploymentLedgerCodec._legacy_locator(".agents/skills/demo/SKILL.md")
+
+    assert locator.target == "legacy"
+
+
 def test_legacy_owner_update_preserves_canonical_shared_root_locator() -> None:
     """A compatibility projection must not demote a concrete shared-root target."""
     path = ".agents/skills/demo/SKILL.md"
@@ -657,6 +718,30 @@ def test_local_bundle_provenance_survives_canonical_ledger_rebuilds() -> None:
     assert DeploymentLedgerCodec.local_bundle_paths(lockfile) == frozenset({renamed, sibling})
     rebuilt = LockFile.from_yaml(lockfile.to_yaml())
     assert DeploymentLedgerCodec.local_bundle_paths(rebuilt) == frozenset({renamed, sibling})
+
+
+def test_service_rows_with_same_name_and_runtime_keep_distinct_targets() -> None:
+    """MCP and LSP URI ownership must not collide in canonical state."""
+    lockfile = LockFile()
+    DeploymentLedgerCodec.replace_mcp_target_servers(
+        lockfile,
+        {"claude": ["shared-server"]},
+    )
+    DeploymentLedgerCodec.replace_lsp_target_servers(
+        lockfile,
+        {"claude": ["shared-server"]},
+    )
+
+    rebuilt = LockFile.from_yaml(lockfile.to_yaml())
+
+    assert rebuilt.mcp_target_servers == {"claude": ["shared-server"]}
+    assert rebuilt.lsp_target_servers == {"claude": ["shared-server"]}
+    service_targets = {
+        record.locator.target
+        for record in rebuilt.deployment_ledger.records.values()
+        if record.locator.value == "shared-server"
+    }
+    assert service_targets == {"mcp", "lsp"}
 
 
 def test_local_bundle_provenance_rejects_missing_or_malformed_hashes() -> None:

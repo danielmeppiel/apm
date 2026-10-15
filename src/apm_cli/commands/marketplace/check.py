@@ -13,8 +13,9 @@ from ...marketplace.auth_helpers import resolve_auth_for_host
 from ...marketplace.errors import GitLsRemoteError, OfflineMissError
 from ...marketplace.ref_resolver import RefResolver
 from ...marketplace.semver import satisfies_range
-from ...marketplace.yml_schema import PackageEntry, split_source_base
-from ...utils.github_host import is_azure_devops_hostname
+from ...marketplace.yml_schema import PackageEntry
+from ...models.dependency.host_virtual import repository_owner
+from ...utils.github_host import default_host, is_azure_devops_hostname
 from . import (
     _CheckResult,
     _extract_tag_versions,
@@ -30,27 +31,40 @@ if TYPE_CHECKING:
 
 def _entry_coordinates(
     entry: PackageEntry, source_base: str | None
-) -> tuple[str | None, str, str | None]:
-    """Return ``(host, owner_repo, org)`` for *entry*, mirroring the build-time
+) -> tuple[str | None, str, str | None, str | None]:
+    """Return ``(host, owner_repo, org, display_url)`` for *entry*, mirroring the build-time
     routing in ``MarketplaceBuilder._remote_source_coordinates`` so that
     ``check`` and ``pack`` resolve every entry against the same host AND the
     same per-org auth hint.
 
-    - A per-entry host (``host.tld/owner/repo`` or full URL) is an override
-      with no org hint, matching the builder.
+    - Full HTTPS entries retain their encoded display URL while
+      ``DependencyReference`` supplies decoded repository and ADO coordinates.
+    - A host-prefixed shorthand (``host.tld/owner/repo``) is an override with
+      no org hint, matching the builder.
     - Otherwise, when ``marketplace.sourceBase`` is set, a host-less source
-      composes onto the base and the base's leading path segment becomes the
-      per-org auth hint (so ``GITHUB_APM_PAT_{ORG}`` resolves identically to
-      ``pack``).
+      composes onto the base. ``DependencyReference`` supplies its decoded
+      identity and ADO org hint, while a non-ADO sourceBase keeps its decoded
+      leading path segment as the per-org hint.
     - Otherwise the source stays a default-host ``owner/repo`` with no hint.
     """
+    from ...models.dependency.reference import DependencyReference
+
     if entry.host:
-        return entry.host, entry.source, None
+        if entry.source_url is not None:
+            dependency = DependencyReference.parse(entry.source_url)
+            return (
+                dependency.host,
+                dependency.repo_url,
+                dependency.ado_organization,
+                entry.source_url,
+            )
+        return entry.host, entry.source, None, None
     if source_base:
-        base_host, base_path = split_source_base(source_base)
-        org = base_path.split("/", 1)[0] if base_path else None
-        return base_host, f"{base_path}/{entry.source}", org
-    return None, entry.source, None
+        source_url = f"{source_base}/{entry.source}"
+        dependency = DependencyReference.parse(source_url)
+        org = dependency.ado_organization or repository_owner(dependency.repo_url)
+        return dependency.host, dependency.repo_url, org, source_url
+    return None, entry.source, None, None
 
 
 @marketplace.command(help="Validate marketplace entries are resolvable")
@@ -76,17 +90,18 @@ def check(offline, verbose):
     # named a non-default host -- a host-prefixed source or a relative source
     # composed onto ``marketplace.sourceBase`` -- must be resolved against
     # that host with the host's (and, for sourceBase, the org's) token,
-    # exactly like ``apm pack`` does. Default-host entries keep the bare
-    # ambient-credential path.
+    # exactly like ``apm pack`` does. Default-host entries resolve the
+    # configured default host through the same authentication path.
     source_base = getattr(yml, "source_base", None)
     resolvers: dict[tuple[str | None, str | None], RefResolver] = {}
     auth_resolver: AuthResolver | None = None
 
     def _resolver_for(host: str | None, org: str | None) -> RefResolver:
         nonlocal auth_resolver
-        key = (host, org)
+        resolved_host = host or default_host() or "github.com"
+        key = (resolved_host, org)
         if key not in resolvers:
-            if host is None:
+            if host is None and offline:
                 resolvers[key] = RefResolver(offline=offline)
             else:
                 if auth_resolver is None and not offline:
@@ -94,14 +109,14 @@ def check(offline, verbose):
 
                     auth_resolver = AuthResolver()
                 auth = resolve_auth_for_host(
-                    host,
+                    resolved_host,
                     offline=offline,
                     org=org,
                     auth_resolver=auth_resolver,
                 )
                 resolvers[key] = RefResolver(
                     offline=offline,
-                    host=host,
+                    host=resolved_host,
                     token=auth.token if auth else None,
                     auth_scheme=auth.auth_scheme if auth else "basic",
                     git_env=(
@@ -110,7 +125,7 @@ def check(offline, verbose):
                         else None
                     ),
                     auth_resolver=auth_resolver,
-                    auth_target=host,
+                    auth_target=resolved_host,
                 )
         return resolvers[key]
 
@@ -134,13 +149,16 @@ def check(offline, verbose):
                 continue
             try:
                 # Resolve each entry against its effective host + composed path.
-                host, owner_repo, org = _entry_coordinates(entry, source_base)
-                if host and is_azure_devops_hostname(host):
+                host, owner_repo, org, display_url = _entry_coordinates(entry, source_base)
+                if display_url is not None:
+                    remote_label = display_url
+                elif host and is_azure_devops_hostname(host):
                     remote_label = f"https://{host}/{owner_repo}"
                 else:
                     remote_label = f"https://{host}/{owner_repo}.git" if host else owner_repo
                 logger.verbose_detail(
-                    f"Resolving {entry.name} via {host or 'default host'}: {remote_label}"
+                    f"Resolving {entry.name} via "
+                    f"{host or default_host() or 'github.com'}: {remote_label}"
                 )
                 refs = _resolver_for(host, org).list_remote_refs(owner_repo)
 

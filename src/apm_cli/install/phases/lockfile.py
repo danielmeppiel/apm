@@ -380,6 +380,20 @@ class LockfileBuilder:
                 lockfile.dependencies[dep_key].declared_license = declared
 
     def _attach_marketplace_provenance(self, lockfile: LockFile) -> None:
+        # Canonical manifest entries do not rediscover their marketplace on
+        # update. Keep the original discovery snapshot for surviving identities
+        # without carrying forward stale commits, hashes, or removed entries.
+        if self.ctx.existing_lockfile:
+            for dep_key, dep in lockfile.dependencies.items():
+                previous = self.ctx.existing_lockfile.dependencies.get(dep_key)
+                # Ports are not part of the dependency key.
+                if previous is not None and previous.port == dep.port:
+                    dep.discovered_via = previous.discovered_via
+                    dep.marketplace_plugin_name = previous.marketplace_plugin_name
+                    dep.source_url = previous.source_url
+                    dep.source_digest = previous.source_digest
+
+        # Fresh discovery replaces the entire snapshot, including absent fields.
         if self.ctx.marketplace_provenance:
             for dep_key, prov in self.ctx.marketplace_provenance.items():
                 if dep_key in lockfile.dependencies:
@@ -391,6 +405,10 @@ class LockfileBuilder:
                     lockfile.dependencies[dep_key].source_digest = prov.get("source_digest")
 
     def _merge_existing(self, lockfile: LockFile) -> None:
+        # Partial operations merge untouched dependencies and their canonical
+        # deployment records together in _maybe_merge_partial.
+        if self.ctx.only_packages:
+            return
         if self.ctx.existing_lockfile and not self.ctx.update_refs:
             retained_orphans = getattr(self.ctx, "orphan_cleanup_retained", {})
             for dep_key, dep in self.ctx.existing_lockfile.dependencies.items():
@@ -424,8 +442,14 @@ class LockfileBuilder:
         if self.ctx.only_packages:
             existing = _LF.read(lockfile_path)
             if existing:
-                for key, dep in lockfile.dependencies.items():  # noqa: B007
-                    existing.add_dependency(dep)
+                from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
+
+                DeploymentLedgerCodec.merge_dependencies(
+                    existing,
+                    lockfile,
+                    project_root=self.ctx.project_root,
+                    diagnostics=self.ctx.diagnostics,
+                )
                 lockfile = existing
         return lockfile
 
@@ -471,6 +495,17 @@ class LockfileBuilder:
         if self.ctx.existing_lockfile:
             lockfile.lsp_servers = list(self.ctx.existing_lockfile.lsp_servers)
             lockfile.lsp_configs = copy.deepcopy(self.ctx.existing_lockfile.lsp_configs)
+            lockfile.lsp_config_provenance = copy.deepcopy(
+                self.ctx.existing_lockfile.lsp_config_provenance
+            )
+            target_servers = self.ctx.existing_lockfile.lsp_target_servers
+            if target_servers:
+                from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
+
+                DeploymentLedgerCodec.replace_lsp_target_servers(
+                    lockfile,
+                    copy.deepcopy(target_servers),
+                )
             if self.ctx.logger:
                 self.ctx.logger.verbose_detail(
                     "LSP state unchanged -- carrying forward "
@@ -526,7 +561,7 @@ class LockfileBuilder:
             if self.ctx.logger:
                 self.ctx.logger.verbose_detail("apm.lock.yaml unchanged -- skipping write")
         else:
-            lockfile.save(lockfile_path)
+            lockfile.save(lockfile_path, existing_lockfile=existing_lockfile)
             if self.ctx.logger:
                 self.ctx.logger.verbose_detail(
                     f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies"

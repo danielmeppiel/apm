@@ -68,7 +68,7 @@ If you operate multiple GitLab instances, list them in `APM_GITLAB_HOSTS` (comma
 Azure DevOps Services hosts (`dev.azure.com` and `*.visualstudio.com`) use:
 
 ```text
-ADO_APM_PAT   ->   AAD bearer (via az cli)   ->   none
+ADO_APM_PAT   ->   AAD bearer (via az cli)   ->   git credential fill
 ```
 
 ```bash
@@ -85,10 +85,10 @@ az login
 apm install
 ```
 
-Azure DevOps Server is PAT-only:
+Azure DevOps Server uses PAT then git credential fill:
 
 ```text
-ADO_APM_PAT   ->   none
+ADO_APM_PAT   ->   git credential fill
 ```
 
 ```bash
@@ -100,8 +100,9 @@ Use `APM_ADO_HOSTS` for multiple Server instances. A configured ADO host wins
 when `GITHUB_HOST` names the same host. Host variables accept FQDNs only,
 without a scheme, port, or path; put a non-default HTTPS port in the
 dependency URL. Use a root-hosted collection path. APM rejects `/tfs/`
-prefixes. If the PAT is rejected, rotate it -- Azure CLI bearer auth does
-not apply to Server.
+prefixes. If the PAT is rejected, APM retries path-scoped `git credential fill`
+(Git Credential Manager). Azure CLI bearer auth does not apply to Server.
+If fill also fails, rotate the PAT or store a repository credential in GCM.
 
 ### Test your token
 
@@ -250,6 +251,13 @@ apm install
 The cache short-circuits already-downloaded packages and the integrate phase overwrites partially-deployed files.
 
 If resolution rejects a cyclic dependency graph, fix the package manifests and run `apm install` again. APM rolls back only the package snapshots staged by the rejected resolution, so no manual `apm_modules/` deletion is required.
+
+If an MCP command names `.apm-resolution-staging`, upgrade to a release that
+contains the staging-path fix and retry the same `apm install` command once. If
+the reference or refusal repeats, stop and report the redacted error plus the
+named MCP entry. Do not edit package files, delete the lockfile, or use
+`--refresh` or `--force` solely to repair this path; those actions can move pins
+or bypass unrelated protections.
 
 If files in `apm_modules/` or under target harness directories look corrupt, force a fresh deploy by combining cache bypass with overwrite:
 

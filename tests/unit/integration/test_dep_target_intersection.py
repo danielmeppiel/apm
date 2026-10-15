@@ -91,6 +91,11 @@ class _RecordingHookIntegrator:
         return self.reconcile_result
 
 
+class _RejectingInstructionIntegrator:
+    def preflight_instructions_for_targets(self, *_args, **_kwargs) -> None:
+        raise ValueError("malformed instruction frontmatter")
+
+
 def _bundle(hook_integrator) -> IntegratorBundle:
     return IntegratorBundle(
         prompt=None,
@@ -101,6 +106,61 @@ def _bundle(hook_integrator) -> IntegratorBundle:
         hook=hook_integrator,
         canvas=None,
     )
+
+
+def test_instruction_preflight_precedes_excluded_hook_reconciliation(tmp_path: Path) -> None:
+    """A rejected instruction cannot leave excluded-target hook mutations."""
+    hook_integrator = _RecordingHookIntegrator()
+    bundle = _bundle(hook_integrator)
+    bundle = replace(bundle, instruction=_RejectingInstructionIntegrator())
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+
+    with pytest.raises(ValueError, match="malformed instruction frontmatter"):
+        integrate_package_primitives(
+            _package_info(package_path, target="copilot"),
+            tmp_path / "project",
+            targets=[KNOWN_TARGETS["copilot"], KNOWN_TARGETS["claude"]],
+            integrators=bundle,
+            force=False,
+            managed_files=set(),
+            diagnostics=DiagnosticCollector(),
+            package_name="targeted-hooks",
+        )
+
+    assert hook_integrator.reconciled_targets == []
+
+
+def test_native_plugin_reconciles_excluded_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native plugin admission still removes excluded-target hook ownership."""
+    from apm_cli.copilot_plugins import capability
+    from apm_cli.install import native_plugin_admission
+
+    hook_integrator = _RecordingHookIntegrator()
+    monkeypatch.setattr(capability, "admits_native_plugin", lambda _package: True)
+    monkeypatch.setattr(
+        native_plugin_admission,
+        "finalize_native_plugin",
+        lambda result, *_args, **_kwargs: result,
+    )
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+
+    integrate_package_primitives(
+        _package_info(package_path, target="copilot"),
+        tmp_path / "project",
+        targets=[KNOWN_TARGETS["copilot"], KNOWN_TARGETS["claude"]],
+        integrators=_bundle(hook_integrator),
+        force=False,
+        managed_files=set(),
+        diagnostics=DiagnosticCollector(),
+        package_name="targeted-hooks",
+    )
+
+    assert hook_integrator.reconciled_targets == ["claude"]
 
 
 def _run_with_targets(
@@ -292,13 +352,19 @@ def _target_command_hook(command: str) -> dict:
 
     ``SessionStart`` and a trivial command survive event normalization across
     every merge harness, so the command string is a reliable per-file marker
-    regardless of a target's casing/matcher conventions.
+    regardless of a target's casing/matcher conventions. The matcher is the
+    wildcard ``"*"`` rather than an arbitrary word: ``SessionStart`` is not a
+    tool-use event, so Cursor's native contract only has a verified
+    translation for wildcard/empty matchers on non-tool lifecycle events
+    (see ``_cursor_matcher``); a non-wildcard placeholder would be rejected
+    by Cursor's strict preflight while being semantically meaningless for
+    every other harness too, so the wildcard is the correct value here, not
+    a weakening of this test's actual regression (per-target file routing
+    isolation, asserted below).
     """
     return {
         "hooks": {
-            "SessionStart": [
-                {"matcher": "startup", "hooks": [{"type": "command", "command": command}]}
-            ],
+            "SessionStart": [{"matcher": "*", "hooks": [{"type": "command", "command": command}]}],
         }
     }
 
@@ -340,7 +406,20 @@ def _write_divergent_pair(package_path: Path, first: str, second: str) -> dict[s
 
 @pytest.mark.parametrize(
     ("first", "second"),
-    [(a, b) for i, a in enumerate(_MERGE_HARNESSES) for b in _MERGE_HARNESSES[i + 1 :]],
+    [
+        (a, b)
+        for i, a in enumerate(_MERGE_HARNESSES)
+        for b in _MERGE_HARNESSES[i + 1 :]
+        # claude+cursor is intentionally excluded from this "any two harnesses
+        # diverge independently" matrix: Cursor's native/Claude-import
+        # coexistence preflight correctly refuses two per-target files that
+        # both declare the same event for this specific pair (same-event
+        # double-activation risk), unlike every other harness pair. That
+        # refusal is the PR's own feature and is covered directly by
+        # test_cursor_hook_native_contract.py's overlap tests, not by this
+        # generic routing-isolation matrix.
+        if {a, b} != {"claude", "cursor"}
+    ],
 )
 def test_divergent_hook_files_route_per_target_under_multi_dep_targets(
     tmp_path: Path, first: str, second: str

@@ -7,7 +7,7 @@ paths stay stable while this module owns the full install flow.
 from __future__ import annotations
 
 import builtins
-from enum import StrEnum
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -36,7 +36,96 @@ if TYPE_CHECKING:
 _STRICT_CONFIG_FAILURE_RUNTIMES = frozenset({"intellij"})
 
 
-class _TargetSelectionSource(StrEnum):
+class _PrevalidatedRegistryServers(dict[str, dict]):
+    """Registry metadata plus trusted provenance from direct prevalidation."""
+
+    def __init__(
+        self, servers: dict[str, dict], *, source: str | None, registry_url: str | None
+    ) -> None:
+        from apm_cli.registry.client import normalize_mcp_registry_url
+
+        super().__init__(servers)
+        self.source = source
+        self.registry_url = (
+            normalize_mcp_registry_url(registry_url) if registry_url is not None else None
+        )
+
+
+def _validate_registry_servers(
+    operations: Any,
+    server_names: list[str],
+    *,
+    dependency_count: int,
+    verbose: bool,
+    logger: Any,
+    fail_closed: bool = False,
+    server_info_cache: dict[str, dict] | None = None,
+) -> list[str]:
+    """Validate registry identities and raise before any target write."""
+    logger.mcp_lookup_heartbeat(len(server_names))
+    if verbose:
+        logger.verbose_detail(f"Validating {dependency_count} registry servers...")
+    if fail_closed:
+        valid_servers, invalid_servers = operations.validate_servers_exist(
+            server_names,
+            fail_closed=True,
+            server_info_cache=server_info_cache,
+        )
+    else:
+        valid_servers, invalid_servers = operations.validate_servers_exist(
+            server_names,
+            server_info_cache=server_info_cache,
+        )
+    if invalid_servers:
+        from apm_cli.registry.client import redact_mcp_registry_url
+
+        registry_client = operations.registry_client
+        registry_url = redact_mcp_registry_url(registry_client.registry_url)
+        logger.error(
+            f"Server(s) not found in registry {registry_url}: {', '.join(invalid_servers)}"
+        )
+        if getattr(registry_client, "registry_url_source", None) == "explicit":
+            logger.progress(
+                "Set MCP_REGISTRY_URL to this endpoint, then run "
+                "'apm mcp search <query>' to find available servers"
+            )
+        else:
+            logger.progress("Run 'apm mcp search <query>' to find available servers")
+        raise RuntimeError(f"Cannot install {len(invalid_servers)} missing server(s)")
+    return valid_servers
+
+
+def prevalidate_registry_dependencies(
+    mcp_deps: list,
+    *,
+    registry_url: str | None,
+    verbose: bool,
+    logger: Any,
+    registry_source: str | None = None,
+) -> dict[str, dict]:
+    """Resolve direct-install registry identities before persistent writes."""
+    from apm_cli.registry.operations import MCPServerOperations
+
+    server_names = [dep.name if hasattr(dep, "name") else dep for dep in mcp_deps]
+    operations = MCPServerOperations(registry_url=registry_url, registry_source=registry_source)
+    server_info_cache: dict[str, dict] = {}
+    valid_servers = _validate_registry_servers(
+        operations,
+        server_names,
+        dependency_count=len(mcp_deps),
+        verbose=verbose,
+        logger=logger,
+        fail_closed=True,
+        server_info_cache=server_info_cache,
+    )
+    return _PrevalidatedRegistryServers(
+        {name: server_info_cache[name] for name in valid_servers},
+        source=registry_source,
+        registry_url=registry_url,
+    )
+
+
+class _TargetSelectionSource(str, Enum):
     """Source that supplied the MCP target set before compatibility gates."""
 
     RUNTIME = "runtime"
@@ -46,8 +135,31 @@ class _TargetSelectionSource(StrEnum):
     FALLBACK = "fallback"
     INVALID_MANIFEST = "invalid-manifest"
 
+    __str__ = str.__str__
+    __format__ = str.__format__
 
-def _install_registry_group(
+
+def _announce_registry_endpoint(registry_client: Any, logger: Any) -> None:
+    """Name the registry endpoint a dependency group resolves against.
+
+    Defaults are quiet, overrides are visible: a redirect away from the public
+    registry -- an apm.yml ``registry:`` URL, ``MCP_REGISTRY_URL``, or a
+    persisted ``apm config set mcp-registry-url`` -- changes which bytes an
+    install trusts, so it is stated rather than inferred. Mirrors the
+    diagnostic ``apm install --mcp NAME`` already emits (#2740).
+    """
+    from apm_cli.registry.client import REGISTRY_SOURCE_LABELS, redact_mcp_registry_url
+
+    source = registry_client.registry_url_source
+    if source == "default":
+        return
+    # The only non-ambient source on this path is a per-dependency registry: URL.
+    label = REGISTRY_SOURCE_LABELS.get(source, "from --registry or the apm.yml registry field")
+    safe_url = redact_mcp_registry_url(registry_client.registry_url)
+    logger.progress(f"Using MCP registry: {safe_url} ({label})", symbol="info")
+
+
+def _install_registry_group(  # noqa: PLR0913
     operations: Any,
     group_dep_names: list,
     group_dep_map: dict,
@@ -62,6 +174,7 @@ def _install_registry_group(
     console: Any,
     logger: Any,
     managed_target_servers: dict[str, set[str]] | None,
+    prevalidated_servers: dict[str, dict] | None = None,
     fail_on_write_error: bool = False,
 ) -> int:
     """Process one group of registry deps through a single ``MCPServerOperations`` instance.
@@ -76,19 +189,21 @@ def _install_registry_group(
 
     configured_count = 0
     failed_installations: list[str] = []
+    registry_server_cache: dict[str, dict] = prevalidated_servers or {}
 
-    # Early validation: check all servers exist in registry (fail-fast).
-    # F4 (#1116): emit a single batch heartbeat so users see the
-    # registry round-trip in progress instead of silent stall.
-    logger.mcp_lookup_heartbeat(len(group_dep_names))
-    if verbose:
-        logger.verbose_detail(f"Validating {len(group_deps)} registry servers...")
-    valid_servers, invalid_servers = operations.validate_servers_exist(group_dep_names)
+    _announce_registry_endpoint(operations.registry_client, logger)
 
-    if invalid_servers:
-        logger.error(f"Server(s) not found in registry: {', '.join(invalid_servers)}")
-        logger.progress("Run 'apm mcp search <query>' to find available servers")
-        raise RuntimeError(f"Cannot install {len(invalid_servers)} missing server(s)")
+    if prevalidated_servers is not None and set(group_dep_names) <= prevalidated_servers.keys():
+        valid_servers = group_dep_names
+    else:
+        valid_servers = _validate_registry_servers(
+            operations,
+            group_dep_names,
+            dependency_count=len(group_deps),
+            verbose=verbose,
+            logger=logger,
+            server_info_cache=registry_server_cache,
+        )
 
     if valid_servers:
         servers_to_install = operations.check_servers_needing_installation(
@@ -143,7 +258,16 @@ def _install_registry_group(
             # Batch fetch server info once
             if verbose:
                 logger.verbose_detail(f"Installing {len(servers_to_install)} servers...")
-            server_info_cache = operations.batch_fetch_server_info(servers_to_install)
+            server_info_cache = {
+                name: registry_server_cache[name]
+                for name in servers_to_install
+                if name in registry_server_cache
+            }
+            unresolved_servers = [
+                name for name in servers_to_install if name not in server_info_cache
+            ]
+            if unresolved_servers:
+                server_info_cache.update(operations.batch_fetch_server_info(unresolved_servers))
 
             # Apply overlays
             for server_name in servers_to_install:
@@ -181,6 +305,7 @@ def _install_registry_group(
                 successful_runtimes: list[str] = []
                 failed_runtimes: list[str] = []
                 for rt in target_runtimes:
+                    installed_servers: set[str] = set()
                     if verbose:
                         logger.verbose_detail(f"Configuring {rt}...")
                     if MCPIntegrator._install_for_runtime(
@@ -192,10 +317,16 @@ def _install_registry_group(
                         project_root=project_root,
                         user_scope=user_scope,
                         logger=logger,
-                        replace_existing=is_update,
+                        replace_existing=is_update
+                        and (
+                            managed_target_servers is None
+                            or dep in managed_target_servers.get(rt, set())
+                        ),
+                        installed_servers=installed_servers,
                     ):
                         successful_runtimes.append(rt)
-                        _record_managed_server(managed_target_servers, rt, dep)
+                        if dep in installed_servers:
+                            _record_managed_server(managed_target_servers, rt, dep)
                     else:
                         failed_runtimes.append(rt)
 
@@ -230,6 +361,29 @@ def _install_registry_group(
     return configured_count
 
 
+def _validate_target_configs(
+    target_runtimes: list[str],
+    *,
+    project_root: Path | None,
+    user_scope: bool,
+    console: Any,
+    logger: Any,
+) -> None:
+    """Validate native configs before no-op detection or retarget side effects."""
+    if not user_scope:
+        return
+    from apm_cli.factory import ClientFactory
+
+    unsafe_runtimes = [
+        rt
+        for rt in target_runtimes
+        if not ClientFactory.create_client(
+            rt, project_root=project_root, user_scope=user_scope
+        ).validate_config_for_install()
+    ]
+    _raise_strict_config_failures(unsafe_runtimes, console=console, logger=logger)
+
+
 def _record_managed_server(
     managed_target_servers: dict[str, set[str]] | None,
     runtime: str,
@@ -252,7 +406,8 @@ def _raise_strict_config_failures(
     message = (
         "MCP configuration failed for selected runtime(s): "
         + ", ".join(failed_installations)
-        + ". Fix the failed runtime MCP config and rerun apm install."
+        + ". Fix the failed runtime MCP config and rerun the original install command, "
+        "retaining --global and any --target selection."
     )
     if console:
         console.print(f"[red]{STATUS_SYMBOLS['cross']} {message}[/red]")
@@ -297,25 +452,6 @@ def _migrate_intellij_managed_config(
         )
 
 
-def _hermes_runtime_opted_in() -> bool:
-    """Return ``True`` when Hermes MCP writes are opted into.
-
-    Gate: the ``hermes`` experimental flag is enabled AND Hermes is actually
-    present on the host (its home dir exists, or the ``hermes`` binary is on
-    PATH).  Prevents surprise writes to ``~/.hermes/`` on hosts where Hermes
-    was never installed.  Any import/path error is treated as "not opted in".
-    """
-    try:
-        from apm_cli.core.experimental import is_enabled
-        from apm_cli.integration.targets import resolve_hermes_root
-
-        if not is_enabled("hermes"):
-            return False
-        return resolve_hermes_root().is_dir() or find_runtime_binary("hermes") is not None
-    except (ImportError, ValueError):
-        return False
-
-
 def _discover_installed_runtimes(project_root_path, *, user_scope: bool) -> list[str]:
     """Detect which MCP-capable runtimes are installed on the host.
 
@@ -325,11 +461,14 @@ def _discover_installed_runtimes(project_root_path, *, user_scope: bool) -> list
     to a binary/directory probe when optional deps are unavailable.
     """
     from apm_cli.integration.mcp_integrator import _is_vscode_available
+    from apm_cli.integration.targets import KNOWN_TARGETS
 
-    # Directory-signal opt-in runtimes: name -> required project dir.
+    # Directory-signal opt-in runtimes: name -> required dir under the scope
+    # root.  OpenCode's user root (~/.config/opencode) differs from its
+    # project marker, so its signal comes from the target profile.
     dir_signal = {
         "cursor": ".cursor",
-        "opencode": ".opencode",
+        "opencode": KNOWN_TARGETS["opencode"].effective_root(user_scope),
         "gemini": ".gemini",
         "windsurf": ".windsurf",
         "kiro": ".kiro",
@@ -352,7 +491,6 @@ def _discover_installed_runtimes(project_root_path, *, user_scope: bool) -> list
             "kiro",
             "claude",
             "intellij",
-            "hermes",
         ]:
             try:
                 if not _runtime_is_present(
@@ -396,8 +534,6 @@ def _runtime_is_present(
         from apm_cli.adapters.client.intellij import _intellij_config_dir
 
         return _intellij_config_dir().is_dir()
-    if runtime_name == "hermes":
-        return _hermes_runtime_opted_in()
     return manager.is_runtime_available(runtime_name)
 
 
@@ -405,12 +541,14 @@ def _discover_installed_runtimes_fallback(
     project_root_path, _is_vscode_available, *, user_scope: bool
 ) -> list[str]:
     """Binary/directory-only runtime probe used when adapters fail to import."""
+    from apm_cli.integration.targets import KNOWN_TARGETS
+
     installed_runtimes = [rt for rt in ["copilot", "codex"] if find_runtime_binary(rt) is not None]
     if _is_vscode_available(project_root=project_root_path):
         installed_runtimes.append("vscode")
     for name, signal in (
         ("cursor", ".cursor"),
-        ("opencode", ".opencode"),
+        ("opencode", KNOWN_TARGETS["opencode"].effective_root(user_scope)),
         ("gemini", ".gemini"),
         ("windsurf", ".windsurf"),
         ("kiro", ".kiro"),
@@ -430,9 +568,6 @@ def _discover_installed_runtimes_fallback(
         # ValueError (PathTraversalError) when LOCALAPPDATA/XDG_DATA_HOME is
         # misconfigured -- treat as "not installed" rather than crash.
         pass
-    # Hermes: experimental flag enabled AND home-dir/binary present.
-    if _hermes_runtime_opted_in():
-        installed_runtimes.append("hermes")
     return installed_runtimes
 
 
@@ -467,6 +602,70 @@ def _declared_manifest_target_runtimes(
 
     projected = EffectiveTargetDecision(parsed, "apm.yml").runtime_targets
     return list(projected or ()), True
+
+
+def partition_user_scope_runtimes(
+    target_runtimes: list[str],
+) -> tuple[list[str], list[str]]:
+    """Partition runtime names by their adapter's user-scope capability."""
+    from apm_cli.factory import ClientFactory
+
+    supported: list[str] = []
+    skipped: list[str] = []
+    for runtime in target_runtimes:
+        try:
+            client = ClientFactory.create_client(runtime)
+        except ValueError:
+            skipped.append(runtime)
+            continue
+        destination = supported if client.supports_user_scope else skipped
+        destination.append(runtime)
+    return supported, skipped
+
+
+def unavailable_user_scope_targets_message(
+    target_decision: EffectiveTargetDecision,
+    scoped_targets: list[str] | None,
+    skipped_targets: list[str],
+) -> str:
+    """Render recovery that distinguishes disabled from workspace-only targets."""
+    original_targets = set(target_decision.runtime_targets or [])
+    disabled_targets = original_targets - set(scoped_targets or [])
+    experimental_hint = "enable selected experimental targets, " if disabled_targets else ""
+    rendered_targets = ", ".join(sorted(original_targets or set(skipped_targets)))
+    return (
+        "Selected targets are unavailable for user-scope MCP installation "
+        f"({rendered_targets}; source: {target_decision.source}); "
+        f"{experimental_hint}choose a global-capable --target or omit --global"
+    )
+
+
+def discover_user_scope_mcp_runtimes(
+    project_root: Path,
+    *,
+    exclude: str | None = None,
+) -> tuple[list[str], list[str]]:
+    """Discover installed MCP runtimes and partition them for user scope."""
+    discovered = _discover_installed_runtimes(project_root, user_scope=True)
+    discovered = filter_excluded_mcp_runtimes(discovered, exclude)
+    return partition_user_scope_runtimes(discovered)
+
+
+def filter_excluded_mcp_runtimes(
+    target_runtimes: list[str],
+    exclude: str | None,
+) -> list[str]:
+    """Apply one canonical runtime exclusion, including target aliases."""
+    if not exclude:
+        return list(target_runtimes)
+    exclusions = {exclude}
+    try:
+        from apm_cli.core.target_detection import EffectiveTargetDecision
+
+        exclusions.update(EffectiveTargetDecision(exclude, "--exclude").runtime_equivalents or ())
+    except KeyError:
+        pass
+    return [runtime for runtime in target_runtimes if runtime not in exclusions]
 
 
 def _resolve_target_runtimes(
@@ -747,7 +946,7 @@ def _resolve_target_runtimes(
             logger.warning(msg)
         if not target_runtimes:
             logger.warning(
-                "No runtimes support user-scope MCP installation (supported: Copilot CLI, Claude Code, Codex CLI, Gemini CLI, Kiro, Windsurf, JetBrains Copilot)"
+                "No runtimes support user-scope MCP installation (supported: Copilot CLI, Claude Code, Cursor, OpenCode, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, JetBrains Copilot)"
             )
             return None
 
@@ -846,6 +1045,7 @@ def _install_self_defined_deps(
         successful_runtimes: list[str] = []
         failed_runtimes: list[str] = []
         for rt in target_runtimes:
+            installed_servers: set[str] = set()
             if verbose:
                 logger.verbose_detail(f"Configuring {dep.name} for {rt}...")
             if MCPIntegrator._install_for_runtime(
@@ -856,10 +1056,16 @@ def _install_self_defined_deps(
                 project_root=project_root,
                 user_scope=user_scope,
                 logger=logger,
-                replace_existing=is_update,
+                replace_existing=is_update
+                and (
+                    managed_target_servers is None
+                    or dep.name in managed_target_servers.get(rt, set())
+                ),
+                installed_servers=installed_servers,
             ):
                 successful_runtimes.append(rt)
-                _record_managed_server(managed_target_servers, rt, dep.name)
+                if dep.name in installed_servers:
+                    _record_managed_server(managed_target_servers, rt, dep.name)
             else:
                 failed_runtimes.append(rt)
 
@@ -918,7 +1124,7 @@ def _print_mcp_summary(
         console.print(f"[green]{STATUS_SYMBOLS['success']} All servers up to date[/green]")
 
 
-def run_mcp_install(
+def run_mcp_install(  # noqa: PLR0913
     mcp_deps: list,
     runtime: str | None = None,
     exclude: str | None = None,
@@ -933,6 +1139,7 @@ def run_mcp_install(
     diagnostics=None,
     scope: InstallScope | None = None,
     managed_target_servers: dict[str, set[str]] | None = None,
+    prevalidated_registry_servers: dict[str, dict] | None = None,
     fail_on_write_error: bool = False,
 ) -> int:
     """Install MCP dependencies.
@@ -1039,6 +1246,13 @@ def run_mcp_install(
             )
         return 0
 
+    _validate_target_configs(
+        target_runtimes,
+        project_root=project_root,
+        user_scope=user_scope,
+        console=console,
+        logger=logger,
+    )
     if managed_target_servers is not None:
         from apm_cli.install.mcp.ownership import migrate_legacy_project_target_servers
 
@@ -1084,7 +1298,12 @@ def run_mcp_install(
             registry_groups: builtins.dict[str | None, list] = {}
             for dep in registry_deps:
                 dep_registry = getattr(dep, "registry", None)
-                key = dep_registry if isinstance(dep_registry, str) else None
+                if isinstance(dep_registry, str):
+                    from apm_cli.registry.client import normalize_mcp_registry_url
+
+                    key = normalize_mcp_registry_url(dep_registry)
+                else:
+                    key = None
                 if key not in registry_groups:
                     registry_groups[key] = []
                 registry_groups[key].append(dep)
@@ -1094,7 +1313,23 @@ def run_mcp_install(
                     dep.name if hasattr(dep, "name") else dep for dep in group_deps_list
                 ]
                 group_dep_map = {dep.name: dep for dep in group_deps_list if hasattr(dep, "name")}
-                operations = MCPServerOperations(registry_url=group_registry_url)
+                group_prevalidated = prevalidated_registry_servers
+                group_registry_source = None
+                if isinstance(group_prevalidated, _PrevalidatedRegistryServers):
+                    if (
+                        group_registry_url == group_prevalidated.registry_url
+                        and set(group_dep_names) <= group_prevalidated.keys()
+                    ):
+                        group_registry_source = group_prevalidated.source
+                    else:
+                        group_prevalidated = None
+                if group_registry_source is not None:
+                    operations = MCPServerOperations(
+                        registry_url=group_registry_url,
+                        registry_source=group_registry_source,
+                    )
+                else:
+                    operations = MCPServerOperations(registry_url=group_registry_url)
                 configured_count += _install_registry_group(
                     operations=operations,
                     group_dep_names=group_dep_names,
@@ -1110,6 +1345,7 @@ def run_mcp_install(
                     console=console,
                     logger=logger,
                     managed_target_servers=managed_target_servers,
+                    prevalidated_servers=group_prevalidated,
                     fail_on_write_error=fail_on_write_error,
                 )
 

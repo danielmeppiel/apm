@@ -1,5 +1,6 @@
 """Base adapter interface for MCP clients."""
 
+import json
 import os
 import re
 from abc import ABC, abstractmethod
@@ -7,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ...models.dependency.mcp import _RESERVED_EXTRA_KEYS
+from ...models.dependency.mcp import _EXTRA_DENYLIST, TrustedEnvLiteral
+from ...utils.atomic_io import atomic_write_text
 from ...utils.console import _rich_error, _rich_warning
+from ...utils.path_security import has_symlink_component
 
 _INPUT_VAR_RE = re.compile(r"\$\{input:([^}]+)\}")
 
@@ -185,9 +188,6 @@ def _docker_image_repository(reference: str) -> str:
 # not be injectable via passthrough. Enforced unconditionally per adapter path
 # (NOT guarded by "key absent from config"), so it also closes paths that do not
 # pre-set the key. Security boundary for PR #1765 / issue #1670.
-_EXTRA_DENYLIST = _RESERVED_EXTRA_KEYS | frozenset({"http_headers"})
-
-
 @dataclass(frozen=True)
 class _MCPLauncherArgumentGroup:
     """One atomic registry argument and its rendered argv values."""
@@ -398,6 +398,71 @@ class MCPClientAdapter(ABC):
     def get_current_config(self):
         """Get the current MCP configuration."""
         pass
+
+    def validate_config_for_install(self) -> bool:
+        """Allow adapters to refuse unsafe configs before existing-server shortcuts."""
+        return True
+
+    def _read_json_config_for_update(self, config_path: Path) -> dict | None:
+        """Return the JSON object at *config_path* before a merge-and-write.
+
+        A missing or blank file yields ``{}``.  Returns ``None`` after a
+        warning when rewriting the file could lose data, so the caller skips
+        the write: the existing content is not a JSON object (for example
+        JSONC comments), or a user-scope path runs through a symlink, which
+        stale cleanup refuses to rewrite later.
+        """
+        if self.user_scope and has_symlink_component(Path.home(), config_path):
+            _rich_warning(
+                f"Skipped {config_path}: APM does not write MCP config through "
+                "symlinks. Replace the symlink or configure this server manually.",
+                symbol="warning",
+            )
+            return None
+        try:
+            raw = config_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return {}
+        except (OSError, UnicodeError) as exc:
+            _rich_warning(
+                f"Could not read {config_path}: {exc} -- skipping config write; "
+                "fix the file's permissions or encoding, or add this server manually",
+                symbol="warning",
+            )
+            return None
+        if not raw.strip():
+            return {}
+        try:
+            config = json.loads(raw)
+        except json.JSONDecodeError:
+            config = None
+        if not isinstance(config, dict):
+            _rich_warning(
+                f"Could not parse {config_path} as a JSON object -- skipping config "
+                "write to avoid data loss (comments and trailing commas are not "
+                "preserved); fix the file or add this server manually",
+                symbol="warning",
+            )
+            return None
+        if self.mcp_servers_key in config and not isinstance(config[self.mcp_servers_key], dict):
+            _rich_warning(
+                f"Could not parse {config_path}: {self.mcp_servers_key} must be "
+                "a JSON object -- skipping config write to avoid data loss; "
+                "fix the file or add this server manually",
+                symbol="warning",
+            )
+            return None
+        return config
+
+    @staticmethod
+    def _write_json_config(config_path: Path, config: dict) -> None:
+        """Atomically write *config* as JSON and keep the file owner-only.
+
+        Entries can carry env values resolved at install time.
+        """
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(config_path, json.dumps(config, indent=2), new_file_mode=0o600)
+        os.chmod(config_path, 0o600)
 
     @abstractmethod
     def configure_mcp_server(
@@ -1087,7 +1152,9 @@ class MCPClientAdapter(ABC):
                 if not isinstance(raw_value, str):
                     translated[name] = raw_value
                     continue
-                if _has_env_placeholder(raw_value):
+                if isinstance(raw_value, TrustedEnvLiteral):
+                    translated[name] = raw_value
+                elif _has_env_placeholder(raw_value):
                     self._last_legacy_angle_vars.update(_extract_legacy_angle_vars(raw_value))
                     translated[name] = self._translate_env_placeholder_for_runtime(raw_value)
                     placeholder_keys.extend(
@@ -1425,7 +1492,7 @@ class MCPClientAdapter(ABC):
 
         Args:
             config: Mutable config dict updated in place.
-            remote: Registry remote entry (may contain a ``"headers"`` list).
+            remote: Registry remote entry (headers may be records or a mapping).
             server_info: Registry server metadata used for name / URL lookup.
             env_overrides: Caller-supplied env-var override mapping.
             runtime_label: Label for diagnostic messages.
@@ -1433,18 +1500,38 @@ class MCPClientAdapter(ABC):
                 instantiate.  Passed by the caller so tests can patch the right
                 module-level name.
         """
+        from ...core.auth import AuthResolver
+        from ...models.dependency.mcp import ManifestHeaderValue
+
         server_name = server_info.get("name", "")
         is_github_server = self._is_github_server(server_name, remote.get("url", ""))
         local_token_injected = False
-        if is_github_server:
-            _tm = token_manager_class()
-            github_token = _tm.get_token_for_purpose("copilot") or os.getenv(
-                "GITHUB_PERSONAL_ACCESS_TOKEN"
+        headers = remote.get("headers", []) or []
+        if isinstance(headers, dict):
+            headers = [{"name": name, "value": value} for name, value in headers.items()]
+        explicit_authorization = any(
+            isinstance(header, dict)
+            and isinstance(header.get("name"), str)
+            and header["name"].casefold() == "authorization"
+            and isinstance(header.get("value"), ManifestHeaderValue)
+            and bool(header.get("value"))
+            for header in headers
+        )
+        if is_github_server and not explicit_authorization:
+            resolver = AuthResolver(
+                token_manager=token_manager_class(), allow_external_fallback=False
             )
-            if github_token:
-                config["headers"] = {"Authorization": f"Bearer {github_token}"}
+            selected = resolver.resolve_github_mcp_token(
+                source_only=self._supports_runtime_env_substitution
+            )
+            if selected:
+                credential = (
+                    self._format_runtime_env_placeholder(selected)
+                    if self._supports_runtime_env_substitution
+                    else selected
+                )
+                config.setdefault("headers", {})["Authorization"] = f"Bearer {credential}"
                 local_token_injected = True
-        headers = remote.get("headers", [])
         if headers:
             if "headers" not in config:
                 config["headers"] = {}
@@ -1452,8 +1539,15 @@ class MCPClientAdapter(ABC):
                 header_name = header.get("name", "")
                 header_value = header.get("value", "")
                 if header_name and header_value:
-                    if header_name == "Authorization" and local_token_injected:
-                        continue
+                    if header_name.casefold() == "authorization":
+                        if local_token_injected or (
+                            explicit_authorization
+                            and not isinstance(header_value, ManifestHeaderValue)
+                        ):
+                            continue
+                        for key in list(config["headers"]):
+                            if key.casefold() == "authorization":
+                                del config["headers"][key]
                     resolved_value = self._resolve_env_variable(
                         header_name, header_value, env_overrides
                     )
