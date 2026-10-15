@@ -69,11 +69,15 @@ configuration.
 Cursor and OpenCode user configs are `~/.cursor/mcp.json` and
 `~/.config/opencode/opencode.json`. Global MCP cleanup removes only names
 recorded as APM-owned for that target; personal same-name entries stay intact.
-Direct `--mcp` retargeting cleans the retired target before discarding ownership.
-If cleanup fails after a new-target write, both deployments stay owned for retry.
+Switching a direct `--mcp` target removes the managed server from the old config.
+If cleanup fails after the new config was written, retry the same command;
+APM keeps managing both copies until the old entry is removed.
 Unsafe user configs fail even on reinstall: fix unreadable or non-object JSON,
 JSONC, or symlinks below the home directory, then rerun the original command
 with `--global` and the same `--target` selection.
+For Cursor credential repair, edit `.cursor/mcp.json` at project scope or
+`~/.cursor/mcp.json` with `--global`; replace only the affected values with
+native `${env:NAME}` references and preserve other fields and servers.
 
 Positional-package dry-runs retain any bootstrapped manifest for inspection.
 `apm install -g --mcp ... --dry-run` does not create a user manifest, lockfile,

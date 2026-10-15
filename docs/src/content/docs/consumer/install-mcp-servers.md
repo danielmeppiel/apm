@@ -177,15 +177,15 @@ Reinstall applies changes to `enabled`, including its JSON type; removing
 the field restores `true`.
 
 Global Cursor and OpenCode installs preserve personal servers, including names
-also declared by a package. Reinstall and pruning use per-target APM ownership;
-changing a direct `--mcp` target cleans the previously owned target before
-retiring its ownership record. If a user config is unreadable, contains JSONC,
+also declared by a package. Reinstall and pruning only change servers managed
+by APM in that runtime. Switching a direct `--mcp` target removes the managed
+server from the old runtime config. If a user config is unreadable, contains JSONC,
 has a non-object server map, or uses a symlink below the home directory, APM
 warns and fails without rewriting it, even on a no-op reinstall. Fix the
 reported config and rerun the original command with `--global` and the same
 `--target` selection. A home-directory alias itself remains supported.
-If retarget cleanup fails after the new target was written, both deployments
-remain recorded as APM-owned until a successful retry removes the old entry.
+If switching targets fails after the new config was written, APM keeps managing
+both copies; retry the same command to finish removing the old entry.
 
 ## How `targets:` gates which configs get written
 
@@ -315,8 +315,8 @@ etc.) are rejected with exit code 2.
 For Cursor, env-var references are written using Cursor's native
 `${env:NAME}` syntax, so referenced secret values are resolved by Cursor
 when it starts the MCP server and are not written into the project-local
-`.cursor/mcp.json`. Explicit static values in `mcp.env` remain static and
-are written as authored; keep secrets out of those values.
+`.cursor/mcp.json` or user-scope `~/.cursor/mcp.json`. Explicit static values in
+`mcp.env` remain static and are written as authored; keep secrets out of those values.
 
 APM translates supported environment-variable references using each
 target's native syntax. It also injects one specific GitHub credential
@@ -394,7 +394,9 @@ Follow the target's [interpolation rules](../../reference/manifest-schema/#424-v
 when making variables available and editing its config.
 
 For Cursor, replace only the affected header or `env` values in
-`.cursor/mcp.json` with `${env:NAME}` references. Preserve the authorization
+the config for your installation: `.cursor/mcp.json` for project scope or
+`~/.cursor/mcp.json` for `--global`. Use `${env:NAME}` references. Preserve the
+authorization
 scheme, for example `Bearer ${env:GITHUB_TOKEN}`, and make the variable
 available to Cursor. Keep all other fields and servers, and inspect the diff.
 An ordinary reinstall of the same declaration does not perform this repair.
