@@ -147,6 +147,7 @@ in `apm.yml`, then run `apm install` again.
 - **Required service writes fail loudly.** If MCP or LSP work is declared but no target can be resolved, install exits non-zero before changing the manifest, package deployment, or native service config. A native MCP/LSP config write failure also exits non-zero with the failed target and a permissions/path next step. A successful direct `--mcp` add never reports `Install interrupted`.
 - **Direct registry lookup fails closed.** Registry-form MCP entries (`apm install --mcp NAME` with no `--url` and no post-`--` command) resolve one unique registry identity before writing the manifest or user config. An unreachable registry, missing identity, or ambiguous bare server name exits non-zero without changing state.
 - **Diff-aware.** Packages whose ref or version changed in `apm.yml` are re-downloaded automatically. MCP servers with matching config are skipped (`already configured`); changed config is re-applied (`updated`).
+- **Claude Code profiles.** For user-scope MCP installs, an absolute `CLAUDE_CONFIG_DIR` selects that profile's `.claude.json` for both installation and stale-server cleanup. Run install with each profile's environment set; removing an APM-managed server in one profile preserves other profiles and user-owned entries.
 - **Transactional replacement.** `--update` and `--refresh` download package
   replacements to isolated staging paths and validate them before publication.
   If download, validation, or activation fails, APM keeps the previous package

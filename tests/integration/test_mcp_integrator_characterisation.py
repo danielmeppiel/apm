@@ -531,6 +531,7 @@ class TestRemoveStale:
         )
         client = MagicMock()
         client.supports_user_scope = True
+        client.get_config_path.return_value = str(config_path)
         logger = MagicMock()
 
         with (
