@@ -120,7 +120,10 @@ class LocalDependencySource(DependencySource):
         from apm_cli.constants import APM_YML_FILENAME
         from apm_cli.core.scope import InstallScope
         from apm_cli.deps._shared import materialize_marketplace_manifest
-        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.installed_package import (
+            InstalledPackage,
+            extensions_from_resolved_package,
+        )
         from apm_cli.install.phases.local_content import _copy_local_package
         from apm_cli.models.apm_package import (
             APMPackage,
@@ -261,6 +264,8 @@ class LocalDependencySource(DependencySource):
                 registry_config=None,
                 package_name=local_info.package.name if local_info.package else None,
                 package_version=local_info.package.version if local_info.package else None,
+                # req-ext-003: copy the dependency manifest's x-* keys.
+                extensions=extensions_from_resolved_package(local_info.package),
             )
         )
         if install_path.is_dir() and not dep_ref.is_local:
@@ -344,7 +349,10 @@ class CachedDependencySource(DependencySource):
         from apm_cli.agent_plugins.errors import AgentPluginError
         from apm_cli.bundle.local_bundle import route_agent_plugin_package
         from apm_cli.constants import APM_YML_FILENAME
-        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.installed_package import (
+            InstalledPackage,
+            extensions_from_resolved_package,
+        )
         from apm_cli.install.legacy_plugin_compat import (
             preserve_normalized_marketplace_plugin_type,
             upgrade_cached_legacy_plugin,
@@ -549,6 +557,8 @@ class CachedDependencySource(DependencySource):
                 package_version=cached_package_info.package.version
                 if cached_package_info.package
                 else None,
+                # req-ext-003: copy the dependency manifest's x-* keys.
+                extensions=extensions_from_resolved_package(cached_package_info.package),
             )
         )
         if install_path.is_dir():
@@ -602,7 +612,10 @@ class FreshDependencySource(DependencySource):
         self.progress = progress
 
     def acquire(self) -> Materialization | None:
-        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.installed_package import (
+            InstalledPackage,
+            extensions_from_resolved_package,
+        )
         from apm_cli.drift import build_download_ref
         from apm_cli.utils.content_hash import compute_package_hash as _compute_hash
         from apm_cli.utils.path_security import safe_rmtree
@@ -795,6 +808,10 @@ class FreshDependencySource(DependencySource):
                     package_version=package_info.package.version
                     if package_info and package_info.package
                     else None,
+                    # req-ext-003: copy the dependency manifest's x-* keys.
+                    extensions=extensions_from_resolved_package(
+                        package_info.package if package_info else None
+                    ),
                 )
             )
             if install_path.is_dir():

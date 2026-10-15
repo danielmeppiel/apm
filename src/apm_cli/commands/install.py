@@ -647,6 +647,7 @@ def _validate_and_add_packages_to_apm_yml(
             source_path=apm_yml_path.parent,
             manifest_path=apm_yml_path,
             create_config=create_config,
+            warning_handler=None,  # The disk parse emits the manifest diagnostic.
         )
 
     outcome = _ValidationOutcome(
