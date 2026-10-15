@@ -818,9 +818,11 @@
       "keyword": "MUST",
       "section": "6.8",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
-        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified"
+        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[False]",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[True]"
       ]
     },
     {
