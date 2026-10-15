@@ -426,7 +426,7 @@ class MCPClientAdapter(ABC):
         except (OSError, UnicodeError) as exc:
             _rich_warning(
                 f"Could not read {config_path}: {exc} -- skipping config write; "
-                "fix permissions or encoding and rerun the install command",
+                "fix the file's permissions or encoding, or add this server manually",
                 symbol="warning",
             )
             return None
@@ -448,7 +448,7 @@ class MCPClientAdapter(ABC):
             _rich_warning(
                 f"Could not parse {config_path}: {self.mcp_servers_key} must be "
                 "a JSON object -- skipping config write to avoid data loss; "
-                "fix the server map or add this server manually",
+                "fix the file or add this server manually",
                 symbol="warning",
             )
             return None

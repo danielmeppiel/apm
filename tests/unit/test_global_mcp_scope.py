@@ -141,6 +141,33 @@ class TestAdapterUserScopeSupport(unittest.TestCase):
                     self.assertFalse(adapter.update_config({"managed": {"command": "npx"}}))
                     self.assertEqual(config_path.read_text(encoding="utf-8"), jsonc)
 
+    def test_skipped_global_config_warnings_name_the_file_and_a_next_step(self):
+        """Each warning that blocks a user-config rewrite stands alone with its fix."""
+        with tempfile.TemporaryDirectory() as directory:
+            fake_home = Path(directory)
+            configs = (
+                (CursorClientAdapter, fake_home / ".cursor" / "mcp.json"),
+                (OpenCodeClientAdapter, fake_home / ".config" / "opencode" / "opencode.json"),
+            )
+            with patch.object(Path, "home", return_value=fake_home):
+                for adapter_cls, config_path in configs:
+                    config_path.parent.mkdir(parents=True)
+                    adapter = adapter_cls(project_root=fake_home, user_scope=True)
+                    unsafe_contents = {
+                        "unreadable": b"\xff\xfe{",
+                        "JSONC": b'{\n  // user settings\n  "model": "x",\n}\n',
+                        "invalid server map": json.dumps({adapter.mcp_servers_key: []}).encode(),
+                    }
+                    for case, raw in unsafe_contents.items():
+                        with self.subTest(adapter=adapter_cls.__name__, case=case):
+                            config_path.write_bytes(raw)
+                            with patch("apm_cli.adapters.client.base._rich_warning") as warn:
+                                self.assertIsNone(adapter._read_json_config_for_update(config_path))
+                            warn.assert_called_once()
+                            message = warn.call_args.args[0]
+                            self.assertIn(str(config_path), message)
+                            self.assertIn("manually", message)
+
     @unittest.skipIf(os.name == "nt", "symlink creation requires elevated Windows rights")
     def test_symlinked_global_config_dir_is_not_written(self):
         """User-scope writes refuse the symlinks that stale cleanup refuses."""

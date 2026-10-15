@@ -254,8 +254,8 @@ def test_installed_global_mcp_refusal_preserves_owned_state(
     assert "failed" in failed.stdout.lower()
     assert "original install command" in failed.stdout
     guidance = {
-        "unreadable": "fix permissions or encoding and rerun the install command",
-        "invalid-map": "fix the server map or add this server manually",
+        "unreadable": "fix the file's permissions or encoding, or add this server manually",
+        "invalid-map": "fix the file or add this server manually",
     }
     if unsafe in guidance:
         assert guidance[unsafe] in " ".join(failed.stdout.split())
