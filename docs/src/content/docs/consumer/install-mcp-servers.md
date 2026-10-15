@@ -176,16 +176,18 @@ OpenCode interprets them. Other targets ignore this OpenCode-only field.
 Reinstall applies changes to `enabled`, including its JSON type; removing
 the field restores `true`.
 
-Global Cursor and OpenCode installs preserve personal servers, including names
-also declared by a package. Reinstall and pruning use per-target APM ownership;
-changing a direct `--mcp` target cleans the previously owned target before
-retiring its ownership record. If a user config is unreadable, contains JSONC,
-has a non-object server map, or uses a symlink below the home directory, APM
-warns and fails without rewriting it, even on a no-op reinstall. Fix the
-reported config and rerun the original command with `--global` and the same
-`--target` selection. A home-directory alias itself remains supported.
-If retarget cleanup fails after the new target was written, both deployments
-remain recorded as APM-owned until a successful retry removes the old entry.
+Global Cursor and OpenCode installs preserve your personal servers, including
+ones that share a name with a package-declared server. Reinstalling and
+pruning change only the entries APM wrote for that target. If you move a direct
+`--mcp` server to a different `--target`, APM writes the new target and then
+removes the entry from the old one; if that removal fails, the server stays in
+both targets and retrying the same install removes the old entry.
+
+If a user config is unreadable, contains JSONC, has a non-object server map, or
+uses a symlink below the home directory, APM warns and fails without rewriting
+it, even on a no-op reinstall. Fix the reported config and rerun the original
+command with `--global` and the same `--target` selection. A home-directory
+alias itself remains supported.
 
 ## How `targets:` gates which configs get written
 
@@ -314,9 +316,10 @@ etc.) are rejected with exit code 2.
 
 For Cursor, env-var references are written using Cursor's native
 `${env:NAME}` syntax, so referenced secret values are resolved by Cursor
-when it starts the MCP server and are not written into the project-local
-`.cursor/mcp.json`. Explicit static values in `mcp.env` remain static and
-are written as authored; keep secrets out of those values.
+when it starts the MCP server and are not written into the Cursor config for
+the install scope (`.cursor/mcp.json` for a project, `~/.cursor/mcp.json`
+with `-g`). Explicit static values in `mcp.env` remain static and are written
+as authored; keep secrets out of those values.
 
 APM translates supported environment-variable references using each
 target's native syntax. It also injects one specific GitHub credential
@@ -393,11 +396,14 @@ reference. Otherwise regenerating the entry writes that static value again.
 Follow the target's [interpolation rules](../../reference/manifest-schema/#424-variable-references-in-headers-and-env)
 when making variables available and editing its config.
 
-For Cursor, replace only the affected header or `env` values in
-`.cursor/mcp.json` with `${env:NAME}` references. Preserve the authorization
-scheme, for example `Bearer ${env:GITHUB_TOKEN}`, and make the variable
-available to Cursor. Keep all other fields and servers, and inspect the diff.
-An ordinary reinstall of the same declaration does not perform this repair.
+For Cursor, open the config for the scope you installed into (`.cursor/mcp.json`
+for a project, `~/.cursor/mcp.json` with `-g`; see
+[What `apm install` writes to disk](#what-apm-install-writes-to-disk)). Replace
+only the affected header or `env` values with `${env:NAME}` references.
+Preserve the authorization scheme, for example `Bearer ${env:GITHUB_TOKEN}`,
+and make the variable available to Cursor. Keep all other fields and servers,
+and inspect the diff. An ordinary reinstall of the same declaration does not
+perform this repair.
 
 If you instead regenerate an entry, save its custom fields first, remove only
 that server entry, reinstall, and restore those fields without restoring the
