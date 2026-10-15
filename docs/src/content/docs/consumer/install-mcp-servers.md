@@ -18,6 +18,9 @@ This adds one entry under `dependencies.mcp:` in `apm.yml`. APM then attempts
 runtime-specific MCP config writes for targets that pass selection, scope, and
 adapter prerequisites.
 
+Registry metadata prefetches use up to four concurrent lookups while preserving
+the order of the requested server references.
+
 ## The `mcp:` section in apm.yml
 
 The two sections have different propagation rules. In the root project,
@@ -156,12 +159,12 @@ unresolved required entries fail closed.
 | GitHub Copilot CLI | `$COPILOT_HOME/mcp-config.json` (`-g`, unset/blank: `~/.copilot/mcp-config.json`) | global | JSON `mcpServers` |
 | VS Code (Copilot) | `.vscode/mcp.json` | project | JSON `servers` |
 | Claude Code | `.mcp.json` (project) or `$CLAUDE_CONFIG_DIR/.claude.json` (`-g`; unset/blank: `~/.claude.json`) | both | JSON `mcpServers` |
-| Cursor | `.cursor/mcp.json` | project (only if `.cursor/` exists) | JSON `mcpServers` |
+| Cursor | `.cursor/mcp.json` (project, only if `.cursor/` exists) or `~/.cursor/mcp.json` (`-g`) | both | JSON `mcpServers` |
 | Codex CLI | `.codex/config.toml` (project, only if `.codex/` exists) or `$CODEX_HOME/config.toml` (`-g`, when non-blank; otherwise `~/.codex/config.toml`) | both | TOML `[mcp_servers.*]` |
 | Gemini CLI | `.gemini/settings.json` (project, only if `.gemini/` exists) or `~/.gemini/settings.json` (`-g`) | both | JSON `mcpServers` |
 | Antigravity CLI | `.agents/mcp_config.json` (project, only if `.agents/` exists) or `~/.gemini/config/mcp_config.json` (`-g`) | both | JSON `mcpServers` |
 | Hermes Agent | `$HERMES_HOME/config.yaml` (unset/blank: `~/.hermes/config.yaml`; explicit `--target hermes` only) | home-scoped | YAML `mcp_servers` |
-| OpenCode | `opencode.json` | project (only if `.opencode/` exists) | JSON `mcp` |
+| OpenCode | `opencode.json` (project, only if `.opencode/` exists) or `~/.config/opencode/opencode.json` (`-g`) | both | JSON `mcp` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | global | JSON `mcpServers` |
 | Kiro IDE | `.kiro/settings/mcp.json` (project, only if `.kiro/` exists) or `~/.kiro/settings/mcp.json` (`-g`) | both | JSON `mcpServers` |
 | JetBrains Copilot | `%LOCALAPPDATA%\github-copilot\intellij\mcp.json` (Windows) or `$XDG_CONFIG_HOME/github-copilot/intellij/mcp.json` (macOS/Linux; defaults to `~/.config/github-copilot/intellij/mcp.json`) | global | JSON `servers` |
@@ -171,7 +174,20 @@ value unchanged into that server's `opencode.json` entry. If omitted, APM keeps
 the existing `true` default. APM does not validate or coerce explicit values;
 OpenCode interprets them. Other targets ignore this OpenCode-only field.
 Reinstall applies changes to `enabled`, including its JSON type; removing
-the field restores `true`. OpenCode remains project-only.
+the field restores `true`.
+
+Global Cursor and OpenCode installs preserve your personal servers, including
+ones that share a name with a package-declared server. Reinstalling and
+pruning change only the entries APM wrote for that target. If you move a direct
+`--mcp` server to a different `--target`, APM writes the new target and then
+removes the entry from the old one; if that removal fails, the server stays in
+both targets and retrying the same install removes the old entry.
+
+If a user config is unreadable, contains JSONC, has a non-object server map, or
+uses a symlink below the home directory, APM warns and fails without rewriting
+it, even on a no-op reinstall. Fix the reported config and rerun the original
+command with `--global` and the same `--target` selection. A home-directory
+alias itself remains supported.
 
 ## How `targets:` gates which configs get written
 
@@ -244,7 +260,8 @@ user-scope MCP config (for example, Copilot CLI to
 non-whitespace absolute path. Unset or blank values use `~/.claude.json`;
 relative values are rejected. Codex CLI writes to
 `$CODEX_HOME/config.toml` when `CODEX_HOME` is set to a non-whitespace value or
-`~/.codex/config.toml` otherwise, Gemini CLI to `~/.gemini/settings.json`,
+`~/.codex/config.toml` otherwise, Cursor to `~/.cursor/mcp.json`, OpenCode to
+`~/.config/opencode/opencode.json`, Gemini CLI to `~/.gemini/settings.json`,
 Antigravity CLI to `~/.gemini/config/mcp_config.json`, Hermes to
 `$HERMES_HOME/config.yaml` whenever selected explicitly (or
 `~/.hermes/config.yaml` when unset or blank), Windsurf to
@@ -254,13 +271,16 @@ When the user-scope manifest declares a `targets:` field (or the CLI passes
 `--target`), only the matching runtimes receive the config write. When no CLI
 target, user-scope manifest target, or saved `apm config target` restricts
 targets, all detected user-scope-capable runtimes are configured.
-Workspace-only runtimes (VS Code, Cursor, OpenCode) are skipped with a warning
+The workspace-only VS Code target is skipped with a warning
 when a mixed target set also contains a global-capable runtime. If none of the
 selected targets supports user scope, the command exits `2` before changing the
 user manifest, lockfile, or runtime configuration. The direct command creates
 or updates `~/.apm/apm.yml`; it does not fall back to the current project's
 manifest. With `--dry-run`, it previews the user-scope entry and runtime
 targets without creating that manifest, lockfile, or runtime configuration.
+APM leaves an existing Cursor or OpenCode config untouched and reports that
+target as failed when it cannot parse the file as JSON (for example, OpenCode
+JSONC comments) or when its user-scope path runs through a symlink.
 
 ## stdio vs HTTP servers
 
@@ -296,9 +316,10 @@ etc.) are rejected with exit code 2.
 
 For Cursor, env-var references are written using Cursor's native
 `${env:NAME}` syntax, so referenced secret values are resolved by Cursor
-when it starts the MCP server and are not written into the project-local
-`.cursor/mcp.json`. Explicit static values in `mcp.env` remain static and
-are written as authored; keep secrets out of those values.
+when it starts the MCP server and are not written into the Cursor config for
+the install scope (`.cursor/mcp.json` for a project, `~/.cursor/mcp.json`
+with `-g`). Explicit static values in `mcp.env` remain static and are written
+as authored; keep secrets out of those values.
 
 APM translates supported environment-variable references using each
 target's native syntax. It also injects one specific GitHub credential
@@ -375,11 +396,14 @@ reference. Otherwise regenerating the entry writes that static value again.
 Follow the target's [interpolation rules](../../reference/manifest-schema/#424-variable-references-in-headers-and-env)
 when making variables available and editing its config.
 
-For Cursor, replace only the affected header or `env` values in
-`.cursor/mcp.json` with `${env:NAME}` references. Preserve the authorization
-scheme, for example `Bearer ${env:GITHUB_TOKEN}`, and make the variable
-available to Cursor. Keep all other fields and servers, and inspect the diff.
-An ordinary reinstall of the same declaration does not perform this repair.
+For Cursor, open the config for the scope you installed into (`.cursor/mcp.json`
+for a project, `~/.cursor/mcp.json` with `-g`; see
+[What `apm install` writes to disk](#what-apm-install-writes-to-disk)). Replace
+only the affected header or `env` values with `${env:NAME}` references.
+Preserve the authorization scheme, for example `Bearer ${env:GITHUB_TOKEN}`,
+and make the variable available to Cursor. Keep all other fields and servers,
+and inspect the diff. An ordinary reinstall of the same declaration does not
+perform this repair.
 
 If you instead regenerate an entry, save its custom fields first, remove only
 that server entry, reinstall, and restore those fields without restoring the
