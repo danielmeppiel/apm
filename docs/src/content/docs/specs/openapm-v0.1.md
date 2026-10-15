@@ -787,7 +787,7 @@ For any other top-level key it does not recognise, the consumer
 MUST produce a non-failing warning naming that key and MUST NOT
 fail parse or install solely because that key is unknown. This warning
 does not waive independent validation, policy, or security failures.
-That warning does not relax
+This warning does not relax
 [req-mf-006](#req-mf-006): a writer that rewrites the manifest
 MUST still preserve unknown top-level keys. Recorded extension
 values are not a trust anchor and MUST NOT change
