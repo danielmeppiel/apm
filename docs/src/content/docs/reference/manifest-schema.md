@@ -351,7 +351,7 @@ Any top-level key matching `x-[a-z][a-z0-9-]*` is a vendor extension. The CLI ke
 
 When a dependency's `apm.yml` declares keys matching `x-[a-z][a-z0-9-]*`, `apm lock` records them on that dependency's entry in `apm.lock.yaml` under `extensions`. The field is omitted when the dependency declares none, so existing lockfiles stay unchanged.
 
-Any other unknown top-level key is ignored. The CLI prints one warning that names each ignored key and does not fail. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or remove it.
+Any other unknown top-level key is ignored. The CLI prints one warning that names each ignored key and does not fail because of that key. An install dry-run reports the source manifest's warning once, not again for its prospective dependency edit. Warning paths use forward slashes on Windows too. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or remove it.
 
 ```yaml
 name: my-package

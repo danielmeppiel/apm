@@ -5,23 +5,26 @@ Spec bind: tests/spec_conformance/test_manifest_extension_reqs.py (req-ext-003).
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import patch
+from pathlib import Path, PureWindowsPath
+from unittest.mock import Mock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from apm_cli.cli import cli
 from apm_cli.deps.installed_package import InstalledPackage, extensions_from_resolved_package
 from apm_cli.deps.lockfile import LockedDependency, LockFile
+from apm_cli.deps.plugin_parser import synthesize_apm_yml_from_plugin
 from apm_cli.models.apm_package import (
     _KNOWN_TOP_LEVEL_KEYS,
     APMPackage,
     DependencyReference,
     _collect_manifest_extensions,
+    _warn_unknown_manifest_keys,
     clear_apm_yml_cache,
 )
 
-_WARN_PATH = "apm_cli.models.apm_package._rich_warning"
+_WARN_PATH = "apm_cli.utils.console._rich_warning"
 
 
 def _write(path: Path, text: str) -> Path:
@@ -108,6 +111,44 @@ class TestParsedExtensions:
         mock_warn.assert_not_called()
         assert pkg.extensions == {}
         assert "tags" in _KNOWN_TOP_LEVEL_KEYS
+
+    def test_synthesized_plugin_manifest_is_silent(self, tmp_path: Path) -> None:
+        path = synthesize_apm_yml_from_plugin(
+            tmp_path,
+            {"name": "plugin", "version": "1.0.0", "tags": ["alpha", "beta"]},
+        )
+        assert "tags:" in path.read_text(encoding="utf-8")
+        with patch(_WARN_PATH) as warned:
+            package = APMPackage.from_apm_yml(path, create_config=False)
+
+        assert package.name == "plugin"
+        assert package.extensions == {}
+        warned.assert_not_called()
+
+    @pytest.mark.windows_compat
+    def test_windows_warning_path_is_portable_and_ascii(self) -> None:
+        path = PureWindowsPath("C:/Users/caf\u00e9/project/apm.yml")
+        with patch(_WARN_PATH) as warned:
+            _warn_unknown_manifest_keys(["unknown"], path)
+
+        message = warned.call_args[0][0]
+        assert "C:/Users/caf\\xe9/project/apm.yml" in message
+        assert "\\\\" not in message
+        assert message.isascii()
+
+    def test_custom_warning_handler_preserves_extensions(self, tmp_path: Path) -> None:
+        handler = Mock()
+        with patch(_WARN_PATH) as terminal_warning:
+            package = APMPackage.from_mapping(
+                {"name": "pkg", "version": "1", "unknown": True, "x-team": "platform"},
+                package_path=tmp_path,
+                create_config=False,
+                warning_handler=handler,
+            )
+
+        assert package.extensions == {"x-team": "platform"}
+        handler.assert_called_once_with(["unknown"], tmp_path / "apm.yml")
+        terminal_warning.assert_not_called()
 
     def test_top_level_source_warns_as_unknown(self, tmp_path: Path) -> None:
         path = _write(
@@ -258,6 +299,37 @@ class TestLockfileExtensions:
 
 
 class TestApmLockRecordsDependencyExtensions:
+    def test_install_dry_run_warns_once_per_invocation(self, tmp_path: Path) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            project = Path.cwd()
+            root = _write(
+                project / "apm.yml",
+                "name: project\nversion: 1.0.0\nroot-unknown: true\nx-team: platform\n",
+            )
+            package = project / "sub"
+            package.mkdir()
+            _write(
+                package / "apm.yml",
+                "name: sub\nversion: 1.0.0\n",
+            )
+            instructions = package / ".apm" / "instructions"
+            instructions.mkdir(parents=True)
+            (instructions / "test.instructions.md").write_text(
+                "---\napplyTo: '**'\n---\n# Test\n", encoding="utf-8"
+            )
+            original = root.read_bytes()
+
+            for _ in range(2):
+                clear_apm_yml_cache()
+                result = runner.invoke(cli, ["install", "./sub", "--dry-run", "--no-policy"])
+
+                assert result.exit_code == 0, result.output
+                assert result.output.count(": root-unknown.") == 1, result.output
+                assert root.read_bytes() == original
+                assert not (project / "apm.lock.yaml").exists()
+                assert not (project / "apm_modules").exists()
+
     def test_lock_writes_dependency_extensions(self, tmp_path: Path) -> None:
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):

@@ -8,7 +8,7 @@ compatibility.
 
 import logging
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -18,7 +18,6 @@ import yaml
 from ..core.apm_yml import parse_targets_field
 from ..core.target_catalog import normalize_target_name
 from ..core.target_detection import parse_target_field
-from ..utils.console import _rich_warning
 from .dependency import (
     DependencyReference,
     GitReferenceType,
@@ -328,8 +327,10 @@ def _ascii_token(value: object) -> str:
 
 def _warn_unknown_manifest_keys(keys: list[str], manifest_path: Path) -> None:
     """Warn once, naming every ignored top-level key."""
+    from ..utils.console import _rich_warning
+
     safe_keys = ", ".join(_ascii_token(key) for key in keys)
-    safe_path = _ascii_token(manifest_path)
+    safe_path = _ascii_token(manifest_path.as_posix())
     _rich_warning(
         f"Unknown top-level key(s) in {safe_path}: {safe_keys}. "
         "These keys were ignored. Rename each to match x-[a-z][a-z0-9-]* "
@@ -342,6 +343,7 @@ def _warn_unknown_manifest_keys(keys: list[str], manifest_path: Path) -> None:
 def _collect_manifest_extensions(
     data: Mapping[str, Any],
     manifest_path: Path,
+    warning_handler: Callable[[list[str], Path], None] | None = _warn_unknown_manifest_keys,
 ) -> dict[str, Any]:
     """Return req-ext-001 keys in declaration order and warn on other unknown keys.
 
@@ -358,8 +360,8 @@ def _collect_manifest_extensions(
         if isinstance(key, str) and key in _KNOWN_TOP_LEVEL_KEYS:
             continue
         unknown.append(key if isinstance(key, str) else str(key))
-    if unknown:
-        _warn_unknown_manifest_keys(unknown, manifest_path)
+    if unknown and warning_handler is not None:
+        warning_handler(unknown, manifest_path)
     return extensions
 
 
@@ -522,6 +524,7 @@ class APMPackage:
         source_path: Path | None = None,
         manifest_path: Path | None = None,
         create_config: bool = True,
+        warning_handler: Callable[[list[str], Path], None] | None = _warn_unknown_manifest_keys,
     ) -> "APMPackage":
         """Construct a package from already interpreted manifest data.
 
@@ -539,6 +542,9 @@ class APMPackage:
                 to ``package_path / "apm.yml"``.
             create_config: When false, missing user config is read as defaults
                 without creating ``~/.apm/config.json``.
+            warning_handler: Receives unknown keys and their manifest path.
+                Defaults to a terminal warning. Use ``None`` for a prospective
+                parse whose source manifest is diagnosed separately.
 
         Returns:
             A package with all compatibility projections populated.
@@ -694,7 +700,7 @@ class APMPackage:
                 for name in parsed_target_values
             )
 
-        extensions = _collect_manifest_extensions(data, source_manifest)
+        extensions = _collect_manifest_extensions(data, source_manifest, warning_handler)
 
         result = cls(
             name=data["name"],

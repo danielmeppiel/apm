@@ -77,10 +77,6 @@
         "resolved_at": { "type": "string" },
         "name": { "type": "string" },
         "declared_license": { "type": "string" },
-        "extensions": {
-          "type": "object",
-          "description": "Vendor extension keys (prefix x-) copied from the dependency manifest. Omitted when empty. Values are not interpreted (req-ext-003)."
-        },
         "attestations": { "type": "object" }
       },
       "patternProperties": { "^x-[a-z][a-z0-9-]*$": {} },

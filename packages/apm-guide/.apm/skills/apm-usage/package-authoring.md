@@ -353,8 +353,11 @@ the dependency declares none. Writers still preserve other unknown top-level
 keys on rewrite.
 
 Any other unknown top-level key is ignored with one warning that names the
-key. The command does not fail. Rename the key to match `x-[a-z][a-z0-9-]*`
-to keep it, or remove it.
+key. The command does not fail solely because that key is unknown; independent
+policy and security failures still apply. Install dry-runs warn once for the
+source manifest, not again for the prospective edit. Warning paths use forward
+slashes on Windows. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or
+remove it.
 
 ```yaml
 name: my-package

@@ -16,11 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `batch_fetch_server_info` now looks up independent MCP registry documents concurrently with a bounded `ThreadPoolExecutor` (max 4 workers), matching the existing install-check fan-out. Closes #2981. (#2983)
 - `docs/src/content/docs/specs/openapm-v0.1.md` adds proposed `req-tg-015` for Codex-native `model`/`model_reasoning_effort` preservation and bounded dropped-metadata diagnostics. (#3150)
-- OpenAPM v0.1 adds proposed `req-ext-003`: top-level `x-*` manifest keys are preserved without value checks, recorded on each dependency lock entry under `extensions` (omitted when empty), and other unknown top-level keys warn without failing. (#3222)
 
 ### Fixed
 
-- `apm.yml` keys starting with `x-` are kept on the parsed manifest and recorded on that dependency's `apm.lock.yaml` entry; any other unknown top-level key warns by name instead of being dropped silently. (#3222)
+- `apm.yml` keys matching `x-[a-z][a-z0-9-]*` are preserved in the parsed manifest and dependency lock entry; other unknown keys warn without failing, including a single warning during install dry-runs. Proposed `req-ext-003` in `openapm-v0.1.md` records this contract with a distinct `.46` lockfile schema; existing schema bytes remain unchanged. - by @sergio-sisternes-epam (#3222)
 - Codex agent conversion preserves native `model` and `model_reasoning_effort` settings and warns about dropped metadata instead of silently losing it. (#3150)
 - Cursor hooks use native v1 events and flat handlers; unsupported input and overlapping Claude imports now fail explicitly. Choose one hook route per dependency; see the [supported mappings](docs/src/content/docs/producer/author-primitives/hooks-and-commands.md#cursor-native-hooks-and-claude-import) and `openapm-v0.1.md` requirements `req-tg-016/017`. (#3149)
 - `apm install --frozen` no longer writes `apm.lock.yaml`, which req-lk-006

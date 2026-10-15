@@ -10,12 +10,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.models.apm_package import APMPackage, clear_apm_yml_cache
 from tests.spec_conformance._helpers import assert_spec_contains, load_schema
 
-_WARN = "apm_cli.models.apm_package._rich_warning"
+_WARN = "apm_cli.utils.console._rich_warning"
 
 
 @pytest.mark.req("req-ext-003")
@@ -61,7 +62,7 @@ def test_lock_entry_records_extensions_and_omits_when_empty() -> None:
     empty_yaml = LockFile(dependencies={"owner/sample": empty}).to_yaml()
     assert "extensions:" not in empty_yaml
 
-    entry_props = load_schema("lockfile-v0.1.41.schema.json")["$defs"]["entry"]["properties"]
+    entry_props = load_schema("lockfile-v0.1.46.schema.json")["$defs"]["entry"]["properties"]
     assert entry_props["extensions"]["type"] == "object"
 
 
@@ -69,9 +70,38 @@ def test_lock_entry_records_extensions_and_omits_when_empty() -> None:
 def test_req_ext_003_keeps_rewrite_preservation() -> None:
     """req-ext-003 must not contradict the writer preserve-unknown-keys rule."""
     assert_spec_contains(
-        "prefix `x-`",
+        "name matches `x-[a-z][a-z0-9-]*`",
         "optional `extensions`",
         "non-failing warning",
         "does not relax",
         "[req-mf-006](#req-mf-006)",
     )
+
+
+@pytest.mark.req("req-ext-003")
+@pytest.mark.parametrize("key", ["x-", "x-Foo", "x-a_b", "unknown", "x-valid\n"])
+def test_extension_schema_checks_names_not_values(key: str) -> None:
+    """The distinct schema validates vendor names without interpreting values."""
+    validator = Draft202012Validator(load_schema("lockfile-v0.1.46.schema.json"))
+    lock = {
+        "lockfile_version": "2",
+        "dependencies": [{"repo_url": "owner/sample", "extensions": {"x-valid": [None, {"k": 1}]}}],
+    }
+    assert list(validator.iter_errors(lock)) == []
+    lock["dependencies"][0]["extensions"] = {key: "opaque"}
+    assert list(validator.iter_errors(lock))
+
+
+@pytest.mark.req("req-ext-003")
+def test_extension_schema_preserves_previous_contract() -> None:
+    """The .46 resource changes only its identity and optional extensions field."""
+    previous = load_schema("lockfile-v0.1.41.schema.json")
+    proposed = load_schema("lockfile-v0.1.46.schema.json")
+    assert proposed["$id"] != previous["$id"]
+    assert proposed["title"] != previous["title"]
+    assert "extensions" not in previous["$defs"]["entry"]["properties"]
+    extensions = proposed["$defs"]["entry"]["properties"].pop("extensions")
+    assert extensions["type"] == "object"
+    proposed["$id"] = previous["$id"]
+    proposed["title"] = previous["title"]
+    assert proposed == previous
