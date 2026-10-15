@@ -159,7 +159,10 @@
       "id": "ci-audit-scratch-materialization",
       "decision": "CI audit scratch materialization",
       "owner": "install/audit_replay.py (prepare_ci_audit_replay)",
-      "selectors": ["src/apm_cli/install/audit_replay.py"],
+      "selectors": [
+        "src/apm_cli/install/audit_replay.py",
+        "src/apm_cli/install/project_package.py"
+      ],
       "guards": ["install-deployment-audit-replay"]
     },
     {
