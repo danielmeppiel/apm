@@ -12,6 +12,8 @@ RULE = "transport-platform-marketplace-package-remote"
 RESOLVER = "src/apm_cli/marketplace/resolver.py"
 VERSION = "src/apm_cli/marketplace/version_resolver.py"
 VALIDATION = "src/apm_cli/install/validation.py"
+GIT_REFS = "src/apm_cli/deps/git_reference_resolver.py"
+BARE_CACHE = "src/apm_cli/deps/bare_cache.py"
 
 
 def test_marketplace_remote_owner_is_compliant() -> None:
@@ -55,6 +57,16 @@ def test_marketplace_remote_owner_is_compliant() -> None:
             'initial_transport_scheme(dep_ref) == "ssh"',
             '(getattr(dep_ref, "explicit_scheme", None) or "") == "ssh"',
         ),
+        (
+            GIT_REFS,
+            'if initial_transport_scheme(dep_ref, host._protocol_pref) == "ssh":',
+            "if False:",
+        ),
+        (
+            BARE_CACHE,
+            "git_resolve_commit(target, ref, env=env)",
+            "git_resolve_commit(target, 'HEAD', env=env)",
+        ),
     ],
     ids=[
         "catalog-instead-of-package",
@@ -68,6 +80,8 @@ def test_marketplace_remote_owner_is_compliant() -> None:
         "bare-source-authority",
         "explicit-source-validation",
         "validation-probe-scheme-owner",
+        "commit-api-scheme-owner",
+        "bare-fallback-ref-verification",
     ],
 )
 def test_marketplace_remote_owner_rejects_mutation(path: str, old: str, new: str) -> None:

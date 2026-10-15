@@ -302,6 +302,16 @@ def bare_clone_with_fallback(
                 capture_output=True,
                 timeout=600,
             )
+            if ref:
+                from ..utils.git_env import git_resolve_commit
+
+                selected_sha = git_resolve_commit(target, ref, env=env)
+                subprocess.run(
+                    [git_exe, "--git-dir", str(target), "update-ref", "HEAD", selected_sha],
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                )
             _scrub_bare_remote_url(target, git_exe, env)
             return
 
