@@ -502,6 +502,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Resolution staging owner drops a mandatory replacement-activation method.",
     ),
     MutationCase(
+        guard_id="install-deployment-skills-root-derivation",
+        rule_id="install-deployment-skills-root-derivation",
+        path="src/apm_cli/integration/skill_integrator.py",
+        old="target_skills_root = project_root / target.skills_rel_root",
+        new='target_skills_root = project_root / target.root_dir / "skills"',
+        intent="Skill integration re-derives the skills root instead of using the target profile.",
+    ),
+    MutationCase(
         guard_id="install-deployment-source-plan",
         rule_id="install-deployment-source-plan",
         path="src/apm_cli/install/services.py",
@@ -729,6 +737,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="config_target = list(apm_package.canonical_targets)",
         new="config_target = list(apm_package.targets)",
         intent="A manifest consumer reads raw targets instead of canonical_targets.",
+    ),
+    MutationCase(
+        guard_id="registry-delegation-user-invocable-resolution",
+        rule_id="registry_delegation.user_invocable_resolution",
+        path="src/apm_cli/primitives/models.py",
+        old="def resolve_user_invocable(metadata: dict) -> bool:",
+        new="def _resolve_user_invocable_removed(metadata: dict) -> bool:",
+        intent="The user-invocable owner loses its single interpretation entry point.",
     ),
     MutationCase(
         guard_id="transport-platform-ado-validation-bearer-fallback",
@@ -1380,6 +1396,37 @@ def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     mutated = source.replace(old, "return sorted(set(installed) - expected)", 1)
     ast.parse(mutated, filename=path)
     rule_id = "install-deployment-orphan-selection"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "rule_id", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            "mutation_writes.opencode_enabled_intent",
+            "opencode_enabled_matches(existing[name], expected)",
+            "True",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator_install.py",
+            "mutation_writes.mcp_target_selection",
+            "_raise_strict_config_failures(unsafe_runtimes, console=console, logger=logger)",
+            "_raise_strict_config_failures([], console=console, logger=logger)",
+        ),
+    ],
+)
+def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str) -> None:
+    """Global consumers cannot bypass native type or selected-target safety owners."""
+    baseline = run_selected_rules(ROOT, (rule_id,))
+    assert baseline.failures == ()
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
     report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
     assert report.failures == ()
     assert any(violation.rule_id == rule_id for violation in report.violations)
