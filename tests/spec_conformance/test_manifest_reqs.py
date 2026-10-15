@@ -31,6 +31,7 @@ from apm_cli.integration.targets import KNOWN_TARGETS
 from apm_cli.models.apm_package import APMPackage
 from apm_cli.utils.diagnostics import (
     CATEGORY_AGENT_LOSSY_COMPILATION,
+    CATEGORY_ERROR,
     CATEGORY_WARNING,
     DiagnosticCollector,
 )
@@ -270,30 +271,30 @@ def test_consumer_diagnoses_empty_skill_subset_match(tmp_path: Path) -> None:
     (available_dir / "SKILL.md").write_text("# Available", encoding="utf-8")
     diagnostics = DiagnosticCollector()
 
-    SkillIntegrator._warn_no_skill_filter_match(
+    SkillIntegrator._error_no_skill_filter_match(
         SkillIntegrator._skill_names_in_directory(skills_dir),
         ("missing",),
         "owner/bundle",
         diagnostics=diagnostics,
     )
 
-    warnings = diagnostics.by_category()[CATEGORY_WARNING]
-    assert len(warnings) == 1
-    assert warnings[0].package == "owner/bundle"
-    assert "Requested: missing" in warnings[0].message
-    assert "Available: available" in warnings[0].message
+    errors = diagnostics.by_category()["error"]
+    assert len(errors) == 1
+    assert errors[0].package == "owner/bundle"
+    assert "Requested: missing" in errors[0].message
+    assert "Available: available" in errors[0].message
 
     empty_diagnostics = DiagnosticCollector()
-    SkillIntegrator._warn_no_skill_filter_match(
+    SkillIntegrator._error_no_skill_filter_match(
         frozenset(),
         ("missing",),
         "owner/empty-bundle",
         diagnostics=empty_diagnostics,
     )
-    empty_warnings = empty_diagnostics.by_category()[CATEGORY_WARNING]
-    assert len(empty_warnings) == 1
-    assert empty_warnings[0].package == "owner/empty-bundle"
-    assert "Available: (none)" in empty_warnings[0].message
+    empty_errors = empty_diagnostics.by_category()["error"]
+    assert len(empty_errors) == 1
+    assert empty_errors[0].package == "owner/empty-bundle"
+    assert "Available: (none)" in empty_errors[0].message
 
     assert_spec_contains(
         "a non-empty `skills:` subset",
@@ -303,6 +304,9 @@ def test_consumer_diagnoses_empty_skill_subset_match(tmp_path: Path) -> None:
         "Selected skill names for dependencies that expose selectable skills",
         "MUST emit a default-visible diagnostic",
         "requested skill names, and the available skill names",
+        "MUST fail the install operation",
+        "nonzero status",
+        "MUST preserve previously deployed skill files",
     )
 
 
@@ -344,15 +348,15 @@ def test_consumer_names_skills_a_plugin_collection_exposes(tmp_path: Path) -> No
     assert available == frozenset({"csharp-scripts", "dotnet-pinvoke"})
 
     diagnostics = DiagnosticCollector()
-    SkillIntegrator._warn_no_skill_filter_match(
+    SkillIntegrator._error_no_skill_filter_match(
         available,
         ("missing",),
         "acme/dotnet-advanced",
         diagnostics=diagnostics,
     )
-    warning = diagnostics.by_category()[CATEGORY_WARNING][0]
-    assert "Available: csharp-scripts, dotnet-pinvoke" in warning.message
-    assert "Available: (none)" not in warning.message
+    error = diagnostics.by_category()["error"][0]
+    assert "Available: csharp-scripts, dotnet-pinvoke" in error.message
+    assert "Available: (none)" not in error.message
 
     assert_spec_contains("with a named-skills container")
 
@@ -391,15 +395,15 @@ def test_plugin_skills_declaration_is_authoritative(tmp_path: Path) -> None:
     assert available == frozenset({"declared"})
 
     diagnostics = DiagnosticCollector()
-    SkillIntegrator._warn_no_skill_filter_match(
+    SkillIntegrator._error_no_skill_filter_match(
         available,
         ("undeclared",),
         "acme/selective",
         diagnostics=diagnostics,
     )
-    warning = diagnostics.by_category()[CATEGORY_WARNING][0]
-    assert "Available: declared" in warning.message
-    assert "undeclared" not in warning.message.split("Available:")[1]
+    error = diagnostics.by_category()[CATEGORY_ERROR][0]
+    assert "Available: declared" in error.message
+    assert "undeclared" not in error.message.split("Available:")[1]
 
     assert_spec_contains(
         "Only an omitted",

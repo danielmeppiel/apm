@@ -666,14 +666,14 @@ class SkillIntegrator(BaseIntegrator):
         return name_filter is not None and name_filter.isdisjoint(available_names)
 
     @staticmethod
-    def _warn_no_skill_filter_match(
+    def _error_no_skill_filter_match(
         available_names: frozenset[str],
         requested_names: tuple[str, ...],
         parent_name: str,
         diagnostics=None,
         logger=None,
     ) -> None:
-        """Report a post-validation skill selection miss through the output cascade."""
+        """Fail an unsatisfied persisted required selection through the output cascade."""
         available_display = ", ".join(sorted(available_names)) if available_names else "(none)"
         requested_display = ", ".join(sorted(set(requested_names)))
         details = (
@@ -683,14 +683,14 @@ class SkillIntegrator(BaseIntegrator):
             "then run 'apm install'."
         )
         if diagnostics is not None:
-            diagnostics.warn(details, package=parent_name)
+            diagnostics.error(details, package=parent_name)
         elif logger:
-            logger.warning(f"Package '{parent_name}': {details}")
+            logger.error(f"Package '{parent_name}': {details}")
         else:
             try:
-                from apm_cli.utils.console import _rich_warning
+                from apm_cli.utils.console import _rich_error
 
-                _rich_warning(f"Package '{parent_name}': {details}", symbol="warning")
+                _rich_error(f"Package '{parent_name}': {details}", symbol="error")
             except ImportError:
                 pass
 
@@ -991,7 +991,7 @@ class SkillIntegrator(BaseIntegrator):
             all_deployed.extend(deployed)
 
         if self._skill_filter_misses_available(name_filter, available_names):
-            self._warn_no_skill_filter_match(
+            self._error_no_skill_filter_match(
                 available_names,
                 tuple(skill_subset or ()),
                 parent_name,
@@ -1369,7 +1369,7 @@ class SkillIntegrator(BaseIntegrator):
             all_deployed.extend(deployed)
 
         if self._skill_filter_misses_available(_name_filter, available_names):
-            self._warn_no_skill_filter_match(
+            self._error_no_skill_filter_match(
                 available_names,
                 tuple(skill_subset or ()),
                 parent_name,
