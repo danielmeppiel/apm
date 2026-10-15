@@ -333,6 +333,11 @@ rewriting files. Explicit `--file` remains user-directed.
 
 Bare `apm audit` uses the warmed local cache and skips drift with an informational message when the cache is absent; run `apm install` before relying on non-CI drift. `apm audit --ci` is stricter: when `apm_modules/` is missing but `apm.lock.yaml` is present, it self-hydrates a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without touching the checkout. No checkout install is required first. Missing gitignored deployed outputs do not fail `deployed-files-present`, so repos that gitignore them can use audit-only CI too. Without committed deployed bytes, that pattern lacks deployed-byte integrity and drift coverage; use full-install CI when outputs need to be materialized.
 
+For project-local content, replay uses the same package interpretation as install.
+A sibling `skills/<name>/SKILL.md` alongside `.apm/` is not promoted to a local
+skill or reported as `unintegrated`. Other supported source layouts and actual
+dependency skill bundles keep their existing discovery behavior.
+
 Use `--no-drift` to opt out with reduced coverage (e.g. fast inner loops); the flag is mutually exclusive with `--strip`/`--file`. Drift is advisory in bare audit by default unless policy enables `security.audit.fail_on_drift`; `--ci` always gates on drift. Invalid selections, manifest/lock mismatches, and deployed-file integrity failures still fail `apm audit --ci`. Remediate `unrecorded` with `apm install`, then commit the regenerated `apm.lock.yaml`.
 
 A stale canonical deployment owner is different: `deployment-ledger-owners` is a hard integrity failure in both modes, exits 1, names the owner and path in text/JSON/SARIF, and blocks `--strip`. Remediate it with `apm prune`, then rerun `apm audit`. Drift output is integrated into JSON (top-level `drift` key) and SARIF (rule IDs `apm/drift/<kind>` where kind is `modified`/`unintegrated`/`orphaned`/`unrecorded`).
