@@ -116,6 +116,7 @@ def test_pack_still_defaults_to_claude_only(
     assert result.exit_code == 0, result.output
     assert (tmp_path / ".claude-plugin/marketplace.json").is_file()
     assert not (tmp_path / DEFAULT_OUTPUT).exists()
+    _manifest(tmp_path, outputs={"claude": {}, "copilot": {}})
     selected = CliRunner().invoke(pack_cmd, ["--marketplace=copilot", "--json"])
     assert selected.exit_code == 0, selected.output
     assert _read_output(tmp_path)["plugins"][0]["source"] == "./plugins/demo"
