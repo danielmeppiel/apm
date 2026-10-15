@@ -18,6 +18,9 @@ This adds one entry under `dependencies.mcp:` in `apm.yml`. APM then attempts
 runtime-specific MCP config writes for targets that pass selection, scope, and
 adapter prerequisites.
 
+Registry metadata prefetches use up to four concurrent lookups while preserving
+the order of the requested server references.
+
 ## The `mcp:` section in apm.yml
 
 The two sections have different propagation rules. In the root project,
