@@ -962,8 +962,15 @@ class MCPIntegrator:
 
         # Clean Claude Code user ~/.claude.json (USER scope only)
         if clean_claude_user:
+            from apm_cli.factory import ClientFactory
+
+            claude_client = ClientFactory.create_client(
+                "claude",
+                project_root=project_root_path,
+                user_scope=True,
+            )
             _clean_claude_config(
-                Path.home() / ".claude.json",
+                Path(claude_client.get_config_path()),
                 expanded_stale,
                 logger,
                 is_user_scope=True,

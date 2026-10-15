@@ -147,6 +147,11 @@ JetBrains Copilot MCP writes use
 (`XDG_CONFIG_HOME` defaults to `~/.config`). Reinstalling an older APM-managed
 entry migrates only provenance-owned servers from the obsolete data path.
 
+For user-scope Claude MCP installs, an absolute `CLAUDE_CONFIG_DIR` selects the
+profile's `.claude.json` for both installation and stale-server cleanup.
+Run install with each profile's environment set. Removing managed servers from
+one profile preserves other profiles and user-owned entries.
+
 `apm install` prints a one-line provenance summary before any mutation:
 
 ```
