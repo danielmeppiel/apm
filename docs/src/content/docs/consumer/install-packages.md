@@ -130,7 +130,9 @@ Rule sync to Cursor (`.cursor/rules/`), Claude Code (`.claude/rules/`), Windsurf
 Commit `apm.yml`, `apm.lock.yaml`, and target-owned outputs; keep `apm_modules/`
 gitignored. Committed agent files are reviewable and discoverable after clone,
 not necessarily self-contained: run `apm install` to restore linked package
-context.
+context. Keep those installed resources available while native agents or tools
+follow the deployed links; do not remove `apm_modules/` just because install
+has finished.
 
 See the [Quickstart](../../quickstart/#what-to-commit) for details.
 
