@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from apm_cli.models.dependency.reference import DependencyReference
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from apm_cli.core.command_logger import _ValidationOutcome
 
 
-def selected_dependency_identity(package: str, dependencies: Iterable[DependencyReference]) -> str:
+def selected_dependency_identity(package: str, dependencies: Sequence[DependencyReference]) -> str:
     """Resolve a selector using interpreted references before shorthand parsing."""
     for dependency in dependencies:
         # Explicit git+path coordinates can contain dotted bundle directories
