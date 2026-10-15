@@ -130,7 +130,7 @@ def _printed_hosts(output: str) -> set[str]:
 def _extract_try_argv(output: str) -> list[str]:
     """Extract the literal copyable ``Try:`` command from one output line."""
     match = re.search(
-        r'Try: (?P<command>apm install --mcp "[^"]+" --registry \S+)',
+        r'Try: (?P<command>apm install --mcp "[^"]+" --registry [^\r\n]+)',
         output,
     )
     assert match is not None, output
@@ -239,6 +239,109 @@ def test_direct_default_miss_prints_round_trippable_official_retry(
 
     assert retry_result.exit_code == 0, retry_result.output
     assert set(recorded_registry) == {urlparse(OFFICIAL_MCP_REGISTRY_URL).hostname}
+
+
+@pytest.mark.windows_compat
+@pytest.mark.parametrize(
+    ("version", "target", "global_"),
+    [
+        ("1.2.0", None, False),
+        (None, "claude", False),
+        ("1.2.0", "claude", False),
+        ("1.2.0+build.7", "claude,codex", True),
+    ],
+)
+def test_official_retry_preserves_install_selectors(
+    monkeypatch: pytest.MonkeyPatch,
+    recorded_registry: list[str],
+    project: Path,
+    version: str | None,
+    target: str | None,
+    global_: bool,
+) -> None:
+    """Copying the hint retains the version, selected targets, and write scope."""
+    from apm_cli.core.scope import InstallScope
+    from apm_cli.install.mcp.command import run_mcp_install
+    from apm_cli.utils.yaml_io import load_yaml
+
+    monkeypatch.setattr("apm_cli.config.get_mcp_registry_url", lambda *, create_config=True: None)
+    (project / "apm.yml").write_text(
+        "name: registry-layer-probe\nversion: 0.1.0\ntargets: copilot\ndependencies:\n  mcp: []\n",
+        encoding="utf-8",
+    )
+    install_spy = MagicMock(wraps=run_mcp_install)
+    monkeypatch.setattr("apm_cli.commands.install._run_mcp_install", install_spy)
+    options = []
+    if version:
+        options.extend(("--mcp-version", version))
+    if target:
+        options.extend(("--target", target))
+    if global_:
+        options.append("--global")
+    original_manifest = (project / "apm.yml").read_bytes()
+
+    result = _install(("--mcp", "ado-mcp", *options))
+
+    assert result.exit_code != 0
+    assert result.output.count("Try:") == 1
+    assert set(recorded_registry) == {"api.mcp.github.com"}
+    retry_argv = _extract_try_argv(result.output)
+    assert retry_argv == [
+        "apm",
+        "install",
+        "--mcp",
+        "ado-mcp",
+        "--registry",
+        OFFICIAL_MCP_REGISTRY_URL,
+        *options,
+    ]
+    assert (project / "apm.yml").read_bytes() == original_manifest
+    assert not (project / ".apm" / "apm.yml").exists()
+
+    recorded_registry.clear()
+    install_spy.reset_mock()
+    retry_result = CliRunner().invoke(cli, retry_argv[1:])
+
+    assert retry_result.exit_code == 0, retry_result.output
+    assert set(recorded_registry) == {urlparse(OFFICIAL_MCP_REGISTRY_URL).hostname}
+    install_spy.assert_called_once()
+    kwargs = install_spy.call_args.kwargs
+    assert kwargs["mcp_version"] == version
+    assert kwargs["target"] == (
+        target.split(",") if target and "," in target else target or ["copilot"]
+    )
+    assert kwargs["scope"] is (InstallScope.USER if global_ else InstallScope.PROJECT)
+    manifest_path = project / ".apm" / "apm.yml" if global_ else project / "apm.yml"
+    entry = load_yaml(manifest_path)["dependencies"]["mcp"][0]
+    if version:
+        assert entry["version"] == version
+    else:
+        assert "version" not in entry
+    assert entry["registry"] == OFFICIAL_MCP_REGISTRY_URL
+    if global_:
+        assert (project / "apm.yml").read_bytes() == original_manifest
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["1.2.0;echo unsafe", "1.2.0$HOME", "%PATH%", '1.2.0"bad', "1.2.0\n", "1.2.0`whoami`"],
+)
+def test_official_retry_omits_unsafe_version_values(
+    monkeypatch: pytest.MonkeyPatch,
+    recorded_registry: list[str],
+    project: Path,
+    version: str,
+) -> None:
+    """An opaque version cannot inject shell syntax into a printed retry."""
+    monkeypatch.setattr("apm_cli.config.get_mcp_registry_url", lambda *, create_config=True: None)
+
+    result = _install(("--mcp", "ado-mcp", "--mcp-version", version, "--target", "claude"))
+
+    assert result.exit_code != 0
+    assert set(recorded_registry) == {"api.mcp.github.com"}
+    assert "Try:" not in result.output
+    assert "apm mcp search" in result.output
+    assert OFFICIAL_MCP_REGISTRY_URL not in result.output
 
 
 def _missing_operations(
