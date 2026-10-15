@@ -86,7 +86,7 @@ def test_neutral_hook_contract_passes_on_current_sources() -> None:
     assert [finding for finding in result.violations if finding.rule_id == rule.id] == []
 
 
-def _write_portable_hook_package(tmp_path: Path) -> object:
+def _write_portable_hook_package(tmp_path: Path, *, nested_metadata: bool = False) -> object:
     """Create one package carrying the flat portable hook shape."""
     from apm_cli.models.apm_package import APMPackage, PackageInfo
 
@@ -103,6 +103,7 @@ def _write_portable_hook_package(tmp_path: Path) -> object:
                             "command": "echo check",
                             "timeout": 10,
                             "matcher": "fs_write|str_replace",
+                            **(_NESTED_HOOK_METADATA if nested_metadata else {}),
                         }
                     ]
                 }
@@ -258,6 +259,42 @@ def test_gemini_compatibility_conversion_preserves_nested_env() -> None:
     assert hook["env"] == {"APM_TEST": "value"}
     assert hook["timeout"] == 2000
     assert json.loads(json.dumps(hook)) == hook
+
+
+@pytest.mark.parametrize(
+    ("target", "namespace", "event", "timeout"),
+    [
+        ("claude", "hooks", "PreToolUse", 10),
+        ("codex", "hooks", "PreToolUse", 10),
+        ("gemini", "hooks", "BeforeTool", 10000),
+        ("antigravity", "apm", "PreToolUse", 10),
+    ],
+)
+def test_integrator_writes_nested_hook_metadata_to_native_json(
+    tmp_path: Path, target: str, namespace: str, event: str, timeout: int
+) -> None:
+    """Real native file writes must preserve nested metadata without executing hooks."""
+    from apm_cli.integration.hook_integrator import HookIntegrator
+    from apm_cli.integration.targets import KNOWN_TARGETS
+
+    profile = KNOWN_TARGETS[target]
+    (tmp_path / profile.root_dir).mkdir()
+    package_info = _write_portable_hook_package(tmp_path, nested_metadata=True)
+    source = package_info.install_path / ".apm" / "hooks" / "check.json"
+    original = source.read_bytes()
+
+    result = HookIntegrator().integrate_hooks_for_target(profile, package_info, tmp_path)
+
+    assert result.files_integrated == 1
+    payload = json.loads((tmp_path / profile.hooks_config_display).read_text(encoding="utf-8"))
+    binding = payload[namespace][event][0]
+    handler = binding["hooks"][0]
+    assert binding["matcher"] == "fs_write|str_replace"
+    assert handler["command"] == "echo check"
+    assert handler["timeout"] == timeout
+    assert handler["env"] == _NESTED_HOOK_METADATA["env"]
+    assert handler["x-extension"] == _NESTED_HOOK_METADATA["x-extension"]
+    assert source.read_bytes() == original
 
 
 def test_claude_edge_nests_flat_portable_hook_entries(tmp_path: Path) -> None:
