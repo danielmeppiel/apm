@@ -141,6 +141,7 @@ class ResolvedPackage:
     # diagnostics use the producer's convention without re-reading apm.yml.
     effective_tag_pattern: str = ""
     curator_metadata: tuple[tuple[str, str], ...] = ()
+    commit_sha: str | None = None  # peeled commit pin; legacy outputs keep sha unchanged
 
 
 @dataclass(frozen=True)
@@ -895,6 +896,7 @@ class MarketplaceBuilder:
                 subdir=entry.subdir,
                 ref=tag_name,
                 sha=remote_ref.sha,
+                commit_sha=remote_ref.peeled_sha or remote_ref.sha,
                 requested_version=entry.version,
                 tags=entry.tags,
                 is_prerelease=sv.is_prerelease if sv else False,
@@ -918,6 +920,7 @@ class MarketplaceBuilder:
                 subdir=entry.subdir,
                 ref=short,
                 sha=remote_ref.sha,
+                commit_sha=remote_ref.peeled_sha or remote_ref.sha,
                 requested_version=entry.version,
                 tags=entry.tags,
                 is_prerelease=sv.is_prerelease if sv else False,
@@ -938,6 +941,7 @@ class MarketplaceBuilder:
                 subdir=entry.subdir,
                 ref=ref_text,
                 sha=remote_ref.sha,
+                commit_sha=remote_ref.peeled_sha or remote_ref.sha,
                 requested_version=entry.version,
                 tags=entry.tags,
                 is_prerelease=False,
@@ -996,6 +1000,7 @@ class MarketplaceBuilder:
         # Pick highest
         candidates.sort(key=lambda c: c[0], reverse=True)
         best_sv, best_tag, best_sha = candidates[0]
+        selected_ref = next(ref for ref in refs if ref.name == f"refs/tags/{best_tag}")
 
         return ResolvedPackage(
             name=entry.name,
@@ -1003,6 +1008,7 @@ class MarketplaceBuilder:
             subdir=entry.subdir,
             ref=best_tag,
             sha=best_sha,
+            commit_sha=selected_ref.peeled_sha or best_sha,
             requested_version=version_range,
             tags=entry.tags,
             is_prerelease=best_sv.is_prerelease,

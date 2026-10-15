@@ -11,10 +11,15 @@ import re
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING, Any
+
+from apm_cli.utils.github_host import is_full_commit_sha
+from apm_cli.utils.path_security import validate_path_segments
 
 from .diagnostics import BuildDiagnostic
 from .errors import BuildError
+from .source_identity import parse_marketplace_source
 
 _RE_NON_ALNUM = re.compile(r"[^a-z0-9]")
 _RE_MULTI_DASH = re.compile(r"-{2,}")
@@ -329,20 +334,7 @@ class CodexMarketplaceMapper(MarketplaceOutputMapper):
 
 
 class CopilotMarketplaceMapper(MarketplaceOutputMapper):
-    """Map packages into GitHub Copilot CLI marketplace format.
-
-    The Copilot CLI schema (see issue #2430) intentionally diverges from the
-    Claude mapper above in several ways:
-      - ``description`` and ``version`` nest under a top-level ``metadata``
-        object instead of living at the document root.
-      - ``plugins[].source`` must always be a relative path *string*
-        (e.g. ``"./plugins/demo"``) -- never the ``{source, url, ref, sha}``
-        pin-preserving object shape used by Claude/Codex.
-      - Fields the Copilot CLI does not understand (``author``, ``tags``,
-        ``homepage``, ``repository``, ``license``, ``category``, git pin
-        metadata such as ``ref``/``sha``) are omitted entirely rather than
-        passed through.
-    """
+    """Emit nested marketplace metadata and local or remote Copilot sources."""
 
     uses_remote_metadata = True
 
@@ -377,16 +369,30 @@ class CopilotMarketplaceMapper(MarketplaceOutputMapper):
         for pkg in resolved:
             entry = entry_by_name.get(pkg.name)
             if entry is None:
-                continue
+                raise BuildError(
+                    f"Copilot package '{pkg.name}' has no configured source. "
+                    "Add it to marketplace.packages before packing.",
+                    package=pkg.name,
+                )
             plugin: dict[str, Any] = OrderedDict({"name": pkg.name})
             meta = remote_metadata.get(pkg.name, {})
-            description = entry.description or meta.get("description")
-            if description:
-                plugin["description"] = description
-            version = entry.version if entry.is_local else meta.get("version") or entry.version
-            if version:
-                plugin["version"] = version
-            plugin["source"] = _copilot_source(entry, pkg, diagnostics)
+            for field, value in (
+                ("description", entry.description),
+                (
+                    "version",
+                    entry.version if entry.is_local or _is_display_version(entry.version) else None,
+                ),
+            ):
+                _apply_field_with_precedence(
+                    plugin,
+                    diagnostics,
+                    field=field,
+                    entry_value=value,
+                    meta_value=meta.get(field),
+                    pkg_name=pkg.name,
+                    source_label="package apm.yml" if entry.is_local else "remote",
+                )
+            plugin["source"] = _copilot_source(entry, pkg)
             plugins.append(plugin)
 
         doc["plugins"] = plugins
@@ -452,66 +458,64 @@ def _codex_source(entry: PackageEntry, pkg: ResolvedPackage) -> dict[str, Any]:
 def _copilot_source(
     entry: PackageEntry,
     pkg: ResolvedPackage,
-    diagnostics: list[BuildDiagnostic] | None = None,
-) -> str:
-    """Return a Copilot CLI ``source`` as a relative path string.
-
-    Unlike Claude/Codex, the Copilot CLI schema has no object-shaped source
-    (no ``url``/``repo``/``ref``/``sha`` pin metadata) -- it only accepts a
-    relative path. Local packages keep their configured path unchanged.
-    Remote packages prefer the resolved ``subdir`` (normalized to a leading
-    ``./``); when a package has no subdir, fall back to a relative path
-    derived from the package name so every entry still resolves to a
-    sensible on-disk location.
-
-    Trade-off (by design, not a bug): resolved ``ref``/``sha`` pin metadata
-    is intentionally dropped for remote packages, because the Copilot CLI
-    schema has nowhere to carry it -- a consumer reinstalling from
-    ``marketplace.json`` alone cannot reproduce the exact pinned commit the
-    producer resolved at pack time; only ``apm install`` (which reads
-    ``apm.yml``/``apm.lock.yaml`` directly) retains that precision. Likewise,
-    a package with no ``subdir`` gets a *fabricated* ``./<pkg.name>`` path --
-    this is a best-effort placeholder, not a verified on-disk location; if
-    the installed layout differs, set an explicit ``subdir:`` on the package
-    entry. Both trade-offs surface as ``verbose``-level diagnostics below so
-    authors can audit them without changing the emitted (intentionally
-    minimal) Copilot schema.
-    """
+) -> str | dict[str, Any]:
+    """Preserve local paths or represent a remote Git identity without fetching."""
     if entry.is_local:
         return entry.source
 
-    if diagnostics is not None and (pkg.ref or pkg.sha):
-        diagnostics.append(
-            BuildDiagnostic(
-                level="verbose",
-                message=(
-                    f"Copilot output for '{pkg.name}': resolved pin "
-                    f"(ref={pkg.ref or '-'}, sha={pkg.sha or '-'}) is not "
-                    f"carried in the Copilot schema's path-only 'source'. "
-                    f"Use 'apm install' (reads apm.yml/apm.lock.yaml) to "
-                    f"reproduce the exact pin."
-                ),
-            )
-        )
+    remote_url = _remote_source_url(pkg)
+    try:
+        identity = parse_marketplace_source(remote_url or pkg.source_repo)
+        if identity.kind == "local":
+            raise ValueError("remote package resolved to a local source")
+    except ValueError as exc:
+        raise BuildError(
+            f"Copilot package '{pkg.name}' has an unrepresentable remote source. "
+            "Set a valid repository source in marketplace.packages.",
+            package=pkg.name,
+        ) from exc
 
+    source: dict[str, Any] = (
+        {"source": "github", "repo": pkg.source_repo}
+        if remote_url is None and identity.host == "github.com"
+        else {"source": "url", "url": identity.url}
+    )
     if pkg.subdir:
-        relative = pkg.subdir.strip("/")
-        return relative if relative.startswith("./") else f"./{relative}"
+        try:
+            path = PureWindowsPath(pkg.subdir)
+            if path.drive or path.root or "\\" in pkg.subdir:
+                raise ValueError("repository subdirectory must be a relative POSIX path")
+            validate_path_segments(pkg.subdir, allow_current_dir=True)
+        except ValueError as exc:
+            raise BuildError(
+                f"Copilot package '{pkg.name}' requires a relative repository subdirectory. "
+                "Correct its subdir and repack.",
+                package=pkg.name,
+            ) from exc
+        source["path"] = pkg.subdir
 
-    if diagnostics is not None:
-        diagnostics.append(
-            BuildDiagnostic(
-                level="verbose",
-                message=(
-                    f"Copilot output for '{pkg.name}': no 'subdir' resolved; "
-                    f"fabricated './{pkg.name}' as a best-effort placeholder "
-                    f"path. Set an explicit 'subdir:' on the package entry if "
-                    f"the installed layout differs."
-                ),
-            )
+    commit_sha = pkg.commit_sha or pkg.sha
+    if commit_sha and not is_full_commit_sha(commit_sha):
+        raise BuildError(
+            f"Copilot package '{pkg.name}' requires a full 40-character commit SHA. "
+            "Use a full commit pin or a resolvable branch/tag ref and repack.",
+            package=pkg.name,
         )
+    if is_full_commit_sha(pkg.ref):
+        if commit_sha and commit_sha.lower() != pkg.ref.lower():
+            raise BuildError(
+                f"Copilot package '{pkg.name}' has conflicting commit pins. "
+                "Correct its ref and repack.",
+                package=pkg.name,
+            )
+        # Git clone's branch/tag ref is not a raw commit pin.
+        commit_sha = pkg.ref
+    elif pkg.ref:
+        source["ref"] = pkg.ref
 
-    return f"./{pkg.name}"
+    if commit_sha:
+        source["sha"] = commit_sha
+    return source
 
 
 def _apply_field_with_precedence(

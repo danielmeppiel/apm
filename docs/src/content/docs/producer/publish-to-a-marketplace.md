@@ -221,14 +221,26 @@ remote entries to `source: url`, and remote subdirectory entries to
 `source: git-subdir`. Claude output also emits `category` on any
 package where it is set, even though only `codex` requires it.
 
-The `copilot` output targets the GitHub Copilot CLI marketplace
-schema (`.github/plugin/marketplace.json` by default). It has no
-`category` requirement. Unlike Claude/Codex, its `plugins[].source`
-is always a relative-path **string** -- never the
-`{source, url, ref, sha}` pin-preserving object shape -- so resolved
-git `ref`/`sha` pins are not carried in this output; only
-`apm install` (which reads `apm.yml`/`apm.lock.yaml` directly)
-reproduces the exact pin. Each output format also declares an
+The `copilot` output targets the [GitHub Copilot CLI marketplace
+format](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference#plugin-source-types)
+(`.github/plugin/marketplace.json` by default). It has no `category`
+requirement. Local `plugins[].source` values keep their declared
+relative paths, such as `"./plugins/demo"`. Remote sources use
+`{"source":"github","repo":"owner/repo"}` or
+`{"source":"url","url":"https://host/team/repo.git"}`, with the
+repository subdirectory in `path` when present. Resolved tag refs
+and full 40-character commit pins are retained as `ref` and `sha`;
+annotated tags use the peeled commit SHA, not the tag-object SHA.
+A raw commit pin is emitted only as `sha`, never as a cloneable `ref`.
+Unrepresentable sources or invalid pins fail explicitly rather than
+inventing a local path. Existing branch restrictions remain unchanged.
+Marketplace description and version live under `metadata`.
+
+Select both formats with `outputs: {claude: {}, copilot: {}}`.
+Set `outputs.copilot.path` to change the Copilot destination;
+`copilot.output` takes precedence over that map path, and
+`apm pack --marketplace-path copilot=dist/copilot.json` overrides both.
+Each output format also declares an
 `APM_MARKETPLACE_<FORMAT>_PATH` environment variable name (for
 example `APM_MARKETPLACE_COPILOT_PATH`) reserved for a future release
 to override its output path; it is validated at startup but not yet

@@ -1,27 +1,31 @@
-from types import SimpleNamespace
+"""Copilot marketplace source mapping follows the documented consumer contract."""
 
+from __future__ import annotations
+
+from dataclasses import replace
+from urllib.parse import urlparse
+
+import pytest
+
+from apm_cli.marketplace.builder import ResolvedPackage
+from apm_cli.marketplace.errors import BuildError
 from apm_cli.marketplace.output_mappers import CopilotMarketplaceMapper
 from apm_cli.marketplace.output_profiles import MARKETPLACE_OUTPUTS
 from apm_cli.marketplace.yml_schema import MarketplaceConfig, MarketplaceOwner, PackageEntry
 
-
-def _resolved(**overrides):
-    values = {
-        "name": "demo",
-        "source_repo": "acme/demo",
-        "source_url": None,
-        "host": None,
-        "subdir": None,
-        "ref": None,
-        "sha": None,
-        "tags": (),
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
+pytestmark = pytest.mark.unit
+SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
-def _config(entry: PackageEntry) -> MarketplaceConfig:
-    return MarketplaceConfig(
+def _resolved(**overrides: object) -> ResolvedPackage:
+    return replace(
+        ResolvedPackage("demo", "acme/demo", None, "v2.1.0", SHA, None, (), False),
+        **overrides,
+    )
+
+
+def _compose(entry: PackageEntry, pkg: ResolvedPackage) -> dict:
+    config = MarketplaceConfig(
         name="my-marketplace",
         description="Curated plugins",
         version="1.0.0",
@@ -29,34 +33,30 @@ def _config(entry: PackageEntry) -> MarketplaceConfig:
         outputs=("copilot",),
         packages=(entry,),
     )
+    return CopilotMarketplaceMapper().compose(config=config, resolved=(pkg,)).document
 
 
-def test_copilot_profile_uses_default_discovery_path():
+def test_copilot_profile_uses_default_discovery_path() -> None:
     profile = MARKETPLACE_OUTPUTS["copilot"]
-
     assert profile.default_output == ".github/plugin/marketplace.json"
     assert profile.mapper == "copilot"
+    assert profile.path_env_var == "APM_MARKETPLACE_COPILOT_PATH"
 
 
-def test_copilot_mapper_nests_marketplace_metadata_and_keeps_local_source():
-    entry = PackageEntry(
-        name="demo",
-        source="./plugins/demo",
-        version="2.1.0",
-        description="Demo plugin",
-        is_local=True,
+def test_copilot_mapper_nests_marketplace_metadata_and_keeps_local_source() -> None:
+    doc = _compose(
+        PackageEntry(
+            name="demo",
+            source="./plugins/demo",
+            version="2.1.0",
+            description="Demo plugin",
+            is_local=True,
+        ),
+        _resolved(source_repo="", ref="", sha=""),
     )
-
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(_resolved(),),
-    )
-
-    assert result.document["metadata"] == {
-        "description": "Curated plugins",
-        "version": "1.0.0",
-    }
-    assert result.document["plugins"] == [
+    assert doc["metadata"] == {"description": "Curated plugins", "version": "1.0.0"}
+    assert "version" not in doc and "description" not in doc
+    assert doc["plugins"] == [
         {
             "name": "demo",
             "description": "Demo plugin",
@@ -66,135 +66,116 @@ def test_copilot_mapper_nests_marketplace_metadata_and_keeps_local_source():
     ]
 
 
-def test_copilot_mapper_emits_relative_path_string_for_remote_subdir():
-    entry = PackageEntry(
-        name="demo",
-        source="acme/demo",
-        ref="main",
-        description="Demo plugin",
-    )
+@pytest.mark.parametrize("subdir", [None, "plugins/demo", "./plugins/demo", "plugins/demo/"])
+def test_copilot_remote_github_preserves_identity_and_pins(subdir: str | None) -> None:
+    source = _compose(
+        PackageEntry(name="demo", source="acme/demo", ref="v2.1.0"),
+        _resolved(subdir=subdir),
+    )["plugins"][0]["source"]
+    assert source == {
+        "source": "github",
+        "repo": "acme/demo",
+        "ref": "v2.1.0",
+        "sha": SHA,
+        **({"path": subdir} if subdir else {}),
+    }
 
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(
-            _resolved(
-                ref="v2.1.0",
-                sha="0123456789abcdef0123456789abcdef01234567",
-                subdir="plugins/demo",
-            ),
+
+@pytest.mark.parametrize(
+    ("host", "url", "scheme", "expected_host", "path"),
+    [
+        ("ghe.example.com", None, "https", "ghe.example.com", "/acme/demo"),
+        (
+            None,
+            "https://gitlab.example.com/team/demo.git",
+            "https",
+            "gitlab.example.com",
+            "/team/demo.git",
         ),
-        remote_metadata={"demo": {"version": "2.1.0"}},
-    )
-
-    plugin = result.document["plugins"][0]
-    assert plugin["source"] == "./plugins/demo"
-    assert "ref" not in plugin
-    assert "sha" not in plugin
-    assert "author" not in plugin
-    assert "tags" not in plugin
-    assert "homepage" not in plugin
-    assert "repository" not in plugin
-    assert "license" not in plugin
-    assert "category" not in plugin
-
-
-def test_copilot_mapper_emits_relative_path_string_for_remote_without_subdir():
-    entry = PackageEntry(
-        name="demo",
-        source="example.org/acme/demo",
-        description="Demo plugin",
-    )
-
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(
-            _resolved(
-                host="example.org",
-                source_url="https://example.org/acme/demo",
-            ),
+        (
+            None,
+            "ssh://git@git.example.com:2222/team/demo.git",
+            "ssh",
+            "git.example.com",
+            "/team/demo.git",
         ),
-        remote_metadata={"demo": {"version": "2.1.0"}},
+    ],
+)
+def test_copilot_remote_url_preserves_transport(
+    host: str | None, url: str | None, scheme: str, expected_host: str, path: str
+) -> None:
+    source = _compose(
+        PackageEntry(name="demo", source="acme/demo", ref="v2.1.0"),
+        _resolved(host=host, source_url=url, subdir="plugins/demo"),
+    )["plugins"][0]["source"]
+    assert source["source"] == "url"
+    parsed = urlparse(source["url"])
+    assert (parsed.scheme, parsed.hostname, parsed.path) == (scheme, expected_host, path)
+    if scheme == "ssh":
+        assert (parsed.username, parsed.port) == ("git", 2222)
+    assert source["ref"] == "v2.1.0"
+    assert source["sha"] == SHA
+    assert source["path"] == "plugins/demo"
+
+
+@pytest.mark.parametrize("ref", [SHA, SHA.upper(), ""])
+def test_copilot_commit_pin_is_not_a_cloneable_ref(ref: str) -> None:
+    source = _compose(
+        PackageEntry(name="demo", source="acme/demo", ref=SHA),
+        _resolved(ref=ref),
+    )["plugins"][0]["source"]
+    assert "ref" not in source
+    assert source["sha"].lower() == SHA
+    assert source["repo"] == "acme/demo"
+
+
+def test_copilot_uses_peeled_commit_not_tag_object_sha() -> None:
+    source = _compose(
+        PackageEntry(name="demo", source="acme/demo", ref="v2.1.0"),
+        _resolved(sha="a" * 40, commit_sha=SHA),
+    )["plugins"][0]["source"]
+    assert source["sha"] == SHA
+    assert source["ref"] == "v2.1.0"
+
+
+def test_copilot_preserves_resolved_branch_ref() -> None:
+    source = _compose(
+        PackageEntry(name="demo", source="acme/demo", ref="release/stable"),
+        _resolved(ref="release/stable"),
+    )["plugins"][0]["source"]
+    assert source["ref"] == "release/stable"
+    assert source["sha"] == SHA
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        ({"source_repo": ""}, "unrepresentable remote source"),
+        ({"source_repo": "./invented"}, "unrepresentable remote source"),
+        ({"sha": "abc123"}, "full 40-character commit SHA"),
+        ({"ref": "b" * 40}, "conflicting commit pins"),
+        ({"subdir": "/absolute"}, "relative repository subdirectory"),
+        ({"subdir": "C:/absolute"}, "relative repository subdirectory"),
+        ({"subdir": "../outside"}, "relative repository subdirectory"),
+        ({"subdir": r"plugins\demo"}, "relative repository subdirectory"),
+    ],
+)
+def test_copilot_unrepresentable_input_fails_explicitly(overrides: dict, error: str) -> None:
+    with pytest.raises(BuildError, match=error):
+        _compose(PackageEntry(name="demo", source="acme/demo"), _resolved(**overrides))
+
+
+def test_copilot_mapper_omits_empty_description() -> None:
+    doc = _compose(
+        PackageEntry(name="demo", source="./plugins/demo", is_local=True),
+        _resolved(source_repo="", ref="", sha=""),
     )
-
-    plugin = result.document["plugins"][0]
-    assert isinstance(plugin["source"], str)
-    assert plugin["source"] == "./demo"
+    assert "description" not in doc["plugins"][0]
 
 
-def test_copilot_mapper_omits_empty_description():
-    entry = PackageEntry(
-        name="demo",
-        source="./plugins/demo",
-        is_local=True,
-    )
-
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(_resolved(),),
-    )
-
-    plugin = result.document["plugins"][0]
-    assert "description" not in plugin
-
-
-def test_copilot_mapper_normalizes_subdir_with_leading_dot_slash():
-    """A ``subdir`` already written as ``./x`` is passed through unchanged."""
-    entry = PackageEntry(name="demo", source="acme/demo", ref="main")
-
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(_resolved(subdir="./plugins/demo"),),
-    )
-
-    assert result.document["plugins"][0]["source"] == "./plugins/demo"
-
-
-def test_copilot_mapper_normalizes_subdir_with_trailing_slash():
-    """A ``subdir`` written with a trailing slash (``x/``) is normalized to
-    a leading ``./`` and no trailing slash.
-    """
-    entry = PackageEntry(name="demo", source="acme/demo", ref="main")
-
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(_resolved(subdir="plugins/demo/"),),
-    )
-
-    assert result.document["plugins"][0]["source"] == "./plugins/demo"
-
-
-def test_copilot_mapper_emits_verbose_diagnostic_when_dropping_pin_metadata():
-    """Dropping a resolved ref/sha pin (schema has no field for it) is
-    surfaced as a verbose diagnostic rather than silently discarded.
-    """
-    entry = PackageEntry(name="demo", source="acme/demo", ref="main")
-
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(
-            _resolved(
-                ref="v2.1.0",
-                sha="0123456789abcdef0123456789abcdef01234567",
-                subdir="plugins/demo",
-            ),
-        ),
-    )
-
-    messages = [d.message for d in result.diagnostics if d.level == "verbose"]
-    assert any("demo" in m and "pin" in m for m in messages)
-
-
-def test_copilot_mapper_emits_verbose_diagnostic_when_fabricating_subdir():
-    """A remote package with no resolved ``subdir`` gets a fabricated
-    ``./<name>`` path; this placeholder is surfaced as a verbose diagnostic.
-    """
-    entry = PackageEntry(name="demo", source="acme/demo", ref="main")
-
-    result = CopilotMarketplaceMapper().compose(
-        config=_config(entry),
-        resolved=(_resolved(),),
-    )
-
-    messages = [d.message for d in result.diagnostics if d.level == "verbose"]
-    assert any("demo" in m and "fabricated" in m for m in messages)
-    assert result.document["plugins"][0]["source"] == "./demo"
+def test_copilot_missing_configured_package_fails() -> None:
+    with pytest.raises(BuildError, match="no configured source"):
+        _compose(
+            PackageEntry(name="other", source="./plugins/other", is_local=True),
+            _resolved(),
+        )
