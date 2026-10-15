@@ -56,7 +56,7 @@ use the user installation's lockfile; retain `--global` when retrying.
 | `--runtime VALUE` | unset | Legacy alias for `--target` (single value only). Still accepted; prefer `--target`. |
 | `--exclude VALUE` | unset | Skip one runtime from the resolved MCP/LSP target set (explicit selection, manifest, saved config, or auto-detection). |
 | `--only apm\|mcp` | both | Install only APM packages or MCP/LSP service dependencies. Use `--only=apm` to skip service configuration and `--only=mcp` to select MCP and LSP services only. |
-| `-g`, `--global` | off | Install to user scope (`~/.apm/`) instead of the current project. `apm install -g --mcp NAME` creates or updates `~/.apm/apm.yml`, then deploys only to global-capable runtimes, such as Copilot CLI, Claude Code, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot. Mixed selections skip workspace-only targets with a warning. A selection with no global-capable target exits `2` before changing the user manifest, lockfile, or runtime configuration. |
+| `-g`, `--global` | off | Install to user scope (`~/.apm/`) instead of the current project. `apm install -g --mcp NAME` creates or updates `~/.apm/apm.yml`, then deploys only to global-capable runtimes, such as Copilot CLI, Claude Code, Cursor, OpenCode, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot. Mixed selections skip workspace-only targets with a warning. A selection with no global-capable target exits `2` before changing the user manifest, lockfile, or runtime configuration. |
 | `--legacy-skill-paths` | off | Deploy skills to per-client paths (`.cursor/skills/`, `.github/skills/`, ...) instead of the converged `.agents/skills/`. Env: `APM_LEGACY_SKILL_PATHS=1`. |
 
 File primitives resolve targets in this order: `--target`, manifest
@@ -121,6 +121,10 @@ in `apm.yml`, then run `apm install` again.
 | `--registry URL` | resolved | Custom MCP registry URL for resolving `--mcp NAME`. Persisted to `apm.yml`. Resolution order: this flag, `MCP_REGISTRY_URL`, `apm config set mcp-registry-url`, then the public default. Not valid with `--url` or a stdio command. |
 
 ## Behavior
+
+- **Stale-file cleanup.** `Cleaned N stale deployed files for DEPENDENCY` names
+  the affected dependency, not a deletion location. Cleanup removes deployed
+  files; a local dependency's source directory is not cleaned.
 
 - **Immutable dependency conflicts.** Install fails when two paths require
   different immutable commits for one package identity, showing both paths and
