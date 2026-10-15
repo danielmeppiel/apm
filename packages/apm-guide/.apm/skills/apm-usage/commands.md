@@ -10,6 +10,11 @@
 
 ## Dependency management
 
+During install or uninstall, `Cleaned N stale deployed files for DEPENDENCY`
+names the affected dependency, not a deletion location. A local source path in
+that message identifies the package; cleanup removes deployed files, not source
+files.
+
 `apm install` rejects incompatible immutable requirements for one package
 identity and reports both dependency paths and refs. Equivalent tag/SHA
 spellings are accepted. `--frozen` verifies transitive immutable requirements
@@ -108,6 +113,8 @@ When a default registry is configured, plain shorthand deps (`owner/repo#<ref>`)
 A normal project install creates or updates `apm.lock.yaml` when the manifest declares only MCP dependencies. The lock records resolved MCP configs and targets; repeating the same install leaves lock and target config bytes unchanged. A legacy `apm.lock` is migrated before this state is written.
 
 `apm install --frozen` validates package and MCP lock state before lockfile, target config, deployment, or cache mutation. A missing or stale MCP-only lock exits nonzero without writing; run normal `apm install` to repair it. `--only=mcp` follows the same guard. Add-style `--mcp NAME` is incompatible with `--frozen` because it mutates `apm.yml`.
+
+`apm install --frozen` never writes `apm.lock.yaml`. Deployment still runs, and one check comes after it: if the install deploys files the committed lockfile does not record, frozen mode exits `1` and names those paths. Those files are already on disk -- only the lockfile write is withheld. Rerun the same command without `--frozen` (keeping `--root DIR` or `--global`) and commit the updated lockfile; see the [install reference](https://microsoft.github.io/apm/reference/cli/install/#behavior) for recovery details.
 
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
@@ -327,7 +334,7 @@ Use `--no-drift` to opt out with reduced coverage (e.g. fast inner loops); the f
 A stale canonical deployment owner is different: `deployment-ledger-owners` is a hard integrity failure in both modes, exits 1, names the owner and path in text/JSON/SARIF, and blocks `--strip`. Remediate it with `apm prune`, then rerun `apm audit`. Drift output is integrated into JSON (top-level `drift` key) and SARIF (rule IDs `apm/drift/<kind>` where kind is `modified`/`unintegrated`/`orphaned`/`unrecorded`).
 
 
-**External scanners (experimental, behind `apm experimental enable external-scanners`).** `--external NAME` runs a third-party SARIF scanner (e.g. `skillspector`) and merges its findings. `--external-llm/--no-external-llm` toggles LLM-powered analysis (default off; sends scanned content to a third-party API, so APM prints a `[!]` egress banner and forwards `OPENAI_API_KEY`/`NVIDIA_INFERENCE_KEY` only when on). `--external-args TEXT` is a single shlex-split string of extra scanner flags, validated against a per-adapter allowlist -- non-allowlisted flags, secret-looking flags, and out-of-cwd paths are rejected fail-closed. `--external-llm`/`--external-args` without `--external` is a usage error (exit 2). Scanner configuration or infrastructure errors (feature disabled, scanner not found, malformed SARIF) exit **3**. Persist defaults with `apm config set external.<name>.llm true` and `apm config set external.<name>.args -- "--model gpt-4o"`. Precedence: CLI > config > policy floor.
+**External scanners (experimental, behind `apm experimental enable external-scanners`).** `--external NAME` runs a third-party SARIF scanner (e.g. `skillspector`) and merges its findings. `--external-llm/--no-external-llm` toggles LLM-powered analysis (default off; sends scanned content to a third-party API, so APM prints a `[!]` egress banner and forwards `OPENAI_API_KEY`/`NVIDIA_INFERENCE_KEY` only when on). `--external-args TEXT` is a single shlex-split string of extra scanner flags, validated against a per-adapter allowlist -- non-allowlisted flags, secret-looking flags, and out-of-cwd paths are rejected fail-closed. SkillSpector's `--baseline` must carry exactly one value, in either spelling, and that value is resolved inside the working directory even when it has no path separator. `--external-llm`/`--external-args` without `--external` is a usage error (exit 2). Scanner configuration or infrastructure errors (feature disabled, scanner not found, malformed SARIF) exit **3**. Persist defaults with `apm config set external.<name>.llm true` and `apm config set external.<name>.args -- "--model gpt-4o"`. Precedence: CLI > config > policy floor.
 
 ## Lifecycle scripts
 
