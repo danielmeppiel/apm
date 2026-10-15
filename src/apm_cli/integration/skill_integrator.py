@@ -924,7 +924,12 @@ class SkillIntegrator(BaseIntegrator):
         self.init_link_resolver(package_info, project_root)
         package_path = package_info.install_path
         sub_skills_dir = package_path / ".apm" / "skills"
-        if not sub_skills_dir.is_dir():
+        name_filter = (
+            source_plan.selected_skill_names
+            if source_plan is not None
+            else skill_subset_filter_tokens(skill_subset)
+        )
+        if not sub_skills_dir.is_dir() and name_filter is None:
             return 0, []
 
         if targets is None:
@@ -938,11 +943,6 @@ class SkillIntegrator(BaseIntegrator):
         _dep_ref = getattr(package_info, "dependency_ref", None)
         parent_name = _dep_ref.get_unique_key() if _dep_ref is not None else package_path.name
         owned_by, _ = self._ownership_maps(lockfile_root or project_root)
-        name_filter = (
-            source_plan.selected_skill_names
-            if source_plan is not None
-            else skill_subset_filter_tokens(skill_subset)
-        )
         count = 0
         all_deployed: list[Path] = []
         seen_skill_dirs: set[Path] = set()
@@ -1560,7 +1560,7 @@ class SkillIntegrator(BaseIntegrator):
         root_skills_dir = package_path / "skills"
         _source_paths = self.skill_source_paths(package_path, package_info.package_type)
         _is_plugin = package_info.package_type == _PackageType.MARKETPLACE_PLUGIN
-        if _is_plugin and not _source_paths:
+        if _is_plugin and not _source_paths and not skill_subset_filter_tokens(skill_subset):
             self._note_plugin_declaration_deploys_no_skills(
                 package_path,
                 package_path.name,
@@ -1582,7 +1582,7 @@ class SkillIntegrator(BaseIntegrator):
         source_dir_is_root = bool(_source_paths) and all(
             source.parent == root_skills_dir for source in _source_paths.values()
         )
-        if _source_paths and (_is_plugin or source_dir_is_root):
+        if _is_plugin or (_source_paths and source_dir_is_root):
             return self._merge_bin_paths(
                 self._integrate_skill_bundle(
                     package_info,

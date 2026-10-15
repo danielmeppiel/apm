@@ -307,6 +307,8 @@ def test_consumer_diagnoses_empty_skill_subset_match(tmp_path: Path) -> None:
         "MUST fail the install operation",
         "nonzero status",
         "MUST preserve previously deployed skill files",
+        "their ownership records",
+        "MUST NOT interpret an",
     )
 
 
