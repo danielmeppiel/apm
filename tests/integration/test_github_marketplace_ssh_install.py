@@ -157,7 +157,12 @@ def test_github_ssh_marketplace_installs_without_https(
     assert (remote.scheme, remote.hostname, remote.username) == ("ssh", "github.com", "git")
     assert remote.path == "/fixture/private-mkt.git"
     assert dependency["path"] == "plugins/alpha"
-    assert (project / "apm.lock.yaml").exists()
+    locked = load_yaml(project / "apm.lock.yaml")["dependencies"]
+    assert len(locked) == 1
+    assert locked[0]["repo_url"] == "fixture/private-mkt"
+    assert locked[0]["host"] == "github.com"
+    assert locked[0]["resolved_commit"] == commit.sha
+    assert locked[0]["resolved_ref"] == ("main" if scenario == "success-named" else commit.sha)
     skills = list((project / ".claude" / "skills").glob("*/SKILL.md"))
     assert len(skills) == 1
     assert skills[0].read_text(encoding="utf-8") == skill_text
