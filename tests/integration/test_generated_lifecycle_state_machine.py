@@ -25,6 +25,10 @@ from hypothesis.stateful import (
 
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
+from tests.integration.test_frozen_no_rewrite_e2e import (
+    _add_skill,
+    _assert_frozen_refusal_and_recovery,
+)
 from tests.integration.test_required_lifecycle_state_machine import (
     _INSTALL_ARGS,
     _assert_same_state,
@@ -117,6 +121,9 @@ _TRANSITION_PROPERTIES = {
     "lock": frozenset({"ownership.preserve_unowned"}),
     "frozen_replay": frozenset({"idempotency.byte_stable"}),
     "frozen_refusal": frozenset({"transaction.failed_command_preserves_state"}),
+    "frozen_underrecording_recovery": frozenset(
+        {"lockfile.frozen_preserves_bytes", "outcome.status_matches_state"}
+    ),
     "uninstall": frozenset({"ownership.preserve_unowned"}),
     "audit_empty": frozenset({"outcome.status_matches_state"}),
     "inspect_installed": frozenset({"filesystem.open_world_observation"}),
@@ -267,6 +274,7 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
         self.clean = True
         self.locked = False
         self.retained_user_file = False
+        self.local_skill_bytes: bytes | None = None
         self.step = 0
         self.last_operation = "initial"
         self.published_revision = "a"
@@ -499,7 +507,7 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
         if retained_bytes is not None:
             assert self.skill_path.read_bytes() == retained_bytes
         self.clean = True
-        self.locked = False
+        self.locked = self.local_skill_bytes is not None
 
     @rule()
     @precondition(lambda self: self.fixture.global_scope and self.published_revision == "a")
@@ -705,6 +713,38 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
         assert_snapshot_set_unchanged(before, self._capture())
 
     @rule()
+    @precondition(
+        lambda self: (
+            not self.fixture.global_scope
+            and self.declared
+            and self.materialized
+            and self.clean
+            and self.local_skill_bytes is None
+        )
+    )
+    def frozen_underrecording_recovery(self) -> None:
+        """Exercise post-deployment refusal, not just preflight pin mismatches."""
+        before = self._capture()
+        source = _add_skill(self.project.root, "frozen-extra")
+        deployed_path = PurePosixPath(".agents/skills/frozen-extra")
+        _assert_frozen_refusal_and_recovery(
+            self.scenario, self.project, self.fixture.environment, deployed_path
+        )
+        self.local_skill_bytes = source.read_bytes()
+        assert_snapshot_changes_within(
+            before,
+            self._capture(),
+            exact_paths={
+                **self.fixture.exact_paths,
+                "project": self.fixture.exact_paths["project"] | {".apm", ".apm/skills"},
+            },
+            tree_prefixes={
+                "project": self.fixture.tree_prefixes["project"]
+                | {".apm/skills/frozen-extra", ".agents/skills/frozen-extra"},
+            },
+        )
+
+    @rule()
     @precondition(lambda self: self.fixture.global_scope and self.materialized and self.clean)
     def uninstall(self) -> None:
         before = self._capture()
@@ -740,6 +780,12 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
         assert isinstance(manifest, dict)
         dependencies = manifest.get("dependencies", {}).get("apm", [])
         assert bool(dependencies) is self.declared
+        if self.local_skill_bytes is not None:
+            for relative in (
+                ".apm/skills/frozen-extra/SKILL.md",
+                ".agents/skills/frozen-extra/SKILL.md",
+            ):
+                assert (self.project.root / relative).read_bytes() == self.local_skill_bytes
         assert self.skill_path.exists() is (self.materialized or self.retained_user_file)
         if self.retained_user_file:
             assert self.skill_path.read_bytes() == _TAMPER_BYTES
@@ -849,6 +895,8 @@ def _mandatory_replay(model: _LifecycleReferenceModel) -> None:
                 model.clean_sources,
             ]
         )
+    else:
+        operations.append(model.frozen_underrecording_recovery)
     operations.extend(
         [
             model.tamper,
