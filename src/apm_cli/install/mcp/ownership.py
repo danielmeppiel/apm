@@ -106,7 +106,7 @@ def adopt_legacy_mcp_target_servers(
                 )
                 continue
             native_baselines = [expected]
-            candidates = [existing.get(name) for existing in existing_configs]
+            candidates = existing_configs
             if runtime == "codex":
                 from apm_cli.adapters.client.codex import CodexClientAdapter
 
@@ -115,14 +115,15 @@ def adopt_legacy_mcp_target_servers(
                 # still disqualifies a native entry from this exact baseline.
                 native_baselines.append({**expected, "id": ""})
                 candidates = [
-                    entry
-                    for entry in candidates
-                    if isinstance(entry, dict) and not CodexClientAdapter.get_registry_id(entry)
+                    existing
+                    for existing in candidates
+                    if isinstance(existing.get(name), dict)
+                    and not CodexClientAdapter.get_registry_id(existing[name])
                 ]
             if any(
-                entry in native_baselines
-                and (runtime != "opencode" or opencode_enabled_matches(entry, expected))
-                for entry in candidates
+                existing.get(name) in native_baselines
+                and (runtime != "opencode" or opencode_enabled_matches(existing[name], expected))
+                for existing in candidates
             ):
                 adopted.setdefault(runtime, set()).add(name)
     return adopted
