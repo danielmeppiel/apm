@@ -14,6 +14,7 @@ VERSION = "src/apm_cli/marketplace/version_resolver.py"
 VALIDATION = "src/apm_cli/install/validation.py"
 GIT_REFS = "src/apm_cli/deps/git_reference_resolver.py"
 BARE_CACHE = "src/apm_cli/deps/bare_cache.py"
+GIT_ENV = "src/apm_cli/utils/git_env.py"
 
 
 def test_marketplace_remote_owner_is_compliant() -> None:
@@ -64,8 +65,18 @@ def test_marketplace_remote_owner_is_compliant() -> None:
         ),
         (
             BARE_CACHE,
+            "git_resolve_commit(target, ref, env=env, bare=True)",
+            "git_resolve_commit(target, 'HEAD', env=env, bare=True)",
+        ),
+        (
+            BARE_CACHE,
+            "git_resolve_commit(target, ref, env=env, bare=True)",
             "git_resolve_commit(target, ref, env=env)",
-            "git_resolve_commit(target, 'HEAD', env=env)",
+        ),
+        (
+            GIT_ENV,
+            '"--git-dir" if bare else "-C"',
+            '"-C"',
         ),
     ],
     ids=[
@@ -82,6 +93,8 @@ def test_marketplace_remote_owner_is_compliant() -> None:
         "validation-probe-scheme-owner",
         "commit-api-scheme-owner",
         "bare-fallback-ref-verification",
+        "bare-fallback-explicit-location",
+        "bare-utility-explicit-location",
     ],
 )
 def test_marketplace_remote_owner_rejects_mutation(path: str, old: str, new: str) -> None:

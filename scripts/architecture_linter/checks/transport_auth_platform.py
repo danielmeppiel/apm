@@ -643,7 +643,12 @@ def _check_marketplace_package_remote(provider: FactsProvider) -> tuple[Violatio
         (
             "src/apm_cli/deps/bare_cache.py",
             "bare_clone_with_fallback._bare_action",
-            ("git_resolve_commit(target, ref, env=env)",),
+            ("git_resolve_commit(target, ref, env=env, bare=True)",),
+        ),
+        (
+            "src/apm_cli/utils/git_env.py",
+            "git_resolve_commit",
+            ("'--git-dir' if bare else '-C'",),
         ),
     )
     findings: list[Violation] = []
@@ -665,7 +670,9 @@ def _check_marketplace_package_remote(provider: FactsProvider) -> tuple[Violatio
             {
                 ast.unparse(node)
                 for node in index.own_scope(definition)
-                if isinstance(node, (ast.Assign, ast.AnnAssign, ast.Return, ast.Call, ast.Compare))
+                if isinstance(
+                    node, (ast.Assign, ast.AnnAssign, ast.Return, ast.Call, ast.Compare, ast.IfExp)
+                )
             }
             if definition is not None
             else set()
