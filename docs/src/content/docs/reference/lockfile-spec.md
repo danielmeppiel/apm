@@ -189,7 +189,7 @@ are written by `apm install`, `apm prune`, and related commands.
 
 ### Unattributed rows
 
-`legacy` rows are usually shared-root files such as `.agents/skills/`, and APM attributes them by path. An error-free install that declares `targets:` and runs all of them removes a `legacy` row an active target governs but no longer produces; a file row needs a recorded content hash. Rows for local-bundle output, and directories containing it, are kept. Bundle output recorded without `local-bundle` ownership looks like installed output and is removed the same way.
+`legacy` marks rows recorded without a concrete target. Install preserves ambiguous historical rows, including untagged historical bundle output; neither a path nor a saved hash establishes cleanup authority. Cleanup requires explicit governance backed by provenance. Current project-local installs record concrete target ownership for later rename, deletion, and target-removal reconciliation. This does not broaden legacy dependency cleanup or change canonical safe-deletion checks.
 
 ## Per-entry fields
 

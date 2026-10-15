@@ -297,12 +297,11 @@ def union_preserving(
     legacy preserve-all behaviour is kept so a genuine multi-target deploy is
     never clobbered (issue #1716).
 
-    An unattributed prior file row (shared root, no concrete target) that an
-    active target governs is dropped when this run did not produce it,
-    provided the run is trusted and every apm.yml target is active.
-    Supplemental targets in ``declared_targets`` do not count toward that
-    check, and local-bundle rows are never dropped this way because no install
-    re-produces them (#3179).
+    Unattributed historical rows are preserved unless the caller supplies
+    explicit ``generic_governed_values``. A path partition and saved hash
+    cannot distinguish old project-local output from imperative bundles.
+    Local installation persists its concrete locators instead of expanding
+    this compatibility cleanup policy (#3179).
     """
     from apm_cli.core.deployment_ledger import UNATTRIBUTED_TARGET, DeploymentLedgerCodec
     from apm_cli.core.deployment_state import (
@@ -329,11 +328,7 @@ def union_preserving(
         if declared_targets is not None
         else None
     )
-    active_prefixes, active_schemes = install_governance(targets)
-    # Only manifest targets show whether --target narrowed this run; with none
-    # resolved, the run cannot speak for every generic row.
     manifest_declared = {name for name in declared_by_name or () if _is_manifest_target(name)}
-    narrowed = not manifest_declared or not manifest_declared.issubset(active_by_name)
     cleanup_retained_hashes = cleanup_retained_hashes or {}
 
     def _target_for(path: str) -> str:
@@ -379,21 +374,7 @@ def union_preserving(
             content_hash=prior_hashes.get(path),
         )
         prior_record_values.add(path)
-    from apm_cli.integration.cleanup import is_skill_directory_entry
-
-    sweep = (
-        frozenset(
-            path
-            for path in prior_values
-            # URI rows are left to their native adapters' cleanup, and a file
-            # row without a recorded hash cannot pass the user-edit gate.
-            if "://" not in path
-            and (prior_hashes.get(path) or is_skill_directory_entry(path))
-            and is_governed_by_install(path, active_prefixes, active_schemes)
-        )
-        if current_run_trusted and not narrowed
-        else frozenset()
-    ) | generic_governed_values
+    sweep = generic_governed_values
     if sweep and prior_ledger is not None:
         # Imperative bundle output is never re-produced by an install, so its
         # absence from this run is not evidence that a generic row is stale.
@@ -441,10 +422,14 @@ def union_preserving(
             desired_owners=desired_owners,
             authoritative_targets=current_run_trusted,
             generic_governed_values=sweep or None,
-            unprocessed_claims=frozenset(
-                path
-                for path in prior_values
-                if is_governed_by_install(path, unprocessed_prefixes, unprocessed_schemes)
+            unprocessed_claims=(
+                frozenset(
+                    path
+                    for path in prior_values
+                    if is_governed_by_install(path, unprocessed_prefixes, unprocessed_schemes)
+                )
+                if unprocessed
+                else frozenset()
             ),
         ),
     )

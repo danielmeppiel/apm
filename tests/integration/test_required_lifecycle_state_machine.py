@@ -3743,7 +3743,7 @@ def test_required_unattributed_local_rows_contract_and_preserve_user_state(
     tmp_path: Path,
     apm_binary_path: Path,
 ) -> None:
-    """Rows earlier releases wrote as ``target: legacy`` contract; edits and untracked files stay."""
+    """Ambiguous historical rows, edits and untracked files survive without ownership guesses."""
     scenario = _new_scenario(tmp_path / "legacy-local-rows", apm_binary_path)
     consumer = scenario.consumers.create("legacy-rows-consumer", targets=("claude", "copilot"))
     root = consumer.root
@@ -3788,12 +3788,26 @@ def test_required_unattributed_local_rows_contract_and_preserve_user_state(
     )
 
     _assert_same_state(settled, LifecycleStateSnapshot.capture(root, targets=("claude", "copilot")))
-    assert _local_skill_rows(root, "renamed") == {}
-    assert not _skill_on_disk(root, ".agents", "renamed")
+    assert _local_skill_rows(root, "renamed") == {
+        ".agents/skills/renamed": "legacy",
+        ".agents/skills/renamed/SKILL.md": "legacy",
+    }
+    assert _skill_on_disk(root, ".agents", "renamed")
+    assert not _skill_on_disk(root, ".claude", "renamed")
     assert _local_skill_rows(root, "renamed-v2")[".agents/skills/renamed-v2/SKILL.md"] == "copilot"
     assert untracked.read_text(encoding="ascii") == _skill("handmade")
     assert edited.read_text(encoding="ascii") == _skill("edited") + "\nlocal note\n"
     assert ".agents/skills/edited/SKILL.md" in _local_skill_rows(root, "edited")
+    before_audit = ArtifactSnapshot.capture(root)
+    _, audit = _audit(
+        scenario,
+        consumer,
+        environment=scenario.environment,
+        expected_returncode=1,
+        scenario_id="legacy-rows-read-only-audit",
+    )
+    assert audit["passed"] is False
+    assert_unchanged(before_audit, ArtifactSnapshot.capture(root))
 
 
 def test_required_target_only_install_keeps_claims_whose_recorded_target_left(

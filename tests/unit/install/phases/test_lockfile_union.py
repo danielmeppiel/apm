@@ -270,7 +270,7 @@ class TestCurrentInstallGovernance:
         assert any(s.startswith("copilot-app-db://") for s in uri_schemes)
 
     def test_generic_agents_rows_contract_from_current_skill_claims(self, tmp_path):
-        """Current claims supersede legacy generic rows and remove stale twins."""
+        """Explicit caller governance may contract generic rows alongside current claims."""
         from apm_cli.install.manifest_reconcile import reconcile_deployed_block
         from apm_cli.utils.diagnostics import DiagnosticCollector
 
@@ -315,6 +315,7 @@ class TestCurrentInstallGovernance:
             declared_targets=[_known("cursor")],
             diagnostics=DiagnosticCollector(),
             prior_ledger=DeploymentLedger(records=generic_records),
+            generic_governed_values=frozenset({alpha_only}),
         )
 
         assert files == [shared, beta_only]
@@ -413,12 +414,12 @@ class TestCurrentInstallGovernance:
         assert alpha_path.read_text(encoding="utf-8") == "original"
 
     @pytest.mark.parametrize(
-        ("manifest", "active", "contracted"),
+        ("manifest", "active"),
         [
-            (("claude", "copilot"), ("claude", "copilot"), True),
-            (("claude", "copilot"), ("copilot",), False),
-            (("vscode",), ("copilot",), True),
-            (("vscode", "codex"), ("codex",), False),
+            (("claude", "copilot"), ("claude", "copilot")),
+            (("claude", "copilot"), ("copilot",)),
+            (("vscode",), ("copilot",)),
+            (("vscode", "codex"), ("codex",)),
         ],
         ids=[
             "all-manifest-targets-active",
@@ -427,14 +428,15 @@ class TestCurrentInstallGovernance:
             "alias-target-narrowed-away",
         ],
     )
-    def test_generic_agents_row_contracts_within_apm_yml_declared_universe(
+    @pytest.mark.parametrize("owner", [".", "owner/pkg"], ids=["local", "dependency"])
+    def test_generic_agents_row_requires_more_than_declared_target_governance(
         self,
         tmp_path: Path,
         manifest: tuple[str, ...],
         active: tuple[str, ...],
-        contracted: bool,
+        owner: str,
     ) -> None:
-        """Non-manifest targets in the declared universe must not block contraction (#3179)."""
+        """Full and narrowed installs preserve unknown history but attribute current proofs."""
         from apm_cli.install.manifest_reconcile import reconcile_deployed_block
         from apm_cli.install.phases.targets import declared_target_profiles
         from apm_cli.utils.diagnostics import DiagnosticCollector
@@ -460,12 +462,12 @@ class TestCurrentInstallGovernance:
             )
             records[locator.key] = DeploymentRecord(
                 locator=locator,
-                owners=(".",),
-                active_owner=".",
+                owners=(owner,),
+                active_owner=owner,
                 content_hash=prior_hashes[path],
             )
 
-        files, _ = reconcile_deployed_block(
+        files, hashes, ledger = reconcile_deployed_block(
             project_root=tmp_path,
             dep_key="<local .apm/>",
             current_files=[kept],
@@ -476,10 +478,18 @@ class TestCurrentInstallGovernance:
             declared_targets=declared_target_profiles(ctx),
             diagnostics=DiagnosticCollector(),
             prior_ledger=DeploymentLedger(records=records),
+            owner=owner,
+            include_ledger=True,
         )
 
-        assert (renamed in files) is not contracted
-        assert (tmp_path / renamed).exists() is not contracted
+        assert renamed in files
+        assert hashes[renamed] == prior_hashes[renamed]
+        assert (tmp_path / renamed).read_text(encoding="utf-8") == renamed
+        targets_by_value = {
+            record.locator.value: record.locator.target for record in ledger.records.values()
+        }
+        assert targets_by_value[renamed] == "legacy"
+        assert targets_by_value[kept] in active
 
     @pytest.mark.parametrize(
         ("declared_names", "owners", "trusted", "lock_only"),
@@ -1415,6 +1425,7 @@ def _dropped_target_block(tmp_path):
         active_targets=[_known("cursor")],
         declared_targets=[_known("cursor")],
         prior_ledger=DeploymentLedger(records=records),
+        generic_governed_values=frozenset({alpha_only}),
     )
     return kwargs, alpha_only, prior_hashes
 

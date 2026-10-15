@@ -128,10 +128,10 @@ def test_dropped_target_removes_local_shared_root_skill(
     assert not (tmp_path / ".agents" / "skills" / "demo").exists()
 
 
-def test_install_repairs_unattributed_local_rows_from_older_lockfile(
+def test_install_preserves_unattributed_local_rows_from_older_lockfile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Rows written as ``target: legacy`` by earlier releases still contract."""
+    """Ambiguous historical rows stay while newly deployed rows retain their target."""
     _write_project(tmp_path, ("claude", "copilot"))
     _write_skill(tmp_path, "demo-v1")
     _install(tmp_path, monkeypatch)
@@ -141,9 +141,13 @@ def test_install_repairs_unattributed_local_rows_from_older_lockfile(
     _install(tmp_path, monkeypatch)
 
     lock = _lock(tmp_path)
-    assert ".agents/skills/demo-v1/SKILL.md" not in lock["local_deployed_files"]
+    assert ".agents/skills/demo-v1/SKILL.md" in lock["local_deployed_files"]
+    assert _deployment_targets(lock)[".agents/skills/demo-v1/SKILL.md"] == "legacy"
     assert _deployment_targets(lock)[".agents/skills/demo-v2/SKILL.md"] == "copilot"
-    assert not (tmp_path / ".agents" / "skills" / "demo-v1").exists()
+    assert (tmp_path / ".agents" / "skills" / "demo-v1" / "SKILL.md").is_file()
+    assert not (tmp_path / ".claude" / "skills" / "demo-v1").exists()
+    _install(tmp_path, monkeypatch)
+    assert _lock(tmp_path) == lock
 
 
 def test_dependency_rows_follow_a_target_switch(
@@ -235,14 +239,14 @@ def test_narrowed_install_attributes_local_rows_to_the_run_target(
     assert not (tmp_path / ".agents" / "skills" / "demo-v1").exists()
 
 
-def test_alias_target_contracts_unattributed_rows(
+def test_alias_target_contracts_attributed_local_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``targets: [vscode]`` counts as declaring copilot when repairing old rows."""
+    """``targets: [vscode]`` retains concrete copilot provenance through a rename."""
     _write_project(tmp_path, ("vscode",))
     _write_skill(tmp_path, "demo-v1")
     _install(tmp_path, monkeypatch)
-    _mark_shared_root_rows_unattributed(tmp_path, owner=".")
+    assert _deployment_targets(_lock(tmp_path))[".agents/skills/demo-v1/SKILL.md"] == "copilot"
 
     _rename_skill(tmp_path, "demo-v1", "demo-v2")
     _install(tmp_path, monkeypatch)
@@ -251,10 +255,10 @@ def test_alias_target_contracts_unattributed_rows(
     assert not (tmp_path / ".agents" / "skills" / "demo-v1").exists()
 
 
-def test_install_repairs_unattributed_dependency_rows_from_older_lockfile(
+def test_install_does_not_expand_unattributed_dependency_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Dependency rows written as ``target: legacy`` contract once the dependency drops a skill."""
+    """The local provenance fix must not sweep ambiguous historical dependency rows."""
     _write_project(tmp_path, ("claude", "copilot"))
     _write_skill(tmp_path / "dep", "dep-extra")
     _install(tmp_path, monkeypatch)
@@ -266,8 +270,37 @@ def test_install_repairs_unattributed_dependency_rows_from_older_lockfile(
     dependency = next(
         row for row in _lock(tmp_path)["dependencies"] if row["repo_url"] == "_local/dep"
     )
-    assert ".agents/skills/dep-extra/SKILL.md" not in dependency["deployed_files"]
+    assert ".agents/skills/dep-extra/SKILL.md" in dependency["deployed_files"]
+    # Dependency-native synchronization already removes this known package output;
+    # this project-local fix must not add a separate historical-row sweep.
     assert not (tmp_path / ".agents" / "skills" / "dep-extra").exists()
+    assert not (tmp_path / ".claude" / "skills" / "dep-extra").exists()
+    assert _deployment_targets(_lock(tmp_path))[".agents/skills/dep-extra/SKILL.md"] == "legacy"
+
+
+def test_historical_bundle_without_owner_evidence_survives_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A saved hash cannot distinguish old bundle output from a stale local skill."""
+    _write_project(tmp_path, ("claude", "copilot"))
+    _install(tmp_path, monkeypatch)
+    bundled = _record_bundle(tmp_path, "historical-bundle")
+    lock = _lock(tmp_path)
+    for row in lock["deployments"]:
+        if row["value"] == bundled:
+            row["owners"] = ["."]
+            row["active_owner"] = "."
+            row["target"] = "legacy"
+    (tmp_path / "apm.lock.yaml").write_text(yaml.safe_dump(lock, sort_keys=False), encoding="utf-8")
+    _write_skill(tmp_path, "new-local")
+
+    _install(tmp_path, monkeypatch)
+    settled = _lock(tmp_path)
+    _install(tmp_path, monkeypatch)
+
+    assert (tmp_path / bundled).read_text(encoding="utf-8") == "bundled"
+    assert _deployment_targets(settled)[bundled] == "legacy"
+    assert _lock(tmp_path) == settled
 
 
 def test_deleted_local_tree_without_known_targets_stays_a_no_op(

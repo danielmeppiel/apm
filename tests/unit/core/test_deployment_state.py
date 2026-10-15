@@ -26,6 +26,23 @@ from apm_cli.utils.diagnostics import DiagnosticCollector
 VALID = NativePayloadValidation(valid=True, contract="file")
 
 
+@pytest.mark.parametrize(
+    ("values", "bundles", "expected"),
+    [
+        ({"a/SKILL.md"}, {"a/SKILL.md"}, {"a/SKILL.md"}),
+        ({"a"}, {"a/SKILL.md"}, {"a"}),
+        ({"b"}, {"a/SKILL.md"}, set()),
+        ({"a", "ab"}, {"ab/SKILL.md"}, {"ab"}),
+        ({"a"}, set(), set()),
+    ],
+    ids=["file", "ancestor", "sibling", "prefix-not-directory", "empty"],
+)
+def test_local_bundle_scope_respects_directory_boundaries(
+    values: set[str], bundles: set[str], expected: set[str]
+) -> None:
+    assert DeploymentLedgerCodec.local_bundle_scope(values, bundles) == frozenset(expected)
+
+
 def _target(name: str, root: str, managed: Path | None = None) -> TargetProfile:
     capability = TARGET_CAPABILITIES.get(name)
     if capability is None:

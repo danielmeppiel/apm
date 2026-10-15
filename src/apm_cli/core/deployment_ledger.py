@@ -469,12 +469,13 @@ class DeploymentLedgerCodec:
     def local_bundle_paths(lockfile: LockFile) -> frozenset[str]:
         """Return paths whose active provenance is an imperative local bundle."""
         ledger = DeploymentLedgerCodec.from_lockfile(lockfile)
+        paths: set[str] = set()
         for record in ledger.records.values():
             if record.active_owner == _LOCAL_BUNDLE_OWNER:
-                _require_local_bundle_hash(
-                    DeploymentLedgerCodec.legacy_value(record.locator), record.content_hash
-                )
-        return DeploymentLedgerCodec.local_bundle_values(ledger)
+                path = DeploymentLedgerCodec.legacy_value(record.locator)
+                _require_local_bundle_hash(path, record.content_hash)
+                paths.add(path)
+        return frozenset(paths)
 
     @staticmethod
     def authored_local_paths(lockfile: LockFile) -> frozenset[str]:

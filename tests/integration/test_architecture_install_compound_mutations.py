@@ -393,6 +393,24 @@ MUTATIONS: tuple[CompoundMutation, ...] = (
         ),
     ),
     CompoundMutation(
+        "contraction-implicit-historical-sweep",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace("    sweep = generic_governed_values\n", "    sweep = frozenset(prior_values)\n"),
+    ),
+    CompoundMutation(
+        "contraction-missing-unprocessed-claims",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace("            unprocessed_claims=(\n", "            ignored_claims=(\n"),
+    ),
+    CompoundMutation(
+        "contraction-unprocessed-claim-bypass",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace("            and record.locator.value not in intent.unprocessed_claims\n", ""),
+    ),
+    CompoundMutation(
         "contraction-post-local-lossy-persistence",
         CONTRACTION_RULE,
         "src/apm_cli/install/phases/post_deps_local.py",
@@ -705,6 +723,13 @@ def test_each_install_compound_subcheck_has_mutation_proof(
     assert report.failures == ()
     assert report.exit_code == 2
     assert any(violation.rule_id == case.rule_id for violation in report.violations)
+
+
+def test_local_contraction_boundary_is_complete() -> None:
+    """The real local persistence and preservation path satisfies the registered guard."""
+    report = run_selected_rules(ROOT, (CONTRACTION_RULE,))
+    assert report.failures == ()
+    assert report.violations == ()
 
 
 def test_request_defaults_accepts_wrapper_without_positional_defaults() -> None:
