@@ -80,7 +80,7 @@ class CleanupResult:
         )
 
 
-def is_skill_directory_entry(rel_path: str) -> bool:
+def _is_skill_directory_entry(rel_path: str) -> bool:
     """Return True when *rel_path* matches a skill directory pattern.
 
     Skill directories are deployed under ``<skills root>/<name>`` where the
@@ -413,7 +413,7 @@ def remove_stale_deployed_files(
         # deferred to a second pass so individual files are deleted first;
         # non-skill directory entries are still rejected immediately.
         if stale_target.is_dir() and not stale_target.is_symlink():
-            if is_skill_directory_entry(stale_path):
+            if _is_skill_directory_entry(stale_path):
                 _deferred_dirs.append((stale_path, stale_target))
             else:
                 result.skipped_unmanaged.append(stale_path)
