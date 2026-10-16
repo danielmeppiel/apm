@@ -355,11 +355,12 @@
       "keyword": "MUST",
       "section": "5.4",
       "status": "active",
-      "test_count": 3,
+      "test_count": 4,
       "tests": [
         "tests/spec_conformance/test_lockfile_reqs.py::test_conflict_diagnostic_names_an_action_for_the_unreadable_file",
         "tests/spec_conformance/test_lockfile_reqs.py::test_conflict_markers_recognised_at_load_without_raw_parser_output",
-        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_is_left_unmodified_across_reading_operations"
+        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_is_left_unmodified_across_reading_operations[crlf]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_is_left_unmodified_across_reading_operations[lf]"
       ]
     },
     {
