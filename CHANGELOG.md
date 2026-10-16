@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Agent primitives (`*.agent.md`) accept an optional `user-invocable: false` frontmatter field (default `true`; `visibility: internal` is an accepted alias). APM preserves the metadata so the agent is intended to be reachable programmatically only (for example via `handoffs:` or subagent calls); picker exclusion and that reachability take effect only when the receiving harness supports them. Verbatim-copy targets preserve the field; Codex and Kiro warn instead of silently dropping it. -- by @richard-fowles-epam (#3132)
+- `apm pack` can emit a Copilot CLI marketplace (`marketplace.outputs: {copilot: {}}`), preserving real local paths and remote repository/subdirectory identities, tag refs, and full commit pins without changing Claude/Codex defaults. -- by @aryansk (#2600)
 - New `grok-bot` install target deploys skill packages to `agent-data/workflows/<skill-name>/` for Grok Bot at project and user (`--global`) scope; the `grok-bot` target accepts packages declaring `agent-skills`, and an explicit `--target` fails only when no dependency in the install has a compatible target or a package named on the command line (and its whole subtree) has none; other filtered dependencies warn. (#3106)
 
 ### Changed
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm install plugin@mkt` for an in-repository plugin of a `github.com` marketplace registered over SSH pre-flights the repository over SSH instead of HTTPS-only probes, so a private marketplace installs with an SSH key and no GitHub token. (#3164)
 - `apm pack --check-clean` now certifies GitHub-hosted manifestless skills when `SKILL.md` has valid frontmatter at the resolved repository, ref, and subdirectory, while invalid skill metadata and missing repositories, refs, and package paths remain fail-closed. (#3064)
 - `apm audit` no longer reports a sibling root `skills/` folder alongside a project's `.apm/` content as `unintegrated` after a clean install; replay now uses install's project-local package interpretation. - by @adityaanikam (#3209, closes #3151)
 - `apm.yml` keys matching `x-[a-z][a-z0-9-]*` are preserved in the parsed manifest and dependency lock entry; other unknown keys warn without failing, including a single warning during install dry-runs. Proposed `req-ext-003` in `openapm-v0.1.md` records this contract with a distinct `.46` lockfile schema; existing schema bytes remain unchanged. - by @sergio-sisternes-epam (#3222)
