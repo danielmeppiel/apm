@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `apm install` and `apm update` no longer fail with `Object of type mappingproxy is not JSON serializable` when a hook carries nested metadata such as `env`; Claude, Codex, Gemini and Antigravity hook files keep that metadata as plain JSON. (by @abhishekacharya200, closes #3167) (#3211)
+- `apm install` and `apm update` no longer fail with `Object of type mappingproxy is not JSON serializable` when a hook carries nested metadata such as `env`; Claude, Codex, Gemini and Antigravity hook files keep that metadata as plain JSON. (by @abhishekacharya200, with regression coverage from @MohammedAlkindi in #3199, closes #3167) (#3211)
 - `apm install plugin@mkt` for an in-repository plugin of a `github.com` marketplace registered over SSH pre-flights the repository over SSH instead of HTTPS-only probes, so a private marketplace installs with an SSH key and no GitHub token. (#3164)
 - `apm pack --check-clean` now certifies GitHub-hosted manifestless skills when `SKILL.md` has valid frontmatter at the resolved repository, ref, and subdirectory, while invalid skill metadata and missing repositories, refs, and package paths remain fail-closed. (#3064)
 - `apm audit` no longer reports a sibling root `skills/` folder alongside a project's `.apm/` content as `unintegrated` after a clean install; replay now uses install's project-local package interpretation. - by @adityaanikam (#3209, closes #3151)
