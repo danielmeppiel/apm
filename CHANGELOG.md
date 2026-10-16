@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `APM_EXTRA_CA_BUNDLE` adds corporate PEM certificates to APM package-management HTTPS while retaining default trust roots and explicit Requests/curl overrides. (#2034) — by @TameTheGame (#2741)
 - Agent primitives (`*.agent.md`) accept an optional `user-invocable: false` frontmatter field (default `true`; `visibility: internal` is an accepted alias). APM preserves the metadata so the agent is intended to be reachable programmatically only (for example via `handoffs:` or subagent calls); picker exclusion and that reachability take effect only when the receiving harness supports them. Verbatim-copy targets preserve the field; Codex and Kiro warn instead of silently dropping it. -- by @richard-fowles-epam (#3132)
 - `apm pack` can emit a Copilot CLI marketplace (`marketplace.outputs: {copilot: {}}`), preserving real local paths and remote repository/subdirectory identities, tag refs, and full commit pins without changing Claude/Codex defaults. -- by @aryansk (#2600)
 - New `grok-bot` install target deploys skill packages to `agent-data/workflows/<skill-name>/` for Grok Bot at project and user (`--global`) scope; the `grok-bot` target accepts packages declaring `agent-skills`, and an explicit `--target` fails only when no dependency in the install has a compatible target or a package named on the command line (and its whole subtree) has none; other filtered dependencies warn. (#3106)
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `apm install` and `apm update` no longer fail with `Object of type mappingproxy is not JSON serializable` when a hook carries nested metadata such as `env`; Claude, Codex, Gemini and Antigravity hook files keep that metadata as plain JSON. (by @abhishekacharya200, with regression coverage from @MohammedAlkindi in #3199, closes #3167) (#3211)
+- Hook ownership sidecars ignore JSON formatting during drift checks while preserving meaningful and invalid-content findings. -- by @Pybsama (#3155)
 - `apm install` now reconciles renamed or deleted project-local skills and removed targets using recorded concrete ownership, preserving ambiguous legacy output, shared claims, and user edits -- by @tillig (#3190)
 - `apm install plugin@mkt` for an in-repository plugin of a `github.com` marketplace registered over SSH pre-flights the repository over SSH instead of HTTPS-only probes, so a private marketplace installs with an SSH key and no GitHub token. (#3164)
 - `apm pack --check-clean` now certifies GitHub-hosted manifestless skills when `SKILL.md` has valid frontmatter at the resolved repository, ref, and subdirectory, while invalid skill metadata and missing repositories, refs, and package paths remain fail-closed. (#3064)
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm install -g` (including `--mcp`) now configures MCP servers for Cursor in `~/.cursor/mcp.json` and OpenCode in `~/.config/opencode/opencode.json`, and `apm uninstall -g` removes them; existing configs APM cannot parse, such as OpenCode JSONC, are left untouched. (by @alvedder, #3100)
 - Codex agent conversion preserves native `model` and `model_reasoning_effort` settings and warns about dropped metadata instead of silently losing it. (#3150)
 - Cursor hooks use native v1 events and flat handlers; unsupported input and overlapping Claude imports now fail explicitly. Choose one hook route per dependency; see the [supported mappings](docs/src/content/docs/producer/author-primitives/hooks-and-commands.md#cursor-native-hooks-and-claude-import) and `openapm-v0.1.md` requirements `req-tg-016/017`. (#3149)
+- `apm pack` records the commit an annotated or signed tag points to as `source.sha` instead of the tag object, so plugin installers that check out the tag accept the pin. (by @nefayran, closes #3048, #3161)
 - `apm install --frozen` no longer writes `apm.lock.yaml`, which req-lk-006
   requires it to leave untouched. It previously deployed files and rewrote the
   lockfile to claim them, so a committed lockfile that under-recorded the
