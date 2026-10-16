@@ -148,6 +148,8 @@ marketplace:
     claude: {}
     codex:
       path: ./build/codex-marketplace.json
+    copilot:
+      path: ./build/copilot-marketplace.json
 ```
 
 ### Preview without writing
@@ -218,9 +220,24 @@ dependencies:
 
 ### Marketplace artifacts
 
-`.claude-plugin/marketplace.json` by default, plus any additional artifact selected by `marketplace.outputs` such as `.agents/plugins/marketplace.json` for Codex. Each remote plugin's version range is resolved against `git ls-remote`; local-path entries pass through verbatim. Files are written atomically, and parent directories are created if absent.
+`.claude-plugin/marketplace.json` by default, plus any additional artifact selected by `marketplace.outputs` such as `.agents/plugins/marketplace.json` for Codex or `.github/plugin/marketplace.json` for Copilot CLI. Each remote plugin's version range is resolved against `git ls-remote`; local-path entries pass through verbatim. Files are written atomically, and parent directories are created if absent.
 
-Configure marketplace artifact paths in `apm.yml` with the `marketplace.outputs` map, keyed by format. Use `--marketplace-path FORMAT=PATH` to override per-format output paths at pack time.
+Configure marketplace artifact paths in `apm.yml` with the `marketplace.outputs` map, keyed by format. Use `--marketplace-path FORMAT=PATH` to override per-format output paths at pack time. Each format also declares a reserved `APM_MARKETPLACE_<FORMAT>_PATH` environment variable name (for example `APM_MARKETPLACE_COPILOT_PATH`); it is validated at startup but not yet consumed by `apm pack`.
+
+Copilot output preserves local `plugins[].source` paths as strings. Remote
+entries use the [supported GitHub or Git URL source objects](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference#plugin-source-types):
+`{source: "github", repo: "owner/repo"}` or `{source: "url", url: "..."}`,
+with optional `path`, `ref`, and full 40-character commit `sha`. Annotated
+tag pins use their peeled commit, while a raw commit is emitted as `sha`
+without `ref`. Unrepresentable inputs fail instead of becoming invented
+local paths. Existing branch restrictions still apply. Marketplace
+description/version are nested under `metadata`; plugin description/version
+remain on each plugin. There is no `category` requirement. The default
+remains Claude-only unless another output is selected.
+
+For Copilot path overrides, `--marketplace-path copilot=PATH` wins over
+`marketplace.copilot.output`, then `marketplace.outputs.copilot.path`,
+then `.github/plugin/marketplace.json`.
 
 Remote Claude entries can inherit `description` and `version` from their own
 `apm.yml`. If APM cannot fetch that metadata, normal packing writes the artifact
