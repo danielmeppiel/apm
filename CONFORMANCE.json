@@ -1044,8 +1044,10 @@
       "keyword": "MUST",
       "section": "7.3",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_emits_lockfile_after_successful_resolution"
       ]
     },
@@ -1233,8 +1235,10 @@
       "keyword": "MUST",
       "section": "7.7",
       "status": "active",
-      "test_count": 15,
+      "test_count": 17,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin--v1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin-v1.2.3]",

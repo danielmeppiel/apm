@@ -211,12 +211,13 @@ def test_pack_remote_sources_preserve_commit_not_tag_object(
         "source": source,
         "version": "1.0.0",
         "description": "Demo",
+        "category": "testing",
     }
     if subdir:
         package["subdir"] = subdir
     if ref:
         package["ref"] = commit if ref == "commit" else ref
-    _manifest(tmp_path, outputs={"copilot": {}, "claude": {}}, packages=[package])
+    _manifest(tmp_path, outputs={"copilot": {}, "claude": {}, "codex": {}}, packages=[package])
     result = CliRunner().invoke(pack_cmd, ["--json"])
     if ref == "main":
         assert result.exit_code != 0
@@ -247,10 +248,22 @@ def test_pack_remote_sources_preserve_commit_not_tag_object(
             expected.hostname,
             expected.path,
         )
-    # Annotated-tag handling must not change the existing Claude schema/pin.
-    if ref in ("v1.0.0", "refs/tags/v1.0.0", None):
-        claude = json.loads((tmp_path / ".claude-plugin/marketplace.json").read_text())
-        assert claude["plugins"][0]["source"]["sha"] == tag_object
+    # #3048 corrects the legacy pin too, without changing its source schema.
+    claude = json.loads((tmp_path / ".claude-plugin/marketplace.json").read_text())
+    claude_source = claude["plugins"][0]["source"]
+    assert claude_source["sha"] == commit
+    assert claude_source["ref"] == (
+        commit if ref == "commit" else ref.removeprefix("refs/tags/") if ref else "v1.0.0"
+    )
+    assert claude_source["source"] == (
+        "git-subdir" if subdir else "github" if source == "acme/demo" else "url"
+    )
+    codex = json.loads((tmp_path / ".agents/plugins/marketplace.json").read_text())
+    codex_source = codex["plugins"][0]["source"]
+    assert codex_source["sha"] == commit
+    assert codex_source["ref"] == claude_source["ref"]
+    assert codex_source["source"] == ("git-subdir" if subdir else "url")
+    assert codex["plugins"][0]["category"] == "testing"
     stable = (tmp_path / DEFAULT_OUTPUT).read_bytes()
     check = CliRunner().invoke(pack_cmd, ["--json", "--check-clean"])
     assert check.exit_code == 0, check.output

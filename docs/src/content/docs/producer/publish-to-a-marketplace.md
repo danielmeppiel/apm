@@ -144,7 +144,6 @@ full HTTPS URLs (including nested paths such as
 See the [manifest schema](../../reference/manifest-schema/#75-marketplacepackages)
 for the full validation and override rules.
 
-The generated source object is also a producer-to-consumer contract.
 `apm pack` emits `source: url` for a remote repository and
 `source: git-subdir` when `subdir` is set.
 It also emits the effective `source.tag_pattern`: a package override takes
@@ -153,6 +152,13 @@ metadata after changing either value so consumers receive the new convention.
 `apm install <package>@<marketplace>` accepts both forms, derives the package host from
 the generated entry rather than from the marketplace host, and preserves
 the generated path and ref.
+
+For annotated or signed tags, `source.sha` records the peeled checkout
+commit, not the tag object; `source.ref` remains the selected tag. This
+correction does not change version selection or verify signatures. To
+replace older tag-object pins, upgrade APM, rerun `apm pack`, and publish
+the regenerated `marketplace.json`. Repacking still resolves configured
+version ranges, which may select newer matching tags.
 
 For an Azure DevOps Services marketplace, point `sourceBase` at the
 `https://dev.azure.com/{org}/{project}/_git` base; relative sources compose
