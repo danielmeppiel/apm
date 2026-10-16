@@ -30,6 +30,7 @@ from apm_cli.install.errors import (
     InstallFailureAlreadyRendered,
     PolicyViolationError,
     RequiredIntegrationError,
+    install_failure_message,
 )
 from apm_cli.install.errors import (
     frozen_install_tip as _frozen_install_tip,
@@ -1675,13 +1676,8 @@ def install(  # noqa: PLR0913
         # render with exit code 2 and the standard "Usage: ..." prefix.
         raise
     except Exception as e:
-        from apm_cli.deps.lockfile import LockfileConflictError
-
-        (logger or InstallLogger(verbose=verbose, dry_run=dry_run)).exception(
-            str(e)
-            if isinstance(e, LockfileConflictError)
-            else f"Error installing dependencies: {e}"
-        )
+        failure_logger = logger or InstallLogger(verbose=verbose, dry_run=dry_run)
+        failure_logger.exception(install_failure_message(e))
         command_result = (
             transaction.fail(e)
             if transaction is not None

@@ -108,6 +108,17 @@ class FrozenInstallError(RuntimeError):
         self.tip = tip
 
 
+def install_failure_message(error: Exception) -> str:
+    """Keep canonical conflict guidance intact and frame other install failures."""
+    from apm_cli.deps.lockfile import LockfileConflictError
+
+    return (
+        str(error)
+        if isinstance(error, LockfileConflictError)
+        else f"Error installing dependencies: {error}"
+    )
+
+
 def frozen_install_tip(error: FrozenInstallError) -> str:
     """Return recovery guidance tailored to package or MCP lock drift.
 
