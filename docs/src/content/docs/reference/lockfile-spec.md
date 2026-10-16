@@ -162,7 +162,7 @@ runtime entry -- with its full ownership history:
 | Field | Type | Notes |
 |---|---|---|
 | `kind` | string | Locator storage form: `project-relative`, `target-relative`, or `uri` (e.g. an MCP server entry). |
-| `target` | string | Deploy target name (`copilot`, `claude`, `mcp`, etc.). |
+| `target` | string | Deploy target name (`copilot`, `claude`, `mcp`, etc.), or `legacy` when the row was recorded without one. See [unattributed rows](#unattributed-rows). |
 | `value` | string | The path (relative to its `kind`) or URI value. |
 | `runtime` | string or null | Runtime scoping the row, when applicable (e.g. an MCP client name). |
 | `scope` | string | Install scope, typically `project`. |
@@ -186,6 +186,10 @@ per-dependency `deployed_files`/`deployed_file_hashes` and the top-level
 legacy views of the same ledger -- older tooling that only reads the flat
 fields still sees a consistent projection. Author neither view by hand; both
 are written by `apm install`, `apm prune`, and related commands.
+
+### Unattributed rows
+
+`legacy` marks rows recorded without a concrete target. Install preserves ambiguous historical rows, including untagged historical bundle output; neither a path nor a saved hash establishes cleanup authority. Cleanup requires explicit governance backed by provenance. Current project-local installs record concrete target ownership for later rename, deletion, and target-removal reconciliation. This does not broaden legacy dependency cleanup or change canonical safe-deletion checks.
 
 ## Per-entry fields
 
